@@ -12,12 +12,15 @@ later sections use.
   worktree unchanged unless the user explicitly chooses one of two alternatives. They can keep a candidate proven better
   than the incumbent under the conditions of [§2.10](#210-keeping-a-proven-improvement), labelled
   `improved, not certified`, or accept an uncertified candidate, labelled `not certified`.
-- **G2 — Let the user define compliance:** Derive a complete compliance contract proposal from the prompt system. The
-  proposal covers requirements, prompt tests and their test cases, trial profiles, the judge rubric and the minimum
-  pass rate. Run no trial until the user confirms it and chooses the certification scope: the weakest cell only, every
-  cell of each model family's latest version, or a scope the user describes, after seeing what each choice costs and
-  claims. The one exception is the guard pilot, which runs control trials of development test cases before
-  confirmation so that the proposal can show how often each guard assertion passes without the prompt.
+- **G2 — Let the user define compliance:** Derive a complete compliance contract proposal from the user's goal and the
+  prompt system. The proposal covers requirements, prompt tests and their test cases, trial profiles, the judge rubric
+  and the minimum pass rate. Each requirement states an outcome that the goal asks for, or an obligation of the prompt
+  system that the user keeps when no goal requirement covers it, and each prompt test proves requirements with the least
+  work that can still fail them, without telling the agent that it is tested. Run no trial until the user confirms it
+  and chooses the certification scope: the weakest cell only, every cell of each model family's latest version, or a
+  scope the user describes, after seeing what each choice costs and claims. The one exception is the guard pilot, which
+  runs control trials of development test cases before confirmation so that the proposal can show how often each guard
+  assertion passes without the prompt.
 - **G3 — Certify a joint claim:** Report a candidate `certified` only when both claims hold, with at most a 5%
   probability that any certification, deficiency or improvement claim in the campaign is false:
   - **(a)** for every prompt test, under each trial profile of the certification scope, the candidate's future pass
@@ -88,6 +91,7 @@ CAT reports each of these outcomes with its evidence and available next actions.
 | `not certified: inconclusive` | A cell reached its trial cap with its minimum-pass-rate test or a control comparison undecided. |
 | `not certified: stopped for contract revision` | The user stopped a certification attempt to revise the contract. |
 | `not certified: testing environment changed` | The user started a new measurement identity during a certification attempt ([§5](#5-measurement-identity-and-applicability)). |
+| `not certified: stopped for test revision` | A test revision changed a prompt test during a certification attempt ([§2.7](#27-development-readiness-and-edit-or-continue)). |
 | `certification unavailable: unsupported instruction source` | A remote or MCP response supplies governing instructions. |
 | `certification unavailable: ineligible trial effect` | A required trial path writes persistent state outside the trial copy, or lacks read-only credentials or a disposable fixture. |
 | `certification unavailable: unsupported output` | A requirement produces image, audio or video output. |
@@ -100,8 +104,8 @@ What follows an open outcome depends on the outcome:
 
 - `not certified: below minimum`, `not certified: below control` and `not certified: inconclusive` end one
   certification attempt and return to development automatically, unless the attempt's evidence offers `keep improvement` ([§2.8](#28-decision-table)).
-- `not certified: stopped for contract revision` and `not certified: testing environment changed` end the running
-  certification attempt.
+- `not certified: stopped for contract revision`, `not certified: stopped for test revision` and
+  `not certified: testing environment changed` end the running certification attempt.
 - Each `certification unavailable` outcome pauses for the user's choice ([§2.8](#28-decision-table)).
 - `interrupted` and an infrastructure failure pause until the user resumes.
 
@@ -118,8 +122,12 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 
 | Term | Meaning |
 |---|---|
-| Prompt system | The target prompt files together with the files, rules, configuration and loading relationships that shape their behaviour. |
+| Target prompt file | The one prompt file that a campaign optimizes and certifies, which the host agent passes to `start`. `start` refuses a directory ([§8](#8-skill-and-command-interface)). |
+| Prompt system | The target prompt file together with the files, rules, configuration and loading relationships that shape its behaviour. |
 | Compliance contract | The confirmed requirements, prompt tests with their test cases, trial profiles, judge and minimum pass rate. |
+| Goal | What the user wants the target prompt to achieve, in the user's own words, which the host agent passes to `start` ([§6.1](#61-derivation-and-confirmation)). |
+| Requirement | An observable outcome that the prompt system must produce, or an operation that it must not harm, with its source: the user's goal or the prompt file that states it. A requirement that only a prompt file states is an *extra requirement* when a goal was given, and the user keeps or drops it. Every requirement has a prompt test that proves it, and every prompt test proves at least one requirement ([§6.1](#61-derivation-and-confirmation)). |
+| Test revision | A contract author session that rewrites a prompt test whose failures come from the test rather than the prompt, keeping the requirements that the test proves ([§2.7](#27-development-readiness-and-edit-or-continue)). |
 | Trial profile | One model and reasoning-effort combination that a trial session runs under ([§6.6](#66-trial-profiles)). |
 | Pass rate | The fraction of a candidate's trials of one prompt test that pass. A trial passes when every assertion of its prompt test passes. It measures compliance only as far as the prompt tests cover the requirements ([§2.1](#21-claims)). |
 | Minimum pass rate | The pass probability that claim (a) requires every certified cell to exceed. The contract author proposes it once per campaign, 0.95 unless the user's feedback asks for another value, and the user confirms it with the contract. It lies between 0.80 and 0.99 ([§2.1](#21-claims)). |
@@ -142,7 +150,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Built-in tool | A tool that ships with CAT and decides one assertion from the trial record without a model. An assertion names it in its `tool` key, and its `on_tool_failure` key says whether a failure of the tool fails the trial or leaves the assertion to the judge ([§6.4](#64-judge)). |
 | Trial record | The normalized record of one trial that CAT builds from the harness events and the trial's file changes. Built-in tools read it, and the judge receives it as its evidence section ([§6.4](#64-judge)). |
 | Decision procedure | The built-in tools plus the frozen judge, which together give each assertion of a trial its pass label ([§2.1](#21-claims), [§6.4](#64-judge)). |
-| Control trial | A trial of the incumbent with every target prompt file emptied, which measures each assertion without the prompt ([§2.3](#23-sequential-tests), [§4.4](#44-trial-staging)). |
+| Control trial | A trial of the incumbent with the target prompt file emptied and the rest of the prompt system unchanged, which measures each assertion without the prompt ([§2.3](#23-sequential-tests), [§4.4](#44-trial-staging)). |
 | Guard pilot | The control trials of development test cases that CAT runs before confirmation, so the proposal shows how often each assertion passes without the prompt ([§6.1](#61-derivation-and-confirmation)). |
 | Incumbent | The prompt system snapshot recorded at the fork, before any optimization. It never changes, and every candidate is compared with it. |
 | Candidate | One exact snapshot: the incumbent plus an overlay of edits. The incumbent is the first candidate, with no edits. |
@@ -168,7 +176,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Base worktree | The user's Git worktree. Apart from campaign storage in its Git-ignored `.cat/work/` directory ([§4.1](#41-storage)), only delivery writes to it. |
 | Optimization worktree | CAT's fork of the base, holding the working candidate. |
 | Staged source | A symbolic-link-free directory for one snapshot, which the runner copies for each trial. |
-| Plugin under test | The harness plugin that holds the target prompt files. Each trial installs it from a copy in which the snapshot's prompt files replace the plugin's own ([§4.4](#44-trial-staging)). |
+| Plugin under test | The harness plugin that holds the target prompt file. Each trial installs it from a copy in which the snapshot's prompt files replace the plugin's own ([§4.4](#44-trial-staging)). |
 | Runner | CAT's existing component that runs one nested Claude or Codex session in a fresh isolated run directory (`ClaudeRunner`, `CodexRunner`). |
 | Driver | The Java process that each `prompt-optimizer run` command starts. It makes every deterministic decision ([§3.1](#31-nested-sessions), [§3.7](#37-process-model)). |
 | Slice | One time-bounded run of the driver inside a foreground command. |
@@ -376,7 +384,7 @@ capacity ([§3.3](#33-allocation-and-concurrency)) until it reaches these target
   `p_min` but not yet proven deficient, ending at 100.
 
 The incumbent is also the first working candidate. Its development trials draw development test cases and never count
-toward the baseline. Control trials are not baseline trials: they run the incumbent with its target prompt files
+toward the baseline. Control trials are not baseline trials: they run the incumbent with its target prompt file
 emptied ([§4.4](#44-trial-staging)), only within a certification attempt.
 
 A commit requires these targets to be met. The baseline is reused across candidates while measurement identities stay
@@ -484,8 +492,12 @@ targeted (D58). The prompt author works as follows:
    - *routing*: an existing instruction was not loaded or not applied, so the prompt author fixes how the prompt system
      reaches or triggers it;
    - *guidance*: an instruction is missing, ambiguous or contradicts another, so the prompt author amends it;
-   - *not guidance*: a test or contract defect, or an infrastructure fault, which no prompt edit can correct, so the
-     prompt author makes no prompt edit for it;
+   - *test defect*: the prompt test breaks a test design rule of [§6.3](#63-prompt-tests-and-test-cases), such as
+     needing more work than its requirements need or telling the agent that it is tested, or its expected outcome is
+     wrong. The prompt author names the rule or the outcome at fault and makes no prompt edit for it, and a test
+     revision corrects the test (below);
+   - *not guidance*: an infrastructure fault, which neither a prompt edit nor a test revision can correct, so the prompt
+     author makes no edit for it;
    - *conflict*: two requirements of the contract cannot both be satisfied, and the prompt system confirmed with the
      contract already held the text that causes it. The prompt author quotes that text, offers at least two resolutions
      and recommends one, and makes no edit for it. CAT checks each quotation against the confirmed snapshot and rejects
@@ -494,7 +506,8 @@ targeted (D58). The prompt author works as follows:
 
    A kind that looks like a model limitation, such as a mistyped command, an action that nothing in the prompt
    asked for, or a step that the model skipped although the prompt states it, is *routing* or *guidance*, never *not
-   guidance*: what the model sees where it makes that decision can still make the failure less likely (D58).
+   guidance*: what the model sees where it makes that decision can still make the failure less likely (D58). It is a
+   *test defect* only when the step lies outside the least work that the test's requirements need.
 
    An interim message belongs to the reply (D29). Whether a prompt can stop a harness from posting one is not yet
    known, but the prompt can shape its wording, so a failure in an interim message is *routing* or *guidance*, and the
@@ -519,14 +532,34 @@ targeted (D58). The prompt author works as follows:
    - every changed hunk lists the failing test cases that motivate it, together with its analogous case and the contract
      test that is its dissimilar case;
    - every kind lists its failing test cases, its classification and, when it is *routing* or *guidance*, the hunks that
-     address it.
+     address it, or when it is a *test defect*, the test design rule or expected outcome at fault.
 
 CAT rejects an attempt whose manifest omits a changed hunk, leaves a received failure out of every kind, leaves a
-*routing* or *guidance* kind without a hunk, cites a test case that is not among the failures it received, or names a
-dissimilar case that is not a test of the contract. A rejected attempt contributes no candidate. Its evidence is retained, as for an inventory violation
-([§4.6](#46-inventory-validation)). An attempt that classifies every kind as *not guidance* makes no edit and
-produces no candidate. Its classifications appear in the round's diagnosis and in the report at a review checkpoint,
-so the user can revise the contract when a test is at fault.
+*routing* or *guidance* kind without a hunk or a *test defect* kind without the rule or outcome at fault, cites a test
+case that is not among the failures it received, or names a dissimilar case that is not a test of the contract. A
+rejected attempt contributes no candidate. Its evidence is retained, as for an inventory violation
+([§4.6](#46-inventory-validation)). An attempt that classifies every kind as *test defect* or *not guidance* makes no
+edit and produces no candidate. Its classifications appear in the round's diagnosis and in the report at a review
+checkpoint.
+
+**Test revision (user rulings, 2026-10-13).** For each prompt test with a *test defect* kind, CAT starts a test
+revision: a contract author session that receives the confirmed contract, the user's goal, the prompt test, the kind
+with its failing test cases and their evidence, and the prompt author's reasons. The session rewrites the prompt test
+so that it keeps every test design rule of [§6.3](#63-prompt-tests-and-test-cases) and proves the same requirements,
+or reports that the test is sound, with its reasons. The user confirmed the requirements, and choosing how to test them
+is the contract author's work, so a revision that keeps them needs no confirmation. CAT validates the revised contract
+as it validates a proposal ([§6.1](#61-derivation-and-confirmation)), refuses one whose requirements differ from the
+confirmed ones, gives the revised prompt test new test cases in both parts, and reruns the guard pilot for it. The
+revised contract starts a new lineage ([§7](#7-campaign-lifecycle)); a certification attempt that is running ends
+`not certified: stopped for test revision`, and the certification index and the spent allowance carry on. The progress
+summary and the report show each revision as a difference from the earlier scenario, with its reasons. A report that
+the test is sound returns the kind to the next round, which classifies it as *routing* or *guidance*.
+
+The workflow tunes the prompt system by itself and asks the user only when it cannot make progress. CAT pauses the
+campaign for the user's choice, as for a conflict, when a test revision reports that no prompt test within the test
+design rules can prove a requirement, or that correcting the failure needs a requirement to change. The choices are the
+session's proposed requirement change, another change that the user describes, and stop; a chosen change becomes
+revision feedback that needs confirmation like any other.
 
 A *conflict* report pauses the campaign for the user's choice: CAT schedules no new trials, and in-flight work
 finishes. The choices are each offered resolution, with the recommended one marked, another resolution that the user
@@ -620,7 +653,9 @@ most 4 times, a needed hunk can be removed by chance. The representative trials 
 any other weak candidate.
 
 **Review checkpoint.** At 200 representative trials in a development cell for an unchanged candidate with that cell
-still unresolved, CAT stops scheduling that cell. It shows the evidence and offers more evidence, targeted optimization,
+still unresolved, CAT stops scheduling that cell. When no test revision has examined the cell's prompt test since the
+test last changed, CAT first starts one with the cell's failure kinds; if it revises the test, the cell continues under
+the new lineage instead of stopping. Otherwise CAT shows the evidence and offers more evidence, targeted optimization,
 or stopping. An authorized extension names its next review point.
 
 **Rounds.** In a development round, every currently failing prompt test receives a bounded diagnosis and up to 2 prompt
@@ -738,7 +773,7 @@ and prompt author sessions run under the harness's **role profile**: the model a
 `optimize-xhigh`, the most capable of CAT's implementation agents, binds in that harness. The contract records the role
 profile as part of the frozen judge. Changing it is a judge change ([§5](#5-measurement-identity-and-applicability)).
 
-Trial sessions run as the prompt system's users run it. When the target prompt files belong to a plugin under test
+Trial sessions run as the prompt system's users run it. When the target prompt file belongs to a plugin under test
 ([§4.4](#44-trial-staging)), a trial installs that plugin from its snapshot's copy, together with the project's own
 files, and installs CAT only when the confirmed contract says that the plugin depends on CAT. When the plugin under test
 is CAT itself, the trial installs CAT only from that copy. Otherwise trials run with CAT installed. The contract author,
@@ -1061,8 +1096,9 @@ A candidate is an exact snapshot: the fork's prompt system plus an **overlay** o
 creates, renames and deletes. Its identity is a hash of the overlay and the fork identity. Authority comes from the
 confirmed contract:
 
-- In-project prompt files: content edits and ordinary-file create, rename and delete. An in-project file that a link
-  at or below a prompt source resolves to is a prompt file too, editable through the link or at its own path.
+- In-project prompt files, which are the target prompt file and every in-project file that the prompt system loads:
+  content edits and ordinary-file create, rename and delete. An in-project file that a link at or below a prompt
+  source resolves to is a prompt file too, editable through the link or at its own path.
 - Existing symbolic-link entries, their destinations and existing file modes stay fixed.
 - Loader configuration, meaning whatever decides which prompt files load, is fixed for the campaign. A needed loader
   change is prepared by the user before a new campaign.
@@ -1099,8 +1135,8 @@ directory the runner copies for each trial, and it contains:
   copy and never a live target. A link cycle, or a link to a missing target, is reported in the proposal and blocks
   confirmation until it is resolved.
 
-**Plugin under test (user ruling, 2026-10-11).** When the target prompt files belong to a harness plugin, a trial must
-load the candidate's version of them from that plugin, as the plugin's users do, not from an installed copy that no
+**Plugin under test (user ruling, 2026-10-11).** When the target prompt file belongs to a harness plugin, a trial must
+load the candidate's version of it from that plugin, as the plugin's users do, not from an installed copy that no
 candidate changes. The confirmed contract therefore names one plugin under test in one of two forms:
 
 - **Plugin root:** a project directory that holds the harness's plugin manifest (`.codex-plugin/plugin.json` or
@@ -1110,13 +1146,13 @@ candidate changes. The confirmed contract therefore names one plugin under test 
   into campaign storage when the user confirms, and the plugin copy of a staged source is that base copy with every
   mapped file of the staged source written over its mapped path.
 
-CAT refuses a contract that maps a source file to a path that the base does not hold, or whose target prompt files lie
-in more than one plugin. A mapped file whose content differs from the base's is a warning, because the base may predate
-the source or its build may transform the file; trials load the source's content. Each trial installs the plugin copy
-of its staged source into the trial's harness home under the plugin's own name, and the trial's project copy keeps the
-project's own files. The runner reuses the user's existing approvals of the plugin's hooks, as it does for CAT's. A
-Codex hook that the user has not approved does not run in trials, and the proposal lists it as a limitation. Claude Code
-runs every hook of an installed plugin without an approval, so its proposals list none.
+CAT refuses a contract that maps a source file to a path that the base does not hold, or whose in-project prompt
+files lie in more than one plugin. A mapped file whose content differs from the base's is a warning, because the base
+may predate the source or its build may transform the file; trials load the source's content. Each trial installs the
+plugin copy of its staged source into the trial's harness home under the plugin's own name, and the trial's project
+copy keeps the project's own files. The runner reuses the user's existing approvals of the plugin's hooks, as it does
+for CAT's. A Codex hook that the user has not approved does not run in trials, and the proposal lists it as a
+limitation. Claude Code runs every hook of an installed plugin without an approval, so its proposals list none.
 
 A trial installs CAT only when the plugin under test depends on it: its manifest declares the dependency, or its prompt
 files invoke CAT's skills, agents or commands or name CAT's plugin directory. The contract author proposes the
@@ -1140,11 +1176,14 @@ included, to the run's **initial project**. A built-in tool that reads a file as
 trial record's file changes, compare with that copy rather than with the staged source, so a fixture is part of the
 workspace that the trial started with, not a file that the trial created.
 
-**Control source.** Control trials ([§2.3](#23-sequential-tests)) and the guard pilot use one more staged source: the
-incumbent with every target prompt file emptied to zero bytes, so the files still exist but give no instruction. It is
-the same for every candidate. The proposal lists the emptied paths. Its plugin copy is built from it in the same way, so
-a target prompt file that belongs to the plugin under test is empty there too. A prompt file that another loaded file
-references lazily stays referenced, and the agent may still try to read it; the proposal records this as a limitation.
+**Control source (user ruling, 2026-10-13).** Control trials ([§2.3](#23-sequential-tests)) and the guard pilot use
+one more staged source: the incumbent with the target prompt file emptied to zero bytes, so the file still exists but
+gives no instruction. Every other file of the prompt system stays as the incumbent has it, so control trials measure
+the agent that the user would have without the target, not an agent without any project rules. The control source is
+the same for every candidate. The proposal names the emptied path. Its plugin copy is built from it in the same way, so
+a target prompt file that belongs to the plugin under test is empty there too. When another loaded
+file references the target lazily, the reference stays, and the agent may still try to read it; the proposal records
+this as a limitation.
 
 ### 4.5 Symbolic-link warning
 
@@ -1303,31 +1342,36 @@ tokens per cell is a size measurement, shown whenever both have outcomes in that
 
 ### 6.1 Derivation and confirmation
 
-A contract author session inspects the prompt system and proposes the complete contract. Loading follows production
+A contract author session receives the target prompt file and, when the user stated one, the user's goal. It
+inspects the prompt system and proposes the complete contract. Loading follows production
 behaviour: CAT observes loading where the harness exposes it (premise P9), and otherwise derives it from the harness's
 documented loading rules and CAT's rule loader, recording that limit. Both harnesses expose hook runs, and Claude
 exposes its skill and command inventory; no harness names the instruction files it loaded, so those are derived (H21).
 Aggregate counts never stand in for the items themselves. The proposal lists:
 
-- every requirement and its source, including files reached through links and readable files outside the project.
-  Each requirement lists the behaviors through which it can fail ([§6.3](#63-prompt-tests-and-test-cases)) and the
-  assertions that check it. This mapping lives in the proposal, not in the scenarios, so one scenario can serve
-  contracts that name its requirements differently;
+- every requirement and its source, including files reached through links and readable files outside the project. With a
+  goal, the contract author first derives the requirements that the goal asks for, each an observable outcome rather
+  than a mechanism that a prompt file prescribes for it, together with the operations that the goal implies the prompt
+  must not harm. It then proposes, as an extra requirement, each obligation of the prompt system that none of them
+  covers, and the user keeps or drops each one (user rulings, 2026-10-13). Without a goal, it derives every requirement
+  from the prompt system, and the user confirms them with the contract. Each requirement lists the behaviors through
+  which it can fail ([§6.3](#63-prompt-tests-and-test-cases)) and the assertions that check it. This mapping lives in
+  the proposal, not in the scenarios, so one scenario can serve contracts that name its requirements differently;
 - the minimum pass rate `p_min` ([§2.1](#21-claims));
 - the trial profiles: the harness's profile inventory and its source, each prompt file that binds a model or effort,
   each prompt test's profile set and cell count, and the models ranked by advertised capability, with the ranking's
   source ([§6.6](#66-trial-profiles));
 - the certification scope choices: for each, the cells it covers, each prompt test's weakest cell, what a claim covers
   and the minimum session count ([§6.6](#66-trial-profiles));
-- every prompt test with its risk rank, which allocation uses: its scenario, marked as recorded, created by the
-  contract author, or recorded and edited, with an edit shown as a difference from the recorded file; its
-  applicability; its test cases with their values and expected outcomes, and the number of distinct expected outcomes
-  in the development part and in the held-out part ([§6.3](#63-prompt-tests-and-test-cases)); its time limit; and any
-  material interaction it cannot cover;
+- every prompt test with its risk rank, which allocation uses: the requirements it proves; its scenario, marked as
+  recorded, created by the contract author, or recorded and edited, with an edit shown as a difference from the recorded
+  file; its applicability; its test cases with their values and expected outcomes, and the number of distinct expected
+  outcomes in the development part and in the held-out part ([§6.3](#63-prompt-tests-and-test-cases)); its time limit;
+  and any material interaction it cannot cover;
 - for every requirement that applies only under a trigger, that trigger and at least one test where it is absent, whose
   expected behaviour is that the obligated action does not occur (D40);
 - the judge's rubric and decision rule;
-- the target prompt files that the control source empties ([§4.4](#44-trial-staging));
+- the target prompt file that the control source empties ([§4.4](#44-trial-staging));
 - the plugin under test, if any: its plugin root, or its base and mappings with each mapped file whose content differs
   from the base's; its hooks that the user has not approved; and whether trials install CAT, with the evidence that the
   plugin depends on CAT or the statement that none was found ([§4.4](#44-trial-staging));
@@ -1340,10 +1384,11 @@ Aggregate counts never stand in for the items themselves. The proposal lists:
 - the symbolic-link report ([§4.5](#45-symbolic-link-warning)), the authentication and volume warning
   ([§3.5](#35-volume-safeguards)), the minimum session count, and known limitations.
 
-CAT validates the proposal before presenting it. When CAT refuses it, CAT sends the problems back to the same contract
-author session once, so that the author corrects the proposal with its inspection still in context; that turn has a
-time limit of its own. A corrected proposal that CAT also refuses ends the derivation with its problems. The user then
-runs `start` again, or `revise` with feedback when an earlier proposal is still stored.
+CAT validates the proposal before presenting it and reports every problem it finds at once, including a missing
+regression scenario when the proposal cannot be parsed. When CAT refuses it, CAT sends the problems back to the same
+contract author session once, so that the author corrects the proposal with its inspection still in context; that turn
+has a time limit of its own. A corrected proposal that CAT also refuses ends the derivation with its problems. The user
+then runs `start` again, or `revise` with feedback when an earlier proposal is still stored.
 
 The user gives feedback, and CAT regenerates and presents the complete proposal again. Only a confirmed proposal governs
 trials, and nothing but the guard pilot runs before confirmation. CAT refuses to confirm a proposal that lists a
@@ -1372,13 +1417,14 @@ CAT, not the contract author, does these things:
 
 - adds the expected-outcome assertion to every prompt test ([§6.3](#63-prompt-tests-and-test-cases));
 - computes the profile sets;
-- refuses a proposal that omits a recorded regression scenario of a source in the prompt system
-  ([§8](#8-skill-and-command-interface)). The contract author includes each one, converting a scenario in an earlier
-  format to the current one ([§6.3](#63-prompt-tests-and-test-cases));
+- sends the contract author the recorded regression scenarios of the target prompt file, and only those, and refuses a
+  proposal that omits one of them ([§8](#8-skill-and-command-interface)). The contract author includes each one,
+  converting a scenario in an earlier format to the current one ([§6.3](#63-prompt-tests-and-test-cases));
+- refuses a proposal in which a requirement has no prompt test that proves it;
 - refuses a proposal in which a requirement that names a trigger has no test where that trigger is absent;
 - refuses a proposal in which a Codex prompt file binds a model below version 6 ([§6.6](#66-trial-profiles));
-- refuses a plugin under test with a mapping to a path that its base does not hold, and target prompt files that lie in
-  more than one plugin ([§4.4](#44-trial-staging));
+- refuses a plugin under test with a mapping to a path that its base does not hold, and in-project prompt files that
+  lie in more than one plugin ([§4.4](#44-trial-staging));
 - validates every scenario and test case, gives each generated value its seed and version, splits each prompt test's
   test cases by expected outcome, and refuses a prompt test with fewer than 2 distinct expected outcomes in either part
   ([§6.3](#63-prompt-tests-and-test-cases));
@@ -1399,6 +1445,16 @@ outcomes; only development test cases added after a failed attempt change develo
 a value the turn asks about or the wording of a turn, yield distinct test cases that share the prompt test's expected
 behaviour. A prompt test that always presents the same test case cannot be certified fairly: development tunes the
 candidate on that test case, so certifying on it measures the candidate on its own training data.
+
+**Test design rules (user rulings, 2026-10-13).** The contract author writes, and a test revision rewrites, every prompt
+test by three rules:
+
+1. **It proves its requirements.** It lists the requirements it proves, and its assertions check those requirements'
+   outcomes, not a mechanism that a prompt file prescribes unless a requirement names that mechanism.
+2. **It needs the least work that can still fail them.** Its inputs, turns and actions are the smallest under which a
+   requirement can still fail, such as a document just over one part rather than one many parts long. The rule sizes
+   each trial; it never reduces the number of trials.
+3. **It is organic.** No turn, fixture or file name tells the agent the expected outcome or that it is being tested.
 
 **Scenario format (user rulings, 2026-10-10).** A prompt test is a directory named by its case in snake_case, under
 `<root>/.cat/tests/<path>/` or `<module>/src/test/resources/<path>/` ([§8](#8-skill-and-command-interface)). It holds
@@ -1829,11 +1885,14 @@ and 93 control trials under every choice.
   resumable campaign. The other harness can show that campaign and
   its starting harness, but cannot advance, dispatch, allocate allowance or start a concurrent campaign, and its refusal
   changes no state.
-- **Lineage:** the evidence history under one confirmed contract. A confirmed material revision starts a new lineage.
+- **Lineage:** the evidence history under one confirmed contract. A confirmed material revision starts a new lineage,
+  and so does a test revision, which the confirmed requirements authorize
+  ([§2.7](#27-development-readiness-and-edit-or-continue)).
   Earlier evidence stays historical, the certification index continues, and the incumbent is measured
   again under the new contract as a new baseline ([§2.5](#25-incumbent-baseline)).
 - **Revision during formal testing:** a revision starts only at a safe checkpoint. Either the attempt has ended, or the
-  user stopped it, in which case it ends `not certified: stopped for contract revision` and can never resume. Every
+  user stopped it, in which case it ends `not certified: stopped for contract revision` and can never resume. A test
+  revision ends a running attempt `not certified: stopped for test revision`. Every
   in-flight session, assignment, promotion and delivery must also be reconciled. An unknown disposition delays the
   revision.
 - **Measurement change during formal testing:** starting a new measurement identity ends the running attempt
@@ -1856,19 +1915,22 @@ and 93 control trials under every choice.
 ## 8. Skill and command interface
 
 The `prompt-optimizer` skill exists in both harnesses as thin wrappers around one shared body. It applies when the user
-wants a prompt file or prompt system improved until it is certified. The host agent:
+wants a prompt file improved until it is certified. The host agent:
 
-1. starts or resumes the campaign for the named target;
-2. presents the proposal, warnings and minimum session count, asks the user to resolve each conflict with its
-   resolutions and the recommended one, asks the user to choose the certification scope from its three choices after
-   explaining their tradeoffs ([§6.6](#66-trial-profiles)), and relays feedback until the user confirms;
+1. starts or resumes the campaign for the named target prompt file, passing to `start` the user's goal for the prompt
+   in the user's own words when the user stated one;
+2. presents the proposal, warnings and minimum session count, asks the user to keep or drop each extra requirement,
+   asks the user to resolve each conflict with its resolutions and the recommended one, asks the user to choose the
+   certification scope from its three choices after explaining their tradeoffs ([§6.6](#66-trial-profiles)), and
+   relays feedback until the user confirms;
 3. calls `run` while the status is `running`, showing the progress summary after each slice;
 4. presents each `awaiting-user` decision's concrete choices and passes the selected choice back;
 5. reports the terminal outcome with its four outputs, applicability and limitations.
 
 The harness-specific `prompt-optimizer` launcher provides `start`, `run`, `status`, `confirm`, `revise`, `choose` and
-`cancel`. Each prints one JSON status object to standard output, holding the status, campaign identity, a summary for
-the user and any choices. The skill never interprets statistics itself.
+`cancel`. `start` takes the target prompt file and, optionally, the user's goal; it refuses a directory, naming it.
+Each prints one JSON status object to standard output, holding the status, campaign identity, a summary for the user
+and any choices. The skill never interprets statistics itself.
 
 Agents locate CAT's installed files without shell variables that the harness does not define. The session hooks
 render the plugin root into the injected CAT environment rule, and CAT derives the harness home from `CODEX_HOME` or
@@ -1890,8 +1952,9 @@ the module's tests in `<module>/src/test/resources/<path>/<case>/scenario.md`. O
 lives in `<project>/.cat/tests/<path relative to the project, without .md>/<case>/scenario.md` (user rulings, 2026-10-02
 and 2026-10-10).
 Rule loading never reads them. Nothing runs
-a scenario outside a campaign, so a correction is recorded, not tested, until the user starts a campaign whose prompt
-system includes that guidance; its contract then holds every recorded scenario ([§6.1](#61-derivation-and-confirmation)).
+a scenario outside a campaign, so a correction is recorded, not tested, until the user starts a campaign whose target
+prompt files include that guidance; its contract then holds every recorded scenario of those files
+([§6.1](#61-derivation-and-confirmation)).
 
 ## 9. Architecture
 
@@ -2122,6 +2185,8 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D67 | Write the data sections of `scenario.md`, `## Variables`, `## Fixtures` and each assertion, as `- **key**: value` items; let only `## Scenario` and its turns hold prose, which is their `description`; and name each prompt test's fixture files with glob `patterns` that are copied in list order, the last copy of a path winning, so prompt tests share files from a pooled `fixtures/` directory (user rulings, 2026-10-10). | Bare `kind:` and `tool:` lines look like prose that starts with a word and a colon, so a reader cannot tell structure from statement without knowing the parser's rule, and a table needs `\|` escapes and one-line cells. Prompt tests of one guidance kept identical copies of their files, and implicit inheritance from ancestor directories gave every prompt test each file its ancestors hold, even the ones it must not see. Copying in list order gives what a person copying the list by hand would get. | Every recorded scenario is converted again, a shared pattern for a name with braces must escape them, and a pattern placed early can be silently replaced by a later one. |
 | D68 | Let an assertion leave a failure of its built-in tool to the judge with `on_tool_failure: judge`; a passing tool still decides it, and `fail` stays the default (user ruling, 2026-10-11). | A word match accepts the common wording of a semantic assertion but fails replies that satisfy it in another wording, such as a hyphenated name (H34); a judge alone would put every common reply at the risk of a judge error. | The judge prompt changes, so the judge version increments and certifications under the earlier judge become historical. A tool given `judge` must pass no reply that its description rejects, which CAT cannot check. |
 | D69 | Install the plugin under test in each trial from a copy that holds the snapshot's prompt files, and install CAT in its trials only when the plugin depends on CAT (user ruling, 2026-10-11). | Trials installed one fixed CAT artifact, so a candidate's edit to a prompt file that the plugin ships, and a control's emptied copy, never reached the trial agent, and a campaign could not measure its own target. Installing CAT beside another plugin would measure a combination that the plugin's users without CAT never run. A mapping from source to a built base, rather than a rebuild per candidate, keeps a candidate's trials free of the project's build. | A build step that transforms a prompt file is outside the mapping, so such a file cannot be a target. A hook that the user has not approved does not run in trials. The contract author must judge the dependency on CAT, which the user confirms. |
+| D70 | Derive requirements from the user's goal before the prompt system, and let a test revision rewrite a failing prompt test without confirmation while it keeps the confirmed requirements and the test design rules (user rulings, 2026-10-13). | Deriving requirements from the prompt system alone, as the first read-file certification start did without the target or the goal, turned every obligation of a 608 KB prompt system into a requirement and produced tests of how the bundled scripts work rather than whether a file reaches the agent whole. Classifying a faulty test as *not guidance* stopped progress until the user revised the contract, and confirming every test revision would ask the user to decide how to test, which the user delegated. | A prompt obligation outside the goal reaches the contract only when the user keeps it. Each test revision costs a new lineage, a new incumbent baseline and new test cases, and ends a running attempt without refunding its allowance. |
+| D71 | Optimize exactly one target prompt file, refusing a directory, and let control trials empty only that file (user rulings, 2026-10-13). | One prompt file is the focus of an optimization; the rest of the prompt system is the context it runs in. Emptying every in-project prompt file measured an agent with no project rules at all, so the guard pilot and the control comparison credited or blamed the target for the effect of the other rules. | A prompt system with several files needs one campaign per file it optimizes. The prompt author may still edit every in-project file that the prompt system loads. Control trials load those files as the incumbent has them, so the control comparison attributes a candidate's edits to them to the candidate along with its edits to the target. |
 
 ## 14. Acceptance evidence
 
@@ -2132,12 +2197,12 @@ a named end-to-end boundary.
 | Goal | Required evidence |
 |---|---|
 | G1 | **End-to-end in both harnesses:** a dirty base is refused before any fork. A deliberately deficient prompt system is improved in the optimization worktree; unselected attempts never touch the base; a certified, non-regressing candidate is delivered as a Git diff that includes its certification record, after which nothing of the campaign remains under `.cat/work/`; keeping the incumbent instead of a regressing certified candidate also removes it, and an uncertified campaign keeps its files; an interrupted removal completes on the next command. **Delivery:** disjoint post-fork base edits survive; same-file changes stop for direction; a fault between writes resumes without duplicating or overwriting. **Uncertified outcomes:** they leave the base unchanged unless the user explicitly chooses. An improvement proven by an inconclusive attempt is offered and, when kept, delivered as `improved, not certified`; when several attempts qualify, the best candidate so far is offered, even after later candidates fail. Driver and delivery tests prove these, because an uncertified certification attempt costs hundreds of trials end to end. An accepted uncertified candidate is labelled `not certified`. **Authoring:** an attempt whose manifest omits a changed hunk or cites an unknown test case is rejected; the minimality pass removes a hunk that the promotion runs do not need and keeps one they do; a weak round's 3 attempts promote only the best accepted one; an attempt that fixes some triggering test cases but not all is promoted; a triggering test case gets extra runs until its streak is unlikely for the working candidate, up to 4; a promoted candidate that falls clearly below its predecessor is reverted; each attempt of a round receives its own approach (driver tests with a fake `SessionPort`). |
-| G2 | **Proposal content:** every fixture requirement and source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per prompt test in the weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns it only for changed prompt tests, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed; a mapping to a path that the base does not hold, or target prompt files in two plugins, is refused, and a mapped file that differs from the base is a warning. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, prose in a section of key-value pairs, a `## Scenario` or turn of key-value pairs without a `description`, an unknown key, a fixture pattern that leaves the test root or matches no file, a malformed variable, an undeclared or generated placeholder outside fixture contents, an unknown built-in tool, an `on_tool_failure` other than `fail` or `judge` or without a `tool`, or a check whose evidence the harness cannot supply is refused. **Test cases:** fixtures are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation waits until the user chooses a certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. |
+| G2 | **Proposal content:** every fixture requirement and source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per prompt test in the weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns it only for changed prompt tests, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed; a mapping to a path that the base does not hold, or in-project prompt files in two plugins, is refused, and a mapped file that differs from the base is a warning. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, prose in a section of key-value pairs, a `## Scenario` or turn of key-value pairs without a `description`, an unknown key, a fixture pattern that leaves the test root or matches no file, a malformed variable, an undeclared or generated placeholder outside fixture contents, an unknown built-in tool, an `on_tool_failure` other than `fail` or `judge` or without a `tool`, or a check whose evidence the harness cannot supply is refused. **Test cases:** fixtures are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation waits until the user chooses a certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. |
 | G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds; caps, all-pass minimums, bets, the readiness gate and the baseline at minimum pass rates other than 0.95; the control e-values on fixed pair paths, including `not certified: below control` and certification held back until the control comparison is decided. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim names the frozen judge, the benchmark, the held-out part and the conditions, and a weakest-only claim names its one profile per prompt test and says that no other profile was certified. |
 | G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** detected dependence yields `invalid statistical assumptions`. **Held-out test cases:** the split by normalized expected outcome is fixed at the first validated proposal, and outcomes that differ only in case or whitespace share a part; committed test cases go to development and a new test case sharing a committed outcome does too; development trials, targeted runs and prompt author sessions receive only development test cases; formal and baseline trials draw only held-out ones; a formal failure reaches development only as its cell, test, failed assertions and behaviors, and the development test cases added after it never share a held-out expected outcome and join development only after two reproduction failures with the failure's behavior in its cell or a stressed profile, the contract author replacing test cases that do not reproduce, with a pause after 4 rounds; in both harnesses, no session whose output reaches development can read the held-out directory or the held-out run root. |
 | G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a changed command that an unchanged prompt tells the model to run leaves it current; a runner or CAT version change with an unchanged session environment version leaves it current; a raised threshold or a lowered error level makes it historical, and a lowered threshold or a raised error level does not; a new judge version makes it historical; after cleanup, `status` reports from the certification record, naming each changed condition and each unchecked one; a comparability field that only one side records makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: testing environment changed`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. **Size:** the status shows the candidate's prompt size and median trial input tokens against the incumbent's. |
 | G6 | **End-to-end in both harnesses:** ESC during a slice, then `run`, retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. Codex ESC stops admissions within 15 seconds. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** the other harness cannot advance the campaign. |
-| G7 | **End-to-end in both harnesses:** trials, judges, prompt authors and the contract author run through the existing runners. A trial uses a host tool, and a text-output case and a file-effect case are each judged. A prompt test's fixtures, with a generated value, appear in the trial workspace; a failed built-in tool decides its trial without a judge session unless its `on_tool_failure` is `judge`, when the judge decides its assertion; control trials run on the control source, where every target prompt file is empty, each with its paired formal trial's test case. **Delivery:** a certified delivery and keeping the incumbent both write each confirmed prompt test's values file, and its scenario and fixtures when the contract author created or edited them. Trials run under the profile of their cell, as the harness events show. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. **Plugin under test:** in a campaign whose target prompt file belongs to a plugin under test, a candidate's edit to it and a control's emptied copy reach the plugin that the trial loads; a trial of a plugin that does not depend on CAT runs without CAT, and one that does runs with it. |
+| G7 | **End-to-end in both harnesses:** trials, judges, prompt authors and the contract author run through the existing runners. A trial uses a host tool, and a text-output case and a file-effect case are each judged. A prompt test's fixtures, with a generated value, appear in the trial workspace; a failed built-in tool decides its trial without a judge session unless its `on_tool_failure` is `judge`, when the judge decides its assertion; control trials run on the control source, where the target prompt file is empty and every other prompt file is unchanged, each with its paired formal trial's test case. **Delivery:** a certified delivery and keeping the incumbent both write each confirmed prompt test's values file, and its scenario and fixtures when the contract author created or edited them. Trials run under the profile of their cell, as the harness events show. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. **Plugin under test:** in a campaign whose target prompt file belongs to a plugin under test, a candidate's edit to it and a control's emptied copy reach the plugin that the trial loads; a trial of a plugin that does not depend on CAT runs without CAT, and one that does runs with it. |
 | G8 | **Unit:** representative development trials go only to development cells; the weakest cell is the lowest effort of the least capable model in the scope by the proposal's capability ranking, and no trial runs to find it; a cell with a formal failure becomes a development cell; formal trials go to a prompt test's development cells first and to another scope cell only after every development cell and every cell below it are certified; allocation picks the riskiest prompt test first; control trials run only in cells certified by their built-in tools and judge, and extra formal trials run only to complete pairs; concurrency follows [§3.3](#33-allocation-and-concurrency) exactly, including the reset after a failure, the risk ceiling, the cell limit and the ceilings. **Throttling:** it responds to utilization, rejections and provider refusals, and a hold set by one process delays every other process's acquisition. **Volume warning:** the authentication warning appears for a subscription login. |
 | G9 | The optimizer and capacity unit tests pass under parallel methods with `HOME` and `user.home` pointing at a nonexistent directory. A source audit finds no static mutable state, no `Thread.sleep` on tested paths, and no mutable test-class fields. Calibration and each Git operation have exactly one owning test, and no Java test starts a runner, a harness process or a model. |
 | G10 | Both harness artifacts ship the new skill and the `prompt-optimizer` launcher. No reference to the old procedure remains, `failure-regression-promotion.md` follows D13, every recorded regression scenario is a prompt test directory in the format and location that [§6.3](#63-prompt-tests-and-test-cases) and §8 name, and a proposal that omits one is refused. |

@@ -45,8 +45,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
+import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
 import io.github.cowwoc.cat.common.optimizer.campaign.TestCaseOutcomes;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisionRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
@@ -1377,7 +1379,8 @@ public final class DriverTest
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("review-checkpoint")),
 				new Builder().confirmed().working(1).readyBaseline().ceiling(1).development("formatting", 100, 0).
 					development("plain_list", 100, 0).
-					development("safety", 195, EditOrContinue.failureLimit(Contract.DEFAULT_MINIMUM_PASS_RATE) + 1).build());
+					development("safety", 195, EditOrContinue.failureLimit(Contract.DEFAULT_MINIMUM_PASS_RATE) + 1).
+					sound("safety").build());
 			Candidate working = harness.campaign().development().working();
 			harness.trials(_ -> harness.failed());
 
@@ -1660,6 +1663,40 @@ public final class DriverTest
 				requireThat(diagnoses.size(), "reportedDiagnoses").isEqualTo(2);
 				requireThat(diagnoses.toString(), "diagnoses").contains("\"not_guidance\"");
 				requireThat(report.summary(ZoneOffset.UTC), "summary").contains("not guidance");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a failure that the prompt author attributes to its test requests a revision of that test and holds
+	 * new trials until the request is answered.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void testDefectRequestsRevision() throws IOException
+	{
+		// Requirement: R-D10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("manifest")),
+				new Builder().confirmed().working(1).readyBaseline().round(new Round(Map.of("safety", 0))).
+					failure(Builder.targeted("safety", "cache")).build());
+			harness.promptAuthors(_ -> harness.completed("""
+				{"needed_edits":[],"kinds":[{"name":"named the test","failures":["%s"],
+				 "classification":"test_defect","hunks":[],"fault":"The turn tells the agent that it is tested."}],
+				 "hunks":[],"conflicts":[]}
+				""".formatted(harness.promptAuthor().briefs().getLast().developmentId(0)), DriverHarness.MODEL));
+			try (Driver driver = harness.open())
+			{
+				Campaign ended = harness.runUntil(driver, state -> !state.testRevisions().requests().isEmpty());
+				TestRevisionRequest request = ended.testRevisions().requests().getFirst();
+				requireThat(request.test(), "test").isEqualTo("safety");
+				requireThat(request.trigger(), "trigger").isEqualTo(TestRevisionRequest.Trigger.TEST_DEFECT);
+				requireThat(request.kinds().getFirst().fault(), "fault").
+					isEqualTo("The turn tells the agent that it is tested.");
+				requireThat(request.failures().size(), "failures").isEqualTo(1);
+				requireThat(Scheduler.plan(ended, Instant.now(), 8), "plan").isEmpty();
 			}
 		}
 	}

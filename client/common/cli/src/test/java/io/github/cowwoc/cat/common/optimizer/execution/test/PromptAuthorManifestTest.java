@@ -150,17 +150,17 @@ public final class PromptAuthorManifestTest
 			List.of(new PromptAuthorConflict.Quotation(path, "Ask first.")), List.of("Keep asking", "Allow deletion"),
 			1, "Keeps permission.");
 		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(
-			new PromptAuthorKind("contradictory permission", List.of("f"), FailureKind.CONFLICT, List.of())), List.of());
+			new PromptAuthorKind("contradictory permission", List.of("f"), FailureKind.CONFLICT, List.of(), "")), List.of());
 		requireThat(manifest.violations(Set.of("f"), List.of(), ContractFixtures.contract(), incumbent,
-			Map.of(path, content), List.of(conflict)), "confirmed").isEmpty();
+			Map.of(path, content), List.of(conflict), Map.of()), "confirmed").isEmpty();
 		FileContent edited = new FileContent("Delete immediately.".getBytes(StandardCharsets.UTF_8));
 		PromptAuthorConflict introduced = new PromptAuthorConflict(List.of("f"), List.of("r1", "r2"),
 			List.of(new PromptAuthorConflict.Quotation(path, "Delete immediately.")), conflict.resolutions(), 1,
 			conflict.reason());
 		requireThat(manifest.violations(Set.of("f"), List.of(), ContractFixtures.contract(), incumbent,
-			Map.of(path, content), List.of(introduced)).toString(), "introduced").contains("CLAUDE.md");
+			Map.of(path, content), List.of(introduced), Map.of()).toString(), "introduced").contains("CLAUDE.md");
 		requireThat(manifest.violations(Set.of("f"), List.of(), ContractFixtures.contract(), incumbent,
-			Map.of(path, edited), List.of(introduced)).toString(), "wrongSnapshot").contains("CLAUDE.md");
+			Map.of(path, edited), List.of(introduced), Map.of()).toString(), "wrongSnapshot").contains("CLAUDE.md");
 	}
 
 	/**
@@ -175,15 +175,15 @@ public final class PromptAuthorManifestTest
 			List.of(new PromptAuthorConflict.Quotation(Path.of("missing.md"), "Missing text")),
 			List.of("First", "Second"), 3, "Reason");
 		PromptAuthorManifest guidance = new PromptAuthorManifest(List.of(new PromptAuthorKind("deletion", List.of("f"),
-			FailureKind.GUIDANCE, List.of())), List.of());
+			FailureKind.GUIDANCE, List.of(), "")), List.of());
 		List<String> violations = guidance.violations(Set.of("f"), List.of(), ContractFixtures.contract(),
-			incumbent, Map.of(), List.of(conflict));
+			incumbent, Map.of(), List.of(conflict), Map.of());
 		requireThat(violations.toString(), "violations").contains("not classified conflict").contains("unknown").
 			contains("recommended").contains("missing.md");
 		PromptAuthorManifest classified = new PromptAuthorManifest(List.of(new PromptAuthorKind("deletion",
-			List.of("f"), FailureKind.CONFLICT, List.of())), List.of());
+			List.of("f"), FailureKind.CONFLICT, List.of(), "")), List.of());
 		requireThat(classified.violations(Set.of("f"), List.of(), ContractFixtures.contract(), incumbent,
-			Map.of(), List.of()).toString(), "uncited").contains("no conflict");
+			Map.of(), List.of(), Map.of()).toString(), "uncited").contains("no conflict");
 	}
 
 	/**
@@ -199,7 +199,7 @@ public final class PromptAuthorManifestTest
 			Set.of());
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(), "", List.of(), List.of());
+			Map.of(), "", List.of(), List.of(), List.of());
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 		requireThat(turn, "instructions").contains("routing").contains("not_guidance").contains("smallest").
 			contains("contradiction").contains("analogous").contains("dissimilar").contains("manifest");
@@ -233,11 +233,11 @@ public final class PromptAuthorManifestTest
 		Path path = Path.of("rules/safety.md");
 		Hunk hunk = new Hunk(path, 1, 2, 3, 2, 4);
 		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(new PromptAuthorKind("deletion", List.of("f"),
-			FailureKind.GUIDANCE, List.of("h1"))), List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"),
+			FailureKind.GUIDANCE, List.of("h1"), "")), List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"),
 			"Another deletion request", dissimilar)));
 
 		List<String> violations = manifest.violations(Set.of("f"), List.of(hunk), ContractFixtures.contract(),
-			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of());
+			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of(), Map.of());
 
 		if (accepted)
 			requireThat(violations, "violations").isEmpty();
@@ -259,7 +259,7 @@ public final class PromptAuthorManifestTest
 		// Requirement: R-D10
 		Path path = Path.of("rules/safety.md");
 		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(
-				new PromptAuthorKind("mistyped path", List.of("f"), FailureKind.GUIDANCE, List.of("h1"))),
+				new PromptAuthorKind("mistyped path", List.of("f"), FailureKind.GUIDANCE, List.of("h1"), "")),
 			List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"), "Another read", "plain_list")));
 
 		List<String> violations = violations(manifest, Set.of("f", "g"), List.of(new Hunk(path, 1, 2, 3, 2, 4)));
@@ -277,8 +277,8 @@ public final class PromptAuthorManifestTest
 		// Requirement: R-D10
 		Path path = Path.of("rules/safety.md");
 		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(
-				new PromptAuthorKind("mistyped path", List.of("f"), FailureKind.GUIDANCE, List.of("h1")),
-				new PromptAuthorKind("skipped part", List.of("f"), FailureKind.ROUTING, List.of("h1"))),
+				new PromptAuthorKind("mistyped path", List.of("f"), FailureKind.GUIDANCE, List.of("h1"), ""),
+				new PromptAuthorKind("skipped part", List.of("f"), FailureKind.ROUTING, List.of("h1"), "")),
 			List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"), "Another read", "plain_list")));
 
 		List<String> violations = violations(manifest, Set.of("f"), List.of(new Hunk(path, 1, 2, 3, 2, 4)));
@@ -294,7 +294,7 @@ public final class PromptAuthorManifestTest
 	{
 		// Requirement: R-D10
 		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(
-			new PromptAuthorKind("mistyped path", List.of("f"), FailureKind.GUIDANCE, List.of())), List.of());
+			new PromptAuthorKind("mistyped path", List.of("f"), FailureKind.GUIDANCE, List.of(), "")), List.of());
 
 		List<String> violations = violations(manifest, Set.of("f"), List.of());
 
@@ -311,7 +311,7 @@ public final class PromptAuthorManifestTest
 		// Requirement: R-D10
 		Path path = Path.of("rules/safety.md");
 		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(
-				new PromptAuthorKind("mistyped path", List.of("f"), FailureKind.ROUTING, List.of("h1", "h2"))),
+				new PromptAuthorKind("mistyped path", List.of("f"), FailureKind.ROUTING, List.of("h1", "h2"), "")),
 			List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"), "Another read", "plain_list")));
 
 		List<String> violations = violations(manifest, Set.of("f"), List.of(new Hunk(path, 1, 2, 3, 2, 4)));
@@ -330,8 +330,8 @@ public final class PromptAuthorManifestTest
 		Path path = Path.of("rules/safety.md");
 		Hunk changed = new Hunk(path, 1, 2, 3, 2, 4);
 		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(
-				new PromptAuthorKind("mistyped path", List.of("f", "g"), FailureKind.GUIDANCE, List.of("h1")),
-				new PromptAuthorKind("judge outage", List.of("h"), FailureKind.NOT_GUIDANCE, List.of())),
+				new PromptAuthorKind("mistyped path", List.of("f", "g"), FailureKind.GUIDANCE, List.of("h1"), ""),
+				new PromptAuthorKind("judge outage", List.of("h"), FailureKind.NOT_GUIDANCE, List.of(), "")),
 			List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f", "g"), "Another read", "plain_list")));
 
 		requireThat(violations(manifest, Set.of("f", "g", "h"), List.of(changed)), "violations").isEmpty();
@@ -349,11 +349,63 @@ public final class PromptAuthorManifestTest
 		Path path = Path.of("rules/safety.md");
 		Hunk changed = new Hunk(path, 1, 2, 3, 2, 4);
 		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(
-				new PromptAuthorKind("judge outage", List.of("f"), FailureKind.NOT_GUIDANCE, List.of())),
+				new PromptAuthorKind("judge outage", List.of("f"), FailureKind.NOT_GUIDANCE, List.of(), "")),
 			List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"), "Another read", "plain_list")));
 
 		requireThat(violations(manifest, Set.of("f"), List.of(changed)), "violations").isEmpty();
 		requireThat(manifest.producesCandidate(List.of(changed)), "producesCandidate").isFalse();
+	}
+
+	/**
+	 * Verifies that a test defect kind is read with the fault that it names in the test.
+	 */
+	@Test
+	public void readsTestDefectFault()
+	{
+		// Requirement: R-D10
+		JsonMapper json = JsonMapper.builder().build();
+		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, new ProposalSchema(json), Set.of(), Set.of());
+		String response = """
+			{"needed_edits":[],"kinds":[{"name":"named the test","failures":["f"],"classification":"test_defect",
+			 "hunks":[],"fault":"The turn tells the agent that it is tested."}],"hunks":[],"conflicts":[]}
+			""";
+		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
+			Path.of("/effects"), Path.of("/initial-project"), "model", null, null, List.of(), "none", List.of());
+
+		PromptAuthorKind kind = prompt.report(result).orElseThrow().manifest().kinds().getFirst();
+
+		requireThat(kind.classification(), "classification").isEqualTo(FailureKind.TEST_DEFECT);
+		requireThat(kind.fault(), "fault").isEqualTo("The turn tells the agent that it is tested.");
+	}
+
+	/**
+	 * Verifies that a test defect kind must name the fault of the test.
+	 */
+	@Test
+	public void testDefectNeedsFault()
+	{
+		// Requirement: R-D10
+		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(
+			new PromptAuthorKind("named the test", List.of("f"), FailureKind.TEST_DEFECT, List.of(), " ")), List.of());
+
+		requireThat(violations(manifest, Set.of("f"), List.of()).toString(), "violations").contains("fault");
+	}
+
+	/**
+	 * Verifies that a failure of a test that a test revision reported sound cannot be classified a test defect again.
+	 */
+	@Test
+	public void soundTestIsNoTestDefect()
+	{
+		// Requirement: R-D10
+		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(
+			new PromptAuthorKind("named the test", List.of("f"), FailureKind.TEST_DEFECT, List.of(),
+				"The turn tells the agent that it is tested.")), List.of());
+
+		List<String> violations = manifest.violations(Set.of("f"), List.of(), ContractFixtures.contract(),
+			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of(), Map.of("f", "safety"));
+
+		requireThat(violations.toString(), "violations").contains("safety").contains("sound");
 	}
 
 	/**
@@ -367,7 +419,7 @@ public final class PromptAuthorManifestTest
 	private static List<String> violations(PromptAuthorManifest manifest, Set<String> received, List<Hunk> changed)
 	{
 		return manifest.violations(received, changed, ContractFixtures.contract(),
-			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of());
+			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of(), Map.of());
 	}
 
 	/**
@@ -382,7 +434,8 @@ public final class PromptAuthorManifestTest
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
 			Set.of());
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of());
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(),
+			List.of());
 		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
 
 		requireThat(turn, "instructions").contains("the `id` of a test in the confirmed contract").
@@ -463,7 +516,7 @@ public final class PromptAuthorManifestTest
 			ContractFixtures.contract(), List.of(failure, failure), Map.of(), Map.of(),
 			List.of(new PromptAuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure.summary()),
 				List.of())),
-			Map.of(), "", List.of(), List.of());
+			Map.of(), "", List.of(), List.of(), List.of());
 		requireThat(brief.failureIds(), "classifiedFailures").
 			isEqualTo(Set.of(brief.developmentId(0), brief.developmentId(1)));
 		requireThat(brief.developmentId(0), "firstOccurrence").isNotEqualTo(brief.developmentId(1));

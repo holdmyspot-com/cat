@@ -110,7 +110,8 @@ public final class RoleBriefTest
 			PromptAuthorPrompt promptAuthor = new PromptAuthorPrompt(json, schema, Set.of(Path.of("AGENTS.md")),
 				Set.of());
 			PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
-				ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of());
+				ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(),
+				List.of());
 
 			String delivered = deliver(root, artifact, promptAuthor.request(brief, root)).getFirst();
 
@@ -146,7 +147,7 @@ public final class RoleBriefTest
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema,
 				new JudgeTemplate(json, new TrialProfile("role-model", "high")), new RegressionScenarios(root, List.of()),
-				true);
+				root.resolve("CLAUDE.md"), null, true);
 			SessionRequest request = contractAuthor.request(root, new ProfileEvidence(ContractFixtures.ONE_PROFILE,
 				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), ContractFixtures.SALT);
 

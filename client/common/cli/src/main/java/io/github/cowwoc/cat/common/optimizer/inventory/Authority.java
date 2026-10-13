@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning.Choice;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 
 import java.nio.file.Path;
@@ -11,6 +12,8 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 /**
  * The edits that a confirmed contract authorizes during a campaign:
@@ -99,6 +102,30 @@ public final class Authority
 				targets.add(target.get());
 		}
 		return Set.copyOf(targets);
+	}
+
+	/**
+	 * Returns the in-project prompt files: the regular files inside the project whose content a candidate may edit. A
+	 * file that a prompt-source link reaches is listed at its own path, not at the link's.
+	 *
+	 * @param fork the files recorded at the fork
+	 * @return the paths relative to the project directory, in path order
+	 * @throws NullPointerException if {@code fork} is null
+	 */
+	public SortedSet<Path> promptFiles(FileInventory fork)
+	{
+		requireThat(fork, "fork").isNotNull();
+		SortedSet<Path> promptFiles = new TreeSet<>();
+		for (Entry<Path, FileEntry> entry : fork.entries().entrySet())
+		{
+			Path path = entry.getKey();
+			if (entry.getValue() instanceof RegularFile && !isExternal(path) &&
+				fork.resolve(path).equals(Optional.of(path)) && limitOf(Operation.EDIT_CONTENT, path).isEmpty())
+			{
+				promptFiles.add(path);
+			}
+		}
+		return promptFiles;
 	}
 
 	/**

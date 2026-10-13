@@ -12,6 +12,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.GeneratorValidationException;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.RiskRank;
 import io.github.cowwoc.cat.common.optimizer.contract.Split;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
@@ -317,8 +318,8 @@ public final class GeneratorTest
 			List.of(ContractFixtures.judged("complies", AssertionKind.EFFECT, "Complies.", "r1")), List.of(), List.of());
 		Contract original = ContractFixtures.contract();
 		List<PromptTest> tests = List.of(test);
-		Contract contract = new Contract(original.requirements(), tests,
-			ContractFixtures.profiles(original.requirements(), tests), original.judge(), original.fixtures(),
+		Contract contract = new Contract(checked(original, tests), tests,
+			ContractFixtures.profiles(checked(original, tests), tests), original.judge(), original.fixtures(),
 			original.limitations(), original.minimumPassRate(), original.salt());
 
 		// The test's one expected outcome belongs to one part; draw from a stream of that part
@@ -674,8 +675,23 @@ public final class GeneratorTest
 	{
 		Contract original = ContractFixtures.contract();
 		List<PromptTest> tests = List.of(capitalTest(countries, List.of("alpha")));
-		return new Contract(original.requirements(), tests,
-			ContractFixtures.profiles(original.requirements(), tests), original.judge(), original.fixtures(),
+		return new Contract(checked(original, tests), tests,
+			ContractFixtures.profiles(checked(original, tests), tests), original.judge(), original.fixtures(),
 			original.limitations(), original.minimumPassRate(), CAPITAL_SALT);
+	}
+
+	/**
+	 * Returns the requirements of a contract that the given tests check.
+	 *
+	 * @param original the contract
+	 * @param tests the tests
+	 * @return the requirements that some test lists in its requirement ids
+	 */
+	private static List<Requirement> checked(Contract original, List<PromptTest> tests)
+	{
+		Set<String> ids = new HashSet<>();
+		for (PromptTest test : tests)
+			ids.addAll(test.requirementIds());
+		return original.requirements().stream().filter(requirement -> ids.contains(requirement.id())).toList();
 	}
 }

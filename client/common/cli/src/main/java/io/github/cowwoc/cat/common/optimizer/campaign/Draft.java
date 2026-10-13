@@ -175,6 +175,10 @@ final class Draft
 	 * The warnings that the user answered by choosing to use an authorized source, each once, in answer order.
 	 */
 	final List<AuthorityWarning> answeredWarnings;
+	/**
+	 * The pending test revision requests, the applied test revisions and the tests reported sound.
+	 */
+	TestRevisions testRevisions;
 
 	/**
 	 * Copies a campaign.
@@ -223,6 +227,7 @@ final class Draft
 		outcome = campaign.outcome();
 		delivery = campaign.delivery();
 		answeredWarnings = new ArrayList<>(campaign.answeredWarnings());
+		testRevisions = campaign.testRevisions();
 	}
 
 	/**
@@ -587,6 +592,6 @@ final class Draft
 			diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes, predecessor, reverts);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, promptAuthorAttempts,
 			development, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
-			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings);
+			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions);
 	}
 }

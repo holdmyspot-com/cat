@@ -47,7 +47,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.SortedSet;
 import java.util.stream.Collectors;
 
 /**
@@ -64,7 +63,7 @@ public final class Markdown
 	private final DerivedProposal derived;
 	private final Contract contract;
 	private final LinkReport links;
-	private final SortedSet<Path> controlFiles;
+	private final Path controlFile;
 	private final HostLogin login;
 	private final int ceiling;
 	private final Map<CertificationScope, Campaign> previews;
@@ -73,6 +72,7 @@ public final class Markdown
 	private final Map<String, PilotResult> pilots;
 	private final Map<String, DeliveredTest> delivered;
 	private final PluginCheck plugin;
+	private final String goal;
 	private final StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
 
 	/**
@@ -81,7 +81,7 @@ public final class Markdown
 	 * @param derived the contract author's proposal
 	 * @param contract the contract that confirmation freezes
 	 * @param links the symbolic links
-	 * @param controlFiles the target prompt files that the control source empties, in path order
+	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param ceiling the campaign's concurrency ceiling
 	 * @param previews the campaign as it would be after confirmation with each certification scope that the user
@@ -91,16 +91,17 @@ public final class Markdown
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @param delivered each prompt test as delivery would write it, by prompt test
 	 * @param plugin the check of the plugin under test
+	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
-	Markdown(DerivedProposal derived, Contract contract, LinkReport links, SortedSet<Path> controlFiles,
+	Markdown(DerivedProposal derived, Contract contract, LinkReport links, Path controlFile,
 		HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews, List<String> caps,
 		CertificationStatus incumbent, Map<String, PilotResult> pilots, Map<String, DeliveredTest> delivered,
-		PluginCheck plugin)
+		PluginCheck plugin, String goal)
 	{
 		this.derived = derived;
 		this.contract = contract;
 		this.links = links;
-		this.controlFiles = controlFiles;
+		this.controlFile = controlFile;
 		this.login = login;
 		this.ceiling = ceiling;
 		this.previews = previews;
@@ -109,6 +110,7 @@ public final class Markdown
 		this.pilots = pilots;
 		this.delivered = delivered;
 		this.plugin = plugin;
+		this.goal = goal;
 	}
 
 	/**
@@ -166,16 +168,24 @@ public final class Markdown
 	}
 
 	/**
-	 * Lists every requirement, its source, the condition under which it applies and the ways in which a reply can fail
-	 * it.
+	 * Lists the user's goal, then every requirement, its source, the condition under which it applies and the ways in
+	 * which a reply can fail it. When the user stated a goal, a requirement that the goal does not state is marked as
+	 * an extra requirement, which the user keeps or drops.
 	 */
 	private void requirements()
 	{
 		heading("Requirements");
+		if (goal != null)
+			text.append("Goal: ").append(goal).append("\n\n");
 		for (Requirement requirement : contract.requirements())
 		{
 			text.append("- `").append(requirement.id()).append("`: ").append(requirement.description()).append('\n').
 				append("  Source: ").append(requirement.source()).append('\n');
+			if (goal != null && !requirement.source().equals(Requirement.GOAL))
+			{
+				text.append("  Extra requirement: the goal does not ask for it; keep it or drop it through revise " +
+					"feedback.\n");
+			}
 			if (requirement.trigger() == null)
 				text.append("  Applies: always\n");
 			else
@@ -585,14 +595,8 @@ public final class Markdown
 	private void controlSource()
 	{
 		heading("Control source");
-		if (controlFiles.isEmpty())
-		{
-			text.append("No target prompt file was found, so control trials run the unchanged incumbent.\n");
-			return;
-		}
-		text.append("Control trials run the incumbent with these target prompt files emptied to zero bytes:\n\n");
-		for (Path path : controlFiles)
-			text.append("- `").append(path).append("`\n");
+		text.append("Control trials run the incumbent with the target prompt file `").append(controlFile).
+			append("` emptied to zero bytes. Every other prompt file stays as the incumbent has it.\n");
 	}
 
 	/**

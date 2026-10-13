@@ -2,7 +2,7 @@
 
 ## Design Goals
 
-- Let the user certify a prompt file or prompt system through a campaign that the `prompt-optimizer` launcher owns,
+- Let the user certify a prompt file through a campaign that the `prompt-optimizer` launcher owns,
   while the user keeps every decision: the contract, each pause and the final outcome.
 - Relay the launcher's results without adding statistics, estimates or verdicts of the agent's own, so that every
   claim the user sees is one that the launcher made.
@@ -16,8 +16,11 @@ and stop.
 To show the user a launcher field means to put its text in your reply verbatim, however long it is. A summary, an
 excerpt, a saved file or a link does not show it: the user confirms and chooses only from what your reply shows.
 
-1. **Start.** Run `start <target>` with the prompt file or directory the user named. It creates a campaign or resumes
-   the one that already exists for that target. Use its `campaign` value in every later command.
+1. **Start.** Run `start <target>` with the prompt file the user named. A campaign optimizes one prompt file, so if the
+   user named a directory, ask which prompt file in it to optimize. When the user stated what the prompt should
+   achieve, add `--goal <text>` with the user's own words, quoted as one argument; otherwise leave it out. It creates
+   a campaign or resumes the one that already exists for that target. Use its `campaign` value in every later
+   command.
 2. **Confirm the contract.** While the result holds a `proposal`, show the user the `proposal` text in full; it holds
    the contract, the warnings and each certification scope choice. When the result also holds a `message`, show the
    `message` after the proposal. If the result holds a `message` but no `proposal`, show the `message`.
@@ -27,6 +30,9 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
    - If the proposal names unranked models, confirmation is refused until the user ranks their families. Ask the user
      where each family ranks, run `revise <campaign> <feedback>` with the user's words and repeat this step with its
      result.
+   - If the proposal marks extra requirements, which the user's goal does not ask for, ask the user to keep or drop
+     each one. Run `revise <campaign> <feedback>` with the requirements that the user drops, if any, and repeat this
+     step with its result.
    - Otherwise, ask the user to give feedback or to confirm by choosing the cells that certification covers. Present
      these choices with their tradeoffs, naming each choice's cells, weakest cells and minimum session count from the
      proposal's "Certification scope" section:

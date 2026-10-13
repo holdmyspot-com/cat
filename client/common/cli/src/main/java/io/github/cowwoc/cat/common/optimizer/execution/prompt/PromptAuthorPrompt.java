@@ -12,6 +12,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.SoundTest;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
@@ -192,7 +193,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 		{
 			Failure failure = brief.developmentFailures().get(index);
 			String id = brief.developmentId(index);
-			ObjectNode node = encodeFailure(failure, id, brief.evidenceSections().get(id));
+			ObjectNode node = FailureJson.encode(json, failure, id, brief.evidenceSections().get(id));
 			ArrayNode reruns = node.putArray("diagnostic_reruns");
 			for (DiagnosticRerun rerun : failure.reruns())
 			{
@@ -246,46 +247,24 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 			Map.entry("development_counts", pretty(encodeCounts(brief.developmentCounts()))),
 			Map.entry("ended_attempts", pretty(ended)),
 			Map.entry("earlier_manifests", pretty(encodeEarlierManifests(brief.earlierManifests()))),
+			Map.entry("sound_tests", pretty(encodeSoundTests(brief.soundTests()))),
 			Map.entry("report_schema", reportSchema)));
 		return new SessionRequest(SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT, copy, List.of(turn), List.of(),
 			TIME_LIMIT, brief.contract().judge().profile());
 	}
 
 	/**
-	 * Writes a failing test case and the evidence that explains its failure.
+	 * Writes the tests that a test revision reported sound under the confirmed contract.
 	 *
-	 * @param failure the test case and rationale to show the prompt author
-	 * @param id the scoped identifier of the supplied failure
-	 * @param evidenceSection the failing trial's evidence section, or {@code null} if the trial's harness events are
-	 *   no longer retained
-	 * @return the failing test case with the reason for its failure in {@code rationale}: the judge's rationale, or
-	 *   the record of each failed built-in tool; each assertion that it failed with its behavior in
-	 *   {@code failed_assertions}; the failure's {@code impact}, or {@code null} if no triage
-	 *   decided one; and the trial's {@code evidence_section}, or {@code null} if its events are no longer retained
+	 * @param soundTests the reports in report order
+	 * @return one object per report with its {@code test} and the {@code reasons} it needs no change
 	 */
-	private ObjectNode encodeFailure(Failure failure, String id, String evidenceSection)
+	private ArrayNode encodeSoundTests(List<SoundTest> soundTests)
 	{
-		ObjectNode node = TestCaseJson.encode(json, failure.testCase());
-		node.put("id", id);
-		node.put("cell", failure.testCase().cellId());
-		node.put("rationale", failure.rationale());
-		ArrayNode failedAssertions = node.putArray("failed_assertions");
-		for (FailedAssertion failed : failure.failedAssertions())
-			failedAssertions.addObject().put("assertion_id", failed.assertionId()).put("behavior", failed.behavior());
-		if (failure.triage() == null)
-			node.putNull("impact");
-		else
-			node.put("impact", failure.triage().impact().label());
-		ArrayNode responses = node.putArray("responses");
-		for (List<String> turn : failure.responses())
-		{
-			ArrayNode messages = responses.addArray();
-			turn.forEach(messages::add);
-		}
-		// A missing section is written as null rather than left out, so the prompt author reads that the trial's events
-		// or file changes are no longer retained instead of assuming that the trial made no tool calls
-		node.put("evidence_section", evidenceSection);
-		return node;
+		ArrayNode nodes = json.createArrayNode();
+		for (SoundTest report : soundTests)
+			nodes.addObject().put("test", report.test()).put("reasons", report.reasons());
+		return nodes;
 	}
 
 	/**
@@ -294,7 +273,8 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 	 * @param manifests the earlier manifests in the order CAT retained them
 	 * @return one object per manifest with its {@code attempt} number, {@code cell}, promotion {@code result}, the
 	 *   {@code rejections} that CAT gave it, its {@code kinds} with each kind's {@code name}, {@code classification},
-	 *   number of {@code failures} and the {@code hunks} that address it, and its {@code hunks} with each hunk's
+	 *   number of {@code failures}, the {@code hunks} that address it and, for a test defect, its {@code fault}, and
+	 *   its {@code hunks} with each hunk's
 	 *   {@code id}, {@code path}, line ranges, {@code analogous} case and {@code dissimilar} case
 	 */
 	private ArrayNode encodeEarlierManifests(List<EarlierManifest> manifests)
@@ -319,6 +299,8 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 				kindNode.put("failures", kind.failures().size());
 				ArrayNode hunks = kindNode.putArray("hunks");
 				kind.hunks().forEach(hunks::add);
+				if (!kind.fault().isEmpty())
+					kindNode.put("fault", kind.fault());
 			}
 
 			ArrayNode hunks = node.putArray("hunks");
@@ -403,10 +385,17 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 			List<PromptAuthorKind> kinds = new ArrayList<>();
 			for (JsonNode kind : kindNodes)
 			{
-				if (!properties(kind).equals(Set.of("name", "failures", "classification", "hunks")))
+				Set<String> properties = properties(kind);
+				String fault = "";
+				if (properties.contains("fault"))
+				{
+					fault = text(kind, "fault");
+					properties.remove("fault");
+				}
+				if (!properties.equals(Set.of("name", "failures", "classification", "hunks")))
 					return Optional.empty();
 				kinds.add(new PromptAuthorKind(text(kind, "name"), texts(kind, "failures"),
-					EnumNames.parse(text(kind, "classification"), FailureKind.class), texts(kind, "hunks")));
+					EnumNames.parse(text(kind, "classification"), FailureKind.class), texts(kind, "hunks"), fault));
 			}
 			List<HunkEvidence> evidence = new ArrayList<>();
 			for (JsonNode hunk : hunks)

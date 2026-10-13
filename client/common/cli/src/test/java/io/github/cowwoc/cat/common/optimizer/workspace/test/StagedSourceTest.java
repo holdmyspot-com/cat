@@ -202,14 +202,13 @@ public final class StagedSourceTest
 	}
 
 	/**
-	 * Verifies that the control source empties every in-project prompt file to zero bytes, including the files that
-	 * prompt-source links reach, and keeps every other file. External prompt-source targets are read-only, so they
-	 * keep their content.
+	 * Verifies that the control source empties only the target prompt file, which a link to it also shows empty, and
+	 * keeps every other file, including the other in-project prompt files that a candidate may edit.
 	 *
 	 * @throws IOException if the fixture cannot be created or staged
 	 */
 	@Test
-	public void controlSourceEmptiesEveryPromptFile() throws IOException
+	public void controlSourceEmptiesOnlyTarget() throws IOException
 	{
 		// Requirement: R-W10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -220,15 +219,15 @@ public final class StagedSourceTest
 				Set.of(), fork);
 			StagedSources sources = new StagedSources(project.tree(), project.campaign().resolve("staged"));
 
-			Path staged = sources.stage(ControlSource.of(fork, authority), Set.of());
+			Path staged = sources.stage(ControlSource.of(fork, Path.of("prompt.md")), Set.of());
 
-			requireThat(ControlSource.promptFiles(fork, authority), "promptFiles").
+			requireThat(authority.promptFiles(fork), "promptFiles").
 				isEqualTo(Set.of(Path.of("prompt.md"), Path.of("rules/a.md"), Path.of("rules/b.md")));
 			Map<Path, FileEntry> entries = InventoryScanner.scan(staged, Set.of()).entries();
-			requireThat(entries.get(Path.of("prompt.md")), "prompt").isEqualTo(file(""));
+			requireThat(entries.get(Path.of("prompt.md")), "target").isEqualTo(file(""));
 			requireThat(entries.get(Path.of("alias.md")), "fileLink").isEqualTo(file(""));
-			requireThat(entries.get(Path.of("rules/a.md")), "ruleA").isEqualTo(file(""));
-			requireThat(entries.get(Path.of("docs/b.md")), "directoryLink").isEqualTo(file(""));
+			requireThat(entries.get(Path.of("rules/a.md")), "otherPromptFile").isEqualTo(file("rule a"));
+			requireThat(entries.get(Path.of("docs/b.md")), "directoryLink").isEqualTo(file("rule b"));
 			requireThat(entries.get(Path.of("shared.md")), "externalFileLink").isEqualTo(file("shared"));
 			requireThat(entries.get(Path.of("run.sh")), "executable").isEqualTo(file("#!/bin/sh\n", EXECUTABLE));
 			requireThat(entries.get(Path.of(".cat/rules/r.md")), "catRule").isEqualTo(file("cat rule"));
@@ -445,7 +444,7 @@ public final class StagedSourceTest
 			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
 			FileInventory fork = project.tree().inventory();
 			Overlay candidate = Overlay.of(fork).write(Path.of("rules/a.md"), content("candidate rule a"), READ_WRITE);
-			Overlay control = ControlSource.of(fork, new Authority(Set.of(Path.of("rules")), Set.of(), fork));
+			Overlay control = ControlSource.of(fork, Path.of("rules/a.md"));
 
 			Path candidateCopy = port.pluginCopy(plugin, port.stage(candidate, Set.of()));
 			Path controlCopy = port.pluginCopy(plugin, port.stage(control, Set.of()));
@@ -458,6 +457,7 @@ public final class StagedSourceTest
 				isEqualTo(file("installed skill"));
 			Map<Path, FileEntry> controlFiles = InventoryScanner.scan(controlCopy, Set.of()).entries();
 			requireThat(controlFiles.get(Path.of("rules/codex/a.md")), "controlEmptied").isEqualTo(file(""));
+			requireThat(controlFiles.get(Path.of("rules/codex/b.md")), "controlUnemptied").isEqualTo(file("rule b"));
 			requireThat(controlFiles.get(Path.of("skills/plan.md")), "controlBaseFile").
 				isEqualTo(file("installed skill"));
 			requireThat(Files.readString(base.resolve("rules/codex/a.md")), "base").isEqualTo("installed rule a");

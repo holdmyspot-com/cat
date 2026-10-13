@@ -77,7 +77,7 @@ public final class ReviewCheckpointTest
 	private static Campaign beforeCheckpoint()
 	{
 		return new Builder().confirmed().development("formatting", 197, List.of(0, 0, 0, 2)).
-			development("safety", 150, 0).slowStart(new SlowStart(4, 0)).build();
+			development("safety", 150, 0).slowStart(new SlowStart(4, 0)).sound("formatting").build();
 	}
 
 	/**

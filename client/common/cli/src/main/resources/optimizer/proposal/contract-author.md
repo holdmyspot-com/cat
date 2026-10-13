@@ -2,6 +2,9 @@
 
 ## Design Goals
 
+- Derive the requirements from the user's goal for the target, when the user stated one, so that certification proves
+  what the user wants the target to achieve, and propose each other obligation of the prompt system as an extra
+  requirement that the user keeps or drops.
 - From the prompt system in the current directory, return one complete compliance contract proposal whose lists hold
   every requirement, prompt test, assertion, test case, fixture and known limitation as separate items, so the user
   can review each item before confirming it. A count or a summary never stands in for an item.
@@ -11,11 +14,11 @@
 - Name every prompt file that loads for this prompt system although no harness event reports it loading,
   together with the documented rule that loads it, so CAT can record that this loading was derived rather than
   observed.
-- Name the harness plugin that holds the target prompt files, how a build assembles it from the project and whether
+- Name the harness plugin that holds the target prompt file, how a build assembles it from the project and whether
   it needs CAT, so that each trial installs that plugin with the trial's version of the prompt files.
 - Report every condition that makes certification unavailable, with the requirements it affects and its evidence, so
   CAT can show it to the user before confirmation.
-- Turn every recorded regression scenario of a prompt source into a prompt test that cites that scenario, converting a
+- Turn every recorded regression scenario of the target into a prompt test that cites that scenario, converting a
   scenario in an earlier format to the current one.
 - Make the final response exactly one JSON object that satisfies the output schema below. CAT discards any other
   final response as an infrastructure failure.
@@ -36,21 +39,42 @@
 - Never write code. An assertion that a program can decide names one of CAT's built-in tools; CAT implements every
   built-in tool.
 
+### Target prompt file and goal
+
+The campaign optimizes one prompt file, the target, given relative to the current directory. The other files of the
+prompt system are the context in which it runs:
+
+{{target_prompt_file}}
+
+The user's goal for the target, in the user's own words, or `none` if the user stated no goal:
+
+{{goal}}
+
 ### What to inspect
 
 - The prompt system is the current directory. Determine which prompt files load in production by following the
   harness's documented loading rules and CAT's rule loader, which injects the rule files under `.cat/rules/`.
 - Include files reached through symbolic links and readable files outside the project that the prompt system loads
   or references as instructions.
-- Record a requirement's `source` as the path of the file that states it. For a file reached through a link, give the
-  link path and its resolved target.
+- Record the `source` of a requirement that a prompt file states as the path of that file. For a file reached through a
+  link, give the link path and its resolved target.
 
 ### Requirements
 
 Spell every identifier that you name, which is each requirement, behavior, test and assertion `id` and each variable
 `name`, in lowercase words joined by underscores, such as `wrong_tone`.
 
-`requirements` lists every behavioural requirement that the prompt files state, one item each, with a unique `id`.
+`requirements` lists every requirement, one item each, with a unique `id`. A requirement is an observable outcome that
+the prompt system must produce, or an operation that it must not harm.
+
+- When the user stated a goal, first derive the requirements that the goal asks for, and give each the `source`
+  `goal`. State each as an outcome, not as a mechanism that a prompt file prescribes for it. Add the operations that
+  the goal implies the prompt must not harm, such as searching when the goal is reading files whole, also with the
+  `source` `goal`. Then add each obligation of the prompt files that none of them covers, with the file that states it
+  as its `source`; the proposal shows it to the user as an extra requirement, which the user keeps or drops.
+- When the user stated no goal, derive every requirement from the prompt files.
+
+For each requirement:
 
 - Give each its `trigger`: the situation that obliges the action, such as "The user asks to delete a directory", or
   `null` when the requirement applies to every reply.
@@ -59,136 +83,7 @@ Spell every identifier that you name, which is each requirement, behavior, test 
   failures that a prompt edit would fix differently. Leave out `other`: a judge names it for a failure that no listed
   behavior describes.
 
-### Prompt tests
-
-`tests` lists every prompt test. CAT certifies each prompt test on its own, in each of its cells, so a weak use cannot
-hide behind common or easy ones. Write a separate test for each use that needs its own claim; a change to an incidental
-value is another test case of the same test, not another test. When CAT delivers a certified prompt, it writes each test
-to the target's test directory as a `scenario.md` file and a `fixtures/` directory.
-
-For each test, give:
-
-- `risk_rank`: 1 for the riskiest test; tests may share a rank;
-- `requirement_ids`: the requirements it checks;
-- `absent_triggers`: the requirements whose `trigger` this test leaves absent, so that a compliant response does not
-  take the action they oblige, or an empty list. Name only requirements that have a trigger;
-- `applicability`: the conditions under which those requirements apply to a trial;
-- `turns`: the complete prewritten user turns, in order. Where a variable's value is inserted, write `{{` and `}}`
-  around the `name` of one of this test's `variables`, as in `{{tone}}`;
-- `time_limit_seconds`: how long a compliant agent needs, with margin;
-- `expected_behavior`: what a compliant response does, observable in text, file effects or tool effects;
-- `uncovered_interactions`: every material interaction this test cannot cover;
-- `variables`, `test_cases`, `fixtures` and `assertions`, as described below;
-- `regression_scenarios`: the citations of the recorded scenarios that this test covers, or an empty list.
-
-For each requirement with a `trigger`, write at least one test whose turns leave the trigger absent, whose
-`expected_behavior` says that the obligated action does not occur, and whose `absent_triggers` lists the requirement.
-Such a test catches a prompt that makes the agent take the action everywhere. CAT refuses a proposal in which a
-requirement with a trigger has no such test.
-
-A turn sequence is fixed before the trial starts. When a material obligation needs a follow-up turn chosen from the
-agent's reply, list it in `uncovered_interactions` and report an `unsupported_test_interaction` scope condition.
-
-### Variables and test cases
-
-A test that always presents the same content cannot be certified fairly: prompt editing tunes the prompts on that
-content, so certifying on it measures them on their own training data. Every test therefore has variables, such as a
-file's name or content, the value that a turn asks about, or the wording of a turn. CAT refuses a test without one.
-
-- `variables`: each variable's `name` and a `description` of what its value represents. `{{name}}` inserts the value
-  in a turn, an assertion's statement or `tool` arguments, and a fixture's path or content. CAT replaces only declared
-  names, so other text in double braces stays as written. `{{expected_outcome}}` stands for the test case's expected
-  outcome, and no variable may take that name.
-- `test_cases`: each gives every variable a value, in `values`, and states its `expected_outcome`: the result that a
-  compliant reply gives for those values, such as the date that the turn asks for. An expected outcome is never a pass
-  or fail result. Two test cases with the same values are the same test case, so make every test case's values
-  differ.
-
-Before any trial, CAT assigns each distinct expected outcome to the development part or the held-out part, each with
-probability 1/2, ignoring case and spacing, so test cases with the same expected outcome share a part. Prompt editing
-sees only development test cases, and formal trials draw only held-out ones, so formal trials measure the prompts on
-answers that prompt editing never saw. CAT refuses a test with fewer than 2 distinct expected outcomes in either part,
-naming the test and both counts. Give each test at least 12 distinct expected outcomes, which leaves less than 1 chance
-in 100 that either part receives fewer than 2.
-
-### Values
-
-A value is either `text` or a `call` to a value generator built into CAT, which writes bulk content that looks real,
-such as the log lines around the entry that a turn asks about. Write a call as `{"generator": "log_lines", "count":
-18000}`, with whole-number parameters. CAT adds a random seed and the generator's version, so two calls with the same
-parameters produce different content.
-
-- Use a generated value only in a fixture's content. CAT refuses one in a turn, an assertion or a fixture's path.
-- Generated content never decides a test case's expected outcome: only the values and fixture text that you write do.
-  Write each fact that decides it with a word that the generator's output never contains, or a date or number outside
-  the output's range, so that the generated content never repeats or contradicts the fact.
-
-The generators, with every word, date and number that their output can contain:
-
-{{generators}}
-
-### Fixtures
-
-`fixtures` lists the text files that CAT writes into each trial's workspace before the first turn, each with its `path`
-relative to the workspace root, using `/` as the separator, and its `content`. Use a fixture when a turn needs a file
-whose content the test case decides. CAT replaces placeholders in each path and content.
-
-- A fixture's path stays inside the workspace and outside `.git`, and must not name a file that the project already
-  has. CAT refuses a fixture that would replace a project file.
-- A value inserted into a path must be a single name: not empty, not `.` or `..`, and without `/`, `\`, control
-  characters or any of `< > : " | ? *`. CAT refuses a test case that breaks this rule or whose fixture paths collide.
-
-### Assertions
-
-`assertions` lists every statement that a compliant trial satisfies. A trial passes when it passes every assertion of
-its test. Give each requirement that the test checks at least one assertion. For each assertion, give:
-
-- `id`: unique within the test. CAT adds the assertion `expected_outcome`, which the judge decides: the reply's result
-  matches the test case's expected outcome. Do not use that id;
-- `requirement_id`: the requirement whose compliance the assertion shows;
-- `kind`: `guard` when an agent passes the assertion almost always even when the target prompt files are empty, such
-  as answering a search question correctly; it protects an operation that the prompts must not harm. `effect` when the
-  prompts exist to make the assertion true, such as reading a long file whole. Any assertion that is not a guard is an
-  effect;
-- `statement`: what the assertion requires, in words that the judge can decide from the trial's record;
-- `tool`: the built-in tool that decides the assertion, or `null` when the judge decides it;
-- `on_tool_failure`: what a failure of `tool` means: `fail` when the failure fails the trial; `judge` when the judge
-  then decides the assertion from its statement. Write `fail` when `tool` is `null`.
-
-`tool` names one of CAT's built-in tools, never a tool of the agent under test: `tool-used Read` is CAT's built-in tool
-that passes when the agent called its Read tool. The statement may still describe the agent's tools, such as "the agent
-used the Read tool". Under `fail`, give a built-in tool only when it observes everything that the assertion requires;
-whether a reply is correct, relevant, complete or appropriate stays with the judge. Under `judge`, the tool may fail a
-reply that satisfies the statement but must pass no reply that the statement rejects, such as a `pattern` for the usual
-phrasings of a correct answer; write the whole requirement in the statement, because the judge decides from it. A
-built-in tool that passes decides its assertion, and so does one that fails under `fail`: the judge neither repeats nor
-overrides it. A built-in tool that fails under `fail` names the behavior in the table below, so list that behavior on
-the assertion's requirement.
-
-Write a built-in tool's name followed by its arguments, separated by spaces. Write an argument that contains a space or
-a double quote in double quotes, with `\"` for a quote and `\\` for a backslash. An argument may contain placeholders,
-and a regular expression matches an inserted value literally. A built-in tool that examines replies examines every
-assistant message of every turn, including interim messages, unless its first argument is `turn=<n>`, which examines
-only the reply to turn n, counted from 1.
-
-| Built-in tool | Passes when | Behavior when it fails |
-|---|---|---|
-| `exact-text <text>` | every examined reply equals the text, ignoring leading and trailing whitespace | `reply_not_exact` |
-| `forbidden-text <text>` | no examined reply contains the text | `forbidden_text_in_reply` |
-| `pattern <regex>` | every examined reply contains a match of the Java regular expression | `pattern_missing_from_reply` |
-| `count <regex> <minimum> <maximum>` | the number of matches in the examined replies lies within the inclusive bounds | `match_count_out_of_bounds` |
-| `file-exists <path>` | the project-relative path exists after the trial | `file_missing` |
-| `file-absent <path>` | the project-relative path does not exist after the trial | `file_present` |
-| `file-content <path> <text>` | the file holds the text after the trial, ignoring carriage returns before line feeds and trailing whitespace | `file_content_differs` |
-| `exit-status <regex> <status>` | the last command whose command line matches the Java regular expression exited with the status | `wrong_exit_status` |
-| `tool-used <tool>` | the trial called the tool | `tool_not_called` |
-| `tool-unused <tool>` | the trial never called the tool | `tool_called` |
-| `no-tool-call` | the trial called no tool | `unneeded_tool_call` |
-| `read-in-full <path>` | every non-blank line of the file as staged appeared in the trial's tool output | `file_not_read_in_full` |
-| `read-at-most <path> <percent>` | at most that percentage of the file's non-blank lines appeared in the trial's tool output | `file_read_beyond_limit` |
-
-CAT refuses a built-in tool whose evidence the harness does not report, such as `exit-status` for a harness that
-reports no exit statuses.
+{{prompt_tests}}
 
 ### Minimum pass rate
 
@@ -207,7 +102,7 @@ user's feedback changes it. A higher rate needs more trials to prove.
 
 ### Guard pilot
 
-After a proposal validates, CAT runs about 20 trials of each test with the target prompt files empty and shows each
+After a proposal validates, CAT runs about 20 trials of each test with the target prompt file empty and shows each
 assertion's pass rate in them. On a revision, the previous proposal below is followed by those results. A guard
 assertion whose rate is below the minimum pass rate is a warning: classify it `effect` when the prompts are what make an
 agent pass it, or change the test's test cases when they are too hard to pass without the prompts. Otherwise keep it
@@ -220,10 +115,10 @@ unchanged; the user decides whether the agent really fails it without the prompt
 
 ### Recorded regression scenarios
 
-CAT supplies the available recorded scenarios below. Each gives its guidance source, its citation, its format and its
-complete content; a scenario in the current format also gives the content of each of its text fixtures. For each
-scenario whose guidance belongs to this prompt system, write a prompt test that preserves its turns, expected
-behaviour, assertions and fixtures, and put its exact citation in that test's `regression_scenarios`.
+CAT supplies the recorded scenarios of the target below. Each gives its guidance source, its citation, its format and
+its complete content; a scenario in the current format also gives the content of each of its text fixtures. For each
+scenario, write a prompt test that preserves its turns, expected behaviour, assertions and fixtures, and put its exact
+citation in that test's `regression_scenarios`.
 
 - A scenario in the current format states each variable as a `- **<name>**: <description>` pair under
   `## Variables`, its turns under `## Scenario`, with one `### Turn <n>` subsection per turn when it has several, and
@@ -239,8 +134,7 @@ behaviour, assertions and fixtures, and put its exact citation in that test's `r
   test case, and the other test cases vary them. The proposal shows your conversion to the user as a difference from
   the recorded file.
 
-CAT refuses a proposal when no test cites a recorded scenario of one of its prompt sources, naming every missing
-scenario. Scenarios for guidance outside this prompt system impose no test obligation.
+CAT refuses a proposal when no test cites one of these scenarios, naming every missing scenario.
 
 {{regression_scenarios}}
 
@@ -254,20 +148,20 @@ inventory; do not list those.
 
 ### Plugin under test
 
-`plugin_under_test` names the harness plugin that holds the target prompt files, or is `null` when they are not in a
+`plugin_under_test` names the harness plugin that holds the target prompt file, or is `null` when it is not in a
 plugin. Each trial installs that plugin from a copy that holds the trial's version of the prompt files, and no other
 plugin of the user's harness.
 
 - Give `root` when the plugin runs from the project's files as they are: the project-relative directory that holds
-  `.codex-plugin/plugin.json` or `.claude-plugin/plugin.json` and the target prompt files. Set `base` to `null` and
+  `.codex-plugin/plugin.json` or `.claude-plugin/plugin.json` and the target prompt file. Set `base` to `null` and
   `mappings` to an empty list.
 - Give `base` when a build assembles the plugin from the project's files, so that no project directory with a plugin
-  manifest holds the target prompt files: the absolute path of a built plugin directory, such as the plugin that the
-  harness installed. Set `root` to `null`. Find the build step that copies the target prompt files into the plugin,
-  and give each project directory that it copies file for file as a `mappings` entry: its `source`, relative to the
-  project, and the `target` directory that receives its files, relative to the plugin directory. Cover every target
-  prompt file. CAT refuses a mapping when a file of its source has no file at the mapped path in the base, because the
-  plugin's users never receive that file.
+  manifest holds the target prompt file: the absolute path of a built plugin directory, such as the plugin that the
+  harness installed. Set `root` to `null`. Find the build step that copies the prompt files into the plugin, and give
+  each project directory that it copies file for file as a `mappings` entry: its `source`, relative to the project, and
+  the `target` directory that receives its files, relative to the plugin directory. Cover the target prompt file and
+  every other project file that the prompt system loads. CAT refuses a mapping when a file of its source has no file at
+  the mapped path in the base, because the plugin's users never receive that file.
 - Set `depends_on_cat` to `true` when the plugin needs CAT installed beside it: its manifest names CAT as a dependency,
   or its prompt files invoke CAT's skills, agents or commands or name CAT's plugin directory. Quote the manifest entry
   or file passages that show it in `cat_evidence`, or say that none exist. A plugin that is CAT itself is installed

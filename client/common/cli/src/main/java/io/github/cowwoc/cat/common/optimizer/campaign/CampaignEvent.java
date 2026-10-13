@@ -514,6 +514,107 @@ public sealed interface CampaignEvent
 	}
 
 	/**
+	 * A prompt test needs a test revision before new trials start.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param request the request
+	 */
+	record RequestTestRevision(TestRevisionRequest request) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param request the request
+		 * @throws NullPointerException if {@code request} is null
+		 */
+		public RequestTestRevision
+		{
+			requireThat(request, "request").isNotNull();
+		}
+	}
+
+	/**
+	 * A test revision changed prompt tests. A running attempt stops, and the revised contract waits for confirmation.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param revisions the changes, one per revised test
+	 */
+	record ReviseTests(List<TestRevision> revisions) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param revisions the changes, one per revised test
+		 * @throws NullPointerException if the list or an element is null
+		 * @throws IllegalArgumentException if {@code revisions} is empty
+		 */
+		public ReviseTests
+		{
+			revisions = List.copyOf(revisions);
+			requireThat(revisions, "revisions").isNotEmpty();
+		}
+	}
+
+	/**
+	 * A test revision found that a prompt test needs no change.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param test the identifier of the test
+	 * @param reasons why the test needs no change
+	 */
+	record ReportTestSound(String test, String reasons) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param test the identifier of the test
+		 * @param reasons why the test needs no change
+		 * @throws NullPointerException if any argument is null
+		 * @throws IllegalArgumentException if any argument is blank
+		 */
+		public ReportTestSound
+		{
+			requireThat(test, "test").isNotBlank();
+			requireThat(reasons, "reasons").isNotBlank();
+		}
+	}
+
+	/**
+	 * A test revision found that it cannot proceed within the confirmed requirements.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param test the identifier of the test that the revision examined
+	 * @param reason why the revision cannot proceed
+	 * @param reasons the test revision's explanation
+	 * @param proposedChange the requirement change that the test revision proposes, or empty if it proposes none
+	 */
+	record BlockTestRevision(String test, PendingDecision.TestRevisionBlocked.Reason reason, String reasons,
+		String proposedChange) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param test the identifier of the test that the revision examined
+		 * @param reason why the revision cannot proceed
+		 * @param reasons the test revision's explanation
+		 * @param proposedChange the requirement change that the test revision proposes, or empty if it proposes none
+		 * @throws NullPointerException if any argument is null
+		 * @throws IllegalArgumentException if {@code test} or {@code reasons} are blank
+		 */
+		public BlockTestRevision
+		{
+			requireThat(test, "test").isNotBlank();
+			requireThat(reason, "reason").isNotNull();
+			requireThat(reasons, "reasons").isNotBlank();
+			requireThat(proposedChange, "proposedChange").isNotNull();
+		}
+	}
+
+	/**
 	 * The user selects a resolution of the first unanswered conflict.
 	 *
 	 * @param resolution the 1-based resolution position

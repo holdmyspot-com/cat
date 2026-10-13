@@ -42,6 +42,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
+import io.github.cowwoc.cat.common.optimizer.campaign.SoundTest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevision;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisionRequest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
@@ -287,8 +291,8 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
-	 * A retained prompt author manifest keeps its attempt number, lineage, kinds with their classifications and hunks,
-	 * hunk evidence and rejections across a reload.
+	 * A retained prompt author manifest keeps its attempt number, lineage, kinds with their classifications, hunks
+	 * and faults, hunk evidence and rejections across a reload.
 	 *
 	 * @throws IOException if the store fails
 	 */
@@ -299,8 +303,11 @@ public abstract class CampaignStoreContract
 		try (StoreFixture fixture = open())
 		{
 			PromptAuthorDiagnosis diagnosis = new PromptAuthorDiagnosis(3, 2, "safety", Builder.snapshot("candidate-1"),
-				List.of(new PromptAuthorKind("mistyped path", List.of("f1", "f2"), FailureKind.GUIDANCE, List.of("h1")),
-					new PromptAuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of())),
+				List.of(new PromptAuthorKind("mistyped path", List.of("f1", "f2"), FailureKind.GUIDANCE, List.of("h1"),
+						""),
+					new PromptAuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of(), ""),
+					new PromptAuthorKind("named the test", List.of("f4"), FailureKind.TEST_DEFECT, List.of(),
+						"The turn tells the agent that it is tested.")),
 				List.of(new HunkEvidence("h1", Path.of("CLAUDE.md"), 1, 2, 1, 3, List.of("f1", "f2"), "Another read",
 					"plain_list")),
 				List.of("Uncited changed hunk: CLAUDE.md#2"), Path.of("/transcripts/prompt-author-3.jsonl"),
@@ -386,6 +393,27 @@ public abstract class CampaignStoreContract
 			fixture.store().replaceSnapshot(campaign);
 
 			requireThat(fixture.reopen().load("campaign-draft"), "loaded").isEqualTo(Optional.of(campaign));
+		}
+	}
+
+	/**
+	 * The user's goal survives a reload.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void goalSurvivesReload() throws IOException
+	{
+		// Requirement: R-C24
+		try (StoreFixture fixture = open())
+		{
+			Header header = new Header("campaign-goal", Path.of("/project"), Path.of("/project/AGENTS.md"),
+				Harness.CODEX, Lifecycle.ACTIVE, "Read files whole.\nKeep searches narrow.");
+			Campaign campaign = Campaign.start(header, Campaign.DEFAULT_CEILING, Builder.INCUMBENT, Builder.OBSERVED);
+			fixture.store().replaceSnapshot(campaign);
+
+			requireThat(fixture.reopen().load("campaign-goal").orElseThrow().header().goal(), "goal").
+				isEqualTo("Read files whole.\nKeep searches narrow.");
 		}
 	}
 
@@ -1139,6 +1167,17 @@ public abstract class CampaignStoreContract
 				new AuthorityWarning("R2", Path.of("rules/loop.md"), Path.of("rules/loop.md"), Limit.LINK_CYCLE,
 					List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
 						AuthorityWarning.Choice.REVISE_CAMPAIGN))))).
+			pending(new PendingDecision.TestRevisionBlocked("safety",
+				PendingDecision.TestRevisionBlocked.Reason.REQUIREMENT_CHANGE, "r2 names no observable outcome.",
+				"Require a question before any deletion.")).
+			testRevisions(new TestRevisions(List.of(new TestRevisionRequest("formatting",
+					TestRevisionRequest.Trigger.TEST_DEFECT, List.of(new PromptAuthorKind("named the test", List.of("f1"),
+						FailureKind.TEST_DEFECT, List.of(), "The turn tells the agent that it is tested.")),
+					Map.of("f1", new Failure(testCase("formatting", 12, true), "The reply named the test.", List.of(),
+						null, List.of(), List.of(List.of("Is this a test?")), Builder.FILES))),
+				new TestRevisionRequest("safety", TestRevisionRequest.Trigger.REVIEW_CHECKPOINT, List.of(), Map.of())),
+				List.of(new TestRevision(1, "plain_list", "before\n", "after\n", "Three items suffice.")),
+				List.of(new SoundTest(1, "safety", "The turn is organic.")))).
 			revisionRequested().
 			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
 			delivery(new DeliveryRequest(new Candidate(3, Builder.snapshot("candidate-3")), 1,
@@ -1150,7 +1189,7 @@ public abstract class CampaignStoreContract
 			cell("safety", 55, 0).
 			failure(new Failure(testCase("formatting", 13, true), "The reply was rude.",
 				List.of(new FailedAssertion("uses_requested_tone", "wrong_tone")), null, List.of(), List.of(), Builder.FILES)).
-			outcome(Outcome.IMPROVED_NOT_CERTIFIED).
+			outcome(Outcome.STOPPED_FOR_TEST_REVISION).
 			groups(failureGroups()).
 			campaign().
 			certificationAttempt(2).
@@ -1181,6 +1220,6 @@ public abstract class CampaignStoreContract
 			built.candidates(), built.promptAuthorAttempts(), built.development(), built.baseline(),
 			attempts, built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(),
 			built.pendingDecisions(), built.revisionRequested(), built.outcome(),
-			built.delivery(), built.optimization(), built.answeredWarnings());
+			built.delivery(), built.optimization(), built.answeredWarnings(), built.testRevisions());
 	}
 }

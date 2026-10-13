@@ -2,7 +2,12 @@ package io.github.cowwoc.cat.common.optimizer.report;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
+import io.github.cowwoc.cat.common.optimizer.campaign.SoundTest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevision;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisionRequest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.Revert;
@@ -401,9 +406,15 @@ final class ReportSummary
 		}
 		for (PromptAuthorDiagnosis promptAuthor : report.promptAuthors())
 		{
-			List<String> kinds = promptAuthor.kinds().stream().
-				map(kind -> kind.name() + " (" + EnumNames.lowerCase(kind.classification()).replace('_', ' ') + ")").
-				toList();
+			List<String> kinds = new ArrayList<>();
+			for (PromptAuthorKind kind : promptAuthor.kinds())
+			{
+				StringBuilder kindText = new StringBuilder(kind.name()).append(" (").
+					append(EnumNames.lowerCase(kind.classification()).replace('_', ' '));
+				if (!kind.fault().isEmpty())
+					kindText.append(": ").append(kind.fault());
+				kinds.add(kindText.append(')').toString());
+			}
 			lines.add("Prompt author diagnosis of attempt " + promptAuthor.number() + " in cell " +
 				promptAuthor.cell() + ": " + String.join(", ", kinds) + "; evidence " + promptAuthor.transcript());
 			for (String rejection : promptAuthor.rejections())
@@ -419,6 +430,35 @@ final class ReportSummary
 			lines.add("Round " + attempt.round() + ", Attempt " + attempt.number() + " in cell " + attempt.cell() +
 				": passing promotion runs " + attempt.passingRuns() + "/" + attempt.totalRuns() +
 				"; accepted: " + accepted + "; winner: " + attempt.winner());
+		}
+		testRevisions(lines, report.testRevisions());
+	}
+
+	/**
+	 * Adds the requested test revisions, each completed revision with its diff and reasons, and each test reported
+	 * sound.
+	 *
+	 * @param lines the summary lines
+	 * @param revisions the test revisions
+	 */
+	private static void testRevisions(List<String> lines, TestRevisions revisions)
+	{
+		for (TestRevisionRequest request : revisions.requests())
+		{
+			lines.add("Test revision requested for test " + request.test() + " by " +
+				EnumNames.lowerCase(request.trigger()).replace('_', ' '));
+		}
+		for (TestRevision revision : revisions.revisions())
+		{
+			lines.add("Test revision of test " + revision.test() + " in lineage " + revision.lineage() + ": " +
+				revision.reasons());
+			for (String line : revision.diff().split("\n"))
+				lines.add("  " + line);
+		}
+		for (SoundTest sound : revisions.sound())
+		{
+			lines.add("Test " + sound.test() + " reported sound in lineage " + sound.lineage() + ": " +
+				sound.reasons());
 		}
 	}
 

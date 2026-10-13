@@ -31,6 +31,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.RegressionTestCase;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.SequenceGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
+import io.github.cowwoc.cat.common.optimizer.campaign.SoundTest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialFiles;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
@@ -127,6 +129,7 @@ public final class Builder
 	private final Map<SequenceGroup, Long> sequences = new HashMap<>();
 	private long evidenceRevision;
 	private final List<AuthorityWarning> answeredWarnings = new ArrayList<>();
+	private TestRevisions testRevisions = TestRevisions.NONE;
 
 	/**
 	 * Supplies descriptive optimization measurements.
@@ -656,6 +659,33 @@ public final class Builder
 	}
 
 	/**
+	 * Sets the requested, applied and declined test revisions.
+	 *
+	 * @param value the test revisions
+	 * @return this builder
+	 */
+	public Builder testRevisions(TestRevisions value)
+	{
+		this.testRevisions = value;
+		return this;
+	}
+
+	/**
+	 * Records that a test revision examined each test in the first lineage and found it sound.
+	 *
+	 * @param tests the identifiers of the tests
+	 * @return this builder
+	 */
+	public Builder sound(String... tests)
+	{
+		List<SoundTest> sound = new ArrayList<>(testRevisions.sound());
+		for (String test : tests)
+			sound.add(new SoundTest(1, test, "The turns are organic and prove the claims."));
+		this.testRevisions = new TestRevisions(testRevisions.requests(), testRevisions.revisions(), sound);
+		return this;
+	}
+
+	/**
 	 * Marks a contract revision as requested.
 	 *
 	 * @return this builder
@@ -760,7 +790,8 @@ public final class Builder
 			built.add(attempt.toAttempt());
 		return new Campaign(header, ceiling, lineages, identity, new Candidate(0, INCUMBENT), candidates,
 			promptAuthorAttempts, state, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart,
-			throttle, pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings);
+			throttle, pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings,
+			testRevisions);
 	}
 
 	/**

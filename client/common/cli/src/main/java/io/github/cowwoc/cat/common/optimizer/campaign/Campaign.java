@@ -46,13 +46,15 @@ import java.util.Set;
  * @param answeredWarnings the warnings about edits outside the edit authority that the user answered by choosing to
  *   use an authorized source, each once, in the order they were answered; a later warning equal to one of them raises
  *   no decision
+ * @param testRevisions the pending test revision requests, the applied test revisions and the tests reported sound
  */
 public record Campaign(Header header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
 	Candidate incumbent, int candidates, int promptAuthorAttempts, Development development,
 	IncumbentBaseline baseline, List<CertificationAttempt> attempts, List<LogicalTrial> trials,
 	Map<SequenceGroup, Long> sequences, long evidenceRevision, SlowStart slowStart, Throttle throttle,
 	List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
-	DeliveryRequest delivery, OptimizationEvidence optimization, List<AuthorityWarning> answeredWarnings)
+	DeliveryRequest delivery, OptimizationEvidence optimization, List<AuthorityWarning> answeredWarnings,
+	TestRevisions testRevisions)
 {
 	/**
 	 * The default maximum number of concurrent nested sessions.
@@ -94,6 +96,8 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * @param optimization the retained prompt author and minimality evidence
 	 * @param answeredWarnings the warnings about edits outside the edit authority that the user answered by choosing
 	 *   to use an authorized source, each once, in the order they were answered
+	 * @param testRevisions the pending test revision requests, the applied test revisions and the tests reported
+	 *   sound
 	 * @throws NullPointerException if a component other than {@code baseline}, {@code outcome} or
 	 *   {@code delivery} is null, {@code baseline} is null after a confirmation, or {@code answeredWarnings} contains
 	 *   null
@@ -146,6 +150,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		sequences = Map.copyOf(sequences);
 		pendingDecisions = List.copyOf(pendingDecisions);
 		answeredWarnings = List.copyOf(answeredWarnings);
+		requireThat(testRevisions, "testRevisions").isNotNull();
 	}
 
 	/**
@@ -167,7 +172,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		Candidate candidate = new Candidate(0, incumbent);
 		return new Campaign(header, ceiling, List.of(), identity, candidate, 0, 0, Development.start(candidate, 0),
 			null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, List.of(), false, null, null,
-			OptimizationEvidence.EMPTY, List.of());
+			OptimizationEvidence.EMPTY, List.of(), TestRevisions.NONE);
 	}
 
 	/**
@@ -189,7 +194,17 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		Candidate candidate = new Candidate(0, snapshot);
 		return new Campaign(header, ceiling, lineages, identity, candidate, candidates, promptAuthorAttempts,
 			Development.start(candidate, 0), baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
-			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings);
+			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions);
+	}
+
+	/**
+	 * Indicates whether the campaign waits for a test revision to answer a pending request.
+	 *
+	 * @return {@code true} if a test revision request is pending
+	 */
+	public boolean awaitsTestRevision()
+	{
+		return !testRevisions.requests().isEmpty();
 	}
 
 	/**
@@ -428,6 +443,11 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 					choices.add(Choice.ACCEPT_WITHOUT_CERTIFICATION);
 			}
 			case PendingDecision.AuthorityWarnings _ -> choices.add(Choice.USE_AUTHORIZED_SOURCE);
+			case PendingDecision.TestRevisionBlocked blocked ->
+			{
+				if (!blocked.proposedChange().isBlank())
+					choices.add(Choice.PROPOSED_CHANGE);
+			}
 		}
 		choices.add(Choice.STOP);
 		return choices;

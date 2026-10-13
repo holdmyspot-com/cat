@@ -74,6 +74,7 @@ final class UserChoices
 			}
 			case USE_AUTHORIZED_SOURCE -> useAuthorizedSource(draft, (PendingDecision.AuthorityWarnings) pending);
 			case RESOLUTION -> throw new IllegalArgumentException("Choose a numbered resolution of the conflict");
+			case PROPOSED_CHANGE -> throw new IllegalArgumentException("Revise the contract with the proposed change");
 			case MORE_ROUNDS -> answerNotReproduced(draft, (PendingDecision.FailuresNotReproduced) pending,
 				FailureGroup::moreRounds);
 			case NEW_ATTEMPT -> answerNotReproduced(draft, (PendingDecision.FailuresNotReproduced) pending,

@@ -14,8 +14,10 @@ import java.util.List;
  * @param failures the identifiers of the supplied failures that belong to the kind
  * @param classification the boundary that the prompt author holds responsible for the kind
  * @param hunks the identifiers of the manifest's hunks that address the kind
+ * @param fault for a test defect, what in the test causes the kind; otherwise empty
  */
-public record PromptAuthorKind(String name, List<String> failures, FailureKind classification, List<String> hunks)
+public record PromptAuthorKind(String name, List<String> failures, FailureKind classification, List<String> hunks,
+	String fault)
 {
 	/**
 	 * Creates a kind.
@@ -24,6 +26,7 @@ public record PromptAuthorKind(String name, List<String> failures, FailureKind c
 	 * @param failures the identifiers of the supplied failures that belong to the kind
 	 * @param classification the boundary that the prompt author holds responsible for the kind
 	 * @param hunks the identifiers of the manifest's hunks that address the kind
+	 * @param fault for a test defect, what in the test causes the kind; otherwise empty
 	 * @throws NullPointerException if any argument or collection element is null
 	 * @throws IllegalArgumentException if {@code name}, a failure identifier or a hunk identifier is blank, or
 	 *   {@code failures} is empty
@@ -39,6 +42,7 @@ public record PromptAuthorKind(String name, List<String> failures, FailureKind c
 		hunks = List.copyOf(hunks);
 		for (String hunk : hunks)
 			requireThat(hunk, "hunk").isNotBlank();
+		requireThat(fault, "fault").isNotNull();
 	}
 
 	/**

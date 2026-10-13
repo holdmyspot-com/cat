@@ -24,7 +24,7 @@ import java.util.Set;
  *   to exceed it
  * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are split
  *   into the development part and the held-out part
- * @param plugin the harness plugin that holds the target prompt files, or empty if they are not in a plugin
+ * @param plugin the harness plugin that holds the target prompt file, or empty if it is not in a plugin
  */
 public record Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles,
 	JudgeProfile judge, TrialFixtures fixtures, List<String> limitations, BigDecimal minimumPassRate, long salt,
@@ -48,7 +48,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	public static final int MINIMUM_PASS_RATE_DECIMALS = 2;
 
 	/**
-	 * Creates a contract whose target prompt files are not in a plugin.
+	 * Creates a contract whose target prompt file is not in a plugin.
 	 *
 	 * @param requirements every requirement and its source
 	 * @param tests every prompt test, in the order used to break otherwise equal allocation choices
@@ -82,10 +82,11 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 *   proven to exceed it
 	 * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are
 	 *   split into the development part and the held-out part
-	 * @param plugin the harness plugin that holds the target prompt files, or empty if they are not in a plugin
+	 * @param plugin the harness plugin that holds the target prompt file, or empty if it is not in a plugin
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code requirements} or {@code tests} are empty, two requirements or two tests
-	 *   share an identifier, a test names a requirement that the contract does not list, {@code minimumPassRate} is
+	 *   share an identifier, a test names a requirement that the contract does not list, no test names a requirement
+	 *   that the contract lists, {@code minimumPassRate} is
 	 *   outside
 	 *   [{@link #LOWEST_MINIMUM_PASS_RATE}, {@link #HIGHEST_MINIMUM_PASS_RATE}] or has more than
 	 *   {@value #MINIMUM_PASS_RATE_DECIMALS} decimal places, a test leaves absent the trigger of a requirement that the
@@ -119,6 +120,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		}
 		Set<String> requirementIds = requirementById.keySet();
 		Set<String> testIds = new HashSet<>();
+		Set<String> testedRequirements = new HashSet<>();
 		Set<String> absentTriggers = new HashSet<>();
 		for (PromptTest test : tests)
 		{
@@ -131,6 +133,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 					throw new IllegalArgumentException("The test '" + test.id() + "' checks the requirement '" +
 						requirementId + "', which the contract does not list. Listed requirements: " + requirementIds);
 				}
+				testedRequirements.add(requirementId);
 			}
 			for (String absentTrigger : test.absentTriggers())
 			{
@@ -153,6 +156,11 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		}
 		for (Requirement requirement : requirements)
 		{
+			if (!testedRequirements.contains(requirement.id()))
+			{
+				throw new IllegalArgumentException("The requirement '" + requirement.id() + "' is checked by no test. " +
+					"List it in the requirement_ids of a test that can prove it");
+			}
 			if (requirement.trigger() != null && !absentTriggers.contains(requirement.id()))
 			{
 				throw new IllegalArgumentException("The requirement '" + requirement.id() + "' applies only when its " +
@@ -209,7 +217,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	/**
 	 * Returns this contract with a plugin under test.
 	 *
-	 * @param value the harness plugin that holds the target prompt files, or empty if they are not in a plugin
+	 * @param value the harness plugin that holds the target prompt file, or empty if it is not in a plugin
 	 * @return the contract
 	 * @throws NullPointerException if {@code value} is null
 	 */

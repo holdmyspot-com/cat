@@ -49,11 +49,17 @@
 							"routing",
 							"guidance",
 							"not_guidance",
+							"test_defect",
 							"conflict"
 						]
 					},
+					"fault": {
+						"description": "For a test_defect kind, what in the test causes the kind. Omit it for any other kind.",
+						"type": "string",
+						"pattern": "\\S"
+					},
 					"hunks": {
-						"description": "The ids of the hunks that address the kind. At least one for a routing or guidance kind; empty for a not_guidance or conflict kind.",
+						"description": "The ids of the hunks that address the kind. At least one for a routing or guidance kind; empty for a not_guidance, test_defect or conflict kind.",
 						"type": "array",
 						"items": {
 							"type": "string",

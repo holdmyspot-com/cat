@@ -415,7 +415,26 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 					edits.add("requirement " + warning.requirement() + " at " + warning.path());
 				yield "a prompt author needs edits outside the edit authority: " + String.join("; ", edits);
 			}
+			case PendingDecision.TestRevisionBlocked blocked -> describeBlocked(blocked);
 		};
+	}
+
+	/**
+	 * Describes a test revision that needs the user's decision.
+	 *
+	 * @param blocked the blocked test revision
+	 * @return the test, why no revision can proceed and the proposed requirement change, if any
+	 */
+	private static String describeBlocked(PendingDecision.TestRevisionBlocked blocked)
+	{
+		String text = switch (blocked.reason())
+		{
+			case UNPROVABLE -> "no organic test can prove the claims of test " + blocked.test() + ": ";
+			case REQUIREMENT_CHANGE -> "a revision of test " + blocked.test() + " would change its claims: ";
+		} + blocked.reasons();
+		if (blocked.proposedChange().isBlank())
+			return text;
+		return text + "\nProposed requirement change: " + blocked.proposedChange();
 	}
 
 	/**

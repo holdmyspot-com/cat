@@ -1005,7 +1005,7 @@ public final class TrialAdoption
 	{
 		if (draft.header.lifecycle() != Lifecycle.ACTIVE || !draft.isConfirmed() || !draft.pendingDecisions.isEmpty() ||
 			draft.revisionRequested || draft.runningAttempt().isPresent() || draft.diagnosis != null ||
-			draft.round != null || draft.promptAuthor != null)
+			draft.round != null || draft.promptAuthor != null || !draft.testRevisions.requests().isEmpty())
 		{
 			return;
 		}
@@ -1015,7 +1015,37 @@ public final class TrialAdoption
 		if (due.isPresent())
 		{
 			String cell = due.get();
-			draft.raise(new PendingDecision.CheckpointReached(cell, draft.developmentCount(cell).outcomes()));
+			String test = draft.contract().findCell(cell).orElseThrow().testId();
+			if (draft.testRevisions.isSound(draft.lineageNumber(), test))
+				draft.raise(new PendingDecision.CheckpointReached(cell, draft.developmentCount(cell).outcomes()));
+			else
+			{
+				draft.testRevisions = draft.testRevisions.request(new TestRevisionRequest(test,
+					TestRevisionRequest.Trigger.REVIEW_CHECKPOINT, latestKinds(draft, cell), Map.of()));
+			}
 		}
+	}
+
+	/**
+	 * Returns the kinds of failure that the latest valid prompt author diagnosis of a cell in the current lineage
+	 * reported.
+	 *
+	 * @param draft the state
+	 * @param cell the cell's identifier
+	 * @return the kinds, empty if no valid diagnosis exists
+	 */
+	private static List<PromptAuthorKind> latestKinds(Draft draft, String cell)
+	{
+		List<PromptAuthorDiagnosis> diagnoses = draft.optimization.promptAuthors();
+		for (int i = diagnoses.size() - 1; i >= 0; --i)
+		{
+			PromptAuthorDiagnosis diagnosis = diagnoses.get(i);
+			if (diagnosis.lineage() == draft.lineageNumber() && diagnosis.cell().equals(cell) &&
+				diagnosis.rejections().isEmpty())
+			{
+				return diagnosis.kinds();
+			}
+		}
+		return List.of();
 	}
 }

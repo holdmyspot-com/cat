@@ -12,7 +12,8 @@ import java.util.List;
  *
  * @param id the identifier that is unique within the contract, in lowercase words joined by underscores
  * @param description what the prompt system must do
- * @param source the file or link that states the obligation
+ * @param source the file or link that states the obligation, or {@value #GOAL} if the user's goal for the campaign
+ *   states it
  * @param trigger the condition under which the obligation applies, or {@code null} if it always applies
  * @param behaviors the failure behaviors that a reply can show when it fails the requirement, such as
  *   {@code no_tool_call}: each a lowercase identifier of words joined by underscores, none of them
@@ -24,13 +25,18 @@ public record Requirement(String id, String description, String source, String t
 	 * The behavior that a judge names when a reply fails a requirement in a way that the requirement does not list.
 	 */
 	public static final String OTHER_BEHAVIOR = "other";
+	/**
+	 * The source of a requirement that the user's goal for the campaign states, rather than a prompt file.
+	 */
+	public static final String GOAL = "goal";
 
 	/**
 	 * Creates a requirement.
 	 *
 	 * @param id the identifier that is unique within the contract, in lowercase words joined by underscores
 	 * @param description what the prompt system must do
-	 * @param source the file or link that states the obligation
+	 * @param source the file or link that states the obligation, or {@value #GOAL} if the user's goal for the campaign
+	 *   states it
 	 * @param trigger the condition under which the obligation applies, or {@code null} if it always applies
 	 * @param behaviors the failure behaviors that a reply can show when it fails the requirement
 	 * @throws NullPointerException if {@code id}, {@code description}, {@code source} or {@code behaviors} is null,

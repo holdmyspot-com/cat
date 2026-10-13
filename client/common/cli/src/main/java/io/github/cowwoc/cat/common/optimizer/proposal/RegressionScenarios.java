@@ -2,10 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
-import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
-import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
@@ -469,43 +466,41 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	}
 
 	/**
-	 * Returns a refusal reason for every scenario of a named prompt source that no test cites.
+	 * Returns the scenarios of the guidance that a campaign optimizes.
 	 *
-	 * @param contract the proposed contract
-	 * @param sources the instruction files whose loading was derived from documented rules
-	 * @return the missing-scenario problems, in citation order
-	 * @throws NullPointerException if any argument is null or contains null
+	 * @param target the absolute path of the campaign's target, a prompt file or a directory of prompt files
+	 * @return the scenarios whose guidance is the target or lies inside it, in citation order
+	 * @throws NullPointerException if {@code target} is null
 	 */
-	public List<String> missingCitations(Contract contract, List<DerivedSource> sources)
+	public RegressionScenarios of(Path target)
 	{
-		requireThat(contract, "contract").isNotNull();
-		requireThat(sources, "sources").isNotNull();
-		Set<Path> paths = new LinkedHashSet<>();
-		for (Requirement requirement : contract.requirements())
-			addSources(paths, requirement.source());
-		for (DerivedSource source : sources)
-			addSources(paths, source.path());
-		Set<String> cited = new LinkedHashSet<>();
-		for (PromptTest test : contract.tests())
-			cited.addAll(test.regressionScenarios());
-		List<String> problems = new ArrayList<>();
+		requireThat(target, "target").isNotNull();
+		Path normalized = target.toAbsolutePath().normalize();
+		List<Scenario> kept = new ArrayList<>();
 		for (Scenario scenario : scenarios)
 		{
-			if (paths.contains(scenario.source()) && !cited.contains(scenario.citation()))
-				problems.add("Recorded regression scenario has no citing test: " + scenario.citation());
+			if (scenario.source().startsWith(normalized))
+				kept.add(scenario);
 		}
-		return List.copyOf(problems);
+		return new RegressionScenarios(project, kept);
 	}
 
 	/**
-	 * Resolves each file named by a source, including both ends of a symbolic link.
+	 * Returns a refusal reason for every scenario that no test cites.
 	 *
-	 * @param paths receives the normalized absolute paths
-	 * @param source a path, or a link path followed by its target using {@code ->}
+	 * @param cited the citations of the proposal's prompt tests
+	 * @return the missing-scenario problems, in citation order
+	 * @throws NullPointerException if {@code cited} is null
 	 */
-	private void addSources(Set<Path> paths, String source)
+	public List<String> missingCitations(Set<String> cited)
 	{
-		for (String part : source.split("->"))
-			paths.add(project.resolve(part.strip()).normalize());
+		requireThat(cited, "cited").isNotNull();
+		List<String> problems = new ArrayList<>();
+		for (Scenario scenario : scenarios)
+		{
+			if (!cited.contains(scenario.citation()))
+				problems.add("Recorded regression scenario has no citing test: " + scenario.citation());
+		}
+		return List.copyOf(problems);
 	}
 }

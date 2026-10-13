@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
 import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisions;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialInputs;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -27,10 +28,12 @@ import java.util.Map;
  * @param promptAuthors retained prompt author diagnoses, including attempts that produced no candidate
  * @param removed original hunk identifiers removed by minimality
  * @param attempts original promotion results and unfinished prompt author reservations
+ * @param testRevisions the campaign's test revisions: the pending requests, the revised tests and the tests found
+ *   sound
  */
 public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapshot, PromptSize working,
 	PromptSize incumbent, List<InputComparison> inputs, List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
-	List<AttemptProgress> attempts)
+	List<AttemptProgress> attempts, TestRevisions testRevisions)
 {
 	/**
 	 * A cell's descriptive medians of completed trial sessions that reported usage.
@@ -137,7 +140,7 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 		}
 		return new OptimizationReport(working, incumbent, evidence.promptSizes().getOrDefault(working, PromptSize.UNKNOWN),
 			evidence.promptSizes().getOrDefault(incumbent, PromptSize.UNKNOWN), comparisons, evidence.promptAuthors(),
-			evidence.removed(), AttemptProgress.of(campaign));
+			evidence.removed(), AttemptProgress.of(campaign), campaign.testRevisions());
 	}
 
 	/**

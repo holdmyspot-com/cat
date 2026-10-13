@@ -53,8 +53,8 @@ public final class Scheduler
 	 * @param campaign the campaign
 	 * @param now the current time, which becomes the assignment time of each new assignment
 	 * @param freeCapacity the maximum number of nested sessions that may start now; a nonpositive value admits none
-	 * @return the admissions, in priority order; empty if the campaign is not active, waits for a decision or a
-	 *   confirmation, or is throttled
+	 * @return the admissions, in priority order; empty if the campaign is not active, waits for a decision, a test
+	 *   revision or a confirmation, or is throttled
 	 * @throws NullPointerException if {@code campaign} or {@code now} are null
 	 */
 	public static List<Admission> plan(Campaign campaign, Instant now, int freeCapacity)
@@ -63,7 +63,8 @@ public final class Scheduler
 		requireThat(now, "now").isNotNull();
 		List<Admission> plan = new ArrayList<>();
 		if (freeCapacity <= 0 || campaign.lifecycle() != Lifecycle.ACTIVE || !campaign.isConfirmed() ||
-			campaign.pending() != null || campaign.revisionRequested() || !campaign.throttle().allowsAdmission(now))
+			campaign.pending() != null || campaign.revisionRequested() || campaign.awaitsTestRevision() ||
+			!campaign.throttle().allowsAdmission(now))
 		{
 			return plan;
 		}

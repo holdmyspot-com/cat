@@ -96,13 +96,17 @@ public record PromptAuthorManifest(List<PromptAuthorKind> kinds, List<HunkEviden
 	 * @param incumbent the confirmed snapshot's inventory
 	 * @param confirmedText the confirmed file bytes, keyed by resolved path
 	 * @param conflicts the reported conflicts in presentation order
+	 * @param soundTests the test of each supplied failure whose test a test revision reported sound in the current
+	 *   lineage, keyed by the failure identifier
 	 * @return the manifest rejection reasons
 	 */
 	public List<String> violations(Set<String> received, List<Hunk> changed, Contract contract,
-		FileInventory incumbent, Map<Path, FileContent> confirmedText, List<PromptAuthorConflict> conflicts)
+		FileInventory incumbent, Map<Path, FileContent> confirmedText, List<PromptAuthorConflict> conflicts,
+		Map<String, String> soundTests)
 	{
 		List<String> violations = new ArrayList<>(hunkViolations(received, changed));
 		violations.addAll(kindViolations(received));
+		violations.addAll(testDefectViolations(soundTests));
 		Map<String, FailureKind> classifications = new HashMap<>();
 		for (PromptAuthorKind kind : kinds)
 		{
@@ -147,6 +151,36 @@ public record PromptAuthorManifest(List<PromptAuthorKind> kinds, List<HunkEviden
 		}
 		violations.addAll(dissimilarViolations(contract));
 		return List.copyOf(violations);
+	}
+
+	/**
+	 * Checks that each test defect kind names its fault and cites no failure of a test that a test revision reported
+	 * sound.
+	 *
+	 * @param soundTests the test of each supplied failure whose test a test revision reported sound, keyed by the
+	 *   failure identifier
+	 * @return rejection reasons, empty if every test defect kind names its fault and concerns only unexamined tests
+	 */
+	private List<String> testDefectViolations(Map<String, String> soundTests)
+	{
+		List<String> violations = new ArrayList<>();
+		for (PromptAuthorKind kind : kinds)
+		{
+			if (kind.classification() != FailureKind.TEST_DEFECT)
+				continue;
+			if (kind.fault().isBlank())
+				violations.add("Kind '" + kind.name() + "' is classified test_defect but names no fault of the test");
+			for (String failure : kind.failures())
+			{
+				String test = soundTests.get(failure);
+				if (test != null)
+				{
+					violations.add("Failure " + failure + " is classified test_defect, but a test revision reported " +
+						"its test " + test + " sound");
+				}
+			}
+		}
+		return violations;
 	}
 
 	/**

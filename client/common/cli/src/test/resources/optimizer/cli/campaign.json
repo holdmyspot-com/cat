@@ -1,11 +1,12 @@
 {
-  "format_version" : 38,
+  "format_version" : 39,
   "header" : {
     "id" : "fixture-campaign",
     "root" : "/project",
     "target" : "/project/CLAUDE.md",
     "harness" : "claude",
-    "lifecycle" : "active"
+    "lifecycle" : "active",
+    "goal" : null
   },
   "ceiling" : 8,
   "lineages" : [ {
@@ -396,6 +397,11 @@
   "pending_decisions" : [ ],
   "revision_requested" : false,
   "answered_warnings" : [ ],
+  "test_revisions" : {
+    "requests" : [ ],
+    "revisions" : [ ],
+    "sound" : [ ]
+  },
   "outcome" : null,
   "delivery" : null
 }

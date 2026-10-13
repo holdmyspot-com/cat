@@ -74,6 +74,10 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.TriedTestCase;
+import io.github.cowwoc.cat.common.optimizer.campaign.SoundTest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevision;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisionRequest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
@@ -143,7 +147,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 38;
+	private static final int FORMAT_VERSION = 39;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_ASSERTIONS = "failed_assertions";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -224,6 +228,7 @@ final class CampaignJson
 		ArrayNode answered = root.putArray("answered_warnings");
 		for (AuthorityWarning warning : campaign.answeredWarnings())
 			writeWarning(answered.addObject(), warning);
+		root.set("test_revisions", writeTestRevisions(campaign.testRevisions()));
 		putConstant(root, "outcome", campaign.outcome());
 		DeliveryRequest delivery = campaign.delivery();
 		if (delivery == null)
@@ -298,7 +303,7 @@ final class CampaignJson
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			readThrottle(field(root, "throttle")), pending, bool(root, "revision_requested"),
 			nullableConstant(root, "outcome", Outcome.class), delivery, readOptimization(field(root, "optimization")),
-			answered);
+			answered, readTestRevisions(field(root, "test_revisions")));
 	}
 
 	/**
@@ -328,15 +333,7 @@ final class CampaignJson
 			promptAuthor.put("snapshot", diagnosis.snapshot().hex());
 			promptAuthor.put("transcript", diagnosis.transcript().toString());
 			promptAuthor.put("effects", diagnosis.effects().toString());
-			ArrayNode kinds = promptAuthor.putArray("kinds");
-			for (PromptAuthorKind kind : diagnosis.kinds())
-			{
-				ObjectNode element = kinds.addObject();
-				element.put("name", kind.name());
-				writeStrings(element.putArray("failures"), kind.failures());
-				element.put("classification", EnumNames.lowerCase(kind.classification()));
-				writeStrings(element.putArray("hunks"), kind.hunks());
-			}
+			writeKinds(promptAuthor.putArray("kinds"), diagnosis.kinds());
 			ArrayNode hunks = promptAuthor.putArray("hunks");
 			for (HunkEvidence hunk : diagnosis.hunks())
 			{
@@ -404,6 +401,120 @@ final class CampaignJson
 	}
 
 	/**
+	 * Writes the failure kinds that a prompt author classified.
+	 *
+	 * @param array the empty array that receives the kinds
+	 * @param kinds the kinds
+	 */
+	private static void writeKinds(ArrayNode array, List<PromptAuthorKind> kinds)
+	{
+		for (PromptAuthorKind kind : kinds)
+		{
+			ObjectNode element = array.addObject();
+			element.put("name", kind.name());
+			writeStrings(element.putArray("failures"), kind.failures());
+			element.put("classification", EnumNames.lowerCase(kind.classification()));
+			writeStrings(element.putArray("hunks"), kind.hunks());
+			element.put("fault", kind.fault());
+		}
+	}
+
+	/**
+	 * Reads the failure kinds that a prompt author classified.
+	 *
+	 * @param node the object whose {@code kinds} array holds the kinds
+	 * @return the kinds
+	 */
+	private static List<PromptAuthorKind> readKinds(JsonNode node)
+	{
+		List<PromptAuthorKind> kinds = new ArrayList<>();
+		for (JsonNode kind : elements(node, "kinds"))
+		{
+			kinds.add(new PromptAuthorKind(text(kind, "name"), readStrings(kind, "failures"),
+				constantValue(field(kind, "classification"), "classification", FailureKind.class),
+				readStrings(kind, "hunks"), text(kind, "fault")));
+		}
+		return kinds;
+	}
+
+	/**
+	 * Converts the requested, completed and declined test revisions to a document.
+	 *
+	 * @param revisions the test revisions
+	 * @return the document
+	 */
+	private ObjectNode writeTestRevisions(TestRevisions revisions)
+	{
+		ObjectNode node = json.createObjectNode();
+		ArrayNode requests = node.putArray("requests");
+		for (TestRevisionRequest request : revisions.requests())
+		{
+			ObjectNode element = requests.addObject();
+			element.put("test", request.test());
+			element.put("trigger", EnumNames.lowerCase(request.trigger()));
+			writeKinds(element.putArray("kinds"), request.kinds());
+			writeStrings(element.putArray("failure_ids"), List.copyOf(request.failures().keySet()));
+			element.set("failures", writeFailures(List.copyOf(request.failures().values())));
+		}
+		ArrayNode completed = node.putArray("revisions");
+		for (TestRevision revision : revisions.revisions())
+		{
+			ObjectNode element = completed.addObject();
+			element.put("lineage", revision.lineage());
+			element.put("test", revision.test());
+			element.put("before", revision.before());
+			element.put("after", revision.after());
+			element.put("reasons", revision.reasons());
+		}
+		ArrayNode sound = node.putArray("sound");
+		for (SoundTest report : revisions.sound())
+		{
+			ObjectNode element = sound.addObject();
+			element.put("lineage", report.lineage());
+			element.put("test", report.test());
+			element.put("reasons", report.reasons());
+		}
+		return node;
+	}
+
+	/**
+	 * Converts a document to the requested, completed and declined test revisions.
+	 *
+	 * @param node the document
+	 * @return the test revisions
+	 * @throws IllegalArgumentException if a request's failure ids and failures differ in number
+	 */
+	private static TestRevisions readTestRevisions(JsonNode node)
+	{
+		List<TestRevisionRequest> requests = new ArrayList<>();
+		for (JsonNode element : elements(node, "requests"))
+		{
+			List<String> ids = readStrings(element, "failure_ids");
+			List<Failure> values = readFailures(element, "failures");
+			if (ids.size() != values.size())
+			{
+				throw new IllegalArgumentException("test_revisions.requests: " + ids.size() + " failure ids but " +
+					values.size() + " failures");
+			}
+			Map<String, Failure> failures = new LinkedHashMap<>();
+			for (int i = 0; i < ids.size(); ++i)
+				failures.put(ids.get(i), values.get(i));
+			requests.add(new TestRevisionRequest(text(element, "test"),
+				constant(element, "trigger", TestRevisionRequest.Trigger.class), readKinds(element), failures));
+		}
+		List<TestRevision> revisions = new ArrayList<>();
+		for (JsonNode element : elements(node, "revisions"))
+		{
+			revisions.add(new TestRevision(integer(element, "lineage"), text(element, "test"),
+				text(element, "before"), text(element, "after"), text(element, "reasons")));
+		}
+		List<SoundTest> sound = new ArrayList<>();
+		for (JsonNode element : elements(node, "sound"))
+			sound.add(new SoundTest(integer(element, "lineage"), text(element, "test"), text(element, "reasons")));
+		return new TestRevisions(requests, revisions, sound);
+	}
+
+	/**
 	 * Reads retained prompt author diagnoses and removed hunks.
 	 *
 	 * @param node the document
@@ -414,13 +525,7 @@ final class CampaignJson
 		List<PromptAuthorDiagnosis> promptAuthors = new ArrayList<>();
 		for (JsonNode promptAuthor : elements(node, "prompt_authors"))
 		{
-			List<PromptAuthorKind> kinds = new ArrayList<>();
-			for (JsonNode kind : elements(promptAuthor, "kinds"))
-			{
-				kinds.add(new PromptAuthorKind(text(kind, "name"), readStrings(kind, "failures"),
-					constantValue(field(kind, "classification"), "classification", FailureKind.class),
-					readStrings(kind, "hunks")));
-			}
+			List<PromptAuthorKind> kinds = readKinds(promptAuthor);
 			List<HunkEvidence> hunks = new ArrayList<>();
 			for (JsonNode hunk : elements(promptAuthor, "hunks"))
 			{
@@ -873,6 +978,7 @@ final class CampaignJson
 		node.put("target", header.target().toString());
 		node.put("harness", EnumNames.lowerCase(header.harness()));
 		node.put("lifecycle", EnumNames.lowerCase(header.lifecycle()));
+		node.put("goal", header.goal());
 		return node;
 	}
 
@@ -885,7 +991,8 @@ final class CampaignJson
 	private static Header readHeader(JsonNode node)
 	{
 		return new Header(text(node, "id"), Path.of(text(node, "root")), Path.of(text(node, "target")),
-			constant(node, "harness", Harness.class), constant(node, "lifecycle", Lifecycle.class));
+			constant(node, "harness", Harness.class), constant(node, "lifecycle", Lifecycle.class),
+			nullableText(node, "goal"));
 	}
 
 	/**
@@ -1746,6 +1853,14 @@ final class CampaignJson
 				for (AuthorityWarning warning : warnings.warnings())
 					writeWarning(array.addObject(), warning);
 			}
+			case PendingDecision.TestRevisionBlocked blocked ->
+			{
+				node.put("type", "test_revision_blocked");
+				node.put("test", blocked.test());
+				node.put("reason", EnumNames.lowerCase(blocked.reason()));
+				node.put("reasons", blocked.reasons());
+				node.put("proposed_change", blocked.proposedChange());
+			}
 		}
 		return node;
 	}
@@ -1804,6 +1919,9 @@ final class CampaignJson
 					warnings.add(readWarning(element));
 				yield new PendingDecision.AuthorityWarnings(warnings);
 			}
+			case "test_revision_blocked" -> new PendingDecision.TestRevisionBlocked(text(node, "test"),
+				constant(node, "reason", PendingDecision.TestRevisionBlocked.Reason.class), text(node, "reasons"),
+				text(node, "proposed_change"));
 			default -> throw new IllegalArgumentException("pending_decisions: unknown type " + type);
 		};
 	}

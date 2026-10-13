@@ -45,7 +45,32 @@ public interface Core
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	CommandResult start(Path target, int ceiling) throws CommandRefusedException, IOException, InterruptedException;
+	default CommandResult start(Path target, int ceiling)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		return start(target, ceiling, null);
+	}
+
+	/**
+	 * Starts a campaign with the selected ceiling and the user's goal, or resumes the target's resumable campaign with
+	 * its stored ceiling and goal.
+	 *
+	 * @param target the prompt file or prompt system
+	 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
+	 * @param goal what the user wants the target to achieve, in the user's own words, which a new campaign stores and
+	 *   gives to the contract author, or {@code null} if the user stated no goal
+	 * @return the result, which presents the proposal that awaits confirmation
+	 * @throws NullPointerException if {@code target} is null
+	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}] or
+	 *   {@code goal} is blank
+	 * @throws CommandRefusedException if the current harness cannot deny its sessions reads of held-out content, the
+	 *   other harness started the target's campaign, the target is not in the project, or the base worktree has
+	 *   uncommitted changes
+	 * @throws IOException if the store, the workspace or a session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 */
+	CommandResult start(Path target, int ceiling, String goal)
+		throws CommandRefusedException, IOException, InterruptedException;
 
 	/**
 	 * Advances a campaign for one slice.

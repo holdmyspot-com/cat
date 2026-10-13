@@ -21,21 +21,28 @@ public sealed interface Command
 	 *
 	 * @param target the prompt file or prompt system, as the user wrote it
 	 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
+	 * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the user
+	 *   stated no goal
 	 */
-	record Start(Path target, int ceiling) implements Command
+	record Start(Path target, int ceiling, String goal) implements Command
 	{
 		/**
 		 * Creates the command.
 		 *
 		 * @param target the prompt file or prompt system, as the user wrote it
 		 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
+		 * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the
+		 *   user stated no goal
 		 * @throws NullPointerException if {@code target} is null
-		 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}]
+		 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}] or
+		 *   {@code goal} is blank
 		 */
 		public Start
 		{
 			requireThat(target, "target").isNotNull();
 			requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
+			if (goal != null)
+				requireThat(goal, "goal").isNotBlank();
 		}
 	}
 

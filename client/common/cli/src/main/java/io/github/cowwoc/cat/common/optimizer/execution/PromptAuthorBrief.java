@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
+import io.github.cowwoc.cat.common.optimizer.campaign.SoundTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
@@ -26,6 +27,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -61,13 +63,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  *                            report them again
  * @param earlierManifests    the manifests of the lineage's earlier prompt author attempts with their promotion
  *                            results, in the order CAT retained them
+ * @param soundTests          the tests of the current lineage that a test revision reported sound, in report order;
+ *                            the prompt author may not classify their failures as test defects
  */
 public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Contract contract,
 	List<Failure> developmentFailures,
                           Map<String, String> evidenceSections, Map<String, CellCounts> developmentCounts,
                           List<EndedAttempt> endedAttempts,
                           Map<Path, Path> links, String campaignEdits, List<AuthorityWarning> answeredWarnings,
-                          List<EarlierManifest> earlierManifests)
+                          List<EarlierManifest> earlierManifests, List<SoundTest> soundTests)
 {
 	/**
 	 * Creates a brief.
@@ -89,6 +93,8 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 	 *                            authorized source, in the order they were answered
 	 * @param earlierManifests    the manifests of the lineage's earlier prompt author attempts with their promotion
 	 *                            results, in the order CAT retained them
+	 * @param soundTests          the tests of the current lineage that a test revision reported sound, in report
+	 *                            order
 	 * @throws NullPointerException     if any of the arguments are null or contain null
 	 * @throws IllegalArgumentException if {@code cell} is blank
 	 */
@@ -109,6 +115,40 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 		requireThat(campaignEdits, "campaignEdits").isNotNull();
 		answeredWarnings = List.copyOf(answeredWarnings);
 		earlierManifests = List.copyOf(earlierManifests);
+		soundTests = List.copyOf(soundTests);
+	}
+
+	/**
+	 * Returns every supplied failure by its citation identifier.
+	 *
+	 * @return the failures, in adoption order
+	 */
+	public Map<String, Failure> failuresById()
+	{
+		Map<String, Failure> failures = new LinkedHashMap<>();
+		for (int index = 0; index < developmentFailures.size(); ++index)
+			failures.put(developmentId(index), developmentFailures.get(index));
+		return failures;
+	}
+
+	/**
+	 * Returns the test of each supplied failure whose test a test revision reported sound.
+	 *
+	 * @return the test identifiers, keyed by the failure's citation identifier
+	 */
+	public Map<String, String> soundFailures()
+	{
+		Set<String> sound = new HashSet<>();
+		for (SoundTest report : soundTests)
+			sound.add(report.test());
+		Map<String, String> failures = new HashMap<>();
+		for (Map.Entry<String, Failure> entry : failuresById().entrySet())
+		{
+			String test = entry.getValue().testCase().testId();
+			if (sound.contains(test))
+				failures.put(entry.getKey(), test);
+		}
+		return failures;
 	}
 
 	/**
@@ -193,13 +233,19 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 			if (diagnosis.lineage() == lineage)
 				earlier.add(new EarlierManifest(diagnosis, result(diagnosis, campaign.optimization().attempts())));
 		}
+		List<SoundTest> sound = new ArrayList<>();
+		for (SoundTest report : campaign.testRevisions().sound())
+		{
+			if (report.lineage() == lineage)
+				sound.add(report);
+		}
 		Round round = development.round();
 		String cell = round.reservations().get(number);
 		PromptAuthorApproach approach = round.approach(number, campaign.optimization().promptAuthorAttempts(cell,
 			round.number()));
 		return new PromptAuthorBrief(cell, approach,
 			campaign.contract(), development.failures(), sections, development.counts(), ended,
-			links, campaignEdits, campaign.answeredWarnings(), earlier);
+			links, campaignEdits, campaign.answeredWarnings(), earlier, sound);
 	}
 
 	/**

@@ -17,7 +17,9 @@ import java.io.PrintStream;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.StringJoiner;
 import java.util.regex.Pattern;
 
@@ -32,18 +34,20 @@ import java.util.regex.Pattern;
 public final class Commands
 {
 	private static final String MAX_CONCURRENCY = "--max-concurrency";
+	private static final String GOAL = "--goal";
+
 	/**
 	 * The usage text.
 	 */
 	public static final String USAGE = """
 		usage: prompt-optimizer <command> ...
-		  start <target> [%s <1..%d>]
+		  start <target> [%s <text>] [%s <1..%d>]
 		  run <campaign>
 		  status <campaign | target>
 		  confirm <campaign> <%s>
 		  revise <campaign> <feedback>
 		  choose <campaign> <choice> [--attempt N | --review-point N]
-		  cancel <campaign>""".formatted(MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, scopeIds());
+		  cancel <campaign>""".formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, scopeIds());
 	private static final Pattern CAMPAIGN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,63}");
 	private final Core core;
 	private final JsonMapper json;
@@ -115,7 +119,8 @@ public final class Commands
 	}
 
 	/**
-	 * Parses {@code start}, defaulting the ceiling to 8 when the option is absent.
+	 * Parses {@code start}, whose options may appear in either order, each at most once. The ceiling defaults to 8
+	 * and the goal to none.
 	 *
 	 * @param rest the arguments after the command's name
 	 * @return the command
@@ -123,27 +128,42 @@ public final class Commands
 	 */
 	private static Command start(List<String> rest)
 	{
-		String form = "<target> [" + MAX_CONCURRENCY + " <1.." + Campaign.MAXIMUM_CEILING + ">]";
+		String form = "<target> [" + GOAL + " <text>] [" + MAX_CONCURRENCY + " <1.." + Campaign.MAXIMUM_CEILING +
+			">]";
 		if (rest.isEmpty())
 			throw new InvalidCommandException("start: expected " + form);
 		Path target = target("start", rest.getFirst());
-		if (rest.size() == 1)
-			return new Command.Start(target, Campaign.DEFAULT_CEILING);
-		if (rest.size() != 3 || !rest.get(1).equals(MAX_CONCURRENCY))
-			throw new InvalidCommandException("start: expected " + form + "; the option may appear only once.");
+		Map<String, String> options = new HashMap<>();
+		for (int i = 1; i < rest.size(); i += 2)
+		{
+			String option = rest.get(i);
+			if (!option.equals(GOAL) && !option.equals(MAX_CONCURRENCY))
+				throw new InvalidCommandException("start: expected " + form + "; unknown option '" + option + "'.");
+			if (i + 1 == rest.size())
+				throw new InvalidCommandException("start: " + option + " needs a value; expected " + form);
+			if (options.putIfAbsent(option, rest.get(i + 1)) != null)
+				throw new InvalidCommandException("start: expected " + form + "; each option may appear only once.");
+		}
 
-		int ceiling;
-		try
+		int ceiling = Campaign.DEFAULT_CEILING;
+		String ceilingText = options.get(MAX_CONCURRENCY);
+		if (ceilingText != null)
 		{
-			ceiling = Integer.parseInt(rest.get(2));
-			requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
+			try
+			{
+				ceiling = Integer.parseInt(ceilingText);
+				requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
+			}
+			catch (IllegalArgumentException _)
+			{
+				throw new InvalidCommandException(MAX_CONCURRENCY + " must be an integer in 1.." +
+					Campaign.MAXIMUM_CEILING + ", got '" + ceilingText + "'");
+			}
 		}
-		catch (IllegalArgumentException _)
-		{
-			throw new InvalidCommandException(MAX_CONCURRENCY + " must be an integer in 1.." +
-				Campaign.MAXIMUM_CEILING + ", got '" + rest.get(2) + "'");
-		}
-		return new Command.Start(target, ceiling);
+		String goal = options.get(GOAL);
+		if (goal != null && goal.isBlank())
+			throw new InvalidCommandException("start: the " + GOAL + " text is blank.");
+		return new Command.Start(target, ceiling, goal);
 	}
 
 	/**
@@ -419,7 +439,7 @@ public final class Commands
 	{
 		return switch (command)
 		{
-			case Command.Start start -> core.start(start.target(), start.ceiling());
+			case Command.Start start -> core.start(start.target(), start.ceiling(), start.goal());
 			case Command.Run run -> core.run(run.campaign());
 			case Command.Status status -> core.status(status.subject());
 			case Command.Confirm confirm -> core.confirm(confirm.campaign(), confirm.scope());

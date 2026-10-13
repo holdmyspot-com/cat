@@ -563,7 +563,7 @@ public final class TransitionsTest
 	private static Campaign checkpointWhileRunning()
 	{
 		Campaign campaign = new Builder().confirmed().development("formatting", 197, List.of(0, 0, 0, 2)).
-			development("safety", 10, 0).build();
+			development("safety", 10, 0).sound("formatting").build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);

@@ -34,9 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.SortedSet;
 import java.util.StringJoiner;
-import java.util.TreeSet;
 
 /**
  * The contract proposal that the user confirms or answers with feedback.
@@ -59,9 +57,9 @@ public final class Proposal
 	 * The limitation that every confirmed contract records: an emptied prompt file stays where it was, so a file that
 	 * references it still does.
 	 */
-	public static final String CONTROL_SOURCE_LIMIT = "Control trials empty every target prompt file but leave it " +
-		"in place. A file that references an emptied file still references it, so a control trial may still read " +
-		"it and find nothing.";
+	public static final String CONTROL_SOURCE_LIMIT = "Control trials empty the target prompt file but leave it in " +
+		"place. A file that references the target still references it, so a control trial may still read it and " +
+		"find nothing.";
 	/**
 	 * The number of certification attempts whose caps the proposal shows.
 	 */
@@ -75,7 +73,7 @@ public final class Proposal
 	private final Contract contract;
 	private final ProposalSchema schema;
 	private final LinkReport links;
-	private final SortedSet<Path> controlFiles;
+	private final Path controlFile;
 	private final HostLogin login;
 	private final int ceiling;
 	private final Map<CertificationScope, Campaign> previews;
@@ -84,6 +82,7 @@ public final class Proposal
 	private final Map<String, PilotResult> pilots;
 	private final Map<String, DeliveredTest> delivered;
 	private final PluginCheck plugin;
+	private final String goal;
 
 	/**
 	 * Creates a proposal.
@@ -92,7 +91,7 @@ public final class Proposal
 	 * @param contract the contract that confirmation freezes once the user chooses its certification scope
 	 * @param schema the proposal schema, which identifies the contract
 	 * @param links the symbolic links
-	 * @param controlFiles the target prompt files that the control source empties, in path order
+	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param ceiling the campaign's concurrency ceiling
 	 * @param previews the campaign as it would be after confirmation with each certification scope that the user
@@ -102,17 +101,18 @@ public final class Proposal
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @param delivered each prompt test as delivery would write it, by prompt test
 	 * @param plugin the check of the plugin under test
+	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
 	private Proposal(DerivedProposal derived, Contract contract, ProposalSchema schema, LinkReport links,
-		SortedSet<Path> controlFiles, HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews,
+		Path controlFile, HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews,
 		List<String> caps, CertificationStatus incumbent, Map<String, PilotResult> pilots,
-		Map<String, DeliveredTest> delivered, PluginCheck plugin)
+		Map<String, DeliveredTest> delivered, PluginCheck plugin, String goal)
 	{
 		this.derived = derived;
 		this.contract = contract;
 		this.schema = schema;
 		this.links = links;
-		this.controlFiles = controlFiles;
+		this.controlFile = controlFile;
 		this.login = login;
 		this.ceiling = ceiling;
 		this.previews = previews;
@@ -121,6 +121,7 @@ public final class Proposal
 		this.pilots = Collections.unmodifiableMap(new LinkedHashMap<>(pilots));
 		this.delivered = Collections.unmodifiableMap(new LinkedHashMap<>(delivered));
 		this.plugin = plugin;
+		this.goal = goal;
 	}
 
 	/**
@@ -130,7 +131,7 @@ public final class Proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
 	 *   requested
 	 * @param links the symbolic links of the prompt system and the staged fixtures
-	 * @param controlFiles the target prompt files that the control source empties, relative to the project directory
+	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param calibrator calibrates the caps of the first certification attempts
 	 * @param schema the proposal schema, which identifies the contract
@@ -138,10 +139,10 @@ public final class Proposal
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalStateException if the campaign cannot accept a confirmation
 	 */
-	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Set<Path> controlFiles,
+	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
 		HostLogin login, CapCalibrator calibrator, ProposalSchema schema)
 	{
-		return of(derived, campaign, links, controlFiles, login, calibrator, schema, Optional.empty());
+		return of(derived, campaign, links, controlFile, login, calibrator, schema, Optional.empty());
 	}
 
 	/**
@@ -151,7 +152,7 @@ public final class Proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
 	 *   requested
 	 * @param links the symbolic links of the prompt system and the staged fixtures
-	 * @param controlFiles the target prompt files that the control source empties, relative to the project directory
+	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param calibrator calibrates the caps of the first certification attempts
 	 * @param schema the proposal schema, which identifies the contract
@@ -161,10 +162,10 @@ public final class Proposal
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalStateException if the campaign cannot accept a confirmation
 	 */
-	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Set<Path> controlFiles,
+	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
 		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent)
 	{
-		return of(derived, campaign, links, controlFiles, login, calibrator, schema, incumbent, Map.of());
+		return of(derived, campaign, links, controlFile, login, calibrator, schema, incumbent, Map.of());
 	}
 
 	/**
@@ -175,7 +176,7 @@ public final class Proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
 	 *   requested
 	 * @param links the symbolic links of the prompt system and the staged fixtures
-	 * @param controlFiles the target prompt files that the control source empties, relative to the project directory
+	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param calibrator calibrates the caps of the first certification attempts
 	 * @param schema the proposal schema, which identifies the contract
@@ -186,11 +187,11 @@ public final class Proposal
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalStateException if the campaign cannot accept a confirmation
 	 */
-	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Set<Path> controlFiles,
+	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
 		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent,
 		Map<String, PilotResult> pilots)
 	{
-		return of(derived, campaign, links, controlFiles, login, calibrator, schema, incumbent, pilots,
+		return of(derived, campaign, links, controlFile, login, calibrator, schema, incumbent, pilots,
 			PluginCheck.NONE);
 	}
 
@@ -202,7 +203,7 @@ public final class Proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
 	 *   requested
 	 * @param links the symbolic links of the prompt system and the staged fixtures
-	 * @param controlFiles the target prompt files that the control source empties, relative to the project directory
+	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param calibrator calibrates the caps of the first certification attempts
 	 * @param schema the proposal schema, which identifies the contract
@@ -215,7 +216,7 @@ public final class Proposal
 	 * @throws IllegalArgumentException if exactly one of {@code derived} and {@code plugin} has a plugin under test
 	 * @throws IllegalStateException if the campaign cannot accept a confirmation
 	 */
-	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Set<Path> controlFiles,
+	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
 		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent,
 		Map<String, PilotResult> pilots, PluginCheck plugin)
 	{
@@ -225,7 +226,7 @@ public final class Proposal
 		requireThat(derived, "derived").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(links, "links").isNotNull();
-		requireThat(controlFiles, "controlFiles").isNotNull();
+		requireThat(controlFile, "controlFile").isNotNull();
 		requireThat(login, "login").isNotNull();
 		requireThat(calibrator, "calibrator").isNotNull();
 		requireThat(schema, "schema").isNotNull();
@@ -271,13 +272,12 @@ public final class Proposal
 			}
 			caps.add("Attempt " + index + ": α = " + Markdown.level(level) + ", cap " + cap);
 		}
-		SortedSet<Path> sortedControlFiles = Collections.unmodifiableSortedSet(new TreeSet<>(controlFiles));
 		Path target = campaign.header().root().relativize(campaign.header().target());
 		Map<String, DeliveredTest> delivered = new LinkedHashMap<>();
 		for (DeliveredTest test : DeliveredTest.of(contract, AddedTestCases.NONE, target))
 			delivered.put(test.id(), test);
-		return new Proposal(derived, contract, schema, links, sortedControlFiles, login, campaign.ceiling(), previews,
-			caps, incumbent.orElse(null), pilots, delivered, plugin);
+		return new Proposal(derived, contract, schema, links, controlFile, login, campaign.ceiling(), previews,
+			caps, incumbent.orElse(null), pilots, delivered, plugin, campaign.header().goal());
 	}
 
 	/**
@@ -442,8 +442,8 @@ public final class Proposal
 	 */
 	public String render()
 	{
-		return new Markdown(derived, contract, links, controlFiles, login, ceiling, previews, caps, incumbent, pilots,
-			delivered, plugin).render();
+		return new Markdown(derived, contract, links, controlFile, login, ceiling, previews, caps, incumbent, pilots,
+			delivered, plugin, goal).render();
 	}
 
 	/**

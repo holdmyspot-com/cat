@@ -28,10 +28,12 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.StringJoiner;
 
@@ -44,13 +46,17 @@ import tools.jackson.databind.node.ObjectNode;
  * Creates requests for the session that reads a prompt system and proposes its requirements and tests (the
  * contract author), and validates that session's output.
  * <p>
+ * The request names the campaign's target and the user's goal, and supplies only the recorded regression scenarios of
+ * the target's guidance; the proposal must cite every one of them.
+ * <p>
  * The contract author's output follows the proposal schema without the judge fields, the trial profiles and the
  * committed test cases that CAT owns, plus the contract author's additional findings: the prompt files whose loading no
  * harness event reports, the user's profile restriction, the conditions that make certification unavailable,
  * and the groups of requirements that no reply can satisfy together.
  * CAT adds its judge fields and computes the trial profiles before validating the proposal. It rejects output that
  * supplies a field that CAT owns, declares an assertion whose built-in tool needs exit statuses that the harness does
- * not report, or omits a citation for a recorded regression scenario of a prompt source.
+ * not report, or omits a citation for a recorded regression scenario of the target. It reports every problem it finds
+ * together, including missing citations when the output also violates the schema.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -70,6 +76,11 @@ public final class ContractAuthorProtocol
 	private static final String CORRECTION_RESOURCE = "/optimizer/proposal/contract-author-correction.md";
 	private static final String FINDINGS_RESOURCE = "/optimizer/proposal/contract-author-findings.schema.json";
 	/**
+	 * The rules for writing a prompt test, which every session that writes one receives.
+	 */
+	private static final String PROMPT_TESTS_RESOURCE = "/optimizer/proposal/prompt-tests.md";
+	private static final String PROMPT_TESTS = "{{prompt_tests}}\n";
+	/**
 	 * The value of the revision placeholders when there is nothing to revise.
 	 */
 	private static final String NONE = "none";
@@ -84,6 +95,8 @@ public final class ContractAuthorProtocol
 	private final String outputTurn;
 	private final PromptTemplate correction;
 	private final RegressionScenarios scenarios;
+	private final Path target;
+	private final String goal;
 	private final boolean reportsExitStatus;
 
 	/**
@@ -92,29 +105,53 @@ public final class ContractAuthorProtocol
 	 * @param json the operation-owned JSON mapper
 	 * @param schema the proposal schema
 	 * @param judge the judge fields that CAT adds to every proposal
-	 * @param scenarios the available recorded scenarios that CAT supplies and checks
+	 * @param scenarios the available recorded scenarios, of which CAT supplies and checks those of the target
+	 * @param target the absolute path of the campaign's target, a prompt file or a directory of prompt files
+	 * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the user
+	 *   stated no goal
 	 * @param reportsExitStatus {@code true} if the harness reports the exit status of commands, so that a built-in
 	 *   check that needs it can be decided
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if any of the arguments other than {@code goal} are null
+	 * @throws IllegalArgumentException if {@code target} is relative or {@code goal} is blank
 	 * @throws UncheckedIOException if a packaged prompt or schema cannot be read
 	 */
 	public ContractAuthorProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge,
-		RegressionScenarios scenarios, boolean reportsExitStatus)
+		RegressionScenarios scenarios, Path target, String goal, boolean reportsExitStatus)
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(schema, "schema").isNotNull();
 		requireThat(judge, "judge").isNotNull();
 		requireThat(scenarios, "scenarios").isNotNull();
+		requireThat(target, "target").isNotNull();
+		requireThat(target.isAbsolute(), "target.isAbsolute()").isTrue();
+		if (goal != null)
+			requireThat(goal, "goal").isNotBlank();
 		this.json = json;
 		this.schema = schema;
 		this.judge = judge;
-		this.scenarios = scenarios;
+		this.scenarios = scenarios.of(target);
+		this.target = target.normalize();
+		this.goal = goal;
 		this.reportsExitStatus = reportsExitStatus;
 		this.responses = new JsonResponse(json);
-		this.prompt = PromptTemplate.load(PROMPT_RESOURCE);
+		this.prompt = withPromptTests(PROMPT_RESOURCE);
 		this.outputSchema = outputSchema(json, schema);
 		this.outputTurn = PromptTemplate.readResource(OUTPUT_RESOURCE);
 		this.correction = PromptTemplate.load(CORRECTION_RESOURCE);
+	}
+
+	/**
+	 * Loads a packaged prompt that receives the rules for writing a prompt test.
+	 *
+	 * @param resource the prompt, whose line {@code {{prompt_tests}}} the rules replace
+	 * @return the prompt with the rules in place
+	 * @throws UncheckedIOException if the prompt or the rules cannot be read
+	 */
+	static PromptTemplate withPromptTests(String resource)
+	{
+		String text = PromptTemplate.readResource(resource);
+		requireThat(text, "text").contains(PROMPT_TESTS);
+		return new PromptTemplate(text.replace(PROMPT_TESTS, PromptTemplate.readResource(PROMPT_TESTS_RESOURCE)));
 	}
 
 	/**
@@ -216,11 +253,44 @@ public final class ContractAuthorProtocol
 		}
 		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "profile_inventory",
 			profiles.toString(), "capability_ranking", evidence.ranking().describe(), "output_schema", outputSchema,
-			"regression_scenarios", scenarios.prompt(), "generators", ValueGenerators.describeAll()));
+			"regression_scenarios", scenarios.prompt(), "generators", ValueGenerators.describeAll(), "target_prompt_file",
+			targetPromptFile(), "goal", goal()));
 		FollowUp correct = result -> correction(result, evidence, salt);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn,
-			outputTurn), List.of(), TIME_LIMIT, judge.role(), WorkspaceFixtures.NONE, Optional.empty(),
+			outputTurn), List.of(), TIME_LIMIT, role(), WorkspaceFixtures.NONE, Optional.empty(),
 			Optional.of(correct));
+	}
+
+	/**
+	 * Returns the campaign's target prompt file as a contract author session names it.
+	 *
+	 * @return the target prompt file relative to the project, in backticks
+	 */
+	String targetPromptFile()
+	{
+		return "`" + scenarios.project().relativize(target) + "`";
+	}
+
+	/**
+	 * Returns the user's goal for the target as a contract author session receives it.
+	 *
+	 * @return the goal in the user's own words, or {@code none} if the user stated no goal
+	 */
+	String goal()
+	{
+		if (goal == null)
+			return NONE;
+		return goal;
+	}
+
+	/**
+	 * Returns the profile that a contract author session runs with.
+	 *
+	 * @return the harness's role profile
+	 */
+	TrialProfile role()
+	{
+		return judge.role();
 	}
 
 	/**
@@ -266,8 +336,8 @@ public final class ContractAuthorProtocol
 	 *   trial profiles that CAT owns, declares an assertion whose built-in tool needs exit statuses that the harness
 	 *   does not report, restricts the
 	 *   profiles to a set that the inventory cannot satisfy, describes a certification profile that matches no
-	 *   inventory profile, ranks a family twice, omits a citation for a recorded scenario of a prompt source, or breaks
-	 *   a rule of the contract model
+	 *   inventory profile, ranks a family twice, omits a citation for a recorded scenario of the target, or breaks a
+	 *   rule of the contract model. The exception lists every problem found.
 	 */
 	public DerivedProposal proposal(SessionResult.Completed result, ProfileEvidence profiles, long salt)
 		throws InvalidProposalException
@@ -278,8 +348,26 @@ public final class ContractAuthorProtocol
 		if (extracted.isEmpty())
 			throw new InvalidProposalException(List.of(NOT_ONE_OBJECT));
 		ObjectNode output = extracted.get();
-		rewriteProjectPaths(output, result.effects().toAbsolutePath().normalize().toString(),
-			scenarios.project().toString());
+		rewriteProjectPaths(output, result.effects());
+		return proposal(output, result.promptSources(), profiles, salt);
+	}
+
+	/**
+	 * Validates a contract author's output whose text already names the user's project, and computes its trial
+	 * profiles.
+	 *
+	 * @param output the output, which this method changes
+	 * @param observedSources the prompt sources that the harness reported loading in the contract author session
+	 * @param profiles the profile inventory, its shipped capability ranking and the bindings that CAT read when the
+	 *   contract author ran
+	 * @param salt the salt that CAT drew for the proposal
+	 * @return the proposal
+	 * @throws InvalidProposalException if the output breaks a rule that
+	 *   {@link #proposal(SessionResult.Completed, ProfileEvidence, long)} lists
+	 */
+	DerivedProposal proposal(ObjectNode output, String observedSources, ProfileEvidence profiles, long salt)
+		throws InvalidProposalException
+	{
 		String derivation = json.writerWithDefaultPrettyPrinter().writeValueAsString(output);
 
 		List<String> problems = new ArrayList<>();
@@ -321,16 +409,44 @@ public final class ContractAuthorProtocol
 			problems.addAll(unreportedExitStatuses(contract));
 			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
 			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
-			problems.addAll(scenarios.missingCitations(contract, derivedSources));
 		}
 		catch (InvalidProposalException e)
 		{
 			problems.addAll(e.problems());
 		}
+		// Read from the raw output so that missing citations are reported even when the schema rejects the output
+		problems.addAll(scenarios.missingCitations(citations(output)));
 		if (!problems.isEmpty())
 			throw new InvalidProposalException(problems);
-		return new DerivedProposal(contract, derivedSources, scopeConditions, conflicts, result.promptSources(),
-			derivation, citedScenarios(contract));
+		return new DerivedProposal(contract, derivedSources, scopeConditions, conflicts, observedSources, derivation,
+			citedScenarios(contract));
+	}
+
+	/**
+	 * Returns the regression scenarios that the prompt tests of the contract author's output cite, ignoring malformed
+	 * entries that the schema validation rejects.
+	 *
+	 * @param output the contract author's output
+	 * @return the citations
+	 */
+	private static Set<String> citations(ObjectNode output)
+	{
+		Set<String> cited = new HashSet<>();
+		JsonNode tests = output.get("tests");
+		if (tests == null || !tests.isArray())
+			return cited;
+		for (JsonNode test : tests)
+		{
+			JsonNode citations = test.get("regression_scenarios");
+			if (citations == null || !citations.isArray())
+				continue;
+			for (JsonNode citation : citations)
+			{
+				if (citation.isString())
+					cited.add(citation.asString());
+			}
+		}
+		return cited;
 	}
 
 	/**
@@ -387,6 +503,18 @@ public final class ContractAuthorProtocol
 			}
 		}
 		return cited;
+	}
+
+	/**
+	 * Replaces staged project references in every string value of a contract author session's output with the user's
+	 * project. Paths to the session's artifacts outside its project directory remain unchanged.
+	 *
+	 * @param output the output value whose text is rewritten in place
+	 * @param effects the session's project copy
+	 */
+	void rewriteProjectPaths(JsonNode output, Path effects)
+	{
+		rewriteProjectPaths(output, effects.toAbsolutePath().normalize().toString(), scenarios.project().toString());
 	}
 
 	/**

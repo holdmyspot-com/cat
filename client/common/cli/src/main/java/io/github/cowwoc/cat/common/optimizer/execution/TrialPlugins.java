@@ -27,7 +27,7 @@ final class TrialPlugins
 	/**
 	 * Returns the plugin under test as the trials of a staged source install it.
 	 *
-	 * @param plugin the contract's plugin under test, or empty if its target prompt files are not in a plugin; a
+	 * @param plugin the contract's plugin under test, or empty if its target prompt file is not in a plugin; a
 	 *   built plugin's base digest must be set
 	 * @param workspace the workspace that builds the staged source's copy of the plugin
 	 * @param source the staged source

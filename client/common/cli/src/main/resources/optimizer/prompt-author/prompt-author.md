@@ -70,6 +70,11 @@ confirmed prompt system to the working candidate. It is empty when there are non
 
 {{campaign_edits}}
 
+The tests that a test revision examined under the confirmed contract and found sound, as JSON, each with its `test`
+id and the `reasons` it needs no change. The array is empty when no test was found sound:
+
+{{sound_tests}}
+
 The development test cases that failed for the working candidate, as JSON. Each one gives its values and its
 `expected_outcome`, the assertions it failed in `failed_assertions`, each with its `assertion_id` and the `behavior`
 through which it failed, the reason for its failure in `rationale`, and the targeted reruns of the same test case
@@ -96,7 +101,7 @@ The development counts of the working candidate per cell, as JSON:
 The formal outcomes of the certification attempts that have ended, as JSON. Certification test cases are held out
 from you, so each formal failure gives only its `cell`, its `test` and, in `failed_assertions`, the `assertion_id` of
 each assertion it failed with the `behavior` through which it failed. `below_control` lists each assertion that the
-candidate passed less often than trials with the target prompt files empty, with its `cell`, `test`, the number of
+candidate passed less often than trials with the target prompt file empty, with its `cell`, `test`, the number of
 paired trials and each side's passes: the edits harmed an operation that the agent performs without them. These
 outcomes show which assertions still fail in certification, and how; they are not supplied failures, so do not group
 or cite them:
@@ -104,14 +109,14 @@ or cite them:
 {{ended_attempts}}
 
 The manifests of the earlier prompt author attempts under the confirmed contract, as JSON, oldest first. Each one gives
-the `attempt` number, its `cell`, its `kinds` (each with its `name`, `classification`, number of `failures` and the ids
-of the `hunks` that addressed it), its `hunks` (each with its `id`, `path`, the working lines `before_start` to
-`before_end` that it replaced, the prompt author's lines `after_start` to `after_end` that it wrote, and its `analogous`
-and `dissimilar` cases), the `rejections` that CAT gave it, and its `result`: `rejected` when CAT rejected the manifest,
-`no_candidate` when the attempt changed no prompt file or classified no kind `routing` or `guidance`, `not_measured`
-when no promotion result exists yet, `not_promoted` when its promotion runs did not make it the working candidate, and
-`promoted` when it became the working candidate. The campaign edits above hold what CAT kept of each promoted attempt's
-hunks. The array is empty when no earlier attempt exists:
+the `attempt` number, its `cell`, its `kinds` (each with its `name`, `classification`, number of `failures`, the ids of
+the `hunks` that addressed it and, for a `test_defect` kind, its `fault`), its `hunks` (each with its `id`, `path`, the
+working lines `before_start` to `before_end` that it replaced, the prompt author's lines `after_start` to `after_end`
+that it wrote, and its `analogous` and `dissimilar` cases), the `rejections` that CAT gave it, and its `result`:
+`rejected` when CAT rejected the manifest, `no_candidate` when the attempt changed no prompt file or classified no kind
+`routing` or `guidance`, `not_measured` when no promotion result exists yet, `not_promoted` when its promotion runs did
+not make it the working candidate, and `promoted` when it became the working candidate. The campaign edits above hold
+what CAT kept of each promoted attempt's hunks. The array is empty when no earlier attempt exists:
 
 {{earlier_manifests}}
 
@@ -127,11 +132,15 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
    tool call, a file change or a message) that departs from the contract; failures whose first departures are the
    same mistake form one kind. Put every supplied failure in exactly one kind, and classify each kind: `routing` when
    an existing instruction was not loaded or applied; `guidance` when an instruction is missing, ambiguous or
-   contradictory; `not_guidance` only for a test or contract defect or an infrastructure fault, which no prompt edit
-   can correct. A departure that looks like a model limitation, such as a mistyped command or a skipped step, is
-   `routing` or `guidance`: the prompt decides how reliably the model avoids it. An interim message, such as a progress
-   note before a tool call, is part of the turn's reply. Whether a prompt can stop the agent from sending one is not
-   known, but the prompt can shape its wording. Classify a kind of failure in an interim message as `routing` or
+   contradictory; `test_defect` when the test, not the prompt, is at fault: its turns cannot show the outcome that its
+   requirements claim, or they are not organic, such as turns that tell the agent it is tested, state the expected
+   outcome or ask for more work than the claim needs. Name what in the test causes the kind in its `fault`; CAT holds
+   new trials while a test revision examines the test. Do not classify a failure of a test listed as sound as
+   `test_defect`. Classify a kind `not_guidance` only for an infrastructure fault, which neither a prompt edit nor a
+   test revision can correct. A departure that looks like a model limitation, such as a mistyped command or a skipped
+   step, is `routing` or `guidance`: the prompt decides how reliably the model avoids it. An interim message, such as a
+   progress note before a tool call, is part of the turn's reply. Whether a prompt can stop the agent from sending one
+   is not known, but the prompt can shape its wording. Classify a kind of failure in an interim message as `routing` or
    `guidance`, and correct the prompt so that every message of the reply complies.
    Classify a kind as `conflict` when two requirements of the contract cannot both be satisfied and the prompt system
    confirmed with the contract already held the text that causes it: quote that text with its file, give at least two
@@ -139,7 +148,7 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
    contradiction that an edit made during this campaign introduced, yours or an earlier candidate's, is `guidance`:
    resolve it.
    Correct every `routing` and `guidance` kind, not only the most frequent one: a kind left uncorrected keeps failing
-   in every later measurement. Make no prompt edit for a `not_guidance` kind.
+   in every later measurement. Make no prompt edit for a `not_guidance` or `test_defect` kind.
    When an earlier manifest shows a hunk that targeted the same kind and that kind failed again, the model read the
    instruction and did not follow it, so stating it again or more strongly will not change the decision. Explain why
    it must be followed instead of restating the instruction: at the point where the model makes that decision, state
@@ -160,9 +169,10 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
    case; and each conflict with the failure ids it explains, its requirement ids, quotations, resolutions and
    recommended one. CAT rejects the attempt for a supplied failure outside every kind or in two kinds, a `routing` or
    `guidance` kind that names no hunk, a kind that names a hunk id absent from `hunks`, an uncited hunk, a citation to
-   a failure you did not receive, or a dissimilar case that names no test of the confirmed contract.
-   When every kind is `not_guidance` or `conflict`, report the kinds with an empty `hunks` array; the attempt produces
-   no candidate.
+   a failure you did not receive, a dissimilar case that names no test of the confirmed contract, a `test_defect` kind
+   without a `fault`, or a `test_defect` kind that cites a failure of a test listed as sound.
+   When every kind is `not_guidance`, `test_defect` or `conflict`, report the kinds with an empty `hunks` array; the
+   attempt produces no candidate.
 
 - Diagnose why the failing test cases failed by comparing each one's turns with its expected behaviour and expected
   outcome, with the failed assertions and their requirements, and with the rationales. Reruns that passed show the

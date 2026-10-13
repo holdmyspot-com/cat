@@ -67,6 +67,10 @@ public enum Choice
 	 */
 	RESOLUTION,
 	/**
+	 * Revise the contract with the requirement change that a blocked test revision proposed.
+	 */
+	PROPOSED_CHANGE,
+	/**
 	 * Run more reproduction rounds for the failure groups that did not reproduce, each with new development values.
 	 */
 	MORE_ROUNDS,

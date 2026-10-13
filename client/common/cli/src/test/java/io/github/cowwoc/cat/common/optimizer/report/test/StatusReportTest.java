@@ -26,6 +26,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.OptimizationEvidence;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
+import io.github.cowwoc.cat.common.optimizer.campaign.SoundTest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevision;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisions;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
@@ -123,8 +126,8 @@ public final class StatusReportTest
 		// Requirement: R-D10
 		PromptAuthorDiagnosis diagnosis = new PromptAuthorDiagnosis(3, 1, "safety", Builder.snapshot("candidate-1"),
 			List.of(new PromptAuthorKind("skipped confirmation", List.of("f1", "f2"), FailureKind.GUIDANCE,
-			List.of("h1")),
-				new PromptAuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of())),
+			List.of("h1"), ""),
+				new PromptAuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of(), "")),
 			List.of(new HunkEvidence("h1", Path.of("rules/safety.md"), 1, 2, 1, 3, List.of("f1", "f2"),
 				"Overwriting a file", "plain_list")),
 			List.of("Uncited changed hunk: CLAUDE.md#2"), Path.of("/runs/prompt-author-3/transcript.jsonl"),
@@ -301,6 +304,47 @@ public final class StatusReportTest
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("r1").contains("r2").contains("CLAUDE.md").
 			contains("Be brief.").contains("1. Exempt explanations.").
 			contains("2. Drop brevity. (recommended: Keeps the core task.)");
+	}
+
+	/**
+	 * Verifies that a blocked test revision reports its reasons and offers its proposed requirement change, then stop.
+	 */
+	@Test
+	public void reportsBlockedTestRevision()
+	{
+		// Requirement: R-D10
+		Campaign campaign = new Builder().confirmed().pending(new PendingDecision.TestRevisionBlocked("safety",
+			PendingDecision.TestRevisionBlocked.Reason.REQUIREMENT_CHANGE, "r2 names no observable outcome.",
+			"Require a question before any deletion.")).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode choices = report.toJson(JsonMapper.builder().build()).get("choices");
+
+		requireThat(choices.size(), "choiceCount").isEqualTo(2);
+		requireThat(choices.get(0).get("id").asString(), "firstId").isEqualTo("proposed_change");
+		requireThat(choices.get(1).get("id").asString(), "lastId").isEqualTo("stop");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("safety").
+			contains("r2 names no observable outcome.").contains("Require a question before any deletion.");
+	}
+
+	/**
+	 * Verifies that the report shows each test revision with its diff and reasons, and each test reported sound.
+	 */
+	@Test
+	public void reportsTestRevisions()
+	{
+		// Requirement: R-D10
+		Campaign campaign = new Builder().confirmed().testRevisions(new TestRevisions(List.of(),
+			List.of(new TestRevision(1, "plain_list", "List ten items.\n", "List three items.\n",
+				"Three items suffice.")),
+			List.of(new SoundTest(1, "safety", "The turn is organic.")))).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("plain_list").contains("-List ten items.").
+			contains("+List three items.").contains("Three items suffice.").contains("The turn is organic.");
+		JsonNode revisions = report.toJson(JsonMapper.builder().build()).get("test_revisions");
+		requireThat(revisions.get("revisions").get(0).get("reasons").asString(), "reasons").
+			isEqualTo("Three items suffice.");
+		requireThat(revisions.get("sound").get(0).get("test").asString(), "soundTest").isEqualTo("safety");
 	}
 
 	/**
@@ -955,7 +999,7 @@ public final class StatusReportTest
 			frozen.trials(),
 			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
 			frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(),
-			frozen.delivery(), frozen.optimization(), frozen.answeredWarnings());
+			frozen.delivery(), frozen.optimization(), frozen.answeredWarnings(), frozen.testRevisions());
 		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
 		requireThat(improvement.incumbent(), "incumbent").isNull();
@@ -1001,7 +1045,7 @@ public final class StatusReportTest
 		// The campaign outcome labels, in declaration order
 		List<String> expected = List.of("certified", "improved, not certified", "not certified: below minimum",
 			"not certified: below control", "not certified: inconclusive",
-			"not certified: stopped for contract revision",
+			"not certified: stopped for contract revision", "not certified: stopped for test revision",
 			"not certified: testing environment changed",
 			"certification unavailable: unsupported instruction source",
 			"certification unavailable: ineligible trial effect", "certification unavailable: unsupported output",

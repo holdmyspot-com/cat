@@ -3,6 +3,10 @@ package io.github.cowwoc.cat.common.optimizer.report;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
+import io.github.cowwoc.cat.common.optimizer.campaign.SoundTest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevision;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisionRequest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisions;
 
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -66,6 +70,7 @@ final class OptimizationJson
 				kind.failures().forEach(failures::add);
 				ArrayNode hunks = element.putArray("hunks");
 				kind.hunks().forEach(hunks::add);
+				element.put("fault", kind.fault());
 			}
 			ArrayNode rejections = promptAuthor.putArray("rejections");
 			for (String rejection : diagnosis.rejections())
@@ -91,6 +96,46 @@ final class OptimizationJson
 			attempt.put("total_runs", progress.totalRuns());
 			attempt.put("accepted", progress.accepted());
 			attempt.put("winner", progress.winner());
+		}
+		writeTestRevisions(root.putObject("test_revisions"), report.testRevisions());
+	}
+
+	/**
+	 * Writes the requested test revisions, each completed revision with its diff, and each test reported sound.
+	 *
+	 * @param node the empty object that receives them
+	 * @param revisions the test revisions
+	 */
+	private static void writeTestRevisions(ObjectNode node, TestRevisions revisions)
+	{
+		ArrayNode requests = node.putArray("requests");
+		for (TestRevisionRequest request : revisions.requests())
+		{
+			ObjectNode element = requests.addObject();
+			element.put("test", request.test());
+			element.put("trigger", EnumNames.lowerCase(request.trigger()));
+			ArrayNode kinds = element.putArray("kinds");
+			for (PromptAuthorKind kind : request.kinds())
+				kinds.add(kind.name());
+			ArrayNode failures = element.putArray("failures");
+			request.failures().keySet().forEach(failures::add);
+		}
+		ArrayNode completed = node.putArray("revisions");
+		for (TestRevision revision : revisions.revisions())
+		{
+			ObjectNode element = completed.addObject();
+			element.put("lineage", revision.lineage());
+			element.put("test", revision.test());
+			element.put("diff", revision.diff());
+			element.put("reasons", revision.reasons());
+		}
+		ArrayNode sound = node.putArray("sound");
+		for (SoundTest report : revisions.sound())
+		{
+			ObjectNode element = sound.addObject();
+			element.put("lineage", report.lineage());
+			element.put("test", report.test());
+			element.put("reasons", report.reasons());
 		}
 	}
 

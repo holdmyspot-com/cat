@@ -12,11 +12,15 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Registry;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
+import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevision;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisionRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
+import io.github.cowwoc.cat.common.optimizer.campaign.TrialFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
@@ -28,6 +32,8 @@ import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.delivery.Delivery;
+import io.github.cowwoc.cat.common.optimizer.evidence.EvidenceSection;
+import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.Cleanup;
 import io.github.cowwoc.cat.common.optimizer.execution.DeliveryReport;
@@ -63,6 +69,7 @@ import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.proposal.RegressionScenarios;
 import io.github.cowwoc.cat.common.optimizer.proposal.PluginCheck;
 import io.github.cowwoc.cat.common.optimizer.proposal.Proposal;
+import io.github.cowwoc.cat.common.optimizer.proposal.TestRevisionProtocol;
 import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
@@ -84,6 +91,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -132,17 +140,20 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns a contract author protocol with the current recorded scenarios and the harness's role profile.
+	 * Returns a contract author protocol for a campaign, with the target's current recorded scenarios and the
+	 * harness's role profile.
 	 *
 	 * @param root the original project root, where scenarios are recorded
+	 * @param campaign the campaign, whose header holds the target and the user's goal
 	 * @return the protocol
 	 * @throws IOException if recorded scenarios or the installed role profile cannot be read
 	 */
-	private ContractAuthorProtocol contractAuthor(Path root) throws IOException
+	private ContractAuthorProtocol contractAuthor(Path root, Campaign campaign) throws IOException
 	{
+		Header header = campaign.header();
 		return new ContractAuthorProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
 			scope.profiles().roleProfile()), RegressionScenarios.read(scope.json(), root, scope.home()),
-			scope.sessions().reportsExitStatus());
+			header.target(), header.goal(), scope.sessions().reportsExitStatus());
 	}
 
 	/**
@@ -195,11 +206,14 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult start(Path target, int ceiling) throws CommandRefusedException, IOException, InterruptedException
+	public CommandResult start(Path target, int ceiling, String goal)
+		throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(target, "target").isNotNull();
 		requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
-		return withCleanup(_ -> startBody(target, ceiling));
+		if (goal != null)
+			requireThat(goal, "goal").isNotBlank();
+		return withCleanup(_ -> startBody(target, ceiling, goal));
 	}
 
 	/**
@@ -207,12 +221,14 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param target the target, relative to the working directory
 	 * @param ceiling the maximum simultaneous nested sessions of a new campaign
+	 * @param goal the user's goal for a new campaign, or {@code null} if the user stated none. A resumed campaign
+	 *   keeps the goal it was started with.
 	 * @return the result
 	 * @throws CommandRefusedException if the command is refused
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	private CommandResult startBody(Path target, int ceiling)
+	private CommandResult startBody(Path target, int ceiling, String goal)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Path root = scope.projectRoot();
@@ -224,6 +240,11 @@ public final class OptimizerCore implements Core
 			throw new CommandRefusedException("The target does not exist: " + absolute);
 		absolute = absolute.toRealPath();
 		requireInsideProject(root, absolute);
+		if (!Files.isRegularFile(absolute))
+		{
+			throw new CommandRefusedException("A campaign optimizes one prompt file, so the target must be a file, but " +
+				absolute + " is not. Run start with the prompt file to optimize.");
+		}
 		CampaignStore store = scope.store();
 		Registry.Opening opening = Registry.open(store.listHeaders(), root, absolute,
 			scope.harness());
@@ -231,7 +252,7 @@ public final class OptimizerCore implements Core
 		{
 			case Registry.Opening.Refuse refuse -> throw refused(refuse.owner());
 			case Registry.Opening.Resume resume -> resume(root, store, resume.header());
-			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling);
+			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling, goal);
 		};
 	}
 
@@ -360,12 +381,13 @@ public final class OptimizerCore implements Core
 	 * @param store the store
 	 * @param target the canonical target
 	 * @param ceiling the maximum simultaneous nested sessions of the new campaign
+	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 * @return the result
 	 * @throws CommandRefusedException if the base worktree has uncommitted changes
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	private CommandResult create(Path root, CampaignStore store, Path target, int ceiling)
+	private CommandResult create(Path root, CampaignStore store, Path target, int ceiling, String goal)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		String id = ID_TIME.format(scope.clock().instant()) + "-" +
@@ -384,7 +406,7 @@ public final class OptimizerCore implements Core
 		FileInventory inventory = fork.inventory();
 		Overlay incumbent = Overlay.of(inventory);
 		new FileCandidateOverlays(directory, inventory, scope.json()).save(incumbent);
-		Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE);
+		Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal);
 		Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory::entry));
 		store.replaceSnapshot(campaign);
 		CommandResult result = derive(root, store, campaign, fork, null, null);
@@ -403,11 +425,219 @@ public final class OptimizerCore implements Core
 		{
 			Path root = scope.projectRoot();
 			Campaign loaded = require(scope.store(), campaign, true);
+			if (loaded.lifecycle() == Lifecycle.ACTIVE && loaded.awaitsTestRevision() && !loaded.revisionRequested())
+			{
+				Optional<String> unfinished = reviseTests(root, loaded);
+				loaded = require(scope.store(), campaign, true);
+				if (unfinished.isPresent())
+					return report(root, loaded, null, unfinished.get());
+			}
 			SliceResult result = SliceRunner.run(context(root, loaded), campaign, List.of());
 			Optional<DeliveryResult> delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result);
 			noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
 			return new CommandResult(result.status(), scope.harness(), null, result.delivery(), null);
 		});
+	}
+
+	/**
+	 * Runs a test revision session for each prompt test whose revision the campaign awaits. A sound test is recorded
+	 * at once. Once every session has ended, the corrected tests replace the confirmed tests, their guard pilot runs,
+	 * and the revised contract starts a new lineage under the confirmed certification scope; then each test whose
+	 * revision cannot proceed pauses the campaign.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign, which awaits a test revision and no contract revision
+	 * @return a notice for the user if a session failed or its result is invalid, so that the remaining requests stay
+	 *   pending until {@code run} retries them; otherwise empty
+	 * @throws CommandRefusedException if another process runs the campaign, the campaign does not accept a test
+	 *   revision, or the fork does not hold the revised contract's files
+	 * @throws IOException if the store, the workspace, the stored proposal or a session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 */
+	private Optional<String> reviseTests(Path root, Campaign campaign)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		String id = campaign.header().id();
+		ProposalFile.Stored stored = new ProposalFile(heldOutDirectory(root, id), scope.json()).read(root).
+			orElseThrow(() -> new IOException("Campaign " + id + " has no stored confirmed proposal"));
+		ContractAuthorProtocol contractAuthor = contractAuthor(root, campaign);
+		DerivedProposal current;
+		try
+		{
+			current = contractAuthor.proposal(stored.result(), stored.profiles(), stored.salt());
+		}
+		catch (InvalidProposalException e)
+		{
+			throw new IOException("The stored proposal is invalid: " + String.join("; ", e.problems()), e);
+		}
+		TestRevisionProtocol protocol = new TestRevisionProtocol(scope.json(), schema, contractAuthor);
+		ForkView fork = openFork(root, campaign);
+		Overlay incumbent = new FileCandidateOverlays(directory(root, id), fork.inventory(), fork::version,
+			scope.json()).require(campaign.incumbent().snapshot());
+		Path staged = fork.workspace().stage(incumbent, Set.of());
+
+		List<TestRevision> revisions = new ArrayList<>();
+		List<CampaignEvent> blocked = new ArrayList<>();
+		for (TestRevisionRequest request : campaign.testRevisions().requests())
+		{
+			TestRevisionProtocol.Examination examined = new TestRevisionProtocol.Examination(current,
+				stored.profiles(), request, evidenceSections(request));
+			SessionResult result = await(scope.sessions().start(protocol.request(staged, examined)));
+			String session = "The test revision of `" + request.test() + "`";
+			if (!(result instanceof SessionResult.Completed completed))
+				return Optional.of(session + " " + describe(result) + " Run `run` again to retry.");
+			campaign = require(scope.store(), id, true);
+			if (completed.usage() != null)
+			{
+				campaign = Transitions.apply(campaign, new CampaignEvent.ObserveTokenUsage(SessionRole.CONTRACT_AUTHOR,
+					completed.usage()));
+				scope.store().replaceSnapshot(campaign);
+			}
+
+			TestRevisionProtocol.Result outcome;
+			try
+			{
+				outcome = protocol.result(completed, examined);
+			}
+			catch (InvalidProposalException e)
+			{
+				return Optional.of(session + " is invalid: " + String.join("; ", e.problems()) +
+					". Run `run` again to retry.");
+			}
+			switch (outcome)
+			{
+				case TestRevisionProtocol.Result.Revised revised ->
+				{
+					PromptTest before = current.contract().findTest(request.test()).orElseThrow();
+					PromptTest after = revised.proposal().contract().findTest(request.test()).orElseThrow();
+					revisions.add(new TestRevision(campaign.lineage().number(), request.test(), before.scenario().render(),
+						after.scenario().render(), revised.reasons()));
+					current = revised.proposal();
+				}
+				// A sound test is recorded at once, so a later failed session does not examine it again
+				case TestRevisionProtocol.Result.Sound sound -> apply(root, campaign,
+					List.of(new CampaignEvent.ReportTestSound(request.test(), sound.reasons())));
+				case TestRevisionProtocol.Result.Blocked block -> blocked.add(new CampaignEvent.BlockTestRevision(
+					request.test(), block.reason(), block.reasons(), block.proposedChange()));
+			}
+		}
+
+		campaign = require(scope.store(), id, true);
+		List<CampaignEvent> events = new ArrayList<>();
+		if (!revisions.isEmpty())
+			events.addAll(revisedContract(root, campaign, fork, current, stored, revisions));
+		// Confirming the revised contract clears pending decisions, so a blocked revision pauses the campaign after it
+		events.addAll(blocked);
+		if (!events.isEmpty())
+			apply(root, campaign, events);
+		return Optional.empty();
+	}
+
+	/**
+	 * Stores a contract whose tests a test revision corrected, runs its guard pilot and returns the events that
+	 * start its lineage under the confirmed certification scope.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param fork the campaign's fork
+	 * @param revised the confirmed proposal with the corrected tests
+	 * @param stored the confirmed proposal as it was stored
+	 * @param revisions the changes, one per corrected test
+	 * @return the events
+	 * @throws CommandRefusedException if the fork does not hold the revised contract's files, or something else blocks
+	 *   confirming it
+	 * @throws IOException if the proposal, the pilot or the workspace cannot be read or written
+	 * @throws InterruptedException if the thread is interrupted while it waits for a pilot session
+	 */
+	private List<CampaignEvent> revisedContract(Path root, Campaign campaign, ForkView fork,
+		DerivedProposal revised, ProposalFile.Stored stored, List<TestRevision> revisions)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		Participants participants = participants(root, revised);
+		if (!unheld(fork, participants).isEmpty())
+			fork = fork.extend(root, participants.existing());
+		PluginCheck plugin = pluginCheck(root, campaign, fork.inventory(), revised);
+		Map<String, PilotResult> pilots = pilot(root, campaign, fork, revised, plugin);
+		// The proposal previews its confirmation, which needs the campaign that awaits the revised contract
+		CampaignEvent.ReviseTests revise = new CampaignEvent.ReviseTests(revisions);
+		Proposal proposal = proposal(root, Transitions.apply(campaign, revise), fork, revised, pilots, plugin);
+		CertificationScope certificationScope = campaign.contract().profiles().scope();
+		if (!proposal.isConfirmable(certificationScope))
+			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
+		requireParticipantsHeld(root, fork, revised);
+		if (proposal.contract().plugin().orElse(null) instanceof PluginUnderTest.Built built)
+			fork.workspace().copyPluginBase(built);
+		// The stored proposal changes only once nothing blocks confirming it, so it stays the confirmed contract's
+		new ProposalFile(heldOutDirectory(root, campaign.header().id()), scope.json()).write(revised,
+			stored.profiles());
+
+		List<CampaignEvent> events = new ArrayList<>();
+		events.add(revise);
+		events.addAll(moveOnto(root, campaign, fork));
+		events.addAll(proposal.confirmation(scope.random().nextLong(), certificationScope));
+		return events;
+	}
+
+	/**
+	 * Renders the evidence section of each failure of a test revision request, as a judge receives it, against the
+	 * project as the failure's trial started. A failure whose trial's transcript, effects or initial project are no
+	 * longer retained has no section.
+	 *
+	 * @param request the request
+	 * @return each rendered section, by failure identifier
+	 * @throws IOException if a retained trial's evidence cannot be read
+	 */
+	private Map<String, String> evidenceSections(TestRevisionRequest request) throws IOException
+	{
+		Map<String, String> sections = new HashMap<>();
+		for (Map.Entry<String, Failure> failure : request.failures().entrySet())
+		{
+			TrialFiles files = failure.getValue().files();
+			if (Files.isRegularFile(files.transcript()) && Files.isDirectory(files.effects()) &&
+				Files.isDirectory(files.initialProject()))
+			{
+				SessionEvidence activity = scope.sessions().readEvidence(files.transcript());
+				sections.put(failure.getKey(), EvidenceSection.render(activity, files.effects(),
+					files.initialProject()));
+			}
+		}
+		return sections;
+	}
+
+	/**
+	 * Describes why a session did not complete.
+	 *
+	 * @param result the session's result
+	 * @return the description, as a predicate that ends with a period
+	 * @throws IllegalArgumentException if the session completed
+	 */
+	private String describe(SessionResult result)
+	{
+		return switch (result)
+		{
+			case SessionResult.Completed _ -> throw new IllegalArgumentException("The session completed");
+			case SessionResult.Failed failed -> "did not complete: " + failed.reason() + ".";
+			case SessionResult.Interrupted _ -> "was interrupted.";
+			case SessionResult.Refused refused ->
+			{
+				if (refused.afterLongestHold())
+				{
+					yield "was refused by the provider after a 30-minute hold of " + scope.harness().commandName() +
+						" requests.";
+				}
+				if (refused.hold().endsAt().isAfter(scope.clock().instant()))
+					yield "was refused by the provider until " + refused.hold().endsAt() + ".";
+				yield "was refused by the provider.";
+			}
+			case SessionResult.RateLimited limited ->
+			{
+				if (limited.hold().endsAt().isAfter(scope.clock().instant()))
+				{
+					yield "was rejected because of a rate limit until " + limited.hold().endsAt() + ".";
+				}
+				yield "was rejected because of a rate limit.";
+			}
+		};
 	}
 
 	@Override
@@ -754,6 +984,12 @@ public final class OptimizerCore implements Core
 		{
 			Path root = scope.projectRoot();
 			Campaign loaded = require(scope.store(), campaign, true);
+			if (choice == Choice.PROPOSED_CHANGE && loaded.choices().contains(choice) &&
+				loaded.pending() instanceof PendingDecision.TestRevisionBlocked blocked)
+			{
+				// The contract author derives the revised contract from the change, which the user then confirms
+				return reviseBody(campaign, blocked.proposedChange());
+			}
 			CommandResult result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint)));
 			Campaign chosen = require(scope.store(), campaign, true);
 			Optional<DeliveryResult> delivery = Optional.empty();
@@ -889,7 +1125,7 @@ public final class OptimizerCore implements Core
 			require(campaign.incumbent().snapshot());
 		// The contract author reads the regression scenarios, so nothing is left out
 		Path staged = fork.workspace().stage(incumbent, Set.of());
-		ContractAuthorProtocol protocol = contractAuthor(root);
+		ContractAuthorProtocol protocol = contractAuthor(root, campaign);
 		ProfileEvidence profiles = profileEvidence(staged);
 		String unsupported = unsupportedBindings(profiles);
 		if (!unsupported.isEmpty())
@@ -1018,29 +1254,42 @@ public final class OptimizerCore implements Core
 			fork = selected;
 		}
 
-		FileInventory inventory = fork.inventory();
-		PluginCheck plugin = pluginCheck(root, campaign, inventory, derived);
-		PilotFile file = pilotFile(root, campaign);
-		Map<String, PilotResult> pilots;
-		if (plugin.refusals().isEmpty())
-		{
-			Overlay control = ControlSource.of(inventory, authority(root, campaign, inventory));
-			GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(root, campaign), schema,
-				campaign.ceiling());
-			Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
-			// The control trials install the plugin as the check recorded its base, as formal trials will
-			pilots = pilot.run(derived.contract().withPlugin(plugin.plugin()), control, excluded, file.read(),
-				scope.random());
-			file.write(pilots);
-		}
-		else
-		{
-			// Control trials cannot install a plugin under test that the check refuses
-			pilots = Map.of();
-		}
-
+		PluginCheck plugin = pluginCheck(root, campaign, fork.inventory(), derived);
+		Map<String, PilotResult> pilots = pilot(root, campaign, fork, derived, plugin);
 		Proposal proposal = proposal(root, campaign, fork, derived, pilots, plugin);
 		return report(root, campaign, proposal.render(), null);
+	}
+
+	/**
+	 * Runs the guard pilot of a proposal, reusing the stored pilot of each prompt test that it still describes, and
+	 * stores the result. The pilot's control trials install the plugin under test as the plugin check records it.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param fork the fork that holds the proposal's trial fixtures and derived prompt sources
+	 * @param derived the proposal
+	 * @param plugin the check of the proposal's plugin under test
+	 * @return the pilot of each prompt test, by prompt test, or none if the check refuses the plugin under test
+	 * @throws IOException if the stored pilot or the workspace cannot be read, or the pilot cannot be stored
+	 * @throws InterruptedException if the thread is interrupted while it waits for a pilot session
+	 */
+	private Map<String, PilotResult> pilot(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
+		PluginCheck plugin) throws IOException, InterruptedException
+	{
+		// Control trials cannot install a plugin under test that the check refuses
+		if (!plugin.refusals().isEmpty())
+			return Map.of();
+		FileInventory inventory = fork.inventory();
+		PilotFile file = pilotFile(root, campaign);
+		Overlay control = ControlSource.of(inventory, relativeTarget(root, campaign));
+		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(root, campaign), schema,
+			campaign.ceiling());
+		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
+		// The control trials install the plugin as the check recorded its base, as formal trials will
+		Map<String, PilotResult> pilots = pilot.run(derived.contract().withPlugin(plugin.plugin()), control, excluded,
+			file.read(), scope.random());
+		file.write(pilots);
+		return pilots;
 	}
 
 	/**
@@ -1094,7 +1343,6 @@ public final class OptimizerCore implements Core
 		FileInventory inventory = fork.inventory();
 		Authority authority = authority(root, campaign, inventory);
 		LinkReport links = LinkReport.of(inventory, authority);
-		SortedSet<Path> controlFiles = ControlSource.promptFiles(inventory, authority);
 		Optional<CertificationStatus> incumbent = Optional.empty();
 		Optional<CertificationRecord> record = record(root, relativeTarget(root, campaign));
 		if (record.isPresent())
@@ -1111,8 +1359,8 @@ public final class OptimizerCore implements Core
 				record.get().applicability(promptFiles, campaign.identity(),
 					derived.contract().minimumPassRate())));
 		}
-		return Proposal.of(derived, campaign, links, controlFiles, scope.sessions().hostLogin(), scope.calibrator(),
-			schema, incumbent, pilots, plugin);
+		return Proposal.of(derived, campaign, links, relativeTarget(root, campaign), scope.sessions().hostLogin(),
+			scope.calibrator(), schema, incumbent, pilots, plugin);
 	}
 
 	/**
@@ -1129,8 +1377,8 @@ public final class OptimizerCore implements Core
 	private PluginCheck pluginCheck(Path root, Campaign campaign, FileInventory inventory, DerivedProposal derived)
 		throws IOException
 	{
-		SortedSet<Path> controlFiles = ControlSource.promptFiles(inventory, authority(root, campaign, inventory));
-		PluginCheck check = PluginCheck.of(derived.contract().plugin(), inventory, controlFiles);
+		SortedSet<Path> promptFiles = authority(root, campaign, inventory).promptFiles(inventory);
+		PluginCheck check = PluginCheck.of(derived.contract().plugin(), inventory, promptFiles);
 		if (check.plugin().isPresent() && check.refusals().isEmpty())
 		{
 			Path directory = switch (check.plugin().get())
@@ -1159,7 +1407,7 @@ public final class OptimizerCore implements Core
 			return Optional.empty();
 		try
 		{
-			return Optional.of(contractAuthor(root).proposal(stored.get().result(), stored.get().profiles(),
+			return Optional.of(contractAuthor(root, campaign).proposal(stored.get().result(), stored.get().profiles(),
 				stored.get().salt()));
 		}
 		catch (InvalidProposalException e)

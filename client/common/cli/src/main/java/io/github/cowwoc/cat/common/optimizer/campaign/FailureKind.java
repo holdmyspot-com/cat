@@ -14,9 +14,14 @@ public enum FailureKind
 	 */
 	GUIDANCE,
 	/**
-	 * A test or contract defect, or an infrastructure fault, that no prompt edit can correct.
+	 * An infrastructure fault that neither a prompt edit nor a test revision can correct.
 	 */
 	NOT_GUIDANCE,
+	/**
+	 * The test fails to prove its claim, or does not follow the organic test rule, so that a test revision must
+	 * correct it.
+	 */
+	TEST_DEFECT,
 	/**
 	 * Confirmed requirements cannot be satisfied together and need the user's resolution.
 	 */

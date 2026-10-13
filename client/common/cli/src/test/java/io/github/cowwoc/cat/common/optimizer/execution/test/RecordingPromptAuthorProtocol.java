@@ -113,12 +113,12 @@ public final class RecordingPromptAuthorProtocol implements PromptAuthorProtocol
 			if (!guidance.isEmpty())
 			{
 				kinds.add(new PromptAuthorKind("missing instruction", guidance, FailureKind.GUIDANCE,
-					evidence.stream().map(HunkEvidence::id).toList()));
+					evidence.stream().map(HunkEvidence::id).toList(), ""));
 			}
 			if (!conflicting.isEmpty())
 			{
 				kinds.add(new PromptAuthorKind("conflicting requirements", List.copyOf(conflicting),
-					FailureKind.CONFLICT, List.of()));
+					FailureKind.CONFLICT, List.of(), ""));
 			}
 			return reports.apply(result).map(edits -> new PromptAuthorReport(edits, new PromptAuthorManifest(kinds,
 				evidence), reportedConflicts));

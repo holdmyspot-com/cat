@@ -335,4 +335,51 @@ public sealed interface PendingDecision
 			warnings = List.copyOf(warnings);
 		}
 	}
+
+	/**
+	 * A test revision found that it cannot proceed within the confirmed requirements.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param test the identifier of the test that the revision examined
+	 * @param reason why the revision cannot proceed
+	 * @param reasons the test revision's explanation
+	 * @param proposedChange the requirement change that the test revision proposes, or empty if it proposes none
+	 */
+	record TestRevisionBlocked(String test, Reason reason, String reasons, String proposedChange)
+		implements PendingDecision
+	{
+		/**
+		 * Creates the decision.
+		 *
+		 * @param test the identifier of the test that the revision examined
+		 * @param reason why the revision cannot proceed
+		 * @param reasons the test revision's explanation
+		 * @param proposedChange the requirement change that the test revision proposes, or empty if it proposes none
+		 * @throws NullPointerException if any argument is null
+		 * @throws IllegalArgumentException if {@code test} or {@code reasons} are blank
+		 */
+		public TestRevisionBlocked
+		{
+			requireThat(test, "test").isNotBlank();
+			requireThat(reason, "reason").isNotNull();
+			requireThat(reasons, "reasons").isNotBlank();
+			requireThat(proposedChange, "proposedChange").isNotNull();
+		}
+
+		/**
+		 * Why a test revision cannot proceed.
+		 */
+		public enum Reason
+		{
+			/**
+			 * No organic test can prove a claim of the confirmed requirements.
+			 */
+			UNPROVABLE,
+			/**
+			 * Correcting the test would change a confirmed requirement.
+			 */
+			REQUIREMENT_CHANGE
+		}
+	}
 }

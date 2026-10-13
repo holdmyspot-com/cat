@@ -528,7 +528,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-D6 | Rounds: a round gives each failing prompt test a diagnosis and up to 2 prompt author attempts. A complete round without promotion keeps the working candidate and resumes its representative trials; development has no plateau and ends only at the readiness gate, a review checkpoint or a user stop. | §2.7 | WI-3, WI-46, WI-56 | U: `RoundEndTest`, `DriverTest` |
 | R-D7 | Incumbent baseline trials of held-out test cases: 50 in every certification-scope cell, plus 50 in a scope cell below the minimum pass rate `p_min` not yet proven deficient. The incumbent's development trials never count toward it. A commit requires the baseline. The baseline is reused while measurement identities stay comparable; otherwise the incumbent is measured again as a new baseline with its own share. | §2.5 | WI-3, WI-32, WI-33, WI-60 | U: `BaselineTest`, `AdmissionTest`, `SchedulerTest` |
 | R-D8 | Development results are labelled `development estimate` and `not certified`. | §2.7, §2.9 | WI-12 | U: `StatusReportTest` |
-| R-D10 | Prompt author manifest: the failures grouped into kinds, each kind with its failing test cases, its classification (routing, guidance, not guidance, conflict) and, for routing and guidance, the hunks that address it; for each changed hunk, the cited failing test cases and its analogous and dissimilar cases. An attempt with an uncovered hunk, a failure outside every kind, a routing or guidance kind without a hunk, or an unknown citation is rejected and retained; an attempt that edits nothing produces no candidate and its classifications reach the round's diagnosis and the review report. | §2.7, D25, D30, D58 | WI-18, WI-58 | U: `PromptAuthorManifestTest`, `DriverTest`, `StatusReportTest` |
+| R-D10 | Prompt author manifest: the failures grouped into kinds, each kind with its failing test cases, its classification (routing, guidance, test defect, not guidance, conflict) and, for routing and guidance, the hunks that address it, or for a test defect, the test design rule or expected outcome at fault; for each changed hunk, the cited failing test cases and its analogous and dissimilar cases. An attempt with an uncovered hunk, a failure outside every kind, a routing or guidance kind without a hunk, a test defect kind without its rule or outcome, or an unknown citation is rejected and retained; an attempt that edits nothing produces no candidate and its classifications reach the round's diagnosis and the review report. | §2.7, D25, D30, D58 | WI-18, WI-58 | U: `PromptAuthorManifestTest`, `DriverTest`, `StatusReportTest` |
 | R-D11 | Minimality pass: delta debugging over the promoted attempt's hunks, each reduction run through the promotion runs and kept when it fixes every triggering test case that the attempt it reduces fixed and fails no regression test case that the working candidate passes, ending when no single hunk can be removed; its runs are targeted and never counted; the minimal attempt is promoted; the report names the removed hunks. | §2.7, D26 | WI-18 | U: `MinimalityTest` (removes an unneeded hunk, keeps a needed one, ends at single hunks), `DriverTest` |
 | R-D12 | Concurrent attempts while weak: when any cell of a prompt test the round addresses has a development lower bound below 80% or no development outcome, the round makes 3 independent attempts for that prompt test from the same evidence; each runs the same promotion runs; the accepted attempt with the most passing promotion runs wins, ties to fewer changed lines, then the earlier attempt; only the winner is minimized and promoted; the others are retained; the status records each attempt's promotion results. | §2.7, D28 | WI-20 | U: `AttemptSelectionTest` (weak and not-weak rounds, winner, both tie-breaks, no accepted attempt), `DriverTest` trace 20, `StatusReportTest` |
 | R-D13 | A prompt author conflict report whose quotations the confirmed snapshot holds pauses the campaign with each resolution and `stop`; a report quoting only campaign edits is rejected; a chosen resolution becomes a revision that needs confirmation and starts a new lineage. | §2.7, §7, D32 | WI-25 | U: `PromptAuthorManifestTest`, `DriverTest`, `OptimizerCoreTest` |
@@ -537,6 +537,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-D16 | Each failed representative development trial has an impact that a triage session decides before the outcome is recorded: blocking (the reply leaves the user without the turn's correct, complete result) or self-recovering (the reply still delivers that result, and the failure cost only extra work); an unclassifiable failure or a third invalid triage output is blocking. A blocking failure discards every unadopted development trial of the working candidate, interrupting those that run, ends any diagnosis in progress, and starts a round without diagnostic reruns; a self-recovering failure takes the R-D2 path. The impact reaches the prompt author brief and changes no count or claim. | §2.6, §2.7, §3.1, D39 | WI-29 | U: `EditOrContinueTest`, `TriagePromptTest`, `DriverTest` (fail-fast trace), `FileCampaignStoreTest` |
 | R-D17 | The proposal states each requirement's trigger or that it always applies; CAT refuses a proposal in which a requirement with a trigger has no test where that trigger is absent. Each manifest hunk names its dissimilar case as a contract test; CAT rejects an attempt that names one the contract lacks. | §2.7, §6.1, D40 | WI-30 | U: `ProposalTest`, `PromptAuthorManifestTest` |
 | R-D18 | In Codex, the inventory holds only listed models of version 6 or later, the number after `gpt-` in the slug, and leaves out a slug without that form; CAT refuses a proposal in which a Codex agent TOML binds a model below version 6, naming the file and the model, and a Codex role profile below version 6. | §6.1, §6.6, D41 | WI-31 | U: `CodexProfileInventoryTest`, `ClaudeProfileInventoryTest`, the core's derivation test |
+| R-D19 | Test revision: each prompt test with a test defect kind gets a contract author session that rewrites it under the test design rules or reports it sound; CAT refuses a revision whose requirements differ from the confirmed ones, gives the revised test new test cases in both parts, reruns its guard pilot and starts a new lineage; a running attempt ends `not certified: stopped for test revision` with the index and spent allowance kept; a sound report returns the kind to the next round as routing or guidance; a report that no test within the rules can prove a requirement, or that a requirement must change, pauses for the user's choice; a review checkpoint first runs one test revision when none has examined the test since it last changed. | §2.7, §7, D70 | WI-75 | U: `DriverTest`, `CampaignTransitionsTest`, `StatusReportTest` |
 
 ### 3.3 Formal certification
 
@@ -592,7 +593,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-W7 | Inventory validation of prompt author attempts; unowned-change detection at every `run`, before promotion and before delivery. | §4.6 | WI-6, WI-9 | U: `InventoryDiffTest`, `DriverTest` |
 | R-W8 | Delivery: verify the optimization worktree and materialize a selected candidate that is not the working candidate, preflight, journal, preimage checks, resume applying each change at most once, final verification, historical result after a base-only prompt edit. CAT never commits. | §1, §4.7 | WI-6, WI-11 | U: `DeliveryPlanTest`, `DeliveryTest` (fault between writes, concurrent edit, no commit created) |
 | R-W9 | Cleanup: once a certified candidate's delivery completes and is verified, or the user keeps the incumbent instead of a regressing certified candidate and the prompt-test delivery that follows completes and is verified, CAT removes the optimization worktree, the campaign's runs in both run roots and then the campaign directory; an interrupted removal completes on the next command for the target; every other campaign keeps its files. | §4.1, §4.7 | WI-43 | U: `CleanupTest` (each ending, fault before each step); E: E1 |
-| R-W10 | Control source: the incumbent's staged source with every target prompt file emptied to zero bytes, the same for every candidate, its paths listed in the proposal. | §4.4 | WI-65 | U: `StagedSourceTest`, `ProposalTest` |
+| R-W10 | Control source: the incumbent's staged source with the target prompt file emptied to zero bytes and every other prompt file unchanged, the same for every candidate, its path listed in the proposal. | §4.4, D71 | WI-65, WI-75 | U: `StagedSourceTest`, `ProposalTest`, `OptimizerCoreTest` |
 | R-W11 | Delivery writes each confirmed prompt test's values file with every test case of the campaign, and the scenario and fixtures of each created or edited prompt test, on a certified delivery and when the user keeps the incumbent; staging excludes the confirmed prompt test directories; a stopped campaign writes none. | §4.4, §4.7, D60 | WI-67 | U: `DeliveryTest`, `StagedSourceTest`, `DeliveryPlanTest`, `DriverTest`, `CleanupTest`, `OptimizerCoreTest`, `ScenarioTest`, `DeliveredTestTest`, `ProposalSchemaTest` |
 | R-W12 | Plugin under test: the contract names a plugin root in the project, or a built base with mappings from source directories to plugin directories; CAT copies the base at confirmation; each staged source, the control source included, has a plugin copy with its mapped files written over the base; each trial installs that copy, with CAT only when the confirmed contract says the plugin depends on it, and reuses the user's approvals of its hooks; a mapping to a path missing from the base, or targets in two plugins, is refused; a mapped file that differs from the base is a warning; the plugin under test is part of the measurement identity. | §3.1, §4.4, §5, §6.1, D69 | WI-73 | U: `StagedSourceTest`, `ProposalTest`, `ProposalSchemaTest`, `MeasurementIdentityTest`, `CodexRunnerTest`, `ClaudeRunnerTest`, `CodexSessionsTest`, `ClaudeSessionsTest`; E: WI-71's certification campaign |
 
@@ -627,6 +628,8 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C21 | Test cases and generators: a value is text or a generator call that CAT gives a seed and version once, different for identical calls; `log_lines` version 1 expands deterministically to UTF-8 lines with timestamps in 2025; a generated value only in fixture contents; fixtures copied with placeholders replaced in names and UTF-8 contents, invalid names and collisions refused. | §4.4, §6.3, D64 | WI-61 | U: `TestCaseTest`, `LogLinesTest`, `FixturesTest` |
 | R-C22 | Values file: `values.json` with `format_version` 1 and `test_cases` holding `values` and `expected_outcome`; unknown fields refused; streamed on read. | §6.3 | WI-61 | U: `ValuesFileTest` |
 | R-C23 | Guard pilot: after validation and before presentation, about 20 control trials per prompt test in its weakest cell on development test cases; the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`; a revision reruns it only for changed prompt tests and its brief carries the latest results; pilot trials enter no count and spend no allowance. | §6.1, D66 | WI-66, WI-68 | U: `GuardPilotTest`, `ProposalTest`, `OptimizerCoreTest` |
+| R-C24 | Goal and requirements: `start` takes the user's goal; the contract author receives the target prompt file, the goal and only the target's recorded regression scenarios; with a goal, requirements state the outcomes it asks for and the operations it implies the prompt must not harm, and each other prompt obligation is an extra requirement that the user keeps or drops; each prompt test lists the requirements it proves and keeps the test design rules; CAT refuses a requirement that no prompt test proves and reports every validation problem at once, the scenario citations included when the proposal cannot be parsed. | G2, §6.1, §6.3, §8, D70 | WI-75 | U: `ProposalTest`, `CommandsTest`, `CampaignStoreContract`, `OptimizerCoreTest`; E: WI-71's certification start |
+| R-C25 | Single target: `start` refuses a target that is not a regular file, naming it; the contract author and test revision prompts name the one target prompt file; the prompt author may still edit every in-project prompt file. | §1.2, §4.3, §8, D71 | WI-75 | U: `OptimizerCoreTest`, `ProposalTest` |
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
 | R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | E: E1 loading record per harness |
 | R-L1 | One resumable campaign per root and target; binding to the starting harness; refusal from the other harness without any state change. | §7 | WI-3, WI-13 | U: `CampaignRegistryTest`; E: cross-harness |
@@ -1957,16 +1960,21 @@ The riskiest pure code, built first.
 - **Readiness:** before certification, the candidate passes the readiness gate in each certification cell (inline
   rules, 100 runs per task, reading at 99% or more and the latest two batches of 50 at 98% or more; answers no worse
   than no prompt).
-- **Prompt tests:** a whole long document, lazily loaded guides read whole, a long command output, a question answered
-  from general knowledge without reading, and a search whose guard test cases the agent passes almost always without
-  the prompt. Every scenario is organic: it never tells the agent the expected outcome or that it is being tested. Each
-  prompt test certifies its reading obligations as effects: the long document, the lazily loaded guides and the long
-  command output reach the agent whole, and the general-knowledge question runs no command. Its answer is a guard: a
-  text check that recognizes the common correct replies, with `on_tool_failure: judge`, on test cases easy enough that
-  the agent answers correctly at least 95% of the time without the prompt, which the guard pilot confirms; the answer
-  each test asks for therefore lies where a truncated read or a search still finds it (user ruling, 2026-10-11). The
-  scenarios no longer prescribe how the agent reads (through a named script, each line once) or check the reply's
-  sign-off, which sits where a truncated read can miss it. Where a scenario does judge a drafted customer
+- **Requirements (user rulings, 2026-10-13):** from the goal that the agent reads a file without truncation and that
+  the prompt harms neither other operations, such as searching, nor lazy loading: a file the task needs reaches the
+  agent whole; a long command output reaches the agent whole; a lazily loaded guide is loaded and reaches the agent
+  whole; a search is not turned into a whole read; no command runs when none is needed; and each answer is no worse
+  than without the prompt, on easy cases.
+- **Prompt tests:** a whole long document, one lazily loaded guide read whole, a long command output, a question
+  answered from general knowledge without reading, and a search whose guard test cases the agent passes almost always
+  without the prompt. Every scenario is organic: it never tells the agent the expected outcome or that it is being
+  tested. Each prompt test certifies its reading obligations as effects: the long document, the lazily loaded guide and
+  the long command output reach the agent whole, and the general-knowledge question runs no command. Its answer is a
+  guard: a text check that recognizes the common correct replies, with `on_tool_failure: judge`, on test cases easy
+  enough that the agent answers correctly at least 95% of the time without the prompt, which the guard pilot confirms;
+  the answer each test asks for therefore lies where a truncated read or a search still finds it (user ruling,
+  2026-10-11). The scenarios no longer prescribe how the agent reads (through a named script, each line once) or check
+  the reply's sign-off, which sits where a truncated read can miss it. Where a scenario does judge a drafted customer
   reply, a note to the requester after the draft, such as a statement that no files were edited or a source link, is not
   part of the reply (user ruling, 2026-10-11).
 - **Certification:** `gpt-6-luna` at `low`, at `high`, then `gpt-6.1-sol` at `low`, each at `p_min` 0.95, with the
@@ -1993,8 +2001,8 @@ The riskiest pure code, built first.
   author prompt says how to find the plugin, its mappings and its dependency on CAT. For WI-71, the mapping is
   `client/codex/rules/src/main/resources/rules/codex/` onto the plugin's `rules/codex/`, and the base is the installed
   Codex CAT artifact; the common rules module is not a one-to-one copy, because its build moves the path-scoped rules.
-- **Validation:** a mapping whose source file has no file at its plugin path in the base, or target prompt files in two
-  plugins, is refused; a mapped file whose content differs from the base's is a warning; the proposal lists the plugin,
+- **Validation:** a mapping whose source file has no file at its plugin path in the base, or in-project prompt files in
+  two plugins, is refused; a mapped file whose content differs from the base's is a warning; the proposal lists the plugin,
   the differing files, unapproved hooks and the CAT decision.
 - **Staging:** CAT copies the base into campaign storage at confirmation; each staged source, and the control source,
   gets a plugin copy with its mapped files written over the base copy, so a candidate's edit and an emptied control
@@ -2026,6 +2034,42 @@ The riskiest pure code, built first.
 - **Tests:** `HarnessRunManagerTest` (the snapshot keeps the project and fixtures after the project changes),
   `TrialEvidenceTest` (a fixture's starting text is read, and fixtures are not file changes).
 - **Exit:** unit tests pass; the full build passes; the read-file pilot decides `read-in-full` of a fixture.
+
+### WI-75 — Requirements from the goal, and test revision (user rulings, 2026-10-13)
+
+- **Problem:** the first read-file certification start gave the contract author neither the target nor the user's
+  goal, and sent it all 94 recorded regression scenarios in a 608 KB prompt. Its proposal tested how the bundled
+  scripts work rather than whether a file reaches the agent whole; its correction turn learned of the missing scenario
+  citations only after its schema problem was fixed, so the second refusal ended the start; and its second start timed
+  out. A test that failed for a reason in the test could only be classified *not guidance*, which waits for the user.
+- **Start:** `start` takes an optional goal and stores it with the campaign; the skill passes the user's own words.
+  `start` refuses a target that is not a regular file, naming it, because a campaign optimizes one prompt file.
+- **Control source:** control trials and the guard pilot empty only the target prompt file; every other prompt file
+  stays as the incumbent has it, so control trials measure the agent that the user would have without the target.
+- **Contract author:** its prompt names the target prompt file, holds the goal and only the target's recorded
+  regression scenarios, and states the requirement derivation of `design.md` §6.1 and the test design rules of §6.3. A
+  requirement's source is the goal or the prompt file that states it; with a goal, a requirement whose source is a
+  prompt file is an extra requirement, which the proposal marks and the user drops through `revise` feedback.
+- **Validation:** CAT refuses a requirement that no prompt test proves, requires citations only of the target's
+  recorded scenarios, and reports every problem at once, checking the citations even when the schema parse fails.
+- **Failure analysis:** the prompt author's *test defect* classification and its manifest check; the test revision
+  session, its validation, new test cases and guard pilot, the new lineage, the attempt outcome
+  `not certified: stopped for test revision`, the return of a sound test's kind, the pause for an unprovable
+  requirement or a requirement change, and the test revision before a review checkpoint stops a cell.
+  `campaign.json` moves to format version 39.
+- **Closes:** R-C24, R-C25, R-D19, the narrowed control source in R-W10 and the new classification in R-D10.
+- **Tests:** `ProposalTest` (a requirement without a prompt test refused; only the target's scenarios sent and required;
+  the goal and target in the prompt; schema and citation problems reported together; extra requirements marked; the
+  control source lists only the target), `CommandsTest` and `OptimizerCoreTest` (`start --goal` stores the goal and
+  passes it to the contract author; `start` refuses a directory; the guard pilot's control source empties only the
+  target; `run` revises a test under a new lineage, records a sound test, pauses on a requirement change whose proposed
+  change revises the contract, and refuses a revision that changes requirements or reuses a test case),
+  `CampaignStoreContract` (the goal survives a reload), `PromptAuthorManifestTest` (a test defect kind without its rule
+  rejected), `DriverTest` and `CampaignTransitionsTest` (a test revision's lineage, attempt outcome, sound report and
+  pause), `StatusReportTest` (the revision's difference and reasons), `StagedSourceTest` (the control source empties
+  only the target).
+- **Exit:** unit tests pass; the full build passes; WI-71's certification start, given the user's goal, presents a
+  proposal within its time limit whose requirements are WI-71's.
 
 ### WI-15 — Acceptance
 
@@ -2140,10 +2184,11 @@ blocks only the part of a work item that it names.
 | WI-68 | WI-66, WI-67 |
 | WI-69 | WI-61 |
 | WI-70 | none for the scripts and hook; its rule step needs WI-71 |
-| WI-71 | WI-69, WI-70, WI-72, WI-73 |
+| WI-71 | WI-69, WI-70, WI-72, WI-73, WI-75 |
 | WI-72 | WI-63 |
 | WI-73 | WI-65 |
 | WI-74 | WI-28, WI-63 |
+| WI-75 | WI-66, WI-74 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57 and WI-60 to WI-69. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.

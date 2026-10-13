@@ -20,6 +20,9 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedAssertion;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorKind;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisionRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
@@ -269,16 +272,18 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Applies a user's command and persists the result. Resuming after an unowned change restores the working
-	 * candidate in the optimization worktree, so the change is never incorporated.
+	 * Applies a user's command, or the result of a test revision that a command ran, and persists the result.
+	 * Resuming after an unowned change restores the working candidate in the optimization worktree, so the change is
+	 * never incorporated.
 	 *
 	 * @param event a {@link CampaignEvent.Confirm}, {@link CampaignEvent.ExtendFork}, {@link CampaignEvent.Revise},
 	 *   {@link CampaignEvent.Choose},
-	 *   {@link CampaignEvent.ResolveConflict}, {@link CampaignEvent.Cancel}, {@link CampaignEvent.Close} or
-	 *   {@link CampaignEvent.ReportUnavailable}
+	 *   {@link CampaignEvent.ResolveConflict}, {@link CampaignEvent.Cancel}, {@link CampaignEvent.Close},
+	 *   {@link CampaignEvent.ReportUnavailable}, {@link CampaignEvent.ReviseTests},
+	 *   {@link CampaignEvent.ReportTestSound} or {@link CampaignEvent.BlockTestRevision}
 	 * @throws NullPointerException if {@code event} is null
-	 * @throws IllegalArgumentException if the event is not a user's command, or names a choice, trial or attempt that
-	 *   the campaign does not offer
+	 * @throws IllegalArgumentException if the event is neither a user's command nor a test revision's result, or
+	 *   names a choice, trial or attempt that the campaign does not offer
 	 * @throws IllegalStateException if the driver is closed, or the campaign's state does not permit the event
 	 * @throws IOException if the store or the worktree cannot be written
 	 */
@@ -291,7 +296,9 @@ public final class Driver implements AutoCloseable
 			// A user's command
 			case CampaignEvent.Confirm _, CampaignEvent.ExtendFork _, CampaignEvent.Revise _, CampaignEvent.Choose _,
 				CampaignEvent.ResolveConflict _, CampaignEvent.Cancel _, CampaignEvent.Close _,
-				CampaignEvent.ReportUnavailable _ ->
+				CampaignEvent.ReportUnavailable _,
+				// A test revision's result, which the run command records before the slice starts
+				CampaignEvent.ReviseTests _, CampaignEvent.ReportTestSound _, CampaignEvent.BlockTestRevision _ ->
 			{
 			}
 			default -> throw new IllegalArgumentException("Only the driver applies " + event);
@@ -440,15 +447,15 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Indicates whether the campaign may start new work: it is active, confirmed, and waits for no decision or
-	 * revision.
+	 * Indicates whether the campaign may start new work: it is active, confirmed, and waits for no decision, contract
+	 * revision or test revision.
 	 *
 	 * @return {@code true} if new work may start
 	 */
 	private boolean isAdmissible()
 	{
 		return campaign.lifecycle() == Lifecycle.ACTIVE && campaign.isConfirmed() && campaign.pending() == null &&
-			!campaign.revisionRequested();
+			!campaign.revisionRequested() && !campaign.awaitsTestRevision();
 	}
 
 	/**
@@ -1081,7 +1088,8 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			FileInventory fork = context.overlays().require(campaign.incumbent().snapshot()).fork();
-			Overlay control = ControlSource.of(fork, context.authority());
+			Overlay control = ControlSource.of(fork,
+				campaign.header().root().relativize(campaign.header().target()));
 			context.overlays().save(control);
 			event = new CampaignEvent.Commit(context.calibrator().calibrate(
 				ErrorBudget.certificationLevel(campaign.nextCertificationIndex()),
@@ -1464,7 +1472,8 @@ public final class Driver implements AutoCloseable
 		Set<String> received = promptAuthor.brief().failureIds();
 		Overlay incumbent = context.overlays().require(campaign.incumbent().snapshot());
 		List<String> violations = report.get().manifest().violations(received, hunks, campaign.contract(),
-			incumbent.snapshot(), confirmedContents(incumbent, report.get().conflicts()), report.get().conflicts());
+			incumbent.snapshot(), confirmedContents(incumbent, report.get().conflicts()), report.get().conflicts(),
+			promptAuthor.brief().soundFailures());
 		PromptAuthorManifest manifest = report.get().manifest();
 		record(new CampaignEvent.RetainPromptAuthorDiagnosis(new PromptAuthorDiagnosis(promptAuthor.number(),
 			promptAuthor.lineage(), promptAuthor.cell(), promptAuthor.working().snapshot(), manifest.kinds(),
@@ -1495,11 +1504,51 @@ public final class Driver implements AutoCloseable
 			record(new CampaignEvent.SubmitPromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(), snapshot,
 				submitted));
 		}
+		if (campaign.lifecycle() == Lifecycle.ACTIVE && campaign.isConfirmed() && !campaign.revisionRequested())
+		{
+			for (TestRevisionRequest request : testDefects(manifest, promptAuthor.brief()))
+				record(new CampaignEvent.RequestTestRevision(request));
+		}
 		if (!warnings.isEmpty() && campaign.lifecycle() == Lifecycle.ACTIVE && campaign.isConfirmed() &&
 			!campaign.revisionRequested())
 		{
 			record(new CampaignEvent.WarnAuthority(warnings));
 		}
+	}
+
+	/**
+	 * Returns a test revision request for each test that a test defect kind of a valid manifest names.
+	 *
+	 * @param manifest the manifest
+	 * @param brief the prompt author's brief
+	 * @return the requests, in the order that their tests first appear among the test defect kinds
+	 */
+	private static List<TestRevisionRequest> testDefects(PromptAuthorManifest manifest, PromptAuthorBrief brief)
+	{
+		Map<String, Failure> failures = brief.failuresById();
+		Map<String, List<PromptAuthorKind>> kindsByTest = new LinkedHashMap<>();
+		Map<String, Map<String, Failure>> failuresByTest = new LinkedHashMap<>();
+		for (PromptAuthorKind kind : manifest.kinds())
+		{
+			if (kind.classification() != FailureKind.TEST_DEFECT)
+				continue;
+			for (String id : kind.failures())
+			{
+				Failure failure = failures.get(id);
+				String test = failure.testCase().testId();
+				List<PromptAuthorKind> kinds = kindsByTest.computeIfAbsent(test, _ -> new ArrayList<>());
+				if (!kinds.contains(kind))
+					kinds.add(kind);
+				failuresByTest.computeIfAbsent(test, _ -> new LinkedHashMap<>()).put(id, failure);
+			}
+		}
+		List<TestRevisionRequest> requests = new ArrayList<>();
+		for (Map.Entry<String, List<PromptAuthorKind>> entry : kindsByTest.entrySet())
+		{
+			requests.add(new TestRevisionRequest(entry.getKey(), TestRevisionRequest.Trigger.TEST_DEFECT,
+				entry.getValue(), failuresByTest.get(entry.getKey())));
+		}
+		return requests;
 	}
 
 	/**

@@ -76,23 +76,23 @@ public record PluginCheck(Optional<PluginUnderTest> plugin, List<String> refusal
 
 	/**
 	 * Checks a proposed plugin under test. A built plugin's mapped files are the regular files of the project inside
-	 * a mapping's source directory; each must have a regular file at its mapped path in the base. The target prompt
-	 * files belong to a plugin when they lie inside a directory that holds a plugin manifest, inside a plugin root, or
-	 * inside a mapping's source directory, and they must not belong to more than one.
+	 * a mapping's source directory; each must have a regular file at its mapped path in the base. An in-project prompt
+	 * file belongs to a plugin when it lies inside a directory that holds a plugin manifest, inside a plugin root, or
+	 * inside a mapping's source directory, and the prompt files must not belong to more than one plugin.
 	 *
 	 * @param plugin the plugin under test that the contract author proposes, or empty if it proposes none
 	 * @param project the project's files
-	 * @param targets the target prompt files, relative to the project directory
+	 * @param promptFiles the in-project prompt files, which a candidate may edit, relative to the project directory
 	 * @return the check
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if the base's files cannot be read
 	 */
-	public static PluginCheck of(Optional<PluginUnderTest> plugin, FileInventory project, Set<Path> targets)
+	public static PluginCheck of(Optional<PluginUnderTest> plugin, FileInventory project, Set<Path> promptFiles)
 		throws IOException
 	{
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(project, "project").isNotNull();
-		requireThat(targets, "targets").isNotNull();
+		requireThat(promptFiles, "promptFiles").isNotNull();
 		if (plugin.isEmpty())
 			return NONE;
 
@@ -134,13 +134,13 @@ public record PluginCheck(Optional<PluginUnderTest> plugin, List<String> refusal
 		}
 
 		SortedSet<String> owners = new TreeSet<>();
-		for (Path target : targets)
-			owner(checked, project, target).ifPresent(owners::add);
+		for (Path promptFile : promptFiles)
+			owner(checked, project, promptFile).ifPresent(owners::add);
 		if (owners.size() > 1)
 		{
-			refusals.add("The target prompt files lie in more than one plugin: " + String.join(", ", owners) +
-				". Each trial installs one plugin under test, so start a separate campaign for each plugin's " +
-				"prompt files.");
+			refusals.add("The prompt files that a candidate may edit lie in more than one plugin: " +
+				String.join(", ", owners) + ". Each trial installs one plugin under test, so trials cannot load a " +
+				"candidate's edits to the prompt files of the others.");
 		}
 		Collections.sort(differing);
 		return new PluginCheck(Optional.of(checked), refusals, differing, List.of());
@@ -183,34 +183,34 @@ public record PluginCheck(Optional<PluginUnderTest> plugin, List<String> refusal
 	}
 
 	/**
-	 * Returns the plugin that a target prompt file belongs to: the plugin under test when the file lies inside its
+	 * Returns the plugin that a prompt file belongs to: the plugin under test when the file lies inside its
 	 * root or a mapping's source directory, and otherwise the nearest enclosing directory that holds a plugin
 	 * manifest.
 	 *
 	 * @param plugin the plugin under test
 	 * @param project the project's files
-	 * @param target the target prompt file, relative to the project directory
+	 * @param promptFile the prompt file, relative to the project directory
 	 * @return the plugin's directory as Markdown code, or empty if the file belongs to no plugin
 	 */
-	private static Optional<String> owner(PluginUnderTest plugin, FileInventory project, Path target)
+	private static Optional<String> owner(PluginUnderTest plugin, FileInventory project, Path promptFile)
 	{
 		switch (plugin)
 		{
 			case PluginUnderTest.Root root ->
 			{
-				if (target.startsWith(root.directory()))
+				if (promptFile.startsWith(root.directory()))
 					return Optional.of("`" + root.directory() + "`");
 			}
 			case PluginUnderTest.Built built ->
 			{
 				for (PluginUnderTest.Mapping mapping : built.mappings())
 				{
-					if (target.startsWith(mapping.source()))
+					if (promptFile.startsWith(mapping.source()))
 						return Optional.of("`" + built.base() + "`");
 				}
 			}
 		}
-		for (Path directory = target.getParent(); directory != null; directory = directory.getParent())
+		for (Path directory = promptFile.getParent(); directory != null; directory = directory.getParent())
 		{
 			if (holdsManifest(project, directory))
 				return Optional.of("`" + directory + "`");

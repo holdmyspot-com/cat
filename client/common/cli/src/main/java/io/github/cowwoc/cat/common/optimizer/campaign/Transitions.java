@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -112,6 +113,21 @@ public final class Transitions
 				draft.raise(new PendingDecision.ConflictFound(found.conflicts(), List.of()));
 			}
 			case CampaignEvent.ResolveConflict resolve -> resolveConflict(draft, resolve.resolution());
+			case CampaignEvent.RequestTestRevision request -> requestTestRevision(draft, request.request());
+			case CampaignEvent.ReviseTests revise -> reviseTests(draft, revise.revisions());
+			case CampaignEvent.ReportTestSound sound ->
+			{
+				requireConfirmed(draft);
+				draft.testRevisions = draft.testRevisions.withSound(new SoundTest(draft.lineageNumber(), sound.test(),
+					sound.reasons()));
+			}
+			case CampaignEvent.BlockTestRevision block ->
+			{
+				requireConfirmed(draft);
+				draft.testRevisions = draft.testRevisions.withoutRequest(block.test());
+				draft.raise(new PendingDecision.TestRevisionBlocked(block.test(), block.reason(), block.reasons(),
+					block.proposedChange()));
+			}
 			case CampaignEvent.Choose choose -> UserChoices.apply(draft, campaign, choose);
 			case CampaignEvent.Cancel _ ->
 			{
@@ -197,6 +213,8 @@ public final class Transitions
 		draft.pendingDecisions.clear();
 		draft.outcome = null;
 		draft.revisionRequested = false;
+		draft.testRevisions = new TestRevisions(List.of(), draft.testRevisions.revisions(),
+			draft.testRevisions.sound());
 	}
 
 	/**
@@ -266,6 +284,52 @@ public final class Transitions
 		draft.endRunningAttempt(Outcome.STOPPED_FOR_CONTRACT_REVISION);
 		draft.revisionRequested = true;
 		draft.pendingDecisions.clear();
+	}
+
+	/**
+	 * Records a request to revise a prompt test, merged into any pending request for the same test.
+	 *
+	 * @param draft the state
+	 * @param request the request
+	 * @throws IllegalStateException if the campaign is not active, has no confirmed contract or waits for a contract
+	 *   revision
+	 */
+	private static void requestTestRevision(Draft draft, TestRevisionRequest request)
+	{
+		requireConfirmed(draft);
+		if (draft.revisionRequested)
+			throw new IllegalStateException("The campaign waits for a contract revision");
+		draft.testRevisions = draft.testRevisions.request(request);
+	}
+
+	/**
+	 * Applies a test revision. A running attempt stops, keeping its certification index, and the revised contract
+	 * waits for confirmation. The reports that a test is sound carry over to the next lineage for the tests that the
+	 * revision left unchanged.
+	 *
+	 * @param draft the state
+	 * @param revisions the changes, one per revised test
+	 * @throws IllegalStateException if the campaign is not active or has no confirmed contract
+	 */
+	private static void reviseTests(Draft draft, List<TestRevision> revisions)
+	{
+		requireConfirmed(draft);
+		draft.endRunningAttempt(Outcome.STOPPED_FOR_TEST_REVISION);
+		draft.revisionRequested = true;
+		draft.pendingDecisions.clear();
+		int lineage = draft.lineageNumber();
+		Set<String> revised = new HashSet<>();
+		for (TestRevision revision : revisions)
+			revised.add(revision.test());
+		List<TestRevision> applied = new ArrayList<>(draft.testRevisions.revisions());
+		applied.addAll(revisions);
+		List<SoundTest> sound = new ArrayList<>(draft.testRevisions.sound());
+		for (SoundTest report : draft.testRevisions.sound())
+		{
+			if (report.lineage() == lineage && !revised.contains(report.test()))
+				sound.add(new SoundTest(lineage + 1, report.test(), report.reasons()));
+		}
+		draft.testRevisions = new TestRevisions(List.of(), applied, sound);
 	}
 
 	/**

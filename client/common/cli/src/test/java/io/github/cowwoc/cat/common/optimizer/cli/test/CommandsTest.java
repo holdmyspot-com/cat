@@ -70,6 +70,7 @@ public final class CommandsTest
 		private CommandResult result = CommandResult.of(status, Harness.CLAUDE);
 		private Exception failure;
 		private int ceiling;
+		private String goal;
 
 		/**
 		 * Returns the result, or throws the scripted failure.
@@ -90,9 +91,10 @@ public final class CommandsTest
 		}
 
 		@Override
-		public CommandResult start(Path target, int ceiling) throws CommandRefusedException, IOException
+		public CommandResult start(Path target, int ceiling, String goal) throws CommandRefusedException, IOException
 		{
 			this.ceiling = ceiling;
+			this.goal = goal;
 			return answer("start " + target);
 		}
 
@@ -240,6 +242,32 @@ public final class CommandsTest
 	}
 
 	/**
+	 * Verifies that {@code start} passes the user's goal to the core in either option order, and no goal when the
+	 * option is absent.
+	 */
+	@Test
+	public void passesTheGoal()
+	{
+		// Requirement: R-C24
+		String goal = "Read files whole without slowing searches.";
+		List<List<String>> commands = List.of(
+			List.of("start", "prompts/a.md", "--goal", goal),
+			List.of("start", "prompts/a.md", "--goal", goal, "--max-concurrency", "3"),
+			List.of("start", "prompts/a.md", "--max-concurrency", "3", "--goal", goal));
+		for (List<String> command : commands)
+		{
+			FakeCore core = new FakeCore();
+			StringBuilder output = new StringBuilder();
+			requireThat(run(core, command, output), "exit").isEqualTo(0);
+			requireThat(core.calls, "calls").isEqualTo(List.of("start prompts/a.md"));
+			requireThat(core.goal, "goal").isEqualTo(goal);
+		}
+		FakeCore core = new FakeCore();
+		requireThat(run(core, List.of("start", "prompts/a.md"), new StringBuilder()), "exit").isEqualTo(0);
+		requireThat(core.goal, "absentGoal").isNull();
+	}
+
+	/**
 	 * Verifies that malformed ceilings are refused with the range before calling the core.
 	 */
 	@Test
@@ -272,7 +300,7 @@ public final class CommandsTest
 	public void usageListsCampaignCeiling()
 	{
 		// Requirement: R-E4
-		requireThat(Commands.USAGE, "usage").contains("start <target> [--max-concurrency <1..16>]");
+		requireThat(Commands.USAGE, "usage").contains("start <target> [--goal <text>] [--max-concurrency <1..16>]");
 	}
 
 	/**
@@ -564,6 +592,9 @@ public final class CommandsTest
 				{List.of("frobnicate")},
 				{List.of("start")},
 				{List.of("start", " ")},
+				{List.of("start", "prompts/a.md", "--goal")},
+				{List.of("start", "prompts/a.md", "--goal", " ")},
+				{List.of("start", "prompts/a.md", "--goal", "one", "--goal", "two")},
 				{List.of("run")},
 				{List.of("run", "c1", "extra")},
 				{List.of("run", "../escape")},

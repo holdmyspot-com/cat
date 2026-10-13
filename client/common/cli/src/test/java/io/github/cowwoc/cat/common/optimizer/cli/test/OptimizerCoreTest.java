@@ -12,6 +12,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
+import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
@@ -19,7 +20,11 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
+import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevision;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisionRequest;
+import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.test.Builder;
@@ -339,6 +344,61 @@ public final class OptimizerCoreTest
 			requireThat(refusal, "refusal").isNotNull();
 			requireThat(refusal.getMessage(), "message").contains("inside the project");
 			requireThat(contents(project.root()), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that a directory target is refused, naming it, before any session starts.
+	 */
+	@Test
+	public void refusesDirectoryTarget() throws Exception
+	{
+		// Requirement: R-C25
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path directory = Files.createDirectory(repository.root().resolve("prompts"));
+			Files.writeString(directory.resolve("main.md"), "Be brief.\n");
+			CommandRefusedException refusal = null;
+			try
+			{
+				repository.core().start(Path.of("prompts"));
+			}
+			catch (CommandRefusedException e)
+			{
+				refusal = e;
+			}
+			requireThat(refusal, "refusal").isNotNull();
+			requireThat(refusal.getMessage(), "message").contains("one prompt file").contains(directory.toString());
+			requireThat(repository.sessions().roles(), "roles").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that the guard pilot's control trials empty only the target prompt file and leave every other prompt
+	 * file of the prompt system as the incumbent has it.
+	 */
+	@Test
+	public void controlTrialsEmptyOnlyTarget() throws Exception
+	{
+		// Requirement: R-W10
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(output ->
+				output.withArray("derived_sources").addObject().put("path", "read-file.md").
+					put("rule", "CLAUDE.md lazy loads the read rule.")),
+				Set.of(Path.of("CLAUDE.md"), Path.of("read-file.md")));
+			Files.writeString(repository.root().resolve("read-file.md"), "Read files whole.\n");
+			repository.core().start(Path.of("read-file.md"));
+			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
+			requireThat(trials, "trials").isNotEmpty();
+			for (SessionRequest trial : trials)
+			{
+				requireThat(Files.readString(trial.source().resolve("read-file.md")), "target").isEmpty();
+				requireThat(Files.readString(trial.source().resolve("CLAUDE.md")), "other").isEqualTo("Be brief.\n");
+			}
 		}
 	}
 
@@ -959,16 +1019,19 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that a proposal omitting a scenario recorded beside a user rule is refused before it is persisted.
+	 * Verifies that the contract author receives only the recorded scenarios of the target prompt file, and that a
+	 * proposal omitting one of them is refused before it is persisted, while a scenario of a user rule outside the
+	 * target needs no citation even when a requirement names that rule.
 	 *
 	 * @throws IOException if the project cannot be written
 	 * @throws CommandRefusedException if the project cannot start a campaign
 	 * @throws InterruptedException if the session wait is interrupted
 	 */
 	@Test
-	public void startRefusesUncitedUserScenario() throws IOException, CommandRefusedException, InterruptedException
+	public void startRequiresOnlyTargetScenarios() throws IOException, CommandRefusedException, InterruptedException
 	{
 		// Requirement: R-I3
+		// Requirement: R-C24
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(output ->
@@ -978,13 +1041,45 @@ public final class OptimizerCoreTest
 			}));
 			Path rules = Files.createDirectories(repository.root().resolve("home/.cat/rules/common"));
 			Files.writeString(rules.resolve("wording.md"), "Be brief.\n");
-			Path scenarios = Files.createDirectories(repository.root().resolve("home/.cat/tests/common/wording"));
-			Files.writeString(scenarios.resolve("reported.md"), "Turn: Summarize.\nExpected: Be brief.\n");
+			Path userScenarios = Files.createDirectories(repository.root().resolve("home/.cat/tests/common/wording"));
+			Files.writeString(userScenarios.resolve("rule-case.md"), "Turn: Summarize the rule.\n");
+			Path targetScenarios = Files.createDirectories(repository.root().resolve(".cat/tests/CLAUDE"));
+			Files.writeString(targetScenarios.resolve("target-case.md"), "Turn: Summarize the target.\n");
+
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(repository.sessions().requests.getFirst().turns().getFirst(), "contractAuthorTurn").
+				contains("Turn: Summarize the target.").doesNotContain("Turn: Summarize the rule.");
 			requireThat(result.message(), "message").contains("The contract author's proposal is invalid").
-				contains("reported.md");
+				contains("target-case.md").doesNotContain("rule-case.md");
 			requireThat(Files.exists(repository.directory(result.status().campaignId()).resolve("held_out/proposal.json")),
 				"proposalFileExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} stores the user's goal with the campaign and gives it to the contract author.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void startPassesTheGoal() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-C24
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String goal = "Replies stay brief without dropping facts.";
+			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, goal).status().
+				campaignId();
+
+			requireThat(repository.load(id).header().goal(), "goal").isEqualTo(goal);
+			requireThat(repository.sessions().requests.getFirst().turns().getFirst(), "contractAuthorTurn").
+				contains(goal).contains("`CLAUDE.md`");
 		}
 	}
 
@@ -1525,7 +1620,8 @@ public final class OptimizerCoreTest
 			c.ceiling(), c.lineages(), c.identity(), c.incumbent(), c.candidates(), c.promptAuthorAttempts(),
 			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(),
 			c.throttle(), List.of(new PendingDecision.ConflictFound(reportedConflicts(), List.of())),
-			c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(), c.answeredWarnings()));
+			c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(), c.answeredWarnings(),
+			c.testRevisions()));
 	}
 
 	/**
@@ -2176,6 +2272,251 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Returns a test revision's output that rewrites the prompt test {@code formatting} of the contract author output
+	 * fixture with new turns and new test cases.
+	 *
+	 * @param change edits the revised test
+	 * @return the output as JSON text
+	 */
+	private static String revisedFormatting(java.util.function.Consumer<ObjectNode> change)
+	{
+		ObjectNode test = (ObjectNode) JSON.readTree(derivation(_ ->
+		{
+		})).get("tests").get(0);
+		requireThat(test.get("id").asString(), "id").isEqualTo("formatting");
+		test.putArray("turns").add("Summarize the meeting notes in {{tone}} style.").
+			add("Now shorten it for {{audience}} reader.");
+		ArrayNode testCases = test.putArray("test_cases");
+		for (String tone : List.of("an upbeat", "a somber", "a neutral", "a playful", "a stern", "a warm"))
+		{
+			for (String audience : List.of("a manager", "an intern"))
+			{
+				ObjectNode testCase = testCases.addObject();
+				ArrayNode values = testCase.putArray("values");
+				values.addObject().put("variable", "tone").put("text", tone);
+				values.addObject().put("variable", "audience").put("text", audience);
+				testCase.put("expected_outcome", tone + " summary shortened for " + audience + " reader");
+			}
+		}
+		change.accept(test);
+		ObjectNode output = JSON.createObjectNode();
+		output.put("result", "revised");
+		output.put("reasons", "The old turns named the tone that the assertion expects.");
+		output.set("test", test);
+		output.putNull("proposed_change");
+		return JSON.writeValueAsString(output);
+	}
+
+	/**
+	 * Returns a test revision's output that does not revise the prompt test.
+	 *
+	 * @param result the result: {@code sound}, {@code unprovable} or {@code requirement_change}
+	 * @param reasons the session's reasons
+	 * @param proposedChange the proposed requirement change, or {@code null} for none
+	 * @return the output as JSON text
+	 */
+	private static String unrevised(String result, String reasons, String proposedChange)
+	{
+		ObjectNode output = JSON.createObjectNode();
+		output.put("result", result);
+		output.put("reasons", reasons);
+		output.putNull("test");
+		output.put("proposed_change", proposedChange);
+		return JSON.writeValueAsString(output);
+	}
+
+	/**
+	 * Records the prompt author's request for a test revision of the prompt test {@code formatting}, as a development
+	 * round records it when the prompt author classifies a failure kind as a test defect.
+	 *
+	 * @param repository the owned campaign repository
+	 * @param id the campaign identifier
+	 * @throws IOException if the store fails
+	 * @throws CommandRefusedException if the owned project cannot be opened
+	 */
+	private static void requestTestRevision(Repository repository, String id)
+		throws IOException, CommandRefusedException
+	{
+		Campaign c = repository.load(id);
+		PromptAuthorKind kind = new PromptAuthorKind("tone_named_in_turn", List.of("f1"), FailureKind.TEST_DEFECT,
+			List.of(), "The first turn names the tone that the assertion expects.");
+		TestRevisions requested = c.testRevisions().request(new TestRevisionRequest("formatting",
+			TestRevisionRequest.Trigger.TEST_DEFECT, List.of(kind), Map.of()));
+		OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(new Campaign(c.header(),
+			c.ceiling(), c.lineages(), c.identity(), c.incumbent(), c.candidates(), c.promptAuthorAttempts(),
+			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(),
+			c.throttle(), c.pendingDecisions(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(),
+			c.answeredWarnings(), requested));
+	}
+
+	/**
+	 * Verifies that {@code run} answers a request for a test revision with a contract author session that receives the
+	 * test and the prompt author's fault, and that a revised test starts a new lineage under the revised contract
+	 * without the user's confirmation.
+	 */
+	@Test
+	public void runRevisesTestWithDefect() throws Exception
+	{
+		// Requirement: R-D19
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count ->
+			{
+				if (count == 0)
+				{
+					return derivation(_ ->
+					{
+					});
+				}
+				return revisedFormatting(_ ->
+				{
+				});
+			});
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requestTestRevision(repository, id);
+
+			repository.core().run(id);
+
+			List<SessionRequest> contractAuthors = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR);
+			requireThat(contractAuthors.size(), "contractAuthors").isEqualTo(2);
+			requireThat(contractAuthors.get(1).turns().getFirst(), "turn").contains("`formatting`").
+				contains("The first turn names the tone that the assertion expects.");
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.lineages().size(), "lineages").isEqualTo(2);
+			requireThat(campaign.revisionRequested(), "revisionRequested").isFalse();
+			requireThat(campaign.awaitsTestRevision(), "awaitsTestRevision").isFalse();
+			requireThat(campaign.contract().findTest("formatting").orElseThrow().turns().getFirst(), "turn").
+				isEqualTo("Summarize the meeting notes in {{tone}} style.");
+			requireThat(campaign.testRevisions().revisions().size(), "revisions").isEqualTo(1);
+			TestRevision revision = campaign.testRevisions().revisions().getFirst();
+			requireThat(revision.test(), "test").isEqualTo("formatting");
+			requireThat(revision.before(), "before").contains("Summarize the notes in {{tone}} style.");
+			requireThat(revision.after(), "after").contains("Summarize the meeting notes in {{tone}} style.");
+			requireThat(Files.readString(repository.directory(id).resolve("held_out/proposal.json")), "stored").
+				contains("Summarize the meeting notes");
+		}
+	}
+
+	/**
+	 * Verifies that a test revision that finds the test sound records the report under the current lineage and keeps
+	 * the confirmed contract.
+	 */
+	@Test
+	public void runRecordsSoundTest() throws Exception
+	{
+		// Requirement: R-D19
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count ->
+			{
+				if (count == 0)
+				{
+					return derivation(_ ->
+					{
+					});
+				}
+				return unrevised("sound", "The turns are organic and prove r1.", null);
+			});
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requestTestRevision(repository, id);
+
+			repository.core().run(id);
+
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.testRevisions().isSound(1, "formatting"), "sound").isTrue();
+			requireThat(campaign.lineages().size(), "lineages").isEqualTo(1);
+			requireThat(campaign.awaitsTestRevision(), "awaitsTestRevision").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a test revision that needs a requirement change pauses the campaign with the proposed change, and
+	 * that choosing it derives a revised proposal from that change for the user to confirm.
+	 */
+	@Test
+	public void proposedRequirementChangeRevisesContract() throws Exception
+	{
+		// Requirement: R-D19
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count ->
+			{
+				if (count == 1)
+				{
+					return unrevised("requirement_change", "No reply can show the tone in one word.",
+						"Let r1 accept any tone that the user names.");
+				}
+				// Without scope conditions, no unavailable certification pauses the campaign before the test revision
+				return derivation(output -> output.putArray("scope_conditions"));
+			});
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requestTestRevision(repository, id);
+
+			repository.core().run(id);
+
+			Campaign paused = repository.load(id);
+			requireThat(paused.pending(), "pending").isInstanceOf(PendingDecision.TestRevisionBlocked.class);
+			requireThat(paused.choices(), "choices").contains(Choice.PROPOSED_CHANGE).contains(Choice.STOP);
+
+			CommandResult revised = repository.core().choose(id, Choice.PROPOSED_CHANGE, 0, 0);
+
+			requireThat(revised.proposal(), "proposal").contains("## Requirements");
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getFirst(),
+				"feedback").contains("Let r1 accept any tone that the user names.");
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.revisionRequested(), "revisionRequested").isTrue();
+			requireThat(campaign.pending(), "pending").isNull();
+		}
+	}
+
+	/**
+	 * Verifies that a revised test that proves other requirements or reuses a test case of the confirmed test is
+	 * returned to the session once and then refused, leaving the confirmed contract and the request in place.
+	 */
+	@Test
+	public void refusesRevisionThatChangesRequirements() throws Exception
+	{
+		// Requirement: R-D19
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count ->
+			{
+				if (count == 0)
+				{
+					return derivation(_ ->
+					{
+					});
+				}
+				return revisedFormatting(test ->
+				{
+					test.putArray("requirement_ids").add("r2");
+					((ObjectNode) test.get("assertions").get(0)).put("requirement_id", "r2");
+					ObjectNode reused = ((ArrayNode) test.get("test_cases")).addObject();
+					ArrayNode values = reused.putArray("values");
+					values.addObject().put("variable", "tone").put("text", "a formal");
+					values.addObject().put("variable", "audience").put("text", "an expert");
+					reused.put("expected_outcome", "a formal summary shortened for an expert reader");
+				});
+			});
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requestTestRevision(repository, id);
+
+			CommandResult result = repository.core().run(id);
+
+			requireThat(result.message(), "message").contains("formatting").contains("r1").
+				contains("a formal summary shortened for an expert reader");
+			requireThat(repository.sessions().followUps, "followUps").size().isEqualTo(1);
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.lineages().size(), "lineages").isEqualTo(1);
+			requireThat(campaign.awaitsTestRevision(), "awaitsTestRevision").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies that {@code run} executes one slice with scripted trial and judge sessions and reports the status.
 	 */
 	@Test
@@ -2529,7 +2870,7 @@ public final class OptimizerCoreTest
 				built.attempts(), built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(),
 				built.throttle(), List.of(new PendingDecision.RegressionTradeOff(1)),
 				built.revisionRequested(), built.outcome(), built.delivery(), built.optimization(),
-				built.answeredWarnings());
+				built.answeredWarnings(), built.testRevisions());
 			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(tradeOff);
 
 			ObjectNode chosen = output(repository, List.of("choose", id, "retain_incumbent"));
@@ -2600,7 +2941,7 @@ public final class OptimizerCoreTest
 				c.candidates(), c.promptAuthorAttempts(), c.development(), c.baseline(), c.attempts(),
 				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
 				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(),
-				c.answeredWarnings());
+				c.answeredWarnings(), c.testRevisions());
 			Campaign warned = Transitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
 			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(warned);
 			requireThat(warned.choices(), "choices").isEqualTo(List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP));
@@ -2639,7 +2980,7 @@ public final class OptimizerCoreTest
 				c.candidates(), c.promptAuthorAttempts(), c.development(), c.baseline(), c.attempts(),
 				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
 				List.of(new PendingDecision.RegressionTradeOff(1)), c.revisionRequested(), Outcome.CERTIFIED,
-				c.delivery(), c.optimization(), c.answeredWarnings());
+				c.delivery(), c.optimization(), c.answeredWarnings(), c.testRevisions());
 			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(waiting);
 			requireThat(waiting.choices(), "choices").contains(Choice.RETAIN_INCUMBENT);
 
@@ -2742,6 +3083,11 @@ public final class OptimizerCoreTest
 				ObjectNode brevity = ((ArrayNode) output.get("requirements")).addObject().put("id", "r3").
 					put("description", "Answers stay brief.").put("source", "CLAUDE.md").putNull("trigger");
 				brevity.putArray("behaviors").add("too_long");
+				ObjectNode formatting = (ObjectNode) output.get("tests").get(0);
+				((ArrayNode) formatting.get("requirement_ids")).add("r3");
+				((ArrayNode) formatting.get("assertions")).addObject().put("id", "stays_brief").
+					put("requirement_id", "r3").put("kind", "effect").put("statement", "The answer stays brief.").
+					putNull("tool").put("on_tool_failure", "fail");
 				ArrayNode conflicts = output.putArray("conflicts");
 				ObjectNode first = conflicts.addObject();
 				first.putArray("requirement_ids").add("r1").add("r2").add("r3");

@@ -32,6 +32,10 @@ public enum Outcome
 	 */
 	STOPPED_FOR_CONTRACT_REVISION("not certified: stopped for contract revision"),
 	/**
+	 * A test revision stopped a certification attempt.
+	 */
+	STOPPED_FOR_TEST_REVISION("not certified: stopped for test revision"),
+	/**
 	 * The user started a new measurement identity during a certification attempt.
 	 */
 	TESTING_ENVIRONMENT_CHANGED("not certified: testing environment changed"),
@@ -95,7 +99,8 @@ public enum Outcome
 			case UNSUPPORTED_INSTRUCTION_SOURCE, INELIGIBLE_TRIAL_EFFECT, UNSUPPORTED_OUTPUT,
 				UNSUPPORTED_TEST_INTERACTION, INVALID_STATISTICAL_ASSUMPTIONS -> true;
 			case CERTIFIED, IMPROVED_NOT_CERTIFIED, BELOW_MINIMUM, BELOW_CONTROL, INCONCLUSIVE,
-				STOPPED_FOR_CONTRACT_REVISION, TESTING_ENVIRONMENT_CHANGED, NOT_CERTIFIED -> false;
+				STOPPED_FOR_CONTRACT_REVISION, STOPPED_FOR_TEST_REVISION, TESTING_ENVIRONMENT_CHANGED,
+				NOT_CERTIFIED -> false;
 		};
 	}
 }
