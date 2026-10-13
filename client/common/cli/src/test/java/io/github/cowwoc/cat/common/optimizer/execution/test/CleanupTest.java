@@ -325,7 +325,9 @@ public final class CleanupTest
 		 */
 		static Fixture create(TemporaryDirectories cleanup) throws IOException
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-cleanup-"));
+			// Git lists worktrees by their real paths, and the optimizer resolves the base worktree to its real path, so
+			// the fixture does too; the temporary folder can be a symbolic link, as on macOS
+			Path root = cleanup.add(Files.createTempDirectory("cat-cleanup-")).toRealPath();
 			Path base = Files.createDirectory(root.resolve("base"));
 			Files.writeString(base.resolve("CLAUDE.md"), "prompt v1\n", UTF_8);
 			Git git = new Git(base);
