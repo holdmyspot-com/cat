@@ -88,7 +88,8 @@ public final class CodexRunPartTest
 			requireThat(lastPart.find(), "lastPart").isTrue();
 			Path saved = Path.of(lastPart.group("path"));
 			requireThat(saved.getParent().getParent(), "folder").isEqualTo(catTemp);
-			requireThat(call.output(), "output").isEqualTo(folder + "\n[End of " + saved + "]\n");
+			// pwd prints the folder's real path, which differs where the temporary folder is a symbolic link, as on macOS
+			requireThat(call.output(), "output").isEqualTo(folder.toRealPath() + "\n[End of " + saved + "]\n");
 		}
 	}
 
