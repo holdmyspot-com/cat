@@ -10,6 +10,9 @@
   that no presented use case runs, so the user can see which changes the walkthrough did not cover.
 - Present one use case per turn and present the next one only after the user approves the current one or asks to move
   on, leaving the change under review unedited unless the user asks for an edit.
+- Let the user understand each step without opening other files: say what its code does in this use case and, for
+  changed code, how it behaves differently from before the change, and explain each name whose meaning its name and the
+  code shown leave unclear.
 
 ## Guidance
 
@@ -87,15 +90,35 @@ Trigger: <the actor and action>. Outcome: <the result the actor observes>.
 
 ### Step I of M: `Caller.method` → `Callee.method` ([File.java:L](path))
 
-- Why it runs: <the call or condition that reaches this code in this use case>
-- Changed code: <the changed lines as a diff, with only enough surrounding lines to read them>
-- What to check: <the decision this code makes, its inputs, its failure behavior, and anything specific that the
-  reviewer should verify>
+<What this code does in this use case: the values it receives and where they come from, what it returns or passes on,
+what it does when an input is invalid or a call fails, and, for changed code, how it behaves differently from before
+the change.>
+
+- `<name>`: <what it represents and, when this use case determines it, its value here> ([File.java:L](path))
+
+<the changed lines as a diff, with only enough surrounding lines to read them>
+
+Concern: <a specific defect or risk, with the code or test that shows it>
 ```
 
-Show code only for steps that contain changed lines; a step through unchanged code is one line. After the steps, list
-the tests that exercise the use case and show their changed hunks. End the response by asking the user to ask questions
-about this use case or to approve it, and name the next use case. Then end the turn and wait for the user's reply.
+Show code only for steps that contain changed lines; a step through unchanged code is one line.
+
+Explain a name in the step that first uses it when its name and the code shown leave its meaning unclear to a reader
+new to this code: a parameter, field, constant, enumeration value, or domain term, such as a `platform` parameter or an
+opaque `state` value. Say what it represents and, when this use case determines it, the value it has here. Take the
+meaning from its declaration and documentation, the code that creates or reads its value, and its tests, and link the
+location that establishes it. When that evidence does not settle the meaning, say so and name the missing evidence
+instead of guessing. Do not explain a name whose meaning is already clear, such as a `text` parameter that holds a
+note's text; omit the list when the step has no such name.
+
+Describe what the step's code does rather than what the reviewer should look for. When the step's call is indirect,
+name in the description the code that selected the implementation shown, and when a condition in an unchanged step
+that is not shown decides whether this code runs, state that condition. Add the `Concern` line only when the code or
+its tests show a specific defect or risk; omit it otherwise, rather than filling it with general advice.
+
+After the steps, list the tests that exercise the use case and show their changed hunks. End the response by asking the
+user to ask questions about this use case or to approve it, and name the next use case. Then end the turn and wait for
+the user's reply.
 
 ### 5. Respond between use cases
 
