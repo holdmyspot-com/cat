@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -85,7 +86,7 @@ final class PilotReport
 	{
 		text.append("\n### `").append(test.id()).append("` in cell `").append(pilot.cellId()).append("`\n\n").
 			append(count(pilot.trials().size(), "trial", "trials")).append(" decided, ").
-			append(count(pilot.failedRuns(), "failed run", "failed runs")).append(".\n");
+			append(count(pilot.failedRuns().size(), "failed run", "failed runs")).append(".\n");
 		if (pilot.stopReason() != null)
 		{
 			text.append("\nThe pilot stopped before it finished: ").append(pilot.stopReason()).
@@ -115,6 +116,18 @@ final class PilotReport
 						"prompts. A control comparison on it needs many pairs or ends the certification attempt.");
 			}
 			text.append('\n');
+		}
+		if (pilot.failedRuns().isEmpty())
+			return;
+		// Each distinct reason once, in the order that the runs failed
+		Map<String, Integer> runsByReason = new LinkedHashMap<>();
+		for (String reason : pilot.failedRuns())
+			runsByReason.merge(reason, 1, Integer::sum);
+		text.append("\nWhy the failed runs ended without a decision:\n\n");
+		for (Map.Entry<String, Integer> entry : runsByReason.entrySet())
+		{
+			text.append("- ").append(entry.getKey()).append(" (").append(count(entry.getValue(), "run", "runs")).
+				append(")\n");
 		}
 	}
 

@@ -1976,7 +1976,7 @@ public final class Driver implements AutoCloseable
 	 * @param failure the exception
 	 * @return its message, or its type if it has no message
 	 */
-	private static String describe(Throwable failure)
+	static String describe(Throwable failure)
 	{
 		Throwable cause = failure;
 		if (cause instanceof CompletionException && cause.getCause() != null)

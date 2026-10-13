@@ -199,7 +199,7 @@ public final class GuardPilot
 		 * The record of each finished trial, by draw position; {@code null} for a trial that is unfinished or failed.
 		 */
 		private final PilotTrial[] trials = new PilotTrial[TRIALS];
-		private int failedRuns;
+		private final List<String> failedRuns = new ArrayList<>();
 		private int finished;
 		private String stopReason;
 
@@ -233,10 +233,12 @@ public final class GuardPilot
 
 		/**
 		 * Records a trial that ended without a decision.
+		 *
+		 * @param reason why the trial ended without a decision
 		 */
-		void failed()
+		void failed(String reason)
 		{
-			++failedRuns;
+			failedRuns.add(reason);
 			++finished;
 		}
 
@@ -311,8 +313,9 @@ public final class GuardPilot
 	 *
 	 * @param job the session's work
 	 * @param result the session's result, or {@code null} if the session failed with an exception
+	 * @param failure the exception, or {@code null}
 	 */
-	private record Ended(Job job, SessionResult result)
+	private record Ended(Job job, SessionResult result, Throwable failure)
 	{
 	}
 
@@ -376,8 +379,8 @@ public final class GuardPilot
 					inFlight.remove(ended.job());
 					switch (ended.job())
 					{
-						case TrialJob trial -> trialEnded(trial, ended.result());
-						case JudgeJob judge -> judgeEnded(judge, ended.result());
+						case TrialJob trial -> trialEnded(trial, ended.result(), ended.failure());
+						case JudgeJob judge -> judgeEnded(judge, ended.result(), ended.failure());
 					}
 				}
 			}
@@ -426,14 +429,29 @@ public final class GuardPilot
 				{
 					handle = sessions.start(request);
 				}
-				catch (IOException _)
+				catch (IOException e)
 				{
-					sessionFailed(job);
+					sessionFailed(job, "The " + roleName(job) + " session could not start: " + Driver.describe(e));
 					continue;
 				}
 				inFlight.put(job, handle);
-				handle.completion().whenComplete((result, _) -> events.add(new Ended(job, result)));
+				handle.completion().whenComplete((result, failure) -> events.add(new Ended(job, result, failure)));
 			}
+		}
+
+		/**
+		 * Returns the name of a session's role.
+		 *
+		 * @param job the session's work
+		 * @return {@code trial} or {@code judge}
+		 */
+		private static String roleName(Job job)
+		{
+			return switch (job)
+			{
+				case TrialJob _ -> "trial";
+				case JudgeJob _ -> "judge";
+			};
 		}
 
 		/**
@@ -441,16 +459,19 @@ public final class GuardPilot
 		 *
 		 * @param trial the trial
 		 * @param result the session's result, or {@code null} if the session failed with an exception
+		 * @param failure the exception, or {@code null}
 		 */
-		private void trialEnded(TrialJob trial, SessionResult result)
+		private void trialEnded(TrialJob trial, SessionResult result, Throwable failure)
 		{
 			switch (result)
 			{
+				case null -> trial.pilot().failed("The trial session failed: " + Driver.describe(failure));
 				case SessionResult.Completed completed -> decideTools(trial, completed);
 				case SessionResult.RateLimited _ ->
 					stop("The provider rejected a pilot session because of a rate limit.");
 				case SessionResult.Refused _ -> stop("The provider refused a pilot session.");
-				case null, default -> trial.pilot().failed();
+				case SessionResult.Interrupted _ -> trial.pilot().failed("The trial session was interrupted");
+				case SessionResult.Failed failed -> trial.pilot().failed(failed.reason());
 			}
 		}
 
@@ -459,7 +480,7 @@ public final class GuardPilot
 		 * the trial without a judge; otherwise the trial waits for a judge of the assertions without a {@code tool}, of
 		 * the assertions whose failed tool leaves them to the judge, and of the assertion
 		 * {@value TestCase#EXPECTED_OUTCOME}. A tool that the trial's record cannot decide, or evidence that cannot be
-		 * rendered, makes the trial a failed run.
+		 * rendered, makes the trial a failed run that records why.
 		 *
 		 * @param trial the trial
 		 * @param completed the trial session's result
@@ -477,9 +498,9 @@ public final class GuardPilot
 				if (contract.judge().prompt().contains("{{evidence}}"))
 					section = evidence.render();
 			}
-			catch (IOException | UndecidableToolException _)
+			catch (IOException | UndecidableToolException e)
 			{
-				pilot.failed();
+				pilot.failed("The built-in tools could not be decided: " + Driver.describe(e));
 				return;
 			}
 			if (results.stream().anyMatch(BuiltInToolResult::failsTrial))
@@ -511,17 +532,19 @@ public final class GuardPilot
 		 *
 		 * @param judging the judged trial
 		 * @param result the session's result, or {@code null} if the session failed with an exception
+		 * @param failure the exception, or {@code null}
 		 */
-		private void judgeEnded(JudgeJob judging, SessionResult result)
+		private void judgeEnded(JudgeJob judging, SessionResult result, Throwable failure)
 		{
 			switch (result)
 			{
+				case null -> sessionFailed(judging, "The judge session failed: " + Driver.describe(failure));
 				case SessionResult.Completed completed ->
 				{
 					Optional<Judgment> judgment = judge.judgment(completed, judging.judged());
 					if (judgment.isEmpty())
 					{
-						sessionFailed(judging);
+						sessionFailed(judging, "The judge's output does not match its result schema");
 						return;
 					}
 					decided(judging, judgment.get());
@@ -529,7 +552,8 @@ public final class GuardPilot
 				case SessionResult.RateLimited _ ->
 					stop("The provider rejected a pilot session because of a rate limit.");
 				case SessionResult.Refused _ -> stop("The provider refused a pilot session.");
-				case null, default -> sessionFailed(judging);
+				case SessionResult.Interrupted _ -> sessionFailed(judging, "The judge session was interrupted");
+				case SessionResult.Failed failed -> sessionFailed(judging, failed.reason());
 			}
 		}
 
@@ -562,16 +586,19 @@ public final class GuardPilot
 		 * failed {@value Driver#JUDGE_ATTEMPTS} times; then, like a failed trial, its trial is a failed run.
 		 *
 		 * @param job the session's work
+		 * @param reason why the session failed
 		 */
-		private void sessionFailed(Job job)
+		private void sessionFailed(Job job, String reason)
 		{
-			if (job instanceof JudgeJob judging && judging.attempt() < Driver.JUDGE_ATTEMPTS)
+			switch (job)
 			{
-				queue.addFirst(new JudgeJob(judging.pilot(), judging.position(), judging.testCase(), judging.trial(),
-					judging.judged(), judging.results(), judging.section(), judging.attempt() + 1));
-				return;
+				case TrialJob trial -> trial.pilot().failed(reason);
+				case JudgeJob judging when judging.attempt() < Driver.JUDGE_ATTEMPTS ->
+					queue.addFirst(new JudgeJob(judging.pilot(), judging.position(), judging.testCase(), judging.trial(),
+						judging.judged(), judging.results(), judging.section(), judging.attempt() + 1));
+				case JudgeJob judging -> judging.pilot().failed("The judge failed " + Driver.JUDGE_ATTEMPTS +
+					" times. Last failure: " + reason);
 			}
-			job.pilot().failed();
 		}
 
 		/**

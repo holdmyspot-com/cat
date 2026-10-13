@@ -20,12 +20,12 @@ import java.util.List;
  * @param cellId the cell that the trials ran in
  * @param control the identity of the control source's files that the trials ran on
  * @param trials the trials that the proposed built-in tools or judge decided, in completion order
- * @param failedRuns the number of trials that ended without a decision, such as a session that failed or a judge
- *   whose output never matched its result schema
+ * @param failedRuns why each trial that ended without a decision ended, one entry per trial, such as a session that
+ *   failed or a judge whose output never matched its result schema
  * @param stopReason why the pilot stopped before running every trial, or {@code null} if it ran every trial
  */
 public record PilotResult(String testId, Sha256 definition, String cellId, Sha256 control, List<PilotTrial> trials,
-	int failedRuns, String stopReason)
+	List<String> failedRuns, String stopReason)
 {
 	/**
 	 * Creates a pilot result.
@@ -35,12 +35,12 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 	 * @param cellId the cell that the trials ran in
 	 * @param control the identity of the control source's files that the trials ran on
 	 * @param trials the trials that the proposed built-in tools or judge decided, in completion order
-	 * @param failedRuns the number of trials that ended without a decision
+	 * @param failedRuns why each trial that ended without a decision ended, one entry per trial
 	 * @param stopReason why the pilot stopped before running every trial, or {@code null} if it ran every trial
-	 * @throws NullPointerException if any argument other than {@code stopReason} is null, or {@code trials} contains
-	 *   null
-	 * @throws IllegalArgumentException if {@code testId}, {@code cellId} or a non-null {@code stopReason} are blank, or
-	 *   {@code failedRuns} is negative
+	 * @throws NullPointerException if any argument other than {@code stopReason} is null, or {@code trials} or
+	 *   {@code failedRuns} contains null
+	 * @throws IllegalArgumentException if {@code testId}, {@code cellId}, a reason in {@code failedRuns} or a non-null
+	 *   {@code stopReason} are blank
 	 */
 	public PilotResult
 	{
@@ -49,7 +49,9 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 		requireThat(cellId, "cellId").isNotBlank();
 		requireThat(control, "control").isNotNull();
 		trials = List.copyOf(trials);
-		requireThat(failedRuns, "failedRuns").isNotNegative();
+		failedRuns = List.copyOf(failedRuns);
+		for (String reason : failedRuns)
+			requireThat(reason, "reason").isNotBlank();
 		if (stopReason != null)
 			requireThat(stopReason, "stopReason").isNotBlank();
 	}

@@ -55,6 +55,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -120,7 +121,7 @@ public final class GuardPilotTest
 			PilotResult formatting = pilots.get("formatting");
 			requireThat(formatting.cellId(), "formattingCell").isEqualTo(TierFixtures.SMALL_HIGH);
 			requireThat(formatting.trials().size(), "formattingTrials").isEqualTo(GuardPilot.TRIALS);
-			requireThat(formatting.failedRuns(), "failedRuns").isEqualTo(0);
+			requireThat(formatting.failedRuns(), "failedRuns").isEmpty();
 			requireThat(formatting.stopReason(), "stopReason").isNull();
 			requireThat(formatting.passes("uses_requested_tone"), "passes").isEqualTo(GuardPilot.TRIALS);
 			requireThat(formatting.decided("uses_requested_tone"), "decided").isEqualTo(GuardPilot.TRIALS);
@@ -272,10 +273,41 @@ public final class GuardPilotTest
 				new SplittableRandom(4)).get("safety");
 
 			requireThat(safety.trials(), "trials").isEmpty();
-			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(GuardPilot.TRIALS);
+			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
+				"The judge failed " + Driver.JUDGE_ATTEMPTS + " times. Last failure: The judge's output does not match " +
+					"its result schema"));
 			requireThat(sessions.requests(SessionRole.JUDGE).stream().
 				filter(request -> request.turns().getFirst().equals("invalid")).count(), "judges").
 				isEqualTo((long) GuardPilot.TRIALS * Driver.JUDGE_ATTEMPTS);
+		}
+	}
+
+	/**
+	 * A trial whose built-in tool cannot be decided from its record counts as a failed run that says why.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void undecidableToolRecordsReason() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract tiered = TierFixtures.tieredContract();
+		List<MappedAssertion> assertions = new ArrayList<>(tiered.findTest("safety").orElseThrow().assertions());
+		assertions.add(new MappedAssertion(new Assertion("read_notes", AssertionKind.GUARD, "read-in-full notes.md",
+			"The agent reads notes.md in full."), "r2"));
+		Contract contract = withSafety(tiered, assertions);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-undecidable"));
+			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, control(), Set.of(), Map.of(),
+				new SplittableRandom(5)).get("safety");
+
+			requireThat(safety.trials(), "trials").isEmpty();
+			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
+				"The built-in tools could not be decided: `notes.md` was not a file when the trial started"));
 		}
 	}
 

@@ -1878,8 +1878,8 @@ The riskiest pure code, built first.
   weakest cell, on development test cases only, decided by the proposed decision procedure. A revision reruns it only
   for prompt tests whose scenario or test cases changed. Pilot trials are targeted: they enter no count and spend no
   allowance.
-- **Proposal:** shows each assertion's pilot pass rate and warns on a guard below the minimum pass rate `p_min`; the
-  revise brief carries the latest pilot results.
+- **Proposal:** shows each assertion's pilot pass rate and warns on a guard below the minimum pass rate `p_min`; it
+  lists why each failed run ended without a decision; the revise brief carries the latest pilot results.
 - **Closes:** R-C23, and the pilot side of R-C2.
 - **Tests:** `GuardPilotTest` (control trials in the weakest cell, tallies, reuse, a rerun of changed tests only, a
   stop on a rate limit), `OptimizerCoreTest` (the pilot runs before presentation, adds to no count, and its brief

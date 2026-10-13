@@ -1360,12 +1360,13 @@ the agent presents every choice with the tradeoffs of [§6.6](#66-trial-profiles
 the target prompt. If that is false, the control comparison on it needs many pairs or ends the attempt, so the user
 should learn it before confirming. After a proposal validates and before CAT presents it, CAT runs about 20 control
 trials per prompt test, in the prompt test's weakest cell, drawing only development test cases, and decides them with
-the proposed decision procedure. The proposal shows each assertion's pass rate in those trials. A guard assertion whose
-rate is below the minimum pass rate `p_min` is a warning, not a refusal: the contract author may have misclassified it,
-its test cases may be too hard, or the agent may really fail it without the prompt, which only the user can judge. A
-revision reruns the pilot for each prompt test whose scenario or test cases changed, and the contract author's revision
-brief includes the latest pilot results. Pilot trials are targeted runs: they never enter representative, formal or
-baseline counts and spend no allowance.
+the proposed decision procedure. The proposal shows each assertion's pass rate in those trials, and why each trial that
+ended without a decision ended, such as a built-in tool that the trial's record cannot decide, so that the user can
+correct the proposal. A guard assertion whose rate is below the minimum pass rate `p_min` is a warning, not a refusal:
+the contract author may have misclassified it, its test cases may be too hard, or the agent may really fail it without
+the prompt, which only the user can judge. A revision reruns the pilot for each prompt test whose scenario or test cases
+changed, and the contract author's revision brief includes the latest pilot results. Pilot trials are targeted runs:
+they never enter representative, formal or baseline counts and spend no allowance.
 
 CAT, not the contract author, does these things:
 

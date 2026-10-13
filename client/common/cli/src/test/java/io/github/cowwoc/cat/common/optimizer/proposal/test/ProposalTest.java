@@ -996,8 +996,11 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
 		Contract contract = derived.contract();
 		Map<String, PilotResult> pilots = new LinkedHashMap<>();
-		pilots.put("formatting", pilot(contract, "formatting", "uses_requested_tone", 10, 1, null));
-		pilots.put("safety", pilot(contract, "safety", "asks_before_deleting", 15, 0, null));
+		String sessionFailed = "The trial session failed: the harness exited with status 1";
+		String undecidable = "The built-in tools could not be decided: `notes.md` was not a file when the trial started";
+		pilots.put("formatting", pilot(contract, "formatting", "uses_requested_tone", 10,
+			List.of(sessionFailed, undecidable, sessionFailed), null));
+		pilots.put("safety", pilot(contract, "safety", "asks_before_deleting", 15, List.of(), null));
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILES, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), pilots).render();
@@ -1005,9 +1008,12 @@ public final class ProposalTest
 		String formattingCell = GuardPilot.pilotCell(contract, "formatting").orElseThrow().id();
 		String safetyCell = GuardPilot.pilotCell(contract, "safety").orElseThrow().id();
 		requireThat(text, "text").contains("\n## Guard pilot\n").contains("### `formatting` in cell `" +
-			formattingCell + "`\n\n19 trials decided, 1 failed run.\n\n" +
-			"- `uses_requested_tone` (effect): 10 of 19 passed (52.6%)\n" +
-			"- `expected_outcome` (effect): 19 of 19 passed (100%)\n").
+			formattingCell + "`\n\n17 trials decided, 3 failed runs.\n\n" +
+			"- `uses_requested_tone` (effect): 10 of 17 passed (58.8%)\n" +
+			"- `expected_outcome` (effect): 17 of 17 passed (100%)\n\n" +
+			"Why the failed runs ended without a decision:\n\n" +
+			"- " + sessionFailed + " (2 runs)\n" +
+			"- " + undecidable + " (1 run)\n").
 			contains("### `safety` in cell `" + safetyCell + "`\n\n20 trials decided, 0 failed runs.\n\n" +
 				"- `asks_before_deleting` (guard): 15 of 20 passed (75.0%). Warning: below the minimum pass rate of 95%.").
 			contains("- `expected_outcome` (guard): 20 of 20 passed (100%)\n").
@@ -1035,7 +1041,7 @@ public final class ProposalTest
 				"The assistant asked first."));
 		}
 		PilotResult safety = new PilotResult("safety", Sha256.of("safety".getBytes(UTF_8)), safetyCell,
-			Sha256.of("control".getBytes(UTF_8)), trials, 0, null);
+			Sha256.of("control".getBytes(UTF_8)), trials, List.of(), null);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILES, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), Map.of("safety", safety)).
@@ -1057,7 +1063,7 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
 		Contract contract = derived.contract();
 		String reason = "The provider rejected a pilot session because of a rate limit.";
-		PilotResult safety = pilot(contract, "safety", "asks_before_deleting", 3, 0, reason);
+		PilotResult safety = pilot(contract, "safety", "asks_before_deleting", 3, List.of(), reason);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILES, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), Map.of("safety", safety)).
@@ -1078,7 +1084,7 @@ public final class ProposalTest
 		// Requirement: R-C23
 		DerivedProposal first = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
 		Map<String, PilotResult> pilots = Map.of("safety", pilot(first.contract(), "safety", "asks_before_deleting",
-			15, 0, null));
+			15, List.of(), null));
 
 		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, first, "Keep the tests.", pilots).turns().
 			getFirst();
@@ -1293,15 +1299,15 @@ public final class ProposalTest
 	 * @param testId the prompt test
 	 * @param assertionId the prompt test's assertion
 	 * @param passes the number of trials that passed {@code assertionId}
-	 * @param failedRuns the number of the 20 trials that ended without a decision
+	 * @param failedRuns why each of the 20 trials that ended without a decision ended
 	 * @param stopReason why the pilot stopped early, or {@code null}
 	 * @return the result
 	 */
 	private static PilotResult pilot(Contract contract, String testId, String assertionId, int passes,
-		int failedRuns, String stopReason)
+		List<String> failedRuns, String stopReason)
 	{
 		List<PilotTrial> trials = new ArrayList<>();
-		for (int i = 0; i < 20 - failedRuns; ++i)
+		for (int i = 0; i < 20 - failedRuns.size(); ++i)
 		{
 			Map<String, Boolean> assertions = new LinkedHashMap<>();
 			assertions.put(assertionId, i < passes);
