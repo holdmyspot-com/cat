@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -51,7 +52,8 @@ public final class TemporaryDirectories implements AutoCloseable
 	}
 
 	/**
-	 * Deletes a directory and every file and directory below it.
+	 * Deletes a directory and every file and directory below it. Symbolic links are deleted, not followed, so files
+	 * outside the directory are never deleted.
 	 *
 	 * @param directory the directory to delete
 	 * @throws IOException if the directory cannot be deleted
@@ -59,7 +61,7 @@ public final class TemporaryDirectories implements AutoCloseable
 	public static void deleteRecursively(Path directory) throws IOException
 	{
 		assert directory != null;
-		if (Files.notExists(directory))
+		if (Files.notExists(directory, LinkOption.NOFOLLOW_LINKS))
 			return;
 		Files.walkFileTree(directory, new SimpleFileVisitor<>()
 		{
