@@ -8,6 +8,8 @@
 				 xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
 	<description>cowwoc's preferred rules</description>
 	<rule ref="category/java/bestpractices.xml">
+		<!-- Requirements assertions are Java assert statements by project convention. -->
+		<exclude name="AssertStatementInTest"/>
 		<exclude name="AvoidReassigningParameters"/>
 		<exclude name="AvoidReassigningLoopVariables"/>
 		<exclude name="LiteralsFirstInComparisons"/>
