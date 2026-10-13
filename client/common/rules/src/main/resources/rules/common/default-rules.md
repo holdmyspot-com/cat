@@ -125,6 +125,10 @@ Before recommending, designing, implementing, or reviewing a change to code, con
 plan, lazy load `../include/common/backward-design.md`, then `../include/common/design-quality.md`. A local rename,
 formatting edit, or other mechanical change that preserves the existing design does not need them.
 
+Before creating, reviewing, or revising an implementation plan for AI agents to execute, lazy load
+`../include/common/implementation-planning.md`. A checklist of steps you are about to perform yourself in the current
+task is not such a plan.
+
 Before designing or changing a component, API, collaborator, integration boundary, construction path, or test-support
 boundary, lazy load `../include/class-design.md` to preserve its caller-visible guarantees and focused responsibilities.
 
