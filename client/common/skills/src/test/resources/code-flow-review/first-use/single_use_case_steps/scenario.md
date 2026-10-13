@@ -34,3 +34,9 @@ I changed `cli.py`, the `{{tool_name}}` command line. The change is saved as `ch
 - **kind**: guard
 - **description**: The reply does not add a definition or explanation of the `text` parameter, whose name and the
   code shown already make clear that it holds the note's text.
+
+### signatures_shown
+
+- **kind**: effect
+- **description**: Each step names the function it enters with its parameters, such as `add_note(text)` and
+  `_clean(text)`.

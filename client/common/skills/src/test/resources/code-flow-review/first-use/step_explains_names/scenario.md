@@ -29,3 +29,9 @@ change.
 - **kind**: effect
 - **description**: The reply says what activation now does differently than before the change: it sends the editor
   family to the license service along with the edition and the stored state.
+
+### signature_shown
+
+- **kind**: effect
+- **description**: The step that enters `activate` names it with its parameters after the change:
+  `activate(sku, state, platform)`.

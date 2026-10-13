@@ -88,7 +88,7 @@ Present each use case in this form:
 
 Trigger: <the actor and action>. Outcome: <the result the actor observes>.
 
-### Step I of M: `Caller.method` → `Callee.method` ([File.java:L](path))
+### Step I of M: `Caller.method` → `Callee.method(Type parameter, ...)` ([File.java:L](path))
 
 <What this code does in this use case: the values it receives and where they come from, what it returns or passes on,
 what it does when an input is invalid or a call fails, and, for changed code, how it behaves differently from before
@@ -101,7 +101,10 @@ the change.>
 Concern: <a specific defect or risk, with the code or test that shows it>
 ```
 
-Show code only for steps that contain changed lines; a step through unchanged code is one line.
+Show code only for steps that contain changed lines; a step through unchanged code is one line. In every step,
+including a one-line step, write the method that the step enters with its signature as its declaration writes it: each
+parameter's name, and its type when the language declares one. When the change alters the signature, show the
+signature after the change.
 
 Explain a name in the step that first uses it when its name and the code shown leave its meaning unclear to a reader
 new to this code: a parameter, field, constant, enumeration value, or domain term, such as a `platform` parameter or an
