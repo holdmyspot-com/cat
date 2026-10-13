@@ -66,8 +66,8 @@ lazy load `../include/common/numeric-precision.md`.
 When writing or changing a boolean expression that contains a negation, lazy load
 `../include/common/boolean-negation.md`.
 
-When defining, changing, or auditing function and method names across a source language, lazy load
-`../include/common/function-naming.md`.
+When defining, changing, reviewing, or auditing type, function, or method names, or changing a type's responsibility
+without renaming it, lazy load `../include/common/identifier-naming.md`.
 
 When defining, changing, or auditing terminology used for a shared concept across source code, configuration,
 documentation, commands, or rules, lazy load `../include/common/consistent-terminology.md`. This includes naming a

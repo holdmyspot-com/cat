@@ -46,9 +46,8 @@ Let Checkstyle and PMD enforce mechanical formatting. Apply these conventions wh
   Static final constants and enum constants keep UPPER_SNAKE_CASE. When a key or symbolic value crosses into
   project-owned JSON, spell it in snake_case at that boundary; for example, the `deliveryResult` field is written as
   the `delivery_result` key. Public, package-private, and private method names are at most 40 characters.
-- Apply the language-neutral callable-unit naming contract in the common documentation convention. For a lookup or
-  selection, name the action (`find`, `resolve`, or `select`) and document its search scope, matching or selection rule,
-  and no-match or ambiguous-match outcome.
+- For a lookup or selection, name the action (`find`, `resolve`, or `select`) and document its search scope, matching
+  or selection rule, and no-match or ambiguous-match outcome.
 - For parsing, conversion, normalization, or validation, name the input domain and semantic result or boundary. Do not
   use an abstract quality label such as `safe` when the call site cannot tell what the method makes safe.
 - Name non-obvious literals and intermediate values after their semantic role, rather than their source or an abstract
@@ -57,10 +56,8 @@ Let Checkstyle and PMD enforce mechanical formatting. Apply these conventions wh
 - Treat `stdout` and `stderr` as standard terminology for a process's standard output and standard error. Prefer those
   terms in identifiers, comments, and documentation over expanded names such as `standardErrorOutput`; retain an
   expanded spelling only when an external API or established public type requires it.
-- Name a reusable type after its primary, long-lived responsibility, not its first caller, current test, or temporary
-  implementation role. Before choosing the name, identify every intended consumer and ask whether the name remains
-  accurate if the original caller disappears. A class that encapsulates access to Git is `Git`, not `GitFixture`, even
-  when its first consumer is a test.
+- When naming a type, apply the bundled Identifier Naming rule. For example, a class that encapsulates access to Git is
+  `Git`, not `GitFixture`, even when its first consumer is a test.
 - Name a lifecycle scope after the action it guarantees, rather than the resource type it happens to hold. For example,
   name a temporary-directory scope `cleanup`, not `directories`, so readers see that paths added to it will be deleted.
   Apply this to scopes such as cleanup, locking, rollback, or transactions; an ordinary collection should still be named

@@ -16,7 +16,8 @@ depends-on:
 
 When designing or changing a component, API, collaborator, variation point, integration boundary, construction path, or
 test-support boundary, first identify the guarantees each participant needs: caller-visible results and failures,
-ownership and lifecycle, safety, concurrency, and the supported variations. Evaluate only the conditions that can
+ownership and lifecycle, safety, concurrency, and the supported variations. Then compare each affected type's name with
+the responsibility you identified, using the identifier-naming route. Evaluate only the conditions that can
 prevent those guarantees: one component owns unrelated outcomes; a supported variant requires changing stable policy;
 an implementation weakens a contract; a consumer receives operations it does not need; or policy depends directly on
 integration mechanics. Restore a failed guarantee with the smallest boundary or contract that makes it verifiable. Do
