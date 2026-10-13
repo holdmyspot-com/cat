@@ -17,10 +17,29 @@ Use Maven's standard layout:
 │   ├── module-info.java
 │   └── <package directories>
 └── src/test/java/
+    ├── module-info.java
     └── <test package directories>
 ```
 
-Resource-only modules do not need `module-info.java`. Java implementation modules must declare one.
+Resource-only modules do not need `module-info.java`. Java implementation modules must declare one, and so must their
+tests.
+
+### Test Module and Package Names
+
+- Name a test module after the main module it tests, with `.test` appended: `io.github.cowwoc.cat.codex.cli.test` tests
+  `io.github.cowwoc.cat.codex.cli`.
+- Name a test package after the main package it tests, with `.test` appended: `CodexRunnerTest`, which tests
+  `io.github.cowwoc.cat.codex.runner.CodexRunner`, belongs to `io.github.cowwoc.cat.codex.runner.test`, and a test of
+  the base package `io.github.cowwoc.cat.codex` belongs to `io.github.cowwoc.cat.codex.test`. Place a test in the
+  package of the main type it tests, even when that differs from the package of related tests.
+- Place a test-support package that tests no main package, such as fakes or shared contracts, under the package whose
+  tests use it, also ending in `.test`: `io.github.cowwoc.cat.common.runner.fakes.test`.
+- Place test resources that a test reads by a relative name in the resource directory of that test's package, such as
+  `io/github/cowwoc/cat/common/optimizer/proposal/test/`. Resource directories count as packages, and a test module
+  must not contain a package that another module also contains.
+
+Export each test package that contains TestNG tests to `org.testng`, and export a test-support package only to the test
+modules that reuse it.
 
 ### Module Descriptors
 
@@ -37,8 +56,9 @@ module io.github.cowwoc.cat.codex.cli
 }
 ```
 
-Use `opens` only when a runtime library genuinely requires deep reflection. Do not widen exports or add test-only
-production APIs merely to test implementation details; test through the smallest existing accessible behavior.
+Use `opens` only when a runtime library genuinely requires deep reflection. Do not widen exports to other modules or add
+test-only production APIs merely to test implementation details; a qualified export to the module's own test module
+follows the rules under Tests.
 
 ### Shared Secrets and Reflection
 
@@ -59,29 +79,82 @@ implementation from a static initializer, and the façade initializes that owner
 to another module solely to initialize or access a shared secret. Each façade owns its typed accessor slot and exposes
 typed getter and setter methods; callers do not pass a type token or use a generic shared-secret registry.
 
-In each `<Topic>Secrets` façade, have `access()` call a private `initialize(Class<?> owner)` only while its typed
-accessor is null, passing the class that registers the accessor. That helper must load exactly `owner` with
-`Class.forName(owner.getName(), true, owner.getClassLoader())` and convert `ClassNotFoundException` to an
-`AssertionError` naming the owner. After initialization, `access()` must fail with an `AssertionError` if the owner did
-not register its accessor. Do not duplicate owner-specific reflective initialization in each façade.
+In each `<Topic>Secrets` façade, hold each access interface in a plain static field named after the interface. Do not
+make the field `volatile` or `final`:
 
-Do not use reflection, including `Class.forName()`, `java.lang.reflect`, accessibility overrides, or reflective member
-lookup/invocation. The sole exception is a SharedSecrets façade whose only reflective operation initializes the class
-that registers its access implementation. Do not use reflection to bypass module boundaries, access private state, or
-create test-only seams.
+```java
+private static AccountAccess accountAccess;
+```
+
+Name the setter `set<Interface>`. It only assigns the field; it does not validate the argument, synchronize, or assert
+that the field was unset:
+
+```java
+public static void setAccountAccess(AccountAccess access)
+{
+	accountAccess = access;
+}
+```
+
+Name the getter `get<Interface>`. It reads the field once into a local variable. Only when that value is null does it
+initialize the class that registers the accessor, read the field again, and throw an `AssertionError` naming that class
+if the field is still null:
+
+```java
+public static AccountAccess getAccountAccess()
+{
+	var access = accountAccess;
+	if (access == null)
+	{
+		ensureClassInitialized(Account.class);
+		access = accountAccess;
+		if (access == null)
+			throw new AssertionError(Account.class.getName() + " did not register AccountAccess");
+	}
+	return access;
+}
+```
+
+Every getter initializes its owner through the façade's one private `ensureClassInitialized` helper, so no getter
+repeats the initialization code:
+
+```java
+private static void ensureClassInitialized(Class<?> c)
+{
+	try
+	{
+		MethodHandles.lookup().ensureInitialized(c);
+	}
+	catch (IllegalAccessException e)
+	{
+		throw new AssertionError("Cannot initialize " + c.getName(), e);
+	}
+}
+```
+
+The getter names its owner with a class literal, so the owner must be accessible from the secrets package.
+
+Do not use reflection, including `Class.forName()`, `java.lang.reflect`, `java.lang.invoke` lookups, accessibility
+overrides, or reflective member lookup/invocation. The sole exception is the
+`MethodHandles.lookup().ensureInitialized()` call in a SharedSecrets façade's `ensureClassInitialized` helper. Do not
+use reflection to bypass module boundaries, access private state, or create test-only seams.
 
 ### Tests
 
-Do not widen a production constructor, method, field, type, or module export solely for test access. Test through
-accessible behavior when it proves the required contract. When a test must directly exercise existing non-public
-behavior, expose only a narrow, typed SharedSecrets façade that delegates to that behavior; do not add a test-only
-production API, adapter, or mutable seam.
+Test through accessible behavior when it proves the required contract. When a test must directly exercise behavior that
+its test module cannot reach, decide by what other modules can see:
 
-When choosing or reviewing production accessibility, determine the narrowest visibility from production callers only; do
-not treat test callers as justification for a public, protected, package-private, exported, or otherwise wider API. If
-tests are the only callers requiring non-public behavior, keep that behavior at its production-required visibility and
-provide a narrow typed SharedSecrets access path instead.
+- A package that the main module exports to no module other than its test module, through a qualified export, may make
+  public the types and members its tests need. Widening them changes no other module's view.
+- A package that other modules can see keeps its members at their production-required visibility. Expose each member
+  the tests need through a narrow, typed SharedSecrets façade that delegates to it, and export the secrets package only
+  to the test module. A type in such a package that the tests name may become public.
+- A test fake that must override a non-public hook cannot use a façade. Make the hook `protected` if its package is
+  exported to other modules, or `public` if only the test module can see it.
 
-Tests use Maven and TestNG. Keep them under `src/test/java` in the corresponding package hierarchy. Run the complete
-quality gate with `client/mvnw -q -f client/pom.xml verify`; `test` and `compile` do not
-run every configured validation.
+Do not add a test-only production API, adapter, or mutable seam, and do not export a package to the test module unless
+its tests need it.
+
+Tests use Maven and TestNG. Keep them under `src/test/java`, named as described under Test Module and Package Names.
+Run the complete quality gate with `client/mvnw -q -f client/pom.xml verify`; `test` and `compile` do not run every
+configured validation.

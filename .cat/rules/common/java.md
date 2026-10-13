@@ -51,8 +51,8 @@ thread-related test behavior, lazy load `../include/java-testing.md`.
 
 When Java code creates temporary directories or files, lazy load `../include/java-temporary-resources.md`.
 
-When editing `module-info.java`, module exports/opens, module names, module layout, or Java project layout, lazy load
-`../include/java-modules.md`.
+When editing `module-info.java`, module exports/opens, module names, module layout, or Java project layout, or when
+creating, moving, or naming a test class, test package, or test module, lazy load `../include/java-modules.md`.
 
 When a project-owned script or launcher starts Java code, invoke its named module through `java --module-path ... --module
 MODULE/MAIN_CLASS`. Do not use the class path (`-cp`, `--class-path`, or Maven `exec.additionalClasspathElements`) to

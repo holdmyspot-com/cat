@@ -5,8 +5,8 @@
 - Keep Maven configuration centralized, reproducible, and consistent with project conventions.
 - Run complete Maven verification with quiet routine output, actionable failure diagnostics, and an explicit
   evidence-backed reason for any normal-output exception.
-- Verify the current working tree rather than a cached artifact whose recorded inputs do not prove it includes the
-  change under review.
+- Verify the current working tree while reusing results for unchanged inputs; repeat completed operations only when
+  the required evidence calls for fresh execution or a known cache limitation invalidates reuse.
 
 ## Guidance
 
@@ -22,8 +22,13 @@ output is itself required evidence; state that output and why the command exit s
 prove it before invoking Maven. A build artifact, installer result, later tool result, or general confirmation that a
 build succeeded is not such an exception.
 
-Omit the build-cache property by default. Add `-Dmaven.build.cache.enabled=true` only when deliberately reusing
-results for code or tests that passed previously. Before using that cache for a quality gate, verify that its recorded
-inputs include every source, resource, configuration, generated input, tool, and dependency that can affect the result.
-A cache hit does not establish verification of changed inputs. Keep every required module, test, linter, and other gate
-in the command scope.
+Keep the Maven build cache extension enabled for routine builds, focused checks, and complete quality gates. It is
+enabled by default; omit the enabling property. Uncommitted changes or newly created files alone are not a reason to
+disable caching. Reuse previously passed operations when their determining inputs are unchanged.
+
+Disable result reuse only for a concrete reason: the required evidence needs an operation to run again despite an
+earlier pass, or an observed cache limitation omits a determining input or supplies a stale result. Examples include
+repeating a test to investigate nondeterminism or validating a changed external dependency that the cache does not
+track. State the reason before invoking Maven, then use `-Dmaven.build.cache.enabled=false` for that invocation only.
+Keep the complete required scope and every quality gate enabled; bypassing result reuse does not authorize skipping
+modules, tests, or linters. Resume the enabled-cache default after the operation that needed fresh execution.

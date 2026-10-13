@@ -28,7 +28,7 @@ or `throws Throwable`; inspect the invoked APIs and declare their concrete check
 ### Isolation and Testability
 
 Do not replace JVM-global streams or read production environment state in a Java test. Test production logic by calling
-Java classes directly. Use Bats only to test the plugin's command-line interface, such as its packaged launchers,
+Java classes directly. Use Bats only to test the command-line interface, such as its packaged launchers,
 installer, and shell bootstrap; where that interface starts a harness, substitute a fake harness executable.
 
 No Java test, including an opt-in integration test, may invoke a Runner implementation, packaged runner or launcher,
