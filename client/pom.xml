@@ -25,10 +25,10 @@
 			The TestNG group that tests run (all groups when empty) and the group they skip. By default, tests skip group
 			"native", whose tests start real nested harness sessions.
 		-->
-		<cat.test.groups></cat.test.groups>
+		<cat.test.groups/>
 		<cat.test.excludedGroups>native</cat.test.excludedGroups>
 		<!-- The harness that native tests start: claude or codex. Native tests skip when it is empty. -->
-		<cat.native.harness></cat.native.harness>
+		<cat.native.harness/>
 		<!-- The repository's .cat/work/temp directory, which holds the fixtures that a harness runner consumes -->
 		<cat.work.temp>${project.rootDirectory}/../.cat/work/temp</cat.work.temp>
 		<checkstyle.version>14.3.0</checkstyle.version>
