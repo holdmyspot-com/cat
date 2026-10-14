@@ -1,6 +1,6 @@
 ---
 paths:
-  - ".cat/**"
+  - ".cat/rules/**"
   - "client/**"
 ---
 # Prompt-versus-CLI Loading Index
