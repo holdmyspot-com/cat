@@ -24,6 +24,11 @@ public enum Outcome
 	 */
 	BELOW_CONTROL("not certified: below control"),
 	/**
+	 * On some assertion of a cell, the candidate is proven to pass more than 5 percentage points less often than the
+	 * incumbent, and no assertion is proven below control.
+	 */
+	BELOW_INCUMBENT("not certified: below incumbent"),
+	/**
 	 * A cell reached its trial cap without certifying or being proven below the minimum pass rate.
 	 */
 	INCONCLUSIVE("not certified: inconclusive"),
@@ -98,7 +103,7 @@ public enum Outcome
 		{
 			case UNSUPPORTED_INSTRUCTION_SOURCE, INELIGIBLE_TRIAL_EFFECT, UNSUPPORTED_OUTPUT,
 				UNSUPPORTED_TEST_INTERACTION, INVALID_STATISTICAL_ASSUMPTIONS -> true;
-			case CERTIFIED, IMPROVED_NOT_CERTIFIED, BELOW_MINIMUM, BELOW_CONTROL, INCONCLUSIVE,
+			case CERTIFIED, IMPROVED_NOT_CERTIFIED, BELOW_MINIMUM, BELOW_CONTROL, BELOW_INCUMBENT, INCONCLUSIVE,
 				STOPPED_FOR_CONTRACT_REVISION, STOPPED_FOR_TEST_REVISION, TESTING_ENVIRONMENT_CHANGED,
 				NOT_CERTIFIED -> false;
 		};

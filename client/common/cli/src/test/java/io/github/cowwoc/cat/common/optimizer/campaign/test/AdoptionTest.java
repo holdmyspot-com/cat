@@ -6,11 +6,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
+import io.github.cowwoc.cat.common.optimizer.campaign.Reference;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialAdoption;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
@@ -120,21 +121,21 @@ public final class AdoptionTest
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		comparisons.put("uses_requested_tone", candidateAhead);
 		comparisons.put(TestCase.EXPECTED_OUTCOME, candidateAhead);
-		ControlPairing pairing = new ControlPairing(List.of(
+		Pairing pairing = new Pairing(List.of(
 			new UnpairedTrial(Builder.testCase("formatting", "formal"), all),
 			new UnpairedTrial(Builder.testCase("formatting", "casual"), all)), comparisons);
 		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
-			cell("formatting", 100, 0).pairing("formatting", pairing).cell("safety", 10, 0).build();
-		campaign = TransitionSteps.assignControl(campaign, "formatting");
+			cell("formatting", 100, 0).controlPairing("formatting", pairing).cell("safety", 10, 0).build();
+		campaign = TransitionSteps.assignReference(campaign, Reference.CONTROL, "formatting");
 		TrialKey deciding = TransitionSteps.last(campaign);
-		campaign = TransitionSteps.assignControl(campaign, "formatting");
+		campaign = TransitionSteps.assignReference(campaign, Reference.CONTROL, "formatting");
 		TrialKey late = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(deciding));
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(late));
 		campaign = TransitionSteps.complete(campaign, late, Verdict.PASS);
 		campaign = TransitionSteps.complete(campaign, deciding, Verdict.FAIL);
 
-		ControlPairing adopted = campaign.attempt(1).pairing("formatting");
+		Pairing adopted = campaign.attempt(1).pairing(Reference.CONTROL, "formatting");
 		requireThat(DecisionTable.cellDecision(campaign.attempt(1), "formatting"), "decision").
 			isEqualTo(DecisionTable.CellDecision.CERTIFIED);
 		requireThat(adopted.comparisons().get("uses_requested_tone"), "pairs").isEqualTo(new PairCounts(0, 7, 0, 0));

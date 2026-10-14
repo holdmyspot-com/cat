@@ -15,8 +15,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedAssertion;
 import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
@@ -26,6 +26,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.Promotion;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
+import io.github.cowwoc.cat.common.optimizer.campaign.Reference;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
@@ -153,7 +154,19 @@ public final class SchedulerTest
 	private static Admission control(DrawnTestCase testCase)
 	{
 		return new Admission.Assign(Purpose.CONTROL, 1, Builder.CONTROL, testCase.cellId(), testCase,
-			allocation(AllocationRule.CONTROL));
+			allocation(AllocationRule.PAIRED));
+	}
+
+	/**
+	 * Returns an incumbent admission for attempt 1.
+	 *
+	 * @param testCase the test case of the candidate formal trial that the incumbent trial pairs with
+	 * @return the admission
+	 */
+	private static Admission incumbent(DrawnTestCase testCase)
+	{
+		return new Admission.Assign(Purpose.INCUMBENT, 1, Builder.INCUMBENT, testCase.cellId(), testCase,
+			allocation(AllocationRule.PAIRED));
 	}
 
 	/**
@@ -164,7 +177,7 @@ public final class SchedulerTest
 	 */
 	private static Admission pairedFormal(String cell)
 	{
-		return new Admission.Assign(Purpose.FORMAL, 1, WORKING, cell, null, allocation(AllocationRule.CONTROL));
+		return new Admission.Assign(Purpose.FORMAL, 1, WORKING, cell, null, allocation(AllocationRule.PAIRED));
 	}
 
 	/**
@@ -175,7 +188,7 @@ public final class SchedulerTest
 	 *   assignment order
 	 * @return the comparisons
 	 */
-	private static ControlPairing safetyPairing(PairCounts pairs, List<DrawnTestCase> unpaired)
+	private static Pairing safetyPairing(PairCounts pairs, List<DrawnTestCase> unpaired)
 	{
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		comparisons.put("asks_before_deleting", pairs);
@@ -183,7 +196,7 @@ public final class SchedulerTest
 		List<UnpairedTrial> trials = new ArrayList<>();
 		for (DrawnTestCase testCase : unpaired)
 			trials.add(new UnpairedTrial(testCase, Set.of("asks_before_deleting", TestCase.EXPECTED_OUTCOME)));
-		return new ControlPairing(trials, comparisons);
+		return new Pairing(trials, comparisons);
 	}
 
 	/**
@@ -200,12 +213,12 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Verifies that no control trial runs in a cell whose minimum-pass-rate part has not certified.
+	 * Verifies that no control or incumbent trial runs in a cell whose minimum-pass-rate part has not certified.
 	 */
 	@Test
-	public void noControlBeforeMinimumCertifies()
+	public void noReferenceTrialBeforeMinimumCertifies()
 	{
-		// Requirement: R-F7
+		// Requirement: R-F7, R-F8
 		Campaign campaign = controlAttempt().cell("safety", 97, 0).campaign().build();
 		for (Admission admission : Scheduler.plan(campaign, NOW, 8))
 		{
@@ -226,7 +239,7 @@ public final class SchedulerTest
 		DrawnTestCase cache = Builder.testCase("safety", "cache");
 		DrawnTestCase tmp = Builder.testCase("safety", "tmp");
 		Campaign campaign = controlAttempt().cell("safety", 100, 0).
-			pairing("safety", safetyPairing(PairCounts.EMPTY, List.of(logs, cache, tmp))).campaign().build();
+			controlPairing("safety", safetyPairing(PairCounts.EMPTY, List.of(logs, cache, tmp))).campaign().build();
 		// With no pairs, 7 pairs that only the candidate passes are the fewest that pass a comparison at attempt 1
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(control(logs), control(cache),
 			control(tmp), pairedFormal("safety"), pairedFormal("safety"), pairedFormal("safety"),
@@ -245,13 +258,90 @@ public final class SchedulerTest
 		DrawnTestCase cache = Builder.testCase("safety", "cache");
 		DrawnTestCase tmp = Builder.testCase("safety", "tmp");
 		Campaign campaign = controlAttempt().cell("safety", 100, 0).
-			pairing("safety", safetyPairing(new PairCounts(0, 5, 0, 0), List.of(logs, cache, tmp))).campaign().
+			controlPairing("safety", safetyPairing(new PairCounts(0, 5, 0, 0), List.of(logs, cache, tmp))).campaign().
 			build();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(control(logs), control(cache)));
 
-		campaign = TransitionSteps.assignControl(campaign, "safety");
+		campaign = TransitionSteps.assignReference(campaign, Reference.CONTROL, "safety");
 		requireThat(Scheduler.plan(campaign, NOW, 8), "inFlight").isEqualTo(List.of(
 			new Admission.Rerun(TransitionSteps.last(campaign)), control(cache)));
+	}
+
+	/**
+	 * Verifies that incumbent trials pair with a cell's waiting candidate formal trials in assignment order and run
+	 * their test cases, alternating with the control trials, and that further candidate formal trials follow until
+	 * the slowest comparison could pass.
+	 */
+	@Test
+	public void incumbentTrialsPairInAssignmentOrder()
+	{
+		// Requirement: R-F8, R-E3
+		DrawnTestCase logs = Builder.testCase("safety", "logs");
+		DrawnTestCase cache = Builder.testCase("safety", "cache");
+		DrawnTestCase tmp = Builder.testCase("safety", "tmp");
+		Campaign campaign = controlAttempt().cell("safety", 100, 0).
+			controlPairing("safety", safetyPairing(PairCounts.EMPTY, List.of(logs, cache, tmp))).
+			incumbentPairing("safety", safetyPairing(PairCounts.EMPTY, List.of(logs, cache, tmp))).campaign().build();
+		// The window of 8 trials ends the plan before the 4 further candidate formal trials that both kinds need
+		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(control(logs), incumbent(logs),
+			control(cache), incumbent(cache), control(tmp), incumbent(tmp), pairedFormal("safety"),
+			pairedFormal("safety")));
+	}
+
+	/**
+	 * Verifies that a cell's incumbent comparisons alone run the further candidate formal trials that they need once
+	 * its control comparisons passed.
+	 */
+	@Test
+	public void incumbentPairsNeedFurtherFormalTrials()
+	{
+		// Requirement: R-F8, R-E3
+		DrawnTestCase logs = Builder.testCase("safety", "logs");
+		Campaign campaign = controlAttempt().cell("safety", 100, 0).
+			incumbentPairing("safety", safetyPairing(PairCounts.EMPTY, List.of(logs))).campaign().build();
+		// The control comparisons passed; the incumbent comparisons need 7 pairs, and one candidate formal trial waits
+		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(incumbent(logs),
+			pairedFormal("safety"), pairedFormal("safety"), pairedFormal("safety"), pairedFormal("safety"),
+			pairedFormal("safety"), pairedFormal("safety")));
+	}
+
+	/**
+	 * Verifies that a cell's in-flight incumbent trials never exceed the pairs that its slowest undecided incumbent
+	 * comparison still needs if every pair favours the candidate, and that an in-flight incumbent trial counts toward
+	 * the limit.
+	 */
+	@Test
+	public void incumbentTrialsRespectCellLimit()
+	{
+		// Requirement: R-F8, R-E3
+		DrawnTestCase logs = Builder.testCase("safety", "logs");
+		DrawnTestCase cache = Builder.testCase("safety", "cache");
+		DrawnTestCase tmp = Builder.testCase("safety", "tmp");
+		Campaign campaign = controlAttempt().cell("safety", 100, 0).
+			incumbentPairing("safety", safetyPairing(new PairCounts(0, 5, 0, 0), List.of(logs, cache, tmp))).
+			campaign().build();
+		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(incumbent(logs), incumbent(cache)));
+
+		campaign = TransitionSteps.assignReference(campaign, Reference.INCUMBENT, "safety");
+		requireThat(Scheduler.plan(campaign, NOW, 8), "inFlight").isEqualTo(List.of(
+			new Admission.Rerun(TransitionSteps.last(campaign)), incumbent(cache)));
+	}
+
+	/**
+	 * Verifies that no incumbent trial runs when the candidate is the incumbent.
+	 */
+	@Test
+	public void noIncumbentTrialForIncumbentCandidate()
+	{
+		// Requirement: R-F8
+		DrawnTestCase logs = Builder.testCase("safety", "logs");
+		Campaign campaign = new Builder().confirmed().readyBaseline().development("formatting", 200, 0).
+			development("plain_list", 200, 0).development("safety", 200, 0).slowStart(new SlowStart(8, 0)).
+			certificationAttempt(1).cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 100, 0).
+			controlPairing("safety", safetyPairing(new PairCounts(0, 6, 0, 0), List.of(logs))).campaign().build();
+		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(
+			new Admission.Assign(Purpose.CONTROL, 1, Builder.CONTROL, "safety", logs,
+				allocation(AllocationRule.PAIRED))));
 	}
 
 	/**

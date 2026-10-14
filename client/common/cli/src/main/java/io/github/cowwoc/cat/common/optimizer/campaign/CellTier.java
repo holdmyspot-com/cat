@@ -225,7 +225,7 @@ public final class CellTier
 	/**
 	 * Returns the development cells of a lineage: each test's weakest cell, plus every cell in which a
 	 * certification attempt of the lineage adopted a failure, every cell that ended an attempt of the lineage below
-	 * control, and every stress cell in which a failure group of the lineage reproduced.
+	 * control or below incumbent, and every stress cell in which a failure group of the lineage reproduced.
 	 *
 	 * @param contract the lineage's confirmed contract
 	 * @param lineage the lineage's number
@@ -247,12 +247,16 @@ public final class CellTier
 				continue;
 			for (Failure failure : attempt.failures())
 				cells.add(failure.testCase().cellId());
-			if (attempt.outcome() == Outcome.BELOW_CONTROL)
+			if (attempt.outcome() == Outcome.BELOW_CONTROL || attempt.outcome() == Outcome.BELOW_INCUMBENT)
 			{
 				for (String cell : attempt.procedure().cells())
 				{
-					if (DecisionTable.cellDecision(attempt, cell) == DecisionTable.CellDecision.BELOW_CONTROL)
+					DecisionTable.CellDecision decision = DecisionTable.cellDecision(attempt, cell);
+					if (decision == DecisionTable.CellDecision.BELOW_CONTROL ||
+						decision == DecisionTable.CellDecision.BELOW_INCUMBENT)
+					{
 						cells.add(cell);
+					}
 				}
 			}
 			for (FailureGroup group : attempt.groups())

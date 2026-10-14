@@ -9,8 +9,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.Action;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.AttemptDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CellDecision;
@@ -25,6 +25,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
+import io.github.cowwoc.cat.common.optimizer.campaign.Reference;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
@@ -247,6 +248,8 @@ public final class DecisionTableTest
 				{AttemptDecision.BELOW_MINIMUM, true, Action.OFFER_KEEP_IMPROVEMENT},
 				{AttemptDecision.BELOW_CONTROL, false, Action.RETURN_TO_DEVELOPMENT},
 				{AttemptDecision.BELOW_CONTROL, true, Action.OFFER_KEEP_IMPROVEMENT},
+				{AttemptDecision.BELOW_INCUMBENT, false, Action.RETURN_TO_DEVELOPMENT},
+				{AttemptDecision.BELOW_INCUMBENT, true, Action.OFFER_KEEP_IMPROVEMENT},
 				{AttemptDecision.INCONCLUSIVE, false, Action.RETURN_TO_DEVELOPMENT},
 				{AttemptDecision.INCONCLUSIVE, true, Action.OFFER_KEEP_IMPROVEMENT}
 			};
@@ -275,8 +278,8 @@ public final class DecisionTableTest
 		// Requirement: R-F3
 		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
 			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 100, 0).
-			pairing("safety", oneControlShort()).build();
-		campaign = TransitionSteps.adoptControl(campaign, "safety", Verdict.FAIL, List.of());
+			controlPairing("safety", oneControlShort()).build();
+		campaign = TransitionSteps.adoptReference(campaign, Reference.CONTROL, "safety", Verdict.FAIL, List.of());
 
 		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isEqualTo(Outcome.CERTIFIED);
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.FINISHED);
@@ -294,8 +297,8 @@ public final class DecisionTableTest
 	{
 		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
 			boundaries(worseAtTwo()).cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 200, 2).
-			pairing("safety", oneControlShort()).build();
-		return TransitionSteps.adoptControl(campaign, "safety", Verdict.FAIL, List.of());
+			controlPairing("safety", oneControlShort()).build();
+		return TransitionSteps.adoptReference(campaign, Reference.CONTROL, "safety", Verdict.FAIL, List.of());
 	}
 
 	/**
@@ -304,14 +307,14 @@ public final class DecisionTableTest
 	 *
 	 * @return the comparisons
 	 */
-	private static ControlPairing oneControlShort()
+	private static Pairing oneControlShort()
 	{
 		PairCounts candidateAhead = new PairCounts(0, 6, 0, 0);
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>(comparing(candidateAhead, candidateAhead).
 			comparisons());
 		UnpairedTrial waiting = new UnpairedTrial(Builder.testCase("safety", "logs"),
 			Set.of("asks_before_deleting", TestCase.EXPECTED_OUTCOME));
-		return new ControlPairing(List.of(waiting), comparisons);
+		return new Pairing(List.of(waiting), comparisons);
 	}
 
 	/**
@@ -484,12 +487,12 @@ public final class DecisionTableTest
 	 * @param expectedOutcome the pairs of {@value TestCase#EXPECTED_OUTCOME}
 	 * @return the comparisons
 	 */
-	private static ControlPairing comparing(PairCounts first, PairCounts expectedOutcome)
+	private static Pairing comparing(PairCounts first, PairCounts expectedOutcome)
 	{
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		comparisons.put("asks_before_deleting", first);
 		comparisons.put(TestCase.EXPECTED_OUTCOME, expectedOutcome);
-		return new ControlPairing(List.of(), comparisons);
+		return new Pairing(List.of(), comparisons);
 	}
 
 	/**
@@ -501,10 +504,10 @@ public final class DecisionTableTest
 	 * @param pairing the control comparisons of {@code safety}
 	 * @return the attempt
 	 */
-	private static CertificationAttempt safetyAttempt(int passes, int failures, ControlPairing pairing)
+	private static CertificationAttempt safetyAttempt(int passes, int failures, Pairing pairing)
 	{
 		return new Builder().confirmed().certificationAttempt(1).cell("formatting", 100, 0).
-			cell("plain_list", 100, 0).cell("safety", passes, failures).pairing("safety", pairing).build().attempt(1);
+			cell("plain_list", 100, 0).cell("safety", passes, failures).controlPairing("safety", pairing).build().attempt(1);
 	}
 
 	/**
@@ -525,6 +528,110 @@ public final class DecisionTableTest
 			new PairCounts(0, 0, 7, 0)));
 		requireThat(DecisionTable.cellDecision(oneFewer, "safety"), "oneFewer").isEqualTo(CellDecision.UNDECIDED);
 		requireThat(DecisionTable.attemptDecision(oneFewer), "oneFewerAttempt").isEqualTo(AttemptDecision.UNDECIDED);
+	}
+
+	/**
+	 * Returns an attempt of working candidate 1 whose cells other than {@code safety} certified, with
+	 * {@code safety}'s counts, control comparisons and incumbent comparisons.
+	 *
+	 * @param passes the passes in {@code safety}
+	 * @param failures the failures in {@code safety}
+	 * @param control the control comparisons of {@code safety}
+	 * @param incumbent the incumbent comparisons of {@code safety}
+	 * @return the attempt
+	 */
+	private static CertificationAttempt candidateAttempt(int passes, int failures, Pairing control,
+		Pairing incumbent)
+	{
+		return new Builder().confirmed().working(1).certificationAttempt(1).cell("formatting", 100, 0).
+			cell("plain_list", 100, 0).cell("safety", passes, failures).controlPairing("safety", control).
+			incumbentPairing("safety", incumbent).build().attempt(1);
+	}
+
+	/**
+	 * Verifies that a cell whose control comparisons passed is below incumbent, and ends the attempt below
+	 * incumbent, once some assertion's incumbent trials are proven to pass it more often, and that one fewer pair that
+	 * only the incumbent passed decides nothing.
+	 */
+	@Test
+	public void belowIncumbentOnBothSides()
+	{
+		// Requirement: R-F8, R-S11
+		PairCounts passed = new PairCounts(0, 7, 0, 0);
+		CertificationAttempt below = candidateAttempt(100, 0, comparing(passed, passed),
+			comparing(new PairCounts(1, 7, 0, 0), new PairCounts(0, 0, 8, 0)));
+		requireThat(DecisionTable.cellDecision(below, "safety"), "below").isEqualTo(CellDecision.BELOW_INCUMBENT);
+		requireThat(DecisionTable.attemptDecision(below), "belowAttempt").isEqualTo(AttemptDecision.BELOW_INCUMBENT);
+
+		CertificationAttempt oneFewer = candidateAttempt(100, 0, comparing(passed, passed),
+			comparing(new PairCounts(0, 7, 0, 0), new PairCounts(0, 0, 7, 0)));
+		requireThat(DecisionTable.cellDecision(oneFewer, "safety"), "oneFewer").isEqualTo(CellDecision.UNDECIDED);
+		requireThat(DecisionTable.attemptDecision(oneFewer), "oneFewerAttempt").isEqualTo(AttemptDecision.UNDECIDED);
+	}
+
+	/**
+	 * Returns pairs that decide differently: passed, undecided on either side, and below.
+	 *
+	 * @return the rows
+	 */
+	@DataProvider
+	public static Object[][] pairCounts()
+	{
+		return new Object[][]
+			{
+				{new PairCounts(0, 7, 0, 0)},
+				{new PairCounts(0, 6, 0, 0)},
+				{new PairCounts(3, 2, 2, 3)},
+				{new PairCounts(0, 0, 7, 0)},
+				{new PairCounts(0, 0, 8, 0)}
+			};
+	}
+
+	/**
+	 * Verifies that the incumbent comparisons decide by the same statistic as the control comparisons: the same pairs
+	 * pass, stay undecided or fall below in both.
+	 *
+	 * @param counts the pairs of the compared assertion
+	 */
+	@Test(dataProvider = "pairCounts")
+	public void incumbentComparisonUsesControlStatistic(PairCounts counts)
+	{
+		// Requirement: R-F8
+		PairCounts passed = new PairCounts(0, 7, 0, 0);
+		CellDecision control = DecisionTable.cellDecision(candidateAttempt(100, 0, comparing(counts, counts),
+			comparing(passed, passed)), "safety");
+		CellDecision incumbent = DecisionTable.cellDecision(candidateAttempt(100, 0, comparing(passed, passed),
+			comparing(counts, counts)), "safety");
+		CellDecision expected = switch (control)
+		{
+			case BELOW_CONTROL -> CellDecision.BELOW_INCUMBENT;
+			default -> control;
+		};
+		requireThat(incumbent, "incumbent").isEqualTo(expected);
+	}
+
+	/**
+	 * Verifies that a cell or attempt with an assertion below control and another below incumbent is below control.
+	 */
+	@Test
+	public void belowControlTakesPrecedence()
+	{
+		// Requirement: R-F8, R-S11
+		PairCounts passed = new PairCounts(0, 8, 0, 0);
+		PairCounts below = new PairCounts(0, 0, 8, 0);
+		CertificationAttempt sameCell = candidateAttempt(100, 0, comparing(passed, below), comparing(below, passed));
+		requireThat(DecisionTable.cellDecision(sameCell, "safety"), "sameCell").isEqualTo(CellDecision.BELOW_CONTROL);
+		requireThat(DecisionTable.attemptDecision(sameCell), "sameCellAttempt").
+			isEqualTo(AttemptDecision.BELOW_CONTROL);
+
+		CertificationAttempt otherCells = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("formatting", 100, 0).controlPairing("formatting", comparing(passed, passed)).
+			incumbentPairing("formatting", comparing(passed, below)).cell("plain_list", 100, 0).
+			cell("safety", 100, 0).controlPairing("safety", comparing(below, passed)).build().attempt(1);
+		requireThat(DecisionTable.cellDecision(otherCells, "formatting"), "formatting").
+			isEqualTo(CellDecision.BELOW_INCUMBENT);
+		requireThat(DecisionTable.attemptDecision(otherCells), "otherCellsAttempt").
+			isEqualTo(AttemptDecision.BELOW_CONTROL);
 	}
 
 	/**
@@ -561,16 +668,68 @@ public final class DecisionTableTest
 			new PairCounts(0, 0, 7, 0)).comparisons());
 		Campaign campaign = new Builder().confirmed().working(1).development("safety", 100, 0).
 			development("formatting", 100, 0).certificationAttempt(1).cell("formatting", 30, 0).cell("safety", 100, 0).
-			pairing("safety", new ControlPairing(List.of(waiting), comparisons)).build();
-		campaign = TransitionSteps.adoptControl(campaign, "safety", Verdict.PASS, List.of());
+			controlPairing("safety", new Pairing(List.of(waiting), comparisons)).build();
+		campaign = TransitionSteps.adoptReference(campaign, Reference.CONTROL, "safety", Verdict.PASS, List.of());
 
-		ControlPairing pairing = campaign.attempt(1).pairing("safety");
+		Pairing pairing = campaign.attempt(1).pairing(Reference.CONTROL, "safety");
 		requireThat(pairing.unpaired(), "unpaired").isEmpty();
 		requireThat(pairing.comparisons().get("asks_before_deleting"), "asksBeforeDeleting").
 			isEqualTo(new PairCounts(1, 7, 0, 0));
 		requireThat(pairing.comparisons().get(TestCase.EXPECTED_OUTCOME), "expectedOutcome").
 			isEqualTo(new PairCounts(0, 0, 8, 0));
 		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isEqualTo(Outcome.BELOW_CONTROL);
+		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.ACTIVE);
+		requireThat(campaign.pending(), "pending").isNull();
+		requireThat(campaign.attempt(1).failures(), "failures").isEmpty();
+		requireThat(CellTier.developmentCellIds(campaign), "developmentCells").contains("safety");
+	}
+
+	/**
+	 * Verifies that a cell whose control comparisons passed certifies only once every assertion's incumbent comparison
+	 * passed.
+	 */
+	@Test
+	public void certifyingWaitsForIncumbent()
+	{
+		// Requirement: R-F8
+		PairCounts passed = new PairCounts(0, 7, 0, 0);
+		CertificationAttempt undecided = candidateAttempt(100, 0, comparing(passed, passed),
+			comparing(passed, new PairCounts(0, 6, 1, 0)));
+		requireThat(DecisionTable.cellDecision(undecided, "safety"), "undecided").isEqualTo(CellDecision.UNDECIDED);
+		requireThat(DecisionTable.attemptDecision(undecided), "undecidedAttempt").
+			isEqualTo(AttemptDecision.UNDECIDED);
+
+		CertificationAttempt certified = candidateAttempt(100, 0, comparing(passed, passed),
+			comparing(passed, passed));
+		requireThat(DecisionTable.cellDecision(certified, "safety"), "certified").isEqualTo(CellDecision.CERTIFIED);
+		requireThat(DecisionTable.attemptDecision(certified), "certifiedAttempt").
+			isEqualTo(AttemptDecision.CERTIFIED);
+	}
+
+	/**
+	 * Verifies that an incumbent trial that proves the incumbent passes an assertion more often ends the attempt below
+	 * incumbent and returns to development automatically, with the cell as a development cell and no failure recorded
+	 * from the incumbent trial.
+	 */
+	@Test
+	public void incumbentTrialEndsAttemptBelowIncumbent()
+	{
+		// Requirement: R-F8, R-S11
+		PairCounts passed = new PairCounts(0, 7, 0, 0);
+		UnpairedTrial waiting = new UnpairedTrial(Builder.testCase("safety", "logs"), Set.of("asks_before_deleting"));
+		Map<String, PairCounts> comparisons = new LinkedHashMap<>(comparing(new PairCounts(0, 7, 0, 0),
+			new PairCounts(0, 0, 7, 0)).comparisons());
+		Campaign campaign = new Builder().confirmed().working(1).development("safety", 100, 0).
+			development("formatting", 100, 0).certificationAttempt(1).cell("formatting", 30, 0).cell("safety", 100, 0).
+			controlPairing("safety", comparing(passed, passed)).
+			incumbentPairing("safety", new Pairing(List.of(waiting), comparisons)).build();
+		campaign = TransitionSteps.adoptReference(campaign, Reference.INCUMBENT, "safety", Verdict.PASS, List.of());
+
+		Pairing pairing = campaign.attempt(1).pairing(Reference.INCUMBENT, "safety");
+		requireThat(pairing.unpaired(), "unpaired").isEmpty();
+		requireThat(pairing.comparisons().get(TestCase.EXPECTED_OUTCOME), "expectedOutcome").
+			isEqualTo(new PairCounts(0, 0, 8, 0));
+		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isEqualTo(Outcome.BELOW_INCUMBENT);
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.ACTIVE);
 		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(campaign.attempt(1).failures(), "failures").isEmpty();
@@ -594,7 +753,7 @@ public final class DecisionTableTest
 		campaign = TransitionSteps.run(campaign, first, Verdict.PASS);
 
 		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isNull();
-		ControlPairing pairing = campaign.attempt(1).pairing("safety");
+		Pairing pairing = campaign.attempt(1).pairing(Reference.CONTROL, "safety");
 		requireThat(pairing.comparisons(), "comparisons").isEqualTo(Map.of("asks_before_deleting",
 			PairCounts.EMPTY, TestCase.EXPECTED_OUTCOME, PairCounts.EMPTY));
 		Set<String> all = Set.of("asks_before_deleting", TestCase.EXPECTED_OUTCOME);
@@ -607,8 +766,28 @@ public final class DecisionTableTest
 		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(second, Verdict.FAIL, "",
 			List.of(new FailedAssertion(TestCase.EXPECTED_OUTCOME, "unexpected_outcome")), null, campaign.identity(),
 			null, List.of(), Builder.FILES));
-		requireThat(campaign.attempt(1).pairing("safety").unpaired(), "secondUnpaired").isEqualTo(List.of(
-			new UnpairedTrial(firstTestCase, all), new UnpairedTrial(secondTestCase, Set.of("asks_before_deleting"))));
+		requireThat(campaign.attempt(1).pairing(Reference.CONTROL, "safety").unpaired(), "secondUnpaired").
+			isEqualTo(List.of(new UnpairedTrial(firstTestCase, all),
+				new UnpairedTrial(secondTestCase, Set.of("asks_before_deleting"))));
+		requireThat(campaign.attempt(1).pairing(Reference.INCUMBENT, "safety"), "incumbentPairing").
+			isEqualTo(campaign.attempt(1).pairing(Reference.CONTROL, "safety"));
+	}
+
+	/**
+	 * Verifies that the candidate formal trial that certifies a cell's minimum-pass-rate part starts only the cell's
+	 * control comparisons when the candidate is the incumbent.
+	 */
+	@Test
+	public void noIncumbentPairsForIncumbent()
+	{
+		// Requirement: R-F8
+		Campaign campaign = new Builder().confirmed().certificationAttempt(1).cell("formatting", 100, 0).
+			cell("plain_list", 100, 0).cell("safety", 99, 0).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
+		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.PASS);
+
+		requireThat(campaign.attempt(1).pairing(Reference.CONTROL, "safety").isComparing(), "control").isTrue();
+		requireThat(campaign.attempt(1).pairing(Reference.INCUMBENT, "safety"), "incumbent").isEqualTo(Pairing.EMPTY);
 	}
 
 	/**
@@ -640,7 +819,7 @@ public final class DecisionTableTest
 		CertificationAttempt compared = safetyAttempt(100, 1, comparing(passed, passed));
 		requireThat(DecisionTable.cellDecision(compared, "safety"), "compared").isEqualTo(CellDecision.CERTIFIED);
 
-		CertificationAttempt uncompared = safetyAttempt(100, 1, ControlPairing.EMPTY);
+		CertificationAttempt uncompared = safetyAttempt(100, 1, Pairing.EMPTY);
 		requireThat(DecisionTable.cellDecision(uncompared, "safety"), "uncompared").
 			isEqualTo(CellDecision.UNDECIDED);
 	}
@@ -661,8 +840,31 @@ public final class DecisionTableTest
 
 		DrawnTestCase testCase = Builder.testCase("safety", "logs");
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>(comparing(passed, undecided).comparisons());
-		ControlPairing waiting = new ControlPairing(List.of(new UnpairedTrial(testCase, Set.of())), comparisons);
+		Pairing waiting = new Pairing(List.of(new UnpairedTrial(testCase, Set.of())), comparisons);
 		CertificationAttempt pending = safetyAttempt(296, 4, waiting);
+		requireThat(DecisionTable.cellDecision(pending, "safety"), "pending").isEqualTo(CellDecision.UNDECIDED);
+	}
+
+	/**
+	 * Verifies that a cell at its cap whose incumbent comparison is undecided reaches its cap once every candidate
+	 * formal trial has its incumbent trial, whatever waits for a control trial whose comparisons passed.
+	 */
+	@Test
+	public void incumbentUndecidedAtCapIsInconclusive()
+	{
+		// Requirement: R-F8
+		PairCounts passed = new PairCounts(0, 7, 0, 0);
+		PairCounts undecided = new PairCounts(0, 6, 1, 0);
+		DrawnTestCase testCase = Builder.testCase("safety", "logs");
+		Pairing passedWaiting = new Pairing(List.of(new UnpairedTrial(testCase, Set.of())),
+			comparing(passed, passed).comparisons());
+		CertificationAttempt capped = candidateAttempt(296, 4, passedWaiting, comparing(passed, undecided));
+		requireThat(DecisionTable.cellDecision(capped, "safety"), "capped").isEqualTo(CellDecision.CAP_REACHED);
+		requireThat(DecisionTable.attemptDecision(capped), "cappedAttempt").isEqualTo(AttemptDecision.INCONCLUSIVE);
+
+		Pairing undecidedWaiting = new Pairing(List.of(new UnpairedTrial(testCase, Set.of())),
+			comparing(passed, undecided).comparisons());
+		CertificationAttempt pending = candidateAttempt(296, 4, comparing(passed, passed), undecidedWaiting);
 		requireThat(DecisionTable.cellDecision(pending, "safety"), "pending").isEqualTo(CellDecision.UNDECIDED);
 	}
 }

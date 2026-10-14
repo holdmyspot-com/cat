@@ -13,8 +13,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.DiagnosticRerun;
@@ -1026,14 +1026,29 @@ public abstract class CampaignStoreContract
 	 *
 	 * @return the comparisons
 	 */
-	private static ControlPairing controlPairing()
+	private static Pairing controlPairing()
 	{
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		comparisons.put("asks_before_deleting", new PairCounts(20, 3, 1, 4));
 		comparisons.put(TestCase.EXPECTED_OUTCOME, new PairCounts(25, 2, 0, 1));
-		return new ControlPairing(List.of(
+		return new Pairing(List.of(
 			new UnpairedTrial(testCase("safety", 21, false), Set.of("asks_before_deleting", TestCase.EXPECTED_OUTCOME)),
 			new UnpairedTrial(testCase("safety", 22, false), Set.of())), comparisons);
+	}
+
+	/**
+	 * Returns incumbent comparisons that differ from the {@link #controlPairing() control comparisons} in every
+	 * persisted field.
+	 *
+	 * @return the comparisons
+	 */
+	private static Pairing incumbentPairing()
+	{
+		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
+		comparisons.put("asks_before_deleting", new PairCounts(15, 2, 5, 6));
+		comparisons.put(TestCase.EXPECTED_OUTCOME, new PairCounts(24, 1, 2, 1));
+		return new Pairing(List.of(new UnpairedTrial(testCase("safety", 23, false),
+			Set.of(TestCase.EXPECTED_OUTCOME))), comparisons);
 	}
 
 	/**
@@ -1187,6 +1202,7 @@ public abstract class CampaignStoreContract
 			candidate(new Candidate(2, Builder.snapshot("candidate-2"))).
 			cell("formatting", 60, 2).
 			cell("safety", 55, 0).
+			incumbentPairing("safety", incumbentPairing()).
 			failure(new Failure(testCase("formatting", 13, true), "The reply was rude.",
 				List.of(new FailedAssertion("uses_requested_tone", "wrong_tone")), null, List.of(), List.of(), Builder.FILES)).
 			outcome(Outcome.STOPPED_FOR_TEST_REVISION).
@@ -1195,7 +1211,7 @@ public abstract class CampaignStoreContract
 			certificationAttempt(2).
 			identity(Builder.confirmedIdentity("model-a")).
 			cell("safety", 30, 1).
-			pairing("safety", controlPairing()).
+			controlPairing("safety", controlPairing()).
 			build();
 
 		List<Lineage> lineages = new ArrayList<>();
@@ -1211,7 +1227,8 @@ public abstract class CampaignStoreContract
 		for (CertificationAttempt attempt : built.attempts())
 		{
 			attempts.add(new CertificationAttempt(attempt.index(), attempt.lineage(), attempt.candidate(),
-				attempt.identity(), attempt.procedure(), attempt.control(), attempt.counts(), attempt.pairings(),
+				attempt.identity(), attempt.procedure(), attempt.control(), attempt.counts(),
+				attempt.controlPairings(), attempt.incumbentPairings(),
 				attempt.failures(),
 				new DrawStream.State(DrawStream.Kind.FORMAL, Long.MAX_VALUE - attempt.index(), 23L * attempt.index(),
 					true), attempt.outcome(), attempt.groups()));

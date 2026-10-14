@@ -401,7 +401,8 @@ public final class Transitions
 				yield drawn;
 			}
 			case FORMAL -> assignFormal(draft, admission);
-			case CONTROL -> assignControl(draft, admission);
+			case CONTROL -> assignReference(draft, admission, Reference.CONTROL);
+			case INCUMBENT -> assignReference(draft, admission, Reference.INCUMBENT);
 			case DIAGNOSTIC -> assignDiagnostic(draft, admission, key);
 			case PROMOTION -> assignPromotion(draft, admission, key);
 			case REPRODUCTION -> assignReproduction(draft, admission);
@@ -443,46 +444,54 @@ public final class Transitions
 		requireSeriesAndSnapshot(admission, attempt.index(), attempt.candidate());
 		DrawStream stream = DrawStream.resume(attempt.formalStream());
 		DrawnTestCase drawn = draft.generator().draw(admission.cell(), stream);
-		draft.replaceAttempt(attempt.withEvidence(attempt.identity(), attempt.counts(), attempt.pairings(),
-			attempt.failures(), stream.state()));
+		draft.replaceAttempt(attempt.withEvidence(attempt.identity(), attempt.counts(), attempt.controlPairings(),
+			attempt.incumbentPairings(), attempt.failures(), stream.state()));
 		return drawn;
 	}
 
 	/**
-	 * Assigns the control trial that pairs with the running attempt's next candidate formal trial of a cell.
+	 * Assigns the control or incumbent trial that pairs with the running attempt's next candidate formal trial of a
+	 * cell that has no trial of that kind yet.
 	 *
 	 * @param draft the state
 	 * @param admission the admission
+	 * @param reference the kind of reference trial
 	 * @return the test case
-	 * @throws IllegalArgumentException if no attempt runs, the admission names another attempt or control source, the
-	 *   cell is not comparing, or every waiting candidate formal trial of the cell already has a control trial in
+	 * @throws IllegalArgumentException if no attempt runs, the admission names another attempt or another snapshot
+	 *   than the attempt's control source or the incumbent, the cell does not compare its assertions with that kind of
+	 *   reference trial, or every waiting candidate formal trial of the cell already has a trial of that kind in
 	 *   flight, or the next one ran another test case
 	 */
-	private static DrawnTestCase assignControl(Draft draft, Admission.Assign admission)
+	private static DrawnTestCase assignReference(Draft draft, Admission.Assign admission, Reference reference)
 	{
 		Optional<CertificationAttempt> running = draft.runningAttempt();
 		if (running.isEmpty())
 			throw new IllegalArgumentException("No certification attempt runs: " + admission);
 		CertificationAttempt attempt = running.get();
-		if (admission.series() != attempt.index() || !admission.snapshot().equals(attempt.control()))
+		Sha256 snapshot = switch (reference)
 		{
-			throw new IllegalArgumentException("The state does not offer " + admission + "; expected the control " +
-				"source of attempt " + attempt.index());
+			case CONTROL -> attempt.control();
+			case INCUMBENT -> draft.incumbent.snapshot();
+		};
+		if (admission.series() != attempt.index() || !admission.snapshot().equals(snapshot))
+		{
+			throw new IllegalArgumentException("The state does not offer " + admission + "; expected snapshot " +
+				snapshot + " of attempt " + attempt.index());
 		}
-		ControlPairing pairing = attempt.pairing(admission.cell());
+		Pairing pairing = attempt.pairing(reference, admission.cell());
 		if (!pairing.isComparing())
 			throw new IllegalArgumentException("The cell does not compare its assertions yet: " + admission);
 		int inFlight = 0;
 		for (LogicalTrial trial : draft.trials)
 		{
 			TrialKey key = trial.key();
-			if (key.purpose() == Purpose.CONTROL && key.series() == attempt.index() &&
+			if (key.purpose() == reference.purpose() && key.series() == attempt.index() &&
 				key.cell().equals(admission.cell()))
 			{
 				++inFlight;
 			}
 		}
-		List<ControlPairing.UnpairedTrial> unpaired = pairing.unpaired();
+		List<Pairing.UnpairedTrial> unpaired = pairing.unpaired();
 		if (inFlight >= unpaired.size() ||
 			!Promotion.isSameTestCase(unpaired.get(inFlight).testCase(), admission.testCase()))
 		{
@@ -672,7 +681,7 @@ public final class Transitions
 		{
 			CertificationAttempt attempt = running.get();
 			draft.replaceAttempt(attempt.withEvidence(attempt.identity().extendWith(observed), attempt.counts(),
-				attempt.pairings(), attempt.failures(), attempt.formalStream()));
+				attempt.controlPairings(), attempt.incumbentPairings(), attempt.failures(), attempt.formalStream()));
 		}
 	}
 
@@ -902,7 +911,7 @@ public final class Transitions
 		DrawStream formal = DrawStream.create(DrawStream.Kind.FORMAL, commit.formalSeed());
 		formal.open();
 		draft.attempts.add(new CertificationAttempt(index, draft.lineageNumber(), draft.working, draft.identity,
-			procedure, commit.control(), Map.of(), Map.of(), List.of(), formal.state(), null, List.of()));
+			procedure, commit.control(), Map.of(), Map.of(), Map.of(), List.of(), formal.state(), null, List.of()));
 		draft.outcome = null;
 	}
 

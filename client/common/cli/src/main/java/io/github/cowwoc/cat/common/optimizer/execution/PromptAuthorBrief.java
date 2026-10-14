@@ -12,6 +12,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureSummary;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Reference;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.SoundTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
@@ -19,7 +21,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
-import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.nio.charset.StandardCharsets;
@@ -334,20 +336,24 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 	 * @param outcome      the attempt's outcome
 	 * @param counts       the attempt's adopted certification outcomes per cell
 	 * @param failures     the summaries of the attempt's certification failures, in adoption order
-	 * @param belowControl the assertions that the candidate passed less often than the control, in contract order
+	 * @param belowControl   the assertions that the candidate passed less often than the control, in contract order
+	 * @param belowIncumbent the assertions that the candidate passed less often than the incumbent, in contract order
 	 */
 	public record EndedAttempt(int index, Outcome outcome, Map<String, CellCounts> counts,
-	                           List<FailureSummary> failures, List<BelowControl> belowControl)
+	                           List<FailureSummary> failures, List<BelowReference> belowControl,
+	                           List<BelowReference> belowIncumbent)
 	{
 		/**
 		 * Creates the outcomes of an ended attempt.
 		 *
-		 * @param index        the attempt's certification index
-		 * @param outcome      the attempt's outcome
-		 * @param counts       the attempt's adopted certification outcomes per cell
-		 * @param failures     the summaries of the attempt's certification failures, in adoption order
-		 * @param belowControl the assertions that the candidate passed less often than the control, in contract
-		 *                     order
+		 * @param index          the attempt's certification index
+		 * @param outcome        the attempt's outcome
+		 * @param counts         the attempt's adopted certification outcomes per cell
+		 * @param failures       the summaries of the attempt's certification failures, in adoption order
+		 * @param belowControl   the assertions that the candidate passed less often than the control, in contract
+		 *                       order
+		 * @param belowIncumbent the assertions that the candidate passed less often than the incumbent, in contract
+		 *                       order
 		 * @throws NullPointerException     if any of the arguments are null
 		 * @throws IllegalArgumentException if {@code index} is not positive
 		 */
@@ -358,9 +364,11 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 			requireThat(counts, "counts").isNotNull();
 			requireThat(failures, "failures").isNotNull();
 			requireThat(belowControl, "belowControl").isNotNull();
+			requireThat(belowIncumbent, "belowIncumbent").isNotNull();
 			counts = Map.copyOf(counts);
 			failures = List.copyOf(failures);
 			belowControl = List.copyOf(belowControl);
+			belowIncumbent = List.copyOf(belowIncumbent);
 		}
 
 		/**
@@ -378,34 +386,43 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 			requireThat(attempt, "attempt").isNotNull();
 			requireThat(attempt.isRunning(), "attempt.isRunning()").isFalse();
 			return new EndedAttempt(attempt.index(), attempt.outcome(), attempt.counts(),
-				attempt.failures().stream().map(Failure::summary).toList(), belowControl(contract, attempt));
+				attempt.failures().stream().map(Failure::summary).toList(), below(contract, attempt, Reference.CONTROL),
+				below(contract, attempt, Reference.INCUMBENT));
 		}
 
 		/**
-		 * Returns the assertions that an attempt proved the candidate to pass less often than the control.
+		 * Returns the assertions that an attempt that ended below control or below incumbent proved the candidate to
+		 * pass less often than one kind of reference trial, in the cells that the comparisons with that kind decided.
 		 *
-		 * @param contract the attempt's confirmed contract
-		 * @param attempt  the ended attempt
+		 * @param contract  the attempt's confirmed contract
+		 * @param attempt   the ended attempt
+		 * @param reference the kind of reference trial
 		 * @return the assertions, in contract order
 		 * @throws IllegalArgumentException if the contract lacks one of the attempt's cells
 		 */
-		private static List<BelowControl> belowControl(Contract contract, CertificationAttempt attempt)
+		private static List<BelowReference> below(Contract contract, CertificationAttempt attempt, Reference reference)
 		{
-			if (attempt.outcome() != Outcome.BELOW_CONTROL)
+			if (attempt.outcome() != Outcome.BELOW_CONTROL && attempt.outcome() != Outcome.BELOW_INCUMBENT)
 				return List.of();
+			DecisionTable.CellDecision belowReference = switch (reference)
+			{
+				case CONTROL -> DecisionTable.CellDecision.BELOW_CONTROL;
+				case INCUMBENT -> DecisionTable.CellDecision.BELOW_INCUMBENT;
+			};
 			SignificanceLevel level = attempt.procedure().boundaries().level();
-			List<BelowControl> below = new ArrayList<>();
+			List<BelowReference> below = new ArrayList<>();
 			for (String cell : attempt.procedure().cells())
 			{
-				if (DecisionTable.cellDecision(attempt, cell) != DecisionTable.CellDecision.BELOW_CONTROL)
+				if (DecisionTable.cellDecision(attempt, cell) != belowReference)
 					continue;
 				String testId = contract.findCell(cell).orElseThrow(() -> new IllegalArgumentException(
 					"The contract has no cell identified by " + cell + ".")).testId();
-				for (Map.Entry<String, PairCounts> comparison : attempt.pairing(cell).comparisons().entrySet())
+				Pairing pairing = attempt.pairing(reference, cell);
+				for (Map.Entry<String, PairCounts> comparison : pairing.comparisons().entrySet())
 				{
 					PairCounts pairs = comparison.getValue();
-					if (ControlComparison.isBelowControl(pairs.tally(), level))
-						below.add(new BelowControl(cell, testId, comparison.getKey(), pairs));
+					if (PairedComparison.isBelow(pairs.tally(), level))
+						below.add(new BelowReference(cell, testId, comparison.getKey(), pairs));
 				}
 			}
 			return below;
@@ -413,16 +430,17 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 	}
 
 	/**
-	 * An assertion that a certification attempt proved the candidate to pass less often than the control.
+	 * An assertion that a certification attempt proved the candidate to pass less often than its reference trials:
+	 * the control trials or the incumbent trials.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param cellId      the identifier of the cell
 	 * @param testId      the identifier of the cell's prompt test
 	 * @param assertionId the identifier of the assertion
-	 * @param pairs       the assertion's adopted pairs of a candidate formal trial and its control trial
+	 * @param pairs       the assertion's adopted pairs of a candidate formal trial and its reference trial
 	 */
-	public record BelowControl(String cellId, String testId, String assertionId, PairCounts pairs)
+	public record BelowReference(String cellId, String testId, String assertionId, PairCounts pairs)
 	{
 		/**
 		 * Creates a finding.
@@ -430,10 +448,10 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 		 * @param cellId      the identifier of the cell
 		 * @param testId      the identifier of the cell's prompt test
 		 * @param assertionId the identifier of the assertion
-		 * @param pairs       the assertion's adopted pairs of a candidate formal trial and its control trial
+		 * @param pairs       the assertion's adopted pairs of a candidate formal trial and its reference trial
 		 * @throws NullPointerException if any of the arguments are null
 		 */
-		public BelowControl
+		public BelowReference
 		{
 			requireThat(cellId, "cellId").isNotNull();
 			requireThat(testId, "testId").isNotNull();

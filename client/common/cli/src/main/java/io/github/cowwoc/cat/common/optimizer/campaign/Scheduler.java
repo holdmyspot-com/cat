@@ -2,13 +2,13 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBounds;
-import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 import io.github.cowwoc.cat.common.optimizer.statistics.PairTally;
@@ -16,6 +16,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -184,10 +185,10 @@ public final class Scheduler
 	 * is lowest, ties to fewer adopted outcomes and then contract order. A cell whose minimum-pass-rate part is
 	 * decided, or one whose unadopted trials reach its remaining passes to certification, offers nothing.
 	 * <p>
-	 * The formal trials of the minimum-pass-rate part come first. Then each open cell whose control comparisons are
-	 * undecided receives, in turn and in contract order, the control trials of its waiting candidate formal trials,
-	 * and then the further candidate formal trials that its slowest comparison needs. The control and formal trials in
-	 * flight share the attempt's window.
+	 * The formal trials of the minimum-pass-rate part come first. Then each undecided open cell whose paired
+	 * comparisons started receives, in turn and in contract order, the control and incumbent trials of its waiting
+	 * candidate formal trials, and then the further candidate formal trials that its slowest comparison needs. The
+	 * formal, control and incumbent trials in flight share the attempt's window.
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the running attempt
@@ -199,8 +200,14 @@ public final class Scheduler
 		int freeCapacity, Allocations allocations)
 	{
 		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.FORMAL, attempt.index());
-		Map<String, Integer> controlsInFlight = countInFlight(campaign, Purpose.CONTROL, attempt.index());
-		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight) - total(controlsInFlight);
+		Map<Reference, Map<String, Integer>> referencesInFlight = new EnumMap<>(Reference.class);
+		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight);
+		for (Reference reference : Reference.values())
+		{
+			Map<String, Integer> references = countInFlight(campaign, reference.purpose(), attempt.index());
+			referencesInFlight.put(reference, references);
+			slots -= total(references);
+		}
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		List<Cell> openCells = CellTier.openCells(campaign, attempt);
 		while (slots > 0 && plan.size() < freeCapacity)
@@ -211,7 +218,7 @@ public final class Scheduler
 				String id = cell.id();
 				CellCounts counts = attempt.count(id);
 				int assigned = inFlight.getOrDefault(id, 0);
-				if (attempt.pairing(id).isComparing() ||
+				if (attempt.pairing(Reference.CONTROL, id).isComparing() ||
 					DecisionTable.minimumDecision(boundaries, counts) != DecisionTable.CellDecision.UNDECIDED ||
 					ConcurrencyPolicy.cellLimit(boundaries, counts) - assigned <= 0)
 				{
@@ -237,43 +244,51 @@ public final class Scheduler
 			inFlight.merge(best, 1, Integer::sum);
 			--slots;
 		}
-		planControl(attempt, openCells, plan, Math.min(slots, freeCapacity - plan.size()), inFlight, controlsInFlight,
-			allocations);
+		planPaired(campaign, attempt, openCells, plan, Math.min(slots, freeCapacity - plan.size()), inFlight,
+			referencesInFlight, allocations);
 	}
 
 	/**
-	 * Plans the control trials of the open cells whose control comparisons are undecided, then the further candidate
-	 * formal trials that their comparisons need, one trial per cell in turn and in contract order.
+	 * Plans the control and incumbent trials of the undecided open cells whose paired comparisons started, then the
+	 * further candidate formal trials that their comparisons need, one trial per cell in turn and in contract order.
 	 * <p>
-	 * A cell's control trials pair, in assignment order, with its candidate formal trials that wait for one, and its
-	 * in-flight control trials never exceed the pairs that its slowest undecided comparison still needs if every pair
-	 * favours the candidate. Further candidate formal trials run only when the waiting and in-flight candidate formal
-	 * trials cannot complete those pairs, up to the cell's cap.
+	 * A cell's trials of each reference kind pair, in assignment order, with its candidate formal trials that wait for
+	 * one of that kind, and its in-flight trials of each kind never exceed the pairs that its slowest undecided
+	 * comparison with that kind still needs if every pair favours the candidate. When both kinds can run a trial, the
+	 * kind with fewer trials in flight runs first, ties to the control. Further candidate formal trials run only when
+	 * the waiting and in-flight candidate formal trials cannot complete the pairs of some kind, up to the cell's cap.
 	 *
+	 * @param campaign the campaign
 	 * @param attempt the running attempt
 	 * @param openCells the open cells, in contract order
 	 * @param plan the admissions planned so far
 	 * @param slots the number of trials that may be planned
 	 * @param inFlight the unadopted candidate formal trials per cell, updated with the planned ones
-	 * @param controlsInFlight the unadopted control trials per cell, updated with the planned ones
+	 * @param referencesInFlight the unadopted control and incumbent trials per cell, updated with the planned ones
 	 * @param allocations the allocation decisions of this plan
 	 */
-	private static void planControl(CertificationAttempt attempt, List<Cell> openCells, List<Admission> plan,
-		int slots, Map<String, Integer> inFlight, Map<String, Integer> controlsInFlight, Allocations allocations)
+	private static void planPaired(Campaign campaign, CertificationAttempt attempt, List<Cell> openCells,
+		List<Admission> plan, int slots, Map<String, Integer> inFlight,
+		Map<Reference, Map<String, Integer>> referencesInFlight, Allocations allocations)
 	{
 		List<String> comparing = new ArrayList<>();
 		for (Cell cell : openCells)
 		{
 			String id = cell.id();
-			if (attempt.pairing(id).isComparing() &&
+			if (attempt.pairing(Reference.CONTROL, id).isComparing() &&
 				DecisionTable.cellDecision(attempt, id) == DecisionTable.CellDecision.UNDECIDED)
 			{
 				comparing.add(id);
 			}
 		}
-		Map<String, Integer> needed = new HashMap<>();
+		Map<String, Map<Reference, Integer>> needed = new HashMap<>();
 		for (String id : comparing)
-			needed.put(id, pairsNeeded(attempt, id));
+		{
+			Map<Reference, Integer> cellNeeds = new EnumMap<>(Reference.class);
+			for (Reference reference : Reference.values())
+				cellNeeds.put(reference, pairsNeeded(attempt, id, reference));
+			needed.put(id, cellNeeds);
+		}
 		boolean planned = true;
 		while (planned && slots > 0)
 		{
@@ -282,8 +297,8 @@ public final class Scheduler
 			{
 				if (slots <= 0)
 					break;
-				Admission admission = nextControlAdmission(attempt, id, needed.get(id), inFlight, controlsInFlight,
-					allocations);
+				Admission admission = nextPairedAdmission(campaign, attempt, id, needed.get(id), inFlight,
+					referencesInFlight, allocations);
 				if (admission == null)
 					continue;
 				plan.add(admission);
@@ -294,25 +309,27 @@ public final class Scheduler
 	}
 
 	/**
-	 * Returns the pairs that a cell's slowest undecided control comparison still needs if every further pair
-	 * favours the candidate.
+	 * Returns the pairs that a cell's slowest undecided comparison with one kind of reference trial still needs if
+	 * every further pair favours the candidate.
 	 *
 	 * @param attempt the running attempt
-	 * @param cell the identifier of a cell whose control comparisons are undecided
-	 * @return the pairs, at least 1 and at most the pairs that the cell's cap still allows
+	 * @param cell the identifier of a cell whose paired comparisons are undecided
+	 * @param reference the kind of reference trial
+	 * @return the pairs, at most the pairs that the cell's cap still allows and at least 1 if some comparison with
+	 *   that kind is undecided; 0 if every comparison with that kind passed or the cell has none
 	 */
-	private static int pairsNeeded(CertificationAttempt attempt, String cell)
+	private static int pairsNeeded(CertificationAttempt attempt, String cell, Reference reference)
 	{
-		ControlPairing pairing = attempt.pairing(cell);
+		Pairing pairing = attempt.pairing(reference, cell);
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		int remaining = Math.max(0, boundaries.cap() - pairing.pairs());
-		int needed = 1;
+		int needed = 0;
 		for (PairCounts comparison : pairing.comparisons().values())
 		{
 			PairTally tally = comparison.tally();
-			if (!ControlComparison.passes(tally, boundaries.level()))
+			if (!PairedComparison.passes(tally, boundaries.level()))
 			{
-				needed = Math.max(needed, ControlComparison.fewestCandidateAheadPairsToPass(tally, boundaries.level(),
+				needed = Math.max(needed, PairedComparison.fewestCandidateAheadPairsToPass(tally, boundaries.level(),
 					remaining));
 			}
 		}
@@ -320,34 +337,57 @@ public final class Scheduler
 	}
 
 	/**
-	 * Returns a cell's next control trial, or else its next further candidate formal trial, and counts it in flight.
+	 * Returns a cell's next control or incumbent trial, or else its next further candidate formal trial, and counts it
+	 * in flight.
 	 *
+	 * @param campaign the campaign
 	 * @param attempt the running attempt
-	 * @param cell the identifier of a cell whose control comparisons are undecided
-	 * @param needed the pairs that the cell's slowest undecided comparison still needs
+	 * @param cell the identifier of a cell whose paired comparisons are undecided
+	 * @param needed the pairs that the cell's slowest undecided comparison with each kind of reference trial still
+	 *   needs
 	 * @param inFlight the unadopted candidate formal trials per cell
-	 * @param controlsInFlight the unadopted control trials per cell
+	 * @param referencesInFlight the unadopted control and incumbent trials per cell
 	 * @param allocations the allocation decisions of this plan
 	 * @return the admission, or {@code null} if the cell needs no further trial now
 	 */
-	private static Admission nextControlAdmission(CertificationAttempt attempt, String cell, int needed,
-		Map<String, Integer> inFlight, Map<String, Integer> controlsInFlight, Allocations allocations)
+	private static Admission nextPairedAdmission(Campaign campaign, CertificationAttempt attempt, String cell,
+		Map<Reference, Integer> needed, Map<String, Integer> inFlight,
+		Map<Reference, Map<String, Integer>> referencesInFlight, Allocations allocations)
 	{
-		List<UnpairedTrial> unpaired = attempt.pairing(cell).unpaired();
-		int controls = controlsInFlight.getOrDefault(cell, 0);
-		if (controls < Math.min(unpaired.size(), needed))
+		Reference next = null;
+		int nextInFlight = 0;
+		int furtherFormal = 0;
+		for (Reference reference : Reference.values())
 		{
-			controlsInFlight.merge(cell, 1, Integer::sum);
-			return new Admission.Assign(Purpose.CONTROL, attempt.index(), attempt.control(), cell,
-				unpaired.get(controls).testCase(), allocations.of(AllocationRule.CONTROL));
+			List<UnpairedTrial> unpaired = attempt.pairing(reference, cell).unpaired();
+			int kindNeeded = needed.get(reference);
+			int references = referencesInFlight.get(reference).getOrDefault(cell, 0);
+			if (references < Math.min(unpaired.size(), kindNeeded) && (next == null || references < nextInFlight))
+			{
+				next = reference;
+				nextInFlight = references;
+			}
+			furtherFormal = Math.max(furtherFormal, kindNeeded - unpaired.size());
+		}
+		if (next != null)
+		{
+			referencesInFlight.get(next).merge(cell, 1, Integer::sum);
+			Sha256 snapshot = switch (next)
+			{
+				case CONTROL -> attempt.control();
+				case INCUMBENT -> campaign.incumbent().snapshot();
+			};
+			return new Admission.Assign(next.purpose(), attempt.index(), snapshot, cell,
+				attempt.pairing(next, cell).unpaired().get(nextInFlight).testCase(),
+				allocations.of(AllocationRule.PAIRED));
 		}
 		int formal = inFlight.getOrDefault(cell, 0);
 		int capRemaining = attempt.procedure().boundaries().cap() - attempt.count(cell).outcomes() - formal;
-		if (Math.min(needed - unpaired.size() - formal, capRemaining) <= 0)
+		if (Math.min(furtherFormal - formal, capRemaining) <= 0)
 			return null;
 		inFlight.merge(cell, 1, Integer::sum);
 		return new Admission.Assign(Purpose.FORMAL, attempt.index(), attempt.candidate().snapshot(), cell, null,
-			allocations.of(AllocationRule.CONTROL));
+			allocations.of(AllocationRule.PAIRED));
 	}
 
 	/**

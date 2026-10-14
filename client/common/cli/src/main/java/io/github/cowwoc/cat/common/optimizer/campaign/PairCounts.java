@@ -5,18 +5,18 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.statistics.PairTally;
 
 /**
- * The adopted pairs of one assertion's control comparison in one cell, counted by which trials of each pair passed
- * the assertion. A pair holds a candidate formal trial and the control trial that ran the same test case on the
- * incumbent with every target prompt file emptied.
+ * The adopted pairs of one assertion's paired comparison in one cell, counted by which trials of each pair passed
+ * the assertion. A pair holds a candidate formal trial and the reference trial that ran the same test case: a control
+ * trial or an incumbent trial.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param bothPassed    the pairs in which both trials passed the assertion
  * @param candidateOnly the pairs in which only the candidate trial passed the assertion
- * @param controlOnly   the pairs in which only the control trial passed the assertion
+ * @param referenceOnly the pairs in which only the reference trial passed the assertion
  * @param neitherPassed the pairs in which neither trial passed the assertion
  */
-public record PairCounts(int bothPassed, int candidateOnly, int controlOnly, int neitherPassed)
+public record PairCounts(int bothPassed, int candidateOnly, int referenceOnly, int neitherPassed)
 {
 	/**
 	 * No pairs.
@@ -28,7 +28,7 @@ public record PairCounts(int bothPassed, int candidateOnly, int controlOnly, int
 	 *
 	 * @param bothPassed    the pairs in which both trials passed the assertion
 	 * @param candidateOnly the pairs in which only the candidate trial passed the assertion
-	 * @param controlOnly   the pairs in which only the control trial passed the assertion
+	 * @param referenceOnly the pairs in which only the reference trial passed the assertion
 	 * @param neitherPassed the pairs in which neither trial passed the assertion
 	 * @throws IllegalArgumentException if any count is negative
 	 */
@@ -36,7 +36,7 @@ public record PairCounts(int bothPassed, int candidateOnly, int controlOnly, int
 	{
 		requireThat(bothPassed, "bothPassed").isNotNegative();
 		requireThat(candidateOnly, "candidateOnly").isNotNegative();
-		requireThat(controlOnly, "controlOnly").isNotNegative();
+		requireThat(referenceOnly, "referenceOnly").isNotNegative();
 		requireThat(neitherPassed, "neitherPassed").isNotNegative();
 	}
 
@@ -44,18 +44,18 @@ public record PairCounts(int bothPassed, int candidateOnly, int controlOnly, int
 	 * Returns these counts with one more pair.
 	 *
 	 * @param candidatePassed {@code true} if the pair's candidate trial passed the assertion
-	 * @param controlPassed   {@code true} if the pair's control trial passed the assertion
+	 * @param referencePassed {@code true} if the pair's reference trial passed the assertion
 	 * @return the updated counts
 	 */
-	public PairCounts add(boolean candidatePassed, boolean controlPassed)
+	public PairCounts add(boolean candidatePassed, boolean referencePassed)
 	{
-		if (candidatePassed && controlPassed)
-			return new PairCounts(bothPassed + 1, candidateOnly, controlOnly, neitherPassed);
+		if (candidatePassed && referencePassed)
+			return new PairCounts(bothPassed + 1, candidateOnly, referenceOnly, neitherPassed);
 		if (candidatePassed)
-			return new PairCounts(bothPassed, candidateOnly + 1, controlOnly, neitherPassed);
-		if (controlPassed)
-			return new PairCounts(bothPassed, candidateOnly, controlOnly + 1, neitherPassed);
-		return new PairCounts(bothPassed, candidateOnly, controlOnly, neitherPassed + 1);
+			return new PairCounts(bothPassed, candidateOnly + 1, referenceOnly, neitherPassed);
+		if (referencePassed)
+			return new PairCounts(bothPassed, candidateOnly, referenceOnly + 1, neitherPassed);
+		return new PairCounts(bothPassed, candidateOnly, referenceOnly, neitherPassed + 1);
 	}
 
 	/**
@@ -65,7 +65,7 @@ public record PairCounts(int bothPassed, int candidateOnly, int controlOnly, int
 	 */
 	public int pairs()
 	{
-		return bothPassed + candidateOnly + controlOnly + neitherPassed;
+		return bothPassed + candidateOnly + referenceOnly + neitherPassed;
 	}
 
 	/**
@@ -79,23 +79,23 @@ public record PairCounts(int bothPassed, int candidateOnly, int controlOnly, int
 	}
 
 	/**
-	 * Returns the number of pairs whose control trial passed the assertion.
+	 * Returns the number of pairs whose reference trial passed the assertion.
 	 *
-	 * @return {@code bothPassed + controlOnly}
+	 * @return {@code bothPassed + referenceOnly}
 	 */
-	public int controlPasses()
+	public int referencePasses()
 	{
-		return bothPassed + controlOnly;
+		return bothPassed + referenceOnly;
 	}
 
 	/**
 	 * Returns the pairs counted by the value of {@code Z = (X - Y + 1) / 2}, where {@code X} and {@code Y} are 1 when
-	 * the candidate trial and the control trial pass the assertion.
+	 * the candidate trial and the reference trial pass the assertion.
 	 *
-	 * @return the tally that the control comparison decides from
+	 * @return the tally that the paired comparison decides from
 	 */
 	public PairTally tally()
 	{
-		return new PairTally(controlOnly, bothPassed + neitherPassed, candidateOnly);
+		return new PairTally(referenceOnly, bothPassed + neitherPassed, candidateOnly);
 	}
 }

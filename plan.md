@@ -2109,11 +2109,13 @@ The riskiest pure code, built first.
 - **Reports:** the status report, the minimum remaining trials, the certification record and the campaign snapshot
   carry each cell's incumbent pairs beside its control pairs.
 - **Closes:** R-F8, and the incumbent side of R-E3, R-E4 and R-F2.
-- **Tests:** `PairedComparisonTest` (the incumbent comparison is the control comparison's statistic),
-  `SchedulerTest` (no incumbent trial before the cell certifies or when the candidate is the incumbent; pairing order;
-  extra formal trials for incumbent pairs), `DecisionTableTest` (below incumbent; below control first),
-  `DriverTest` (certification waits for the incumbent comparisons), `StatusReportTest`, `CertificationRecordTest`,
-  `PromptAuthorBriefTest`.
+- **Tests:** `SchedulerTest` (no incumbent trial before the cell certifies or when the candidate is the incumbent;
+  pairing order; extra formal trials for incumbent pairs; the cell limit), `DecisionTableTest` (the incumbent
+  comparison is the control comparison's statistic; below incumbent; below control first; certification waits for the
+  incumbent; inconclusive at the cap), `CellTierTest` (a cell below incumbent returns to development), `DriverTest`
+  (certification waits for the incumbent comparisons, whose trials stage the incumbent), `StatusReportTest`,
+  `RemainingWorkTest` (incumbent pairs, sharing formal trials with control pairs), `CertificationRecordTest`,
+  `EndedAttemptTest` and `PromptAuthorTest` (the brief's `below_incumbent` entries).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-15 — Acceptance

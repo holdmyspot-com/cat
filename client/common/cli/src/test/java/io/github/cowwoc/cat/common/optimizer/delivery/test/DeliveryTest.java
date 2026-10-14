@@ -1111,7 +1111,7 @@ public final class DeliveryTest
 		return new CertificationRecord(Path.of("rules/main.md"), certificationIndex, CertificationScope.WEAKEST_CELL,
 			CertificationParameters.current(certificationIndex, Contract.DEFAULT_MINIMUM_PASS_RATE),
 			List.of(new CellResult("formatting", "formatting",
-			120, 0, Map.of())), Map.of(Path.of("rules/main.md"), content("main v2\n").hash()),
+			120, 0, Map.of(), Map.of())), Map.of(Path.of("rules/main.md"), content("main v2\n").hash()),
 			new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "claude"), Map.of()));
 	}
 

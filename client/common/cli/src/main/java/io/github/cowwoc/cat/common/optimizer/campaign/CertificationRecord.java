@@ -25,10 +25,10 @@ import java.util.TreeMap;
  * What a delivered certification claims and the conditions it was measured under, kept in the project after the
  * campaign's files are removed.
  * <p>
- * The record holds the certification's index, scope, parameters, per-cell counts and per-assertion control pairs, the
- * content hash of each delivered prompt file, and every measurement condition that the attempt recorded, which names
- * the prompt sources and the contract by hash. It holds no trial, so its size depends only on the number of cells,
- * assertions, prompt files and conditions.
+ * The record holds the certification's index, scope, parameters, per-cell counts, per-assertion control and incumbent
+ * pairs, the content hash of each delivered prompt file, and every measurement condition that the attempt recorded,
+ * which names the prompt sources and the contract by hash. It holds no trial, so its size depends only on the number
+ * of cells, assertions, prompt files and conditions.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -111,7 +111,8 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 				new IllegalArgumentException("The contract of lineage " + attempt.lineage() + " has no cell " + cell));
 			CellCounts counts = entry.getValue();
 			cells.add(new CellResult(test, cell, counts.passes(), counts.failures(),
-				attempt.pairing(cell).comparisons()));
+				attempt.pairing(Reference.CONTROL, cell).comparisons(),
+				attempt.pairing(Reference.INCUMBENT, cell).comparisons()));
 		}
 
 		Map<Path, Sha256> promptFiles = new TreeMap<>();
@@ -209,10 +210,13 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	 * @param cell the cell's identifier
 	 * @param passes the passing outcomes in certification evidence
 	 * @param failures the failing outcomes in certification evidence
-	 * @param comparisons the pairs of each assertion's control comparison, keyed by the assertion's identifier in
-	 *   contract order
+	 * @param controlComparisons the pairs of each assertion's control comparison, keyed by the assertion's identifier
+	 *   in contract order
+	 * @param incumbentComparisons the pairs of each assertion's incumbent comparison, keyed by the assertion's
+	 *   identifier in contract order, or empty if the certified candidate is the incumbent
 	 */
-	public record CellResult(String test, String cell, int passes, int failures, Map<String, PairCounts> comparisons)
+	public record CellResult(String test, String cell, int passes, int failures,
+		Map<String, PairCounts> controlComparisons, Map<String, PairCounts> incumbentComparisons)
 	{
 		/**
 		 * Creates a cell's counts.
@@ -221,9 +225,12 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		 * @param cell the cell's identifier
 		 * @param passes the passing outcomes in certification evidence
 		 * @param failures the failing outcomes in certification evidence
-		 * @param comparisons the pairs of each assertion's control comparison, keyed by the assertion's identifier in
-		 *   contract order
-		 * @throws NullPointerException if any of the arguments are null, or {@code comparisons} contains null
+		 * @param controlComparisons the pairs of each assertion's control comparison, keyed by the assertion's
+		 *   identifier in contract order
+		 * @param incumbentComparisons the pairs of each assertion's incumbent comparison, keyed by the assertion's
+		 *   identifier in contract order, or empty if the certified candidate is the incumbent
+		 * @throws NullPointerException if any of the arguments are null, or {@code controlComparisons} or
+		 *   {@code incumbentComparisons} contain null
 		 * @throws IllegalArgumentException if {@code test} or {@code cell} are blank, or {@code passes} or
 		 *   {@code failures} are negative
 		 */
@@ -233,13 +240,27 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 			requireThat(cell, "cell").isNotBlank();
 			requireThat(passes, "passes").isNotNegative();
 			requireThat(failures, "failures").isNotNegative();
-			requireThat(comparisons, "comparisons").isNotNull();
-			comparisons = Collections.unmodifiableMap(new LinkedHashMap<>(comparisons));
+			controlComparisons = copyOf(controlComparisons, "controlComparisons");
+			incumbentComparisons = copyOf(incumbentComparisons, "incumbentComparisons");
+		}
+
+		/**
+		 * Returns an unmodifiable copy of the pairs of each assertion's comparison.
+		 *
+		 * @param comparisons the pairs, keyed by the assertion's identifier
+		 * @param name the name of the parameter
+		 * @return the copy, in the same order
+		 * @throws NullPointerException if {@code comparisons} is null or contains null
+		 */
+		private static Map<String, PairCounts> copyOf(Map<String, PairCounts> comparisons, String name)
+		{
+			requireThat(comparisons, name).isNotNull();
 			for (Entry<String, PairCounts> comparison : comparisons.entrySet())
 			{
-				requireThat(comparison.getKey(), "comparisons.key").isNotNull();
-				requireThat(comparison.getValue(), "comparisons.value").isNotNull();
+				requireThat(comparison.getKey(), name + ".key").isNotNull();
+				requireThat(comparison.getValue(), name + ".value").isNotNull();
 			}
+			return Collections.unmodifiableMap(new LinkedHashMap<>(comparisons));
 		}
 	}
 }

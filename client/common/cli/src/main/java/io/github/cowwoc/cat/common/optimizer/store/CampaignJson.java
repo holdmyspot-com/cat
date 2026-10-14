@@ -36,8 +36,8 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.TestCaseOutcomes;
@@ -147,7 +147,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 39;
+	private static final int FORMAT_VERSION = 40;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_ASSERTIONS = "failed_assertions";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -1562,7 +1562,8 @@ final class CampaignJson
 		procedureNode.put("allocation_policy", procedure.allocationPolicy());
 		node.put("control", attempt.control().hex());
 		node.set("counts", writeCounts(attempt.counts()));
-		node.set("pairings", writePairings(attempt.pairings()));
+		node.set("control_pairings", writePairings(attempt.controlPairings()));
+		node.set("incumbent_pairings", writePairings(attempt.incumbentPairings()));
 		node.set("failures", writeFailures(attempt.failures()));
 		node.set("formal_stream", writeStream(attempt.formalStream()));
 		putConstant(node, "outcome", attempt.outcome());
@@ -1588,8 +1589,9 @@ final class CampaignJson
 			text(procedureNode, "bets"), text(procedureNode, "allocation_policy"));
 		return new CertificationAttempt(integer(node, "index"), integer(node, "lineage"),
 			readCandidate(field(node, "candidate")), readIdentity(field(node, "identity")), procedure,
-			sha256(node, "control"), readCounts(field(node, "counts")), readPairings(field(node, "pairings")),
-			readFailures(node, "failures"),
+			sha256(node, "control"), readCounts(field(node, "counts")),
+			readPairings(field(node, "control_pairings"), "control_pairings"),
+			readPairings(field(node, "incumbent_pairings"), "incumbent_pairings"), readFailures(node, "failures"),
 			readStream(field(node, "formal_stream")), nullableConstant(node, "outcome", Outcome.class),
 			readGroups(node));
 	}
@@ -2337,15 +2339,15 @@ final class CampaignJson
 	}
 
 	/**
-	 * Converts per-cell control comparisons to a document, sorted by cell identifier.
+	 * Converts per-cell comparisons with one kind of reference trial to a document, sorted by cell identifier.
 	 *
-	 * @param pairings the control comparisons
+	 * @param pairings the comparisons
 	 * @return the document
 	 */
-	private ObjectNode writePairings(Map<String, ControlPairing> pairings)
+	private ObjectNode writePairings(Map<String, Pairing> pairings)
 	{
 		ObjectNode node = json.createObjectNode();
-		for (Entry<String, ControlPairing> entry : new TreeMap<>(pairings).entrySet())
+		for (Entry<String, Pairing> entry : new TreeMap<>(pairings).entrySet())
 		{
 			ObjectNode element = node.putObject(entry.getKey());
 			ArrayNode unpaired = element.putArray("unpaired");
@@ -2365,7 +2367,7 @@ final class CampaignJson
 				PairCounts counts = comparison.getValue();
 				comparisonNode.put("both_passed", counts.bothPassed());
 				comparisonNode.put("candidate_only", counts.candidateOnly());
-				comparisonNode.put("control_only", counts.controlOnly());
+				comparisonNode.put("reference_only", counts.referenceOnly());
 				comparisonNode.put("neither_passed", counts.neitherPassed());
 			}
 		}
@@ -2373,15 +2375,16 @@ final class CampaignJson
 	}
 
 	/**
-	 * Converts a document to per-cell control comparisons.
+	 * Converts a document to per-cell comparisons with one kind of reference trial.
 	 *
 	 * @param node the document
-	 * @return the control comparisons
+	 * @param name the document's field name
+	 * @return the comparisons
 	 */
-	private static Map<String, ControlPairing> readPairings(JsonNode node)
+	private static Map<String, Pairing> readPairings(JsonNode node, String name)
 	{
-		requireObject(node, "pairings");
-		Map<String, ControlPairing> pairings = new LinkedHashMap<>();
+		requireObject(node, name);
+		Map<String, Pairing> pairings = new LinkedHashMap<>();
 		for (Entry<String, JsonNode> entry : node.properties())
 		{
 			JsonNode element = entry.getValue();
@@ -2398,12 +2401,12 @@ final class CampaignJson
 			{
 				String assertionId = text(comparison, "assertion");
 				PairCounts counts = new PairCounts(integer(comparison, "both_passed"),
-					integer(comparison, "candidate_only"), integer(comparison, "control_only"),
+					integer(comparison, "candidate_only"), integer(comparison, "reference_only"),
 					integer(comparison, "neither_passed"));
 				if (comparisons.put(assertionId, counts) != null)
-					throw new IllegalArgumentException("pairings: duplicate assertion " + assertionId);
+					throw new IllegalArgumentException(name + ": duplicate assertion " + assertionId);
 			}
-			pairings.put(entry.getKey(), new ControlPairing(unpaired, comparisons));
+			pairings.put(entry.getKey(), new Pairing(unpaired, comparisons));
 		}
 		return pairings;
 	}

@@ -8,18 +8,20 @@ import java.util.List;
 import java.util.function.IntFunction;
 
 /**
- * The comparison of one assertion between a cell's candidate trials and its control trials, which run the incumbent
- * with every target prompt file emptied.
+ * The comparison of one assertion between a cell's candidate trials and its reference trials: its control
+ * trials, which run the incumbent with the target prompt file emptied and its dependents removed, or its incumbent
+ * trials, which run the incumbent unchanged.
  * <p>
- * Pair {@code j} holds the cell's {@code j}-th candidate formal trial and its {@code j}-th control trial, which ran the
- * same test case. With {@code X_j} and {@code Y_j} equal to 1 when the candidate trial and the control trial pass the
- * assertion, and {@code Z_j = (X_j - Y_j + 1) / 2}:
+ * Pair {@code j} holds the cell's {@code j}-th candidate formal trial and its {@code j}-th reference trial,
+ * which ran the same test case. With {@code X_j} and {@code Y_j} equal to 1 when the candidate trial and the
+ * reference trial pass the assertion, {@code Z_j = (X_j - Y_j + 1) / 2}, and {@code pC} and {@code pR} the
+ * probabilities that a candidate trial and a reference trial pass the assertion:
  * <ul>
  *   <li>{@code E_up = sum_m (1 / 4) prod_j (1 + (f_m / m) (Z_j - m))} tests the null
- *     {@code pC <= pN - 0.05}, under which the mean of {@code Z} is at most
+ *     {@code pC <= pR - 0.05}, under which the mean of {@code Z} is at most
  *     {@code m = (1 - 0.05) / 2 = 0.475};</li>
  *   <li>{@code E_down = sum_m (1 / 4) prod_j (1 + (f_m / (1 - m)) (m - Z_j))} tests the opposite null,
- *     {@code pC >= pN - 0.05};</li>
+ *     {@code pC >= pR - 0.05};</li>
  * </ul>
  * with {@code f = 1/4, 1/2, 3/4, 9/10} and the fixed {@link #MARGIN}. Every factor is positive, and each e-value
  * depends only on how many pairs gave each value of {@code Z}. Under its null, each e-value is a nonnegative
@@ -30,10 +32,10 @@ import java.util.function.IntFunction;
  * <p>
  * <b>Thread Safety:</b> This class is stateless and thread-safe.
  */
-public final class ControlComparison
+public final class PairedComparison
 {
 	/**
-	 * The margin by which the candidate's pass probability of an assertion may fall below the control's.
+	 * The margin by which the candidate's pass probability of an assertion may fall below the reference trial's.
 	 */
 	public static final BigDecimal MARGIN = new BigDecimal("0.05");
 	/**
@@ -57,7 +59,7 @@ public final class ControlComparison
 	/**
 	 * Prevents instantiation.
 	 */
-	private ControlComparison()
+	private PairedComparison()
 	{
 	}
 
@@ -128,14 +130,14 @@ public final class ControlComparison
 	}
 
 	/**
-	 * Indicates whether the candidate is below control: {@code E_down} exceeds a level's threshold.
+	 * Indicates whether the candidate is below the reference: {@code E_down} exceeds a level's threshold.
 	 *
 	 * @param tally the adopted pairs
 	 * @param level the attempt's certification level
 	 * @return {@code true} if {@code E_down} is strictly greater than {@code level.threshold()}
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static boolean isBelowControl(PairTally tally, SignificanceLevel level)
+	public static boolean isBelow(PairTally tally, SignificanceLevel level)
 	{
 		requireThat(level, "level").isNotNull();
 		return compareBelow(tally, level.threshold()) > 0;
@@ -186,7 +188,7 @@ public final class ControlComparison
 		int pairs = tally.pairs();
 		for (Term term : terms)
 		{
-			BigInteger termNumerator = term.controlAhead().pow(tally.controlAhead()).
+			BigInteger termNumerator = term.referenceAhead().pow(tally.referenceAhead()).
 				multiply(term.even().pow(tally.even())).
 				multiply(term.candidateAhead().pow(tally.candidateAhead()));
 			BigInteger termDenominator = term.denominator().pow(pairs).multiply(BigInteger.valueOf(terms.size()));
@@ -211,12 +213,12 @@ public final class ControlComparison
 	{
 		requireThat(tally, "tally").isNotNull();
 		return fewestPairsToPass(level, maximum, further ->
-			new PairTally(tally.controlAhead(), tally.even() + further, tally.candidateAhead()));
+			new PairTally(tally.referenceAhead(), tally.even() + further, tally.candidateAhead()));
 	}
 
 	/**
 	 * Returns the fewest further pairs in which only the candidate trial passes, after which the comparison passes.
-	 * No further pairs can pass it sooner, so this bounds the control trials worth running at once.
+	 * No further pairs can pass it sooner, so this bounds the reference trials worth running at once.
 	 *
 	 * @param tally   the adopted pairs
 	 * @param level   the attempt's certification level
@@ -229,7 +231,7 @@ public final class ControlComparison
 	{
 		requireThat(tally, "tally").isNotNull();
 		return fewestPairsToPass(level, maximum, further ->
-			new PairTally(tally.controlAhead(), tally.even(), tally.candidateAhead() + further));
+			new PairTally(tally.referenceAhead(), tally.even(), tally.candidateAhead() + further));
 	}
 
 	/**
@@ -263,12 +265,12 @@ public final class ControlComparison
 	 * One term of an e-value: a weight of {@code 1 / 4} times the product of one factor per pair. Each factor is a
 	 * numerator over the shared denominator.
 	 *
-	 * @param controlAhead   the numerator of the factor of a pair with {@code Z = 0}
+	 * @param referenceAhead the numerator of the factor of a pair with {@code Z = 0}
 	 * @param even           the numerator of the factor of a pair with {@code Z = 1/2}
 	 * @param candidateAhead the numerator of the factor of a pair with {@code Z = 1}
 	 * @param denominator    the shared denominator of the factors
 	 */
-	private record Term(BigInteger controlAhead, BigInteger even, BigInteger candidateAhead, BigInteger denominator)
+	private record Term(BigInteger referenceAhead, BigInteger even, BigInteger candidateAhead, BigInteger denominator)
 	{
 	}
 }

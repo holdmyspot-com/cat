@@ -379,7 +379,8 @@ public final class ApplicabilityTest
 		return new CertificationRecord(Path.of("CLAUDE.md"), 1, CertificationScope.LATEST_VERSIONS,
 			CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
 			List.of(new CertificationRecord.CellResult("formatting", "formatting",
-			100, 0, Map.of())), Map.of(Path.of("CLAUDE.md"), hash("prompt v2")), new MeasurementIdentity(recorded));
+			100, 0, Map.of(), Map.of())), Map.of(Path.of("CLAUDE.md"), hash("prompt v2")),
+			new MeasurementIdentity(recorded));
 	}
 
 	/**

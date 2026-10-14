@@ -14,7 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
@@ -939,29 +939,29 @@ public final class StatusReportTest
 		plainList.put("keeps_requested_tone", new PairCounts(0, 0, 8, 0));
 		plainList.put(TestCase.EXPECTED_OUTCOME, new PairCounts(8, 0, 0, 0));
 		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
-			cell("formatting", 200, 2).pairing("formatting", new ControlPairing(List.of(), formatting)).
-			cell("plain_list", 100, 0).pairing("plain_list", new ControlPairing(List.of(), plainList)).
+			cell("formatting", 200, 2).controlPairing("formatting", new Pairing(List.of(), formatting)).
+			cell("plain_list", 100, 0).controlPairing("plain_list", new Pairing(List.of(), plainList)).
 			cell("safety", 60, 1).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 
 		CellReport.Threshold formattingComparison = cell(report, "formatting").comparison();
 		requireThat(formattingComparison.state(), "formattingState").isEqualTo("certified");
 		requireThat(formattingComparison.controls(), "formattingControls").isEqualTo(List.of(
-			new CellReport.ControlReport("uses_requested_tone", "passed", 37, 37, 30),
-			new CellReport.ControlReport(TestCase.EXPECTED_OUTCOME, "undecided", 37, 35, 37)));
+			new CellReport.PairedReport("uses_requested_tone", "passed", 37, 37, 30),
+			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "undecided", 37, 35, 37)));
 		requireThat(formattingComparison.cellState(), "formattingCell").isEqualTo("undecided");
 
 		CellReport.Threshold plainListComparison = cell(report, "plain_list").comparison();
 		requireThat(plainListComparison.controls(), "plainListControls").isEqualTo(List.of(
-			new CellReport.ControlReport("keeps_requested_tone", "below control", 8, 0, 8),
-			new CellReport.ControlReport(TestCase.EXPECTED_OUTCOME, "undecided", 8, 8, 8)));
+			new CellReport.PairedReport("keeps_requested_tone", "below control", 8, 0, 8),
+			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "undecided", 8, 8, 8)));
 		requireThat(plainListComparison.cellState(), "plainListCell").isEqualTo("below control");
 
 		CellReport.Threshold safetyComparison = cell(report, "safety").comparison();
 		requireThat(safetyComparison.state(), "safetyState").isEqualTo("undecided");
 		requireThat(safetyComparison.controls(), "safetyControls").isEqualTo(List.of(
-			new CellReport.ControlReport("asks_before_deleting", "not run", 0, 0, 0),
-			new CellReport.ControlReport(TestCase.EXPECTED_OUTCOME, "not run", 0, 0, 0)));
+			new CellReport.PairedReport("asks_before_deleting", "not run", 0, 0, 0),
+			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "not run", 0, 0, 0)));
 		requireThat(safetyComparison.cellState(), "safetyCell").isEqualTo("undecided");
 
 		JsonNode json = report.toJson(JsonMapper.builder().build()).path("cells").path(0).path("comparison");
@@ -980,6 +980,84 @@ public final class StatusReportTest
 				"(30/37)\n").
 			contains("  control comparison asks_before_deleting: not run, no pairs\n").
 			contains("  cell: below control at alpha 0.020\n");
+	}
+
+	/**
+	 * Verifies that a formal cell reports each assertion's incumbent comparison with the candidate's and the
+	 * incumbent's passes, decides the cell from its incumbent comparisons once its control comparisons passed, and
+	 * reports no incumbent comparison when the candidate is the incumbent.
+	 */
+	@Test
+	public void formalIncumbentComparisons()
+	{
+		// Requirement: R-P1
+		// Requirement: R-F8
+		// At alpha_1 = 1/50, every control comparison passed:
+		// formatting: uses_requested_tone has 30 even and 7 candidate-ahead pairs with the incumbent and passed;
+		//             expected_outcome has 35 even and 2 incumbent-ahead pairs and is undecided, so the cell is
+		//             undecided.
+		// plain_list: keeps_requested_tone has 8 incumbent-ahead pairs and is below incumbent, so the cell is below
+		//             incumbent.
+		// safety:     S = 60, F = 1 is undecided, so its incumbent comparisons have not run.
+		PairCounts formattingPassed = new PairCounts(30, 7, 0, 0);
+		Map<String, PairCounts> formattingControl = new LinkedHashMap<>();
+		formattingControl.put("uses_requested_tone", formattingPassed);
+		formattingControl.put(TestCase.EXPECTED_OUTCOME, formattingPassed);
+		Map<String, PairCounts> formattingIncumbent = new LinkedHashMap<>();
+		formattingIncumbent.put("uses_requested_tone", formattingPassed);
+		formattingIncumbent.put(TestCase.EXPECTED_OUTCOME, new PairCounts(35, 0, 2, 0));
+		PairCounts plainListPassed = new PairCounts(0, 8, 0, 0);
+		Map<String, PairCounts> plainListControl = new LinkedHashMap<>();
+		plainListControl.put("keeps_requested_tone", plainListPassed);
+		plainListControl.put(TestCase.EXPECTED_OUTCOME, plainListPassed);
+		Map<String, PairCounts> plainListIncumbent = new LinkedHashMap<>();
+		plainListIncumbent.put("keeps_requested_tone", new PairCounts(0, 0, 8, 0));
+		plainListIncumbent.put(TestCase.EXPECTED_OUTCOME, new PairCounts(8, 0, 0, 0));
+		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
+			cell("formatting", 200, 2).controlPairing("formatting", new Pairing(List.of(), formattingControl)).
+			incumbentPairing("formatting", new Pairing(List.of(), formattingIncumbent)).
+			cell("plain_list", 100, 0).controlPairing("plain_list", new Pairing(List.of(), plainListControl)).
+			incumbentPairing("plain_list", new Pairing(List.of(), plainListIncumbent)).
+			cell("safety", 60, 1).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		CellReport.Threshold formattingComparison = cell(report, "formatting").comparison();
+		requireThat(formattingComparison.incumbents(), "formattingIncumbents").isEqualTo(List.of(
+			new CellReport.PairedReport("uses_requested_tone", "passed", 37, 37, 30),
+			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "undecided", 37, 35, 37)));
+		requireThat(formattingComparison.cellState(), "formattingCell").isEqualTo("undecided");
+
+		CellReport.Threshold plainListComparison = cell(report, "plain_list").comparison();
+		requireThat(plainListComparison.incumbents(), "plainListIncumbents").isEqualTo(List.of(
+			new CellReport.PairedReport("keeps_requested_tone", "below incumbent", 8, 0, 8),
+			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "undecided", 8, 8, 8)));
+		requireThat(plainListComparison.cellState(), "plainListCell").isEqualTo("below incumbent");
+
+		CellReport.Threshold safetyComparison = cell(report, "safety").comparison();
+		requireThat(safetyComparison.incumbents(), "safetyIncumbents").isEqualTo(List.of(
+			new CellReport.PairedReport("asks_before_deleting", "not run", 0, 0, 0),
+			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "not run", 0, 0, 0)));
+
+		JsonNode json = report.toJson(JsonMapper.builder().build()).path("cells").path(0).path("comparison");
+		JsonNode incumbent = json.path("incumbents").path(0);
+		requireThat(incumbent.path("assertion_id").asString(), "jsonAssertion").isEqualTo("uses_requested_tone");
+		requireThat(incumbent.path("state").asString(), "jsonState").isEqualTo("passed");
+		requireThat(incumbent.path("pairs").asInt(), "jsonPairs").isEqualTo(37);
+		requireThat(incumbent.path("candidate_passes").asInt(), "jsonCandidatePasses").isEqualTo(37);
+		requireThat(incumbent.path("incumbent_passes").asInt(), "jsonIncumbentPasses").isEqualTo(30);
+		requireThat(incumbent.path("candidate_rate").asDouble(), "jsonCandidateRate").isEqualTo(1.0);
+		requireThat(incumbent.path("incumbent_rate").asDouble(), "jsonIncumbentRate").isEqualTo(30.0 / 37);
+
+		requireThat(report.summary(ZoneOffset.UTC), "summary").
+			contains("  incumbent comparison uses_requested_tone: passed, candidate 100.0% (37/37), incumbent " +
+				"81.1% (30/37)\n").
+			contains("  incumbent comparison asks_before_deleting: not run, no pairs\n").
+			contains("  cell: below incumbent at alpha 0.020\n");
+
+		Campaign incumbentCandidate = new Builder().confirmed().readyBaseline().certificationAttempt(1).
+			boundaries(ReportBoundaries.boundaries()).cell("safety", 60, 1).build();
+		requireThat(cell(StatusReport.of(incumbentCandidate, ReportEvidence.NONE), "safety").comparison().
+			incumbents(), "incumbentCandidate").isEmpty();
 	}
 
 	/**
@@ -1044,7 +1122,7 @@ public final class StatusReportTest
 		// Requirement: R-P3
 		// The campaign outcome labels, in declaration order
 		List<String> expected = List.of("certified", "improved, not certified", "not certified: below minimum",
-			"not certified: below control", "not certified: inconclusive",
+			"not certified: below control", "not certified: below incumbent", "not certified: inconclusive",
 			"not certified: stopped for contract revision", "not certified: stopped for test revision",
 			"not certified: testing environment changed",
 			"certification unavailable: unsupported instruction source",

@@ -17,7 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.ConcurrencyPolicy;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable.CellDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
@@ -127,9 +127,10 @@ import io.github.cowwoc.cat.common.optimizer.report.Status;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 import io.github.cowwoc.cat.common.optimizer.report.TokenStatistics;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
-import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.PairTally;
+import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.TrialSession;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity.Hold;
@@ -1982,6 +1983,64 @@ public final class DriverTest
 	}
 
 	/**
+	 * Certification waits for the incumbent comparisons: each cell starts with its minimum-pass-rate part certified
+	 * and its control and incumbent comparisons one tied pair short of passing, and the attempt certifies only after
+	 * an incumbent trial of every cell, which stages the incumbent, passes each incumbent comparison.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void certifyWaitsForIncumbentComparisons() throws IOException
+	{
+		// Requirement: R-E1
+		// Requirement: R-F8
+		Contract contract = ContractFixtures.contract();
+		Builder start = new Builder().confirmed().working(1).readyBaseline();
+		for (String cell : contract.cellIds())
+			start.development(cell, ReadinessGate.MINIMUM_TRIALS, 0);
+		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size());
+		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
+		for (String cell : contract.cellIds())
+			oneReferencePairShort(running, boundaries, contract, cell);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = runningAttemptHarness(cleanup, running.build());
+			Set<String> incumbentCells = ConcurrentHashMap.newKeySet();
+			Set<Sha256> incumbentSnapshots = ConcurrentHashMap.newKeySet();
+			harness.trials(request ->
+			{
+				LogicalTrial trial = runningTrial(harness, request);
+				if (trial.key().purpose() == Purpose.INCUMBENT)
+				{
+					incumbentCells.add(trial.key().cell());
+					incumbentSnapshots.add(harness.snapshot(request));
+				}
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runSlice(driver);
+				Campaign campaign = harness.campaign();
+				requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
+				requireThat(incumbentCells, "incumbentCells").isEqualTo(new HashSet<>(contract.cellIds()));
+				requireThat(incumbentSnapshots, "incumbentSnapshots").isEqualTo(Set.of(Builder.INCUMBENT));
+				SignificanceLevel level = boundaries.level();
+				CertificationRecord record = harness.deliverer().calls().getFirst().record().orElseThrow();
+				for (CertificationRecord.CellResult cell : record.cells())
+				{
+					requireThat(cell.incumbentComparisons().keySet(), cell.cell() + ".incumbentComparisons").
+						isEqualTo(cell.controlComparisons().keySet());
+					for (Map.Entry<String, PairCounts> comparison : cell.incumbentComparisons().entrySet())
+					{
+						requireThat(PairedComparison.passes(comparison.getValue().tally(), level),
+							cell.cell() + "." + comparison.getKey()).isTrue();
+					}
+				}
+			}
+		}
+	}
+
+	/**
 	 * A certified campaign whose user kept the incumbent delivers the confirmed prompt tests alone: the deliverer gets
 	 * no request, the incumbent's overlay, no certification record and every prompt test, once.
 	 *
@@ -2045,13 +2104,43 @@ public final class DriverTest
 	private static void oneControlPairShort(Builder.AttemptBuilder attempt, DecisionBoundaries boundaries,
 		Contract contract, String cell)
 	{
-		int pairs = ControlComparison.fewestEvenPairsToPass(PairTally.EMPTY, boundaries.level(),
+		Pairing pairing = onePairShort(boundaries, contract, cell);
+		attempt.cell(cell, Math.max(certifyingPasses(boundaries), pairing.pairs()), 0).controlPairing(cell, pairing);
+	}
+
+	/**
+	 * Sets a cell of a running attempt as {@link #oneControlPairShort} does, with each of its incumbent comparisons
+	 * also one tied pair short of passing. The cell certifies once one more pair of passing trials of each kind is
+	 * adopted.
+	 *
+	 * @param attempt the attempt
+	 * @param boundaries the attempt's boundaries
+	 * @param contract the attempt's contract
+	 * @param cell the cell identifier
+	 */
+	private static void oneReferencePairShort(Builder.AttemptBuilder attempt, DecisionBoundaries boundaries,
+		Contract contract, String cell)
+	{
+		oneControlPairShort(attempt, boundaries, contract, cell);
+		attempt.incumbentPairing(cell, onePairShort(boundaries, contract, cell));
+	}
+
+	/**
+	 * Returns comparisons of a cell in which each assertion is one tied pair short of passing.
+	 *
+	 * @param boundaries the attempt's boundaries
+	 * @param contract the attempt's contract
+	 * @param cell the cell identifier
+	 * @return the comparisons, with no unpaired formal trial
+	 */
+	private static Pairing onePairShort(DecisionBoundaries boundaries, Contract contract, String cell)
+	{
+		int pairs = PairedComparison.fewestEvenPairsToPass(PairTally.EMPTY, boundaries.level(),
 			Boundaries.STANDARD_CAP) - 1;
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		for (Assertion assertion : contract.testOf(contract.findCell(cell).orElseThrow()).allAssertions())
 			comparisons.put(assertion.id(), new PairCounts(pairs, 0, 0, 0));
-		attempt.cell(cell, Math.max(certifyingPasses(boundaries), pairs), 0).
-			pairing(cell, new ControlPairing(List.of(), comparisons));
+		return new Pairing(List.of(), comparisons);
 	}
 
 	/**
@@ -3583,12 +3672,12 @@ public final class DriverTest
 
 	/**
 	 * Development, diagnostic, promotion and reproduction trials run development test cases, or values that development
-	 * added, and request sessions of the development part; baseline and formal trials run held-out ones and request
-	 * sessions of the held-out part. After a failed attempt, the prompt author brief names each formal failure's cell,
-	 * test and failed requirements, and the prompt author's prompt holds no held-out test case, reply or judge
-	 * rationale. The baseline starts one trial short of its target, and the formal attempt starts with the cells weaker
-	 * than the failing cell certified except for one, which is one control pair short, so that a control trial runs
-	 * before the failing cell opens.
+	 * added, and request sessions of the development part; baseline, formal, control and incumbent trials run held-out
+	 * ones and request sessions of the held-out part. After a failed attempt, the prompt author brief names each formal
+	 * failure's cell, test and failed requirements, and the prompt author's prompt holds no held-out test case, reply
+	 * or judge rationale. The baseline starts one trial short of its target, and the formal attempt starts with the
+	 * cells weaker than the failing cell certified except for one, which is one control pair and one incumbent pair
+	 * short, so that a control trial and an incumbent trial run before the failing cell opens.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -3614,7 +3703,7 @@ public final class DriverTest
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : List.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY))
 			running.cell(cell, certifyingPasses(boundaries), 0);
-		oneControlPairShort(running, boundaries, scoped, TierFixtures.BIG_LOW);
+		oneReferencePairShort(running, boundaries, scoped, TierFixtures.BIG_LOW);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = runningAttemptHarness(cleanup, running.build());
@@ -3656,7 +3745,7 @@ public final class DriverTest
 				Part expected = switch (entry.getKey())
 				{
 					case DEVELOPMENT, DIAGNOSTIC, PROMOTION, REPRODUCTION -> Part.DEVELOPMENT;
-					case BASELINE, FORMAL, CONTROL -> Part.HELD_OUT;
+					case BASELINE, FORMAL, CONTROL, INCUMBENT -> Part.HELD_OUT;
 				};
 				for (DrawnTestCase testCase : entry.getValue())
 					requireThat(partOf(campaign, testCase), entry.getKey().name()).isEqualTo(expected);
@@ -4172,7 +4261,8 @@ public final class DriverTest
 	 *
 	 * @param harness the test's harness
 	 * @param request the trial session's request
-	 * @return the trial whose test case has the request's turns, in a cell of the request's profile
+	 * @return the trial whose test case has the request's turns, in a cell of the request's profile, on the snapshot
+	 *   that the request staged
 	 * @throws UncheckedIOException if the campaign cannot be read
 	 */
 	private static LogicalTrial runningTrial(DriverHarness harness, SessionRequest request)
@@ -4193,8 +4283,8 @@ public final class DriverTest
 				cells.add(cell.id());
 		}
 		return campaign.trials().stream().filter(trial -> trial.state() == TrialState.RUNNING &&
-			cells.contains(trial.key().cell()) && trial.testCase().turns().equals(request.turns())).findFirst().
-			orElseThrow();
+			cells.contains(trial.key().cell()) && trial.testCase().turns().equals(request.turns()) &&
+			harness.stages(request, trial.key().snapshot())).findFirst().orElseThrow();
 	}
 
 	/**

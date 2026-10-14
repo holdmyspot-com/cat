@@ -9,6 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedAssertion;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
+import io.github.cowwoc.cat.common.optimizer.campaign.Reference;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
@@ -71,7 +72,7 @@ final class TransitionSteps
 			case DEVELOPMENT -> AllocationRule.LOWEST_EXPLORATORY_BOUND;
 			case BASELINE -> AllocationRule.BASELINE;
 			case FORMAL -> AllocationRule.FORMAL;
-			case CONTROL -> AllocationRule.CONTROL;
+			case CONTROL, INCUMBENT -> AllocationRule.PAIRED;
 			case DIAGNOSTIC, PROMOTION, REPRODUCTION -> AllocationRule.TARGETED;
 		};
 		return new Allocation(rule, campaign.evidenceRevision(), ASSIGNED_AT);
@@ -100,7 +101,7 @@ final class TransitionSteps
 				yield new Admission.Assign(purpose, attempt.index(), attempt.candidate().snapshot(), cell, null,
 					allocation);
 			}
-			case CONTROL, DIAGNOSTIC, PROMOTION, REPRODUCTION -> throw new IllegalArgumentException(
+			case CONTROL, INCUMBENT, DIAGNOSTIC, PROMOTION, REPRODUCTION -> throw new IllegalArgumentException(
 				"Purpose that replays a test case: " + purpose);
 		};
 	}
@@ -252,40 +253,48 @@ final class TransitionSteps
 	}
 
 	/**
-	 * Assigns the control trial that pairs with the running attempt's next candidate formal trial of a cell.
+	 * Assigns the control or incumbent trial that pairs with the running attempt's next candidate formal trial of a
+	 * cell that has no trial of that kind yet.
 	 *
 	 * @param campaign the campaign
+	 * @param reference the kind of reference trial
 	 * @param cell the trial's cell identifier
 	 * @return the updated campaign
 	 */
-	static Campaign assignControl(Campaign campaign, String cell)
+	static Campaign assignReference(Campaign campaign, Reference reference, String cell)
 	{
 		CertificationAttempt attempt = campaign.runningAttempt().orElseThrow();
 		int inFlight = 0;
 		for (LogicalTrial trial : campaign.trials())
 		{
 			TrialKey key = trial.key();
-			if (key.purpose() == Purpose.CONTROL && key.series() == attempt.index() && key.cell().equals(cell))
+			if (key.purpose() == reference.purpose() && key.series() == attempt.index() && key.cell().equals(cell))
 				++inFlight;
 		}
-		DrawnTestCase testCase = attempt.pairing(cell).unpaired().get(inFlight).testCase();
-		return assign(campaign, Purpose.CONTROL, attempt.index(), attempt.control(), testCase);
+		DrawnTestCase testCase = attempt.pairing(reference, cell).unpaired().get(inFlight).testCase();
+		Sha256 snapshot = switch (reference)
+		{
+			case CONTROL -> attempt.control();
+			case INCUMBENT -> campaign.incumbent().snapshot();
+		};
+		return assign(campaign, reference.purpose(), attempt.index(), snapshot, testCase);
 	}
 
 	/**
-	 * Assigns, runs and completes the control trial that pairs with the running attempt's next candidate formal
-	 * trial of a cell.
+	 * Assigns, runs and completes the control or incumbent trial that pairs with the running attempt's next candidate
+	 * formal trial of a cell that has no trial of that kind yet.
 	 *
 	 * @param campaign the campaign
+	 * @param reference the kind of reference trial
 	 * @param cell the trial's cell identifier
 	 * @param verdict the judged outcome
 	 * @param failedAssertions the assertions that a failed trial failed
 	 * @return the updated campaign
 	 */
-	static Campaign adoptControl(Campaign campaign, String cell, Verdict verdict,
+	static Campaign adoptReference(Campaign campaign, Reference reference, String cell, Verdict verdict,
 		List<FailedAssertion> failedAssertions)
 	{
-		Campaign assigned = assignControl(campaign, cell);
+		Campaign assigned = assignReference(campaign, reference, cell);
 		TrialKey key = last(assigned);
 		Campaign started = Transitions.apply(assigned, new CampaignEvent.Start(key));
 		return Transitions.apply(started, new CampaignEvent.Complete(key, verdict, "", failedAssertions, null,

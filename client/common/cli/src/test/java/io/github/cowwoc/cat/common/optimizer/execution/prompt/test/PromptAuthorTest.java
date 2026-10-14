@@ -24,7 +24,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.test.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
-import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.BelowControl;
+import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.BelowReference;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.EndedAttempt;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief;
 import io.github.cowwoc.cat.common.optimizer.execution.NeededEdit;
@@ -196,7 +196,7 @@ public final class PromptAuthorTest
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION, contract,
 			List.of(failure()), Map.of(), Map.of("safety", new CellCounts(40, 2, List.of(2))),
 			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of("safety", new CellCounts(30, 1, List.of(1))),
-				List.of(failure().summary()), List.of())),
+				List.of(failure().summary()), List.of(), List.of())),
 			Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")), "", List.of(), List.of(), List.of());
 
 		SessionRequest request = prompt.request(brief, COPY);
@@ -343,7 +343,8 @@ public final class PromptAuthorTest
 			List.of(List.of("The held-out reply.")), Builder.FILES);
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure()), Map.of(), Map.of(),
-			List.of(new EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(formal.summary()), List.of())),
+			List.of(new EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(formal.summary()), List.of(),
+				List.of())),
 			Map.of(), "", List.of(), List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
@@ -367,12 +368,12 @@ public final class PromptAuthorTest
 	{
 		// Requirement: R-F7
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
-		BelowControl finding = new BelowControl("safety", "safety", TestCase.EXPECTED_OUTCOME,
+		BelowReference finding = new BelowReference("safety", "safety", TestCase.EXPECTED_OUTCOME,
 			new PairCounts(2, 1, 9, 0));
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure()), Map.of(), Map.of(),
-			List.of(new EndedAttempt(1, Outcome.BELOW_CONTROL, Map.of(), List.of(), List.of(finding))), Map.of(), "",
-			List.of(), List.of(), List.of());
+			List.of(new EndedAttempt(1, Outcome.BELOW_CONTROL, Map.of(), List.of(), List.of(finding), List.of())),
+			Map.of(), "", List.of(), List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -383,6 +384,34 @@ public final class PromptAuthorTest
 			put("control_passes", 11);
 		requireThat(ended.get(0).get("below_control"), "ended.below_control").
 			isEqualTo(json.createArrayNode().add(expected));
+	}
+
+	/**
+	 * Verifies that each assertion below incumbent in an ended attempt reaches the prompt author with its cell, test
+	 * and the candidate's and the incumbent's passes among the pairs.
+	 */
+	@Test
+	public void endedBelowIncumbentStatesPassCounts()
+	{
+		// Requirement: R-F8
+		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		BelowReference finding = new BelowReference("safety", "safety", TestCase.EXPECTED_OUTCOME,
+			new PairCounts(2, 1, 9, 0));
+		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(failure()), Map.of(), Map.of(),
+			List.of(new EndedAttempt(1, Outcome.BELOW_INCUMBENT, Map.of(), List.of(), List.of(), List.of(finding))),
+			Map.of(), "", List.of(), List.of(), List.of());
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		JsonNode ended = json.readTree(section(turn, "certification attempts that have ended",
+			"\n\nThe manifests of the earlier"));
+		ObjectNode expected = json.createObjectNode().put("cell", "safety").put("test", "safety").
+			put("assertion_id", TestCase.EXPECTED_OUTCOME).put("pairs", 12).put("candidate_passes", 3).
+			put("incumbent_passes", 11);
+		requireThat(ended.get(0).get("below_incumbent"), "ended.below_incumbent").
+			isEqualTo(json.createArrayNode().add(expected));
+		requireThat(ended.get(0).get("below_control"), "ended.below_control").isEqualTo(json.createArrayNode());
 	}
 
 	/**

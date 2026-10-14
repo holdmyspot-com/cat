@@ -313,21 +313,8 @@ final class ReportSummary
 				append(decimal(comparison.alpha()));
 		}
 		lines.add(comparisonText.toString());
-		for (CellReport.ControlReport control : comparison.controls())
-		{
-			StringBuilder controlText = new StringBuilder(120).append("  control comparison ").
-				append(control.assertionId()).append(": ").append(control.state());
-			if (control.pairs() == 0)
-				controlText.append(", no pairs");
-			else
-			{
-				controlText.append(", candidate ").append(percent(control.candidateRate())).append(" (").
-					append(control.candidatePasses()).append('/').append(control.pairs()).append("), control ").
-					append(percent(control.controlRate())).append(" (").append(control.controlPasses()).append('/').
-					append(control.pairs()).append(')');
-			}
-			lines.add(controlText.toString());
-		}
+		paired(lines, comparison.controls(), "control");
+		paired(lines, comparison.incumbents(), "incumbent");
 		if (comparison.cellState() != null)
 			lines.add("  cell: " + comparison.cellState() + " at alpha " + decimal(comparison.alpha()));
 		for (CellReport.ErrorBar bar : report.errorBars())
@@ -342,6 +329,32 @@ final class ReportSummary
 		}
 	}
 
+
+	/**
+	 * Appends a line for each assertion's comparison with one kind of reference trial.
+	 *
+	 * @param lines the lines to append to
+	 * @param reports the comparisons
+	 * @param reference the name of the reference trials: {@code control} or {@code incumbent}
+	 */
+	private static void paired(List<String> lines, List<CellReport.PairedReport> reports, String reference)
+	{
+		for (CellReport.PairedReport report : reports)
+		{
+			StringBuilder text = new StringBuilder(120).append("  ").append(reference).append(" comparison ").
+				append(report.assertionId()).append(": ").append(report.state());
+			if (report.pairs() == 0)
+				text.append(", no pairs");
+			else
+			{
+				text.append(", candidate ").append(percent(report.candidateRate())).append(" (").
+					append(report.candidatePasses()).append('/').append(report.pairs()).append("), ").append(reference).
+					append(' ').append(percent(report.referenceRate())).append(" (").append(report.referencePasses()).
+					append('/').append(report.pairs()).append(')');
+			}
+			lines.add(text.toString());
+		}
+	}
 	/**
 	 * Adds the minimum remaining trials.
 	 *

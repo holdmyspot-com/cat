@@ -515,7 +515,7 @@ public final class PromptAuthorManifestTest
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(failure, failure), Map.of(), Map.of(),
 			List.of(new PromptAuthorBrief.EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure.summary()),
-				List.of())),
+				List.of(), List.of())),
 			Map.of(), "", List.of(), List.of(), List.of());
 		requireThat(brief.failureIds(), "classifiedFailures").
 			isEqualTo(Set.of(brief.developmentId(0), brief.developmentId(1)));

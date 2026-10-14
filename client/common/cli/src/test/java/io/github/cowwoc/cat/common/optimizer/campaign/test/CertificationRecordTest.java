@@ -9,7 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord.CellResult;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
@@ -61,6 +61,9 @@ public final class CertificationRecordTest
 	private static final PairCounts BIG_PAIRS = new PairCounts(110, 9, 1, 0);
 	private static final PairCounts SMALL_PAIRS = new PairCounts(88, 10, 0, 2);
 	private static final PairCounts SAFETY_PAIRS = new PairCounts(140, 8, 0, 2);
+	private static final PairCounts BIG_INCUMBENT_PAIRS = new PairCounts(115, 4, 1, 0);
+	private static final PairCounts SMALL_INCUMBENT_PAIRS = new PairCounts(92, 5, 1, 2);
+	private static final PairCounts SAFETY_INCUMBENT_PAIRS = new PairCounts(145, 2, 1, 2);
 
 	/**
 	 * Creates the test.
@@ -71,8 +74,8 @@ public final class CertificationRecordTest
 
 	/**
 	 * A certified attempt's record holds the certification index, the confirmed scope, the attempt's parameters, each
-	 * cell's counts with its test and the pairs of each control comparison, the hash of each delivered in-project
-	 * prompt file and the attempt's measurement conditions, and its file reads back as the same record.
+	 * cell's counts with its test and the pairs of each control and incumbent comparison, the hash of each delivered
+	 * in-project prompt file and the attempt's measurement conditions, and its file reads back as the same record.
 	 *
 	 * @throws IOException if the record file cannot be written or read
 	 */
@@ -90,9 +93,12 @@ public final class CertificationRecordTest
 		requireThat(record.scope(), "scope").isEqualTo(CertificationScope.WEAKEST_CELL);
 		requireThat(record.parameters(), "parameters").isEqualTo(attempt.parameters());
 		requireThat(record.cells(), "cells").isEqualTo(List.of(
-			new CellResult("formatting", "formatting@big/high", 120, 0, Map.of(TONE, BIG_PAIRS)),
-			new CellResult("formatting", "formatting@small/high", 99, 1, Map.of(TONE, SMALL_PAIRS)),
-			new CellResult("safety", "safety", 150, 0, Map.of(TestCase.EXPECTED_OUTCOME, SAFETY_PAIRS))));
+			new CellResult("formatting", "formatting@big/high", 120, 0, Map.of(TONE, BIG_PAIRS),
+				Map.of(TONE, BIG_INCUMBENT_PAIRS)),
+			new CellResult("formatting", "formatting@small/high", 99, 1, Map.of(TONE, SMALL_PAIRS),
+				Map.of(TONE, SMALL_INCUMBENT_PAIRS)),
+			new CellResult("safety", "safety", 150, 0, Map.of(TestCase.EXPECTED_OUTCOME, SAFETY_PAIRS),
+				Map.of(TestCase.EXPECTED_OUTCOME, SAFETY_INCUMBENT_PAIRS))));
 		requireThat(record.promptFiles(), "promptFiles").isEqualTo(Map.of(
 			Path.of("CLAUDE.md"), hash("prompt v2"),
 			Path.of("rules/style.md"), hash("style v1")));
@@ -108,12 +114,12 @@ public final class CertificationRecordTest
 	}
 
 	/**
-	 * A record file of format version 3, whose cells lack control comparisons, is refused rather than misread.
+	 * A record file of format version 4, whose cells lack incumbent comparisons, is refused rather than misread.
 	 *
 	 * @throws IOException if a record file cannot be written
 	 */
 	@Test
-	public void refusesVersionThreeRecord() throws IOException
+	public void refusesVersionFourRecord() throws IOException
 	{
 		// Requirement: R-M6
 		// Requirement: R-C11
@@ -122,7 +128,7 @@ public final class CertificationRecordTest
 			promptSources());
 		CertificationRecordJson codec = new CertificationRecordJson(JSON);
 		ObjectNode edited = (ObjectNode) JSON.readTree(codec.write(record));
-		edited.put("format_version", 3);
+		edited.put("format_version", 4);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path file = cleanup.add(Files.createTempDirectory("cat-record-")).resolve("CLAUDE.json");
@@ -137,7 +143,7 @@ public final class CertificationRecordTest
 				failure = e;
 			}
 			requireThat(failure, "failure").isNotNull();
-			requireThat(failure.getMessage(), "message").contains("format_version is 3");
+			requireThat(failure.getMessage(), "message").contains("format_version is 4");
 		}
 	}
 
@@ -235,7 +241,7 @@ public final class CertificationRecordTest
 
 	/**
 	 * Returns a campaign whose second attempt certified the two-cell contract under the weakest-cell scope, with one
-	 * formal failure, one control comparison per cell and a trial model that differs between cells.
+	 * formal failure, one control and one incumbent comparison per cell and a trial model that differs between cells.
 	 *
 	 * @return the campaign
 	 */
@@ -251,23 +257,27 @@ public final class CertificationRecordTest
 			readyDevelopment().readyBaseline().
 			certificationAttempt(1).cell("safety", 10, 5).outcome(Outcome.BELOW_MINIMUM).campaign().
 			certificationAttempt(2).identity(identity).cell("formatting@big/high", 120, 0).
-			pairing("formatting@big/high", pairing(TONE, BIG_PAIRS)).cell("formatting@small/high", 99, 1).
-			pairing("formatting@small/high", pairing(TONE, SMALL_PAIRS)).cell("safety", 150, 0).
-			pairing("safety", pairing(TestCase.EXPECTED_OUTCOME, SAFETY_PAIRS)).failure(failing).
+			controlPairing("formatting@big/high", pairing(TONE, BIG_PAIRS)).
+			incumbentPairing("formatting@big/high", pairing(TONE, BIG_INCUMBENT_PAIRS)).
+			cell("formatting@small/high", 99, 1).
+			controlPairing("formatting@small/high", pairing(TONE, SMALL_PAIRS)).
+			incumbentPairing("formatting@small/high", pairing(TONE, SMALL_INCUMBENT_PAIRS)).cell("safety", 150, 0).
+			controlPairing("safety", pairing(TestCase.EXPECTED_OUTCOME, SAFETY_PAIRS)).
+			incumbentPairing("safety", pairing(TestCase.EXPECTED_OUTCOME, SAFETY_INCUMBENT_PAIRS)).failure(failing).
 			outcome(Outcome.CERTIFIED).
 			campaign().lifecycle(Lifecycle.FINISHED).outcome(Outcome.CERTIFIED).build();
 	}
 
 	/**
-	 * Returns the control comparisons of a cell that compared one assertion.
+	 * Returns the control or incumbent comparisons of a cell that compared one assertion.
 	 *
 	 * @param assertionId the identifier of the assertion
 	 * @param pairs       the assertion's pairs
 	 * @return the comparisons, with no unpaired formal trial
 	 */
-	private static ControlPairing pairing(String assertionId, PairCounts pairs)
+	private static Pairing pairing(String assertionId, PairCounts pairs)
 	{
-		return new ControlPairing(List.of(), Map.of(assertionId, pairs));
+		return new Pairing(List.of(), Map.of(assertionId, pairs));
 	}
 
 	/**

@@ -13,37 +13,38 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The control comparisons of one cell of a certification attempt. A control trial runs the incumbent with every target
- * prompt file emptied. The {@code j}-th control trial of a cell pairs with the cell's {@code j}-th candidate formal
- * trial in assignment order and runs that trial's test case. Each assertion of the cell's prompt test then compares
- * how often the candidate and the control pass it.
+ * The paired comparisons of one cell of a certification attempt with one kind of reference trial: the control
+ * trials, which run the incumbent with the target prompt file emptied and its dependents removed, or the incumbent
+ * trials, which run the incumbent unchanged. The {@code j}-th reference trial of a cell pairs with the cell's
+ * {@code j}-th candidate formal trial in assignment order and runs that trial's test case. Each assertion of the
+ * cell's prompt test then compares how often the candidate and the reference trials pass it.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param unpaired    the adopted candidate formal trials that no adopted control trial pairs with yet, in assignment
- *                    order
+ * @param unpaired    the adopted candidate formal trials that no adopted reference trial pairs with yet, in
+ *                    assignment order
  * @param comparisons the adopted pairs of each assertion of the cell's prompt test, by assertion identifier, in the
  *                    prompt test's assertion order; empty until the cell's minimum-pass-rate part certifies, and then
  *                    holding every assertion
  */
-public record ControlPairing(List<UnpairedTrial> unpaired, Map<String, PairCounts> comparisons)
+public record Pairing(List<UnpairedTrial> unpaired, Map<String, PairCounts> comparisons)
 {
 	/**
 	 * No candidate formal trials and no comparisons.
 	 */
-	public static final ControlPairing EMPTY = new ControlPairing(List.of(), Map.of());
+	public static final Pairing EMPTY = new Pairing(List.of(), Map.of());
 
 	/**
 	 * Creates a pairing.
 	 *
-	 * @param unpaired    the adopted candidate formal trials that no adopted control trial pairs with yet, in
+	 * @param unpaired    the adopted candidate formal trials that no adopted reference trial pairs with yet, in
 	 *                    assignment order
 	 * @param comparisons the adopted pairs of each assertion of the cell's prompt test, by assertion identifier, in the
 	 *                    prompt test's assertion order; empty until the cell's minimum-pass-rate part certifies
 	 * @throws NullPointerException     if any of the arguments are null or contain null
 	 * @throws IllegalArgumentException if two assertions have different numbers of pairs
 	 */
-	public ControlPairing
+	public Pairing
 	{
 		requireThat(unpaired, "unpaired").isNotNull();
 		requireThat(comparisons, "comparisons").isNotNull();
@@ -62,7 +63,7 @@ public record ControlPairing(List<UnpairedTrial> unpaired, Map<String, PairCount
 	}
 
 	/**
-	 * Indicates whether the cell's minimum-pass-rate part certified, so that control trials run in the cell. The
+	 * Indicates whether the cell's minimum-pass-rate part certified, so that reference trials run in the cell. The
 	 * certification stays in effect when later candidate formal trials fail.
 	 *
 	 * @return {@code true} if the pairing compares the cell's assertions
@@ -85,18 +86,18 @@ public record ControlPairing(List<UnpairedTrial> unpaired, Map<String, PairCount
 	}
 
 	/**
-	 * Returns this pairing with one more adopted candidate formal trial waiting for its control trial.
+	 * Returns this pairing with one more adopted candidate formal trial waiting for its reference trial.
 	 *
 	 * @param trial the candidate formal trial
 	 * @return the updated pairing
 	 * @throws NullPointerException if {@code trial} is null
 	 */
-	public ControlPairing withCandidate(UnpairedTrial trial)
+	public Pairing withCandidate(UnpairedTrial trial)
 	{
 		requireThat(trial, "trial").isNotNull();
 		List<UnpairedTrial> updated = new ArrayList<>(unpaired);
 		updated.add(trial);
-		return new ControlPairing(updated, comparisons);
+		return new Pairing(updated, comparisons);
 	}
 
 	/**
@@ -108,7 +109,7 @@ public record ControlPairing(List<UnpairedTrial> unpaired, Map<String, PairCount
 	 * @throws IllegalArgumentException if {@code assertionIds} is empty
 	 * @throws IllegalStateException    if the pairing already compares the assertions
 	 */
-	public ControlPairing startComparing(Collection<String> assertionIds)
+	public Pairing startComparing(Collection<String> assertionIds)
 	{
 		requireThat(assertionIds, "assertionIds").isNotEmpty();
 		if (isComparing())
@@ -116,31 +117,31 @@ public record ControlPairing(List<UnpairedTrial> unpaired, Map<String, PairCount
 		Map<String, PairCounts> started = new LinkedHashMap<>();
 		for (String assertionId : assertionIds)
 			started.put(assertionId, PairCounts.EMPTY);
-		return new ControlPairing(unpaired, started);
+		return new Pairing(unpaired, started);
 	}
 
 	/**
-	 * Returns this pairing after adopting the control trial that pairs with the first unpaired candidate formal trial.
+	 * Returns this pairing after adopting the reference trial that pairs with the first unpaired candidate formal trial.
 	 *
-	 * @param testCase      the test case that the control trial ran
-	 * @param controlPassed the identifiers of the assertions that the control trial passed
+	 * @param testCase        the test case that the reference trial ran
+	 * @param referencePassed the identifiers of the assertions that the reference trial passed
 	 * @return the updated pairing
 	 * @throws NullPointerException  if any of the arguments are null
-	 * @throws IllegalStateException if the cell is not comparing, no candidate formal trial waits for a control trial,
-	 *                               or the first one ran another test case
+	 * @throws IllegalStateException if the cell is not comparing, no candidate formal trial waits for a reference
+	 *                               trial, or the first one ran another test case
 	 */
-	public ControlPairing withControl(DrawnTestCase testCase, Set<String> controlPassed)
+	public Pairing withReference(DrawnTestCase testCase, Set<String> referencePassed)
 	{
 		requireThat(testCase, "testCase").isNotNull();
-		requireThat(controlPassed, "controlPassed").isNotNull();
+		requireThat(referencePassed, "referencePassed").isNotNull();
 		if (!isComparing())
 			throw new IllegalStateException("The cell does not compare its assertions yet");
 		if (unpaired.isEmpty())
-			throw new IllegalStateException("No candidate formal trial waits for a control trial");
+			throw new IllegalStateException("No candidate formal trial waits for a reference trial");
 		UnpairedTrial candidate = unpaired.getFirst();
 		if (!Promotion.isSameTestCase(candidate.testCase(), testCase))
 		{
-			throw new IllegalStateException("The control trial ran " + testCase + ", but the candidate formal trial " +
+			throw new IllegalStateException("The reference trial ran " + testCase + ", but the candidate formal trial " +
 				"that it pairs with ran " + candidate.testCase());
 		}
 		Map<String, PairCounts> updated = new LinkedHashMap<>();
@@ -148,17 +149,17 @@ public record ControlPairing(List<UnpairedTrial> unpaired, Map<String, PairCount
 		{
 			String assertionId = entry.getKey();
 			updated.put(assertionId, entry.getValue().add(candidate.passed().contains(assertionId),
-				controlPassed.contains(assertionId)));
+				referencePassed.contains(assertionId)));
 		}
-		return new ControlPairing(unpaired.subList(1, unpaired.size()), updated);
+		return new Pairing(unpaired.subList(1, unpaired.size()), updated);
 	}
 
 	/**
-	 * An adopted candidate formal trial that waits for the control trial it pairs with.
+	 * An adopted candidate formal trial that waits for the reference trial it pairs with.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param testCase the test case that the trial ran, which its control trial runs
+	 * @param testCase the test case that the trial ran, which its reference trial runs
 	 * @param passed   the identifiers of the assertions that the trial passed
 	 */
 	public record UnpairedTrial(DrawnTestCase testCase, Set<String> passed)
@@ -166,7 +167,7 @@ public record ControlPairing(List<UnpairedTrial> unpaired, Map<String, PairCount
 		/**
 		 * Creates an unpaired trial.
 		 *
-		 * @param testCase the test case that the trial ran, which its control trial runs
+		 * @param testCase the test case that the trial ran, which its reference trial runs
 		 * @param passed   the identifiers of the assertions that the trial passed
 		 * @throws NullPointerException if any of the arguments are null or {@code passed} contains null
 		 */

@@ -8,14 +8,15 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Comparability;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.Reference;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
-import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ConfidenceBound;
@@ -193,7 +194,7 @@ final class CellReports
 		if (ReadinessGate.isReady(counts, minimumPassRate))
 			readiness = "ready";
 		return new CellReport.Threshold(NOT_CERTIFIED, minimumPassRate, readiness, reasons, null, null, null,
-			List.of(), null);
+			List.of(), List.of(), null);
 	}
 
 	/**
@@ -217,18 +218,22 @@ final class CellReports
 			case CERTIFIED -> "certified";
 			case CLEARLY_BELOW -> "clearly below";
 			case CAP_REACHED, UNDECIDED -> UNDECIDED;
-			case BELOW_CONTROL -> throw new AssertionError("The minimum pass rate part cannot be below control");
+			case BELOW_CONTROL, BELOW_INCUMBENT -> throw new AssertionError("The minimum pass rate part cannot be " +
+				"below control or below incumbent");
 		};
 		String cellState = switch (DecisionTable.cellDecision(attempt, cell))
 		{
 			case CERTIFIED -> "certified";
 			case CLEARLY_BELOW -> "clearly below";
 			case BELOW_CONTROL -> "below control";
+			case BELOW_INCUMBENT -> "below incumbent";
 			case CAP_REACHED -> "inconclusive";
 			case UNDECIDED -> UNDECIDED;
 		};
 		CellReport.Threshold comparison = new CellReport.Threshold(state, boundaries.minimumPassRate(), null,
-			List.of(), lower.value(), upper.value(), alpha.probability(), controls(campaign, attempt, cell), cellState);
+			List.of(), lower.value(), upper.value(), alpha.probability(),
+			paired(campaign, attempt, cell, Reference.CONTROL), paired(campaign, attempt, cell, Reference.INCUMBENT),
+			cellState);
 		List<CellReport.ErrorBar> errorBars = new ArrayList<>();
 		errorBars.add(new CellReport.ErrorBar("one-sided lower confidence bound at alpha_i", true,
 			alpha.probability(), false, counts.outcomes(), new Interval(lower.value(), 1.0)));
@@ -239,45 +244,57 @@ final class CellReports
 	}
 
 	/**
-	 * Returns the control comparison of each assertion of a cell. Before the comparisons start, each assertion of the
-	 * cell's prompt test is listed as not run.
+	 * Returns the comparison of each assertion of a cell with one kind of reference trial. Before the comparisons
+	 * start, each assertion of the cell's prompt test is listed as not run. When the candidate is the incumbent, the
+	 * cell has no incumbent comparisons.
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the attempt
 	 * @param cell the cell's identifier
+	 * @param reference the kind of reference trial
 	 * @return the comparisons, in assertion order
 	 */
-	private static List<CellReport.ControlReport> controls(Campaign campaign, CertificationAttempt attempt,
-		String cell)
+	private static List<CellReport.PairedReport> paired(Campaign campaign, CertificationAttempt attempt,
+		String cell, Reference reference)
 	{
-		ControlPairing pairing = attempt.pairing(cell);
-		List<CellReport.ControlReport> controls = new ArrayList<>();
+		List<CellReport.PairedReport> reports = new ArrayList<>();
+		if (reference == Reference.INCUMBENT &&
+			attempt.candidate().snapshot().equals(campaign.incumbent().snapshot()))
+		{
+			return reports;
+		}
+		Pairing pairing = attempt.pairing(reference, cell);
 		if (!pairing.isComparing())
 		{
 			Optional<PromptTest> test = campaign.contract().findCell(cell).
 				flatMap(found -> campaign.contract().findTest(found.testId()));
 			if (test.isEmpty())
-				return controls;
+				return reports;
 			for (Assertion assertion : test.get().allAssertions())
-				controls.add(new CellReport.ControlReport(assertion.id(), NOT_RUN, 0, 0, 0));
-			return controls;
+				reports.add(new CellReport.PairedReport(assertion.id(), NOT_RUN, 0, 0, 0));
+			return reports;
 		}
 
+		String below = switch (reference)
+		{
+			case CONTROL -> "below control";
+			case INCUMBENT -> "below incumbent";
+		};
 		SignificanceLevel level = attempt.procedure().boundaries().level();
 		for (Map.Entry<String, PairCounts> comparison : pairing.comparisons().entrySet())
 		{
 			PairCounts pairs = comparison.getValue();
 			String state;
-			if (ControlComparison.passes(pairs.tally(), level))
+			if (PairedComparison.passes(pairs.tally(), level))
 				state = "passed";
-			else if (ControlComparison.isBelowControl(pairs.tally(), level))
-				state = "below control";
+			else if (PairedComparison.isBelow(pairs.tally(), level))
+				state = below;
 			else
 				state = UNDECIDED;
-			controls.add(new CellReport.ControlReport(comparison.getKey(), state, pairs.pairs(),
-				pairs.candidatePasses(), pairs.controlPasses()));
+			reports.add(new CellReport.PairedReport(comparison.getKey(), state, pairs.pairs(),
+				pairs.candidatePasses(), pairs.referencePasses()));
 		}
-		return controls;
+		return reports;
 	}
 
 	/**

@@ -25,10 +25,10 @@ public enum AllocationRule
 	 */
 	FORMAL,
 	/**
-	 * Rule 5: in a cell whose minimum-pass-rate part certified, pair a candidate formal trial with a control trial,
-	 * then add the further candidate formal trials that the cell's control comparisons need.
+	 * Rule 5: in a cell whose minimum-pass-rate part certified, pair a candidate formal trial with a control trial or
+	 * an incumbent trial, then add the further candidate formal trials that the cell's comparisons need.
 	 */
-	CONTROL,
+	PAIRED,
 	/**
 	 * Rule 6: sample a trial to measure the original prompt system, called the incumbent.
 	 */
@@ -47,8 +47,8 @@ public enum AllocationRule
 		{
 			case DIAGNOSTIC, PROMOTION, REPRODUCTION -> this == TARGETED;
 			case DEVELOPMENT -> this == COVERAGE_FLOOR || this == LOWEST_EXPLORATORY_BOUND;
-			case FORMAL -> this == FORMAL || this == CONTROL;
-			case CONTROL -> this == CONTROL;
+			case FORMAL -> this == FORMAL || this == PAIRED;
+			case CONTROL, INCUMBENT -> this == PAIRED;
 			case BASELINE -> this == BASELINE;
 		};
 	}

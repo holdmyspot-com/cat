@@ -619,6 +619,20 @@ public final class DriverHarness
 	}
 
 	/**
+	 * Indicates whether a trial session runs a snapshot.
+	 *
+	 * @param request the session's request
+	 * @param snapshot the snapshot that a trial's key names, either an overlay's identity or the snapshot that the
+	 *   campaign records for it
+	 * @return {@code true} if the session stages that snapshot
+	 */
+	public boolean stages(SessionRequest request, Sha256 snapshot)
+	{
+		Sha256 identity = new Sha256(request.source().getFileName().toString());
+		return snapshot.equals(identity) || snapshot.equals(snapshot(request));
+	}
+
+	/**
 	 * Writes a prompt author's edit of one file into a new effects directory.
 	 *
 	 * @param request the prompt author session's request

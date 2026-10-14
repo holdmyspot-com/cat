@@ -3,12 +3,12 @@ package io.github.cowwoc.cat.common.optimizer.execution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.test.Builder;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
-import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.BelowControl;
+import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.BelowReference;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.EndedAttempt;
 
 import java.util.LinkedHashMap;
@@ -42,16 +42,44 @@ public final class EndedAttemptTest
 		comparisons.put(TestCase.EXPECTED_OUTCOME, below);
 		Campaign campaign = new Builder().confirmed().certificationAttempt(1).cell("formatting", 100, 0).
 			cell("plain_list", 100, 0).cell("safety", 100, 0).
-			pairing("safety", new ControlPairing(List.of(), comparisons)).outcome(Outcome.BELOW_CONTROL).build();
+			controlPairing("safety", new Pairing(List.of(), comparisons)).outcome(Outcome.BELOW_CONTROL).build();
 
 		EndedAttempt ended = EndedAttempt.of(campaign.contract(), campaign.attempt(1));
 
 		requireThat(ended.belowControl(), "belowControl").isEqualTo(List.of(
-			new BelowControl("safety", "safety", TestCase.EXPECTED_OUTCOME, below)));
+			new BelowReference("safety", "safety", TestCase.EXPECTED_OUTCOME, below)));
 	}
 
 	/**
-	 * Verifies that an attempt that ended for another reason names no assertion below control.
+	 * Verifies that an attempt that ended below incumbent names each assertion below incumbent with its pairs, and no
+	 * assertion below control.
+	 */
+	@Test
+	public void namesAssertionsBelowIncumbent()
+	{
+		// Requirement: R-F8
+		PairCounts passed = new PairCounts(0, 8, 0, 0);
+		PairCounts below = new PairCounts(0, 0, 8, 0);
+		Map<String, PairCounts> control = new LinkedHashMap<>();
+		control.put("asks_before_deleting", passed);
+		control.put(TestCase.EXPECTED_OUTCOME, passed);
+		Map<String, PairCounts> incumbent = new LinkedHashMap<>();
+		incumbent.put("asks_before_deleting", passed);
+		incumbent.put(TestCase.EXPECTED_OUTCOME, below);
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).cell("formatting", 100, 0).
+			cell("plain_list", 100, 0).cell("safety", 100, 0).
+			controlPairing("safety", new Pairing(List.of(), control)).
+			incumbentPairing("safety", new Pairing(List.of(), incumbent)).outcome(Outcome.BELOW_INCUMBENT).build();
+
+		EndedAttempt ended = EndedAttempt.of(campaign.contract(), campaign.attempt(1));
+
+		requireThat(ended.belowIncumbent(), "belowIncumbent").isEqualTo(List.of(
+			new BelowReference("safety", "safety", TestCase.EXPECTED_OUTCOME, below)));
+		requireThat(ended.belowControl(), "belowControl").isEmpty();
+	}
+
+	/**
+	 * Verifies that an attempt that ended for another reason names no assertion below control or below incumbent.
 	 */
 	@Test
 	public void otherOutcomeNamesNone()
@@ -63,5 +91,6 @@ public final class EndedAttemptTest
 		EndedAttempt ended = EndedAttempt.of(campaign.contract(), campaign.attempt(1));
 
 		requireThat(ended.belowControl(), "belowControl").isEmpty();
+		requireThat(ended.belowIncumbent(), "belowIncumbent").isEmpty();
 	}
 }

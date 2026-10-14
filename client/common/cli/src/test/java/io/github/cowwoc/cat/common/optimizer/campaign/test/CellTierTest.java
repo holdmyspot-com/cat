@@ -8,7 +8,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
@@ -230,9 +230,31 @@ public final class CellTierTest
 		for (Assertion assertion : contract.testOf(contract.findCell(BIG_MEDIUM).orElseThrow()).allAssertions())
 			comparisons.put(assertion.id(), new PairCounts(0, 0, 8, 0));
 		Campaign below = new Builder().confirmed(contract, 1).working(1).certificationAttempt(1).
-			cell(BIG_MEDIUM, 100, 0).pairing(BIG_MEDIUM, new ControlPairing(List.of(), comparisons)).
+			cell(BIG_MEDIUM, 100, 0).controlPairing(BIG_MEDIUM, new Pairing(List.of(), comparisons)).
 			outcome(Outcome.BELOW_CONTROL).build();
 		requireThat(ids(CellTier.developmentCells(below.contract(), below.lineage().number(), below.attempts())),
+			"below").isEqualTo(List.of(BIG_MEDIUM, SMALL_HIGH, SAFETY));
+	}
+
+	/**
+	 * Verifies that a cell that ended its attempt below incumbent becomes a development cell.
+	 */
+	@Test
+	public void developmentCellsAddBelowIncumbentCell()
+	{
+		// Requirement: R-E19, R-F8
+		Contract contract = TierFixtures.tieredContract();
+		Map<String, PairCounts> passed = new LinkedHashMap<>();
+		Map<String, PairCounts> below = new LinkedHashMap<>();
+		for (Assertion assertion : contract.testOf(contract.findCell(BIG_MEDIUM).orElseThrow()).allAssertions())
+		{
+			passed.put(assertion.id(), new PairCounts(0, 8, 0, 0));
+			below.put(assertion.id(), new PairCounts(0, 0, 8, 0));
+		}
+		Campaign ended = new Builder().confirmed(contract, 1).working(1).certificationAttempt(1).
+			cell(BIG_MEDIUM, 100, 0).controlPairing(BIG_MEDIUM, new Pairing(List.of(), passed)).
+			incumbentPairing(BIG_MEDIUM, new Pairing(List.of(), below)).outcome(Outcome.BELOW_INCUMBENT).build();
+		requireThat(ids(CellTier.developmentCells(ended.contract(), ended.lineage().number(), ended.attempts())),
 			"below").isEqualTo(List.of(BIG_MEDIUM, SMALL_HIGH, SAFETY));
 	}
 }

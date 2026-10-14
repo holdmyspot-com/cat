@@ -17,7 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief;
-import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.BelowControl;
+import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.BelowReference;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.EarlierManifest;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.EndedAttempt;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorProtocol;
@@ -224,12 +224,20 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 				}
 			}
 			ArrayNode belowControl = node.putArray("below_control");
-			for (BelowControl below : attempt.belowControl())
+			for (BelowReference below : attempt.belowControl())
 			{
 				PairCounts pairs = below.pairs();
 				belowControl.addObject().put("cell", below.cellId()).put("test", below.testId()).
 					put("assertion_id", below.assertionId()).put("pairs", pairs.pairs()).
-					put("candidate_passes", pairs.candidatePasses()).put("control_passes", pairs.controlPasses());
+					put("candidate_passes", pairs.candidatePasses()).put("control_passes", pairs.referencePasses());
+			}
+			ArrayNode belowIncumbent = node.putArray("below_incumbent");
+			for (BelowReference below : attempt.belowIncumbent())
+			{
+				PairCounts pairs = below.pairs();
+				belowIncumbent.addObject().put("cell", below.cellId()).put("test", below.testId()).
+					put("assertion_id", below.assertionId()).put("pairs", pairs.pairs()).
+					put("candidate_passes", pairs.candidatePasses()).put("incumbent_passes", pairs.referencePasses());
 			}
 		}
 		String turn = prompt.fill(Map.ofEntries(

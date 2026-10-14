@@ -7,7 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.ImprovementOffer;
 import io.github.cowwoc.cat.common.optimizer.campaign.KeepImprovement;
@@ -154,7 +154,7 @@ public final class KeepImprovementTest
 		undecided.put(TestCase.EXPECTED_OUTCOME, PairCounts.EMPTY);
 		CertificationAttempt uncompared = new Builder().confirmed().certificationAttempt(1).boundaries(early).
 			cell("formatting", 60, 0).cell("plain_list", 20, 0).
-			pairing("plain_list", new ControlPairing(List.of(), undecided)).cell("safety", 150, 0).
+			controlPairing("plain_list", new Pairing(List.of(), undecided)).cell("safety", 150, 0).
 			outcome(Outcome.BELOW_CONTROL).build().attempt(1);
 		requireThat(KeepImprovement.qualifies(uncompared, 1), "uncompared").isFalse();
 	}
@@ -181,8 +181,9 @@ public final class KeepImprovementTest
 	public void requiresUncertifiedEndedAttempt()
 	{
 		// Requirement: R-F6
-		for (Outcome outcome : List.of(Outcome.BELOW_MINIMUM, Outcome.BELOW_CONTROL, Outcome.INCONCLUSIVE,
-			Outcome.TESTING_ENVIRONMENT_CHANGED, Outcome.STOPPED_FOR_CONTRACT_REVISION, Outcome.UNSUPPORTED_OUTPUT))
+		for (Outcome outcome : List.of(Outcome.BELOW_MINIMUM, Outcome.BELOW_CONTROL, Outcome.BELOW_INCUMBENT,
+			Outcome.INCONCLUSIVE, Outcome.TESTING_ENVIRONMENT_CHANGED, Outcome.STOPPED_FOR_CONTRACT_REVISION,
+			Outcome.UNSUPPORTED_OUTPUT))
 		{
 			CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).
 				boundaries(boundaries()).cell("formatting", 60, 0).cell("plain_list", 100, 0).cell("safety", 100, 0).

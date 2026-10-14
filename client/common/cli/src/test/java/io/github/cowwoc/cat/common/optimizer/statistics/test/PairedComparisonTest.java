@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.statistics.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.statistics.PairTally;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
@@ -11,7 +11,7 @@ import org.testng.annotations.Test;
 import java.math.BigInteger;
 
 /**
- * Tests {@link ControlComparison}.
+ * Tests {@link PairedComparison}.
  * <p>
  * The boundaries come from an independent script that evaluates both e-values in exact rationals, with
  * {@code m = 19/40} and {@code f = 1/4, 1/2, 3/4, 9/10}.
@@ -27,12 +27,12 @@ import java.math.BigInteger;
  *   <tr><td>{@code E_ctl_down}, control-ahead pairs after 10 candidate-ahead pairs</td><td>32 (attempt 1)</td></tr>
  * </table>
  */
-public final class ControlComparisonTest
+public final class PairedComparisonTest
 {
 	/**
 	 * Creates a test instance.
 	 */
-	public ControlComparisonTest()
+	public PairedComparisonTest()
 	{
 	}
 
@@ -46,10 +46,10 @@ public final class ControlComparisonTest
 		// Requirement: R-S11
 		PairTally none = new PairTally(0, 0, 0);
 		SignificanceLevel level = ErrorBudget.certificationLevel(1);
-		requireThat(ControlComparison.passes(none, level), "passes").isFalse();
-		requireThat(ControlComparison.isBelowControl(none, level), "isBelowControl").isFalse();
-		requireThat(ControlComparison.compareAbove(none, BigInteger.ONE), "compareAbove").isEqualTo(0);
-		requireThat(ControlComparison.compareBelow(none, BigInteger.ONE), "compareBelow").isEqualTo(0);
+		requireThat(PairedComparison.passes(none, level), "passes").isFalse();
+		requireThat(PairedComparison.isBelow(none, level), "isBelow").isFalse();
+		requireThat(PairedComparison.compareAbove(none, BigInteger.ONE), "compareAbove").isEqualTo(0);
+		requireThat(PairedComparison.compareBelow(none, BigInteger.ONE), "compareBelow").isEqualTo(0);
 	}
 
 	/**
@@ -65,11 +65,11 @@ public final class ControlComparisonTest
 		{
 			SignificanceLevel level = ErrorBudget.certificationLevel(index);
 			int pairs = fewest[index - 1];
-			requireThat(ControlComparison.passes(new PairTally(0, pairs, 0), level), "i" + index + "Passes").
+			requireThat(PairedComparison.passes(new PairTally(0, pairs, 0), level), "i" + index + "Passes").
 				isTrue();
-			requireThat(ControlComparison.passes(new PairTally(0, pairs - 1, 0), level), "i" + index + "OneFewer").
+			requireThat(PairedComparison.passes(new PairTally(0, pairs - 1, 0), level), "i" + index + "OneFewer").
 				isFalse();
-			requireThat(ControlComparison.isBelowControl(new PairTally(0, pairs, 0), level),
+			requireThat(PairedComparison.isBelow(new PairTally(0, pairs, 0), level),
 				"i" + index + "IsBelowControl").isFalse();
 		}
 	}
@@ -87,9 +87,9 @@ public final class ControlComparisonTest
 		{
 			SignificanceLevel level = ErrorBudget.certificationLevel(index);
 			int pairs = fewest[index - 1];
-			requireThat(ControlComparison.passes(new PairTally(0, 0, pairs), level), "i" + index + "Passes").
+			requireThat(PairedComparison.passes(new PairTally(0, 0, pairs), level), "i" + index + "Passes").
 				isTrue();
-			requireThat(ControlComparison.passes(new PairTally(0, 0, pairs - 1), level), "i" + index + "OneFewer").
+			requireThat(PairedComparison.passes(new PairTally(0, 0, pairs - 1), level), "i" + index + "OneFewer").
 				isFalse();
 		}
 	}
@@ -107,11 +107,11 @@ public final class ControlComparisonTest
 		{
 			SignificanceLevel level = ErrorBudget.certificationLevel(index);
 			int pairs = fewest[index - 1];
-			requireThat(ControlComparison.isBelowControl(new PairTally(pairs, 0, 0), level),
+			requireThat(PairedComparison.isBelow(new PairTally(pairs, 0, 0), level),
 				"i" + index + "IsBelowControl").isTrue();
-			requireThat(ControlComparison.isBelowControl(new PairTally(pairs - 1, 0, 0), level),
+			requireThat(PairedComparison.isBelow(new PairTally(pairs - 1, 0, 0), level),
 				"i" + index + "OneFewer").isFalse();
-			requireThat(ControlComparison.passes(new PairTally(pairs, 0, 0), level), "i" + index + "Passes").
+			requireThat(PairedComparison.passes(new PairTally(pairs, 0, 0), level), "i" + index + "Passes").
 				isFalse();
 		}
 	}
@@ -125,17 +125,17 @@ public final class ControlComparisonTest
 	{
 		// Requirement: R-S11
 		SignificanceLevel level = ErrorBudget.certificationLevel(1);
-		requireThat(ControlComparison.passes(new PairTally(1, 149, 0), level), "oneControlAheadPasses").isTrue();
-		requireThat(ControlComparison.passes(new PairTally(1, 148, 0), level), "oneControlAheadOneFewer").isFalse();
-		requireThat(ControlComparison.passes(new PairTally(2, 190, 0), level), "twoControlAheadPasses").isTrue();
-		requireThat(ControlComparison.passes(new PairTally(2, 189, 0), level), "twoControlAheadOneFewer").isFalse();
-		requireThat(ControlComparison.passes(new PairTally(2, 0, 13), level), "afterControlAheadPasses").isTrue();
-		requireThat(ControlComparison.passes(new PairTally(2, 0, 12), level), "afterControlAheadOneFewer").isFalse();
-		requireThat(ControlComparison.isBelowControl(new PairTally(16, 100, 0), level), "afterEvenBelow").isTrue();
-		requireThat(ControlComparison.isBelowControl(new PairTally(15, 100, 0), level), "afterEvenOneFewer").
+		requireThat(PairedComparison.passes(new PairTally(1, 149, 0), level), "oneControlAheadPasses").isTrue();
+		requireThat(PairedComparison.passes(new PairTally(1, 148, 0), level), "oneControlAheadOneFewer").isFalse();
+		requireThat(PairedComparison.passes(new PairTally(2, 190, 0), level), "twoControlAheadPasses").isTrue();
+		requireThat(PairedComparison.passes(new PairTally(2, 189, 0), level), "twoControlAheadOneFewer").isFalse();
+		requireThat(PairedComparison.passes(new PairTally(2, 0, 13), level), "afterControlAheadPasses").isTrue();
+		requireThat(PairedComparison.passes(new PairTally(2, 0, 12), level), "afterControlAheadOneFewer").isFalse();
+		requireThat(PairedComparison.isBelow(new PairTally(16, 100, 0), level), "afterEvenBelow").isTrue();
+		requireThat(PairedComparison.isBelow(new PairTally(15, 100, 0), level), "afterEvenOneFewer").
 			isFalse();
-		requireThat(ControlComparison.isBelowControl(new PairTally(32, 0, 10), level), "afterAheadBelow").isTrue();
-		requireThat(ControlComparison.isBelowControl(new PairTally(31, 0, 10), level), "afterAheadOneFewer").
+		requireThat(PairedComparison.isBelow(new PairTally(32, 0, 10), level), "afterAheadBelow").isTrue();
+		requireThat(PairedComparison.isBelow(new PairTally(31, 0, 10), level), "afterAheadOneFewer").
 			isFalse();
 	}
 
@@ -149,11 +149,11 @@ public final class ControlComparisonTest
 		// Requirement: R-S11
 		SignificanceLevel level = ErrorBudget.certificationLevel(1);
 		PairTally fifty = new PairTally(0, 50, 0);
-		requireThat(ControlComparison.fewestEvenPairsToPass(fifty, level, 1000), "evenPairs").isEqualTo(55);
-		requireThat(ControlComparison.fewestCandidateAheadPairsToPass(fifty, level, 1000), "aheadPairs").
+		requireThat(PairedComparison.fewestEvenPairsToPass(fifty, level, 1000), "evenPairs").isEqualTo(55);
+		requireThat(PairedComparison.fewestCandidateAheadPairsToPass(fifty, level, 1000), "aheadPairs").
 			isEqualTo(4);
-		requireThat(ControlComparison.fewestEvenPairsToPass(fifty, level, 54), "beyondLimit").isEqualTo(55);
-		requireThat(ControlComparison.fewestEvenPairsToPass(new PairTally(0, 105, 0), level, 1000), "passed").
+		requireThat(PairedComparison.fewestEvenPairsToPass(fifty, level, 54), "beyondLimit").isEqualTo(55);
+		requireThat(PairedComparison.fewestEvenPairsToPass(new PairTally(0, 105, 0), level, 1000), "passed").
 			isEqualTo(0);
 	}
 }

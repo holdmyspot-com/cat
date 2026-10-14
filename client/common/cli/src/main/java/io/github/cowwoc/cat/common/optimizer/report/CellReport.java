@@ -148,8 +148,9 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	 * <p>
 	 * In development, {@code state} is always {@code not certified} and {@code readiness} holds the readiness
 	 * assessment. In a certification attempt, {@code state} is the minimum-pass-rate part's {@code certified},
-	 * {@code clearly below} or {@code undecided}, the bounds hold the attempt's level, {@code controls} holds each
-	 * assertion's control comparison, and {@code cellState} decides the cell from both parts.
+	 * {@code clearly below} or {@code undecided}, the bounds hold the attempt's level, {@code controls} and
+	 * {@code incumbents} hold each assertion's control and incumbent comparisons, and {@code cellState} decides the
+	 * cell from both parts.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
@@ -161,11 +162,14 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	 * @param upperBound the one-sided upper confidence bound at {@code α_i}, or {@code null} in development
 	 * @param alpha the attempt's certification level {@code α_i}, or {@code null} in development
 	 * @param controls each assertion's control comparison in contract order, empty in development
+	 * @param incumbents each assertion's incumbent comparison in contract order, empty in development or when the
+	 *   candidate is the incumbent
 	 * @param cellState the cell's {@code certified}, {@code clearly below}, {@code below control},
-	 *   {@code inconclusive} or {@code undecided}, or {@code null} in development
+	 *   {@code below incumbent}, {@code inconclusive} or {@code undecided}, or {@code null} in development
 	 */
 	public record Threshold(String state, BigDecimal minimumPassRate, String readiness, List<String> reasons,
-		Double lowerBound, Double upperBound, Double alpha, List<ControlReport> controls, String cellState)
+		Double lowerBound, Double upperBound, Double alpha, List<PairedReport> controls, List<PairedReport> incumbents,
+		String cellState)
 	{
 		/**
 		 * Creates a comparison.
@@ -178,9 +182,10 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 		 * @param upperBound the one-sided upper confidence bound at {@code α_i}
 		 * @param alpha the attempt's certification level {@code α_i}
 		 * @param controls each assertion's control comparison in contract order
+		 * @param incumbents each assertion's incumbent comparison in contract order
 		 * @param cellState the cell's state, or {@code null} in development
-		 * @throws NullPointerException if {@code state}, {@code minimumPassRate}, {@code reasons} or
-		 *   {@code controls} are null
+		 * @throws NullPointerException if {@code state}, {@code minimumPassRate}, {@code reasons}, {@code controls}
+		 *   or {@code incumbents} are null
 		 */
 		public Threshold
 		{
@@ -188,43 +193,49 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 			requireThat(minimumPassRate, "minimumPassRate").isNotNull();
 			requireThat(reasons, "reasons").isNotNull();
 			requireThat(controls, "controls").isNotNull();
+			requireThat(incumbents, "incumbents").isNotNull();
 			reasons = List.copyOf(reasons);
 			controls = List.copyOf(controls);
+			incumbents = List.copyOf(incumbents);
 		}
 	}
 
 	/**
-	 * One assertion's comparison between the candidate and the control in a certification attempt.
+	 * One assertion's comparison between the candidate and its reference trials in a certification attempt: the
+	 * control trials or the incumbent trials.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param assertionId the identifier of the assertion
-	 * @param state {@code passed}, {@code below control}, {@code undecided} or {@code not run}
-	 * @param pairs the adopted pairs of a candidate formal trial and its control trial
+	 * @param state {@code passed}, {@code below control} or {@code below incumbent}, {@code undecided} or
+	 *   {@code not run}
+	 * @param pairs the adopted pairs of a candidate formal trial and its reference trial
 	 * @param candidatePasses the pairs whose candidate trial passed the assertion
-	 * @param controlPasses the pairs whose control trial passed the assertion
+	 * @param referencePasses the pairs whose reference trial passed the assertion
 	 */
-	public record ControlReport(String assertionId, String state, int pairs, int candidatePasses, int controlPasses)
+	public record PairedReport(String assertionId, String state, int pairs, int candidatePasses,
+		int referencePasses)
 	{
 		/**
 		 * Creates a comparison.
 		 *
 		 * @param assertionId the identifier of the assertion
-		 * @param state {@code passed}, {@code below control}, {@code undecided} or {@code not run}
-		 * @param pairs the adopted pairs of a candidate formal trial and its control trial
+		 * @param state {@code passed}, {@code below control} or {@code below incumbent}, {@code undecided} or
+		 *   {@code not run}
+		 * @param pairs the adopted pairs of a candidate formal trial and its reference trial
 		 * @param candidatePasses the pairs whose candidate trial passed the assertion
-		 * @param controlPasses the pairs whose control trial passed the assertion
+		 * @param referencePasses the pairs whose reference trial passed the assertion
 		 * @throws NullPointerException if {@code assertionId} or {@code state} are null
 		 * @throws IllegalArgumentException if {@code pairs} is negative, or {@code candidatePasses} or
-		 *   {@code controlPasses} are outside [0, {@code pairs}]
+		 *   {@code referencePasses} are outside [0, {@code pairs}]
 		 */
-		public ControlReport
+		public PairedReport
 		{
 			requireThat(assertionId, "assertionId").isNotNull();
 			requireThat(state, "state").isNotNull();
 			requireThat(pairs, "pairs").isNotNegative();
 			requireThat(candidatePasses, "candidatePasses").isBetween(0, true, pairs, true);
-			requireThat(controlPasses, "controlPasses").isBetween(0, true, pairs, true);
+			requireThat(referencePasses, "referencePasses").isBetween(0, true, pairs, true);
 		}
 
 		/**
@@ -240,15 +251,15 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 		}
 
 		/**
-		 * Returns the fraction of pairs whose control trial passed the assertion.
+		 * Returns the fraction of pairs whose reference trial passed the assertion.
 		 *
 		 * @return the rate, or {@code null} if there are no pairs
 		 */
-		public Double controlRate()
+		public Double referenceRate()
 		{
 			if (pairs == 0)
 				return null;
-			return (double) controlPasses / pairs;
+			return (double) referencePasses / pairs;
 		}
 	}
 

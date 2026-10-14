@@ -41,8 +41,7 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * The file holds the target, the certification index, the scope's identifier, the minimum pass rate and the
  * significance level {@code alpha} as decimal strings, each cell's counts with the pairs of each assertion's control
- * comparison, each prompt file's content hash and the
- * measurement conditions.
+ * and incumbent comparisons, each prompt file's content hash and the measurement conditions.
  * <p>
  * {@code alpha} is {@code 1 / threshold} of the level. A reciprocal that has no finite decimal form is rounded up to
  * {@value #ALPHA_DIGITS} significant digits, so the written value never understates the level's error probability.
@@ -56,7 +55,7 @@ public final class CertificationRecordJson
 	/**
 	 * The format version that this version of CAT writes and reads.
 	 */
-	private static final int FORMAT_VERSION = 4;
+	private static final int FORMAT_VERSION = 5;
 	private static final String MALFORMED = "is malformed";
 	/**
 	 * The significant digits of an {@code alpha} that has no finite decimal form.
@@ -108,14 +107,9 @@ public final class CertificationRecordJson
 			element.put("cell", cell.cell());
 			element.put("passes", cell.passes());
 			element.put("failures", cell.failures());
-			ArrayNode comparisons = element.putArray("comparisons");
-			for (Entry<String, PairCounts> comparison : cell.comparisons().entrySet())
-			{
-				PairCounts pairs = comparison.getValue();
-				comparisons.addObject().put("assertion", comparison.getKey()).
-					put("both_passed", pairs.bothPassed()).put("candidate_only", pairs.candidateOnly()).
-					put("control_only", pairs.controlOnly()).put("neither_passed", pairs.neitherPassed());
-			}
+			writeComparisons(element.putArray("control_comparisons"), cell.controlComparisons(), "control_only");
+			writeComparisons(element.putArray("incumbent_comparisons"), cell.incumbentComparisons(),
+				"incumbent_only");
 		}
 
 		ObjectNode promptFiles = root.putObject("prompt_files");
@@ -141,6 +135,48 @@ public final class CertificationRecordJson
 	}
 
 	/**
+	 * Writes the pairs of each assertion's comparison with one kind of reference trial.
+	 *
+	 * @param nodes the array to write to
+	 * @param comparisons the pairs, keyed by the assertion's identifier
+	 * @param referenceOnly the name of the field that counts the pairs that only the reference trial passed
+	 */
+	private static void writeComparisons(ArrayNode nodes, Map<String, PairCounts> comparisons, String referenceOnly)
+	{
+		for (Entry<String, PairCounts> comparison : comparisons.entrySet())
+		{
+			PairCounts pairs = comparison.getValue();
+			nodes.addObject().put("assertion", comparison.getKey()).
+				put("both_passed", pairs.bothPassed()).put("candidate_only", pairs.candidateOnly()).
+				put(referenceOnly, pairs.referenceOnly()).put("neither_passed", pairs.neitherPassed());
+		}
+	}
+
+	/**
+	 * Reads the pairs of each assertion's comparison with one kind of reference trial.
+	 *
+	 * @param element the cell's node
+	 * @param name the name of the array
+	 * @param referenceOnly the name of the field that counts the pairs that only the reference trial passed
+	 * @return the pairs, keyed by the assertion's identifier in file order
+	 * @throws IllegalArgumentException if the array is missing or malformed, or names an assertion twice
+	 */
+	private static Map<String, PairCounts> readComparisons(JsonNode element, String name, String referenceOnly)
+	{
+		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
+		for (JsonNode comparison : elements(element, name))
+		{
+			String assertionId = text(comparison, "assertion");
+			PairCounts pairs = new PairCounts(integer(comparison, "both_passed"),
+				integer(comparison, "candidate_only"), integer(comparison, referenceOnly),
+				integer(comparison, "neither_passed"));
+			if (comparisons.put(assertionId, pairs) != null)
+				throw new IllegalArgumentException(name + ": duplicate assertion " + assertionId);
+		}
+		return comparisons;
+	}
+
+	/**
 	 * Converts a record file's document to a record.
 	 *
 	 * @param root the document
@@ -159,18 +195,9 @@ public final class CertificationRecordJson
 		List<CellResult> cells = new ArrayList<>();
 		for (JsonNode element : elements(root, "cells"))
 		{
-			Map<String, PairCounts> comparisons = new LinkedHashMap<>();
-			for (JsonNode comparison : elements(element, "comparisons"))
-			{
-				String assertionId = text(comparison, "assertion");
-				PairCounts pairs = new PairCounts(integer(comparison, "both_passed"),
-					integer(comparison, "candidate_only"), integer(comparison, "control_only"),
-					integer(comparison, "neither_passed"));
-				if (comparisons.put(assertionId, pairs) != null)
-					throw new IllegalArgumentException("comparisons: duplicate assertion " + assertionId);
-			}
 			cells.add(new CellResult(text(element, "test"), text(element, "cell"), integer(element, "passes"),
-				integer(element, "failures"), comparisons));
+				integer(element, "failures"), readComparisons(element, "control_comparisons", "control_only"),
+				readComparisons(element, "incumbent_comparisons", "incumbent_only")));
 		}
 
 		JsonNode promptFilesNode = field(root, "prompt_files");

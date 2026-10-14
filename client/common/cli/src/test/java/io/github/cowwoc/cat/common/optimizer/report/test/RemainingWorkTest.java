@@ -3,8 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.report.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
@@ -297,7 +297,8 @@ public final class RemainingWorkTest
 
 	/**
 	 * Verifies that only unresolved cells of a running attempt need trials, each to its frozen boundary, and that a
-	 * cell whose control comparisons have not started needs the control trials that pass them from no pairs.
+	 * cell whose control and incumbent comparisons have not started needs the control and incumbent trials that pass
+	 * them from no pairs.
 	 */
 	@Test
 	public void formalUnresolvedCells()
@@ -306,12 +307,14 @@ public final class RemainingWorkTest
 		// Requirement: R-F7
 		// Boundaries: a cell certifies at 100 + 50*F passes. At alpha_1 = 1/50, a control comparison with no pairs
 		// passes after 105 pairs in which both trials pass.
+		// The same holds for an incumbent comparison.
 		// formatting: S = 60,  F = 0 -> undecided; certifies at S = 100 -> 100 - 60 = 40; its 100 formal outcomes
-		//             pair with 100 of the 105 control trials, so 5 more formal trials -> 105 + 5 = 110
-		// plain_list: S = 100, F = 0 -> certified, with passed control comparisons; needs nothing
+		//             pair with 100 of the 105 control trials, so 5 more formal trials -> 105 + 5 = 110. The 105
+		//             incumbent trials pair with the same 105 formal trials -> 105
+		// plain_list: S = 100, F = 0 -> certified, with passed comparisons; needs nothing
 		// safety:     S = 140, F = 1 -> undecided; certifies at S = 150 -> 150 - 140 = 10; its 151 formal outcomes
-		//             cover the 105 control trials -> 105
-		// total = 40 + 110 + 10 + 105 = 265
+		//             cover the 105 control trials -> 105, and the 105 incumbent trials -> 105
+		// total = 40 + 110 + 105 + 10 + 105 + 105 = 475
 		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
 			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).cell("formatting", 60, 0).
 			cell("plain_list", 100, 0).cell("safety", 140, 1).build();
@@ -320,14 +323,17 @@ public final class RemainingWorkTest
 		requireThat(trials(work, "formatting", Kind.CERTIFICATION), "formatting").isEqualTo(40);
 		requireThat(trials(work, "formatting", Kind.CONTROL), "formattingControl").isEqualTo(110);
 		requireThat(trials(work, "safety", Kind.CERTIFICATION), "safety").isEqualTo(10);
+		requireThat(trials(work, "formatting", Kind.INCUMBENT), "formattingIncumbent").isEqualTo(105);
 		requireThat(trials(work, "safety", Kind.CONTROL), "safetyControl").isEqualTo(105);
-		requireThat(work.entries().size(), "entries").isEqualTo(4);
-		requireThat(work.total(), "total").isEqualTo(265);
+		requireThat(trials(work, "safety", Kind.INCUMBENT), "safetyIncumbent").isEqualTo(105);
+		requireThat(work.entries().size(), "entries").isEqualTo(6);
+		requireThat(work.total(), "total").isEqualTo(475);
 	}
 
 	/**
 	 * Verifies that a cell whose control comparisons are undecided needs the fewest further pairs, in which both
-	 * trials pass, that pass its weakest undecided comparison, and the formal trials that those pairs lack.
+	 * trials pass, that pass its weakest undecided comparison, and the formal trials that those pairs lack. The
+	 * candidate is the incumbent, so the cell needs no incumbent trials.
 	 */
 	@Test
 	public void formalControlPairsWhenEveryTrialPasses()
@@ -342,9 +348,9 @@ public final class RemainingWorkTest
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		comparisons.put("uses_requested_tone", new PairCounts(40, 0, 0, 0));
 		comparisons.put(TestCase.EXPECTED_OUTCOME, new PairCounts(0, 40, 0, 0));
-		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
 			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).cell("formatting", 100, 0).
-			pairing("formatting", new ControlPairing(unpaired(60), comparisons)).
+			controlPairing("formatting", new Pairing(unpaired(60), comparisons)).
 			cell("plain_list", 100, 0).cell("safety", 100, 0).build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(trials(work, "formatting", Kind.CONTROL), "formatting").isEqualTo(70);
@@ -354,7 +360,7 @@ public final class RemainingWorkTest
 
 	/**
 	 * Verifies that a cell whose undecided control comparison cannot pass within its cap has no minimum, with the
-	 * reason.
+	 * reason. The candidate is the incumbent, so the cell needs no incumbent trials.
 	 */
 	@Test
 	public void formalControlBeyondCapIsUnavailable()
@@ -367,16 +373,79 @@ public final class RemainingWorkTest
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		comparisons.put("uses_requested_tone", new PairCounts(10, 0, 0, 0));
 		comparisons.put(TestCase.EXPECTED_OUTCOME, new PairCounts(10, 0, 0, 0));
-		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
 			certificationAttempt(1).boundaries(Boundaries.decision(100, 100, 50, 5, neutral)).
 			cell("formatting", 100, 0).
-			pairing("formatting", new ControlPairing(unpaired(90), comparisons)).
+			controlPairing("formatting", new Pairing(unpaired(90), comparisons)).
 			cell("plain_list", 100, 0).cell("safety", 100, 0).build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(work.total(), "total").isNull();
 		requireThat(work.unavailable(), "unavailable").isNotNull();
 		requireThat(work.entries(), "entries").isEqualTo(List.of(new Entry("formatting", Kind.CONTROL, null,
 			"The control comparison of uses_requested_tone cannot pass within the cap of 100 pairs.")));
+	}
+
+	/**
+	 * Verifies that a cell whose control and incumbent comparisons are undecided needs the reference trials of each
+	 * kind and counts the formal trials that both kinds lack only once.
+	 */
+	@Test
+	public void formalIncumbentSharesFormalTrials()
+	{
+		// Requirement: R-E12
+		// Requirement: R-F7
+		// formatting: S = 100, F = 0 -> certified minimum-pass-rate part. 40 pairs of each kind: uses_requested_tone
+		//             has 40 pairs in which both passed, and passes after 65 more at alpha_1 = 1/50;
+		//             expected_outcome has 40 pairs that only the candidate passed, so it passed. 60 formal outcomes
+		//             are unpaired with either kind, so the 65 control trials need 5 more formal trials -> 65 + 5 = 70,
+		//             and the 65 incumbent trials pair with the same formal trials -> 65
+		// plain_list, safety: S = 100, F = 0 -> certified, with passed comparisons; need nothing
+		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
+		comparisons.put("uses_requested_tone", new PairCounts(40, 0, 0, 0));
+		comparisons.put(TestCase.EXPECTED_OUTCOME, new PairCounts(0, 40, 0, 0));
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).cell("formatting", 100, 0).
+			controlPairing("formatting", new Pairing(unpaired(60), comparisons)).
+			incumbentPairing("formatting", new Pairing(unpaired(60), comparisons)).
+			cell("plain_list", 100, 0).cell("safety", 100, 0).build();
+		RemainingWork work = RemainingWork.of(campaign);
+		requireThat(trials(work, "formatting", Kind.CONTROL), "formattingControl").isEqualTo(70);
+		requireThat(trials(work, "formatting", Kind.INCUMBENT), "formattingIncumbent").isEqualTo(65);
+		requireThat(work.entries().size(), "entries").isEqualTo(2);
+		requireThat(work.total(), "total").isEqualTo(135);
+	}
+
+	/**
+	 * Verifies that a cell whose undecided incumbent comparison cannot pass within its cap has no minimum, with the
+	 * reason.
+	 */
+	@Test
+	public void formalIncumbentBeyondCapIsUnavailable()
+	{
+		// Requirement: R-E12
+		// Requirement: R-F7
+		// Cap 100. formatting: S = 100, F = 0 -> certified minimum-pass-rate part. Its control comparisons have 10
+		// pairs that only the candidate passed and passed. Both incumbent comparisons have 10 pairs in which both
+		// passed, and pass after 95 more at alpha_1 = 1/50, but only 90 pairs remain within the cap.
+		List<ComparisonBoundaries> neutral = Collections.nCopies(3, Boundaries.comparison(100, 60, 40, 4));
+		Map<String, PairCounts> control = new LinkedHashMap<>();
+		control.put("uses_requested_tone", new PairCounts(0, 10, 0, 0));
+		control.put(TestCase.EXPECTED_OUTCOME, new PairCounts(0, 10, 0, 0));
+		Map<String, PairCounts> incumbent = new LinkedHashMap<>();
+		incumbent.put("uses_requested_tone", new PairCounts(10, 0, 0, 0));
+		incumbent.put(TestCase.EXPECTED_OUTCOME, new PairCounts(10, 0, 0, 0));
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+			certificationAttempt(1).boundaries(Boundaries.decision(100, 100, 50, 5, neutral)).
+			cell("formatting", 100, 0).
+			controlPairing("formatting", new Pairing(unpaired(90), control)).
+			incumbentPairing("formatting", new Pairing(unpaired(90), incumbent)).
+			cell("plain_list", 100, 0).cell("safety", 100, 0).build();
+		RemainingWork work = RemainingWork.of(campaign);
+		requireThat(work.total(), "total").isNull();
+		requireThat(work.unavailable(), "unavailable").isNotNull();
+		requireThat(work.entries(), "entries").isEqualTo(List.of(new Entry("formatting", Kind.CONTROL, 0, null),
+			new Entry("formatting", Kind.INCUMBENT, null,
+				"The incumbent comparison of uses_requested_tone cannot pass within the cap of 100 pairs.")));
 	}
 
 	/**

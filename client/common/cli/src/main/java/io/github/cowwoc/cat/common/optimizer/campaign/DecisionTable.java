@@ -3,9 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
-import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
-import io.github.cowwoc.cat.common.optimizer.statistics.PairTally;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 /**
@@ -41,7 +40,12 @@ public final class DecisionTable
 		 * The cell's minimum-pass-rate part certified, but the candidate passes one of its assertions less often than
 		 * the control.
 		 */
-		BELOW_CONTROL
+		BELOW_CONTROL,
+		/**
+		 * The cell's minimum-pass-rate part certified, but the candidate passes one of its assertions less often than
+		 * the incumbent, and none less often than the control.
+		 */
+		BELOW_INCUMBENT
 	}
 
 	/**
@@ -70,7 +74,13 @@ public final class DecisionTable
 		 */
 		BELOW_CONTROL,
 		/**
-		 * At least one cell reached its outcome cap undecided, and none is clearly below the minimum pass rate.
+		 * At least one cell passes one of its assertions less often than the incumbent, no cell passes one less often
+		 * than the control, and none is clearly below the minimum pass rate.
+		 */
+		BELOW_INCUMBENT,
+		/**
+		 * At least one cell reached its outcome cap undecided, and none is clearly below the minimum pass rate, below
+		 * control or below incumbent.
 		 */
 		INCONCLUSIVE
 	}
@@ -95,8 +105,8 @@ public final class DecisionTable
 		/**
 		 * Return to development automatically. Each formal failure makes its cell a development cell, and prompt
 		 * authors receive its cell, test and failed requirements, never its held-out test case, reply or rationale.
-		 * A cell below control becomes a development cell, and prompt authors receive its assertion with the
-		 * candidate's and the control's pass rates.
+		 * A cell below control or below incumbent becomes a development cell, and prompt authors receive its assertion
+		 * with the candidate's pass rate and the control's or the incumbent's.
 		 */
 		RETURN_TO_DEVELOPMENT,
 		/**
@@ -114,7 +124,7 @@ public final class DecisionTable
 
 	/**
 	 * Decides the minimum-pass-rate part of one cell from its adopted formal counts. The result never is
-	 * {@link CellDecision#BELOW_CONTROL}.
+	 * {@link CellDecision#BELOW_CONTROL} or {@link CellDecision#BELOW_INCUMBENT}.
 	 *
 	 * @param boundaries the attempt's boundaries
 	 * @param counts the cell's adopted formal counts
@@ -136,10 +146,12 @@ public final class DecisionTable
 	}
 
 	/**
-	 * Decides one cell of a certification attempt from its adopted formal counts and control comparisons. Once the
-	 * cell's minimum-pass-rate part certified, later formal failures do not undo it. The cell then certifies once
-	 * every assertion's control comparison passed, is below control once any assertion is, and reaches its cap once
-	 * its formal outcomes reach the cap and each has its control trial.
+	 * Decides one cell of a certification attempt from its adopted formal counts, control comparisons and incumbent
+	 * comparisons. Once the cell's minimum-pass-rate part certified, later formal failures do not undo it. The cell
+	 * then is below control once any assertion's control comparison is, and otherwise below incumbent once any
+	 * assertion's incumbent comparison is. It certifies once every assertion's control and incumbent comparisons
+	 * passed, and reaches its cap once its formal outcomes reach the cap and each has its trial of every kind whose
+	 * comparisons have not all passed. A cell has no incumbent comparisons when the candidate is the incumbent.
 	 *
 	 * @param attempt the attempt
 	 * @param cell the identifier of the cell
@@ -153,33 +165,68 @@ public final class DecisionTable
 		requireThat(cell, "cell").isNotNull();
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		CellCounts counts = attempt.count(cell);
-		ControlPairing pairing = attempt.pairing(cell);
-		if (!pairing.isComparing())
+		Pairing control = attempt.pairing(Reference.CONTROL, cell);
+		if (!control.isComparing())
 		{
 			CellDecision minimum = minimumDecision(boundaries, counts);
 			if (minimum == CellDecision.CERTIFIED)
 			{
-				// The control comparisons start when the adopted outcome that certified the minimum-pass-rate part
+				// The paired comparisons start when the adopted outcome that certified the minimum-pass-rate part
 				// is adopted
 				return CellDecision.UNDECIDED;
 			}
 			return minimum;
 		}
 		SignificanceLevel level = boundaries.level();
-		boolean allPassed = true;
+		Pairing incumbent = attempt.pairing(Reference.INCUMBENT, cell);
+		if (isAnyBelow(control, level))
+			return CellDecision.BELOW_CONTROL;
+		if (isAnyBelow(incumbent, level))
+			return CellDecision.BELOW_INCUMBENT;
+		boolean controlPassed = isEveryPassed(control, level);
+		boolean incumbentPassed = isEveryPassed(incumbent, level);
+		if (controlPassed && incumbentPassed)
+			return CellDecision.CERTIFIED;
+		if (counts.outcomes() >= boundaries.cap() && (controlPassed || control.unpaired().isEmpty()) &&
+			(incumbentPassed || incumbent.unpaired().isEmpty()))
+		{
+			return CellDecision.CAP_REACHED;
+		}
+		return CellDecision.UNDECIDED;
+	}
+
+	/**
+	 * Indicates whether the candidate is below the reference trials in any of a pairing's comparisons.
+	 *
+	 * @param pairing the pairing
+	 * @param level the attempt's certification level
+	 * @return {@code true} if some assertion's comparison is below
+	 */
+	private static boolean isAnyBelow(Pairing pairing, SignificanceLevel level)
+	{
 		for (PairCounts comparison : pairing.comparisons().values())
 		{
-			PairTally tally = comparison.tally();
-			if (ControlComparison.isBelowControl(tally, level))
-				return CellDecision.BELOW_CONTROL;
-			if (!ControlComparison.passes(tally, level))
-				allPassed = false;
+			if (PairedComparison.isBelow(comparison.tally(), level))
+				return true;
 		}
-		if (allPassed)
-			return CellDecision.CERTIFIED;
-		if (counts.outcomes() >= boundaries.cap() && pairing.unpaired().isEmpty())
-			return CellDecision.CAP_REACHED;
-		return CellDecision.UNDECIDED;
+		return false;
+	}
+
+	/**
+	 * Indicates whether every comparison of a pairing passed.
+	 *
+	 * @param pairing the pairing
+	 * @param level the attempt's certification level
+	 * @return {@code true} if every assertion's comparison passed, including when the pairing compares nothing
+	 */
+	private static boolean isEveryPassed(Pairing pairing, SignificanceLevel level)
+	{
+		for (PairCounts comparison : pairing.comparisons().values())
+		{
+			if (!PairedComparison.passes(comparison.tally(), level))
+				return false;
+		}
+		return true;
 	}
 
 	/**
@@ -193,6 +240,7 @@ public final class DecisionTable
 	{
 		requireThat(attempt, "attempt").isNotNull();
 		boolean capReached = false;
+		boolean belowIncumbent = false;
 		boolean allCertified = true;
 		boolean provenWorse = false;
 		for (String cell : attempt.procedure().cells())
@@ -208,6 +256,12 @@ public final class DecisionTable
 				{
 					return AttemptDecision.BELOW_CONTROL;
 				}
+				case BELOW_INCUMBENT ->
+				{
+					// Below control in a later cell takes precedence
+					belowIncumbent = true;
+					allCertified = false;
+				}
 				case CAP_REACHED ->
 				{
 					capReached = true;
@@ -221,6 +275,8 @@ public final class DecisionTable
 				}
 			}
 		}
+		if (belowIncumbent)
+			return AttemptDecision.BELOW_INCUMBENT;
 		if (capReached)
 			return AttemptDecision.INCONCLUSIVE;
 		if (!allCertified)
@@ -246,7 +302,7 @@ public final class DecisionTable
 			case UNDECIDED -> Action.CONTINUE;
 			case CERTIFIED -> Action.DELIVER;
 			case CERTIFIED_PROVEN_WORSE -> Action.AWAIT_TRADE_OFF;
-			case BELOW_MINIMUM, BELOW_CONTROL, INCONCLUSIVE ->
+			case BELOW_MINIMUM, BELOW_CONTROL, BELOW_INCUMBENT, INCONCLUSIVE ->
 			{
 				if (qualifiesForKeep)
 					yield Action.OFFER_KEEP_IMPROVEMENT;

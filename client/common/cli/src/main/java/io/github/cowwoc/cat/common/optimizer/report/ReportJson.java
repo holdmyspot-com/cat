@@ -255,18 +255,8 @@ final class ReportJson
 		putNumber(comparisonNode, "lower_bound", comparison.lowerBound());
 		putNumber(comparisonNode, "upper_bound", comparison.upperBound());
 		putNumber(comparisonNode, "alpha", comparison.alpha());
-		ArrayNode controls = comparisonNode.putArray("controls");
-		for (CellReport.ControlReport control : comparison.controls())
-		{
-			ObjectNode controlNode = controls.addObject();
-			controlNode.put("assertion_id", control.assertionId());
-			controlNode.put("state", control.state());
-			controlNode.put("pairs", control.pairs());
-			controlNode.put("candidate_passes", control.candidatePasses());
-			controlNode.put("control_passes", control.controlPasses());
-			putNumber(controlNode, "candidate_rate", control.candidateRate());
-			putNumber(controlNode, "control_rate", control.controlRate());
-		}
+		paired(comparisonNode.putArray("controls"), comparison.controls(), "control");
+		paired(comparisonNode.putArray("incumbents"), comparison.incumbents(), "incumbent");
 		putText(comparisonNode, "cell_state", comparison.cellState());
 
 		ArrayNode bars = node.putArray("error_bars");
@@ -282,6 +272,28 @@ final class ReportJson
 		}
 	}
 
+
+	/**
+	 * Writes each assertion's comparison with one kind of reference trial.
+	 *
+	 * @param nodes the array to write to
+	 * @param reports the comparisons
+	 * @param reference the JSON name of the reference trials: {@code control} or {@code incumbent}
+	 */
+	private static void paired(ArrayNode nodes, List<CellReport.PairedReport> reports, String reference)
+	{
+		for (CellReport.PairedReport report : reports)
+		{
+			ObjectNode node = nodes.addObject();
+			node.put("assertion_id", report.assertionId());
+			node.put("state", report.state());
+			node.put("pairs", report.pairs());
+			node.put("candidate_passes", report.candidatePasses());
+			node.put(reference + "_passes", report.referencePasses());
+			putNumber(node, "candidate_rate", report.candidateRate());
+			putNumber(node, reference + "_rate", report.referenceRate());
+		}
+	}
 	/**
 	 * Adds the benchmark weights.
 	 *

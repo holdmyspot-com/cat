@@ -9,7 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
 import io.github.cowwoc.cat.common.optimizer.campaign.Diagnosis;
@@ -46,7 +46,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.test.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
-import io.github.cowwoc.cat.common.optimizer.statistics.ControlComparison;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.statistics.PairTally;
@@ -72,7 +72,8 @@ import java.util.Set;
  * <p>
  * Cell counts that a test gives as {@code (passes, failures)} place the failures in the earliest batches. A cell
  * whose counts certify its minimum-pass-rate part, and whose control comparisons the test does not set, has every
- * assertion's control comparison passed by the fewest pairs that only the candidate passed.
+ * assertion's control comparison passed by the fewest pairs that only the candidate passed. Unless the candidate is
+ * the incumbent, the same holds for its incumbent comparisons.
  */
 public final class Builder
 {
@@ -818,7 +819,8 @@ public final class Builder
 	{
 		private final int index;
 		private final Map<String, CellCounts> counts = new LinkedHashMap<>();
-		private final Map<String, ControlPairing> pairings = new LinkedHashMap<>();
+		private final Map<String, Pairing> controlPairings = new LinkedHashMap<>();
+		private final Map<String, Pairing> incumbentPairings = new LinkedHashMap<>();
 		private final List<Failure> attemptFailures = new ArrayList<>();
 		private Integer attemptLineage;
 		private Candidate candidate;
@@ -859,9 +861,22 @@ public final class Builder
 		 * @param pairing the cell's control comparisons
 		 * @return this builder
 		 */
-		public AttemptBuilder pairing(String cell, ControlPairing pairing)
+		public AttemptBuilder controlPairing(String cell, Pairing pairing)
 		{
-			pairings.put(cell, pairing);
+			controlPairings.put(cell, pairing);
+			return this;
+		}
+
+		/**
+		 * Sets a cell's incumbent comparisons.
+		 *
+		 * @param cell the cell identifier
+		 * @param pairing the cell's incumbent comparisons
+		 * @return this builder
+		 */
+		public AttemptBuilder incumbentPairing(String cell, Pairing pairing)
+		{
+			incumbentPairings.put(cell, pairing);
 			return this;
 		}
 
@@ -994,20 +1009,20 @@ public final class Builder
 		}
 
 		/**
-		 * Returns control comparisons in which every assertion of a cell passed by the fewest pairs that only the
-		 * candidate passed, with no candidate formal trial waiting for a control trial.
+		 * Returns comparisons in which every assertion of a cell passed by the fewest pairs that only the candidate
+		 * passed, with no candidate formal trial waiting for a reference trial.
 		 *
 		 * @param cell the cell identifier
 		 * @param level the attempt's certification level
-		 * @return the control comparisons
+		 * @return the comparisons
 		 */
-		private ControlPairing passedComparisons(String cell, SignificanceLevel level)
+		private Pairing passedComparisons(String cell, SignificanceLevel level)
 		{
-			int pairs = ControlComparison.fewestCandidateAheadPairsToPass(PairTally.EMPTY, level, 1000);
+			int pairs = PairedComparison.fewestCandidateAheadPairsToPass(PairTally.EMPTY, level, 1000);
 			Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 			for (Assertion assertion : contract.testOf(contract.findCell(cell).orElseThrow()).allAssertions())
 				comparisons.put(assertion.id(), new PairCounts(0, pairs, 0, 0));
-			return new ControlPairing(List.of(), comparisons);
+			return new Pairing(List.of(), comparisons);
 		}
 
 		/**
@@ -1044,17 +1059,23 @@ public final class Builder
 				else
 					groups = List.of();
 			}
-			Map<String, ControlPairing> frozenPairings = new LinkedHashMap<>(pairings);
+			Map<String, Pairing> frozenControlPairings = new LinkedHashMap<>(controlPairings);
+			Map<String, Pairing> frozenIncumbentPairings = new LinkedHashMap<>(incumbentPairings);
+			boolean comparesIncumbent = !frozenCandidate.snapshot().equals(INCUMBENT);
 			for (Map.Entry<String, CellCounts> entry : counts.entrySet())
 			{
 				String cell = entry.getKey();
 				CellCounts cellCounts = entry.getValue();
-				if (!frozenPairings.containsKey(cell) && frozen.certifies(cellCounts.passes(), cellCounts.failures()))
-					frozenPairings.put(cell, passedComparisons(cell, frozen.level()));
+				if (!frozen.certifies(cellCounts.passes(), cellCounts.failures()))
+					continue;
+				if (!frozenControlPairings.containsKey(cell))
+					frozenControlPairings.put(cell, passedComparisons(cell, frozen.level()));
+				if (comparesIncumbent && !frozenIncumbentPairings.containsKey(cell))
+					frozenIncumbentPairings.put(cell, passedComparisons(cell, frozen.level()));
 			}
 			return new CertificationAttempt(index, number, frozenCandidate, frozenIdentity, procedure, CONTROL, counts,
-				frozenPairings, attemptFailures, new DrawStream.State(DrawStream.Kind.FORMAL, index, 0, true),
-				attemptOutcome, groups);
+				frozenControlPairings, frozenIncumbentPairings, attemptFailures,
+				new DrawStream.State(DrawStream.Kind.FORMAL, index, 0, true), attemptOutcome, groups);
 		}
 	}
 }

@@ -102,7 +102,9 @@ The formal outcomes of the certification attempts that have ended, as JSON. Cert
 from you, so each formal failure gives only its `cell`, its `test` and, in `failed_assertions`, the `assertion_id` of
 each assertion it failed with the `behavior` through which it failed. `below_control` lists each assertion that the
 candidate passed less often than trials with the target prompt file empty, with its `cell`, `test`, the number of
-paired trials and each side's passes: the edits harmed an operation that the agent performs without them. These
+paired trials and each side's passes: the edits harmed an operation that the agent performs without them.
+`below_incumbent` lists, in the same form, each assertion that the candidate passed less often than the prompt files
+before this campaign's edits: the edits made the agent pass that assertion less often than it did before them. These
 outcomes show which assertions still fail in certification, and how; they are not supplied failures, so do not group
 or cite them:
 

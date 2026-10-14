@@ -1,11 +1,12 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
-import io.github.cowwoc.cat.common.optimizer.campaign.ControlPairing.UnpairedTrial;
+import io.github.cowwoc.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 import io.github.cowwoc.cat.common.secrets.TrialAdoptionAccess;
 import io.github.cowwoc.cat.common.secrets.TrialAdoptionSecrets;
@@ -67,7 +68,8 @@ public final class TrialAdoption
 			case DEVELOPMENT -> key.series() != draft.series || !key.snapshot().equals(draft.working.snapshot());
 			case BASELINE -> key.series() != draft.baselineIndex;
 			case FORMAL -> isStaleFormal(draft, key);
-			case CONTROL -> isStaleControl(draft, key);
+			case CONTROL -> isStaleReference(draft, key, Reference.CONTROL);
+			case INCUMBENT -> isStaleReference(draft, key, Reference.INCUMBENT);
 			case REPRODUCTION -> isStaleReproduction(draft, trial);
 			case DIAGNOSTIC -> key.series() != draft.series || draft.diagnosis == null ||
 				!key.equals(draft.diagnosis.rerun());
@@ -98,19 +100,25 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Indicates whether a control trial's attempt is absent or ended, the trial ran another control source than the
-	 * attempt's, or its cell already has a decision.
+	 * Indicates whether a control or incumbent trial's attempt is absent or ended, the trial ran another snapshot than
+	 * the attempt's control or the incumbent, or its cell already has a decision.
 	 *
 	 * @param draft the state
 	 * @param key the trial's key
+	 * @param reference the kind of reference trial
 	 * @return {@code true} if the trial's outcome must be discarded
 	 */
-	private static boolean isStaleControl(Draft draft, TrialKey key)
+	private static boolean isStaleReference(Draft draft, TrialKey key, Reference reference)
 	{
 		if (key.series() < 1 || key.series() > draft.attempts.size())
 			return true;
 		CertificationAttempt attempt = draft.attempt(key.series());
-		return !attempt.isRunning() || !key.snapshot().equals(attempt.control()) ||
+		Sha256 snapshot = switch (reference)
+		{
+			case CONTROL -> attempt.control();
+			case INCUMBENT -> draft.incumbent.snapshot();
+		};
+		return !attempt.isRunning() || !key.snapshot().equals(snapshot) ||
 			DecisionTable.cellDecision(attempt, key.cell()) != DecisionTable.CellDecision.UNDECIDED;
 	}
 
@@ -208,7 +216,7 @@ public final class TrialAdoption
 	private static void adopt(Draft draft, LogicalTrial trial)
 	{
 		Purpose purpose = trial.key().purpose();
-		if (purpose != Purpose.REPRODUCTION && purpose != Purpose.CONTROL &&
+		if (purpose != Purpose.REPRODUCTION && purpose != Purpose.CONTROL && purpose != Purpose.INCUMBENT &&
 			trial.key().snapshot().equals(draft.working.snapshot()))
 		{
 			draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, trial.testCase(), trial.verdict());
@@ -219,7 +227,8 @@ public final class TrialAdoption
 			case DEVELOPMENT -> adoptDevelopment(draft, trial);
 			case BASELINE -> adoptBaseline(draft, trial);
 			case FORMAL -> adoptFormal(draft, trial);
-			case CONTROL -> adoptControl(draft, trial);
+			case CONTROL -> adoptReference(draft, trial, Reference.CONTROL);
+			case INCUMBENT -> adoptReference(draft, trial, Reference.INCUMBENT);
 			case DIAGNOSTIC -> adoptDiagnostic(draft, trial);
 			case PROMOTION -> adoptPromotion(draft, trial);
 			case REPRODUCTION -> adoptReproduction(draft, trial);
@@ -349,7 +358,7 @@ public final class TrialAdoption
 			{
 				case DEVELOPMENT -> key.snapshot().equals(draft.working.snapshot());
 				case DIAGNOSTIC -> true;
-				case BASELINE, FORMAL, CONTROL, PROMOTION, REPRODUCTION -> false;
+				case BASELINE, FORMAL, CONTROL, INCUMBENT, PROMOTION, REPRODUCTION -> false;
 			};
 		});
 		draft.diagnosis = null;
@@ -839,8 +848,9 @@ public final class TrialAdoption
 	/**
 	 * Adopts a formal outcome and applies the attempt's decision. A failure stays with the attempt, for the user's
 	 * report; its held-out test case never enters development evidence or the regression set. The trial waits for
-	 * the control trial that pairs with it, and the trial that certifies the cell's minimum-pass-rate part starts the
-	 * cell's control comparisons.
+	 * the control trial and, unless the candidate is the incumbent, the incumbent trial that pair with it. The trial
+	 * that certifies the cell's minimum-pass-rate part starts the cell's control comparisons and, unless the candidate
+	 * is the incumbent, its incumbent comparisons.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -853,15 +863,19 @@ public final class TrialAdoption
 		CellCounts cellCounts = attempt.count(cell).add(trial.verdict());
 		counts.put(cell, cellCounts);
 		PromptTest test = testOf(draft, cell);
-		ControlPairing pairing = attempt.pairing(cell).withCandidate(new UnpairedTrial(trial.testCase(),
-			passedAssertions(test, trial, true)));
-		if (!pairing.isComparing() && DecisionTable.minimumDecision(attempt.procedure().boundaries(), cellCounts) ==
-			DecisionTable.CellDecision.CERTIFIED)
+		UnpairedTrial unpaired = new UnpairedTrial(trial.testCase(), passedAssertions(test, trial, true));
+		boolean minimumCertified = DecisionTable.minimumDecision(attempt.procedure().boundaries(), cellCounts) ==
+			DecisionTable.CellDecision.CERTIFIED;
+		List<String> assertionIds = test.allAssertions().stream().map(Assertion::id).toList();
+		Map<String, Pairing> controlPairings = new LinkedHashMap<>(attempt.controlPairings());
+		controlPairings.put(cell, withCandidate(attempt.pairing(Reference.CONTROL, cell), unpaired, minimumCertified,
+			assertionIds));
+		Map<String, Pairing> incumbentPairings = new LinkedHashMap<>(attempt.incumbentPairings());
+		if (!attempt.candidate().snapshot().equals(draft.incumbent.snapshot()))
 		{
-			pairing = pairing.startComparing(test.allAssertions().stream().map(Assertion::id).toList());
+			incumbentPairings.put(cell, withCandidate(attempt.pairing(Reference.INCUMBENT, cell), unpaired,
+				minimumCertified, assertionIds));
 		}
-		Map<String, ControlPairing> pairings = new LinkedHashMap<>(attempt.pairings());
-		pairings.put(cell, pairing);
 		List<Failure> failures = new ArrayList<>(attempt.failures());
 		if (trial.verdict() == Verdict.FAIL)
 		{
@@ -871,29 +885,47 @@ public final class TrialAdoption
 		}
 		else
 			draft.slowStart = draft.slowStart.afterPass();
-		CertificationAttempt updated = attempt.withEvidence(attempt.identity(), counts, pairings, failures,
-			attempt.formalStream());
+		CertificationAttempt updated = attempt.withEvidence(attempt.identity(), counts, controlPairings,
+			incumbentPairings, failures, attempt.formalStream());
 		draft.replaceAttempt(updated);
 		applyDecision(draft, updated);
 	}
 
 	/**
-	 * Adopts a control outcome into the control comparisons of its cell and applies the attempt's decision. A failed
-	 * control trial stays out of the attempt's failures: it measures the prompt's absence, not the candidate.
+	 * Returns a pairing with one more candidate formal trial waiting for its reference trial, comparing the cell's
+	 * assertions once its minimum-pass-rate part certified.
+	 *
+	 * @param pairing the pairing
+	 * @param trial the candidate formal trial
+	 * @param minimumCertified {@code true} if the cell's minimum-pass-rate part certified
+	 * @param assertionIds the identifiers of the prompt test's assertions, in its assertion order
+	 * @return the updated pairing
+	 */
+	private static Pairing withCandidate(Pairing pairing, UnpairedTrial trial, boolean minimumCertified,
+		List<String> assertionIds)
+	{
+		Pairing updated = pairing.withCandidate(trial);
+		if (minimumCertified && !updated.isComparing())
+			updated = updated.startComparing(assertionIds);
+		return updated;
+	}
+
+	/**
+	 * Adopts a control or incumbent outcome into its cell's comparisons with that kind of reference trial and applies
+	 * the attempt's decision. A failed reference trial stays out of the attempt's failures: it measures the prompt's
+	 * absence or the incumbent, not the candidate.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
+	 * @param reference the kind of reference trial
 	 */
-	private static void adoptControl(Draft draft, LogicalTrial trial)
+	private static void adoptReference(Draft draft, LogicalTrial trial, Reference reference)
 	{
 		CertificationAttempt attempt = draft.attempt(trial.key().series());
 		String cell = trial.key().cell();
-		ControlPairing pairing = attempt.pairing(cell).withControl(trial.testCase(),
+		Pairing pairing = attempt.pairing(reference, cell).withReference(trial.testCase(),
 			passedAssertions(testOf(draft, cell), trial, false));
-		Map<String, ControlPairing> pairings = new LinkedHashMap<>(attempt.pairings());
-		pairings.put(cell, pairing);
-		CertificationAttempt updated = attempt.withEvidence(attempt.identity(), attempt.counts(), pairings,
-			attempt.failures(), attempt.formalStream());
+		CertificationAttempt updated = attempt.withPairing(reference, cell, pairing);
 		draft.replaceAttempt(updated);
 		applyDecision(draft, updated);
 	}
@@ -915,12 +947,12 @@ public final class TrialAdoption
 	 * Returns the assertions that a trial passed. A passing trial passed every assertion, and a failed trial every
 	 * assertion that it did not fail. A failed built-in tool decides its trial without a judge, so the trial's judged
 	 * assertions were never decided: both sides count them against the candidate, failed for a candidate trial and
-	 * passed for a control trial, so that the missing evidence cannot favour the candidate. A failure that names no
-	 * assertion passed none.
+	 * passed for a control or incumbent trial, so that the missing evidence cannot favour the candidate. A failure
+	 * that names no assertion passed none.
 	 *
 	 * @param test the trial's prompt test
 	 * @param trial the judged trial
-	 * @param candidate {@code true} for a candidate formal trial, {@code false} for a control trial
+	 * @param candidate {@code true} for a candidate formal trial, {@code false} for a control or incumbent trial
 	 * @return the identifiers of the assertions that the trial passed, in the prompt test's assertion order
 	 */
 	private static Set<String> passedAssertions(PromptTest test, LogicalTrial trial, boolean candidate)
@@ -965,6 +997,7 @@ public final class TrialAdoption
 			case CERTIFIED, CERTIFIED_PROVEN_WORSE -> Outcome.CERTIFIED;
 			case BELOW_MINIMUM -> Outcome.BELOW_MINIMUM;
 			case BELOW_CONTROL -> Outcome.BELOW_CONTROL;
+			case BELOW_INCUMBENT -> Outcome.BELOW_INCUMBENT;
 			case INCONCLUSIVE -> Outcome.INCONCLUSIVE;
 		};
 		if (ending == null)
