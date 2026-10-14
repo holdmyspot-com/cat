@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
+import io.github.cowwoc.cat.common.SessionRules;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
@@ -226,6 +227,55 @@ public final class ProjectRuleLoaderTest
 			int readFile = context.indexOf("# Reading files");
 			requireThat(readFile, "readFile").isLessThan(context.indexOf("# Routes")).
 				isLessThan(context.indexOf("# Rendering")).isLessThan(context.indexOf("# Project"));
+		}
+	}
+
+	/**
+	 * Verifies a session that keeps its rules in a file receives the harness rule on reading a file whole apart from
+	 * the other rules, with the plugin root stated in it, while the other rules keep their order without it.
+	 */
+	@Test
+	public void separatesReadingGuidanceFromSessionRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
+			write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\nPlugin directory guidance\n");
+			write(plugin, "rules/harnessa/read-file.md", "# Reading files\n\nRun `" +
+				ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "/bin/run-part`\n");
+			write(project, ".cat/rules/common/project.md", "# Project\n\nProject guidance\n");
+
+			SessionRules session;
+			try (ToolScope scope = new ToolScope())
+			{
+				session = new ProjectRuleLoader(scope.yaml()).loadSessionForMainAgent(plugin, null, project, "harnessa");
+			}
+
+			requireThat(session.readingGuidance(), "readingGuidance").startsWith("# Reading files").
+				contains("Run `" + plugin + "/bin/run-part`").doesNotContain("# CAT environment").
+				doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
+			requireThat(session.rules(), "rules").startsWith("# CAT environment").doesNotContain("# Reading files");
+			requireThat(session.rules().indexOf("# Routes"), "routes").
+				isLessThan(session.rules().indexOf("# Project"));
+		}
+	}
+
+	/**
+	 * Verifies a session that keeps its rules in a file cannot load without the harness rule on reading a file whole,
+	 * because the agent would have no way to read that file whole.
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*rules/harnessa/read-file\\.md.*")
+	public void rejectsSessionWithoutReadingGuidance() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\nPlugin directory guidance\n");
+
+			new ProjectRuleLoader(scope.yaml()).loadSessionForMainAgent(plugin, null, project, "harnessa");
 		}
 	}
 

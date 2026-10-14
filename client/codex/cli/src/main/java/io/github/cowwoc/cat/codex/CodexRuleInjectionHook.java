@@ -4,6 +4,7 @@ import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import io.github.cowwoc.cat.common.HookScope;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
+import io.github.cowwoc.cat.common.SessionRules;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -21,6 +22,14 @@ import tools.jackson.databind.json.JsonMapper;
 final class CodexRuleInjectionHook
 {
 	/**
+	 * Tells the primary agent to read the session's rules file whole, as the reading guidance before it describes.
+	 */
+	private static final String RULES_FILE_POINTER = "CAT's rules for this session are in `%s`. Read that whole " +
+		"file, as described above, before you plan, run another command, or respond, even when you could answer the " +
+		"request without it, then apply every instruction in it for the rest of this conversation. Do not search it, " +
+		"list its headings, or read only part of it: guidance that you skip still applies.";
+
+	/**
 	 * Prevents instantiation.
 	 */
 	private CodexRuleInjectionHook()
@@ -29,6 +38,9 @@ final class CodexRuleInjectionHook
 
 	/**
 	 * Loads rules for one Codex hook event and emits its harness JSON response.
+	 * <p>
+	 * A subagent receives its rules in the response. For SessionStart, the response holds only the guidance on reading
+	 * a file whole and a pointer to a file that holds the session's other rules.
 	 *
 	 * @param eventName the Codex hook event name
 	 * @param args the hook command-line arguments
@@ -51,7 +63,7 @@ final class CodexRuleInjectionHook
 				throw new IllegalArgumentException(eventName + " accepts no arguments");
 			JsonNode event = scope.readEvent(eventName, input);
 			Path projectDir = scope.projectDir(event, workingDirectory);
-			scope.createCatTemp(projectDir);
+			Path catTemp = scope.createCatTemp(projectDir);
 			Path pluginRoot = scope.pluginRoot();
 			Path userRulesRoot = scope.userRulesRoot();
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
@@ -59,7 +71,11 @@ final class CodexRuleInjectionHook
 			if (eventName.equals("SubagentStart"))
 				context = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID, scope.subagentType(event));
 			else
-				context = loader.loadForMainAgent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID);
+			{
+				SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID);
+				Path rulesFile = CodexSessionContext.write(catTemp, event, session.rules());
+				context = session.readingGuidance() + "\n\n# CAT Rules\n\n" + RULES_FILE_POINTER.formatted(rulesFile);
+			}
 			output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
 				"additionalContext", context))));
 			output.write('\n');

@@ -48,8 +48,6 @@ jobs:
           bats client/common/distribution/src/test/bats/bootstrap-common.bats
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
-      - name: Verify read-file script boundaries
-        run: bats client/common/distribution/src/test/bats/read-file.bats
       - name: Verify the jlink launcher template
         run: bats client/common/distribution/src/test/bats/jlink-launchers.bats
       - name: Verify the Codex plugin's part launchers

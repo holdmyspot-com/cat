@@ -68,9 +68,9 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
-	 * Verifies Codex agents receive the read-file rule at startup with its script command naming the
-	 * installed plugin's {@code client/bin/read-file}, while Claude agents, which do not ship that script, do not receive
-	 * the rule.
+	 * Verifies Codex agents receive the read-file rule at startup, stating the installed plugin's directory, which
+	 * holds the {@code run-part} and {@code read-part} commands it names, while Claude agents, which do not ship those
+	 * commands, do not receive the rule.
 	 *
 	 * @throws IOException if the bundled rules cannot be copied, routed, or loaded
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -85,17 +85,16 @@ public final class BundledRuleAudienceTest
 			copyBundledRules(plugin.resolve("rules"));
 			RuleArtifactRouter.route(plugin, scope.yaml());
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
-			String command = "tools.exec_command({cmd: \"" + plugin.toAbsolutePath().normalize() +
-				"/client/bin/read-file <path>\"})";
+			String pluginRoot = "the CAT plugin's root directory, `" + plugin.toAbsolutePath().normalize() + "`.";
 
-			for (String codex : List.of(loader.loadForMainAgent(plugin, project, "codex"),
+			for (String codex : List.of(loader.loadSessionForMainAgent(plugin, null, project, "codex").readingGuidance(),
 				loader.loadForSubagent(plugin, project, "codex", "cat:reviewer")))
 			{
-				requireThat(codex, "codex").contains("# Reading Files").contains(command).
-					doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "/client/bin/read-file");
+				requireThat(codex, "codex").contains("# Reading Command Output").contains(pluginRoot).
+					contains("${CAT_PLUGIN_ROOT}/bin/run-part").doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
 			}
 			requireThat(loader.loadForMainAgent(plugin, project, "claude"), "claude").
-				doesNotContain("# Reading Files");
+				doesNotContain("# Reading Command Output");
 		}
 	}
 

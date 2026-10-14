@@ -166,6 +166,44 @@ public final class ProjectRuleLoader
 	}
 
 	/**
+	 * Loads the rules for a harness's primary agent, with the harness rule on reading a file whole kept apart from the
+	 * others, for a session that delivers the others in a file.
+	 *
+	 * @param pluginRoot a non-null CAT installation directory
+	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
+	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
+	 * @param harness a non-blank lowercase harness identifier
+	 * @return the rule on reading a file whole, and every other rule in injection order
+	 * @throws NullPointerException if {@code pluginRoot}, {@code projectRoot}, or {@code harness} are null
+	 * @throws IllegalArgumentException if {@code harness} is blank or invalid
+	 * @throws IOException if the plugin lacks the harness rule on reading a file whole, a rule directory or file is not
+	 *                     a real directory or regular file, or its content is invalid
+	 */
+	public SessionRules loadSessionForMainAgent(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness)
+		throws IOException
+	{
+		RuleAudience audience = RuleAudience.primary();
+		List<Rule> rules = orderedRules(pluginRoot, userRulesRoot, projectRoot, harness, audience);
+		String readFilePath = "rules/" + harness + "/" + READ_FILE_RULE;
+		Rule readFile = null;
+		for (Rule rule : rules)
+		{
+			if (rule.root() == RuleRoot.PLUGIN && rule.path().equals(readFilePath))
+			{
+				readFile = rule;
+				break;
+			}
+		}
+		if (readFile == null)
+		{
+			throw new IOException("The CAT plugin lacks " + readFilePath + ", which tells the agent how to read its " +
+				"rules file whole: " + pluginRoot + ". Reinstall the CAT plugin.");
+		}
+		rules.remove(readFile);
+		return new SessionRules(readFile.context().strip(), context(rules, userRulesRoot, projectRoot, audience));
+	}
+
+	/**
 	 * Loads all direct rules addressed to one harness subagent and their declared prerequisites.
 	 *
 	 * @param pluginRoot a non-null CAT installation directory
@@ -219,6 +257,24 @@ public final class ProjectRuleLoader
 	private String load(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness, RuleAudience audience)
 		throws IOException
 	{
+		List<Rule> rules = orderedRules(pluginRoot, userRulesRoot, projectRoot, harness, audience);
+		return context(rules, userRulesRoot, projectRoot, audience);
+	}
+
+	/**
+	 * Loads all direct rules addressed to one recipient and their declared prerequisites, in injection order.
+	 *
+	 * @param pluginRoot a non-null CAT installation directory
+	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
+	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
+	 * @param harness a non-blank lowercase harness identifier
+	 * @param audience the rule recipient
+	 * @return a modifiable list of the rules
+	 * @throws IOException if a rule directory or file is not a real directory or regular file, or its content is invalid
+	 */
+	private List<Rule> orderedRules(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness,
+		RuleAudience audience) throws IOException
+	{
 		requireThat(harness, "harness").isNotBlank();
 		if (!harness.matches("[a-z][a-z0-9-]*"))
 			throw new IllegalArgumentException("Invalid CAT harness: " + harness);
@@ -244,7 +300,25 @@ public final class ProjectRuleLoader
 		List<String> leading = List.of("rules/" + harness + "/" + ENVIRONMENT_RULE,
 			"rules/" + harness + "/" + READ_FILE_RULE);
 		ordered.sort(Comparator.comparingInt(rule -> leadingRank(rule, leading)));
-		List<String> context = new ArrayList<>(ordered.stream().map(Rule::context).toList());
+		return ordered;
+	}
+
+	/**
+	 * Renders the context for ordered rules, followed by the lazy-loading routes of the user's and the project's
+	 * included rules.
+	 *
+	 * @param rules the rules in injection order
+	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
+	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
+	 * @param audience the rule recipient
+	 * @return the generated context
+	 * @throws IOException if declared lazy-rule metadata is invalid or names an unavailable file
+	 */
+	private String context(List<Rule> rules, Path userRulesRoot, Path projectRoot, RuleAudience audience)
+		throws IOException
+	{
+		Path projectRules = rulesDirectory(projectRoot);
+		List<String> context = new ArrayList<>(rules.stream().map(Rule::context).toList());
 		if (userRulesRoot != null)
 		{
 			String userLazyDependencies = lazyDependencies(userRulesRoot, userRulesRoot, RuleRoot.USER, audience);

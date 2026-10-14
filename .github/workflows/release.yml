@@ -54,8 +54,6 @@ jobs:
           bats client/common/distribution/src/test/bats/bootstrap-common.bats
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
-      - name: Verify read-file script boundaries
-        run: bats client/common/distribution/src/test/bats/read-file.bats
       - name: Upload native release files
         uses: actions/upload-artifact@v7
         with:

@@ -1,30 +1,33 @@
-# Reading Files
+# Reading Command Output
 
-## Guidance
+`${CAT_PLUGIN_ROOT}` stands for the CAT plugin's root directory, `<!-- cat:plugin-root -->`.
+The shell does not define it, so wherever this guide uses `${CAT_PLUGIN_ROOT}`, write that path in its place.
 
-Match the request before you act. When it names a file, release, customer or other part of this project, or asks
-for work that an instruction names files for, such as drafting a customer reply, start your turn with an `exec` call,
-with no message before it, and never ask the user a question before you have run one; when it does neither, it is a general-knowledge question,
-even when its subject, such as programming or networking, is also a subject of this project, so reply with the answer
-from what you know and run no command at all, not even `pwd`, `ls`, `rg` or `printf`, because nothing in the workspace
-changes that answer. Answering a question is not work that an instruction names files for. When the request only asks you to search a file
-or count what it mentions, that call runs `rg` and you never read the file; a request to go through a file, or to judge
-what its text means, is not a search, so read the whole file. Otherwise that call runs the script below
-on a file the request depends on; those files include every file that an instruction tells you to read or load.
-Before you end a turn in which you ran no command, check your reply. If it, or a draft in it, asks anyone for information, notes
-or details, says that you lack or cannot see them, or only says what you will do next, do not send it: run `exec` to look
-for them in the workspace, and answer from what you find.
-When you need a file's complete text, read it with exactly this `exec` script, alone, changing only `<path>`; it runs
-`read-file`, which prints the file, so never pass `read-file` to `cat` or another command:
+Codex shows only part of a long tool result: it removes lines from the middle. So that you see all of a command's
+output, run any command that may print output through `${CAT_PLUGIN_ROOT}/bin/run-part`, with the exception of
+`${CAT_PLUGIN_ROOT}/bin/read-part` that should be run without it. Write the command between a `<<'EOF'` line and an
+`EOF` line, exactly as you would write it without run-part:
 
-```js
-const result = await tools.exec_command({cmd: "<!-- cat:plugin-root -->/client/bin/read-file <path>"});
-text(result.output);
+```
+${CAT_PLUGIN_ROOT}/bin/run-part <<'EOF'
+<command>
+EOF
 ```
 
-Read one file per script, even when you need several files and would otherwise batch them: one part fits in a result,
-but parts of several files together exceed it and are cut. Never add `max_output_tokens`: the script already prints the file in parts that fit in one result. Each part ends with
-the command that prints the next part, or with `[end of <path>]`. Run each command it names at once in the same script,
-and do not answer before you see `[end of <path>]`.
+run-part changes only how you run a command, not which command you run: choose the command you would choose without
+run-part, then run it through run-part. The command can be anything that the shell runs, such as several commands
+joined by `;` or a pipeline, and it needs no extra quoting. Run each run-part command in a tool call of its own, and do
+not pipe its output.
 
-A general-knowledge question gets its answer with no command, not even one to look around.
+run-part saves and segments the output into multiple parts. When you invoke it, it will return the first part of the
+output followed by an instruction in square brackets on the last line that explain how to fetch the rest of the
+output. Each later part ends the same way, so keep running the instruction on the last line of each part until a
+part's last line starts with `[End of `; that part is the last one, and you may continue your work.
+
+The last line of every part is that instruction, even when the line before it ends with `\` or otherwise looks
+unfinished: the instruction is never part of the command's output.
+
+Give each tool call only the command, for example `tools.exec_command({cmd: "<the run-part command>"})`, and no
+`max_output_tokens`. run-part already makes each part small enough for Codex to show whole; a `max_output_tokens`
+value makes Codex silently remove lines from the middle of the part, and the lines you lose can hold a rule you must
+follow or the answer you need.

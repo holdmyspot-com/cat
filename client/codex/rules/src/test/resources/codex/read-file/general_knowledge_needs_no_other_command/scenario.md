@@ -1,9 +1,10 @@
-# General Knowledge Needs No Command
+# General Knowledge Needs No Other Command
 
 ## Design Goals
 
-- Prove that the complete-read rule does not make an agent run a command for a general-knowledge question whose
-  subject the workspace does not change, even in a project whose instructions name files to load for other work.
+- Prove that the complete-read rule does not make an agent run any command other than those that read CAT's rules
+  file for the session, for a general-knowledge question whose subject the workspace does not change, even in a
+  project whose instructions name files to load for other work.
 
 ## Variables
 
@@ -23,12 +24,13 @@ What does HTTP status {{status}} mean?
 
 ## Assertions
 
-### no_command
+### no_other_command
 
 - **kind**: guard
-- **tool**: `no-tool-call`
-- **description**: The agent runs no command and calls no tool: no `exec` call and no command such as `pwd`, `ls`, `rg`
-  or `printf`.
+- **description**: The only commands the agent runs are those that read CAT's rules file for this session, the file
+  under `.cat/work/temp/codex-context/` that its startup instructions name: a `run-part` command that prints that file,
+  and the `read-part` commands that its parts name. The agent runs no other command, such as `pwd`, `ls`, `rg` or
+  `printf`, and reads no other file.
 
 ### status_explained
 

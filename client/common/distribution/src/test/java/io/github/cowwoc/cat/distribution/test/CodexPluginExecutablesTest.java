@@ -26,10 +26,9 @@ import org.testng.annotations.Test;
 
 /**
  * Tests that the Codex plugin installs its scripts and hook launcher as executables, and that the Codex image launches
- * {@code run-part} and {@code read-part}. {@code read-file.bats} tests the packaged {@code read-file} script,
- * {@code jlink-launchers.bats} tests the launcher template against the built Codex image, and
- * {@code codex-plugin-launchers.bats} tests the {@code run-part} and {@code read-part} launchers in the plugin's
- * {@code bin} folder.
+ * {@code run-part} and {@code read-part}. {@code jlink-launchers.bats} tests the launcher template against the built
+ * Codex image, and {@code codex-plugin-launchers.bats} tests the {@code run-part} and {@code read-part} launchers in
+ * the plugin's {@code bin} folder.
  */
 public final class CodexPluginExecutablesTest
 {
@@ -50,7 +49,6 @@ public final class CodexPluginExecutablesTest
 		{
 			{"bin/read-part"},
 			{"bin/run-part"},
-			{"client/bin/read-file"},
 			{"hooks/post-tool-use.sh"}
 		};
 	}
@@ -96,7 +94,7 @@ public final class CodexPluginExecutablesTest
 
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = cleanup.add(Files.createTempDirectory("cat-codex-read-file-"));
+			Path temporary = cleanup.add(Files.createTempDirectory("cat-codex-executables-"));
 			Path jar = temporary.resolve("codex-plugin.jar");
 			try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar)))
 			{
