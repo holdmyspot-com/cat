@@ -54,6 +54,7 @@ import io.github.cowwoc.cat.common.optimizer.proposal.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JsonResponse;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
+import io.github.cowwoc.cat.common.optimizer.proposal.OutputFile;
 import io.github.cowwoc.cat.common.optimizer.proposal.PluginCheck;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.proposal.PromptTemplate;
@@ -82,6 +83,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -120,6 +122,14 @@ public final class ProposalTest
 	 * The contract author's evidence that a plugin under test does not depend on CAT.
 	 */
 	private static final String NO_CAT_EVIDENCE = "No prompt file invokes a CAT skill, agent or command.";
+	/**
+	 * Stands for the contract author session's project directory in an output that a test writes.
+	 */
+	private static final String STAGED = "/runs/contract-author/project";
+	/**
+	 * Holds the projects of the sessions that the tests create.
+	 */
+	private final TemporaryDirectories directories = new TemporaryDirectories();
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
 	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
@@ -154,19 +164,52 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Returns a completed contract author session whose final response is the given text.
+	 * Returns a completed contract author session that wrote its output to its output file. The session's project
+	 * directory replaces each occurrence of {@link #STAGED} in the output.
 	 *
-	 * @param response the final response
+	 * @param output the content of the output file
 	 * @return the session's result
 	 */
-	private static SessionResult.Completed session(String response)
+	private SessionResult.Completed session(String output)
+	{
+		try
+		{
+			Path initialProject = directories.add(Files.createTempDirectory("contract-author-initial-"));
+			Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
+			String name = OutputFile.name(initialProject);
+			Files.writeString(effects.resolve(name), output.replace(STAGED, effects.toString()), UTF_8);
+			return session(effects, initialProject, "The proposal is in " + name + ".");
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Returns a completed contract author session.
+	 *
+	 * @param effects the session's project after the session
+	 * @param initialProject the session's project before the session
+	 * @param response the session's final response
+	 * @return the session's result
+	 */
+	private static SessionResult.Completed session(Path effects, Path initialProject, String response)
 	{
 		return new SessionResult.Completed(Path.of("/runs/contract-author/artifacts/transcript.jsonl"),
-			List.of(List.of("I will inspect the prompt system.", response)), Path.of("/runs/contract-author/project"),
-			Path.of("/runs/contract-author/initial-project"),
-			"model",
-				null,
+			List.of(List.of("I will inspect the prompt system.", response)), effects, initialProject, "model", null,
 			null, List.of(), OBSERVED, List.of());
+	}
+
+	/**
+	 * Removes the directories of the sessions that the tests created.
+	 *
+	 * @throws IOException if a directory cannot be removed
+	 */
+	@AfterClass
+	public void removeDirectories() throws IOException
+	{
+		directories.close();
 	}
 
 	/**
@@ -177,7 +220,8 @@ public final class ProposalTest
 	{
 		// Requirement: R-C12
 		JsonResponse responses = new JsonResponse(json);
-		SessionResult.Completed earlier = session("{\"answer\":1}");
+		SessionResult.Completed earlier = session(Path.of(STAGED), Path.of("/runs/contract-author/initial-project"),
+			"{\"answer\":1}");
 		SessionResult.Completed invalidFinal = new SessionResult.Completed(earlier.transcript(),
 			List.of(List.of("{\"answer\":1}"), List.of("{\"answer\":2}", "No structured output.")),
 			earlier.effects(), earlier.initialProject(), earlier.model(), null, null, List.of(), OBSERVED, List.of());
@@ -285,9 +329,8 @@ public final class ProposalTest
 		requireThat(request.turns().size(), "turns.size()").isEqualTo(2);
 		String prompt = request.turns().getFirst();
 		requireThat(prompt, "prompt").contains("Previous proposal:\n\nnone\n").contains("User feedback:\n\nnone\n").
-			contains("do not write the proposal yet");
-		requireThat(request.turns().getLast(), "finalTurn").contains("Send the complete proposal now").
-			contains("its first character is `{` and its last character is `}`");
+			contains("do not write the proposal file yet");
+		requireThat(request.turns().getLast(), "finalTurn").contains(OutputFile.NAME);
 		JsonNode outputSchema = readOutputSchema(prompt);
 		JsonNode judgeProperties = outputSchema.get("properties").get("judge").get("properties");
 		requireThat(List.copyOf(judgeProperties.propertyNames()), "judge.properties").
@@ -320,13 +363,9 @@ public final class ProposalTest
 	 * @throws InvalidProposalException if the output is rejected
 	 */
 	@Test
-	public void derivesTheProposalFromFencedOutput() throws InvalidProposalException
+	public void derivesTheProposalFromItsFile() throws InvalidProposalException
 	{
-		// Requirement: R-E13
-		// Requirement: R-C5
-		// Requirement: R-C7
-		DerivedProposal derived = contractAuthor.proposal(session("```json\n" + fixture("derivation.json") + "```\n"),
-			PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
 
 		requireThat(derived.contract(), "contract").isEqualTo(expectedContract());
 		requireThat(derived.contract().judge().profile(), "judge.profile").isEqualTo(ROLE);
@@ -371,7 +410,7 @@ public final class ProposalTest
 			"Keeps [AGENTS.md](/staged/incumbent/AGENTS.md) and /staged/incumbent/rules/safety.md consistent.");
 		requireThat(derived.conflicts(), "conflicts").isEqualTo(List.of(expected));
 		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/contract-author/project");
-		requireThat(contractAuthor.proposal(session(derived.derivation()), PROFILES, SALT).conflicts(),
+		requireThat(contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT).conflicts(),
 			"storedConflicts"). isEqualTo(List.of(expected));
 	}
 
@@ -393,7 +432,7 @@ public final class ProposalTest
 			"[CLAUDE.md:2](/staged/incumbent/CLAUDE.md:2) loads /staged/incumbent/rules/images.md.");
 		requireThat(derived.scopeConditions(), "scopeConditions").isEqualTo(List.of(expected));
 		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/contract-author/project");
-		requireThat(contractAuthor.proposal(session(derived.derivation()), PROFILES, SALT).scopeConditions(),
+		requireThat(contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT).scopeConditions(),
 			"storedScope"). isEqualTo(List.of(expected));
 	}
 
@@ -478,22 +517,8 @@ public final class ProposalTest
 
 		requireThat(json.readTree(derived.derivation()).at(pointer).asString(), "savedText").
 			isEqualTo("/staged/incumbent/notes.md");
-		DerivedProposal reread = contractAuthor.proposal(session(derived.derivation()), PROFILES, SALT);
+		DerivedProposal reread = contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT);
 		requireThat(reread.contract(), "storedContract").isEqualTo(derived.contract());
-	}
-
-	/**
-	 * Verifies that a bare contract author output is accepted as well as a fenced one.
-	 *
-	 * @throws InvalidProposalException if the output is rejected
-	 */
-	@Test
-	public void derivesTheProposalFromBareOutput() throws InvalidProposalException
-	{
-		// Requirement: R-E13
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
-
-		requireThat(derived.contract(), "contract").isEqualTo(expectedContract());
 	}
 
 	/**
@@ -539,21 +564,107 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that a final response with prose around the proposal is invalid, even though the proposal itself is.
+	 * Verifies that an output file with prose around the proposal is refused with the line and column at which it
+	 * stops being JSON, so that the contract author can correct that part.
 	 */
 	@Test
-	public void rejectsProseAroundTheProposal()
+	public void reportsWhereTheOutputFileStopsParsing()
 	{
-		// Requirement: R-E13
 		try
 		{
-			contractAuthor.proposal(session("Here is the proposal:\n" + fixture("derivation.json")), PROFILES, SALT);
+			contractAuthor.proposal(session("{\n  \"requirements\": [\n    oops\n  ]\n}\n"), PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
 		{
-			requireThat(e.problems().getFirst(), "problem").startsWith("$: the final response is not exactly one " +
-				"JSON object");
+			requireThat(e.problems().size(), "problems.size()").isEqualTo(1);
+			requireThat(e.problems().getFirst(), "problem").startsWith("$: ").contains(OutputFile.NAME).
+				contains("line 3");
+		}
+	}
+
+	/**
+	 * Verifies that a session that wrote no output file is refused with a problem that names the file, even when its
+	 * final response holds a valid proposal.
+	 *
+	 * @throws IOException if a directory cannot be created
+	 */
+	@Test
+	public void refusesAMissingOutputFile() throws IOException
+	{
+		Path initialProject = directories.add(Files.createTempDirectory("contract-author-initial-"));
+		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
+		try
+		{
+			contractAuthor.proposal(session(effects, initialProject, fixture("derivation.json")), PROFILES, SALT);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems().size(), "problems.size()").isEqualTo(1);
+			requireThat(e.problems().getFirst(), "problem").startsWith("$: ").contains(OutputFile.NAME);
+		}
+	}
+
+	/**
+	 * Verifies that when the project already holds a file named like the output file, the session writes its output
+	 * to another name that the request states, and CAT reads that file rather than the project's.
+	 *
+	 * @throws IOException              if a file cannot be written
+	 * @throws InvalidProposalException if the output is rejected
+	 */
+	@Test
+	public void outputFileAvoidsProjectFiles() throws IOException, InvalidProposalException
+	{
+		Path project = directories.add(Files.createTempDirectory("contract-author-initial-"));
+		Files.writeString(project.resolve(OutputFile.NAME), "{\"user\": \"data\"}\n", UTF_8);
+		String name = OutputFile.name(project);
+		requireThat(name, "name").isNotEqualTo(OutputFile.NAME);
+		requireThat(contractAuthor.request(project, PROFILES, SALT).turns().getLast(), "outputTurn").contains(name);
+
+		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
+		Files.writeString(effects.resolve(OutputFile.NAME), "{\"user\": \"data\"}\n", UTF_8);
+		Files.writeString(effects.resolve(name), fixture("derivation.json"), UTF_8);
+		DerivedProposal derived = contractAuthor.proposal(session(effects, project, "Done."), PROFILES, SALT);
+		requireThat(derived.contract(), "contract").isEqualTo(expectedContract());
+	}
+
+	/**
+	 * Verifies that the correction turn names the output file and lists each problem with its JSON path, so that the
+	 * contract author can edit only the values that the problems concern.
+	 */
+	@Test
+	public void correctionNamesTheFileAndEachProblem()
+	{
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT);
+		String correction = request.followUp().orElseThrow().next(session(fixture("derivation-with-judge-fields.json"))).
+			orElseThrow();
+		requireThat(correction, "correction").contains(OutputFile.NAME).
+			contains("- $.judge.model: CAT supplies this field");
+		requireThat(request.followUp().orElseThrow().next(session(fixture("derivation.json"))), "valid").isEmpty();
+	}
+
+	/**
+	 * Verifies that a stored derivation is validated again from its text, as {@code confirm} and {@code revise} read
+	 * it after the session's files are gone.
+	 *
+	 * @throws InvalidProposalException if the stored text is rejected
+	 */
+	@Test
+	public void validatesAStoredDerivation() throws InvalidProposalException
+	{
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		DerivedProposal stored = contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT);
+		requireThat(stored.contract(), "contract").isEqualTo(derived.contract());
+		requireThat(stored.observedSources(), "observedSources").isEqualTo(OBSERVED);
+		try
+		{
+			contractAuthor.proposal("not json", OBSERVED, PROFILES, SALT);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems().getFirst(), "problem").startsWith("$: ");
 		}
 	}
 

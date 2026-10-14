@@ -62,6 +62,7 @@ import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeSessionPort;
+import io.github.cowwoc.cat.common.optimizer.proposal.OutputFile;
 import io.github.cowwoc.cat.common.optimizer.proposal.test.ProposalTest;
 import io.github.cowwoc.cat.common.optimizer.report.TokenStatistics;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
@@ -77,6 +78,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -530,9 +532,10 @@ public final class OptimizerCoreTest
 					followUps.add(turn.get());
 					List<List<String>> responses = new ArrayList<>(first.responses());
 					responses.addAll(reply.responses());
-					response = new SessionResult.Completed(first.transcript(), responses, first.effects(), first.initialProject(),
-						first.model(),
-						first.reasoning(), first.usage(), first.windows(), first.promptSources(), first.toolCalls());
+					// The session's project ends in the state that the reply left
+					response = new SessionResult.Completed(first.transcript(), responses, reply.effects(),
+						first.initialProject(), first.model(), first.reasoning(), first.usage(), first.windows(),
+						first.promptSources(), first.toolCalls());
 				}
 			}
 			List<TokenUsage> tokens = usage.getOrDefault(request.role(), List.of());
@@ -670,7 +673,7 @@ public final class OptimizerCoreTest
 	 *
 	 * @param change edits the output
 	 * @return the output as JSON text
-	 * @throws java.io.UncheckedIOException if the fixture cannot be read
+	 * @throws UncheckedIOException if the fixture cannot be read
 	 */
 	private static String derivation(java.util.function.Consumer<ObjectNode> change)
 	{
@@ -682,7 +685,7 @@ public final class OptimizerCoreTest
 		}
 		catch (IOException e)
 		{
-			throw new java.io.UncheckedIOException(e);
+			throw new UncheckedIOException(e);
 		}
 	}
 
@@ -745,9 +748,8 @@ public final class OptimizerCoreTest
 		AtomicInteger contractAuthors = new AtomicInteger();
 		Function<SessionRequest, SessionResult> script = request -> switch (request.role())
 		{
-			case CONTRACT_AUTHOR -> contractAuthorEnd.orElseGet(() -> new SessionResult.Completed(transcript,
-				List.of(List.of("working", contractAuthor.apply(contractAuthors.getAndIncrement()))), effects,
-				initialProject, "model", null, null, List.of(), "hook: none", List.of()));
+			case CONTRACT_AUTHOR -> contractAuthorEnd.orElseGet(() -> contractAuthorResult(scratch, transcript,
+				initialProject, contractAuthor.apply(contractAuthors.getAndIncrement())));
 			case TRIAL -> new SessionResult.Completed(transcript, request.turns().stream().
 				map(_ -> List.of("answer")).toList(), effects, initialProject, "model", null, null, List.of(),
 				"CLAUDE.md", List.of());
@@ -763,6 +765,32 @@ public final class OptimizerCoreTest
 		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
 			tracked, clock -> new ScriptedSessions(clock, script));
 		return new Repository(root, command, new OptimizerCore(command));
+	}
+
+	/**
+	 * Returns a contract author session that wrote its output to its output file and ended with the same text.
+	 *
+	 * @param scratch the directory that receives the session's project
+	 * @param transcript the session's transcript
+	 * @param initialProject the session's project before the session
+	 * @param output the session's output
+	 * @return the session's result
+	 * @throws UncheckedIOException if the session's project cannot be written
+	 */
+	private static SessionResult.Completed contractAuthorResult(Path scratch, Path transcript, Path initialProject,
+		String output)
+	{
+		try
+		{
+			Path effects = Files.createTempDirectory(scratch, "contract-author-");
+			Files.writeString(effects.resolve(OutputFile.name(initialProject)), output, StandardCharsets.UTF_8);
+			return new SessionResult.Completed(transcript, List.of(List.of("working", output)), effects,
+				initialProject, "model", null, null, List.of(), "hook: none", List.of());
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	/**
@@ -1103,7 +1131,7 @@ public final class OptimizerCoreTest
 				isEqualTo(1);
 			requireThat(repository.sessions().followUps, "followUps").size().isEqualTo(1);
 			requireThat(repository.sessions().followUps.getFirst(), "correction").
-				contains("the final response is not exactly one JSON object");
+				contains("`cat-output.json` is not one JSON object");
 			requireThat(Files.exists(repository.directory(result.status().campaignId()).resolve("held_out/proposal.json")),
 				"proposalFileExists").isTrue();
 		}
@@ -2501,6 +2529,10 @@ public final class OptimizerCoreTest
 			requireThat(result.message(), "message").contains("formatting").contains("r1").
 				contains("a formal summary shortened for an expert reader");
 			requireThat(repository.sessions().followUps, "followUps").size().isEqualTo(1);
+			requireThat(repository.sessions().followUps.getFirst(), "correction").
+				contains("`" + OutputFile.NAME + "`");
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getLast(),
+				"finalTurn").contains("`" + OutputFile.NAME + "`");
 			Campaign campaign = repository.load(id);
 			requireThat(campaign.lineages().size(), "lineages").isEqualTo(1);
 			requireThat(campaign.awaitsTestRevision(), "awaitsTestRevision").isTrue();

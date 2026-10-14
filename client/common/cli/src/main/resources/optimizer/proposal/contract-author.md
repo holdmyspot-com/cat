@@ -23,8 +23,8 @@
   CAT can show it to the user before confirmation.
 - Turn every recorded regression scenario of the target into a prompt test that cites that scenario, converting a
   scenario in an earlier format to the current one.
-- Make the final response exactly one JSON object that satisfies the output schema below. CAT discards any other
-  final response as an infrastructure failure.
+- Write the proposal to the file that the final turn names, as one JSON object that satisfies the output schema below.
+  CAT reads only that file, and treats a missing or invalid file as a refused proposal.
 
 ## Guidance
 
@@ -259,13 +259,13 @@ User feedback:
 {{feedback}}
 
 If both are `none`, derive the proposal from the prompt system. Otherwise apply the feedback to the previous proposal
-and return the complete revised proposal, including every unchanged item; never return only the changes.
+and write the complete revised proposal, including every unchanged item; never write only the changes.
 
 ### Output
 
 This session has two turns. In this turn, inspect the prompt system and settle every item of the proposal, then end the
-turn with one sentence saying that the inspection is complete; do not write the proposal yet. The next message asks for
-the proposal as one JSON object that satisfies this schema:
+turn with one sentence saying that the inspection is complete; do not write the proposal file yet. The next message
+names the file to write the proposal to, as one JSON object that satisfies this schema:
 
 {{output_schema}}
 

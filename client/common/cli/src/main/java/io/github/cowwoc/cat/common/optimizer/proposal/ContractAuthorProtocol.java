@@ -65,13 +65,12 @@ public final class ContractAuthorProtocol
 	private static final Duration TIME_LIMIT = Duration.ofMinutes(30);
 	private static final String PROMPT_RESOURCE = "/optimizer/proposal/contract-author.md";
 	/**
-	 * The final turn, which asks for the proposal alone so that no narration of the inspection shares the final
-	 * response.
+	 * The final turn, which asks the contract author to write the proposal to its output file.
 	 */
 	private static final String OUTPUT_RESOURCE = "/optimizer/proposal/contract-author-output.md";
 	/**
-	 * The turn that returns the problems of a refused proposal to the contract author, so that it can correct the
-	 * proposal with its inspection still in context.
+	 * The turn that returns the problems of a refused proposal to the contract author, so that it can correct the parts
+	 * of its output file that they concern with its inspection still in context.
 	 */
 	private static final String CORRECTION_RESOURCE = "/optimizer/proposal/contract-author-correction.md";
 	private static final String FINDINGS_RESOURCE = "/optimizer/proposal/contract-author-findings.schema.json";
@@ -84,15 +83,17 @@ public final class ContractAuthorProtocol
 	 * The value of the revision placeholders when there is nothing to revise.
 	 */
 	private static final String NONE = "none";
-	private static final String NOT_ONE_OBJECT = "$: the final response is not exactly one JSON object, either bare " +
-		"or alone inside one Markdown code fence";
+	/**
+	 * Describes a stored proposal in a problem.
+	 */
+	private static final String STORED = "the stored proposal";
 	private final JsonMapper json;
 	private final ProposalSchema schema;
 	private final JudgeTemplate judge;
-	private final JsonResponse responses;
+	private final OutputFile outputFile;
 	private final PromptTemplate prompt;
 	private final String outputSchema;
-	private final String outputTurn;
+	private final PromptTemplate outputTurn;
 	private final PromptTemplate correction;
 	private final RegressionScenarios scenarios;
 	private final Path target;
@@ -133,10 +134,10 @@ public final class ContractAuthorProtocol
 		this.target = target.normalize();
 		this.goal = goal;
 		this.reportsExitStatus = reportsExitStatus;
-		this.responses = new JsonResponse(json);
+		this.outputFile = new OutputFile(json);
 		this.prompt = withPromptTests(PROMPT_RESOURCE);
 		this.outputSchema = outputSchema(json, schema);
-		this.outputTurn = PromptTemplate.readResource(OUTPUT_RESOURCE);
+		this.outputTurn = PromptTemplate.load(OUTPUT_RESOURCE);
 		this.correction = PromptTemplate.load(CORRECTION_RESOURCE);
 	}
 
@@ -255,10 +256,11 @@ public final class ContractAuthorProtocol
 			profiles.toString(), "capability_ranking", evidence.ranking().describe(), "output_schema", outputSchema,
 			"regression_scenarios", scenarios.prompt(), "generators", ValueGenerators.describeAll(), "target_prompt_file",
 			targetPromptFile(), "goal", goal()));
-		FollowUp correct = result -> correction(result, evidence, salt);
+		String file = OutputFile.name(promptSystem);
+		FollowUp correct = result -> correction(result, evidence, salt, file);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn,
-			outputTurn), List.of(), TIME_LIMIT, role(), WorkspaceFixtures.NONE, Optional.empty(),
-			Optional.of(correct));
+			outputTurn.fill(Map.of("output_file", file))), List.of(), TIME_LIMIT, role(), WorkspaceFixtures.NONE,
+			Optional.empty(), Optional.of(correct));
 	}
 
 	/**
@@ -299,9 +301,11 @@ public final class ContractAuthorProtocol
 	 * @param result the session's result after it sent the proposal
 	 * @param profiles the profile inventory and its capability ranking
 	 * @param salt the salt that CAT drew for the proposal
+	 * @param file the name of the session's output file
 	 * @return the turn that lists the proposal's problems, or empty if the proposal is valid
 	 */
-	private Optional<String> correction(SessionResult.Completed result, ProfileEvidence profiles, long salt)
+	private Optional<String> correction(SessionResult.Completed result, ProfileEvidence profiles, long salt,
+		String file)
 	{
 		try
 		{
@@ -313,7 +317,7 @@ public final class ContractAuthorProtocol
 			StringJoiner problems = new StringJoiner("\n");
 			for (String problem : e.problems())
 				problems.add("- " + problem);
-			return Optional.of(correction.fill(Map.of("problems", problems.toString())));
+			return Optional.of(correction.fill(Map.of("problems", problems.toString(), "output_file", file)));
 		}
 	}
 
@@ -331,8 +335,8 @@ public final class ContractAuthorProtocol
 	 *   reading the same output again gives the same contract
 	 * @return the proposal
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws InvalidProposalException if the final response is not exactly one JSON object, bare or alone inside one
-	 *   Markdown code fence, or the object violates the contract author's output schema, supplies a judge field or the
+	 * @throws InvalidProposalException if the session wrote no output file or the file is not exactly one JSON object,
+	 *   or the object violates the contract author's output schema, supplies a judge field or the
 	 *   trial profiles that CAT owns, declares an assertion whose built-in tool needs exit statuses that the harness
 	 *   does not report, restricts the
 	 *   profiles to a set that the inventory cannot satisfy, describes a certification profile that matches no
@@ -344,12 +348,32 @@ public final class ContractAuthorProtocol
 	{
 		requireThat(result, "result").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
-		Optional<ObjectNode> extracted = responses.parseFinalResponse(result);
-		if (extracted.isEmpty())
-			throw new InvalidProposalException(List.of(NOT_ONE_OBJECT));
-		ObjectNode output = extracted.get();
+		ObjectNode output = outputFile.read(result);
 		rewriteProjectPaths(output, result.effects());
 		return proposal(output, result.promptSources(), profiles, salt);
+	}
+
+	/**
+	 * Validates a stored contract author output whose text already names the user's project, and computes its trial
+	 * profiles.
+	 *
+	 * @param derivation the stored output
+	 * @param observedSources the prompt sources that the harness reported loading in the contract author session
+	 * @param profiles the profile inventory, its shipped capability ranking and the bindings that CAT read when the
+	 *   contract author ran
+	 * @param salt the salt that CAT drew for the proposal
+	 * @return the proposal
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws InvalidProposalException if {@code derivation} is not exactly one JSON object or breaks a rule that
+	 *   {@link #proposal(SessionResult.Completed, ProfileEvidence, long)} lists
+	 */
+	public DerivedProposal proposal(String derivation, String observedSources, ProfileEvidence profiles, long salt)
+		throws InvalidProposalException
+	{
+		requireThat(derivation, "derivation").isNotNull();
+		requireThat(observedSources, "observedSources").isNotNull();
+		requireThat(profiles, "profiles").isNotNull();
+		return proposal(outputFile.parse(derivation, STORED), observedSources, profiles, salt);
 	}
 
 	/**

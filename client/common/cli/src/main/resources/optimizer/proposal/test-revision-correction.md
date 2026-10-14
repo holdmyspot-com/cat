@@ -1,8 +1,9 @@
-CAT refused the result in your last message because of these problems:
+CAT refused the result in `{{output_file}}` because of these problems:
 
 {{problems}}
 
-Correct every problem and keep the rest of the result unless a correction requires changing it. Then send the complete
-corrected result, as one JSON object that satisfies the output schema in the first message. Write the object as the
-whole message: its first character is `{` and its last character is `}`. Do not open with a lead-in sentence or close
-with a note. CAT parses this message as JSON and rejects the result if any other text surrounds the object.
+Each problem starts with the JSON path of the value it concerns, such as `$.test.test_cases[1]`, or names the test case.
+Correct every problem by editing only the values it concerns, and keep the rest of the file unless a correction requires
+changing it. Read only the parts of the file that you need, for example with `jq '.test.cases[1]' {{output_file}}`.
+Then check that the file still parses as JSON. CAT reads the result only from the file, so do not repeat it in your
+reply.

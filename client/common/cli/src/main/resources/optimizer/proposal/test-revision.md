@@ -11,8 +11,8 @@
   system's.
 - When no organic test can prove a requirement, or correcting the test would change a confirmed requirement, say so
   and propose the requirement change, so that the user can decide.
-- Make the final response exactly one JSON object that satisfies the output schema below. CAT discards any other
-  final response as an infrastructure failure.
+- Write the result to the file that the final turn names, as one JSON object that satisfies the output schema below.
+  CAT reads only that file, and treats a missing or invalid file as a refused result.
 
 ## Guidance
 
@@ -84,8 +84,8 @@ you examine.
 ### Output
 
 This session has two turns. In this turn, examine the test and settle the result, then end the turn with one sentence
-saying that the examination is complete; do not write the result yet. The next message asks for the result as one JSON
-object that satisfies this schema:
+saying that the examination is complete; do not write the result file yet. The next message names the file to write the
+result to, as one JSON object that satisfies this schema:
 
 {{output_schema}}
 

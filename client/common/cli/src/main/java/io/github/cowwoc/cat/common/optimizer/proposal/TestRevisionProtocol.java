@@ -52,27 +52,24 @@ public final class TestRevisionProtocol
 	private static final Duration TIME_LIMIT = Duration.ofMinutes(30);
 	private static final String PROMPT_RESOURCE = "/optimizer/proposal/test-revision.md";
 	/**
-	 * The final turn, which asks for the result alone so that no narration of the examination shares the final
-	 * response.
+	 * The final turn, which asks the session to write the result to its output file.
 	 */
 	private static final String OUTPUT_RESOURCE = "/optimizer/proposal/test-revision-output.md";
 	/**
-	 * The turn that returns the problems of a refused result to the session, so that it can correct the result with
-	 * its examination still in context.
+	 * The turn that returns the problems of a refused result to the session, so that it can correct the parts of its
+	 * output file that they concern with its examination still in context.
 	 */
 	private static final String CORRECTION_RESOURCE = "/optimizer/proposal/test-revision-correction.md";
-	private static final String NOT_ONE_OBJECT = "$: the final response is not exactly one JSON object, either bare " +
-		"or alone inside one Markdown code fence";
 	private static final String REVISED = "revised";
 	private static final String SOUND = "sound";
 	private static final String UNPROVABLE = "unprovable";
 	private static final String REQUIREMENT_CHANGE = "requirement_change";
 	private final JsonMapper json;
 	private final ContractAuthorProtocol contractAuthor;
-	private final JsonResponse responses;
+	private final OutputFile outputFile;
 	private final PromptTemplate prompt;
 	private final String outputSchema;
-	private final String outputTurn;
+	private final PromptTemplate outputTurn;
 	private final PromptTemplate correction;
 
 	/**
@@ -92,10 +89,10 @@ public final class TestRevisionProtocol
 		requireThat(contractAuthor, "contractAuthor").isNotNull();
 		this.json = json;
 		this.contractAuthor = contractAuthor;
-		this.responses = new JsonResponse(json);
+		this.outputFile = new OutputFile(json);
 		this.prompt = ContractAuthorProtocol.withPromptTests(PROMPT_RESOURCE);
 		this.outputSchema = outputSchema(json, schema);
-		this.outputTurn = PromptTemplate.readResource(OUTPUT_RESOURCE);
+		this.outputTurn = PromptTemplate.load(OUTPUT_RESOURCE);
 		this.correction = PromptTemplate.load(CORRECTION_RESOURCE);
 	}
 
@@ -181,10 +178,11 @@ public final class TestRevisionProtocol
 			"goal", contractAuthor.goal(), "contract", examined.confirmed().derivation(), "test", request.test(),
 			"trigger", trigger, "kinds", json.writerWithDefaultPrettyPrinter().writeValueAsString(kinds),
 			"generators", ValueGenerators.describeAll(), "output_schema", outputSchema));
-		FollowUp correct = result -> correction(result, examined);
+		String file = OutputFile.name(promptSystem);
+		FollowUp correct = result -> correction(result, examined, file);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn,
-			outputTurn), List.of(), TIME_LIMIT, contractAuthor.role(), WorkspaceFixtures.NONE, Optional.empty(),
-			Optional.of(correct));
+			outputTurn.fill(Map.of("output_file", file))), List.of(), TIME_LIMIT, contractAuthor.role(),
+			WorkspaceFixtures.NONE, Optional.empty(), Optional.of(correct));
 	}
 
 	/**
@@ -192,9 +190,10 @@ public final class TestRevisionProtocol
 	 *
 	 * @param result the session's result after it sent its answer
 	 * @param examined what the session examined
+	 * @param file the name of the session's output file
 	 * @return the turn that lists the result's problems, or empty if the result is valid
 	 */
-	private Optional<String> correction(SessionResult.Completed result, Examination examined)
+	private Optional<String> correction(SessionResult.Completed result, Examination examined, String file)
 	{
 		try
 		{
@@ -206,7 +205,7 @@ public final class TestRevisionProtocol
 			StringJoiner problems = new StringJoiner("\n");
 			for (String problem : e.problems())
 				problems.add("- " + problem);
-			return Optional.of(correction.fill(Map.of("problems", problems.toString())));
+			return Optional.of(correction.fill(Map.of("problems", problems.toString(), "output_file", file)));
 		}
 	}
 
@@ -218,8 +217,8 @@ public final class TestRevisionProtocol
 	 * @param examined what the session examined
 	 * @return the outcome of the examination
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws InvalidProposalException if the final response is not exactly one JSON object, bare or alone inside one
-	 *   Markdown code fence, or the object has an unknown {@code result}, blank {@code reasons}, a {@code test} that
+	 * @throws InvalidProposalException if the session wrote no output file or the file is not exactly one JSON object,
+	 *   or the object has an unknown {@code result}, blank {@code reasons}, a {@code test} that
 	 *   does not match its {@code result}, or a {@code proposed_change} that does not match it; or if the corrected
 	 *   test changes the examined test's identifier, requirements, absent triggers or regression scenarios, repeats one
 	 *   of its test cases, has fewer than 2 distinct expected outcomes in a part of the split, or makes the contract
@@ -229,10 +228,7 @@ public final class TestRevisionProtocol
 	{
 		requireThat(result, "result").isNotNull();
 		requireThat(examined, "examined").isNotNull();
-		Optional<ObjectNode> extracted = responses.parseFinalResponse(result);
-		if (extracted.isEmpty())
-			throw new InvalidProposalException(List.of(NOT_ONE_OBJECT));
-		ObjectNode output = extracted.get();
+		ObjectNode output = outputFile.read(result);
 		contractAuthor.rewriteProjectPaths(output, result.effects());
 
 		List<String> problems = new ArrayList<>();

@@ -5,7 +5,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
-import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
@@ -55,23 +54,27 @@ final class ProposalFile
 	/**
 	 * A stored proposal.
 	 *
-	 * @param result the contract author's output as a session result, which the caller validates again
+	 * @param derivation the contract author's output, whose text already names the user's project and which the caller
+	 *   validates again
+	 * @param observedSources the prompt sources that the harness reported loading in the contract author session
 	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the contract author ran
 	 * @param salt the salt that CAT drew for the proposal
 	 */
-	record Stored(SessionResult.Completed result, ProfileEvidence profiles, long salt)
+	record Stored(String derivation, String observedSources, ProfileEvidence profiles, long salt)
 	{
 		/**
 		 * Creates a stored proposal.
 		 *
-		 * @param result the contract author's output as a session result
+		 * @param derivation the contract author's output
+		 * @param observedSources the prompt sources that the harness reported loading in the contract author session
 		 * @param profiles the profile inventory and bindings
 		 * @param salt the salt that CAT drew for the proposal
-		 * @throws NullPointerException if {@code result} or {@code profiles} are null
+		 * @throws NullPointerException if any of the arguments are null
 		 */
 		Stored
 		{
-			requireThat(result, "result").isNotNull();
+			requireThat(derivation, "derivation").isNotNull();
+			requireThat(observedSources, "observedSources").isNotNull();
 			requireThat(profiles, "profiles").isNotNull();
 		}
 	}
@@ -144,14 +147,11 @@ final class ProposalFile
 	/**
 	 * Reads the stored proposal.
 	 *
-	 * @param project the user's project root, which the stored derivation's paths name
 	 * @return the proposal, or empty if no proposal is stored
-	 * @throws NullPointerException if {@code project} is null
 	 * @throws IOException if the file cannot be read or is not a proposal file of a readable version
 	 */
-	Optional<Stored> read(Path project) throws IOException
+	Optional<Stored> read() throws IOException
 	{
-		requireThat(project, "project").isNotNull();
 		if (!Files.exists(file))
 			return Optional.empty();
 		JsonNode root = json.readTree(Files.readString(file, StandardCharsets.UTF_8));
@@ -189,12 +189,8 @@ final class ProposalFile
 		{
 			throw new IOException(file + " holds invalid trial profiles: " + e.getMessage(), e);
 		}
-		// Stored text already names the user's project, so the contract author protocol must use that same root when it
-		// validates the text again. The proposal file stands in for the session's transcript.
-		SessionResult.Completed result = new SessionResult.Completed(file,
-			List.of(List.of(derivation)),
-			project, project, null, null, null, List.of(), root.get("observed_sources").asString(), List.of());
-		return Optional.of(new Stored(result, profiles, root.get("salt").asLong()));
+		return Optional.of(new Stored(derivation, root.get("observed_sources").asString(), profiles,
+			root.get("salt").asLong()));
 	}
 
 	/**

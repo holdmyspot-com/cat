@@ -1,4 +1,3 @@
-Send the complete proposal now, as one JSON object that satisfies the output schema in the first message. Write
-the object as the whole message: its first character is `{` and its last character is `}`. Do not open with a lead-in
-sentence or close with a note. CAT parses this message as JSON and rejects the proposal if any other text surrounds the
-object.
+Write the complete proposal now to the file `{{output_file}}` in the working directory, as one JSON object that
+satisfies the output schema in the first message. CAT reads the proposal only from that file, so do not repeat it in
+your reply. Before you end the turn, check that the file parses as JSON, for example with `jq empty {{output_file}}`.

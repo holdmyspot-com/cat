@@ -458,13 +458,14 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		String id = campaign.header().id();
-		ProposalFile.Stored stored = new ProposalFile(heldOutDirectory(root, id), scope.json()).read(root).
+		ProposalFile.Stored stored = new ProposalFile(heldOutDirectory(root, id), scope.json()).read().
 			orElseThrow(() -> new IOException("Campaign " + id + " has no stored confirmed proposal"));
 		ContractAuthorProtocol contractAuthor = contractAuthor(root, campaign);
 		DerivedProposal current;
 		try
 		{
-			current = contractAuthor.proposal(stored.result(), stored.profiles(), stored.salt());
+			current = contractAuthor.proposal(stored.derivation(), stored.observedSources(), stored.profiles(),
+				stored.salt());
 		}
 		catch (InvalidProposalException e)
 		{
@@ -1436,13 +1437,13 @@ public final class OptimizerCore implements Core
 	private Optional<DerivedProposal> stored(Path root, Campaign campaign) throws IOException
 	{
 		Optional<ProposalFile.Stored> stored = new ProposalFile(heldOutDirectory(root, campaign.header().id()),
-			scope.json()).read(root);
+			scope.json()).read();
 		if (stored.isEmpty())
 			return Optional.empty();
 		try
 		{
-			return Optional.of(contractAuthor(root, campaign).proposal(stored.get().result(), stored.get().profiles(),
-				stored.get().salt()));
+			return Optional.of(contractAuthor(root, campaign).proposal(stored.get().derivation(),
+				stored.get().observedSources(), stored.get().profiles(), stored.get().salt()));
 		}
 		catch (InvalidProposalException e)
 		{
