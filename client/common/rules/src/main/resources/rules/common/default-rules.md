@@ -113,7 +113,10 @@ until both rules are available.
 
 When selecting a Java platform or available project API, lazy load `../include/java/standard-apis.md`.
 
-When editing the layout of a Java method chain, lazy load `../include/java/style.md`.
+When editing the layout of a method chain, lazy load `../include/common/method-chain-layout.md`.
+
+When declaring an object's field, or writing or editing a constructor that assigns one, lazy load
+`../include/common/field-initialization.md`.
 
 When creating or closing a `PipedInputStream` or waiting for a reader that uses one, lazy load
 `../include/java/piped-input-stream.md`.

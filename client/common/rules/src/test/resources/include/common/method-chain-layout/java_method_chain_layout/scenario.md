@@ -1,4 +1,4 @@
-# Method chain layout
+# Java method chain layout
 
 ## Variables
 
@@ -38,5 +38,5 @@ return values.stream().map(this::transform).filter(this::accepted).toList();
 ### guidance_selection
 
 - **kind**: effect
-- **description**: The retained events establish that the executor selects `rules/include/java/style.md` before its
-  first governed action.
+- **description**: The retained events establish that the executor selects
+  `rules/include/common/method-chain-layout.md` before its first governed action.

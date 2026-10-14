@@ -1,4 +1,4 @@
-# Inline chain whitespace
+# Java inline chain whitespace
 
 ## Variables
 
@@ -24,5 +24,5 @@ return {{chain}};
 ### guidance_selection
 
 - **kind**: effect
-- **description**: The retained events establish that the executor selects `rules/include/java/style.md` before its
-  first governed action.
+- **description**: The retained events establish that the executor selects
+  `rules/include/common/method-chain-layout.md` before its first governed action.
