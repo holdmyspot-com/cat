@@ -9,15 +9,17 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
-import io.github.cowwoc.cat.common.optimizer.inventory.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
+import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
+import io.github.cowwoc.cat.common.optimizer.workspace.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkTree;
 import io.github.cowwoc.cat.common.optimizer.workspace.StagedSources;
 import io.github.cowwoc.cat.common.optimizer.workspace.Workspace;
@@ -38,6 +40,8 @@ import java.util.concurrent.Future;
 import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Verifies that a staged source holds a candidate's files with every link replaced by a copy of its target, excludes
@@ -45,6 +49,15 @@ import org.testng.annotations.Test;
  */
 public final class StagedSourceTest
 {
+	private static final JsonMapper JSON = JsonMapper.builder().build();
+	private static final String HOOKS = """
+		{"hooks": {
+		  "SessionStart": [{"hooks": [{"type": "command", "command": "${PLUGIN_ROOT}/hooks/session-start.sh"}]}],
+		  "PostToolUse": [{"matcher": "^Bash$", "hooks": [
+		    {"type": "command", "command": "${PLUGIN_ROOT}/hooks/post-tool-use.sh"}]}]
+		}}
+		""";
+
 	/**
 	 * Creates the test.
 	 */
@@ -218,8 +231,9 @@ public final class StagedSourceTest
 			Authority authority = new Authority(Set.of(Path.of("alias.md"), Path.of("docs"), Path.of("shared.md")),
 				Set.of(), fork);
 			StagedSources sources = new StagedSources(project.tree(), project.campaign().resolve("staged"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
 
-			Path staged = sources.stage(ControlSource.of(fork, Path.of("prompt.md")), Set.of());
+			Path staged = sources.stage(ControlSource.of(port, fork, Path.of("prompt.md"), List.of(), JSON), Set.of());
 
 			requireThat(authority.promptFiles(fork), "promptFiles").
 				isEqualTo(Set.of(Path.of("prompt.md"), Path.of("rules/a.md"), Path.of("rules/b.md")));
@@ -444,10 +458,10 @@ public final class StagedSourceTest
 			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
 			FileInventory fork = project.tree().inventory();
 			Overlay candidate = Overlay.of(fork).write(Path.of("rules/a.md"), content("candidate rule a"), READ_WRITE);
-			Overlay control = ControlSource.of(fork, Path.of("rules/a.md"));
+			Overlay control = ControlSource.of(port, fork, Path.of("rules/a.md"), List.of(), JSON);
 
-			Path candidateCopy = port.pluginCopy(plugin, port.stage(candidate, Set.of()));
-			Path controlCopy = port.pluginCopy(plugin, port.stage(control, Set.of()));
+			Path candidateCopy = port.pluginCopy(plugin, port.stage(candidate, Set.of()), PluginRemovals.NONE);
+			Path controlCopy = port.pluginCopy(plugin, port.stage(control, Set.of()), PluginRemovals.NONE);
 
 			Map<Path, FileEntry> candidateFiles = InventoryScanner.scan(candidateCopy, Set.of()).entries();
 			requireThat(candidateFiles.get(Path.of("rules/codex/a.md")), "candidateEdit").
@@ -469,6 +483,79 @@ public final class StagedSourceTest
 	}
 
 	/**
+	 * Verifies that a built plugin's copy with removals leaves out each dependent, as a deleted file or an
+	 * unregistered hook, while the copy without removals and the base keep them.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	@Test
+	public void builtPluginCopyRemovesDependents() throws IOException
+	{
+		// Requirement: R-W10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
+			LinkedProject project = ProjectFixtures.linkedProject(root);
+			Path base = pluginBase(root.resolve("plugin-base"));
+			writeFile(base.resolve("bin/read-part"), "#!/bin/sh\n", EXECUTABLE);
+			writeFile(base.resolve("hooks/hooks.json"), HOOKS, READ_WRITE);
+			PluginUnderTest.Built plugin = new PluginUnderTest.Built(base,
+				InventoryScanner.scan(base, Set.of()).identity().hex(),
+				List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
+				"No prompt file invokes a CAT skill.");
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			Path source = port.stage(Overlay.of(project.tree().inventory()), Set.of());
+			PluginRemovals removals = PluginRemovals.of(List.of(
+				new Dependent(Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(),
+					"Reads the part that the rule names."),
+				new Dependent(Dependent.Location.PLUGIN, Path.of("hooks/hooks.json"),
+					new Dependent.HookRegistration("PostToolUse", "${PLUGIN_ROOT}/hooks/post-tool-use.sh"),
+					"Repairs the output of read-part.")), JSON);
+
+			Path withDependents = port.pluginCopy(plugin, source, PluginRemovals.NONE);
+			Path withoutDependents = port.pluginCopy(plugin, source, removals);
+
+			requireThat(withoutDependents, "withoutDependents").isNotEqualTo(withDependents);
+			requireThat(Files.exists(withoutDependents.resolve("bin/read-part")), "removedScript").isFalse();
+			JsonNode hooks = JSON.readTree(Files.readString(withoutDependents.resolve("hooks/hooks.json"))).get("hooks");
+			requireThat(hooks.has("PostToolUse"), "removedHook").isFalse();
+			requireThat(hooks.has("SessionStart"), "otherHook").isTrue();
+			requireThat(withoutDependents.resolve("rules/codex/b.md"), "mappedFile").isRegularFile();
+			requireThat(withDependents.resolve("bin/read-part"), "keptScript").isRegularFile();
+			requireThat(Files.readString(withDependents.resolve("hooks/hooks.json")), "keptHooks").isEqualTo(HOOKS);
+			requireThat(base.resolve("bin/read-part"), "baseScript").isRegularFile();
+			requireThat(Files.readString(base.resolve("hooks/hooks.json")), "baseHooks").isEqualTo(HOOKS);
+		}
+	}
+
+	/**
+	 * Verifies that a built plugin's copy is refused when the base does not hold a dependent that the copy removes, so
+	 * that control trials never run with a dependent that the contract claims they lack.
+	 *
+	 * @throws IOException if the fixture cannot be created, or because the base lacks the dependent
+	 */
+	@Test(expectedExceptions = WorkspaceException.class, expectedExceptionsMessageRegExp = ".*bin/run-part.*")
+	public void refusesMissingPluginDependent() throws IOException
+	{
+		// Requirement: R-W10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
+			LinkedProject project = ProjectFixtures.linkedProject(root);
+			Path base = pluginBase(root.resolve("plugin-base"));
+			PluginUnderTest.Built plugin = new PluginUnderTest.Built(base,
+				InventoryScanner.scan(base, Set.of()).identity().hex(),
+				List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
+				"No prompt file invokes a CAT skill.");
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			Path source = port.stage(Overlay.of(project.tree().inventory()), Set.of());
+
+			port.pluginCopy(plugin, source, PluginRemovals.of(List.of(new Dependent(Dependent.Location.PLUGIN,
+				Path.of("bin/run-part"), new Dependent.WholeFile(), "Runs the part that the rule names.")), JSON));
+		}
+	}
+
+	/**
 	 * Verifies that a plugin root's copy is that directory of the staged source.
 	 *
 	 * @throws IOException if the fixture cannot be created or staged
@@ -484,7 +571,7 @@ public final class StagedSourceTest
 			Path staged = port.stage(Overlay.of(project.tree().inventory()), Set.of());
 
 			Path copy = port.pluginCopy(new PluginUnderTest.Root(Path.of("rules"), true,
-				"The rules invoke CAT's skills."), staged);
+				"The rules invoke CAT's skills."), staged, PluginRemovals.NONE);
 
 			requireThat(copy, "copy").isEqualTo(staged.resolve("rules"));
 		}

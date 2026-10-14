@@ -254,7 +254,7 @@ public final class DriverHarness
 			judge, triage, promptAuthor, values, deliverer, calibrator, terminator,
 			new LeftoverRuns(sessions, JsonMapper.builder().build()),
 			new Authority(Set.of(PROMPT), Set.of(), fork), Set.of(PROMPT),
-			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings);
+			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json);
 	}
 
 	/**

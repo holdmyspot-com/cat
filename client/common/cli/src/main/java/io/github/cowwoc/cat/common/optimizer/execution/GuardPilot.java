@@ -21,6 +21,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.UndecidableToolException;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -45,6 +46,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.random.RandomGenerator;
 
+import tools.jackson.databind.json.JsonMapper;
+
 /**
  * Runs the guard pilot of a proposed contract before CAT presents it: {@value #TRIALS} control trials of each prompt
  * test in its weakest cell, on development test cases only, decided by the proposed built-in tools and judge. The
@@ -65,6 +68,7 @@ public final class GuardPilot
 	private final WorkspacePort workspace;
 	private final JudgeProtocol judge;
 	private final ProposalSchema schema;
+	private final JsonMapper json;
 	private final int ceiling;
 
 	/**
@@ -75,22 +79,25 @@ public final class GuardPilot
 	 * @param judge writes the judge requests and reads their verdicts
 	 * @param schema writes the definition of each prompt test, whose identity decides whether a stored pilot still
 	 *   applies
+	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
 	 * @param ceiling the maximum number of sessions that run at the same time
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code ceiling} is not positive
 	 */
 	public GuardPilot(SessionPort sessions, WorkspacePort workspace, JudgeProtocol judge, ProposalSchema schema,
-		int ceiling)
+		JsonMapper json, int ceiling)
 	{
 		requireThat(sessions, "sessions").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
 		requireThat(judge, "judge").isNotNull();
 		requireThat(schema, "schema").isNotNull();
+		requireThat(json, "json").isNotNull();
 		requireThat(ceiling, "ceiling").isPositive();
 		this.sessions = sessions;
 		this.workspace = workspace;
 		this.judge = judge;
 		this.schema = schema;
+		this.json = json;
 		this.ceiling = ceiling;
 	}
 
@@ -112,12 +119,13 @@ public final class GuardPilot
 
 	/**
 	 * Returns the identity of a prompt test's definition: the test and the requirements that it checks, which the
-	 * trials and the judge receive, and the plugin under test that the trials install.
+	 * trials and the judge receive, the plugin under test that the trials install, and the dependents of the target
+	 * that control trials remove.
 	 *
 	 * @param contract the proposed contract
 	 * @param test a prompt test of {@code contract}
 	 * @return the identity, which changes whenever the scenario, the test cases, the assertions, a checked
-	 *   requirement or the plugin under test changes
+	 *   requirement, the plugin under test or a dependent changes
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Sha256 definition(Contract contract, PromptTest test)
@@ -134,7 +142,8 @@ public final class GuardPilot
 	 * starts no further session and each unfinished test's result records why it stopped.
 	 *
 	 * @param contract the proposed contract
-	 * @param control the control source: the incumbent with the target prompt files emptied
+	 * @param control the control source: the incumbent with the target prompt file emptied and its dependents in the
+	 *   project removed
 	 * @param excluded the project-relative paths that the staged control source leaves out, so that a trial cannot
 	 *   read the prompt tests
 	 * @param stored the pilots that an earlier run of the same campaign stored, by prompt test
@@ -179,7 +188,8 @@ public final class GuardPilot
 		if (!pending.isEmpty())
 		{
 			Path source = workspace.stage(control, excluded);
-			new Run(contract, source, TrialPlugins.of(contract.plugin(), workspace, source), pending).run();
+			PluginRemovals removals = PluginRemovals.of(contract.pluginRemovals(), json);
+			new Run(contract, source, TrialPlugins.of(contract.plugin(), workspace, source, removals), pending).run();
 		}
 		for (Pilot pilot : pending)
 			pilots.put(pilot.test.id(), pilot.result(files));

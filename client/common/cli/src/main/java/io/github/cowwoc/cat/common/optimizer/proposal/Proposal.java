@@ -55,11 +55,12 @@ public final class Proposal
 		"prompt files than production if the harness does not follow those rules.";
 	/**
 	 * The limitation that every confirmed contract records: an emptied prompt file stays where it was, so a file that
-	 * references it still does.
+	 * references it still does, and control trials remove only the listed dependents.
 	 */
 	public static final String CONTROL_SOURCE_LIMIT = "Control trials empty the target prompt file but leave it in " +
-		"place. A file that references the target still references it, so a control trial may still read it and " +
-		"find nothing.";
+		"place, and remove only the dependents of the target that the contract lists. A file that references the " +
+		"target still references it, so a control trial may still read it and find nothing, and a part of the prompt " +
+		"system that serves the target but that the contract does not list still runs in control trials.";
 	/**
 	 * The number of certification attempts whose caps the proposal shows.
 	 */
@@ -82,6 +83,7 @@ public final class Proposal
 	private final Map<String, PilotResult> pilots;
 	private final Map<String, DeliveredTest> delivered;
 	private final PluginCheck plugin;
+	private final List<String> controlRefusals;
 	private final String goal;
 
 	/**
@@ -101,12 +103,13 @@ public final class Proposal
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @param delivered each prompt test as delivery would write it, by prompt test
 	 * @param plugin the check of the plugin under test
+	 * @param controlRefusals the reasons why the control source cannot be built, which block confirmation
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
 	private Proposal(DerivedProposal derived, Contract contract, ProposalSchema schema, LinkReport links,
 		Path controlFile, HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews,
 		List<String> caps, CertificationStatus incumbent, Map<String, PilotResult> pilots,
-		Map<String, DeliveredTest> delivered, PluginCheck plugin, String goal)
+		Map<String, DeliveredTest> delivered, PluginCheck plugin, List<String> controlRefusals, String goal)
 	{
 		this.derived = derived;
 		this.contract = contract;
@@ -121,6 +124,7 @@ public final class Proposal
 		this.pilots = Collections.unmodifiableMap(new LinkedHashMap<>(pilots));
 		this.delivered = Collections.unmodifiableMap(new LinkedHashMap<>(delivered));
 		this.plugin = plugin;
+		this.controlRefusals = List.copyOf(controlRefusals);
 		this.goal = goal;
 	}
 
@@ -220,7 +224,39 @@ public final class Proposal
 		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent,
 		Map<String, PilotResult> pilots, PluginCheck plugin)
 	{
+		return of(derived, campaign, links, controlFile, login, calibrator, schema, incumbent, pilots, plugin,
+			List.of());
+	}
+
+	/**
+	 * Completes a contract author's proposal for presentation, showing the target's delivered certification, the
+	 * guard pilot of each prompt test, the plugin under test and why the control source cannot be built.
+	 *
+	 * @param derived the contract author's proposal
+	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
+	 *   requested
+	 * @param links the symbolic links of the prompt system and the staged fixtures
+	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
+	 * @param login how the host's harness account is billed
+	 * @param calibrator calibrates the caps of the first certification attempts
+	 * @param schema the proposal schema, which identifies the contract
+	 * @param incumbent the target's delivered certification and whether it applies to what CAT knows when it
+	 *   proposes, or empty if the target has none
+	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
+	 * @param plugin the check of the contract author's plugin under test, whose plugin the contract holds
+	 * @param controlRefusals the reasons why the control source cannot remove the contract's dependents, which block
+	 *   confirmation; empty if it can
+	 * @return the proposal
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if exactly one of {@code derived} and {@code plugin} has a plugin under test
+	 * @throws IllegalStateException if the campaign cannot accept a confirmation
+	 */
+	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
+		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent,
+		Map<String, PilotResult> pilots, PluginCheck plugin, List<String> controlRefusals)
+	{
 		requireThat(plugin, "plugin").isNotNull();
+		requireThat(controlRefusals, "controlRefusals").isNotNull();
 		requireThat(incumbent, "incumbent").isNotNull();
 		requireThat(pilots, "pilots").isNotNull();
 		requireThat(derived, "derived").isNotNull();
@@ -243,7 +279,7 @@ public final class Proposal
 			limitations.add(pluginHooksLimit(plugin.unapprovedHooks()));
 		Contract contract = new Contract(proposed.requirements(), proposed.tests(), proposed.profiles(),
 			proposed.judge(), proposed.fixtures(), limitations, proposed.minimumPassRate(), proposed.salt(),
-			plugin.plugin());
+			plugin.plugin(), proposed.dependents());
 		Map<CertificationScope, Campaign> previews = new LinkedHashMap<>();
 		if (contract.profiles().unranked().isEmpty())
 		{
@@ -277,7 +313,7 @@ public final class Proposal
 		for (DeliveredTest test : DeliveredTest.of(contract, AddedTestCases.NONE, target))
 			delivered.put(test.id(), test);
 		return new Proposal(derived, contract, schema, links, controlFile, login, campaign.ceiling(), previews,
-			caps, incumbent.orElse(null), pilots, delivered, plugin, campaign.header().goal());
+			caps, incumbent.orElse(null), pilots, delivered, plugin, controlRefusals, campaign.header().goal());
 	}
 
 	/**
@@ -338,8 +374,9 @@ public final class Proposal
 
 	/**
 	 * Returns the reason confirmation with a certification scope is refused, listing blocking links, conflicting
-	 * requirements, an invalid plugin under test, tests with too few distinct expected outcomes in a part, unranked
-	 * models and a described scope without described cells, in that order.
+	 * requirements, an invalid plugin under test, dependents that the control source cannot remove, tests with too few
+	 * distinct expected outcomes in a part, unranked models and a described scope without described cells, in that
+	 * order.
 	 *
 	 * @param scope the certification scope that the user chose
 	 * @return the refusal message, or an empty string if confirmation is allowed
@@ -353,6 +390,7 @@ public final class Proposal
 		if (!links.isEmpty())
 			reasons.add(links);
 		reasons.addAll(plugin.refusals());
+		reasons.addAll(controlRefusals);
 		reasons.addAll(splitRefusals());
 		TrialProfiles profiles = contract.profiles();
 		List<String> unranked = profiles.unranked();

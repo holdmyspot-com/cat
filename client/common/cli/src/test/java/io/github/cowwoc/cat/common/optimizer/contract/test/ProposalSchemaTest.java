@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.ContractIdentity;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
@@ -911,6 +912,62 @@ public final class ProposalSchemaTest
 			""")));
 		JsonNode plugin = schema().derivationSchema().get("properties").get("plugin_under_test");
 		requireThat(plugin.get("properties").has("base_digest"), "derivationHasBaseDigest").isFalse();
+	}
+
+	/**
+	 * Verifies that each kind of dependent survives parsing and writing and changes the contract's identity, and that a
+	 * contract without dependents writes none.
+	 *
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	// Requirement: R-W10
+	@Test
+	public void dependentsRoundTrip() throws InvalidProposalException
+	{
+		Contract contract = schema().parse(changed(new String[]{"dependents"}, json.readTree("""
+			[
+			  {"location": "project", "path": "repair.sh", "removes": "file", "text": null, "event": null,
+			   "command": null, "serves": "Repairs the output."},
+			  {"location": "project", "path": "AGENTS.md", "removes": "span", "text": "Read prompt.md first.\\n",
+			   "event": null, "command": null, "serves": "Routes the agent to the prompt."},
+			  {"location": "project", "path": ".codex/hooks.json", "removes": "hook_registration", "text": null,
+			   "event": "PostToolUse", "command": "repair.sh", "serves": "Runs the repair script."}
+			]
+			""")));
+		Contract without = schema().parse(ContractFixtures.resource("valid-proposal.json"));
+
+		requireThat(contract.dependents(), "dependents").isEqualTo(List.of(
+			new Dependent(Dependent.Location.PROJECT, Path.of("repair.sh"), new Dependent.WholeFile(),
+				"Repairs the output."),
+			new Dependent(Dependent.Location.PROJECT, Path.of("AGENTS.md"), new Dependent.Span("Read prompt.md first.\n"),
+				"Routes the agent to the prompt."),
+			new Dependent(Dependent.Location.PROJECT, Path.of(".codex/hooks.json"),
+				new Dependent.HookRegistration("PostToolUse", "repair.sh"), "Runs the repair script.")));
+		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
+		requireThat(json.readTree(schema().toJson(without)).has("dependents"), "withoutDependents").isFalse();
+		requireThat(ContractIdentity.of(schema(), contract), "identity").
+			isNotEqualTo(ContractIdentity.of(schema(), without));
+	}
+
+	/**
+	 * Verifies that a span without its text and a hook registration without its command are rejected, because control
+	 * trials could not tell what to remove.
+	 */
+	// Requirement: R-W10
+	@Test
+	public void rejectsIncompleteDependents()
+	{
+		InvalidProposalException span = rejection(changed(new String[]{"dependents"}, json.readTree("""
+			[{"location": "project", "path": "AGENTS.md", "removes": "span", "text": null, "event": null,
+			  "command": null, "serves": "Routes the agent to the prompt."}]
+			""")));
+		InvalidProposalException hook = rejection(changed(new String[]{"dependents"}, json.readTree("""
+			[{"location": "project", "path": "hooks.json", "removes": "hook_registration", "text": null,
+			  "event": "PostToolUse", "command": null, "serves": "Runs the repair script."}]
+			""")));
+
+		requireThat(String.join(" | ", span.problems()), "spanProblems").contains("gives text");
+		requireThat(String.join(" | ", hook.problems()), "hookProblems").contains("gives command");
 	}
 
 	/**

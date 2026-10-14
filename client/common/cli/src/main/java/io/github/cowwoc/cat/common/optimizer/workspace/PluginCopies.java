@@ -5,9 +5,11 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -52,16 +54,19 @@ final class PluginCopies
 	 *
 	 * @param plugin the plugin under test; a built plugin's base digest must be set
 	 * @param source the staged source, whose directory name identifies its candidate
+	 * @param removals the dependents that a built plugin's copy leaves out, which a plugin root ignores because its
+	 *   staged source already leaves them out
 	 * @return the plugin directory
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if a built plugin's base digest is empty
-	 * @throws IOException if the copy cannot be built, if the staged source has no plugin root, or if the files of a
-	 *   built plugin's base no longer have the identity of its base digest
+	 * @throws IOException if the copy cannot be built, if the staged source has no plugin root, if the files of a
+	 *   built plugin's base no longer have the identity of its base digest, or if the copy does not hold a dependent
 	 */
-	Path copy(PluginUnderTest plugin, Path source) throws IOException
+	Path copy(PluginUnderTest plugin, Path source, PluginRemovals removals) throws IOException
 	{
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(source, "source").isNotNull();
+		requireThat(removals, "removals").isNotNull();
 		return switch (plugin)
 		{
 			case PluginUnderTest.Root root ->
@@ -74,7 +79,7 @@ final class PluginCopies
 				}
 				yield directory;
 			}
-			case PluginUnderTest.Built built -> copy(built, source);
+			case PluginUnderTest.Built built -> copy(built, source, removals);
 		};
 	}
 
@@ -83,15 +88,17 @@ final class PluginCopies
 	 *
 	 * @param plugin the built plugin; its base digest must be set
 	 * @param source the staged source, whose directory name identifies its candidate
-	 * @return the copy of the base with each mapped file of {@code source} written over its mapped path
+	 * @param removals the dependents that the copy leaves out
+	 * @return the copy of the base with each mapped file of {@code source} written over its mapped path, without the
+	 *   dependents
 	 * @throws IllegalArgumentException if the plugin's base digest is empty
-	 * @throws IOException if the copy cannot be built, or if the base's files no longer have the identity of its
-	 *   base digest
+	 * @throws IOException if the copy cannot be built, if the base's files no longer have the identity of its base
+	 *   digest, or if the copy does not hold a dependent
 	 */
-	private Path copy(PluginUnderTest.Built plugin, Path source) throws IOException
+	private Path copy(PluginUnderTest.Built plugin, Path source, PluginRemovals removals) throws IOException
 	{
 		Path base = copyBase(plugin);
-		Path directory = storage.resolve(source.getFileName() + COPY_SEPARATOR + identity(plugin).hex());
+		Path directory = storage.resolve(source.getFileName() + COPY_SEPARATOR + identity(plugin, removals).hex());
 		if (Files.isDirectory(directory))
 			return directory;
 		FileTree.build(directory, copy ->
@@ -103,22 +110,35 @@ final class PluginCopies
 				if (Files.isDirectory(mapped, NOFOLLOW_LINKS))
 					FileTree.copy(mapped, copy.resolve(mapping.target()), _ -> false);
 			}
+			if (!removals.isEmpty())
+				DependentRemoval.removeAll(removals.dependents(), copy, removals.json().orElseThrow());
 		});
 		return directory;
 	}
 
 	/**
-	 * Returns the identity of a built plugin's base and mappings, which name its copies.
+	 * Returns the identity of a built plugin's base and mappings and of the removals, which name its copies.
 	 *
 	 * @param plugin the built plugin
+	 * @param removals the dependents that the copy leaves out
 	 * @return the identity
 	 */
-	private static Sha256 identity(PluginUnderTest.Built plugin)
+	private static Sha256 identity(PluginUnderTest.Built plugin, PluginRemovals removals)
 	{
 		StringJoiner text = new StringJoiner("\n");
 		text.add(plugin.baseDigest());
 		for (PluginUnderTest.Mapping mapping : plugin.mappings())
 			text.add(mapping.source() + "\0" + mapping.target());
+		for (Dependent dependent : removals.dependents())
+		{
+			String removal = switch (dependent.removal())
+			{
+				case Dependent.WholeFile _ -> "file";
+				case Dependent.Span span -> "span\0" + span.text();
+				case Dependent.HookRegistration hook -> "hook\0" + hook.event() + "\0" + hook.command();
+			};
+			text.add("remove\0" + dependent.path() + "\0" + removal);
+		}
 		return Sha256.of(text.toString().getBytes(UTF_8));
 	}
 

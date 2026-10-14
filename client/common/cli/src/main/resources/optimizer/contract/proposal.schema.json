@@ -252,6 +252,24 @@
 				"depends_on_cat": {"description": "true if the plugin needs CAT installed: its manifest names CAT as a dependency, or its prompt files invoke CAT's skills, agents or commands or name CAT's plugin directory.", "type": "boolean"},
 				"cat_evidence": {"description": "The manifest entry or file passages that show whether the plugin depends on CAT.", "type": "string", "pattern": "\\S"}
 			}
+		},
+		"dependents": {
+			"description": "Each part of the prompt system that exists only to deliver the target prompt file or to carry out, enforce or repair what it instructs, such as a hook that repairs output the target's instructions produce or a script that only the target tells the agent to run. Control trials empty the target and remove each dependent, and nothing else. Omit or leave empty if the target has none.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["location", "path", "removes", "text", "event", "command", "serves"],
+				"properties": {
+					"location": {"description": "project if path is relative to the project root; plugin if it is relative to the plugin directory of the plugin under test.", "type": "string", "pattern": "^(project|plugin)$"},
+					"path": {"description": "The file that holds the dependent, relative to its location.", "type": "string", "pattern": "\\S"},
+					"removes": {"description": "file to delete the whole file; span to delete text, which must occur in the file exactly once; hook_registration to unregister every hook of event with command from a hook configuration, whose hooks object maps each event to groups of hooks.", "type": "string", "pattern": "^(file|span|hook_registration)$"},
+					"text": {"description": "With span: the exact text to delete. Otherwise null.", "type": ["string", "null"], "pattern": "\\S"},
+					"event": {"description": "With hook_registration: the hook event, such as PostToolUse. Otherwise null.", "type": ["string", "null"], "pattern": "\\S"},
+					"command": {"description": "With hook_registration: the hook's command, spelled as the configuration spells it. Otherwise null.", "type": ["string", "null"], "pattern": "\\S"},
+					"serves": {"description": "The target instruction that the dependent serves, and why it exists only for the target.", "type": "string", "pattern": "\\S"}
+				}
+			}
 		}
 	}
 }

@@ -5,6 +5,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileBinding;
@@ -199,6 +200,20 @@ public final class ContractFixtures
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.fixtures(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
+	}
+
+	/**
+	 * Returns a contract that lists dependents of the target prompt file.
+	 *
+	 * @param contract the contract
+	 * @param dependents the dependents
+	 * @return the contract with the dependents
+	 */
+	public static Contract withDependents(Contract contract, List<Dependent> dependents)
+	{
+		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), contract.judge(),
+			contract.fixtures(), contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.plugin(),
+			dependents);
 	}
 
 	/**

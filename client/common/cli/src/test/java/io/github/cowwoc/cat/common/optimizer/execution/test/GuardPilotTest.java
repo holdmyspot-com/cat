@@ -16,6 +16,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.JudgedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
@@ -35,6 +36,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -388,11 +390,48 @@ public final class GuardPilotTest
 			pilot(sessions, workspace, 4).run(contract, control(), Set.of(), Map.of(), new SplittableRandom(9));
 
 			Path source = workspace.stage(control(), Set.of());
-			TrialPlugin expected = new TrialPlugin(workspace.pluginCopy(plugin, source), true);
+			TrialPlugin expected = new TrialPlugin(workspace.pluginCopy(plugin, source, PluginRemovals.NONE), true);
 			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
 			requireThat(trials, "trials").isNotEmpty();
 			for (SessionRequest trial : trials)
 				requireThat(trial.plugin(), "plugin").isEqualTo(Optional.of(expected));
+		}
+	}
+
+	/**
+	 * Each control trial installs the copy of the plugin under test without the dependents of the target that the
+	 * contract lists, and a stored pilot no longer applies once those dependents change.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void controlTrialsRemovePluginDependents() throws IOException, InterruptedException
+	{
+		// Requirement: R-W10
+		PluginUnderTest plugin = builtPlugin("a");
+		Contract withPlugin = TierFixtures.tieredContract().withPlugin(Optional.of(plugin));
+		Contract contract = ContractFixtures.withDependents(withPlugin, List.of(new Dependent(
+			Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(), "Reads a part.")));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-plugin"));
+			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			FakeWorkspacePort workspace = workspace(directory);
+			GuardPilot pilot = pilot(sessions, workspace, 4);
+
+			pilot.run(contract, control(), Set.of(), Map.of(), new SplittableRandom(9));
+
+			Path source = workspace.stage(control(), Set.of());
+			TrialPlugin expected = new TrialPlugin(workspace.pluginCopy(plugin, source,
+				PluginRemovals.of(contract.pluginRemovals(), json)), true);
+			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
+			requireThat(trials, "trials").isNotEmpty();
+			for (SessionRequest trial : trials)
+				requireThat(trial.plugin(), "plugin").isEqualTo(Optional.of(expected));
+			PromptTest test = contract.tests().getFirst();
+			requireThat(pilot.definition(contract, test), "definition").
+				isNotEqualTo(pilot.definition(withPlugin, test));
 		}
 	}
 
@@ -470,7 +509,8 @@ public final class GuardPilotTest
 	 */
 	private GuardPilot pilot(ScriptedPort sessions, FakeWorkspacePort workspace, int ceiling)
 	{
-		return new GuardPilot(sessions, workspace, new ScriptedJudge(), new ProposalSchema(json), ceiling);
+		return new GuardPilot(sessions, workspace, new ScriptedJudge(), new ProposalSchema(json), json,
+			ceiling);
 	}
 
 	/**

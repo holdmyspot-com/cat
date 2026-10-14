@@ -61,18 +61,20 @@ public interface WorkspacePort
 	/**
 	 * Returns the plugin under test as the trials of a staged source install it, building it if it does not exist. A
 	 * plugin root is that directory of the staged source. A built plugin is a copy of its base with each file of the
-	 * staged source inside a mapping's source directory written over its mapped path. Deleting the staged source's
-	 * candidate deletes the copy.
+	 * staged source inside a mapping's source directory written over its mapped path, and then the removals applied.
+	 * Deleting the staged source's candidate deletes the copy.
 	 *
 	 * @param plugin the plugin under test; a built plugin's base digest must be set
 	 * @param source the staged source
+	 * @param removals the dependents that a built plugin's copy leaves out, which a plugin root ignores because its
+	 *   staged source already leaves them out
 	 * @return the plugin directory that each trial of {@code source} installs
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if a built plugin's base digest is empty
-	 * @throws IOException if the copy cannot be built, if the staged source has no plugin root, or if the files of a
-	 *   built plugin's base no longer have the identity of its base digest
+	 * @throws IOException if the copy cannot be built, if the staged source has no plugin root, if the files of a
+	 *   built plugin's base no longer have the identity of its base digest, or if the copy does not hold a dependent
 	 */
-	Path pluginCopy(PluginUnderTest plugin, Path source) throws IOException;
+	Path pluginCopy(PluginUnderTest plugin, Path source, PluginRemovals removals) throws IOException;
 
 	/**
 	 * Copies the base of a built plugin into campaign storage, unless it has a copy there already, so that later

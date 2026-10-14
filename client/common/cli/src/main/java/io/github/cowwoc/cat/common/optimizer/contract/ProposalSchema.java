@@ -66,6 +66,10 @@ public final class ProposalSchema
 	 * contract author.
 	 */
 	private static final String BASE_DIGEST = "base_digest";
+	/**
+	 * The property that holds the dependents of the target prompt file.
+	 */
+	private static final String DEPENDENTS = "dependents";
 	private final JsonMapper json;
 	private final String schemaText;
 	private final SchemaValidator validator;
@@ -272,11 +276,13 @@ public final class ProposalSchema
 		root.put(SALT, contract.salt());
 		// A contract without a plugin under test keeps the identity that it had before the property existed
 		contract.plugin().ifPresent(plugin -> write(plugin, root.putObject(PLUGIN_UNDER_TEST)));
+		writeDependents(contract, root);
 		return json.writeValueAsString(root);
 	}
 
 	/**
-	 * Writes one prompt test of a contract with the requirements that it checks and the plugin under test: everything
+	 * Writes one prompt test of a contract with the requirements that it checks, the plugin under test and the
+	 * dependents of the target prompt file: everything
 	 * that decides how its trials run and how they are decided, apart from the judge fields that CAT supplies to every
 	 * contract.
 	 *
@@ -284,7 +290,8 @@ public final class ProposalSchema
 	 * @param test a prompt test of {@code contract}
 	 * @return the JSON text: an object whose {@code test} holds the prompt test as the proposal schema writes it,
 	 *   whose {@code requirements} holds, in contract order, each requirement that the test checks, and whose
-	 *   {@code plugin_under_test}, present only when the contract has a plugin under test, holds that plugin
+	 *   {@code plugin_under_test}, present only when the contract has a plugin under test, holds that plugin, and whose
+	 *   {@code dependents}, present only when the contract lists dependents, holds them
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public String toJson(Contract contract, PromptTest test)
@@ -301,7 +308,47 @@ public final class ProposalSchema
 		}
 		// A test of a contract without a plugin under test keeps the identity that it had before the property existed
 		contract.plugin().ifPresent(plugin -> write(plugin, root.putObject(PLUGIN_UNDER_TEST)));
+		writeDependents(contract, root);
 		return json.writeValueAsString(root);
+	}
+
+	/**
+	 * Writes the dependents of the target prompt file, if the contract lists any.
+	 *
+	 * @param contract the contract
+	 * @param root the object that receives the {@value #DEPENDENTS} property
+	 */
+	private static void writeDependents(Contract contract, ObjectNode root)
+	{
+		// A contract without dependents keeps the identity that it had before the property existed
+		if (contract.dependents().isEmpty())
+			return;
+		ArrayNode dependents = root.putArray(DEPENDENTS);
+		for (Dependent dependent : contract.dependents())
+		{
+			ObjectNode node = dependents.addObject();
+			node.put("location", EnumNames.lowerCase(dependent.location()));
+			node.put("path", dependent.path().toString());
+			node.putNull("text");
+			node.putNull("event");
+			node.putNull("command");
+			switch (dependent.removal())
+			{
+				case Dependent.WholeFile _ -> node.put("removes", "file");
+				case Dependent.Span span ->
+				{
+					node.put("removes", "span");
+					node.put("text", span.text());
+				}
+				case Dependent.HookRegistration hook ->
+				{
+					node.put("removes", "hook_registration");
+					node.put("event", hook.event());
+					node.put("command", hook.command());
+				}
+			}
+			node.put("serves", dependent.serves());
+		}
 	}
 
 	/**
@@ -545,6 +592,13 @@ public final class ProposalSchema
 			JsonNode pluginNode = root.get(PLUGIN_UNDER_TEST);
 			if (pluginNode != null && !pluginNode.isNull())
 				plugin = Optional.ofNullable(attempt("$." + PLUGIN_UNDER_TEST, () -> plugin(pluginNode)));
+			List<Dependent> dependents = List.of();
+			JsonNode dependentsNode = root.get(DEPENDENTS);
+			if (dependentsNode != null && !dependentsNode.isNull())
+			{
+				dependents = list(dependentsNode, "$." + DEPENDENTS, (node, location) ->
+					attempt(location, () -> dependent(node)));
+			}
 			if (problems.size() > problemsBefore)
 				return null;
 			TrialProfiles profiles;
@@ -560,9 +614,51 @@ public final class ProposalSchema
 			else
 				contractSalt = salt;
 			Optional<PluginUnderTest> contractPlugin = plugin;
+			List<Dependent> contractDependents = dependents;
 			return attempt("$", () -> new Contract(requirements, tests, profiles, judge, fixtures,
 				strings(root.get("limitations")), root.get("minimum_pass_rate").decimalValue(), contractSalt,
-				contractPlugin));
+				contractPlugin, contractDependents));
+		}
+
+		/**
+		 * Builds a dependent of the target prompt file.
+		 *
+		 * @param node an item of the {@value #DEPENDENTS} array
+		 * @return the dependent
+		 * @throws IllegalArgumentException if the item lacks the property that its kind of removal needs, or a model
+		 *   constructor rejects a value
+		 */
+		private static Dependent dependent(JsonNode node)
+		{
+			Dependent.Location location = EnumNames.parse(text(node, "location"), Dependent.Location.class);
+			String removes = text(node, "removes");
+			Dependent.Removal removal = switch (removes)
+			{
+				case "file" -> new Dependent.WholeFile();
+				case "span" -> new Dependent.Span(required(node, "text", removes));
+				case "hook_registration" -> new Dependent.HookRegistration(required(node, "event", removes),
+					required(node, "command", removes));
+				default -> throw new IllegalArgumentException("removes must be file, span or hook_registration: " +
+					removes);
+			};
+			return new Dependent(location, Path.of(text(node, "path")), removal, text(node, "serves"));
+		}
+
+		/**
+		 * Reads a string property that a kind of removal needs.
+		 *
+		 * @param node the dependent
+		 * @param name the name of the property
+		 * @param removes the kind of removal
+		 * @return the value
+		 * @throws IllegalArgumentException if the value is null
+		 */
+		private static String required(JsonNode node, String name, String removes)
+		{
+			String value = optionalText(node, name);
+			if (value == null)
+				throw new IllegalArgumentException("A dependent that removes a " + removes + " gives " + name);
+			return value;
 		}
 
 		/**

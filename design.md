@@ -88,7 +88,8 @@ CAT reports each of these outcomes with its evidence and available next actions.
 | `not certified` | The user accepted an uncertified candidate ([§2.8](#28-decision-table)). |
 | `not certified: below minimum` | A cell is proven below the minimum pass rate in the current certification attempt. |
 | `not certified: below control` | On some assertion of a cell, the candidate is proven to pass more than 5 percentage points less often than the agent with the target prompt removed ([§2.3](#23-sequential-tests)). |
-| `not certified: inconclusive` | A cell reached its trial cap with its minimum-pass-rate test or a control comparison undecided. |
+| `not certified: below incumbent` | On some assertion of a cell, the candidate is proven to pass more than 5 percentage points less often than the incumbent ([§2.3](#23-sequential-tests)). |
+| `not certified: inconclusive` | A cell reached its trial cap with its minimum-pass-rate test, a control comparison or an incumbent comparison undecided. |
 | `not certified: stopped for contract revision` | The user stopped a certification attempt to revise the contract. |
 | `not certified: testing environment changed` | The user started a new measurement identity during a certification attempt ([§5](#5-measurement-identity-and-applicability)). |
 | `not certified: stopped for test revision` | A test revision changed a prompt test during a certification attempt ([§2.7](#27-development-readiness-and-edit-or-continue)). |
@@ -102,8 +103,9 @@ CAT reports each of these outcomes with its evidence and available next actions.
 
 What follows an open outcome depends on the outcome:
 
-- `not certified: below minimum`, `not certified: below control` and `not certified: inconclusive` end one
-  certification attempt and return to development automatically, unless the attempt's evidence offers `keep improvement` ([§2.8](#28-decision-table)).
+- `not certified: below minimum`, `not certified: below control`, `not certified: below incumbent` and
+  `not certified: inconclusive` end one certification attempt and return to development automatically, unless the
+  attempt's evidence offers `keep improvement` ([§2.8](#28-decision-table)).
 - `not certified: stopped for contract revision`, `not certified: stopped for test revision` and
   `not certified: testing environment changed` end the running certification attempt.
 - Each `certification unavailable` outcome pauses for the user's choice ([§2.8](#28-decision-table)).
@@ -150,7 +152,8 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Built-in tool | A tool that ships with CAT and decides one assertion from the trial record without a model. An assertion names it in its `tool` key, and its `on_tool_failure` key says whether a failure of the tool fails the trial or leaves the assertion to the judge ([§6.4](#64-judge)). |
 | Trial record | The normalized record of one trial that CAT builds from the harness events and the trial's file changes. Built-in tools read it, and the judge receives it as its evidence section ([§6.4](#64-judge)). |
 | Decision procedure | The built-in tools plus the frozen judge, which together give each assertion of a trial its pass label ([§2.1](#21-claims), [§6.4](#64-judge)). |
-| Control trial | A trial of the incumbent with the target prompt file emptied and the rest of the prompt system unchanged, which measures each assertion without the prompt ([§2.3](#23-sequential-tests), [§4.4](#44-trial-staging)). |
+| Control trial | A trial of the incumbent with the target prompt file emptied, its dependents removed and the rest of the prompt system unchanged, which measures each assertion without the prompt ([§2.3](#23-sequential-tests), [§4.4](#44-trial-staging)). |
+| Incumbent trial | A trial of the incumbent, paired with a candidate formal trial and running its test case, which measures each assertion with the prompt system that the candidate would replace ([§2.3](#23-sequential-tests)). Baseline trials also run the incumbent, but they draw their own test cases and measure the whole trial. |
 | Guard pilot | The control trials of development test cases that CAT runs before confirmation, so the proposal shows how often each assertion passes without the prompt ([§6.1](#61-derivation-and-confirmation)). |
 | Incumbent | The prompt system snapshot recorded at the fork, before any optimization. It never changes, and every candidate is compared with it. |
 | Candidate | One exact snapshot: the incumbent plus an overlay of edits. The incumbent is the first candidate, with no edits. |
@@ -205,6 +208,10 @@ hide behind strong ones. `p_min` is the campaign's minimum pass rate.
     prompt, an effect assertion such as reading a long file whole usually fails, so the control's whole-trial rate is
     low and a candidate would beat it even if the prompt harmed a guard such as searching. The 5-point margin is fixed:
     proving that the candidate is no worse at all would need unbounded trials when both pass almost always.
+  - **incumbent comparison:** for every assertion `a` of the prompt test, `pC(k, a) > pI(k, a) − 0.05`, where
+    `pI(k, a)` is the probability that an incumbent trial passes assertion `a`. The whole-trial comparisons with the
+    incumbent below cannot show that a candidate traded one assertion for another; this part can. It holds trivially,
+    and CAT runs no incumbent trial, when the candidate is the incumbent.
 - **Deficiency claim:** The incumbent's pass probability `pI(k)` is below `p_min`. CAT makes this claim only for cells
   where its baseline evidence proves it.
 - **Improvement claim (b):** In every cell with a deficiency claim, `pC(k) − pI(k) > 0`.
@@ -253,7 +260,8 @@ certification attempt spends allowance. Development trials, promotions and candi
 none, so development can try any number of candidates.
 
 Claim (a) needs no division of `α_i` among cells or among its parts. It is a conjunction: it is false only if some
-cell's true rate is at most the minimum pass rate `p_min`, or some assertion's control comparison is false, and a false
+cell's true rate is at most the minimum pass rate `p_min`, or some assertion's control or incumbent comparison is false,
+and a false
 certification then requires that one part's level-`α_i` test to pass incorrectly. Per-cell claims are different. "Proven
 better in cells B and D" is false if either part is false, and each cell's test can fail independently, so the
 improvement budget and the incumbent budget are divided by `K`. A union bound across attempts, baselines and the three
@@ -312,14 +320,26 @@ at least `pN(k, a) − 0.05`. Each factor is positive, and both e-values depend 
 `Z`. When both trials pass, as they nearly always do on a guard assertion, `Z = ½` and `E_ctl↑` grows slowly; a pair
 that only the control passes shrinks it, and a pair that only the candidate passes grows it fastest.
 
+**Incumbent comparison (per assertion; null: `pC(k, a) ≤ pI(k, a) − 0.05`).** Incumbent trials run the incumbent, the
+snapshot recorded at the fork, and follow every rule of control trials: they run in a cell only after its
+minimum-pass-rate test certified it, the `j`-th pairs with the cell's `j`-th candidate formal trial in assignment order
+and runs that trial's test case, and `E_inc↑` and `E_inc↓` are `E_ctl↑` and `E_ctl↓` computed over the incumbent pairs.
+The two comparisons share the candidate formal trials but not their pairs: pair `j` of each comparison holds the same
+candidate trial and its own control or incumbent trial. When the candidate is the incumbent, the cell has no incumbent
+comparison.
+
 Decisions:
 
 - A cell's minimum-pass-rate part **certifies** in certification attempt `i` when `E↑ > 1/α_i`.
 - A cell is **clearly below** in certification attempt `i` when `E↓ > 1/α_i`.
-- An assertion's control comparison **passes** in certification attempt `i` when its `E_ctl↑ > 1/α_i`. A cell
-  **certifies** when its minimum-pass-rate part certified and every assertion's control comparison passed.
+- An assertion's control comparison **passes** in certification attempt `i` when its `E_ctl↑ > 1/α_i`, and its
+  incumbent comparison passes when its `E_inc↑ > 1/α_i`. A cell **certifies** when its minimum-pass-rate part certified
+  and every assertion's control and incumbent comparisons passed.
 - An assertion is **below control** in certification attempt `i` when its `E_ctl↓ > 1/α_i`. This ends the attempt
   `not certified: below control`.
+- An assertion is **below incumbent** in certification attempt `i` when its `E_inc↓ > 1/α_i`. This ends the attempt
+  `not certified: below incumbent`. When one assertion is below control and another below incumbent at the same
+  adoption, the attempt ends `not certified: below control`.
 - An incumbent cell is **proven deficient** when `E↓ > K/γ_b`, using its baseline's per-cell level `γ_b / K` from
   [§2.2](#22-joint-error-budget).
 - A candidate cell is **proven better** in certification attempt `i` when `E↑`, with the null rate `UI(k)` in place of
@@ -344,7 +364,7 @@ certifying the minimum-pass-rate part reaches 90% for a cell whose true pass rat
 to the minimum pass rate `p_min`, which is `1 − (1 − p_min)/5`, 99% at `p_min = 0.95`, counting the attempts that stop
 early because the cell certifies or is clearly below. CAT computes it with an exact absorbing-state calculation over
 `(S, F)`. Calibration that fails or is unavailable blocks admission; CAT never runs an attempt without a cap. The same
-cap bounds each control comparison's number of pairs.
+cap bounds each control and incumbent comparison's number of pairs.
 
 At `p_min = 0.95`:
 
@@ -361,16 +381,17 @@ At `p_min = 0.95`:
 
 The cost grows slowly with the attempt count: a candidate that passes every trial needs 93 trials per cell in attempt
 1 and 271 in attempt 100. These values are regression fixtures for the calibration code. When a cell reaches its cap
-with its minimum-pass-rate part or a control comparison undecided, the attempt ends `not certified: inconclusive`. CAT
+with its minimum-pass-rate part, a control comparison or an incumbent comparison undecided, the attempt ends
+`not certified: inconclusive`. CAT
 never raises a frozen cap or reopens an attempt.
 
-A control comparison can need more pairs than the cell needed formal trials. CAT then assigns more candidate formal
-trials to the cell, each paired with a control trial, up to the cap. Those trials count in `(S, F)` like any other, but
-cannot undo a certified minimum-pass-rate part, because an anytime-valid test that has crossed its threshold has
-decided. A guard assertion sets this cost. In a simulation of attempt 1, when the candidate and the control each pass a
-guard 99% of the time, the comparison passed within the cap of 262 pairs 93% of the time, after a median of 123 pairs;
-at 98% each, 74% of the time. An effect assertion that the control passes 10% of the time passed after a median of 8
-pairs.
+A control or incumbent comparison can need more pairs than the cell needed formal trials. CAT then assigns more
+candidate formal trials to the cell, each paired with a control trial and an incumbent trial, up to the cap. Those
+trials count in `(S, F)` like any other, but cannot undo a certified minimum-pass-rate part, because an anytime-valid
+test that has crossed its threshold has decided. A guard assertion sets this cost. In a simulation of attempt 1, when
+the candidate and the control each pass a guard 99% of the time, the comparison passed within the cap of 262 pairs 93%
+of the time, after a median of 123 pairs; at 98% each, 74% of the time. An effect assertion that the control passes 10%
+of the time passed after a median of 8 pairs.
 
 ### 2.5 Incumbent baseline
 
@@ -385,7 +406,9 @@ capacity ([§3.3](#33-allocation-and-concurrency)) until it reaches these target
 
 The incumbent is also the first working candidate. Its development trials draw development test cases and never count
 toward the baseline. Control trials are not baseline trials: they run the incumbent with its target prompt file
-emptied ([§4.4](#44-trial-staging)), only within a certification attempt.
+emptied ([§4.4](#44-trial-staging)), only within a certification attempt. Incumbent trials are not baseline trials
+either: they run the test cases of the candidate formal trials they pair with, only within a certification attempt, and
+count only toward the incumbent comparisons.
 
 A commit requires these targets to be met. The baseline is reused across candidates while measurement identities stay
 comparable ([§5](#5-measurement-identity-and-applicability)). Otherwise the incumbent is measured again as a new
@@ -415,7 +438,7 @@ scheduling decisions is at most the null value. The design meets or monitors eac
 | Discarding unfavourable outcomes | A retry could hide a failure. | A valid pass or fail outcome is recorded once. Only an attempt with no outcome reruns, as the same logical trial with the same test case. A trial that exceeds its declared time limit is judged on its behaviour, not retried, unless the provider produced no output in the turn that reached it ([§3.2](#32-logical-trials)). A logical trial with 3 infrastructure failures, not counting rate-limit rejections or provider refusals, pauses the campaign; it is never skipped. A blocking development failure discards every unadopted development trial of the working candidate, finished or not, so the discard depends only on adopted outcomes ([§2.7](#27-development-readiness-and-edit-or-continue)). |
 | Formal outcomes tuning the same candidate | Editing a candidate in response to its formal results. | A formal outcome may inform development, but any edit creates a new candidate and needs a new attempt. |
 | Certifying on the test cases that shaped the candidate | A candidate tuned on the test cases that then certify it is measured on its own training data, so the claim overstates how it does on cases it was not tuned for. | CAT splits every prompt test's test cases by expected outcome before any trial. Development, prompt authors and diagnosis see only development test cases; formal trials and baseline trials draw only held-out test cases, and a formal failure reaches development without its test case ([§6.3](#63-prompt-tests-and-test-cases)). |
-| Control trials chosen by the candidate's outcomes | A control comparison that paired control trials with chosen candidate trials, or stopped on the candidate's outcomes, could favour the candidate. | Each control trial runs the test case of the candidate formal trial it pairs with, pairs follow assignment order, and the comparison decides only from its own pairs, up to the frozen cap ([§2.3](#23-sequential-tests)). Running the comparison only in certified cells cannot raise the false-certification probability, because a false certification still needs a false part to pass. |
+| Control trials chosen by the candidate's outcomes | A control or incumbent comparison that paired its trials with chosen candidate trials, or stopped on the candidate's outcomes, could favour the candidate. | Each control or incumbent trial runs the test case of the candidate formal trial it pairs with, pairs follow assignment order, and the comparison decides only from its own pairs, up to the frozen cap ([§2.3](#23-sequential-tests)). Running the comparison only in certified cells cannot raise the false-certification probability, because a false certification still needs a false part to pass. |
 | Generated fixture text deciding the outcome | Filler that happened to contain the answer would make two answers correct. | Only values that the contract author writes decide a test case's expected outcome, and the contract author's instructions list each value generator's words and date range ([§6.3](#63-prompt-tests-and-test-cases)). |
 
 If CAT detects dependence it cannot rule out, the result is `certification unavailable: invalid statistical
@@ -678,6 +701,7 @@ Formal decisions, per certification attempt:
 |---|---|---|
 | A cell is clearly below | Any | End the attempt `not certified: below minimum`, retain all evidence, and return to development automatically with each formal failure's cell, prompt test, failed assertions and behavior as diagnostic input, after reproducing each failure group in development ([§6.3](#63-prompt-tests-and-test-cases)). |
 | An assertion is below control | Any | End the attempt `not certified: below control` and return to development automatically with the cell, the assertion and its candidate and control pass rates. |
+| An assertion is below incumbent | Any | End the attempt `not certified: below incumbent` and return to development automatically with the cell, the assertion and its candidate and incumbent pass rates. |
 | A cell reached its cap undecided | Any | End the attempt `not certified: inconclusive` and return to development automatically, after reproducing each failure group in development ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Every cell certified | No cell proven worse | `certified`. Every deficient cell is improved by construction. Deliver automatically ([§4.7](#47-delivery)). |
 | Every cell certified | Some cell proven worse | `certified`, but retain the incumbent by default. Delivery requires the user to explicitly accept the regression trade-off. |
@@ -700,7 +724,7 @@ Both phases display these outputs from the same observations, with unavailable v
 |---|---|
 | Estimated pass rate | Candidate passes/trials and rate per cell, under the frozen decision procedure, and each assertion's rate. |
 | Improvement over the incumbent | Candidate minus incumbent, in percentage points per cell, with the incumbent's identity, counts, deficiency status and the difference interval. A certification attempt also shows `proven better`, `proven worse` or `undecided` at `β_i / K`. |
-| Comparison with the minimum pass rate | Certification attempt: for each cell, each part of claim (a) with its rate, bound and status: the minimum-pass-rate part `certified`, `clearly below` or `undecided`, and each assertion's control comparison `passed`, `below control`, `undecided` or `not run`, with the candidate's and the control's rates; then the cell's `certified`, `clearly below`, `below control` or `inconclusive`, with `α_i`. Development phase: the readiness assessment and always `not certified`. |
+| Comparison with the minimum pass rate | Certification attempt: for each cell, each part of claim (a) with its rate, bound and status: the minimum-pass-rate part `certified`, `clearly below` or `undecided`, and each assertion's control comparison `passed`, `below control`, `undecided` or `not run`, with the candidate's and the control's rates, and its incumbent comparison `passed`, `below incumbent`, `undecided` or `not run`, with the candidate's and the incumbent's rates; then the cell's `certified`, `clearly below`, `below control`, `below incumbent` or `inconclusive`, with `α_i`. Development phase: the readiness assessment and always `not certified`. |
 | Error bars | Method, level or exploratory status, sample size and endpoints. The one-sided certification bound is kept visibly distinct from descriptive two-sided intervals. |
 
 Allocation counts are shown apart from the benchmark weights. A pooled adaptive pass fraction is never presented as
@@ -871,8 +895,8 @@ priority first:
    lowest current lower bound at `α_i`; ties are broken by fewer outcomes, then prompt test order. A failure is
    likeliest in the weakest cells, so an attempt that ends not certified most likely ends there, with a cell clearly
    below or at its cap, and a stronger cell spends no trial on a candidate that a weaker cell has not yet certified;
-5. formal control trials, then the further candidate trials that a control comparison needs
-   ([§2.4](#24-caps)), only in cells whose minimum-pass-rate part has certified;
+5. formal control trials and incumbent trials, then the further candidate trials that a control or incumbent
+   comparison needs ([§2.4](#24-caps)), only in cells whose minimum-pass-rate part has certified;
 6. baseline trials for the incumbent. The concurrency window below limits only the active candidate's trials. A
    failure never wastes a baseline trial, so these trials may use any capacity left under the campaign ceiling.
 
@@ -888,9 +912,10 @@ spends the expensive work:
 1. CAT runs the built-in tools on each finished trial at once, and the failure of a built-in tool whose
    `on_tool_failure` is `fail` is a definitive trial failure, adopted without a judge;
 2. a judge decides the remaining assertions of every trial while the attempt is alive;
-3. control trials run only in cells that steps 1 and 2 certified (rule 5), because a cell below the minimum pass rate
-   ends the attempt whatever the control comparison would show;
-4. the comparison with the incumbent reads the baseline, which is already complete at commit, and runs no trial.
+3. control and incumbent trials run only in cells that steps 1 and 2 certified (rule 5), because a cell below the
+   minimum pass rate ends the attempt whatever those comparisons would show;
+4. the whole-trial comparison with the incumbent reads the baseline, which is already complete at commit, and runs no
+   trial.
 
 **Concurrency (how many trials run at once).** For the active candidate, let `n` and `f` be its adopted outcomes and
 failures. In the formal phase these include the same snapshot's development outcomes, which is safe because concurrency
@@ -904,7 +929,8 @@ changes only timing. Let `û` be the one-sided 95% Clopper–Pearson upper bound
   trials all pass.
 - **Cell limit (formal):** in-flight candidate trials in cell `k` never exceed the passes still required to certify it
   if all of them pass, and are at least 1; in-flight control trials never exceed the pairs still required for its
-  slowest undecided comparison if every pair favours the candidate. This bounds the trials wasted after a decision.
+  slowest undecided control comparison if every pair favours the candidate, and in-flight incumbent trials likewise for
+  its incumbent comparisons. This bounds the trials wasted after a decision.
 - **Campaign ceiling:** default 8, configurable from 1 to 16.
 - **Throttle limit and capacity:** see [§3.5](#35-volume-safeguards) and [§3.6](#36-shared-harness-capacity).
 
@@ -914,11 +940,11 @@ a forecast model.
 ### 3.4 Adoption order and draining
 
 Within a cell and purpose, CAT adopts an outcome into `(S, F)` only after every earlier-assigned outcome is adopted. A
-control comparison adopts pair `j` only after pairs 1 to `j − 1` and after both trials of pair `j` have outcomes. Every
-statistical decision uses that contiguous prefix only. When a cell reaches a decision that stops it, or the attempt
-ends, CAT stops admitting new trials for it. Certified, clearly below and below control stop a cell. Trials already in
-flight finish and are recorded as post-decision observations that never change the decision. A cancelled post-decision
-trial records no outcome.
+control or incumbent comparison adopts pair `j` only after pairs 1 to `j − 1` and after both trials of pair `j` have
+outcomes. Every statistical decision uses that contiguous prefix only. When a cell reaches a decision that stops it, or
+the attempt ends, CAT stops admitting new trials for it. Certified, clearly below, below control and below incumbent
+stop a cell. Trials already in flight finish and are recorded as post-decision observations that never change the
+decision. A cancelled post-decision trial records no outcome.
 
 ### 3.5 Volume safeguards
 
@@ -1014,8 +1040,8 @@ the **minimum remaining trials**: the number still required if every remaining t
   a recent batch holds 2 or more failures. Add the incumbent's remaining baseline, and the next attempt's all-pass
   minimum for every cell of the certification scope.
 - **Formal:** for each unresolved cell, the smallest `s` such that `E↑(S + s, F)` exceeds `1/α_i`, plus, for each
-  undecided control comparison, the fewest further pairs after which `E_ctl↑` exceeds `1/α_i` if every pair gives
-  `Z = ½`, the result when both trials pass.
+  undecided control or incumbent comparison, the fewest further pairs after which its `E_ctl↑` or `E_inc↑` exceeds
+  `1/α_i` if every pair gives `Z = ½`, the result when both trials pass.
 
 The status also shows each nested-session kind's observed token usage per session (median and 90th percentile) when
 the harness reports it. CAT does not show a token total, a time estimate or a completion probability. Any of those
@@ -1034,7 +1060,7 @@ Campaign data lives under `<base>/.cat/work/optimizer/<campaign-id>/`:
 
 - the held-out directory `held-out/` ([§6.3](#63-prompt-tests-and-test-cases)), holding:
   - `campaign.json`: a compact snapshot holding identities, the frozen contract and procedure, `(S, F)` per candidate
-    and cell, each control comparison's pair counts, allocation positions, and pending decisions;
+    and cell, each control and incumbent comparison's pair counts, allocation positions, and pending decisions;
   - the latest proposal, including its derived prompt sources, its prompt tests and every test case's values and
     expected outcome, and the salt of the split;
   - the guard pilot's trial records;
@@ -1176,14 +1202,24 @@ included, to the run's **initial project**. A built-in tool that reads a file as
 trial record's file changes, compare with that copy rather than with the staged source, so a fixture is part of the
 workspace that the trial started with, not a file that the trial created.
 
-**Control source (user ruling, 2026-10-13).** Control trials ([§2.3](#23-sequential-tests)) and the guard pilot use
-one more staged source: the incumbent with the target prompt file emptied to zero bytes, so the file still exists but
-gives no instruction. Every other file of the prompt system stays as the incumbent has it, so control trials measure
-the agent that the user would have without the target, not an agent without any project rules. The control source is
-the same for every candidate. The proposal names the emptied path. Its plugin copy is built from it in the same way, so
-a target prompt file that belongs to the plugin under test is empty there too. When another loaded
-file references the target lazily, the reference stays, and the agent may still try to read it; the proposal records
-this as a limitation.
+**Control source (user rulings, 2026-10-13).** Control trials ([§2.3](#23-sequential-tests)) and the guard pilot
+use one more staged source: the incumbent with the target prompt file emptied to zero bytes, so the file still exists
+but gives no instruction, and with every dependent of the target removed. A dependent is a part of the prompt system,
+or of the plugin under test, that exists only to deliver the target or to carry out, enforce or repair what the target
+instructs, so that it has no purpose once the target is gone. For example, a hook that repairs the output of a command
+that only the target tells the agent to run is a dependent, and so is a route whose only effect is to load the target.
+The control source removes nothing else: a file, hook or sentence that still has a purpose without the target stays as
+the incumbent has it, even when it mentions the target, so control trials measure the agent that the user would have
+without the target, not an agent without any project rules.
+
+CAT works out the control source itself; the user does not write it. The contract author lists each dependent with the
+part it removes (a whole file, which is deleted; a hook registration, which is unregistered; or an exact span of a
+file, which is deleted) and the target instruction it serves. CAT refuses an entry that names the target, a path
+outside the prompt system and the plugin under test, or a span that does not occur exactly once, and the user confirms
+the list with the proposal ([§6.1](#61-derivation-and-confirmation)). The control source is the same for every
+candidate. Its plugin copy is built from it in the same way, so a target or dependent that belongs to the plugin under
+test is removed there too. When a file that stays still references the target lazily, the reference stays, and the
+agent may still try to read it; the proposal records this as a limitation.
 
 ### 4.5 Symbolic-link warning
 
@@ -1303,15 +1339,15 @@ above 96%, so raising the minimum pass rate to 0.96 makes it historical and lowe
 
 A certified delivery writes a **certification record** into the project, which the user commits with the prompt. It is a
 JSON file of a few kilobytes holding the claim and its measurement identity: the certification index, the scope, each
-cell's counts with each control comparison's pair counts, the minimum pass rate, the margin and `α_i`, and every
-condition listed above, with the prompt sources and the contract by hash. It holds no trial results. Once the campaign's
-files are removed ([§4.1](#41-storage)), the record is what remains of the certification: `status` for a target without
-a resumable campaign, and the proposal of a new campaign for the target, compare it with the conditions CAT knows at
-that point and report the certification current or historical, naming each changed condition. A finished campaign stays
-reachable by its identifier. A condition that only a session observes, such as the trial model, is reported as unchecked
-until a later session observes it; so is every harness-specific condition (the provider, the harness, session
-environment and judge versions, and the trial model, reasoning and tool-output limit) when the reporting harness is not
-the one that certified (D51).
+cell's counts with each control and incumbent comparison's pair counts, the minimum pass rate, the margin and `α_i`, and
+every condition listed above, with the prompt sources and the contract by hash. It holds no trial results. Once the
+campaign's files are removed ([§4.1](#41-storage)), the record is what remains of the certification: `status` for a
+target without a resumable campaign, and the proposal of a new campaign for the target, compare it with the conditions
+CAT knows at that point and report the certification current or historical, naming each changed condition. A finished
+campaign stays reachable by its identifier. A condition that only a session observes, such as the trial model, is
+reported as unchecked until a later session observes it; so is every harness-specific condition (the provider, the
+harness, session environment and judge versions, and the trial model, reasoning and tool-output limit) when the
+reporting harness is not the one that certified (D51).
 
 If a material condition changes between trials, CAT pauses as `MEASUREMENT_CHANGED` before the next model call. To
 continue, the user restores the condition, starts a new measurement identity, or cancels. A change to the loader
@@ -1371,7 +1407,8 @@ Aggregate counts never stand in for the items themselves. The proposal lists:
 - for every requirement that applies only under a trigger, that trigger and at least one test where it is absent, whose
   expected behaviour is that the obligated action does not occur (D40);
 - the judge's rubric and decision rule;
-- the target prompt file that the control source empties ([§4.4](#44-trial-staging));
+- the target prompt file that the control source empties, and each dependent it removes with the target instruction
+  that the dependent serves ([§4.4](#44-trial-staging));
 - the plugin under test, if any: its plugin root, or its base and mappings with each mapped file whose content differs
   from the base's; its hooks that the user has not approved; and whether trials install CAT, with the evidence that the
   plugin depends on CAT or the statement that none was found ([§4.4](#44-trial-staging));
@@ -2187,6 +2224,8 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D69 | Install the plugin under test in each trial from a copy that holds the snapshot's prompt files, and install CAT in its trials only when the plugin depends on CAT (user ruling, 2026-10-11). | Trials installed one fixed CAT artifact, so a candidate's edit to a prompt file that the plugin ships, and a control's emptied copy, never reached the trial agent, and a campaign could not measure its own target. Installing CAT beside another plugin would measure a combination that the plugin's users without CAT never run. A mapping from source to a built base, rather than a rebuild per candidate, keeps a candidate's trials free of the project's build. | A build step that transforms a prompt file is outside the mapping, so such a file cannot be a target. A hook that the user has not approved does not run in trials. The contract author must judge the dependency on CAT, which the user confirms. |
 | D70 | Derive requirements from the user's goal before the prompt system, and let a test revision rewrite a failing prompt test without confirmation while it keeps the confirmed requirements and the test design rules (user rulings, 2026-10-13). | Deriving requirements from the prompt system alone, as the first read-file certification start did without the target or the goal, turned every obligation of a 608 KB prompt system into a requirement and produced tests of how the bundled scripts work rather than whether a file reaches the agent whole. Classifying a faulty test as *not guidance* stopped progress until the user revised the contract, and confirming every test revision would ask the user to decide how to test, which the user delegated. | A prompt obligation outside the goal reaches the contract only when the user keeps it. Each test revision costs a new lineage, a new incumbent baseline and new test cases, and ends a running attempt without refunding its allowance. |
 | D71 | Optimize exactly one target prompt file, refusing a directory, and let control trials empty only that file (user rulings, 2026-10-13). | One prompt file is the focus of an optimization; the rest of the prompt system is the context it runs in. Emptying every in-project prompt file measured an agent with no project rules at all, so the guard pilot and the control comparison credited or blamed the target for the effect of the other rules. | A prompt system with several files needs one campaign per file it optimizes. The prompt author may still edit every in-project file that the prompt system loads. Control trials load those files as the incumbent has them, so the control comparison attributes a candidate's edits to them to the candidate along with its edits to the target. |
+| D72 | Let control trials also remove every dependent of the target, which the contract author lists and the user confirms with the proposal, and nothing else (user ruling, 2026-10-13). | Emptying the target alone left in place the hooks and routes that exist only to serve it, such as the Codex PostToolUse hook that repairs `read-part` output, so control trials measured an agent with part of the target's mechanism still active. Removing more than the dependents would again credit or blame the target for the effect of other rules (D71). | Whether a part exists only to serve the target is a judgment, so the contract author makes it and the user confirms it; a wrong list biases the control comparison. A file that still has another purpose keeps any mention of the target. |
+| D73 | Compare each assertion of a certified cell with the incumbent as well as with control, on incumbent trials paired with the candidate formal trials, with the same 5-point margin, decisions and cap (user ruling, 2026-10-13). | The minimum pass rate, the control comparison and the whole-trial comparisons with the incumbent can all pass while a candidate passes one assertion less often than the incumbent did, trading a guard for an effect. The baseline trials are unpaired and measure whole trials, so they cannot decide a per-assertion comparison. | Each certified cell runs up to one incumbent trial per pair, as many as its control trials, so formal cost rises by up to the number of pairs. Requiring every part of claim (a) adds no error budget, but a guard that both pass almost always needs many pairs in both comparisons. |
 
 ## 14. Acceptance evidence
 
@@ -2198,7 +2237,7 @@ a named end-to-end boundary.
 |---|---|
 | G1 | **End-to-end in both harnesses:** a dirty base is refused before any fork. A deliberately deficient prompt system is improved in the optimization worktree; unselected attempts never touch the base; a certified, non-regressing candidate is delivered as a Git diff that includes its certification record, after which nothing of the campaign remains under `.cat/work/`; keeping the incumbent instead of a regressing certified candidate also removes it, and an uncertified campaign keeps its files; an interrupted removal completes on the next command. **Delivery:** disjoint post-fork base edits survive; same-file changes stop for direction; a fault between writes resumes without duplicating or overwriting. **Uncertified outcomes:** they leave the base unchanged unless the user explicitly chooses. An improvement proven by an inconclusive attempt is offered and, when kept, delivered as `improved, not certified`; when several attempts qualify, the best candidate so far is offered, even after later candidates fail. Driver and delivery tests prove these, because an uncertified certification attempt costs hundreds of trials end to end. An accepted uncertified candidate is labelled `not certified`. **Authoring:** an attempt whose manifest omits a changed hunk or cites an unknown test case is rejected; the minimality pass removes a hunk that the promotion runs do not need and keeps one they do; a weak round's 3 attempts promote only the best accepted one; an attempt that fixes some triggering test cases but not all is promoted; a triggering test case gets extra runs until its streak is unlikely for the working candidate, up to 4; a promoted candidate that falls clearly below its predecessor is reverted; each attempt of a round receives its own approach (driver tests with a fake `SessionPort`). |
 | G2 | **Proposal content:** every fixture requirement and source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per prompt test in the weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns it only for changed prompt tests, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed; a mapping to a path that the base does not hold, or in-project prompt files in two plugins, is refused, and a mapped file that differs from the base is a warning. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, prose in a section of key-value pairs, a `## Scenario` or turn of key-value pairs without a `description`, an unknown key, a fixture pattern that leaves the test root or matches no file, a malformed variable, an undeclared or generated placeholder outside fixture contents, an unknown built-in tool, an `on_tool_failure` other than `fail` or `judge` or without a `tool`, or a check whose evidence the harness cannot supply is refused. **Test cases:** fixtures are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation waits until the user chooses a certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. |
-| G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds; caps, all-pass minimums, bets, the readiness gate and the baseline at minimum pass rates other than 0.95; the control e-values on fixed pair paths, including `not certified: below control` and certification held back until the control comparison is decided. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim names the frozen judge, the benchmark, the held-out part and the conditions, and a weakest-only claim names its one profile per prompt test and says that no other profile was certified. |
+| G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds; caps, all-pass minimums, bets, the readiness gate and the baseline at minimum pass rates other than 0.95; the control and incumbent e-values on fixed pair paths, including `not certified: below control`, `not certified: below incumbent` and certification held back until both comparisons are decided. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim names the frozen judge, the benchmark, the held-out part and the conditions, and a weakest-only claim names its one profile per prompt test and says that no other profile was certified. |
 | G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** detected dependence yields `invalid statistical assumptions`. **Held-out test cases:** the split by normalized expected outcome is fixed at the first validated proposal, and outcomes that differ only in case or whitespace share a part; committed test cases go to development and a new test case sharing a committed outcome does too; development trials, targeted runs and prompt author sessions receive only development test cases; formal and baseline trials draw only held-out ones; a formal failure reaches development only as its cell, test, failed assertions and behaviors, and the development test cases added after it never share a held-out expected outcome and join development only after two reproduction failures with the failure's behavior in its cell or a stressed profile, the contract author replacing test cases that do not reproduce, with a pause after 4 rounds; in both harnesses, no session whose output reaches development can read the held-out directory or the held-out run root. |
 | G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a changed command that an unchanged prompt tells the model to run leaves it current; a runner or CAT version change with an unchanged session environment version leaves it current; a raised threshold or a lowered error level makes it historical, and a lowered threshold or a raised error level does not; a new judge version makes it historical; after cleanup, `status` reports from the certification record, naming each changed condition and each unchecked one; a comparability field that only one side records makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: testing environment changed`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. **Size:** the status shows the candidate's prompt size and median trial input tokens against the incumbent's. |
 | G6 | **End-to-end in both harnesses:** ESC during a slice, then `run`, retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. Codex ESC stops admissions within 15 seconds. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** the other harness cannot advance the campaign. |

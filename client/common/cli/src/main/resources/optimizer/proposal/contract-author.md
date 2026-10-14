@@ -16,6 +16,9 @@
   observed.
 - Name the harness plugin that holds the target prompt file, how a build assembles it from the project and whether
   it needs CAT, so that each trial installs that plugin with the trial's version of the prompt files.
+- Name every part of the prompt system that exists only to deliver the target prompt file or to carry out, enforce or
+  repair what it instructs, with the target instruction that it serves, so that control trials remove it together with
+  the target's text and the user can confirm each one. A part that also serves another purpose stays out of the list.
 - Report every condition that makes certification unavailable, with the requirements it affects and its evidence, so
   CAT can show it to the user before confirmation.
 - Turn every recorded regression scenario of the target into a prompt test that cites that scenario, converting a
@@ -102,11 +105,11 @@ user's feedback changes it. A higher rate needs more trials to prove.
 
 ### Guard pilot
 
-After a proposal validates, CAT runs about 20 trials of each test with the target prompt file empty and shows each
-assertion's pass rate in them. On a revision, the previous proposal below is followed by those results. A guard
-assertion whose rate is below the minimum pass rate is a warning: classify it `effect` when the prompts are what make an
-agent pass it, or change the test's test cases when they are too hard to pass without the prompts. Otherwise keep it
-unchanged; the user decides whether the agent really fails it without the prompts.
+After a proposal validates, CAT runs about 20 trials of each test with the target prompt file empty and its dependents
+removed, and shows each assertion's pass rate in them. On a revision, the previous proposal below is followed by those
+results. A guard assertion whose rate is below the minimum pass rate is a warning: classify it `effect` when the prompts
+are what make an agent pass it, or change the test's test cases when they are too hard to pass without the prompts.
+Otherwise keep it unchanged; the user decides whether the agent really fails it without the prompts.
 
 ### Fixtures and limitations
 
@@ -166,6 +169,34 @@ plugin of the user's harness.
   or its prompt files invoke CAT's skills, agents or commands or name CAT's plugin directory. Quote the manifest entry
   or file passages that show it in `cat_evidence`, or say that none exist. A plugin that is CAT itself is installed
   alone, from its copy.
+
+### Dependents of the target
+
+`dependents` lists every part of the prompt system that exists only for the target prompt file: it delivers the target
+to the agent, or it carries out, enforces or repairs what the target instructs. Control trials measure each assertion
+without the target: they empty the target, remove each dependent and change nothing else. A dependent left out keeps
+part of the target's effect in control trials; a part listed although it serves another purpose credits or blames the
+target for that purpose. For example, when only the target tells the agent to read files with the scripts
+`bin/read-part` and `bin/run-part`, and a `PostToolUse` hook repairs their output, both scripts and that hook's
+registration are dependents.
+
+- List a part only when no other prompt file, hook or feature of the prompt system uses it. A file that has another
+  purpose is not a dependent, even when it mentions the target; when one passage of it exists only for the target, such
+  as a line that tells the agent to read the target, list that passage as a span.
+- Never list the target prompt file or its copy in the plugin under test; control trials already empty them.
+- Give a file that a `mappings` entry of the plugin under test copies from the project by its project path; control
+  trials remove it from the plugin's copy too. Give the `plugin` location only to a file that the plugin holds and no
+  project file supplies, or to a file of a plugin given by `root`.
+- For each dependent, give:
+  - `location`: `project` when `path` is relative to the project root; `plugin` when it is relative to the directory of
+    the plugin under test.
+  - `path`: the file that holds the dependent.
+  - `removes`: `file` to delete the whole file; `span` to delete `text`, which must occur in the file exactly once;
+    `hook_registration` to unregister every hook of `event` whose command is `command`, spelled as the hook
+    configuration spells it.
+  - `text`, `event` and `command`: the values that `removes` uses, and `null` for the others.
+  - `serves`: the target instruction that the dependent serves, and why nothing else uses it.
+- Leave the list empty when the target has no dependent. The user confirms or corrects the list with the proposal.
 
 ### Scope conditions
 

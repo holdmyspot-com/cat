@@ -7,8 +7,10 @@ import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.RiskRank;
@@ -18,11 +20,13 @@ import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
 import io.github.cowwoc.cat.common.optimizer.contract.VariableDeclaration;
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.Test;
 
@@ -557,5 +561,88 @@ public final class ContractTest
 				requireThat(e.getMessage(), rate).contains("minimumPassRate");
 			}
 		}
+	}
+
+	/**
+	 * Verifies that a contract refuses dependents that control trials cannot remove unambiguously: one in a plugin that
+	 * the contract does not have, one removal listed twice, and a whole file that another dependent also edits.
+	 */
+	@Test
+	public void refusesAmbiguousDependents()
+	{
+		// Requirement: R-W10
+		Contract contract = ContractFixtures.contract();
+		Dependent script = new Dependent(Dependent.Location.PROJECT, Path.of("repair.sh"), new Dependent.WholeFile(),
+			"Repairs the output.");
+		Dependent span = new Dependent(Dependent.Location.PROJECT, Path.of("repair.sh"), new Dependent.Span("x"),
+			"Repairs the output.");
+		Dependent inPlugin = new Dependent(Dependent.Location.PLUGIN, Path.of("bin/read-part"),
+			new Dependent.WholeFile(), "Reads a part.");
+		Map<String, List<Dependent>> refused = Map.of(
+			"has none", List.of(inPlugin),
+			"twice", List.of(script, script),
+			"whole file", List.of(script, span));
+		for (Map.Entry<String, List<Dependent>> entry : refused.entrySet())
+		{
+			try
+			{
+				ContractFixtures.withDependents(contract, entry.getValue());
+				throw new AssertionError("The dependents were accepted: " + entry.getValue());
+			}
+			catch (IllegalArgumentException e)
+			{
+				requireThat(e.getMessage(), "message").contains(entry.getKey());
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the dependents of a target in a plugin root are removed from the project, under the root, and that
+	 * none is removed from a plugin copy, because a plugin root's copy is the staged project's directory.
+	 */
+	@Test
+	public void pluginRootDependentsAreProjectRemovals()
+	{
+		// Requirement: R-W10
+		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(Optional.of(
+				new PluginUnderTest.Root(Path.of("plugin"), false, "No prompt file invokes a CAT skill."))),
+			List.of(
+				new Dependent(Dependent.Location.PROJECT, Path.of("AGENTS.md"), new Dependent.Span("Read it.\n"),
+					"Routes the agent to the prompt."),
+				new Dependent(Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(),
+					"Reads a part.")));
+
+		requireThat(contract.projectRemovals().stream().map(Dependent::path).toList(), "projectRemovals").
+			isEqualTo(List.of(Path.of("AGENTS.md"), Path.of("plugin/bin/read-part")));
+		requireThat(contract.projectRemovals().get(1).location(), "location").isEqualTo(Dependent.Location.PROJECT);
+		requireThat(contract.pluginRemovals(), "pluginRemovals").isEmpty();
+	}
+
+	/**
+	 * Verifies that a built plugin's copy loses each dependent in the plugin and each whole project file that a mapping
+	 * copies into it, while a span in a mapped file and a file outside every mapping stay project removals only.
+	 */
+	@Test
+	public void builtPluginRemovalsFollowMappings()
+	{
+		// Requirement: R-W10
+		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(Optional.of(
+				new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath(), "0".repeat(64),
+					List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
+					"No prompt file invokes a CAT skill."))),
+			List.of(
+				new Dependent(Dependent.Location.PROJECT, Path.of("rules/repair.md"), new Dependent.WholeFile(),
+					"Repairs the output."),
+				new Dependent(Dependent.Location.PROJECT, Path.of("rules/route.md"), new Dependent.Span("Read it.\n"),
+					"Routes the agent to the prompt."),
+				new Dependent(Dependent.Location.PROJECT, Path.of("repair.sh"), new Dependent.WholeFile(),
+					"Repairs the output."),
+				new Dependent(Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(),
+					"Reads a part.")));
+
+		requireThat(contract.pluginRemovals().stream().map(Dependent::path).toList(), "pluginRemovals").
+			isEqualTo(List.of(Path.of("rules/codex/repair.md"), Path.of("bin/read-part")));
+		requireThat(contract.projectRemovals().stream().map(Dependent::path).toList(), "projectRemovals").
+			isEqualTo(List.of(Path.of("rules/repair.md"), Path.of("rules/route.md"), Path.of("repair.sh")));
 	}
 }

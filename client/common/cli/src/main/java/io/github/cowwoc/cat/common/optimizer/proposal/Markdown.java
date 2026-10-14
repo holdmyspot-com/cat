@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
@@ -590,13 +591,52 @@ public final class Markdown
 	}
 
 	/**
-	 * Lists the target prompt files that the control source empties.
+	 * Shows what the control source changes: the target prompt file that it empties and each dependent that it
+	 * removes.
 	 */
 	private void controlSource()
 	{
 		heading("Control source");
 		text.append("Control trials run the incumbent with the target prompt file `").append(controlFile).
-			append("` emptied to zero bytes. Every other prompt file stays as the incumbent has it.\n");
+			append("` emptied to zero bytes");
+		List<Dependent> dependents = contract.dependents();
+		if (dependents.isEmpty())
+		{
+			text.append(". The contract lists no dependents of the target, so every other part of the prompt system " +
+				"stays as the incumbent has it.\n");
+			return;
+		}
+		text.append(" and these dependents of the target removed. Every other part of the prompt system stays as the " +
+			"incumbent has it.\n\n");
+		for (Dependent dependent : dependents)
+		{
+			text.append("- ");
+			switch (dependent.location())
+			{
+				case PROJECT -> text.append("The project file `");
+				case PLUGIN -> text.append("The plugin file `");
+			}
+			text.append(dependent.path()).append("`: ");
+			switch (dependent.removal())
+			{
+				case Dependent.WholeFile _ -> text.append("deleted");
+				case Dependent.Span _ -> text.append("the text below deleted");
+				case Dependent.HookRegistration hook -> text.append("its ").append(hook.event()).
+					append(" hook `").append(hook.command()).append("` unregistered");
+			}
+			text.append(". Serves: ").append(dependent.serves()).append('\n');
+			if (dependent.removal() instanceof Dependent.Span span)
+			{
+				String fence = "`".repeat(Math.max(3, longestBacktickRun(span.text()) + 1));
+				text.append("\n  ").append(fence).append('\n');
+				String content = span.text();
+				if (content.endsWith("\n"))
+					content = content.substring(0, content.length() - 1);
+				for (String line : content.split("\n", -1))
+					text.append("  ").append(line).append('\n');
+				text.append("  ").append(fence).append("\n\n");
+			}
+		}
 	}
 
 	/**

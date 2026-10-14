@@ -3,6 +3,9 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.math.BigDecimal;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,10 +28,12 @@ import java.util.Set;
  * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are split
  *   into the development part and the held-out part
  * @param plugin the harness plugin that holds the target prompt file, or empty if it is not in a plugin
+ * @param dependents the parts of the prompt system that exist only to serve the target prompt file, which control
+ *   trials remove
  */
 public record Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles,
 	JudgeProfile judge, TrialFixtures fixtures, List<String> limitations, BigDecimal minimumPassRate, long salt,
-	Optional<PluginUnderTest> plugin)
+	Optional<PluginUnderTest> plugin, List<Dependent> dependents)
 {
 	/**
 	 * The minimum pass rate when the contract author proposes none.
@@ -70,7 +75,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	}
 
 	/**
-	 * Creates a contract.
+	 * Creates a contract whose target prompt file has no dependents.
 	 *
 	 * @param requirements every requirement and its source
 	 * @param tests every prompt test, in the order used to break otherwise equal allocation choices
@@ -84,7 +89,35 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 *   split into the development part and the held-out part
 	 * @param plugin the harness plugin that holds the target prompt file, or empty if it is not in a plugin
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code requirements} or {@code tests} are empty, two requirements or two tests
+	 * @throws IllegalArgumentException if the canonical constructor rejects the values
+	 */
+	public Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles, JudgeProfile judge,
+		TrialFixtures fixtures, List<String> limitations, BigDecimal minimumPassRate, long salt,
+		Optional<PluginUnderTest> plugin)
+	{
+		this(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt, plugin, List.of());
+	}
+
+	/**
+	 * Creates a contract.
+	 *
+	 * @param requirements every requirement and its source
+	 * @param tests every prompt test, in the order used to break otherwise equal allocation choices
+	 * @param profiles the trial profiles and the cells, which are the statistical units
+	 * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
+	 * @param fixtures the ignored files that trials need
+	 * @param limitations the material interactions and conditions that the contract does not cover
+	 * @param minimumPassRate the minimum pass rate {@code p_min}: a cell certifies only when its pass probability is
+	 *   proven to exceed it
+	 * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are
+	 *   split into the development part and the held-out part
+	 * @param plugin the harness plugin that holds the target prompt file, or empty if it is not in a plugin
+	 * @param dependents the parts of the prompt system that exist only to serve the target prompt file, which control
+	 *   trials remove
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code requirements} or {@code tests} are empty, a dependent lies in the
+	 *   plugin under test and the contract has none, two dependents name one removal, a dependent removes a whole file
+	 *   that another dependent edits, two requirements or two tests
 	 *   share an identifier, a test names a requirement that the contract does not list, no test names a requirement
 	 *   that the contract lists, {@code minimumPassRate} is
 	 *   outside
@@ -102,6 +135,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		requireThat(fixtures, "fixtures").isNotNull();
 		requireThat(limitations, "limitations").isNotNull();
 		requireThat(plugin, "plugin").isNotNull();
+		requireThat(dependents, "dependents").isNotNull();
 		requireThat(minimumPassRate, "minimumPassRate").
 			isBetween(LOWEST_MINIMUM_PASS_RATE, true, HIGHEST_MINIMUM_PASS_RATE, true);
 		requireThat(minimumPassRate.stripTrailingZeros().scale(), "minimumPassRate.stripTrailingZeros().scale()").
@@ -111,6 +145,8 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		limitations = List.copyOf(limitations);
 		for (String limitation : limitations)
 			requireThat(limitation, "limitation").isNotBlank();
+		dependents = List.copyOf(dependents);
+		requireDependents(dependents, plugin);
 
 		Map<String, Requirement> requirementById = new HashMap<>();
 		for (Requirement requirement : requirements)
@@ -211,7 +247,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	public Contract withScope(CertificationScope scope)
 	{
 		return new Contract(requirements, tests, profiles.withScope(scope), judge, fixtures, limitations,
-			minimumPassRate, salt, plugin);
+			minimumPassRate, salt, plugin, dependents);
 	}
 
 	/**
@@ -223,7 +259,105 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 */
 	public Contract withPlugin(Optional<PluginUnderTest> value)
 	{
-		return new Contract(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt, value);
+		return new Contract(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt, value,
+			dependents);
+	}
+
+	/**
+	 * Requires dependents that a contract can remove.
+	 *
+	 * @param dependents the dependents
+	 * @param plugin the plugin under test, or empty if the target prompt file is not in a plugin
+	 * @throws IllegalArgumentException if a dependent lies in the plugin under test and {@code plugin} is empty, two
+	 *   dependents name one removal, or a dependent removes a whole file that another dependent edits
+	 */
+	private static void requireDependents(List<Dependent> dependents, Optional<PluginUnderTest> plugin)
+	{
+		Map<Dependent.Location, Map<Path, List<Dependent.Removal>>> removals = new EnumMap<>(Dependent.Location.class);
+		for (Dependent dependent : dependents)
+		{
+			if (dependent.location() == Dependent.Location.PLUGIN && plugin.isEmpty())
+			{
+				throw new IllegalArgumentException("The dependent " + dependent.path() + " lies in the plugin under " +
+					"test, and the contract has none");
+			}
+			List<Dependent.Removal> ofFile = removals.computeIfAbsent(dependent.location(),
+				_ -> new HashMap<>()).computeIfAbsent(dependent.path(), _ -> new ArrayList<>());
+			if (ofFile.contains(dependent.removal()))
+			{
+				throw new IllegalArgumentException("The dependent " + dependent.path() + " lists " +
+					dependent.removal() + " twice");
+			}
+			ofFile.add(dependent.removal());
+			if (ofFile.size() > 1 && ofFile.stream().anyMatch(Dependent.WholeFile.class::isInstance))
+			{
+				throw new IllegalArgumentException("The dependents of " + dependent.path() + " remove the whole file " +
+					"and also a part of it. List the file once, as a whole file");
+			}
+		}
+	}
+
+	/**
+	 * Returns the removals that control trials apply to the project's files: each dependent in the project, and each
+	 * dependent in a plugin root, whose files are the project's.
+	 *
+	 * @return the dependents, each relative to the project root, in contract order
+	 */
+	public List<Dependent> projectRemovals()
+	{
+		List<Dependent> removals = new ArrayList<>();
+		for (Dependent dependent : dependents)
+		{
+			switch (dependent.location())
+			{
+				case PROJECT -> removals.add(dependent);
+				case PLUGIN ->
+				{
+					if (plugin.orElseThrow() instanceof PluginUnderTest.Root root)
+					{
+						removals.add(dependent.at(Dependent.Location.PROJECT,
+							root.directory().resolve(dependent.path())));
+					}
+				}
+			}
+		}
+		return removals;
+	}
+
+	/**
+	 * Returns the removals that control trials apply to their copy of a built plugin: each dependent in the plugin, and
+	 * each whole project file that a mapping copies into it, because a file missing from a staged source leaves the
+	 * base's copy in place. A span or hook registration in a mapped project file reaches the plugin with the file.
+	 *
+	 * @return the dependents, each relative to the plugin directory, in contract order; empty unless the plugin under
+	 *   test is a built plugin
+	 */
+	public List<Dependent> pluginRemovals()
+	{
+		if (!(plugin.orElse(null) instanceof PluginUnderTest.Built built))
+			return List.of();
+		List<Dependent> removals = new ArrayList<>();
+		for (Dependent dependent : dependents)
+		{
+			switch (dependent.location())
+			{
+				case PLUGIN -> removals.add(dependent);
+				case PROJECT ->
+				{
+					if (!(dependent.removal() instanceof Dependent.WholeFile))
+						continue;
+					for (PluginUnderTest.Mapping mapping : built.mappings())
+					{
+						if (dependent.path().startsWith(mapping.source()))
+						{
+							removals.add(dependent.at(Dependent.Location.PLUGIN,
+								mapping.target().resolve(mapping.source().relativize(dependent.path()))));
+						}
+					}
+				}
+			}
+		}
+		return removals;
 	}
 
 	/**

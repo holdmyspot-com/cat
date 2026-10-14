@@ -63,7 +63,6 @@ import io.github.cowwoc.cat.common.optimizer.execution.SessionEvents.Event;
 import io.github.cowwoc.cat.common.optimizer.inventory.AttemptReview;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
-import io.github.cowwoc.cat.common.optimizer.inventory.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
@@ -73,6 +72,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.InventoryDiff;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -87,6 +87,7 @@ import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibrationException;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 import io.github.cowwoc.cat.common.optimizer.store.TrialSession;
+import io.github.cowwoc.cat.common.optimizer.workspace.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 
 import java.io.Closeable;
@@ -1088,8 +1089,9 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			FileInventory fork = context.overlays().require(campaign.incumbent().snapshot()).fork();
-			Overlay control = ControlSource.of(fork,
-				campaign.header().root().relativize(campaign.header().target()));
+			Overlay control = ControlSource.of(context.workspace(), fork,
+				campaign.header().root().relativize(campaign.header().target()), campaign.contract().projectRemovals(),
+				context.json());
 			context.overlays().save(control);
 			event = new CampaignEvent.Commit(context.calibrator().calibrate(
 				ErrorBudget.certificationLevel(campaign.nextCertificationIndex()),
@@ -1701,7 +1703,11 @@ public final class Driver implements AutoCloseable
 			staged.put(key.snapshot(), candidate.identity());
 			TrialProfile profile = campaign.contract().findCell(trial.testCase().cellId()).orElseThrow().profile();
 			PromptTest test = campaign.contract().findTest(trial.testCase().testId()).orElseThrow();
-			Optional<TrialPlugin> plugin = TrialPlugins.of(campaign.contract().plugin(), context.workspace(), source);
+			PluginRemovals removals = PluginRemovals.NONE;
+			if (key.purpose() == Purpose.CONTROL)
+				removals = PluginRemovals.of(campaign.contract().pluginRemovals(), context.json());
+			Optional<TrialPlugin> plugin = TrialPlugins.of(campaign.contract().plugin(), context.workspace(), source,
+				removals);
 			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
 				trial.testCase().turns(), List.of(), test.timeLimit(), profile,
 				WorkspaceFixtures.of(test, trial.testCase().testCase()), plugin));

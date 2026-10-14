@@ -16,6 +16,8 @@ import java.time.Clock;
 import java.util.Set;
 import java.util.random.RandomGenerator;
 
+import tools.jackson.databind.json.JsonMapper;
+
 /**
  * The stores, workspace, session protocols and run settings that a {@link Driver} uses for one campaign.
  * <p>
@@ -47,13 +49,14 @@ import java.util.random.RandomGenerator;
  * @param lockFile the campaign's write-lock file
  * @param random the source of the certification trial stream's seed when a candidate is committed
  * @param settings the time limits of one bounded driver run (a slice)
+ * @param json reads and writes the hook configurations that control trials remove dependents from
  */
 public record DriverContext(CampaignStore store, SessionPort sessions, WorkspacePort workspace,
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
 	TriageProtocol triage, PromptAuthorProtocol promptAuthor, ValuesProtocol values, Deliverer deliverer,
 	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverRuns leftoverRuns, Authority authority,
 	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, RandomGenerator random,
-	SliceSettings settings)
+	SliceSettings settings, JsonMapper json)
 {
 	/**
 	 * Creates a context.
@@ -81,6 +84,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	 * @param lockFile the campaign's write-lock file
 	 * @param random the source of the certification trial stream's seed when a candidate is committed
 	 * @param settings the time limits of one bounded driver run (a slice)
+	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code environment} records a condition that only sessions observe
 	 */
@@ -109,6 +113,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 		requireThat(lockFile, "lockFile").isNotNull();
 		requireThat(random, "random").isNotNull();
 		requireThat(settings, "settings").isNotNull();
+		requireThat(json, "json").isNotNull();
 		promptSources = Set.copyOf(promptSources);
 	}
 }

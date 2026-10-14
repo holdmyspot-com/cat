@@ -550,6 +550,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-F5 | An unavailable condition discovered after a commit ends the attempt, keeps outcomes and allowance, and survives restart. | §6.5 | WI-3 | U: `CampaignTransitionsTest` |
 | R-F6 | Keep improvement: one certification attempt under the current contract shows at least one prompt test proven better, none proven worse, and every other prompt test certified or with at least 100 adopted outcomes. A not-certified certification attempt that meets this pauses with `keep improvement`, `optimize further` and `stop`. Qualifying attempts stay available after `optimize further` and at a later review checkpoint, plateau or stop. CAT ranks qualifying attempts only within one measurement identity: the best has the highest 95% Wilson lower bound on its weakest prompt test, with ties going to more prompt tests proven better and then to the more recent attempt. It offers the best attempt of each identity as its own choice, the current identity first and each earlier one labelled historical with its differing conditions named, and never ranks attempts across identities. Keeping is always explicit, ends optimization, is labelled `improved, not certified` and delivers the chosen attempt's frozen snapshot. | §2.8, §2.10 | WI-3, WI-9, WI-11, WI-12 | U: `KeepImprovementTest` (each condition on both sides; the ranking and each tie-break; an earlier-contract attempt excluded; attempts under two measurement identities offered separately and never ranked together), `DecisionTableTest`, `DriverTest` (traces 12–14), `DeliveryTest`, `StatusReportTest` |
 | R-F7 | Control trials: run on the control source, only in a cell whose minimum-pass-rate part certified; the `j`-th pairs with the cell's `j`-th candidate formal trial in assignment order and copies its test case; extra formal trials run to complete pairs up to the cell's cap; a cell certifies only when every assertion's comparison passes; `E_ctl↓` above `1/α_i` ends the attempt `not certified: below control`. | §2.3, §2.8, §3.3 | WI-65 | U: `SchedulerTest`, `DecisionTableTest`, `DriverTest`, `StatusReportTest` |
+| R-F8 | Incumbent trials: run the incumbent, only in a cell whose minimum-pass-rate part certified and only when the candidate is not the incumbent; the `j`-th pairs with the cell's `j`-th candidate formal trial in assignment order and copies its test case; a cell certifies only when every assertion's control and incumbent comparisons pass; `E_inc↓` above `1/α_i` ends the attempt `not certified: below incumbent`. | §2.1, §2.3, §2.8, §3.3, D73 | WI-77 | U: `PairedComparisonTest`, `SchedulerTest`, `DecisionTableTest`, `DriverTest`, `StatusReportTest`, `CertificationRecordTest` |
 
 ### 3.4 Execution
 
@@ -593,7 +594,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-W7 | Inventory validation of prompt author attempts; unowned-change detection at every `run`, before promotion and before delivery. | §4.6 | WI-6, WI-9 | U: `InventoryDiffTest`, `DriverTest` |
 | R-W8 | Delivery: verify the optimization worktree and materialize a selected candidate that is not the working candidate, preflight, journal, preimage checks, resume applying each change at most once, final verification, historical result after a base-only prompt edit. CAT never commits. | §1, §4.7 | WI-6, WI-11 | U: `DeliveryPlanTest`, `DeliveryTest` (fault between writes, concurrent edit, no commit created) |
 | R-W9 | Cleanup: once a certified candidate's delivery completes and is verified, or the user keeps the incumbent instead of a regressing certified candidate and the prompt-test delivery that follows completes and is verified, CAT removes the optimization worktree, the campaign's runs in both run roots and then the campaign directory; an interrupted removal completes on the next command for the target; every other campaign keeps its files. | §4.1, §4.7 | WI-43 | U: `CleanupTest` (each ending, fault before each step); E: E1 |
-| R-W10 | Control source: the incumbent's staged source with the target prompt file emptied to zero bytes and every other prompt file unchanged, the same for every candidate, its path listed in the proposal. | §4.4, D71 | WI-65, WI-75 | U: `StagedSourceTest`, `ProposalTest`, `OptimizerCoreTest` |
+| R-W10 | Control source: the incumbent's staged source with the target prompt file emptied to zero bytes, each dependent that the contract author lists removed (a file deleted, a hook registration unregistered, or an exact span deleted), and every other prompt file unchanged, the same for every candidate; the proposal lists the target and each dependent with the instruction it serves, and CAT refuses an entry that names the target, a path outside the prompt system and the plugin under test, or a span that does not occur exactly once. | §4.4, §6.1, D71, D72 | WI-65, WI-75, WI-76 | U: `StagedSourceTest`, `ProposalTest`, `OptimizerCoreTest` |
 | R-W11 | Delivery writes each confirmed prompt test's values file with every test case of the campaign, and the scenario and fixtures of each created or edited prompt test, on a certified delivery and when the user keeps the incumbent; staging excludes the confirmed prompt test directories; a stopped campaign writes none. | §4.4, §4.7, D60 | WI-67 | U: `DeliveryTest`, `StagedSourceTest`, `DeliveryPlanTest`, `DriverTest`, `CleanupTest`, `OptimizerCoreTest`, `ScenarioTest`, `DeliveredTestTest`, `ProposalSchemaTest` |
 | R-W12 | Plugin under test: the contract names a plugin root in the project, or a built base with mappings from source directories to plugin directories; CAT copies the base at confirmation; each staged source, the control source included, has a plugin copy with its mapped files written over the base; each trial installs that copy, with CAT only when the confirmed contract says the plugin depends on it, and reuses the user's approvals of its hooks; a mapping to a path missing from the base, or targets in two plugins, is refused; a mapped file that differs from the base is a warning; the plugin under test is part of the measurement identity. | §3.1, §4.4, §5, §6.1, D69 | WI-73 | U: `StagedSourceTest`, `ProposalTest`, `ProposalSchemaTest`, `MeasurementIdentityTest`, `CodexRunnerTest`, `ClaudeRunnerTest`, `CodexSessionsTest`, `ClaudeSessionsTest`; E: WI-71's certification campaign |
 
@@ -2071,6 +2072,50 @@ The riskiest pure code, built first.
 - **Exit:** unit tests pass; the full build passes; WI-71's certification start, given the user's goal, presents a
   proposal within its time limit whose requirements are WI-71's.
 
+### WI-76 — Control source without the target's dependents (user ruling, 2026-10-13)
+
+- **Problem:** the control source empties only the target, so a hook or route that exists only to serve the target,
+  such as the Codex PostToolUse hook that repairs `read-part` output, still runs in control trials.
+- **Proposal:** the contract author lists each dependent of the target: its path, the part it removes (a whole file, a
+  hook registration, or an exact span) and the target instruction it serves; it lists nothing that still has a purpose
+  without the target. CAT refuses an entry that names the target, a path outside the prompt system and the plugin under
+  test, or a span that does not occur exactly once, and reports every problem at once. The proposal shows the list.
+- **Control source:** the target emptied to zero bytes, each listed file deleted, each listed hook registration removed
+  from the plugin copy's hook configuration, each listed span deleted; every other file unchanged. The guard pilot and
+  the formal control trials use it. The control-source limitation names only references in files that stay.
+- **Closes:** R-W10's dependents.
+- **Tests:** `ProposalSchemaTest` (the dependents field round trip and an incomplete entry refused), `ContractTest`
+  (ambiguous entries refused; plugin-root and built-plugin removals), `ProposalTest` (the list shown; a removal problem
+  blocks confirmation), `ControlSourceTest` (each removal kind, a file that mentions the target unchanged, and each
+  refusal), `DependentRemovalTest` (each removal kind on file content), `StagedSourceTest` (a built plugin's control copy
+  without its dependents, and a missing dependent refused), `DriverTest` (the committed control snapshot, and control
+  trials' plugin copies), `GuardPilotTest` (the pilot's control trials install the copy without dependents, and a
+  changed list reruns the pilot).
+- **Exit:** unit tests pass; the full build passes; WI-71's proposal lists the Codex PostToolUse hook as a dependent of
+  the Codex read-file rule.
+
+### WI-77 — Per-assertion comparison with the incumbent (user ruling, 2026-10-13)
+
+- **Problem:** a candidate is compared with the incumbent only on whole trials, against frozen bounds from unpaired
+  baseline trials, so it can certify while passing one assertion less often than the incumbent did.
+- **Incumbent trials:** in a cell whose minimum-pass-rate part certified, and only when the candidate is not the
+  incumbent, the `j`-th incumbent trial runs the incumbent on the test case of the cell's `j`-th candidate formal trial;
+  extra formal trials run to complete pairs up to the cap. Incumbent trials count only toward the incumbent comparisons.
+- **Comparison:** `E_inc↑` and `E_inc↓` are the control comparison's e-values over the incumbent pairs, with the same
+  5-point margin and decided at `1/α_i`. A cell certifies only when every assertion's control and incumbent comparisons
+  pass; `E_inc↓` above `1/α_i` ends the attempt `not certified: below incumbent`, which returns to development with
+  the brief's `below_incumbent` entries; when one assertion is below control and another below incumbent at the same
+  adoption, the attempt ends `below control`.
+- **Reports:** the status report, the minimum remaining trials, the certification record and the campaign snapshot
+  carry each cell's incumbent pairs beside its control pairs.
+- **Closes:** R-F8, and the incumbent side of R-E3, R-E4 and R-F2.
+- **Tests:** `PairedComparisonTest` (the incumbent comparison is the control comparison's statistic),
+  `SchedulerTest` (no incumbent trial before the cell certifies or when the candidate is the incumbent; pairing order;
+  extra formal trials for incumbent pairs), `DecisionTableTest` (below incumbent; below control first),
+  `DriverTest` (certification waits for the incumbent comparisons), `StatusReportTest`, `CertificationRecordTest`,
+  `PromptAuthorBriefTest`.
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2184,11 +2229,13 @@ blocks only the part of a work item that it names.
 | WI-68 | WI-66, WI-67 |
 | WI-69 | WI-61 |
 | WI-70 | none for the scripts and hook; its rule step needs WI-71 |
-| WI-71 | WI-69, WI-70, WI-72, WI-73, WI-75 |
+| WI-71 | WI-69, WI-70, WI-72, WI-73, WI-75, WI-76, WI-77 |
 | WI-72 | WI-63 |
 | WI-73 | WI-65 |
 | WI-74 | WI-28, WI-63 |
 | WI-75 | WI-66, WI-74 |
+| WI-76 | WI-73, WI-75 |
+| WI-77 | WI-65 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57 and WI-60 to WI-69. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.

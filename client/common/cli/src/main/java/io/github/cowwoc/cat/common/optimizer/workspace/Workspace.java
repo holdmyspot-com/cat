@@ -16,6 +16,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.PathChange.Added;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange.Modified;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange.Removed;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 
 import java.io.IOException;
@@ -92,9 +93,9 @@ public final class Workspace implements WorkspacePort
 	}
 
 	@Override
-	public Path pluginCopy(PluginUnderTest plugin, Path source) throws IOException
+	public Path pluginCopy(PluginUnderTest plugin, Path source, PluginRemovals removals) throws IOException
 	{
-		return pluginCopies.copy(plugin, source);
+		return pluginCopies.copy(plugin, source, removals);
 	}
 
 	@Override

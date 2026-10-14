@@ -9,6 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.port.contract.test.WorkspaceContract;
 import io.github.cowwoc.cat.common.optimizer.workspace.Workspace;
@@ -181,16 +182,21 @@ public final class FakeWorkspacePort implements WorkspacePort
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The fake names the copy after the staged source under {@code plugins} and creates nothing.
+	 * The fake names the copy after the staged source under {@code plugins}, with the suffix
+	 * {@code -without-dependents} when there are removals, and creates nothing.
 	 */
 	@Override
-	public Path pluginCopy(PluginUnderTest plugin, Path source)
+	public Path pluginCopy(PluginUnderTest plugin, Path source, PluginRemovals removals)
 	{
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(source, "source").isNotNull();
+		requireThat(removals, "removals").isNotNull();
 		if (plugin instanceof PluginUnderTest.Built built)
 			requireThat(built.baseDigest(), "plugin.baseDigest()").isNotEmpty();
-		return root.resolve("plugins").resolve(source.getFileName());
+		String name = source.getFileName().toString();
+		if (!removals.isEmpty())
+			name += "-without-dependents";
+		return root.resolve("plugins").resolve(name);
 	}
 
 	@Override

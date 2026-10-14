@@ -60,6 +60,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
+import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
@@ -108,6 +109,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
@@ -403,7 +405,7 @@ public final class DriverTest
 				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), original.authority(), original.promptSources(), original.environment(),
-				original.lockFile(), original.random(), original.settings());
+				original.lockFile(), original.random(), original.settings(), original.json());
 			Map<SessionRole, List<TokenUsage>> expected = new EnumMap<>(SessionRole.class);
 			harness.trials(_ -> withUsage(harness.failed(), SessionRole.TRIAL, expected));
 			AtomicInteger judgments = new AtomicInteger();
@@ -1874,6 +1876,61 @@ public final class DriverTest
 	}
 
 	/**
+	 * The control source that a commit saves also removes each dependent of the target in the project: a whole file
+	 * is deleted, a span is deleted and a hook is unregistered, while the rest of each file stays.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void commitRemovesDependents() throws IOException
+	{
+		// Requirement: R-W10
+		Path script = Path.of("bin/repair.sh");
+		Path hooks = Path.of("hooks.json");
+		Path agents = Path.of("AGENTS.md");
+		String hooksText = """
+			{"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "bin/repair.sh"}]}],
+			  "SessionStart": [{"hooks": [{"type": "command", "command": "start.sh"}]}]}}
+			""";
+		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract(), List.of(
+			new Dependent(Dependent.Location.PROJECT, script, new Dependent.WholeFile(), "Repairs read output."),
+			new Dependent(Dependent.Location.PROJECT, hooks,
+				new Dependent.HookRegistration("PostToolUse", "bin/repair.sh"), "Runs the repair script."),
+			new Dependent(Dependent.Location.PROJECT, agents, new Dependent.Span("Read CLAUDE.md first.\n"),
+				"Routes the agent to the target.")));
+		Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
+		Map<Path, String> files = Map.of(DriverHarness.PROMPT, "fork", script, "#!/bin/sh\n", hooks, hooksText,
+			agents, "Read CLAUDE.md first.\nBe brief.\n");
+		Map<Path, FileEntry> entries = new HashMap<>();
+		for (Map.Entry<Path, String> file : files.entrySet())
+			entries.put(file.getKey(), new RegularFile(Sha256.of(file.getValue().getBytes(UTF_8)), permissions));
+		FileInventory fork = new FileInventory(Path.of("/project"), entries);
+		Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
+		for (String cell : contract.cellIds())
+			start.development(cell, ReadinessGate.MINIMUM_TRIALS - 1, 0);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), start.build(),
+				fork);
+			for (Map.Entry<Path, String> file : files.entrySet())
+				harness.workspace().supplyFile(file.getKey(), new FileContent(file.getValue().getBytes(UTF_8)));
+			harness.trials(_ -> harness.passed());
+			try (Driver driver = harness.open())
+			{
+				Campaign committed = harness.runUntil(driver, state -> state.attempts().size() == 1);
+				Overlay control = harness.overlays().require(committed.attempt(1).control());
+				requireThat(control.snapshot().entry(script), "script").isEmpty();
+				requireThat(new String(harness.workspace().readFile(control, agents).orElseThrow().bytes(), UTF_8),
+					"agents").isEqualTo("Be brief.\n");
+				JsonNode hookConfiguration = JsonMapper.builder().build().readTree(
+					harness.workspace().readFile(control, hooks).orElseThrow().bytes()).get("hooks");
+				requireThat(hookConfiguration.has("PostToolUse"), "PostToolUse").isFalse();
+				requireThat(hookConfiguration.has("SessionStart"), "SessionStart").isTrue();
+			}
+		}
+	}
+
+	/**
 	 * The end of an all-pass formal attempt: its last control trials, certification and delivery. The control trials
 	 * stage the attempt's control source. Each cell starts with its minimum-pass-rate part certified and its control
 	 * comparisons one tied pair short of passing, because the counts that certify are the decision boundaries' claim,
@@ -3233,9 +3290,64 @@ public final class DriverTest
 			requireThat(trials, "trials").isNotEmpty();
 			for (SessionRequest trial : trials)
 			{
-				TrialPlugin expected = new TrialPlugin(harness.workspace().pluginCopy(plugin, trial.source()), false);
+				TrialPlugin expected = new TrialPlugin(harness.workspace().pluginCopy(plugin, trial.source(),
+					PluginRemovals.NONE), false);
 				requireThat(trial.plugin(), "plugin").isEqualTo(Optional.of(expected));
 			}
+		}
+	}
+
+	/**
+	 * Control trials install a copy of the built plugin under test without the target's dependents in the plugin, and
+	 * every other trial installs the copy with them. Each cell starts one control pair short of passing.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void controlTrialsRemovePluginDependents() throws IOException
+	{
+		// Requirement: R-W10
+		PluginUnderTest plugin = new PluginUnderTest.Built(Path.of("/plugin-base"), "a".repeat(64),
+			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
+			"No prompt file invokes a CAT skill, agent or command.");
+		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(Optional.of(plugin)),
+			List.of(new Dependent(Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(),
+				"Reads the part that the target tells the agent to read.")));
+		Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
+		for (String cell : contract.cellIds())
+			start.development(cell, ReadinessGate.MINIMUM_TRIALS, 0);
+		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size());
+		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
+		for (String cell : contract.cellIds())
+			oneControlPairShort(running, boundaries, contract, cell);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = runningAttemptHarness(cleanup, running.build());
+			List<SessionRequest> trials = new CopyOnWriteArrayList<>();
+			harness.trials(request ->
+			{
+				trials.add(request);
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runSlice(driver);
+			}
+			Sha256 control = harness.campaign().attempt(1).control();
+			PluginRemovals removals = PluginRemovals.of(contract.pluginRemovals(), JsonMapper.builder().build());
+			int controlTrials = 0;
+			for (SessionRequest trial : trials)
+			{
+				PluginRemovals expected = PluginRemovals.NONE;
+				if (harness.snapshot(trial).equals(control))
+				{
+					expected = removals;
+					++controlTrials;
+				}
+				requireThat(trial.plugin(), "plugin").isEqualTo(Optional.of(new TrialPlugin(
+					harness.workspace().pluginCopy(plugin, trial.source(), expected), false)));
+			}
+			requireThat(controlTrials, "controlTrials").isPositive();
 		}
 	}
 
@@ -4745,7 +4857,7 @@ public final class DriverTest
 				original.clock(), original.overlays(), original.judge(), original.triage(), original.promptAuthor(),
 				original.values(), original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
 				original.authority(), original.promptSources(), original.environment(), original.lockFile(),
-				original.random(), original.settings());
+				original.random(), original.settings(), original.json());
 			try (Driver driver = Driver.open(failing, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				driver.step();
@@ -5079,7 +5191,7 @@ public final class DriverTest
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), new Authority(Set.of(DriverHarness.PROMPT, Path.of("docs")), Set.of(), fork),
 				original.promptSources(), original.environment(), original.lockFile(), original.random(),
-				original.settings());
+				original.settings(), original.json());
 			// The working candidate already changed the handbook, so its bytes come from the overlay
 			Sha256 working = Builder.snapshot("candidate-1");
 			harness.overlays().put(working, harness.candidate("candidate-1").

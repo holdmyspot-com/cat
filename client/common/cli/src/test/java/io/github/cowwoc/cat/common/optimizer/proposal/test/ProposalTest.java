@@ -983,9 +983,61 @@ public final class ProposalTest
 			## Control source
 
 			Control trials run the incumbent with the target prompt file `prompts/main.md` emptied to zero bytes. \
-			Every other prompt file stays as the incumbent has it.
+			The contract lists no dependents of the target, so every other part of the prompt system stays as the \
+			incumbent has it.
 			""").contains(Proposal.CONTROL_SOURCE_LIMIT);
 		requireThat(proposal.contract().limitations(), "limitations").contains(Proposal.CONTROL_SOURCE_LIMIT);
+	}
+
+	/**
+	 * Verifies that the proposal lists each dependent that control trials remove, that the confirmed contract carries
+	 * them, and that a dependent that the control source cannot remove blocks confirmation.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void listsDependentsAndBlocksOnRefusals() throws InvalidProposalException
+	{
+		// Requirement: R-W10
+		DerivedProposal derived = contractAuthor.proposal(session(changedDerivation(output ->
+			output.set("dependents", json.readTree("""
+				[
+				  {"location": "project", "path": "repair.sh", "removes": "file", "text": null, "event": null,
+				   "command": null, "serves": "Repairs the output."},
+				  {"location": "project", "path": "AGENTS.md", "removes": "span", "text": "Read prompts/main.md.\\n",
+				   "event": null, "command": null, "serves": "Routes the agent to the prompt."},
+				  {"location": "project", "path": ".codex/hooks.json", "removes": "hook_registration", "text": null,
+				   "event": "PostToolUse", "command": "repair.sh", "serves": "Runs the repair script."}
+				]
+				""")))), PROFILES, SALT);
+		String refusal = "Control trials cannot remove the dependents of the target that the proposal lists: " +
+			"the project file repair.sh, which a dependent names, is not a regular file of the project.";
+		Proposal accepted = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), Map.of(), PluginCheck.NONE,
+			List.of());
+		Proposal refused = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), Map.of(), PluginCheck.NONE,
+			List.of(refusal));
+
+		requireThat(accepted.render(), "render").contains("""
+			Control trials run the incumbent with the target prompt file `prompts/main.md` emptied to zero bytes and \
+			these dependents of the target removed. Every other part of the prompt system stays as the incumbent has it.
+
+			- The project file `repair.sh`: deleted. Serves: Repairs the output.
+			- The project file `AGENTS.md`: the text below deleted. Serves: Routes the agent to the prompt.
+
+			  ```
+			  Read prompts/main.md.
+			  ```
+
+			- The project file `.codex/hooks.json`: its PostToolUse hook `repair.sh` unregistered. Serves: Runs the \
+			repair script.
+			""");
+		requireThat(accepted.contract().dependents(), "dependents").isEqualTo(derived.contract().dependents());
+		requireThat(accepted.contract().dependents().size(), "dependents.size()").isEqualTo(3);
+		requireThat(accepted.isConfirmable(CertificationScope.LATEST_VERSIONS), "acceptedConfirmable").isTrue();
+		requireThat(refused.isConfirmable(CertificationScope.LATEST_VERSIONS), "refusedConfirmable").isFalse();
+		requireThat(refused.confirmationRefusal(CertificationScope.LATEST_VERSIONS), "refusal").contains(refusal);
 	}
 
 	/**

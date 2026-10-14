@@ -50,7 +50,6 @@ import io.github.cowwoc.cat.common.optimizer.execution.prompt.JudgePrompt;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.TriagePrompt;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.ValuesPrompt;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
-import io.github.cowwoc.cat.common.optimizer.inventory.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
@@ -76,6 +75,7 @@ import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
+import io.github.cowwoc.cat.common.optimizer.workspace.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
@@ -1276,14 +1276,16 @@ public final class OptimizerCore implements Core
 	private Map<String, PilotResult> pilot(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
 		PluginCheck plugin) throws IOException, InterruptedException
 	{
-		// Control trials cannot install a plugin under test that the check refuses
-		if (!plugin.refusals().isEmpty())
+		// Control trials cannot install a plugin under test that the check refuses, or run without dependents that
+		// they cannot remove
+		if (!plugin.refusals().isEmpty() || !controlRefusals(root, campaign, fork, derived, plugin).isEmpty())
 			return Map.of();
 		FileInventory inventory = fork.inventory();
 		PilotFile file = pilotFile(root, campaign);
-		Overlay control = ControlSource.of(inventory, relativeTarget(root, campaign));
+		Overlay control = ControlSource.of(fork.workspace(), inventory, relativeTarget(root, campaign),
+			derived.contract().projectRemovals(), scope.json());
 		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(root, campaign), schema,
-			campaign.ceiling());
+			scope.json(), campaign.ceiling());
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
 		// The control trials install the plugin as the check recorded its base, as formal trials will
 		Map<String, PilotResult> pilots = pilot.run(derived.contract().withPlugin(plugin.plugin()), control, excluded,
@@ -1360,7 +1362,39 @@ public final class OptimizerCore implements Core
 					derived.contract().minimumPassRate())));
 		}
 		return Proposal.of(derived, campaign, links, relativeTarget(root, campaign), scope.sessions().hostLogin(),
-			scope.calibrator(), schema, incumbent, pilots, plugin);
+			scope.calibrator(), schema, incumbent, pilots, plugin, controlRefusals(root, campaign, fork, derived, plugin));
+	}
+
+	/**
+	 * Checks that control trials can remove the dependents of the target that a proposal lists: from the fork's files,
+	 * and from the base of a built plugin under test that the check does not refuse.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param fork the campaign's fork
+	 * @param derived the proposal
+	 * @param plugin the check of the proposal's plugin under test
+	 * @return the reasons that block confirmation; empty if control trials can remove every dependent
+	 * @throws IOException if a file of the fork or of the plugin's base cannot be read
+	 */
+	private List<String> controlRefusals(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
+		PluginCheck plugin) throws IOException
+	{
+		Contract contract = derived.contract();
+		if (contract.dependents().isEmpty())
+			return List.of();
+		Path target = relativeTarget(root, campaign);
+		List<String> problems = new ArrayList<>(ControlSource.problems(fork.workspace(), fork.inventory(), target,
+			contract.projectRemovals(), scope.json()));
+		if (plugin.refusals().isEmpty() && plugin.plugin().orElse(null) instanceof PluginUnderTest.Built built)
+		{
+			problems.addAll(ControlSource.pluginProblems(built, target, contract.withPlugin(plugin.plugin()).
+				pluginRemovals(), scope.json()));
+		}
+		if (problems.isEmpty())
+			return List.of();
+		return List.of("Control trials cannot remove the dependents of the target that the proposal lists: " +
+			String.join("; ", problems) + ". Run revise with feedback that corrects the dependents.");
 	}
 
 	/**
@@ -1557,7 +1591,7 @@ public final class OptimizerCore implements Core
 			new Delivery(store, fork.workspace(), scope.json())::deliver, scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(scope.sessions(), scope.json()), authority,
 			promptSources, environment(inventory::entry), lockFile(root, campaign.header().id()), scope.random(),
-			scope.sliceSettings());
+			scope.sliceSettings(), scope.json());
 	}
 
 	/**
