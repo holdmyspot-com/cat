@@ -1,5 +1,9 @@
 # Reliable agentic coding for professional cat herders
 
+> [!WARNING]
+> **CAT v1.0 is under internal development and is not ready for public use.** Its features, rules, and installation
+> may change without notice.
+
 A coding agent can follow a rule in one file and miss it in the next. It can complete only part of a refactor, or apply
 a project convention in one area and overlook it somewhere else.
 
