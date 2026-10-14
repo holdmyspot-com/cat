@@ -7,7 +7,8 @@ agents: ["main"]
 
 ## Design Goals
 
-- Acknowledge each user request promptly and apply related steering without losing unrelated requested work.
+- Acknowledge each user request once, promptly, and apply related steering without losing unrelated requested work,
+  so that resuming from a compaction neither repeats an acknowledgement nor drops a request.
 - Process unrelated user requests fairly in their arrival order after the active terminal goal completes.
 - On session resumption, determine whether a goal is active from the goal-status interface rather than historical
   conversation context.
@@ -24,8 +25,12 @@ When resuming a session, query the current thread's goal-status interface before
 arrives during active work. Use that status for the decision. Historical conversation, summaries, and continuation
 messages that say a goal is active or paused do not establish its current status.
 
-When a user request arrives during active work, acknowledge receiving it immediately. Classify it using the Intermediate
-versus Terminal Goals rule.
+Before acknowledging or scheduling a user request, establish its identity and whether it has already been handled from
+the available conversation and continuation record. Context resumption does not constitute a new delivery. If the
+request was already acknowledged and applied, retain its effect and continue from the next unfinished action without
+acknowledging it again. A genuinely new request remains actionable even when its wording repeats an earlier request.
+When a user request that has not been acknowledged arrives during active work, acknowledge receiving it immediately.
+Classify it using the Intermediate versus Terminal Goals rule.
 
 When the request relates to the current terminal goal, treat it as steering for the current work and apply it
 immediately. An explicit request to stop, cancel, replace, or do work instead of the current goal is related steering
