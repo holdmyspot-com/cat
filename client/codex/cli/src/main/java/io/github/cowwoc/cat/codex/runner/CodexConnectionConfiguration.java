@@ -24,7 +24,7 @@ public final class CodexConnectionConfiguration
 	private static final String STARTUP_UPDATE_CHECK = "check_for_update_on_startup = false";
 	static final String RUNNER_PERMISSION_PROFILE = "cat-runner";
 	private static final String VALIDATOR_PERMISSION_PROFILE = "cat-validator";
-	private static final String HELD_OUT_PERMISSION_PROFILE = "cat-held-out";
+	private static final String DENIED_READS_PERMISSION_PROFILE = "cat-denied-reads";
 	private static final String CAT_PERMISSION_PROFILE = "cat";
 	private static final String TEMPORARY_DIRECTORY = ":tmpdir";
 	private static final Set<String> CONNECTION_SETTINGS = Set.of("forced_login_method", "model",
@@ -209,8 +209,8 @@ public final class CodexConnectionConfiguration
 			return profile;
 		if (profile.isEmpty())
 			profile = RUNNER_PERMISSION_PROFILE;
-		addHeldOutProfile(destination, profile, deniedReads);
-		return HELD_OUT_PERMISSION_PROFILE;
+		addDeniedReadsProfile(destination, profile, deniedReads);
+		return DENIED_READS_PERMISSION_PROFILE;
 	}
 
 	/**
@@ -221,13 +221,13 @@ public final class CodexConnectionConfiguration
 	 * @param deniedReads the files and directories to deny; a path that no longer exists is skipped
 	 * @throws IOException if the isolated configuration cannot be updated
 	 */
-	private static void addHeldOutProfile(Path destination, String parentProfile, List<Path> deniedReads)
+	private static void addDeniedReadsProfile(Path destination, String parentProfile, List<Path> deniedReads)
 		throws IOException
 	{
 		String configuration = BoundedInput.readUtf8(destination, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
 		if (!configuration.contains("[permissions." + RUNNER_PERMISSION_PROFILE + "]"))
 			throw new IOException("Denying reads requires the CAT runner permission profile");
-		String section = "[permissions." + HELD_OUT_PERMISSION_PROFILE;
+		String section = "[permissions." + DENIED_READS_PERMISSION_PROFILE;
 		StringBuilder profile = new StringBuilder(configuration).append(System.lineSeparator()).append(section).
 			append(']').append(System.lineSeparator()).append("extends = \"").append(parentProfile).append('"').
 			append(System.lineSeparator()).append(section).append(".filesystem]").append(System.lineSeparator());

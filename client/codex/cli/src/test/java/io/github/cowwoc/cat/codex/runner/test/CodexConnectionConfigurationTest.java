@@ -262,11 +262,11 @@ public final class CodexConnectionConfigurationTest
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(),
 				List.of(snapshot, trials));
 
-			requireThat(profile, "profile").isEqualTo("cat-held-out");
+			requireThat(profile, "profile").isEqualTo("cat-denied-reads");
 			requireThat(Files.readString(destination), "configuration").contains(String.join(System.lineSeparator(),
-				"[permissions.cat-held-out]",
+				"[permissions.cat-denied-reads]",
 				"extends = \"cat-runner\"",
-				"[permissions.cat-held-out.filesystem]",
+				"[permissions.cat-denied-reads.filesystem]",
 				"\"" + snapshot.toRealPath() + "\" = \"deny\"",
 				"\"" + trials.toRealPath() + "\" = \"deny\"",
 				""));
@@ -294,13 +294,13 @@ public final class CodexConnectionConfigurationTest
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
 				List.of(snapshot));
 
-			requireThat(profile, "profile").isEqualTo("cat-held-out");
+			requireThat(profile, "profile").isEqualTo("cat-denied-reads");
 			requireThat(Files.readString(destination), "configuration").
 				contains("\"" + evidence.toRealPath() + "\" = \"read\"").
 				contains(String.join(System.lineSeparator(),
-					"[permissions.cat-held-out]",
+					"[permissions.cat-denied-reads]",
 					"extends = \"cat-validator\"",
-					"[permissions.cat-held-out.filesystem]",
+					"[permissions.cat-denied-reads.filesystem]",
 					"\"" + snapshot.toRealPath() + "\" = \"deny\"",
 					""));
 		}
@@ -353,7 +353,7 @@ public final class CodexConnectionConfigurationTest
 			CodexConnectionConfiguration.addSessionProfile(destination, List.of(), List.of(snapshot));
 
 			requireThat(Files.readString(destination), "configuration").
-				contains("[permissions.cat-held-out.network]" + System.lineSeparator() + "enabled = true" +
+				contains("[permissions.cat-denied-reads.network]" + System.lineSeparator() + "enabled = true" +
 					System.lineSeparator());
 		}
 	}

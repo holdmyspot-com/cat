@@ -164,7 +164,8 @@ public final class CodexRunner
 	 * @param agent the optional direct CAT agent definition, whose model and effort replace {@code model} and
 	 *   {@code effort}
 	 * @param readOnlyEvidence the optional completed evidence directory
-	 * @param deniedReads the existing files and directories that the session must not read
+	 * @param deniedReads the existing files and directories that the session must not read, besides the records of
+	 *   its own run
 	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
 	 *   Codex's default
 	 * @return the live owned Codex run session
@@ -204,7 +205,7 @@ public final class CodexRunner
 			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache,
 				temporaryDirectory, toolOutputTokenLimit);
 			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
-				readOnlyEvidence, deniedReads);
+				readOnlyEvidence, sessionDeniedReads(manager, run, deniedReads));
 			String pluginName = "";
 			if (plugin != null)
 			{
@@ -299,6 +300,31 @@ public final class CodexRunner
 			manager.fail(run, e.getMessage());
 			throw e;
 		}
+	}
+
+	/**
+	 * Returns the files and directories that a session of a run must not read: those that the caller denies, the
+	 * runner's records of the run, and the directory where Codex logs the session's events. The method creates that
+	 * directory, because the sandbox skips a denied path that does not exist yet.
+	 *
+	 * @param manager the run manager
+	 * @param run the session's run
+	 * @param deniedReads the files and directories that the caller denies the session reading
+	 * @return the paths to deny
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if the session log directory cannot be created
+	 */
+	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run, List<Path> deniedReads)
+		throws IOException
+	{
+		requireThat(manager, "manager").isNotNull();
+		requireThat(run, "run").isNotNull();
+		requireThat(deniedReads, "deniedReads").isNotNull();
+		List<Path> result = new ArrayList<>(deniedReads);
+		result.addAll(manager.runnerRecords(run));
+		// The session's events are the same record as the run's artifacts, kept by Codex instead of the runner
+		result.add(Files.createDirectories(run.directory().resolve("home").resolve("sessions")));
+		return result;
 	}
 
 	/**

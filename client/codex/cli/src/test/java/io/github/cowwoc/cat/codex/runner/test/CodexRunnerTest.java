@@ -4,11 +4,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.codex.runner.CodexRunner;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.runner.HarnessRun;
+import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -117,6 +120,34 @@ public final class CodexRunnerTest
 			requireThat(CodexRunner.bubblewrap(Map.of("PATH", path)), "found").isEqualTo(Optional.of(bwrap));
 			requireThat(CodexRunner.bubblewrap(Map.of("PATH", empty.toString())), "absent").isEmpty();
 			requireThat(CodexRunner.bubblewrap(Map.of()), "withoutPath").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a session is denied reading the runner's records of its own run, namely the run's artifacts,
+	 * manifest, initial project and Codex session logs, besides the paths that the caller denies, and that the session
+	 * log directory exists so that the sandbox can deny it.
+	 *
+	 * @throws IOException if the run cannot be created
+	 */
+	@Test
+	public void deniesReadingRunRecords() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(
+				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRun run = manager.create("codex");
+			manager.snapshotProject(run);
+			Path heldOut = Files.createDirectory(root.resolve("held-out"));
+
+			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(heldOut));
+
+			Path directory = run.directory();
+			requireThat(deniedReads, "deniedReads").containsExactly(List.of(heldOut, directory.resolve("artifacts"),
+				directory.resolve("run.json"), directory.resolve("initial-project"), directory.resolve("home/sessions")));
+			requireThat(Files.isDirectory(directory.resolve("home/sessions")), "sessionLogsExist").isTrue();
 		}
 	}
 }

@@ -30,6 +30,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -446,6 +447,28 @@ public final class HarnessRunManager
 				return CONTINUE;
 			}
 		});
+	}
+
+	/**
+	 * Returns the existing records that the runner keeps about an owned run: its artifacts, its manifest and the
+	 * initial copy of its project. They describe the session's own events and outcome, so a harness session must not
+	 * read them.
+	 *
+	 * @param run the owned run
+	 * @return the paths of the records that exist
+	 * @throws NullPointerException if {@code run} is null
+	 */
+	public List<Path> runnerRecords(HarnessRun run)
+	{
+		requireThat(run, "run").isNotNull();
+		List<Path> records = new ArrayList<>();
+		for (String name : List.of("artifacts", "run.json", "initial-project"))
+		{
+			Path record = run.directory().resolve(name);
+			if (Files.exists(record, NOFOLLOW_LINKS))
+				records.add(record);
+		}
+		return records;
 	}
 
 	/**
