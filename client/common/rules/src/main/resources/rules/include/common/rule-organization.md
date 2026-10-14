@@ -67,12 +67,16 @@ or implementation details changed. Choose the broadest accurate foreseeable name
 for the artifact's main enduring job.
 
 When creating or restructuring a rule or prompt with language-, tool-, syntax-, ecosystem-, or harness-specific
-guidance, keep a removable common core complete and actionable without every companion. Put each specific requirement,
-example, exception, and routing instruction in the relevant companion. Choose each companion's narrowest delivery path:
-use minimal `paths` frontmatter when paths identify the trigger; otherwise use an eagerly loaded index that names the
-activity or decision and lazy-loads the focused file. Before handoff, conceptually remove each companion and verify that
-the core has no undefined terminology, dangling reference, incomplete procedure, or dependent example. Verify that each
-companion adds only its focused context and does not redefine, contradict, or silently depend on another companion.
+guidance, keep a removable common core complete and actionable without every companion. A specific companion covers only
+what the core does not: a requirement, exception, or decision that differs for its language, tool, syntax, ecosystem, or
+harness, or that the core cannot state in neutral terms. Put each such item, with its examples and routing instruction,
+in the relevant companion. Do not restate a core requirement there, translate it into that context's syntax, or add an
+example of it; when no such item remains, keep the guidance in the core and do not create the companion. Choose each
+companion's narrowest delivery path: use minimal `paths` frontmatter when paths identify the trigger; otherwise use an
+eagerly loaded index that names the activity or decision and lazy-loads the focused file. Before handoff, conceptually
+remove each companion and verify that the core has no undefined terminology, dangling reference, incomplete procedure,
+or dependent example. Verify that each companion adds only its focused context and does not redefine, contradict, or
+silently depend on another companion.
 
 When harness wrappers include one shared prompt body, place every normative instruction in that body unless a documented
 harness difference changes its reader, trigger, decision, or observable result. Identical additions to two wrappers are
