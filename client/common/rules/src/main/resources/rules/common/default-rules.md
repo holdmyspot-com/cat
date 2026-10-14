@@ -150,6 +150,9 @@ Before delegating work to a subagent, or when designing, updating, or executing 
 work, lazy load `../include/common/delegation.md` to assign deterministic, bounded-review, and high-judgment work to the
 appropriate authority and isolate write-capable recipients.
 
+Before sending a task, result, correction request, or other information to another agent, or when designing a
+workflow whose agents exchange information, lazy load `../include/common/agent-handoffs.md`.
+
 When accessing environment-dependent state, lazy load `../include/common/environment.md` to preserve an explicit,
 testable boundary.
 

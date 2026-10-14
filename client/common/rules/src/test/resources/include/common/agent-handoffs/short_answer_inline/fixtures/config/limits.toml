@@ -1,0 +1,6 @@
+[database]
+max_connections = {{limit}}
+idle_timeout_seconds = 300
+
+[http]
+max_request_bytes = 1048576
