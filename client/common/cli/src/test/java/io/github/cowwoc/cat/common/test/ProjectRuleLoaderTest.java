@@ -263,19 +263,24 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
-	 * Verifies a session that keeps its rules in a file cannot load without the harness rule on reading a file whole,
-	 * because the agent would have no way to read that file whole.
+	 * Verifies that, without the harness rule on reading a file whole, a session's reading guidance is empty and its
+	 * rules are every rule that the primary agent receives inline.
 	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*rules/harnessa/read-file\\.md.*")
-	public void rejectsSessionWithoutReadingGuidance() throws IOException
+	@Test
+	public void keepsEveryRuleWithoutReadingGuidance() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\nPlugin directory guidance\n");
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 
-			new ProjectRuleLoader(scope.yaml()).loadSessionForMainAgent(plugin, null, project, "harnessa");
+			SessionRules session = loader.loadSessionForMainAgent(plugin, null, project, "harnessa");
+
+			requireThat(session.readingGuidance(), "readingGuidance").isEmpty();
+			requireThat(session.rules(), "rules").isEqualTo(loader.loadForMainAgent(plugin, project, "harnessa"),
+				"inline");
 		}
 	}
 

@@ -304,6 +304,31 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
+	 * Verifies that, without the guidance on reading a file whole, the hook sends every rule in its response and writes
+	 * no rules file, because the agent would have no instruction on how to read that file whole.
+	 */
+	@Test
+	public void inlinesRulesWithoutReadingGuidance() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/codex")).resolve("cat-env.md"),
+				"# CAT Environment\n\nEnvironment guidance\n");
+			Files.writeString(Files.createDirectories(project.resolve(".cat/rules/common")).resolve("rule.md"),
+				"project guidance");
+
+			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), Path.of("."));
+
+			requireThat(context(result), "context").contains("Environment guidance").contains("project guidance").
+				doesNotContain("CAT's rules for this session are in");
+			requireThat(Files.exists(project.resolve(".cat/work/temp/codex-context")), "rulesDirectoryExists").isFalse();
+			requireThat(result.error(), "error").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies the hook stops the session when the harness omits the session identifier that names its rules file.
 	 */
 	@Test

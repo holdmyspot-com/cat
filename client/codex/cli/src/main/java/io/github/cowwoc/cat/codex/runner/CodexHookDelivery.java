@@ -10,6 +10,9 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Verifies that CAT's configured Codex hooks are trusted and that every newly started subagent receives its start hook.
+ * <p>
+ * Codex lists every hook that a plugin declares, trusted or not. The start hooks, which deliver CAT's rules, must be
+ * listed; the PostToolUse hook is checked only when the plugin declares it.
  */
 public final class CodexHookDelivery
 {
@@ -27,9 +30,9 @@ public final class CodexHookDelivery
 	{
 		assert response != null;
 		JsonNode hooks = response.path("result").path("data").path(0).path("hooks");
-		verifyConfiguredHook(hooks, SESSION_START);
-		verifyConfiguredHook(hooks, SUBAGENT_START);
-		verifyConfiguredHook(hooks, POST_TOOL_USE);
+		verifyConfiguredHook(hooks, SESSION_START, true);
+		verifyConfiguredHook(hooks, SUBAGENT_START, true);
+		verifyConfiguredHook(hooks, POST_TOOL_USE, false);
 	}
 
 	/**
@@ -85,9 +88,10 @@ public final class CodexHookDelivery
 	 *
 	 * @param hooks the harness hook metadata list
 	 * @param key the expected CAT hook key
-	 * @throws IOException if the hook is unavailable or untrusted
+	 * @param required indicates whether the plugin must declare the hook
+	 * @throws IOException if a required hook is unavailable, or a listed hook is untrusted
 	 */
-	private static void verifyConfiguredHook(JsonNode hooks, String key) throws IOException
+	private static void verifyConfiguredHook(JsonNode hooks, String key, boolean required) throws IOException
 	{
 		if (!hooks.isArray())
 			throw new IOException("Codex app-server returned no configured hooks");
@@ -101,7 +105,8 @@ public final class CodexHookDelivery
 			throw new IOException("CAT " + hookName(key) +
 				" hook is " + trust + "; approve its current hash in the host Codex home before starting an isolated run");
 		}
-		throw new IOException("Codex did not configure CAT hook " + key);
+		if (required)
+			throw new IOException("Codex did not configure CAT hook " + key);
 	}
 
 	/**

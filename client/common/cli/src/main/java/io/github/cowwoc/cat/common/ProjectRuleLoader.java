@@ -167,17 +167,18 @@ public final class ProjectRuleLoader
 
 	/**
 	 * Loads the rules for a harness's primary agent, with the harness rule on reading a file whole kept apart from the
-	 * others, for a session that delivers the others in a file.
+	 * others, for a session that delivers the others in a file. Without that rule, the reading guidance is empty and the
+	 * other rules are every rule, so the session can deliver them inline instead.
 	 *
 	 * @param pluginRoot a non-null CAT installation directory
 	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
 	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
 	 * @param harness a non-blank lowercase harness identifier
-	 * @return the rule on reading a file whole, and every other rule in injection order
+	 * @return the rule on reading a file whole, or an empty value when the plugin lacks it, and every other rule in
+	 *         injection order
 	 * @throws NullPointerException if {@code pluginRoot}, {@code projectRoot}, or {@code harness} are null
 	 * @throws IllegalArgumentException if {@code harness} is blank or invalid
-	 * @throws IOException if the plugin lacks the harness rule on reading a file whole, a rule directory or file is not
-	 *                     a real directory or regular file, or its content is invalid
+	 * @throws IOException if a rule directory or file is not a real directory or regular file, or its content is invalid
 	 */
 	public SessionRules loadSessionForMainAgent(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness)
 		throws IOException
@@ -195,10 +196,7 @@ public final class ProjectRuleLoader
 			}
 		}
 		if (readFile == null)
-		{
-			throw new IOException("The CAT plugin lacks " + readFilePath + ", which tells the agent how to read its " +
-				"rules file whole: " + pluginRoot + ". Reinstall the CAT plugin.");
-		}
+			return new SessionRules("", context(rules, userRulesRoot, projectRoot, audience));
 		rules.remove(readFile);
 		return new SessionRules(readFile.context().strip(), context(rules, userRulesRoot, projectRoot, audience));
 	}

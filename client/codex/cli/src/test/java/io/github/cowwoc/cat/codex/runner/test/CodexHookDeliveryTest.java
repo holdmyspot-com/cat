@@ -52,6 +52,27 @@ public final class CodexHookDeliveryTest
 	}
 
 	/**
+	 * Verifies that a plugin that declares no PostToolUse hook may run, because Codex lists every hook a plugin
+	 * declares, so an absent entry means there is no hook to trust.
+	 *
+	 * @throws IOException if a hook the plugin declares is unavailable or untrusted
+	 */
+	@Test
+	public void acceptsUndeclaredPostToolUseHook() throws IOException
+	{
+		try (ToolScope scope = new ToolScope())
+		{
+			CodexHookDelivery.verifyConfiguredHooks(scope.json().readTree("""
+				{"result":{"data":[{"hooks":[
+				{"key":"cat@cat:hooks/hooks.json:session_start:0:0","trustStatus":"trusted"},
+				{"key":"cat@cat:hooks/hooks.json:subagent_start:0:0","trustStatus":"trusted"}
+				]}]}}
+				"""));
+			requireThat(true, "accepted").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies a turn that creates a subagent fails when Codex omits that subagent's start-hook event.
 	 */
 	@Test(expectedExceptions = IOException.class,

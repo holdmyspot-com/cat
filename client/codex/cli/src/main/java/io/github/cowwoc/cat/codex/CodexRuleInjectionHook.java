@@ -40,7 +40,8 @@ final class CodexRuleInjectionHook
 	 * Loads rules for one Codex hook event and emits its harness JSON response.
 	 * <p>
 	 * A subagent receives its rules in the response. For SessionStart, the response holds only the guidance on reading
-	 * a file whole and a pointer to a file that holds the session's other rules.
+	 * a file whole and a pointer to a file that holds the session's other rules; a plugin without that guidance sends
+	 * every rule in the response, because the agent would have no instruction on how to read the file whole.
 	 *
 	 * @param eventName the Codex hook event name
 	 * @param args the hook command-line arguments
@@ -73,8 +74,13 @@ final class CodexRuleInjectionHook
 			else
 			{
 				SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID);
-				Path rulesFile = CodexSessionContext.write(catTemp, event, session.rules());
-				context = session.readingGuidance() + "\n\n# CAT Rules\n\n" + RULES_FILE_POINTER.formatted(rulesFile);
+				if (session.readingGuidance().isEmpty())
+					context = session.rules();
+				else
+				{
+					Path rulesFile = CodexSessionContext.write(catTemp, event, session.rules());
+					context = session.readingGuidance() + "\n\n# CAT Rules\n\n" + RULES_FILE_POINTER.formatted(rulesFile);
+				}
 			}
 			output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
 				"additionalContext", context))));
