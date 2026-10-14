@@ -10,8 +10,10 @@ Write every test by these rules:
 - It proves its requirements: its assertions check the requirements' outcomes, not a mechanism that a prompt file
   prescribes, unless a requirement names that mechanism.
 - It needs the least work that can still fail its requirements: the smallest inputs, turns and actions under which a
-  requirement can still fail, such as a document just over the size at which reading it whole takes more than one
-  call, rather than one many times that size.
+  requirement can still fail. Size each fixture from the specific way that the requirement fails: when the failure is
+  reading only the first part that a tool returns, make the document just over one part; when it is reading only the
+  first lines, make it just over that many lines. A document many times that size adds cost without adding a way to
+  fail, and a fixture that the requirement does not concern needs only the content that the turn uses.
 - It is organic: no turn, fixture or file name tells the agent the expected outcome or that it is being tested.
 
 For each test, give:
@@ -67,6 +69,8 @@ such as the log lines around the entry that a turn asks about. Write a call as `
 18000}`, with whole-number parameters. CAT adds a random seed and the generator's version, so two calls with the same
 parameters produce different content.
 
+- Write bulk content as a generator call, never as typed text: any text beyond the facts that decide the expected
+  outcome and the context that the turn needs. Typed bulk makes the proposal too large to write and correct.
 - Use a generated value only in a fixture's content. CAT refuses one in a turn, an assertion or a fixture's path.
 - Generated content never decides a test case's expected outcome: only the values and fixture text that you write do.
   Write each fact that decides it with a word that the generator's output never contains, or a date or number outside
