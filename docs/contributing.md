@@ -44,8 +44,7 @@ Run the external launcher and installer boundary tests:
 bats client/common/distribution/src/test/bats/bootstrap-common.bats \
   client/common/distribution/src/test/bats/bootstrap-claude.bats \
   client/common/distribution/src/test/bats/bootstrap-codex.bats \
-  client/common/distribution/src/test/bats/jlink-launchers.bats \
-  client/common/distribution/src/test/bats/read-file.bats
+  client/common/distribution/src/test/bats/jlink-launchers.bats
 ```
 
 Java tests call production classes directly. Bats is reserved for shell, installer, and generated-launcher boundaries

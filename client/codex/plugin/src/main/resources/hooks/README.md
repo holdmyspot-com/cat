@@ -6,6 +6,11 @@ For this hook, Codex supplies `PLUGIN_ROOT`, the directory of the installed CAT 
 `${PLUGIN_ROOT}/hooks/session-start.sh` launcher. The launcher derives CAT's installation directory from its own
 location before it runs CAT's `client/bin/session-start` command.
 
+The hook writes the session's rules to `.cat/work/temp/codex-context/<session_id>.md` in the session's project
+directory. Its additional context holds only the guidance on reading command output whole, from
+`rules/codex/read-file.md`, followed by an instruction to read that file whole, as that guidance describes, before
+anything else.
+
 The command hook sets `additionalContextLimit` to `0`, disabling additional-context spilling for this hook. Codex
 otherwise applies a default limit. For the meaning and introduction of this Codex hook property, see
 [openai/codex#34393](https://github.com/openai/codex/pull/34393).
