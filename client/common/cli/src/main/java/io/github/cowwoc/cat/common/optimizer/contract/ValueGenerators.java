@@ -17,7 +17,7 @@ public final class ValueGenerators
 	/**
 	 * Every generator, in the order that the contract author's instructions list them.
 	 */
-	private static final List<ValueGenerator> GENERATORS = List.of(LogLines.INSTANCE);
+	private static final List<ValueGenerator> GENERATORS = List.of(LogLines.INSTANCE, MarkdownSections.INSTANCE);
 
 	/**
 	 * Prevents instantiation.
