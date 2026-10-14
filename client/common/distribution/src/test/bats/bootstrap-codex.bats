@@ -218,12 +218,16 @@ SCRIPT
 	create_fake_bwrap
 
 	run env PATH="${FAKE_BIN}:${PATH}" PLUGIN_ROOT="${runtime}" sh -c 'printf "%s\\n" "$1" | "$2"' sh \
-		"{\"cwd\":\"${project}\"}" "${runtime}/hooks/session-start.sh"
+		"{\"cwd\":\"${project}\",\"session_id\":\"123e4567-e89b-12d3-a456-426614174000\"}" \
+		"${runtime}/hooks/session-start.sh"
 
 	[ "${status}" -eq 0 ]
-	[[ "${output}" == *"Default Rule Routing"* ]]
-	[[ "${output}" == *"When handling Java exceptions, lazy load"*"/rules/include/java/exceptions.md"* ]]
-	[[ "${output}" == *"project session rule"* ]]
+	[[ "${output}" == *'"hookSpecificOutput"'* ]]
+	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*rules for this session are in `\([^`]*\)`.*/\1/p')
+	grep -F "Default Rule Routing" "${context_file}"
+	grep -F "When handling Java exceptions, lazy load" "${context_file}"
+	grep -F "/rules/include/java/exceptions.md" "${context_file}"
+	grep -F "project session rule" "${context_file}"
 }
 
 @test "generated Codex SubagentStart launcher injects only addressed project rules" {
