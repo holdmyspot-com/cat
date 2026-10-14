@@ -46,7 +46,7 @@ async function verifyCommonTask(language, harness, slug, category)
   const expected = expectedReviewTask(category);
   for (const mode of ["base", "cat"])
   {
-    const filename = join(capturesDirectory, language, `${harness}-${mode}-${slug}.request.txt`);
+    const filename = join(capturesDirectory, language, `${harness}-${mode}-${slug}.request.md`);
     if (await readFile(filename, "utf8") !== expected)
       throw new Error(`${filename} did not retain the common neutral task`);
   }

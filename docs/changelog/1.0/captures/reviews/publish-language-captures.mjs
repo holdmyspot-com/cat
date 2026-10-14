@@ -54,7 +54,7 @@ async function publish(root, language, harness, mode, concern, outputName)
   await cp(events, join(target, `${outputName}.events.jsonl`));
   const request = join(source, "request.txt");
   await readFile(request);
-  await cp(request, join(target, `${outputName}.request.txt`));
+  await cp(request, join(target, `${outputName}.request.md`));
   await cp(await completedRun(source), join(target, `${outputName}.run.json`));
   if (harness === "codex" && mode === "cat")
   {
