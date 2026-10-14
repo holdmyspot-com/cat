@@ -118,6 +118,9 @@ When editing the layout of a method chain, lazy load `../include/common/method-c
 When declaring an object's field, or writing or editing a constructor that assigns one, lazy load
 `../include/common/field-initialization.md`.
 
+When writing or changing code that passes a resource it created to a constructor, or a constructor that receives or
+creates a resource that must be released, lazy load `../include/common/construction-failure-cleanup.md`.
+
 When creating or closing a `PipedInputStream` or waiting for a reader that uses one, lazy load
 `../include/java/piped-input-stream.md`.
 
