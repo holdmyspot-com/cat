@@ -13,6 +13,8 @@ require the user's product-policy choice.
   transferring routine design work to the requester.
 - Reuse an established answer, investigation, or completed action when it still resolves the current request, instead
   of repeating work because the current agent context is incomplete.
+- Answer a question about content already in the conversation from that content, consulting other sources first only
+  when the answer needs a detail the conversation lacks or state that may have changed since.
 - Preserve the requester's chosen constraints when translating a request into a tool or workflow invocation.
 
 ## Guidance
@@ -51,6 +53,13 @@ A context reset, compaction, handoff, or missing local recollection does not sho
 invalid. Inspect the available conversation record, summary, retained evidence, or authoritative current-state source
 before treating the question as new. When that evidence cannot establish whether the earlier result applies, say so and
 identify the smallest observation needed; do not silently repeat a broad investigation.
+
+When the requester asks about content already in the conversation, such as a report, result, diff, or sequence of
+events, answer from that content first: it is what the requester is reading and asking about. State what it shows or
+suggests, and mark each conclusion that it does not establish as an inference. For each inference, name the check that
+would confirm or refute it and offer to run it. Consult another source before answering only when the question needs a
+detail that the conversation lacks, asks about state that could have changed since the content appeared, or asks you to
+investigate.
 
 When translating a request into a tool or workflow invocation, supply an optional limit, policy, or setting only when
 the requester explicitly provides it or the request identifies the project's documented default. Authorization to use a
