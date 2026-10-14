@@ -11,8 +11,11 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -44,15 +47,26 @@ public final class RegressionScenariosTest
 		// Requirement: R-I3
 		Path root = project();
 		List<String> recorded = new ArrayList<>();
-		try (Stream<Path> paths = Files.walk(root.resolve("client")))
+		// Build output is skipped: the build writes into it while this test runs, and it holds no recorded scenario
+		Files.walkFileTree(root.resolve("client"), new SimpleFileVisitor<>()
 		{
-			for (Path file : paths.filter(path -> path.getFileName().toString().equals("scenario.md")).toList())
+			@Override
+			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
+			{
+				if (directory.getFileName().toString().equals("target"))
+					return FileVisitResult.SKIP_SUBTREE;
+				return FileVisitResult.CONTINUE;
+			}
+
+			@Override
+			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
 			{
 				String citation = root.relativize(file).toString();
-				if (citation.contains("/src/test/resources/"))
+				if (file.getFileName().toString().equals("scenario.md") && citation.contains("/src/test/resources/"))
 					recorded.add(citation);
+				return FileVisitResult.CONTINUE;
 			}
-		}
+		});
 		Path tests = root.resolve(".cat/tests");
 		if (Files.isDirectory(tests))
 		{
