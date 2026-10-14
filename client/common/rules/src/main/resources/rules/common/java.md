@@ -28,3 +28,7 @@ can differ between operating systems, lazy load `../include/java/portability.md`
 
 When a Java test needs direct access to non-public production behavior to avoid unrelated caller work, lazy load
 `../include/java/test-access.md`.
+
+When adding or changing a public or protected declaration in a package that a `module-info.java` exports, changing a
+module's `exports` or `requires transitive` directives, or resolving a warning that a type is not exported from a
+module, lazy load `../include/java/module-exports.md`.
