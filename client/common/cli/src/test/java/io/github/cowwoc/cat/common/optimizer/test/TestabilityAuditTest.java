@@ -148,9 +148,6 @@ public final class TestabilityAuditTest
 	/**
 	 * Verifies that only {@code main} classes and harness production scopes read the home directory or the process
 	 * environment.
-	 * <p>
-	 * The test can take about a second: the first of the audit's tests to run parses every optimizer source, several
-	 * megabytes, while the others wait for that shared scan.
 	 */
 	@Test
 	public void onlyMainReadsEnvironment()

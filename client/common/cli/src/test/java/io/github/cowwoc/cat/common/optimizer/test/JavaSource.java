@@ -103,13 +103,16 @@ record JavaSource(String code, List<Literal> literals, List<Field> fields)
 		int i = 0;
 		while (i < text.length())
 		{
-			if (text.startsWith("//", i))
+			char next = text.charAt(i);
+			if (next != '/' && next != '"' && next != '\'')
+				++i;
+			else if (text.startsWith("//", i))
 				i = blankUntil(code, text, i, text.indexOf('\n', i));
 			else if (text.startsWith("/*", i))
 				i = blankUntil(code, text, i, endOf(text, text.indexOf("*/", i + 2), 2));
 			else if (text.startsWith("\"\"\"", i))
 				i = readTextBlock(code, text, i, literals);
-			else if (text.charAt(i) == '"' || text.charAt(i) == '\'')
+			else if (next == '"' || next == '\'')
 				i = readQuoted(code, text, i, literals);
 			else
 				++i;
@@ -236,7 +239,7 @@ record JavaSource(String code, List<Literal> literals, List<Field> fields)
 	{
 		List<Field> fields = new ArrayList<>();
 		Deque<Frame> frames = new ArrayDeque<>();
-		frames.push(new Frame(Kind.FILE, 0, false));
+		frames.push(new Frame(Kind.FILE, 0, false, 0));
 		int parentheses = 0;
 		for (int i = 0; i < code.length(); ++i)
 		{
@@ -288,26 +291,21 @@ record JavaSource(String code, List<Literal> literals, List<Field> fields)
 		boolean isInitializer = frame.kind() != Kind.OTHER &&
 			(parentheses > frame.parentheses() || hasInitializer(declaration));
 		if (isInitializer)
-			return new Frame(Kind.OTHER, parentheses, true);
+			return new Frame(Kind.OTHER, parentheses, true, brace + 1);
 		frame.startDeclaration(brace + 1);
 		Matcher keyword = TYPE_KEYWORD.matcher(declaration);
 		if (keyword.find())
 		{
 			if (keyword.group(1).equals("interface"))
-				return new Frame(Kind.INTERFACE, parentheses, false);
-			Frame type = new Frame(Kind.CLASS, parentheses, false);
+				return new Frame(Kind.INTERFACE, parentheses, false, brace + 1);
+			Frame type = new Frame(Kind.CLASS, parentheses, false, brace + 1);
 			if (keyword.group(1).equals("enum"))
 				type.startEnumConstants();
-			type.startDeclaration(brace + 1);
 			return type;
 		}
 		if (RECORD_KEYWORD.matcher(declaration).find())
-		{
-			Frame type = new Frame(Kind.CLASS, parentheses, false);
-			type.startDeclaration(brace + 1);
-			return type;
-		}
-		return new Frame(Kind.OTHER, parentheses, false);
+			return new Frame(Kind.CLASS, parentheses, false, brace + 1);
+		return new Frame(Kind.OTHER, parentheses, false, brace + 1);
 	}
 
 	/**
@@ -503,12 +501,14 @@ record JavaSource(String code, List<Literal> literals, List<Field> fields)
 		 * @param parentheses          the parenthesis depth at the opening brace
 		 * @param continuesDeclaration {@code true} if the braces are part of the enclosing member's declaration, as an
 		 *                             initializer is
+		 * @param declarationStart     the offset where the first member declaration inside the braces starts
 		 */
-		Frame(Kind kind, int parentheses, boolean continuesDeclaration)
+		Frame(Kind kind, int parentheses, boolean continuesDeclaration, int declarationStart)
 		{
 			this.kind = kind;
 			this.parentheses = parentheses;
 			this.continuesDeclaration = continuesDeclaration;
+			this.declarationStart = declarationStart;
 		}
 
 		/**

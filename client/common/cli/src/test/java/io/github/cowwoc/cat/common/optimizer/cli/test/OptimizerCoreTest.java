@@ -738,36 +738,27 @@ public final class OptimizerCoreTest
 		Files.writeString(root.resolve("CLAUDE.md"), "Be brief.\n");
 		Files.writeString(root.resolve(".env.example"), "TOKEN=fixture\n");
 		Files.writeString(root.resolve("extra.local.md"), "Local rules.\n");
+		// The core only reads a session's files, so every session shares one empty set instead of creating its own
+		Path transcript = Files.createFile(scratch.resolve("transcript.jsonl"));
+		Path effects = Files.createDirectory(scratch.resolve("effects"));
+		Path initialProject = Files.createDirectory(scratch.resolve("initial-project"));
 		AtomicInteger contractAuthors = new AtomicInteger();
-		Function<SessionRequest, SessionResult> script = request ->
+		Function<SessionRequest, SessionResult> script = request -> switch (request.role())
 		{
-			try
-			{
-				Path transcript = Files.createTempFile(scratch, "transcript", ".jsonl");
-				Path effects = Files.createTempDirectory(scratch, "effects");
-				Path initialProject = Files.createTempDirectory(scratch, "initial-project");
-				return switch (request.role())
-				{
-					case CONTRACT_AUTHOR -> contractAuthorEnd.orElseGet(() -> new SessionResult.Completed(transcript,
-						List.of(List.of("working", contractAuthor.apply(contractAuthors.getAndIncrement()))), effects,
-						initialProject, "model", null, null, List.of(), "hook: none", List.of()));
-					case TRIAL -> new SessionResult.Completed(transcript, request.turns().stream().
-						map(_ -> List.of("answer")).toList(), effects, initialProject, "model", null, null, List.of(),
-						"CLAUDE.md", List.of());
-					case JUDGE -> new SessionResult.Completed(transcript, List.of(List.of(judgment(request))), effects,
-						initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
-					case TRIAGE -> new SessionResult.Completed(transcript, List.of(List.of(
-						"{\"impact\": \"blocking\", \"rationale\": \"The answer is incomplete.\"}")), effects,
-						initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
-					case PROMPT_AUTHOR -> new SessionResult.Completed(transcript,
-						List.of(List.of("{\"needed_edits\": []}")), effects, initialProject, "model", null, null,
-						List.of(), "CLAUDE.md", List.of());
-				};
-			}
-			catch (IOException e)
-			{
-				throw new java.io.UncheckedIOException(e);
-			}
+			case CONTRACT_AUTHOR -> contractAuthorEnd.orElseGet(() -> new SessionResult.Completed(transcript,
+				List.of(List.of("working", contractAuthor.apply(contractAuthors.getAndIncrement()))), effects,
+				initialProject, "model", null, null, List.of(), "hook: none", List.of()));
+			case TRIAL -> new SessionResult.Completed(transcript, request.turns().stream().
+				map(_ -> List.of("answer")).toList(), effects, initialProject, "model", null, null, List.of(),
+				"CLAUDE.md", List.of());
+			case JUDGE -> new SessionResult.Completed(transcript, List.of(List.of(judgment(request))), effects,
+				initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
+			case TRIAGE -> new SessionResult.Completed(transcript, List.of(List.of(
+				"{\"impact\": \"blocking\", \"rationale\": \"The answer is incomplete.\"}")), effects,
+				initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
+			case PROMPT_AUTHOR -> new SessionResult.Completed(transcript,
+				List.of(List.of("{\"needed_edits\": []}")), effects, initialProject, "model", null, null,
+				List.of(), "CLAUDE.md", List.of());
 		};
 		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
 			tracked, clock -> new ScriptedSessions(clock, script));
