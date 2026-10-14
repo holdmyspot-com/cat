@@ -23,7 +23,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
@@ -403,7 +403,7 @@ public final class TransitionsTest
 		requireThat(campaign.lineage().unavailable(), "unavailable").containsExactly(List.of(outcome));
 		requireThat(campaign.choices(), "choices").
 			containsExactly(List.of(Choice.ACCEPT_WITHOUT_CERTIFICATION, Choice.STOP));
-		requireThat(ReadinessGate.isCommitDue(campaign), "isCommitDue").isFalse();
+		requireThat(CommitGate.isCommitDue(campaign), "isCommitDue").isFalse();
 	}
 
 	/**
@@ -455,7 +455,7 @@ public final class TransitionsTest
 			containsExactly(List.of(Outcome.INELIGIBLE_TRIAL_EFFECT));
 		requireThat(campaign.pending(), "pending").
 			isEqualTo(new PendingDecision.CertificationUnavailable(Outcome.INELIGIBLE_TRIAL_EFFECT));
-		requireThat(ReadinessGate.isCommitDue(campaign), "isCommitDue").isFalse();
+		requireThat(CommitGate.isCommitDue(campaign), "isCommitDue").isFalse();
 	}
 
 	/**

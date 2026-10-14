@@ -31,7 +31,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
@@ -1074,8 +1074,8 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Indicates whether a candidate commitment or calibration failure was recorded. Commits the working candidate
-	 * if the campaign is ready, calibrating the attempt's trial cap first and saving the control source that the
+	 * Indicates whether a candidate commitment or calibration failure was recorded. Commits the working candidate if the
+	 * campaign meets the commit gate, calibrating the attempt's trial cap first and saving the control source that the
 	 * attempt's control trials run on.
 	 *
 	 * @return {@code true} if a commit or a calibration failure was recorded
@@ -1083,7 +1083,7 @@ public final class Driver implements AutoCloseable
 	 */
 	private boolean commitIfDue() throws IOException
 	{
-		if (!ReadinessGate.isCommitDue(campaign))
+		if (!CommitGate.isCommitDue(campaign))
 			return false;
 		CampaignEvent event;
 		try

@@ -76,7 +76,7 @@ public enum Choice
 	MORE_ROUNDS,
 	/**
 	 * Leave the failure groups that did not reproduce, and start a new certification attempt with the working
-	 * candidate once it meets the readiness gate.
+	 * candidate once it meets the commit gate.
 	 */
 	NEW_ATTEMPT
 }

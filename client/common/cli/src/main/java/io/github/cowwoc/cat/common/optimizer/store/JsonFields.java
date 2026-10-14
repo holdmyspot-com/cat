@@ -148,6 +148,22 @@ final class JsonFields
 	}
 
 	/**
+	 * Returns a {@code boolean} field.
+	 *
+	 * @param node the object that holds the field
+	 * @param name the field's name
+	 * @return the value
+	 * @throws IllegalArgumentException if the value is not a boolean
+	 */
+	static boolean bool(JsonNode node, String name)
+	{
+		JsonNode value = field(node, name);
+		if (!value.isBoolean())
+			throw new IllegalArgumentException(name + ": must be a boolean");
+		return value.asBoolean();
+	}
+
+	/**
 	 * Returns an {@code int} value.
 	 *
 	 * @param value the value

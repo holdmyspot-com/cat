@@ -10,7 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
@@ -51,11 +51,11 @@ public final class AdmissionTest
 		requireThat(campaign.nextCertificationIndex(), "nextCertificationIndex").isEqualTo(1);
 		requireThat(campaign.pending(), "pending").
 			isEqualTo(new PendingDecision.CalibrationFailure("no cap below 10000"));
-		requireThat(ReadinessGate.isCommitDue(campaign), "isCommitDue").isFalse();
+		requireThat(CommitGate.isCommitDue(campaign), "isCommitDue").isFalse();
 		requireThat(campaign.choices(), "choices").containsExactly(List.of(Choice.RETRY, Choice.STOP));
 
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
-		requireThat(ReadinessGate.isCommitDue(campaign), "retried").isTrue();
+		requireThat(CommitGate.isCommitDue(campaign), "retried").isTrue();
 		campaign = Transitions.apply(campaign, new CampaignEvent.Commit(
 			new CapCalibration(ErrorBudget.certificationLevel(1), Contract.DEFAULT_MINIMUM_PASS_RATE, 262), 5,
 			Builder.CONTROL));

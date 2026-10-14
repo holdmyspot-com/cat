@@ -119,7 +119,7 @@ final class ReportJson
 			withdrawn.put("snapshot", revert.withdrawn().snapshot().hex());
 			node.put("cell", revert.cell());
 			node.put("upper_bound", revert.upperBound());
-			node.put("predecessor_rate", revert.predecessorRate());
+			node.put("predecessor_lower_bound", revert.predecessorLowerBound());
 		}
 	}
 
@@ -250,7 +250,7 @@ final class ReportJson
 		ObjectNode comparisonNode = node.putObject("comparison");
 		comparisonNode.put("state", comparison.state());
 		comparisonNode.put("minimum_pass_rate", comparison.minimumPassRate());
-		putText(comparisonNode, "readiness", comparison.readiness());
+		putText(comparisonNode, "commit_gate", comparison.commitGate());
 		strings(comparisonNode.putArray("reasons"), comparison.reasons());
 		putNumber(comparisonNode, "lower_bound", comparison.lowerBound());
 		putNumber(comparisonNode, "upper_bound", comparison.upperBound());

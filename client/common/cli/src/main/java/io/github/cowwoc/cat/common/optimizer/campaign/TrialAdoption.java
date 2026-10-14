@@ -7,7 +7,9 @@ import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
 import io.github.cowwoc.cat.common.secrets.TrialAdoptionAccess;
 import io.github.cowwoc.cat.common.secrets.TrialAdoptionSecrets;
 
@@ -367,9 +369,10 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Restores a promoted candidate's predecessor when its Wilson upper bound in an addressed cell is below the
-	 * predecessor's observed representative pass rate. The withdrawn evidence stays available for diagnosis and the
-	 * selected attempt becomes an unproductive round attempt before a complete round ends.
+	 * Restores a promoted candidate's predecessor when its development 95% Wilson upper bound in an addressed cell is
+	 * below the predecessor's development 95% Wilson lower bound there, so that the two intervals do not overlap. The
+	 * withdrawn evidence stays available for diagnosis and the selected attempt becomes an unproductive round attempt
+	 * before a complete round ends.
 	 *
 	 * @param draft the campaign state after adopting a representative development outcome
 	 * @param cell the outcome's cell
@@ -384,15 +387,16 @@ public final class TrialAdoption
 		if (retained.outcomes() == 0)
 			return false;
 		CellCounts current = draft.developmentCount(cell);
-		// An all-pass sample has Wilson upper bound 1, which cannot be below an observed pass rate
+		// An all-pass sample has Wilson upper bound 1, which cannot be below a lower bound
 		if (current.failures() == 0)
 			return false;
 		double upperBound = ExploratoryBounds.wilson(current.passes(), current.outcomes()).upper();
-		double predecessorRate = (double) retained.passes() / retained.outcomes();
-		if (upperBound >= predecessorRate)
+		double predecessorLowerBound = ExploratoryBounds.wilson(retained.passes(), retained.outcomes()).lower();
+		if (upperBound >= predecessorLowerBound)
 			return false;
 
-		draft.reverts.add(new Revert(draft.working, cell, upperBound, predecessorRate, snapshotDevelopment(draft)));
+		draft.reverts.add(new Revert(draft.working, cell, upperBound, predecessorLowerBound,
+			snapshotDevelopment(draft)));
 		Development restored = predecessor.development();
 		draft.startDevelopment(restored.working());
 		draft.developmentCounts = new LinkedHashMap<>(restored.counts());
@@ -727,7 +731,7 @@ public final class TrialAdoption
 	 * working candidate stays, and its representative trials resume with a concurrency window of one; the round's
 	 * attempts and prompt author diagnoses remain in the optimization evidence. A later failure goes through
 	 * edit-or-continue and can start a new round with new failure evidence. Every regression test case that the working
-	 * candidate failed last becomes settled, so that failure no longer blocks the readiness gate until the working
+	 * candidate failed last becomes settled, so that failure no longer blocks the commit gate until the working
 	 * candidate runs the test case again.
 	 *
 	 * @param draft the state, whose round is complete
@@ -850,7 +854,8 @@ public final class TrialAdoption
 	 * report; its held-out test case never enters development evidence or the regression set. The trial waits for
 	 * the control trial and, unless the candidate is the incumbent, the incumbent trial that pair with it. The trial
 	 * that certifies the cell's minimum-pass-rate part starts the cell's control comparisons and, unless the candidate
-	 * is the incumbent, its incumbent comparisons.
+	 * is the incumbent, its incumbent comparisons. When the attempt's minimum pass rate implies the comparisons, the
+	 * trial pairs with no reference trial and no comparison starts.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -862,19 +867,23 @@ public final class TrialAdoption
 		Map<String, CellCounts> counts = new LinkedHashMap<>(attempt.counts());
 		CellCounts cellCounts = attempt.count(cell).add(trial.verdict());
 		counts.put(cell, cellCounts);
-		PromptTest test = testOf(draft, cell);
-		UnpairedTrial unpaired = new UnpairedTrial(trial.testCase(), passedAssertions(test, trial, true));
-		boolean minimumCertified = DecisionTable.minimumDecision(attempt.procedure().boundaries(), cellCounts) ==
-			DecisionTable.CellDecision.CERTIFIED;
-		List<String> assertionIds = test.allAssertions().stream().map(Assertion::id).toList();
+		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		Map<String, Pairing> controlPairings = new LinkedHashMap<>(attempt.controlPairings());
-		controlPairings.put(cell, withCandidate(attempt.pairing(Reference.CONTROL, cell), unpaired, minimumCertified,
-			assertionIds));
 		Map<String, Pairing> incumbentPairings = new LinkedHashMap<>(attempt.incumbentPairings());
-		if (!attempt.candidate().snapshot().equals(draft.incumbent.snapshot()))
+		if (!PairedComparison.isImpliedBy(boundaries.minimumPassRate()))
 		{
-			incumbentPairings.put(cell, withCandidate(attempt.pairing(Reference.INCUMBENT, cell), unpaired,
+			PromptTest test = testOf(draft, cell);
+			UnpairedTrial unpaired = new UnpairedTrial(trial.testCase(), passedAssertions(test, trial, true));
+			boolean minimumCertified = DecisionTable.minimumDecision(boundaries, cellCounts) ==
+				DecisionTable.CellDecision.CERTIFIED;
+			List<String> assertionIds = test.allAssertions().stream().map(Assertion::id).toList();
+			controlPairings.put(cell, withCandidate(attempt.pairing(Reference.CONTROL, cell), unpaired,
 				minimumCertified, assertionIds));
+			if (!attempt.candidate().snapshot().equals(draft.incumbent.snapshot()))
+			{
+				incumbentPairings.put(cell, withCandidate(attempt.pairing(Reference.INCUMBENT, cell), unpaired,
+					minimumCertified, assertionIds));
+			}
 		}
 		List<Failure> failures = new ArrayList<>(attempt.failures());
 		if (trial.verdict() == Verdict.FAIL)

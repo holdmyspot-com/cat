@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.store;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.VERSION;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.bool;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.elements;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.field;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.intValue;
@@ -147,7 +148,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 40;
+	private static final int FORMAT_VERSION = 41;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_ASSERTIONS = "failed_assertions";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -1253,7 +1254,7 @@ final class CampaignJson
 			element.set("withdrawn", writeCandidate(revert.withdrawn()));
 			element.put("cell", revert.cell());
 			element.put("upper_bound", revert.upperBound());
-			element.put("predecessor_rate", revert.predecessorRate());
+			element.put("predecessor_lower_bound", revert.predecessorLowerBound());
 			element.set("development", writeDevelopment(revert.development()));
 		}
 		return node;
@@ -1500,7 +1501,7 @@ final class CampaignJson
 		for (JsonNode revert : elements(node, "reverts"))
 		{
 			reverts.add(new Revert(readCandidate(field(revert, "withdrawn")), text(revert, "cell"),
-				floating(revert, "upper_bound"), floating(revert, "predecessor_rate"),
+				floating(revert, "upper_bound"), floating(revert, "predecessor_lower_bound"),
 				readDevelopment(field(revert, "development"))));
 		}
 		return new Development(readCandidate(field(node, "working")), integer(node, "series"),
@@ -2566,22 +2567,6 @@ final class CampaignJson
 		if (!value.isNumber())
 			throw new IllegalArgumentException(name + ": must be a number");
 		return value.asDouble();
-	}
-
-	/**
-	 * Returns a {@code boolean} field.
-	 *
-	 * @param node the object that holds the field
-	 * @param name the field's name
-	 * @return the value
-	 * @throws IllegalArgumentException if the value is not a boolean
-	 */
-	private static boolean bool(JsonNode node, String name)
-	{
-		JsonNode value = field(node, name);
-		if (!value.isBoolean())
-			throw new IllegalArgumentException(name + ": must be a boolean");
-		return value.asBoolean();
 	}
 
 	/**

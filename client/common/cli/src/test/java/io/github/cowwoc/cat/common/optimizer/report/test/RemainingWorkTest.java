@@ -81,10 +81,10 @@ public final class RemainingWorkTest
 	}
 
 	/**
-	 * Verifies development counts that need readiness trials only.
+	 * Verifies development counts that need commit gate trials only.
 	 */
 	@Test
-	public void developmentReadinessAndNextAttempt()
+	public void developmentCommitGateAndNextAttempt()
 	{
 		// Requirement: R-E12
 		// formatting: n = 60, f = 0         -> max(0, max(100, 100*0) - 60)  =  40
@@ -97,8 +97,8 @@ public final class RemainingWorkTest
 			development("plain_list", 100, 0).development("safety", 100, 0).readyBaseline().build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(work.phase(), "phase").isEqualTo(Phase.DEVELOPMENT);
-		requireThat(trials(work, "formatting", Kind.READINESS), "formattingReadiness").isEqualTo(40);
-		requireThat(trials(work, "safety", Kind.READINESS), "safetyReadiness").isEqualTo(0);
+		requireThat(trials(work, "formatting", Kind.COMMIT_GATE), "formattingCommitGate").isEqualTo(40);
+		requireThat(trials(work, "safety", Kind.COMMIT_GATE), "safetyCommitGate").isEqualTo(0);
 		requireThat(trials(work, "formatting", Kind.NEXT_ATTEMPT), "formattingNext").isEqualTo(93);
 		requireThat(trials(work, "safety", Kind.NEXT_ATTEMPT), "safetyNext").isEqualTo(93);
 		requireThat(work.total(), "total").isEqualTo(319);
@@ -106,10 +106,10 @@ public final class RemainingWorkTest
 	}
 
 	/**
-	 * Verifies that a recent batch with 2 failures delays readiness beyond the simple count formula.
+	 * Verifies that a recent batch with 2 failures delays the commit gate beyond the simple count formula.
 	 */
 	@Test
-	public void developmentRecentBatchDelaysReadiness()
+	public void developmentRecentBatchDelaysCommitGate()
 	{
 		// Requirement: R-E12
 		// formatting: 198 passes, 2 failures in batches [0, 0, 2, 0] at n = 200. The simple formula gives
@@ -120,8 +120,8 @@ public final class RemainingWorkTest
 			development("formatting", 198, List.of(0, 0, 2, 0)).development("safety", 100, 0).
 			readyBaseline().build();
 		RemainingWork work = RemainingWork.of(campaign);
-		requireThat(trials(work, "formatting", Kind.READINESS), "formattingReadiness").isEqualTo(50);
-		requireThat(trials(work, "safety", Kind.READINESS), "safetyReadiness").isEqualTo(0);
+		requireThat(trials(work, "formatting", Kind.COMMIT_GATE), "formattingCommitGate").isEqualTo(50);
+		requireThat(trials(work, "safety", Kind.COMMIT_GATE), "safetyCommitGate").isEqualTo(0);
 	}
 
 	/**
@@ -136,22 +136,22 @@ public final class RemainingWorkTest
 		// baseline formatting: 30 passes    -> 50 - 30                       =  20
 		// baseline safety: 45 passes, 2 failures: after 3 more passes n = 50 with 48 passes,
 		//   20*48 = 960 >= 19*50 = 950, so the target stays 50 and 3 trials are needed
-		// plain_list: readiness and baseline met (n = 100 and 50 passes) ->   0
+		// plain_list: commit gate and baseline met (n = 100 and 50 passes) ->   0
 		// next attempt (i = 1): 93 + 93 + 93 = 279
 		// total = 147 + 100 + 20 + 3 + 0 + 279 = 549
 		Campaign campaign = new Builder().confirmed().working(1).development("formatting", 150, 3).
 			development("plain_list", 100, 0).baseline("formatting", 30, 0).baseline("plain_list", 50, 0).
 			baseline("safety", 45, 2).build();
 		RemainingWork work = RemainingWork.of(campaign);
-		requireThat(trials(work, "formatting", Kind.READINESS), "formattingReadiness").isEqualTo(147);
-		requireThat(trials(work, "safety", Kind.READINESS), "safetyReadiness").isEqualTo(100);
+		requireThat(trials(work, "formatting", Kind.COMMIT_GATE), "formattingCommitGate").isEqualTo(147);
+		requireThat(trials(work, "safety", Kind.COMMIT_GATE), "safetyCommitGate").isEqualTo(100);
 		requireThat(trials(work, "formatting", Kind.BASELINE), "formattingBaseline").isEqualTo(20);
 		requireThat(trials(work, "safety", Kind.BASELINE), "safetyBaseline").isEqualTo(3);
 		requireThat(work.total(), "total").isEqualTo(549);
 	}
 
 	/**
-	 * Verifies that readiness counts only the development cells while the incumbent baseline and the next attempt
+	 * Verifies that the commit gate counts only the development cells while the incumbent baseline and the next attempt
 	 * count every cell of the certification scope.
 	 */
 	@Test
@@ -159,19 +159,19 @@ public final class RemainingWorkTest
 	{
 		// Requirement: R-E19
 		// Requirement: R-C15
-		// latest versions: readiness 100 in each development cell (small/high, safety)  = 200
+		// latest versions: commit gate 100 in each development cell (small/high, safety)  = 200
 		//   baseline 50 in each of the 6 scope cells                                    = 300
 		//   next attempt 93 in each of the 6 scope cells                                = 558
 		//   total = 1058
 		Contract latest = TierFixtures.tieredContract();
 		RemainingWork work = RemainingWork.of(new Builder().confirmed(latest, 1).working(1).build());
-		requireThat(trials(work, TierFixtures.SMALL_HIGH, Kind.READINESS), "weakestReadiness").isEqualTo(100);
+		requireThat(trials(work, TierFixtures.SMALL_HIGH, Kind.COMMIT_GATE), "weakestCommitGate").isEqualTo(100);
 		requireThat(entries(work, TierFixtures.BIG_LOW), "bigLowKinds").
 			isEqualTo(List.of(Kind.BASELINE, Kind.NEXT_ATTEMPT));
 		requireThat(trials(work, TierFixtures.BIG_LOW, Kind.BASELINE), "bigLowBaseline").isEqualTo(50);
 		requireThat(work.total(), "latestTotal").isEqualTo(1058);
 
-		// weakest cell: readiness 200, baseline 2 × 50 = 100, next attempt 2 × 93 = 186; total = 486
+		// weakest cell: commit gate 200, baseline 2 × 50 = 100, next attempt 2 × 93 = 186; total = 486
 		Contract weakest = latest.withScope(CertificationScope.WEAKEST_CELL);
 		RemainingWork weakestWork = RemainingWork.of(new Builder().confirmed(weakest, 1).working(1).build());
 		requireThat(entries(weakestWork, TierFixtures.BIG_LOW), "outsideScope").isEmpty();
@@ -179,15 +179,15 @@ public final class RemainingWorkTest
 	}
 
 	/**
-	 * Verifies that a development cell outside the certification scope adds its readiness minimum and nothing else,
+	 * Verifies that a development cell outside the certification scope adds its commit gate minimum and nothing else,
 	 * and follows its base cell in the entries.
 	 */
 	@Test
-	public void developmentCellOutsideScopeAddsReadiness()
+	public void outsideScopeCellAddsCommitGate()
 	{
 		// Requirement: R-E12
 		// weakest cell: the scope is small/high and safety. A failure in big/medium makes it a development cell.
-		//   readiness 100 in each of 3 development cells                                = 300
+		//   commit gate 100 in each of 3 development cells                                = 300
 		//   baseline 50 in each of the 2 scope cells                                    = 100
 		//   next attempt (i = 2) 117 in each of the 2 scope cells                       = 234
 		//   total = 634
@@ -196,24 +196,24 @@ public final class RemainingWorkTest
 			failure(draw(weakest, TierFixtures.BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).build();
 		RemainingWork work = RemainingWork.of(campaign);
 
-		requireThat(entries(work, TierFixtures.BIG_MEDIUM), "outsideScope").isEqualTo(List.of(Kind.READINESS));
-		requireThat(trials(work, TierFixtures.BIG_MEDIUM, Kind.READINESS), "outsideScopeReadiness").isEqualTo(100);
+		requireThat(entries(work, TierFixtures.BIG_MEDIUM), "outsideScope").isEqualTo(List.of(Kind.COMMIT_GATE));
+		requireThat(trials(work, TierFixtures.BIG_MEDIUM, Kind.COMMIT_GATE), "outsideScopeCommitGate").isEqualTo(100);
 		requireThat(work.entries().stream().map(Entry::cell).distinct().toList(), "cells").isEqualTo(
 			List.of(TierFixtures.BIG_MEDIUM, TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
 		requireThat(work.total(), "total").isEqualTo(634);
 	}
 
 	/**
-	 * Verifies that a tool-output stress cell, which the contract does not list, adds its readiness minimum right
+	 * Verifies that a tool-output stress cell, which the contract does not list, adds its commit gate minimum right
 	 * after its base cell.
 	 */
 	@Test
-	public void toolOutputStressCellAddsReadiness()
+	public void toolOutputStressCellAddsCommitGate()
 	{
 		// Requirement: R-E12
 		// latest versions: the scope is the 6 contract cells. A failure in big/low under the 5000-token tool-output
 		// limit makes that limited cell a development cell, though no scope cell is the limited cell.
-		//   readiness 100 in each of 3 development cells (limited big/low, small/high, safety)  = 300
+		//   commit gate 100 in each of 3 development cells (limited big/low, small/high, safety)  = 300
 		//   baseline 50 in each of the 6 scope cells                                             = 300
 		//   next attempt (i = 2) 117 in each of the 6 scope cells                                = 702
 		//   total = 1302
@@ -223,8 +223,8 @@ public final class RemainingWorkTest
 			failure(draw(contract, limited)).outcome(Outcome.INCONCLUSIVE).build();
 		RemainingWork work = RemainingWork.of(campaign);
 
-		requireThat(entries(work, limited), "limitedKinds").isEqualTo(List.of(Kind.READINESS));
-		requireThat(trials(work, limited, Kind.READINESS), "limitedReadiness").isEqualTo(100);
+		requireThat(entries(work, limited), "limitedKinds").isEqualTo(List.of(Kind.COMMIT_GATE));
+		requireThat(trials(work, limited, Kind.COMMIT_GATE), "limitedCommitGate").isEqualTo(100);
 		List<String> cells = work.entries().stream().map(Entry::cell).distinct().toList();
 		requireThat(cells.get(cells.indexOf(TierFixtures.BIG_LOW) + 1), "afterBase").isEqualTo(limited);
 		requireThat(work.total(), "total").isEqualTo(1302);
@@ -238,7 +238,7 @@ public final class RemainingWorkTest
 	{
 		// Requirement: R-E12
 		// latest versions: big/medium is in the scope and, after a failure there, a development cell.
-		//   readiness 100 in each of 3 development cells (big/medium, small/high, safety)  = 300
+		//   commit gate 100 in each of 3 development cells (big/medium, small/high, safety)  = 300
 		//   baseline 50 in each of the 6 scope cells                                       = 300
 		//   next attempt (i = 2) 117 in each of the 6 scope cells                          = 702
 		//   total = 1302
@@ -248,7 +248,7 @@ public final class RemainingWorkTest
 		RemainingWork work = RemainingWork.of(campaign);
 
 		requireThat(entries(work, TierFixtures.BIG_MEDIUM), "bigMediumKinds").
-			isEqualTo(List.of(Kind.READINESS, Kind.BASELINE, Kind.NEXT_ATTEMPT));
+			isEqualTo(List.of(Kind.COMMIT_GATE, Kind.BASELINE, Kind.NEXT_ATTEMPT));
 		requireThat(work.entries().stream().map(Entry::cell).distinct().count(), "cells").isEqualTo(6L);
 		requireThat(work.total(), "total").isEqualTo(1302);
 	}
@@ -285,7 +285,7 @@ public final class RemainingWorkTest
 	{
 		// Requirement: R-E12
 		// attempt 1 ended; the next attempt is 2, whose all-pass minimum is 117 per cell.
-		// readiness and baseline are met, so total = 117 + 117 + 117 = 351
+		// commit gate and baseline are met, so total = 117 + 117 + 117 = 351
 		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
 			certificationAttempt(1).outcome(Outcome.INCONCLUSIVE).build();
 		RemainingWork work = RemainingWork.of(campaign);
@@ -316,7 +316,7 @@ public final class RemainingWorkTest
 		//             cover the 105 control trials -> 105, and the 105 incumbent trials -> 105
 		// total = 40 + 110 + 105 + 10 + 105 + 105 = 475
 		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
-			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).cell("formatting", 60, 0).
+			certificationAttempt(1).boundaries(ReportBoundaries.paired()).cell("formatting", 60, 0).
 			cell("plain_list", 100, 0).cell("safety", 140, 1).build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(work.phase(), "phase").isEqualTo(Phase.FORMAL);
@@ -349,13 +349,35 @@ public final class RemainingWorkTest
 		comparisons.put("uses_requested_tone", new PairCounts(40, 0, 0, 0));
 		comparisons.put(TestCase.EXPECTED_OUTCOME, new PairCounts(0, 40, 0, 0));
 		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
-			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).cell("formatting", 100, 0).
+			certificationAttempt(1).boundaries(ReportBoundaries.paired()).cell("formatting", 100, 0).
 			controlPairing("formatting", new Pairing(unpaired(60), comparisons)).
 			cell("plain_list", 100, 0).cell("safety", 100, 0).build();
 		RemainingWork work = RemainingWork.of(campaign);
 		requireThat(trials(work, "formatting", Kind.CONTROL), "formatting").isEqualTo(70);
 		requireThat(work.entries().size(), "entries").isEqualTo(1);
 		requireThat(work.total(), "total").isEqualTo(70);
+	}
+
+	/**
+	 * Verifies that at a minimum pass rate of 0.95, which implies the control and incumbent comparisons, an unresolved
+	 * cell needs only the formal trials of its minimum-pass-rate part, and a certified cell needs nothing.
+	 */
+	@Test
+	public void formalImpliedComparisonsNeedNoPairs()
+	{
+		// Requirement: R-E12
+		// Requirement: R-F9
+		// formatting: S = 60,  F = 0 -> certifies at S = 100 -> 40
+		// plain_list: S = 100, F = 0 -> certified; needs nothing
+		// safety:     S = 140, F = 1 -> certifies at S = 150 -> 10
+		// total = 40 + 10 = 50
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).cell("formatting", 60, 0).
+			cell("plain_list", 100, 0).cell("safety", 140, 1).build();
+		RemainingWork work = RemainingWork.of(campaign);
+		requireThat(work.entries(), "entries").isEqualTo(List.of(new Entry("formatting", Kind.CERTIFICATION, 40, null),
+			new Entry("safety", Kind.CERTIFICATION, 10, null)));
+		requireThat(work.total(), "total").isEqualTo(50);
 	}
 
 	/**
@@ -369,12 +391,14 @@ public final class RemainingWorkTest
 		// Requirement: R-F7
 		// Cap 100. formatting: S = 100, F = 0 -> certified minimum-pass-rate part. Both comparisons have 10 pairs in
 		// which both passed, and pass after 95 more at alpha_1 = 1/50, but only 90 pairs remain within the cap.
-		List<ComparisonBoundaries> neutral = Collections.nCopies(3, Boundaries.comparison(100, 60, 40, 4));
+		List<ComparisonBoundaries> neutral = Collections.nCopies(3,
+			Boundaries.comparison(100, 60, 40, 4, Boundaries.PAIRED_MINIMUM_PASS_RATE));
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		comparisons.put("uses_requested_tone", new PairCounts(10, 0, 0, 0));
 		comparisons.put(TestCase.EXPECTED_OUTCOME, new PairCounts(10, 0, 0, 0));
 		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
-			certificationAttempt(1).boundaries(Boundaries.decision(100, 100, 50, 5, neutral)).
+			certificationAttempt(1).boundaries(Boundaries.decision(100, 100, 50, 5, neutral,
+				Boundaries.PAIRED_MINIMUM_PASS_RATE)).
 			cell("formatting", 100, 0).
 			controlPairing("formatting", new Pairing(unpaired(90), comparisons)).
 			cell("plain_list", 100, 0).cell("safety", 100, 0).build();
@@ -404,7 +428,7 @@ public final class RemainingWorkTest
 		comparisons.put("uses_requested_tone", new PairCounts(40, 0, 0, 0));
 		comparisons.put(TestCase.EXPECTED_OUTCOME, new PairCounts(0, 40, 0, 0));
 		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
-			certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).cell("formatting", 100, 0).
+			certificationAttempt(1).boundaries(ReportBoundaries.paired()).cell("formatting", 100, 0).
 			controlPairing("formatting", new Pairing(unpaired(60), comparisons)).
 			incumbentPairing("formatting", new Pairing(unpaired(60), comparisons)).
 			cell("plain_list", 100, 0).cell("safety", 100, 0).build();
@@ -427,7 +451,8 @@ public final class RemainingWorkTest
 		// Cap 100. formatting: S = 100, F = 0 -> certified minimum-pass-rate part. Its control comparisons have 10
 		// pairs that only the candidate passed and passed. Both incumbent comparisons have 10 pairs in which both
 		// passed, and pass after 95 more at alpha_1 = 1/50, but only 90 pairs remain within the cap.
-		List<ComparisonBoundaries> neutral = Collections.nCopies(3, Boundaries.comparison(100, 60, 40, 4));
+		List<ComparisonBoundaries> neutral = Collections.nCopies(3,
+			Boundaries.comparison(100, 60, 40, 4, Boundaries.PAIRED_MINIMUM_PASS_RATE));
 		Map<String, PairCounts> control = new LinkedHashMap<>();
 		control.put("uses_requested_tone", new PairCounts(0, 10, 0, 0));
 		control.put(TestCase.EXPECTED_OUTCOME, new PairCounts(0, 10, 0, 0));
@@ -435,7 +460,8 @@ public final class RemainingWorkTest
 		incumbent.put("uses_requested_tone", new PairCounts(10, 0, 0, 0));
 		incumbent.put(TestCase.EXPECTED_OUTCOME, new PairCounts(10, 0, 0, 0));
 		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
-			certificationAttempt(1).boundaries(Boundaries.decision(100, 100, 50, 5, neutral)).
+			certificationAttempt(1).boundaries(Boundaries.decision(100, 100, 50, 5, neutral,
+				Boundaries.PAIRED_MINIMUM_PASS_RATE)).
 			cell("formatting", 100, 0).
 			controlPairing("formatting", new Pairing(unpaired(90), control)).
 			incumbentPairing("formatting", new Pairing(unpaired(90), incumbent)).

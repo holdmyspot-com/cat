@@ -20,6 +20,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.statistics.ExploratoryBounds;
 
 import java.time.Instant;
 import java.util.List;
@@ -60,6 +61,8 @@ public final class RevertTest
 			isEqualTo(new RegressionTestCase(retained.testCase(), retained.working(), true));
 		requireThat(reverted.development().reverts().getFirst().withdrawn(), "withdrawn").
 			isEqualTo(promoted.development().working());
+		requireThat(reverted.development().reverts().getFirst().predecessorLowerBound(), "predecessorLowerBound").
+			isEqualTo(ExploratoryBounds.wilson(99, 100).lower());
 		requireThat(reverted.development().reverts().getFirst().development().count("safety"), "withdrawnCounts").
 			isEqualTo(Builder.counts(0, 1));
 		requireThat(reverted.development().reverts().getFirst().development().failures().size(), "withdrawnFailures").
@@ -112,7 +115,25 @@ public final class RevertTest
 	}
 
 	/**
-	 * A bound at or above the predecessor's rate leaves the promoted candidate working.
+	 * A candidate whose upper bound falls below the predecessor's observed rate but not below its lower bound stays
+	 * working, because the two intervals still overlap.
+	 */
+	// Requirement: R-D15
+	@Test
+	public void keepsCandidateWhileIntervalsOverlap()
+	{
+		Campaign promoted = promote(predecessor(13, 7, Map.of("safety", 1)));
+		Campaign campaign = promoted;
+		for (int outcome = 0; outcome < 3; ++outcome)
+			campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
+
+		requireThat(campaign.development().working(), "working").isEqualTo(promoted.development().working());
+		requireThat(campaign.development().count("safety"), "counts").isEqualTo(Builder.counts(0, 3));
+		requireThat(campaign.development().reverts(), "reverts").isEmpty();
+	}
+
+	/**
+	 * A bound at or above the predecessor's lower bound leaves the promoted candidate working.
 	 */
 	// Requirement: R-D15
 	@Test
@@ -128,7 +149,7 @@ public final class RevertTest
 	}
 
 	/**
-	 * A Wilson upper bound equal to the predecessor's perfect pass rate leaves the candidate working.
+	 * An all-pass candidate's Wilson upper bound of 1 leaves it working.
 	 */
 	// Requirement: R-D15
 	@Test
@@ -179,7 +200,7 @@ public final class RevertTest
 	@Test
 	public void revertsBeforeFailureCountStartsEdit()
 	{
-		Campaign predecessor = predecessor(13, 7, Map.of("safety", 1));
+		Campaign predecessor = predecessor(16, 4, Map.of("safety", 1));
 		Campaign campaign = promote(predecessor);
 		for (int outcome = 0; outcome < 3; ++outcome)
 			campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);

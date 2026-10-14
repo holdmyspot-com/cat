@@ -265,7 +265,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	/**
 	 * Returns the certification attempt whose formal failure groups hold back development: the current lineage's latest
 	 * attempt, while one of its groups is reproducing or did not reproduce and waits for the user's choice. Until then,
-	 * development draws nothing, no prompt author works on its failures and the readiness gate is not met.
+	 * development draws nothing, no prompt author works on its failures and the commit gate is not met.
 	 *
 	 * @return the attempt, or empty if none is reproducing
 	 */

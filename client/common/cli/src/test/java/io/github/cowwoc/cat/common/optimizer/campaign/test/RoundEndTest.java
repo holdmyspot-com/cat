@@ -14,7 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Failure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.RegressionTestCase;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.RunFailure;
@@ -265,12 +265,12 @@ public final class RoundEndTest
 
 	/**
 	 * Returns a campaign whose round, triggered by the working candidate's reproducible failure on {@code safety}, has
-	 * one prompt author attempt left. Its {@code safety} and {@code plain_list} counts meet the readiness gate and
+	 * one prompt author attempt left. Its {@code safety} and {@code plain_list} counts meet the commit gate and
 	 * {@code formatting} is one passing trial short of it.
 	 *
 	 * @return the campaign
 	 */
-	private static Campaign oneTrialShortOfReadiness()
+	private static Campaign oneTrialShortOfCommitGate()
 	{
 		DrawnTestCase logs = targeted("safety", "logs");
 		return new Builder().confirmed().working(1).readyBaseline().development("safety", 99, List.of(1, 0)).
@@ -281,18 +281,18 @@ public final class RoundEndTest
 
 	/**
 	 * Verifies that a working candidate that resumed sampling after a round without a promotion is committed once its
-	 * counts meet the readiness gate, although no later trial ran the round's triggering failure again: the round's end
+	 * counts meet the commit gate, although no later trial ran the round's triggering failure again: the round's end
 	 * settled the working candidate's failing verdict on that test case.
 	 */
 	@Test
-	public void resumedCandidateCommitsAtReadiness()
+	public void resumedCandidateCommitsAtCommitGate()
 	{
-		Campaign campaign = rejectLastAttempt(oneTrialShortOfReadiness());
+		Campaign campaign = rejectLastAttempt(oneTrialShortOfCommitGate());
 		requireThat(campaign.development().round(), "round").isNull();
-		requireThat(ReadinessGate.isCommitDue(campaign), "dueBeforeTrials").isFalse();
+		requireThat(CommitGate.isCommitDue(campaign), "dueBeforeTrials").isFalse();
 
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
-		requireThat(ReadinessGate.isCommitDue(campaign), "dueAfterTrials").isTrue();
+		requireThat(CommitGate.isCommitDue(campaign), "dueAfterTrials").isTrue();
 		RegressionTestCase regression = campaign.lineage().regressionSet().getFirst();
 		requireThat(regression.working(), "workingVerdict").isEqualTo(Verdict.FAIL);
 		requireThat(regression.settled(), "settled").isTrue();
@@ -305,17 +305,17 @@ public final class RoundEndTest
 
 	/**
 	 * Verifies that a later representative failure of the resumed working candidate on a settled regression test case
-	 * replaces the settled failure, blocks the readiness gate again and goes through edit-or-continue.
+	 * replaces the settled failure, blocks the commit gate again and goes through edit-or-continue.
 	 */
 	@Test
 	public void laterFailureOnSettledTestCaseBlocksGate()
 	{
 		DrawnTestCase logs = targeted("safety", "logs");
-		Campaign campaign = rejectLastAttempt(oneTrialShortOfReadiness());
+		Campaign campaign = rejectLastAttempt(oneTrialShortOfCommitGate());
 		requireThat(campaign.lineage().regressionSet().getFirst().settled(), "settledBefore").isTrue();
 
 		boolean failed = false;
-		for (int trial = 0; trial < ReadinessGate.MINIMUM_TRIALS && !failed; ++trial)
+		for (int trial = 0; trial < CommitGate.MINIMUM_TRIALS && !failed; ++trial)
 		{
 			campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 			DrawnTestCase drawn = campaign.trials().getLast().testCase();
@@ -327,20 +327,20 @@ public final class RoundEndTest
 		RegressionTestCase regression = campaign.lineage().regressionSet().getFirst();
 		requireThat(regression.working(), "workingVerdict").isEqualTo(Verdict.FAIL);
 		requireThat(regression.settled(), "settled").isFalse();
-		requireThat(ReadinessGate.isMet(campaign), "met").isFalse();
+		requireThat(CommitGate.isMet(campaign), "met").isFalse();
 		requireThat(campaign.development().diagnosis().pending().size(), "diagnosed").isEqualTo(1);
 	}
 
 	/**
 	 * Verifies that a promotion after a round settled the working candidate's failure does not settle the promoted
 	 * candidate's failure on the same test case: the promoted attempt fixes a later blocking failure but still fails the
-	 * settled test case, and that failure blocks the readiness gate for the promoted candidate.
+	 * settled test case, and that failure blocks the commit gate for the promoted candidate.
 	 */
 	@Test
 	public void promotionDoesNotCarrySettledState()
 	{
 		DrawnTestCase logs = targeted("safety", "logs");
-		Campaign campaign = rejectLastAttempt(oneTrialShortOfReadiness());
+		Campaign campaign = rejectLastAttempt(oneTrialShortOfCommitGate());
 		requireThat(campaign.lineage().regressionSet().getFirst().settled(), "settledBefore").isTrue();
 		campaign = TransitionSteps.fail(campaign, "safety", new Triage(Impact.BLOCKING, "The directory was removed."));
 		requireThat(PromotionSecrets.access().isSameTestCase(campaign.development().failures().getLast().testCase(), logs),

@@ -870,7 +870,7 @@ public final class Transitions
 	 */
 	private static void commit(Draft draft, Campaign campaign, CampaignEvent.Commit commit)
 	{
-		if (!ReadinessGate.isCommitDue(campaign))
+		if (!CommitGate.isCommitDue(campaign))
 			throw new IllegalStateException("No commit is due");
 		int index = draft.attempts.size() + 1;
 		SignificanceLevel level = ErrorBudget.certificationLevel(index);

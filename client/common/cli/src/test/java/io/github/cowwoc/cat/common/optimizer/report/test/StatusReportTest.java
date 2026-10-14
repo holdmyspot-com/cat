@@ -241,9 +241,10 @@ public final class StatusReportTest
 		requireThat(reverted.path("cell").asString(), "cell").isEqualTo("safety");
 		requireThat(reverted.path("upper_bound").asDouble(), "upperBound").
 			isEqualTo(ExploratoryBounds.wilson(0, 1).upper());
-		requireThat(reverted.path("predecessor_rate").asDouble(), "predecessorRate").isEqualTo(0.9);
+		requireThat(reverted.path("predecessor_lower_bound").asDouble(), "predecessorLowerBound").
+			isEqualTo(ExploratoryBounds.wilson(90, 100).lower());
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Reverted candidate 2").contains("safety").
-			contains("upper bound").contains("predecessor rate");
+			contains("upper bound").contains("predecessor lower bound");
 	}
 
 	/**
@@ -692,7 +693,7 @@ public final class StatusReportTest
 		requireThat(formatting.passRate().label(), "label").isEqualTo("development estimate");
 		requireThat(formatting.passRate().rate(), "rate").isEqualTo(0.9);
 		requireThat(formatting.comparison().state(), "state").isEqualTo("not certified");
-		requireThat(formatting.comparison().readiness(), "readiness").isEqualTo("not ready");
+		requireThat(formatting.comparison().commitGate(), "commitGate").isEqualTo("not met");
 		// 90% is below the gate's 99%, and the latest complete batches [10, 0] hold more than 1 failure
 		requireThat(formatting.comparison().reasons().size(), "reasons").isEqualTo(2);
 		requireThat(formatting.comparison().lowerBound(), "lowerBound").isNull();
@@ -705,6 +706,35 @@ public final class StatusReportTest
 		CellReport safety = cell(report, "safety");
 		requireThat(safety.comparison().state(), "safetyState").isEqualTo("not certified");
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("development estimate").contains("not certified");
+	}
+
+	/**
+	 * Verifies that the status JSON and the summary name the commit gate: each development cell's state against it and
+	 * the development trials that it still requires.
+	 */
+	// Requirement: R-D1
+	@Test
+	public void reportsCommitGate()
+	{
+		// formatting: 90 passes in 100 outcomes does not meet the gate; plain_list: no outcomes does not meet it;
+		// safety: 100 in 100 meets it
+		Campaign campaign = confirmed().development("formatting", 90, 10).development("safety", 100, 0).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode json = report.toJson(JsonMapper.builder().build());
+
+		Map<String, String> states = new LinkedHashMap<>();
+		for (JsonNode cell : json.path("cells"))
+			states.put(cell.path("cell").asString(), cell.path("comparison").path("commit_gate").asString());
+		requireThat(states, "states").isEqualTo(Map.of("formatting", "not met", "plain_list", "not met", "safety", "met"));
+		List<String> kinds = new ArrayList<>();
+		for (JsonNode entry : json.path("remaining").path("entries"))
+		{
+			if (entry.path("cell").asString().equals("formatting"))
+				kinds.add(entry.path("kind").asString());
+		}
+		requireThat(kinds, "formattingKinds").contains("commit_gate");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("not certified (commit gate not met: ").
+			contains("not certified (commit gate met)");
 	}
 
 	/**
@@ -938,7 +968,7 @@ public final class StatusReportTest
 		Map<String, PairCounts> plainList = new LinkedHashMap<>();
 		plainList.put("keeps_requested_tone", new PairCounts(0, 0, 8, 0));
 		plainList.put(TestCase.EXPECTED_OUTCOME, new PairCounts(8, 0, 0, 0));
-		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
+		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.paired()).
 			cell("formatting", 200, 2).controlPairing("formatting", new Pairing(List.of(), formatting)).
 			cell("plain_list", 100, 0).controlPairing("plain_list", new Pairing(List.of(), plainList)).
 			cell("safety", 60, 1).build();
@@ -1013,7 +1043,7 @@ public final class StatusReportTest
 		Map<String, PairCounts> plainListIncumbent = new LinkedHashMap<>();
 		plainListIncumbent.put("keeps_requested_tone", new PairCounts(0, 0, 8, 0));
 		plainListIncumbent.put(TestCase.EXPECTED_OUTCOME, new PairCounts(8, 0, 0, 0));
-		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
+		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.paired()).
 			cell("formatting", 200, 2).controlPairing("formatting", new Pairing(List.of(), formattingControl)).
 			incumbentPairing("formatting", new Pairing(List.of(), formattingIncumbent)).
 			cell("plain_list", 100, 0).controlPairing("plain_list", new Pairing(List.of(), plainListControl)).
@@ -1055,9 +1085,42 @@ public final class StatusReportTest
 			contains("  cell: below incumbent at alpha 0.020\n");
 
 		Campaign incumbentCandidate = new Builder().confirmed().readyBaseline().certificationAttempt(1).
-			boundaries(ReportBoundaries.boundaries()).cell("safety", 60, 1).build();
+			boundaries(ReportBoundaries.paired()).cell("safety", 60, 1).build();
 		requireThat(cell(StatusReport.of(incumbentCandidate, ReportEvidence.NONE), "safety").comparison().
 			incumbents(), "incumbentCandidate").isEmpty();
+	}
+
+	/**
+	 * Verifies that at a minimum pass rate of 0.95 a formal cell reports each assertion's control and incumbent
+	 * comparisons as implied by the minimum pass rate, with no pairs, and certifies on its minimum-pass-rate part.
+	 */
+	@Test
+	public void formalImpliedComparisons()
+	{
+		// Requirement: R-P1
+		// Requirement: R-F9
+		// formatting: S = 100, F = 0 certifies its minimum-pass-rate part, which implies both comparisons.
+		// safety:     S = 60, F = 1 is undecided.
+		Campaign campaign = confirmed().certificationAttempt(1).
+			boundaries(ReportBoundaries.boundaries()).cell("formatting", 100, 0).cell("safety", 60, 1).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		CellReport.Threshold formatting = cell(report, "formatting").comparison();
+		List<CellReport.PairedReport> implied = List.of(
+			new CellReport.PairedReport("uses_requested_tone", "implied by the minimum pass rate", 0, 0, 0),
+			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "implied by the minimum pass rate", 0, 0, 0));
+		requireThat(formatting.controls(), "formattingControls").isEqualTo(implied);
+		requireThat(formatting.incumbents(), "formattingIncumbents").isEqualTo(implied);
+		requireThat(formatting.cellState(), "formattingCell").isEqualTo("certified");
+
+		CellReport.Threshold safety = cell(report, "safety").comparison();
+		requireThat(safety.controls().getFirst().state(), "safetyControl").
+			isEqualTo("implied by the minimum pass rate");
+		requireThat(safety.cellState(), "safetyCell").isEqualTo("undecided");
+
+		requireThat(report.summary(ZoneOffset.UTC), "summary").
+			contains("  control comparison uses_requested_tone: implied by the minimum pass rate\n").
+			contains("  incumbent comparison uses_requested_tone: implied by the minimum pass rate\n");
 	}
 
 	/**
@@ -1518,7 +1581,7 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Verifies that a test under two profiles is reported as two cells with separate counts, readiness and
+	 * Verifies that a test under two profiles is reported as two cells with separate counts, commit gates and
 	 * decisions, that the claim counts cells, and that the status shows the trial profiles.
 	 */
 	@Test
@@ -1533,11 +1596,11 @@ public final class StatusReportTest
 		requireThat(report.cells().stream().map(CellReport::cell).toList(), "cells").
 			isEqualTo(List.of(ContractFixtures.BIG_CELL, ContractFixtures.SMALL_CELL, ContractFixtures.PLAIN_BIG_CELL,
 				ContractFixtures.PLAIN_SMALL_CELL, "safety"));
-		requireThat(cell(report, ContractFixtures.BIG_CELL).comparison().readiness(), "bigReadiness").
-			isEqualTo("ready");
+		requireThat(cell(report, ContractFixtures.BIG_CELL).comparison().commitGate(), "bigCommitGate").
+			isEqualTo("met");
 		requireThat(cell(report, ContractFixtures.SMALL_CELL).trials(), "smallTrials").isEqualTo(61);
-		requireThat(cell(report, ContractFixtures.SMALL_CELL).comparison().readiness(), "smallReadiness").
-			isEqualTo("not ready");
+		requireThat(cell(report, ContractFixtures.SMALL_CELL).comparison().commitGate(), "smallCommitGate").
+			isEqualTo("not met");
 		requireThat(report.claim(), "claim").contains("5 cells");
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Cell " + ContractFixtures.SMALL_CELL + ":").
 			contains(ContractFixtures.TWO_PROFILES.source());
@@ -1656,7 +1719,7 @@ public final class StatusReportTest
 		requireThat(cells, "cells").isEqualTo(List.of(TierFixtures.BIG_LOW, limited, TierFixtures.BIG_MEDIUM,
 			TierFixtures.BIG_HIGH, TierFixtures.BIG_XHIGH, TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
 		requireThat(cell(report, limited).trials(), "trials").isEqualTo(41);
-		requireThat(cell(report, limited).comparison().readiness(), "readiness").isEqualTo("not ready");
+		requireThat(cell(report, limited).comparison().commitGate(), "commitGate").isEqualTo("not met");
 	}
 
 	/**

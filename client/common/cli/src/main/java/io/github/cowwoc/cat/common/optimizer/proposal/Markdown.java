@@ -8,7 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationProcedure;
 import io.github.cowwoc.cat.common.optimizer.campaign.Development;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
@@ -244,7 +244,7 @@ public final class Markdown
 			"from the bindings of its requirements' source files. When those " +
 			"files share a complete profile, CAT uses it as written. Otherwise, CAT selects inventory profiles " +
 			"matching their shared bound dimensions, or uses those bindings as written if none match. Every cell " +
-			"needs its own readiness " +
+			"needs its own commit " +
 			"gate, baseline and certification trials. Confirmation freezes the profile set. In revision feedback, " +
 			"you may restrict it to part of the " +
 			"inventory.\n\n");
@@ -549,7 +549,7 @@ public final class Markdown
 		heading("Statistical procedure");
 		BigDecimal minimumPassRate = contract.minimumPassRate();
 		String minimumRate = percent(minimumPassRate);
-		int batchFailureLimit = ReadinessGate.batchFailureLimit(minimumPassRate);
+		int batchFailureLimit = CommitGate.batchFailureLimit(minimumPassRate);
 		String batchFailures = "failures";
 		if (batchFailureLimit == 1)
 			batchFailures = "failure";
@@ -560,10 +560,10 @@ public final class Markdown
 			append("- Caps of the first attempts, in formal trials per cell:\n");
 		for (String cap : caps)
 			text.append("  - ").append(cap).append('\n');
-		text.append("- Readiness gate: a cell is ready for a certification attempt after at least ").
-			append(ReadinessGate.MINIMUM_TRIALS).
+		text.append("- Commit gate: a cell meets the commit gate after at least ").
+			append(CommitGate.MINIMUM_TRIALS).
 			append(" representative development trials with at least ").
-			append(percent(ReadinessGate.minimumObservedPassRate(minimumPassRate))).
+			append(percent(CommitGate.minimumObservedPassRate(minimumPassRate))).
 			append(" observed passes, at most ").append(batchFailureLimit).append(' ').append(batchFailures).
 			append(" in each of the latest two complete batches of ").
 			append(CellCounts.BATCH_SIZE).

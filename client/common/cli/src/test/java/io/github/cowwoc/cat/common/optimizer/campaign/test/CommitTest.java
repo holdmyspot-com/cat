@@ -14,7 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
@@ -48,8 +48,8 @@ public final class CommitTest
 	}
 
 	/**
-	 * Returns a builder for a campaign ready for certification, with working candidate 1 and a baseline of 50 passes in
-	 * {@code formatting} and in {@code plain_list}, and 48 passes and 2 failures in {@code safety}.
+	 * Returns a builder for a campaign that meets the commit gate, with working candidate 1 and a baseline of 50 passes
+	 * in {@code formatting} and in {@code plain_list}, and 48 passes and 2 failures in {@code safety}.
 	 *
 	 * @return the builder
 	 */
@@ -186,10 +186,10 @@ public final class CommitTest
 	}
 
 	/**
-	 * Verifies that a commit is refused before the readiness gate holds.
+	 * Verifies that a commit is refused before the commit gate holds.
 	 */
 	@Test(expectedExceptions = IllegalStateException.class)
-	public void commitRequiresReadiness()
+	public void commitRequiresCommitGate()
 	{
 		// Requirement: R-F1
 		Transitions.apply(ready().development("safety", 99, 0).build(),
@@ -260,7 +260,7 @@ public final class CommitTest
 
 	/**
 	 * Verifies that a commit freezes one comparison per cell from that cell's baseline, divides the improvement and
-	 * incumbent budgets by the number of cells, and waits until every cell is ready.
+	 * incumbent budgets by the number of cells, and waits until every cell meets the commit gate.
 	 */
 	@Test
 	public void commitFreezesEachCell()
@@ -286,12 +286,12 @@ public final class CommitTest
 			isEqualTo(Comparison.freeze(48, 2, incumbent, improvement, Contract.DEFAULT_MINIMUM_PASS_RATE));
 
 		Campaign smallShort = ready.development(ContractFixtures.SMALL_CELL, 99, 0).build();
-		requireThat(ReadinessGate.isCommitDue(smallShort), "smallShort").isFalse();
+		requireThat(CommitGate.isCommitDue(smallShort), "smallShort").isFalse();
 	}
 
 	/**
 	 * Verifies that a commit under the weakest-cell scope freezes a procedure over the scope's cells, with {@code K}
-	 * the number of those cells, and needs no baseline or readiness outside them.
+	 * the number of those cells, and needs no baseline or commit gate outside them.
 	 */
 	@Test
 	public void commitCoversScopeCells()

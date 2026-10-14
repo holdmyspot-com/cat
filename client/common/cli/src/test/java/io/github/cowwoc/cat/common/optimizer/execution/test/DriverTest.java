@@ -42,7 +42,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromotionRun;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
@@ -1300,7 +1300,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * A partial fix is withdrawn after its representative estimate falls below its predecessor, restoring the
+	 * A partial fix is withdrawn after its representative interval falls below its predecessor's, restoring the
 	 * predecessor's counts and worktree, ending the unproductive round and resuming the predecessor's representative
 	 * trials without waiting for the user.
 	 *
@@ -1314,7 +1314,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("partial-revert")),
 				new Builder().confirmed().working(1).readyBaseline().ceiling(1).
-					development("safety", 7, 3).round(new Round(Map.of("safety", 1))).
+					development("safety", 27, 3).round(new Round(Map.of("safety", 1))).
 					failure(Builder.targeted("safety", "logs")).failure(Builder.targeted("safety", "cache")).build());
 			Candidate predecessor = harness.campaign().development().working();
 			Map<String, CellCounts> counts = harness.campaign().development().counts();
@@ -1846,8 +1846,8 @@ public final class DriverTest
 	}
 
 	/**
-	 * Development reaching readiness commits the working candidate in an attempt whose control source is the
-	 * incumbent with its prompt file emptied. Development starts one trial short of readiness in each cell.
+	 * Development meeting the commit gate commits the working candidate in an attempt whose control source is the
+	 * incumbent with its prompt file emptied. Development starts one trial short of the commit gate in each cell.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -1858,7 +1858,7 @@ public final class DriverTest
 		// Requirement: R-F7
 		Builder start = new Builder().confirmed().working(1).readyBaseline();
 		for (String cell : ContractFixtures.contract().cellIds())
-			start.development(cell, ReadinessGate.MINIMUM_TRIALS - 1, 0);
+			start.development(cell, CommitGate.MINIMUM_TRIALS - 1, 0);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), start.build());
@@ -1908,7 +1908,7 @@ public final class DriverTest
 		FileInventory fork = new FileInventory(Path.of("/project"), entries);
 		Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
 		for (String cell : contract.cellIds())
-			start.development(cell, ReadinessGate.MINIMUM_TRIALS - 1, 0);
+			start.development(cell, CommitGate.MINIMUM_TRIALS - 1, 0);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), start.build(),
@@ -1946,8 +1946,9 @@ public final class DriverTest
 		Contract contract = ContractFixtures.contract();
 		Builder start = new Builder().confirmed().working(1).readyBaseline();
 		for (String cell : contract.cellIds())
-			start.development(cell, ReadinessGate.MINIMUM_TRIALS, 0);
-		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size());
+			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
+		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size(),
+			Boundaries.PAIRED_MINIMUM_PASS_RATE);
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : contract.cellIds())
 			oneControlPairShort(running, boundaries, contract, cell);
@@ -1997,8 +1998,9 @@ public final class DriverTest
 		Contract contract = ContractFixtures.contract();
 		Builder start = new Builder().confirmed().working(1).readyBaseline();
 		for (String cell : contract.cellIds())
-			start.development(cell, ReadinessGate.MINIMUM_TRIALS, 0);
-		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size());
+			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
+		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size(),
+			Boundaries.PAIRED_MINIMUM_PASS_RATE);
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : contract.cellIds())
 			oneReferencePairShort(running, boundaries, contract, cell);
@@ -2035,6 +2037,51 @@ public final class DriverTest
 						requireThat(PairedComparison.passes(comparison.getValue().tally(), level),
 							cell.cell() + "." + comparison.getKey()).isTrue();
 					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * At the minimum pass rate 0.95 the comparisons follow from the minimum pass rate: each cell starts one passing
+	 * formal trial short of certifying its minimum-pass-rate part, and the attempt certifies after those formal trials
+	 * with no control or incumbent trial and no comparison in its record.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void certifyWithImpliedComparisons() throws IOException
+	{
+		// Requirement: R-E1
+		// Requirement: R-F9
+		Contract contract = ContractFixtures.contract();
+		Builder start = new Builder().confirmed().working(1).readyBaseline();
+		for (String cell : contract.cellIds())
+			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
+		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size());
+		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
+		for (String cell : contract.cellIds())
+			running.cell(cell, certifyingPasses(boundaries) - 1, 0);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = runningAttemptHarness(cleanup, running.build());
+			Set<Purpose> purposes = ConcurrentHashMap.newKeySet();
+			harness.trials(request ->
+			{
+				purposes.add(runningTrial(harness, request).key().purpose());
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runSlice(driver);
+				Campaign campaign = harness.campaign();
+				requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
+				requireThat(purposes, "purposes").doesNotContain(Purpose.CONTROL).doesNotContain(Purpose.INCUMBENT);
+				CertificationRecord record = harness.deliverer().calls().getFirst().record().orElseThrow();
+				for (CertificationRecord.CellResult cell : record.cells())
+				{
+					requireThat(cell.controlComparisons(), cell.cell() + ".controlComparisons").isEmpty();
+					requireThat(cell.incumbentComparisons(), cell.cell() + ".incumbentComparisons").isEmpty();
 				}
 			}
 		}
@@ -3214,8 +3261,8 @@ public final class DriverTest
 	}
 
 	/**
-	 * A test whose file is unbound runs under two profiles, and each of its cells has its own readiness: the candidate
-	 * is committed once the small cell, which starts one development trial short of readiness, is ready, and only
+	 * A test whose file is unbound runs under two profiles, and each of its cells has its own commit gate: the candidate
+	 * is committed once the small cell, which starts one development trial short of the commit gate, meets it, and only
 	 * that cell's trials run.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -3226,8 +3273,8 @@ public final class DriverTest
 		// Requirement: R-C11
 		// Requirement: R-E17
 		Campaign start = twoProfileStart().development(ContractFixtures.SMALL_CELL,
-			ReadinessGate.MINIMUM_TRIALS - 1, 0).build();
-		requireThat(ReadinessGate.isCommitDue(start), "commitDueBeforeSmallCell").isFalse();
+			CommitGate.MINIMUM_TRIALS - 1, 0).build();
+		requireThat(CommitGate.isCommitDue(start), "commitDueBeforeSmallCell").isFalse();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), start);
@@ -3236,9 +3283,9 @@ public final class DriverTest
 			{
 				Campaign committed = harness.runUntil(driver, state -> state.attempts().size() == 1);
 				requireThat(committed.development().count(ContractFixtures.SMALL_CELL).passes(), "smallDevelopment").
-					isGreaterThanOrEqualTo(ReadinessGate.MINIMUM_TRIALS);
+					isGreaterThanOrEqualTo(CommitGate.MINIMUM_TRIALS);
 				requireThat(committed.development().count(ContractFixtures.BIG_CELL).passes(), "bigDevelopment").
-					isEqualTo(ReadinessGate.MINIMUM_TRIALS);
+					isEqualTo(CommitGate.MINIMUM_TRIALS);
 				requireThat(committed.attempt(1).procedure().cells(), "committedCells").
 					isEqualTo(List.of(ContractFixtures.BIG_CELL, ContractFixtures.SMALL_CELL, ContractFixtures.PLAIN_BIG_CELL,
 						ContractFixtures.PLAIN_SMALL_CELL, "safety"));
@@ -3271,7 +3318,8 @@ public final class DriverTest
 		// Requirement: R-E17
 		Builder start = twoProfileStart();
 		Contract contract = ContractFixtures.twoCellContract();
-		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size());
+		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size(),
+			Boundaries.PAIRED_MINIMUM_PASS_RATE);
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : List.of(ContractFixtures.SMALL_CELL, ContractFixtures.PLAIN_SMALL_CELL, "safety"))
 			oneControlPairShort(running, boundaries, contract, cell);
@@ -3333,7 +3381,7 @@ public final class DriverTest
 
 	/**
 	 * Returns a campaign of the two-profile contract whose identity leaves the model to each cell, with every cell
-	 * ready for commit.
+	 * meeting the commit gate.
 	 *
 	 * @return the campaign builder
 	 */
@@ -3344,7 +3392,7 @@ public final class DriverTest
 		Builder start = new Builder().identity(new MeasurementIdentity(values)).
 			confirmed(ContractFixtures.twoCellContract(), 1).working(1).readyBaseline();
 		for (String cell : ContractFixtures.twoCellContract().cellIds())
-			start.development(cell, ReadinessGate.MINIMUM_TRIALS, 0);
+			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
 		return start;
 	}
 
@@ -3404,8 +3452,9 @@ public final class DriverTest
 				"Reads the part that the target tells the agent to read.")));
 		Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
 		for (String cell : contract.cellIds())
-			start.development(cell, ReadinessGate.MINIMUM_TRIALS, 0);
-		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size());
+			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
+		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size(),
+			Boundaries.PAIRED_MINIMUM_PASS_RATE);
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : contract.cellIds())
 			oneControlPairShort(running, boundaries, contract, cell);
@@ -3442,7 +3491,7 @@ public final class DriverTest
 
 	/**
 	 * Under the latest-versions scope, development samples only each test's weakest cell, and the candidate is
-	 * committed once that cell is ready. The weakest cells start one development trial short of readiness.
+	 * committed once that cell meets the commit gate. The weakest cells start one development trial short of it.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -3452,8 +3501,8 @@ public final class DriverTest
 		// Requirement: R-E19
 		Contract contract = TierFixtures.tieredContract();
 		Campaign start = new Builder().confirmed(contract, 1).working(1).readyBaseline().
-			development(TierFixtures.SMALL_HIGH, ReadinessGate.MINIMUM_TRIALS - 1, 0).
-			development(TierFixtures.SAFETY, ReadinessGate.MINIMUM_TRIALS - 1, 0).build();
+			development(TierFixtures.SMALL_HIGH, CommitGate.MINIMUM_TRIALS - 1, 0).
+			development(TierFixtures.SAFETY, CommitGate.MINIMUM_TRIALS - 1, 0).build();
 		requireThat(CellTier.scopeCellIds(start.contract()).size(), "scopeCells").isEqualTo(6);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -3464,7 +3513,7 @@ public final class DriverTest
 				Campaign committed = harness.runUntil(driver, state -> state.attempts().size() == 1);
 				requireThat(committed.development().counts().keySet(), "developmentCells").
 					isEqualTo(Set.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
-				requireThat(ReadinessGate.isReady(committed.development().count(TierFixtures.SMALL_HIGH),
+				requireThat(CommitGate.isMetInCell(committed.development().count(TierFixtures.SMALL_HIGH),
 					Contract.DEFAULT_MINIMUM_PASS_RATE), "weakestReady").isTrue();
 			}
 		}
@@ -3484,8 +3533,8 @@ public final class DriverTest
 		// Requirement: R-E3
 		Contract contract = TierFixtures.tieredContract();
 		Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline().
-			development(TierFixtures.SMALL_HIGH, ReadinessGate.MINIMUM_TRIALS, 0).
-			development(TierFixtures.SAFETY, ReadinessGate.MINIMUM_TRIALS, 0);
+			development(TierFixtures.SMALL_HIGH, CommitGate.MINIMUM_TRIALS, 0).
+			development(TierFixtures.SAFETY, CommitGate.MINIMUM_TRIALS, 0);
 		DecisionBoundaries boundaries = Boundaries.standard(CellTier.scopeCellIds(start.build().contract()).size());
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : List.of(TierFixtures.BIG_LOW, TierFixtures.SMALL_HIGH, TierFixtures.SAFETY))
@@ -3524,9 +3573,9 @@ public final class DriverTest
 	}
 
 	/**
-	 * After a formal failure in a scope cell that development does not otherwise sample, the next commit waits until
-	 * that cell is ready too, and the stronger cells stay out of development. The failed cell starts one development
-	 * trial short of readiness.
+	 * After a formal failure in a scope cell that development does not otherwise sample, the next commit waits until that
+	 * cell meets the commit gate too, and the stronger cells stay out of development. The failed cell starts one
+	 * development trial short of the commit gate.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -3540,12 +3589,12 @@ public final class DriverTest
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
 		Campaign start = new Builder().confirmed(contract, 1).working(1).readyBaseline().certificationAttempt(1).
 			cell(TierFixtures.BIG_MEDIUM, 0, 1).failure(failure).outcome(Outcome.BELOW_MINIMUM).campaign().
-			working(2).development(TierFixtures.SMALL_HIGH, ReadinessGate.MINIMUM_TRIALS, 0).
-			development(TierFixtures.SAFETY, ReadinessGate.MINIMUM_TRIALS, 0).
-			development(TierFixtures.BIG_MEDIUM, ReadinessGate.MINIMUM_TRIALS - 1, 0).build();
+			working(2).development(TierFixtures.SMALL_HIGH, CommitGate.MINIMUM_TRIALS, 0).
+			development(TierFixtures.SAFETY, CommitGate.MINIMUM_TRIALS, 0).
+			development(TierFixtures.BIG_MEDIUM, CommitGate.MINIMUM_TRIALS - 1, 0).build();
 		requireThat(CellTier.developmentCellIds(start), "developmentCells").
 			isEqualTo(List.of(TierFixtures.BIG_MEDIUM, TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
-		requireThat(ReadinessGate.isCommitDue(start), "commitDueBeforeFailedCell").isFalse();
+		requireThat(CommitGate.isCommitDue(start), "commitDueBeforeFailedCell").isFalse();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), start);
@@ -3554,7 +3603,7 @@ public final class DriverTest
 			{
 				Campaign recommitted = harness.runUntil(driver, state -> state.attempts().size() == 2);
 				Development development = recommitted.development();
-				requireThat(ReadinessGate.isReady(development.count(TierFixtures.BIG_MEDIUM),
+				requireThat(CommitGate.isMetInCell(development.count(TierFixtures.BIG_MEDIUM),
 					Contract.DEFAULT_MINIMUM_PASS_RATE), "failedCellReady").isTrue();
 				for (String cell : List.of(TierFixtures.BIG_LOW, TierFixtures.BIG_HIGH, TierFixtures.BIG_XHIGH))
 					requireThat(development.count(cell).outcomes(), cell).isEqualTo(0);
@@ -3694,12 +3743,13 @@ public final class DriverTest
 		String heldOutReply = "The held-out reply.";
 		String heldOutRationale = "The held-out rationale.";
 		Builder start = new Builder().confirmed(contract, 1).working(1).
-			development(TierFixtures.SMALL_HIGH, ReadinessGate.MINIMUM_TRIALS, 0).
-			development(TierFixtures.SAFETY, ReadinessGate.MINIMUM_TRIALS, 0);
+			development(TierFixtures.SMALL_HIGH, CommitGate.MINIMUM_TRIALS, 0).
+			development(TierFixtures.SAFETY, CommitGate.MINIMUM_TRIALS, 0);
 		for (String cell : contract.cellIds())
 			start.baseline(cell, Baseline.TARGET - 1, 0);
 		Contract scoped = start.build().contract();
-		DecisionBoundaries boundaries = Boundaries.standard(CellTier.scopeCellIds(scoped).size());
+		DecisionBoundaries boundaries = Boundaries.standard(CellTier.scopeCellIds(scoped).size(),
+			Boundaries.PAIRED_MINIMUM_PASS_RATE);
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : List.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY))
 			running.cell(cell, certifyingPasses(boundaries), 0);
@@ -3802,8 +3852,8 @@ public final class DriverTest
 	/**
 	 * When a certification attempt ends with formal failures, a contract author session writes values for each failure
 	 * group without seeing the salt or a held-out value, and reproduction trials run them before any development trial.
-	 * Once each group reproduces, its values join development, development counts restart and draw the added values,
-	 * and the unchanged candidate is committed again only after every development cell is ready on new trials.
+	 * Once each group reproduces, its values join development, development counts restart and draw the added values, and
+	 * the unchanged candidate is committed again only after every development cell meets the commit gate on new trials.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -3875,9 +3925,9 @@ public final class DriverTest
 				for (String cell : CellTier.developmentCellIds(recommitted))
 				{
 					requireThat(newTrials.getOrDefault(cell, 0), cell).
-						isGreaterThanOrEqualTo(ReadinessGate.MINIMUM_TRIALS);
+						isGreaterThanOrEqualTo(CommitGate.MINIMUM_TRIALS);
 					requireThat(recommitted.development().count(cell).outcomes(), cell).
-						isGreaterThanOrEqualTo(ReadinessGate.MINIMUM_TRIALS);
+						isGreaterThanOrEqualTo(CommitGate.MINIMUM_TRIALS);
 				}
 				Set<TestCase> addedTestCases = new HashSet<>();
 				for (AddedTestCase testCase : added.testCases())
@@ -4472,7 +4522,7 @@ public final class DriverTest
 		// Requirement: R-C18
 		Contract contract = checkedContract();
 		Map<String, List<FailedAssertion>> failedAssertions = new HashMap<>();
-		// Each campaign develops only the cell that is not ready yet, so its first trial fails
+		// Each campaign develops only the cell that does not meet the commit gate yet, so its first trial fails
 		for (String cell : List.of("plain_list", "formatting"))
 		{
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())

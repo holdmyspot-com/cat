@@ -19,7 +19,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
 import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
 import io.github.cowwoc.cat.common.optimizer.campaign.Scheduler;
 import io.github.cowwoc.cat.common.optimizer.campaign.SlowStart;
@@ -229,7 +229,7 @@ public final class ReproductionTest
 
 	/**
 	 * Verifies that while a failed attempt's groups await the contract author's values, neither development nor
-	 * reproduction trials run and the readiness gate stays closed.
+	 * reproduction trials run and the commit gate stays closed.
 	 */
 	@Test
 	public void noDevelopmentBeforeValues()
@@ -241,7 +241,7 @@ public final class ReproductionTest
 		requireThat(campaign.reproducing().map(CertificationAttempt::index).orElse(0), "reproducing").isEqualTo(1);
 		requireThat(planned(campaign, Purpose.DEVELOPMENT), "development").isEmpty();
 		requireThat(planned(campaign, Purpose.REPRODUCTION), "reproduction").isEmpty();
-		requireThat(ReadinessGate.isMet(campaign), "isMet").isFalse();
+		requireThat(CommitGate.isMet(campaign), "isMet").isFalse();
 	}
 
 	/**
@@ -521,7 +521,7 @@ public final class ReproductionTest
 
 	/**
 	 * Verifies that a reproduction under a tool-output token limit makes the limited cell a development cell:
-	 * development trials run in it, and the readiness gate waits for it.
+	 * development trials run in it, and the commit gate waits for it.
 	 */
 	@Test
 	public void toolOutputReproductionAddsDevelopment()
@@ -539,7 +539,7 @@ public final class ReproductionTest
 		requireThat(campaign.attempt(1).group(1).status(), "status").isEqualTo(FailureGroup.Status.REPRODUCED);
 		requireThat(CellTier.developmentCellIds(campaign), "developmentCells").contains(BIG_LOW_LIMITED);
 
-		// Every contract cell is ready, so the next development trial can only go to the limited cell
+		// Every contract cell meets the commit gate, so the next development trial can only go to the limited cell
 		Campaign reproduced = failed(Harness.CODEX, FAILED_LOW).groups(List.of(group(BIG_LOW,
 			FailureGroup.Status.REPRODUCED,
 			new ReproductionRound(BIG_LOW, tried(testCases("a"), 25, 25, 25, 25)),
@@ -549,8 +549,8 @@ public final class ReproductionTest
 	}
 
 	/**
-	 * Verifies that the readiness gate waits for a development cell under a tool-output token limit until it is
-	 * ready.
+	 * Verifies that the commit gate waits for a development cell under a tool-output token limit until the cell
+	 * meets it.
 	 */
 	@Test
 	public void gateCoversToolOutputDevelopmentCell()
@@ -563,8 +563,8 @@ public final class ReproductionTest
 			new ReproductionRound(BIG_LOW, tried(testCases("a"), 25, 25, 25, 25)),
 			new ReproductionRound(BIG_LOW_LIMITED, limited)))).campaign();
 
-		requireThat(ReadinessGate.isMet(reproduced.build()), "isMet").isFalse();
-		requireThat(ReadinessGate.isMet(reproduced.development(BIG_LOW_LIMITED, 100, 0).build()), "readyIsMet").
+		requireThat(CommitGate.isMet(reproduced.build()), "isMet").isFalse();
+		requireThat(CommitGate.isMet(reproduced.development(BIG_LOW_LIMITED, 100, 0).build()), "metIsMet").
 			isTrue();
 	}
 
@@ -602,7 +602,7 @@ public final class ReproductionTest
 		requireThat(campaign.choices(), "choices").isEqualTo(List.of(Choice.MORE_ROUNDS, Choice.NEW_ATTEMPT,
 			Choice.STOP));
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
-		requireThat(ReadinessGate.isMet(campaign), "isMet").isFalse();
+		requireThat(CommitGate.isMet(campaign), "isMet").isFalse();
 	}
 
 	/**
@@ -629,7 +629,7 @@ public final class ReproductionTest
 
 	/**
 	 * Verifies that choosing a new attempt leaves the group unreproduced and resumes development with the unchanged
-	 * candidate, so that the readiness gate decides when the next attempt starts.
+	 * candidate, so that the commit gate decides when the next attempt starts.
 	 */
 	@Test
 	public void newAttemptResumesDevelopment()
@@ -645,11 +645,11 @@ public final class ReproductionTest
 		requireThat(campaign.development().working(), "working").isEqualTo(paused.development().working());
 		requireThat(campaign.lineage().added(), "added").isEqualTo(paused.lineage().added());
 		requireThat(planned(campaign, Purpose.DEVELOPMENT), "development").isNotEmpty();
-		requireThat(ReadinessGate.isCommitDue(campaign), "isCommitDue").isFalse();
+		requireThat(CommitGate.isCommitDue(campaign), "isCommitDue").isFalse();
 	}
 
 	/**
-	 * Verifies that choosing a new attempt starts it at once when the unchanged candidate already meets the readiness
+	 * Verifies that choosing a new attempt starts it at once when the unchanged candidate already meets the commit
 	 * gate.
 	 */
 	@Test
@@ -659,7 +659,7 @@ public final class ReproductionTest
 		Campaign campaign = Transitions.apply(reproduce(beforeLastTrial().build(), Verdict.PASS),
 			CampaignEvent.Choose.of(Choice.NEW_ATTEMPT));
 
-		requireThat(ReadinessGate.isCommitDue(campaign), "isCommitDue").isTrue();
+		requireThat(CommitGate.isCommitDue(campaign), "isCommitDue").isTrue();
 	}
 
 	/**

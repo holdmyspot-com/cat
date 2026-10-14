@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.report.test;
 
+import io.github.cowwoc.cat.common.optimizer.campaign.test.Boundaries;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.statistics.Comparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.ComparisonBoundaries;
@@ -41,6 +42,17 @@ final class ReportBoundaries
 	static DecisionBoundaries boundaries()
 	{
 		return boundaries(3);
+	}
+
+	/**
+	 * Returns the boundaries of attempt 1 for the three cells of the fixture contract at a minimum pass rate low
+	 * enough that certification compares each assertion with control and incumbent trials.
+	 *
+	 * @return the boundaries
+	 */
+	static DecisionBoundaries paired()
+	{
+		return boundaries(3, Boundaries.PAIRED_MINIMUM_PASS_RATE);
 	}
 
 	/**

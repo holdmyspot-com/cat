@@ -668,7 +668,7 @@ public final class ProposalTest
 
 	/**
 	 * Verifies that the rendered proposal states the statistical procedure: the joint budget, the bets, the caps of
-	 * the first attempts, the readiness gate, the review checkpoint and the baseline targets.
+	 * the first attempts, the commit gate, the review checkpoint and the baseline targets.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -684,11 +684,13 @@ public final class ProposalTest
 			contains("Attempt 1: α = 1/50 (2.00%), cap " + FixedCalibrator.STANDARD_CAP).
 			contains("Attempt 2: α = 1/150 (0.667%)").
 			contains("Attempt 3: α = 1/300 (0.333%)").
-			contains("at least 100 representative development trials").
+			contains("- Commit gate: a cell meets the commit gate after at least 100 representative development " +
+				"trials").
 			contains("at least 99% observed passes").
 			contains("Review checkpoint: at 200 representative trials").
 			contains("50 representative trials in every cell").
-			contains("ending at 100");
+			contains("ending at 100").
+			contains("Every cell needs its own commit gate, baseline and certification trials.");
 	}
 
 	/**
@@ -769,7 +771,7 @@ public final class ProposalTest
 		requireThat(proposal.render(), "render").contains("## Certification scope").
 			contains("At least " + 2 * trials + " nested sessions remain if every trial passes: " + trials +
 				" trials, each with one trial session and one judge session.").
-			contains("- `formatting`, `plain_list`, `safety` (3 cells): readiness ");
+			contains("- `formatting`, `plain_list`, `safety` (3 cells): commit gate ");
 	}
 
 	/**

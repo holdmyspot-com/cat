@@ -119,7 +119,8 @@ public sealed interface PendingDecision
 	}
 
 	/**
-	 * A cell (prompt test and trial profile) reached the outcome count that triggers review without meeting readiness.
+	 * A cell (prompt test and trial profile) reached the outcome count that triggers review without meeting the commit
+	 * gate.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *

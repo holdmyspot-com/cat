@@ -491,11 +491,11 @@ public final class Scheduler
 	/**
 	 * Plans the working candidate's representative development trials in the {@link CellTier development cells}.
 	 * <p>
-	 * Development cells that are ready or at their review point are ineligible. Exclude an eligible cell when it leads
-	 * the least-sampled eligible cell by at least {@value #COVERAGE_LEAD} assignments. Among the remaining cells, the
-	 * lowest 95% Wilson lower bound comes first, ties to fewer outcomes, then higher test risk, then contract order.
-	 * Record {@link AllocationRule#LOWEST_EXPLORATORY_BOUND} when the chosen cell also wins that ordering across all
-	 * eligible cells before the lead exclusion; otherwise record {@link AllocationRule#COVERAGE_FLOOR}.
+	 * Development cells that meet the commit gate or are at their review point are ineligible. Exclude an eligible cell
+	 * when it leads the least-sampled eligible cell by at least {@value #COVERAGE_LEAD} assignments. Among the remaining
+	 * cells, the lowest 95% Wilson lower bound comes first, ties to fewer outcomes, then higher test risk, then contract
+	 * order. Record {@link AllocationRule#LOWEST_EXPLORATORY_BOUND} when the chosen cell also wins that ordering across
+	 * all eligible cells before the lead exclusion; otherwise record {@link AllocationRule#COVERAGE_FLOOR}.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
@@ -516,7 +516,7 @@ public final class Scheduler
 			for (Cell cell : developmentCells)
 			{
 				CellCounts counts = development.count(cell.id());
-				if (!ReadinessGate.isReady(counts, contract.minimumPassRate()) &&
+				if (!CommitGate.isMetInCell(counts, contract.minimumPassRate()) &&
 					counts.outcomes() < development.reviewPoint(cell.id()))
 				{
 					eligible.add(cell);

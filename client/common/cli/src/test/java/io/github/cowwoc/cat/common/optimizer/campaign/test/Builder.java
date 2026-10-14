@@ -1062,11 +1062,13 @@ public final class Builder
 			Map<String, Pairing> frozenControlPairings = new LinkedHashMap<>(controlPairings);
 			Map<String, Pairing> frozenIncumbentPairings = new LinkedHashMap<>(incumbentPairings);
 			boolean comparesIncumbent = !frozenCandidate.snapshot().equals(INCUMBENT);
+			// When the minimum pass rate implies the comparisons, a certified cell has no pairs
+			boolean comparesReferences = !PairedComparison.isImpliedBy(frozen.minimumPassRate());
 			for (Map.Entry<String, CellCounts> entry : counts.entrySet())
 			{
 				String cell = entry.getKey();
 				CellCounts cellCounts = entry.getValue();
-				if (!frozen.certifies(cellCounts.passes(), cellCounts.failures()))
+				if (!comparesReferences || !frozen.certifies(cellCounts.passes(), cellCounts.failures()))
 					continue;
 				if (!frozenControlPairings.containsKey(cell))
 					frozenControlPairings.put(cell, passedComparisons(cell, frozen.level()));

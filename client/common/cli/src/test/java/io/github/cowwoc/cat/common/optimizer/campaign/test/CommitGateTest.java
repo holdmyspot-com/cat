@@ -11,7 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PendingDecision;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.ReproductionRound;
 import io.github.cowwoc.cat.common.optimizer.campaign.Round;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
@@ -28,14 +28,14 @@ import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link ReadinessGate} and the batches of {@link CellCounts}.
+ * Tests {@link CommitGate} and the batches of {@link CellCounts}.
  */
-public final class ReadinessGateTest
+public final class CommitGateTest
 {
 	/**
 	 * Creates the test.
 	 */
-	public ReadinessGateTest()
+	public CommitGateTest()
 	{
 	}
 
@@ -79,8 +79,8 @@ public final class ReadinessGateTest
 	public void requiresOneHundredTrials()
 	{
 		// Requirement: R-D1
-		requireThat(ReadinessGate.isReady(counts(99, 0, 0), Contract.DEFAULT_MINIMUM_PASS_RATE), "99").isFalse();
-		requireThat(ReadinessGate.isReady(counts(100, 0, 0), Contract.DEFAULT_MINIMUM_PASS_RATE), "100").isTrue();
+		requireThat(CommitGate.isMetInCell(counts(99, 0, 0), Contract.DEFAULT_MINIMUM_PASS_RATE), "99").isFalse();
+		requireThat(CommitGate.isMetInCell(counts(100, 0, 0), Contract.DEFAULT_MINIMUM_PASS_RATE), "100").isTrue();
 	}
 
 	/**
@@ -90,11 +90,11 @@ public final class ReadinessGateTest
 	public void requiresNinetyNinePercent()
 	{
 		// Requirement: R-D1
-		requireThat(ReadinessGate.isReady(counts(99, 1, 0), Contract.DEFAULT_MINIMUM_PASS_RATE), "99of100").isTrue();
-		requireThat(ReadinessGate.isReady(counts(98, 1, 1), Contract.DEFAULT_MINIMUM_PASS_RATE), "98of100").isFalse();
-		requireThat(ReadinessGate.isReady(counts(297, 1, 1, 1, 0, 0, 0), Contract.DEFAULT_MINIMUM_PASS_RATE),
+		requireThat(CommitGate.isMetInCell(counts(99, 1, 0), Contract.DEFAULT_MINIMUM_PASS_RATE), "99of100").isTrue();
+		requireThat(CommitGate.isMetInCell(counts(98, 1, 1), Contract.DEFAULT_MINIMUM_PASS_RATE), "98of100").isFalse();
+		requireThat(CommitGate.isMetInCell(counts(297, 1, 1, 1, 0, 0, 0), Contract.DEFAULT_MINIMUM_PASS_RATE),
 			"297of300").isTrue();
-		requireThat(ReadinessGate.isReady(counts(296, 1, 1, 1, 1, 0, 0), Contract.DEFAULT_MINIMUM_PASS_RATE),
+		requireThat(CommitGate.isMetInCell(counts(296, 1, 1, 1, 1, 0, 0), Contract.DEFAULT_MINIMUM_PASS_RATE),
 			"296of300").isFalse();
 	}
 
@@ -106,32 +106,32 @@ public final class ReadinessGateTest
 	public void requiresLatestTwoBatches()
 	{
 		// Requirement: R-D1
-		requireThat(ReadinessGate.isReady(counts(298, 0, 0, 0, 0, 1, 1), Contract.DEFAULT_MINIMUM_PASS_RATE),
+		requireThat(CommitGate.isMetInCell(counts(298, 0, 0, 0, 0, 1, 1), Contract.DEFAULT_MINIMUM_PASS_RATE),
 			"oneEach").isTrue();
-		requireThat(ReadinessGate.isReady(counts(298, 0, 0, 0, 0, 0, 2), Contract.DEFAULT_MINIMUM_PASS_RATE),
+		requireThat(CommitGate.isMetInCell(counts(298, 0, 0, 0, 0, 0, 2), Contract.DEFAULT_MINIMUM_PASS_RATE),
 			"twoInLatest").isFalse();
-		requireThat(ReadinessGate.isReady(counts(298, 0, 0, 0, 0, 2, 0), Contract.DEFAULT_MINIMUM_PASS_RATE),
+		requireThat(CommitGate.isMetInCell(counts(298, 0, 0, 0, 0, 2, 0), Contract.DEFAULT_MINIMUM_PASS_RATE),
 			"twoInPrevious").isFalse();
-		requireThat(ReadinessGate.isReady(counts(298, 2, 0, 0, 0, 0, 0), Contract.DEFAULT_MINIMUM_PASS_RATE),
+		requireThat(CommitGate.isMetInCell(counts(298, 2, 0, 0, 0, 0, 0), Contract.DEFAULT_MINIMUM_PASS_RATE),
 			"twoInEarlier").isTrue();
-		requireThat(ReadinessGate.isReady(counts(318, 0, 0, 0, 0, 0, 0, 2), Contract.DEFAULT_MINIMUM_PASS_RATE),
+		requireThat(CommitGate.isMetInCell(counts(318, 0, 0, 0, 0, 0, 0, 2), Contract.DEFAULT_MINIMUM_PASS_RATE),
 			"twoInIncomplete").isTrue();
 	}
 
 	/**
-	 * Verifies that the gate holds only when every test is ready and the baseline is met.
+	 * Verifies that the gate holds only when every test meets it and the baseline is met.
 	 */
 	@Test
 	public void gateRequiresEveryCellAndBaseline()
 	{
 		// Requirement: R-D1
-		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
-			build()), "ready").isTrue();
-		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(CommitGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+			build()), "met").isTrue();
+		requireThat(CommitGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			development("safety", 99, 0).build()), "testShort").isFalse();
-		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(CommitGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			baseline("safety", 49, 0).build()), "baselineShort").isFalse();
-		requireThat(ReadinessGate.isMet(new Builder().development("formatting", 100, 0).
+		requireThat(CommitGate.isMet(new Builder().development("formatting", 100, 0).
 			development("safety", 100, 0).build()), "unconfirmed").
 			isFalse();
 	}
@@ -144,13 +144,13 @@ public final class ReadinessGateTest
 	{
 		// Requirement: R-D1
 		Diagnosis diagnosis = new Diagnosis(List.of(Builder.targeted("safety", "logs")), 0, null, false);
-		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(CommitGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			diagnosis(diagnosis).build()), "diagnosis").isFalse();
-		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(CommitGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			round(new Round(Map.of("safety", 0))).build()), "round").isFalse();
-		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(CommitGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			regression(Builder.targeted("safety", "logs"), Verdict.FAIL).build()), "regression").isFalse();
-		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(CommitGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			regression(Builder.targeted("safety", "logs"), Verdict.PASS).build()), "fixedRegression").
 			isTrue();
 	}
@@ -163,9 +163,9 @@ public final class ReadinessGateTest
 	public void settledRegressionDoesNotBlockGate()
 	{
 		DrawnTestCase logs = Builder.targeted("safety", "logs");
-		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(CommitGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			settledRegression(logs).build()), "settled").isTrue();
-		requireThat(ReadinessGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
+		requireThat(CommitGate.isMet(new Builder().confirmed().readyDevelopment().readyBaseline().
 			regression(logs, Verdict.FAIL).build()), "unsettled").isFalse();
 	}
 
@@ -182,12 +182,12 @@ public final class ReadinessGateTest
 		Builder.AttemptBuilder attempt = ready().certificationAttempt(1).
 			failure(new Failure(testCase, "failure", List.of(failed), null, List.of(), List.of(), Builder.FILES)).
 			outcome(Outcome.BELOW_MINIMUM);
-		requireThat(ReadinessGate.isMet(attempt.build()), "reproducing").isFalse();
+		requireThat(CommitGate.isMet(attempt.build()), "reproducing").isFalse();
 		for (FailureGroup.Status status : List.of(FailureGroup.Status.REPRODUCED, FailureGroup.Status.ABANDONED))
 		{
 			FailureGroup group = new FailureGroup("safety", testCase.testId(), failed, 1, FailureGroup.ROUNDS,
 				List.of(new ReproductionRound("safety", List.of())), status);
-			requireThat(ReadinessGate.isMet(attempt.groups(List.of(group)).build()), status.name()).isTrue();
+			requireThat(CommitGate.isMet(attempt.groups(List.of(group)).build()), status.name()).isTrue();
 		}
 	}
 
@@ -198,16 +198,16 @@ public final class ReadinessGateTest
 	public void commitDueOnlyWhenUnblocked()
 	{
 		// Requirement: R-D1
-		requireThat(ReadinessGate.isCommitDue(ready().build()), "ready").isTrue();
-		requireThat(ReadinessGate.isCommitDue(ready().pending(new PendingDecision.UnownedChange("edit")).build()),
+		requireThat(CommitGate.isCommitDue(ready().build()), "met").isTrue();
+		requireThat(CommitGate.isCommitDue(ready().pending(new PendingDecision.UnownedChange("edit")).build()),
 			"pending").isFalse();
-		requireThat(ReadinessGate.isCommitDue(ready().revisionRequested().build()), "revision").isFalse();
-		requireThat(ReadinessGate.isCommitDue(ready().lifecycle(Lifecycle.CANCELLED).build()), "cancelled").
+		requireThat(CommitGate.isCommitDue(ready().revisionRequested().build()), "revision").isFalse();
+		requireThat(CommitGate.isCommitDue(ready().lifecycle(Lifecycle.CANCELLED).build()), "cancelled").
 			isFalse();
-		requireThat(ReadinessGate.isCommitDue(ready().certificationAttempt(1).build()), "running").isFalse();
-		requireThat(ReadinessGate.isCommitDue(ready().certificationAttempt(1).outcome(Outcome.INCONCLUSIVE).
+		requireThat(CommitGate.isCommitDue(ready().certificationAttempt(1).build()), "running").isFalse();
+		requireThat(CommitGate.isCommitDue(ready().certificationAttempt(1).outcome(Outcome.INCONCLUSIVE).
 			build()), "ended").isTrue();
-		requireThat(ReadinessGate.isCommitDue(ready().unavailable(Outcome.UNSUPPORTED_OUTPUT).build()),
+		requireThat(CommitGate.isCommitDue(ready().unavailable(Outcome.UNSUPPORTED_OUTPUT).build()),
 			"unavailable").isFalse();
 	}
 
@@ -222,7 +222,7 @@ public final class ReadinessGateTest
 	}
 
 	/**
-	 * Verifies that a test under two profiles needs each of its cells to be ready and each cell's baseline to be
+	 * Verifies that a test under two profiles needs each of its cells to meet the gate and each cell's baseline to be
 	 * met.
 	 */
 	@Test
@@ -230,17 +230,17 @@ public final class ReadinessGateTest
 	{
 		// Requirement: R-C11
 		Contract contract = ContractFixtures.twoCellContract();
-		requireThat(ReadinessGate.isMet(new Builder().confirmed(contract, 1).readyDevelopment().
-			readyBaseline().build()), "ready").isTrue();
-		requireThat(ReadinessGate.isMet(new Builder().confirmed(contract, 1).readyDevelopment().
+		requireThat(CommitGate.isMet(new Builder().confirmed(contract, 1).readyDevelopment().
+			readyBaseline().build()), "met").isTrue();
+		requireThat(CommitGate.isMet(new Builder().confirmed(contract, 1).readyDevelopment().
 			readyBaseline().development(ContractFixtures.SMALL_CELL, 99, 0).build()), "smallCellShort").isFalse();
-		requireThat(ReadinessGate.isMet(new Builder().confirmed(contract, 1).readyDevelopment().
+		requireThat(CommitGate.isMet(new Builder().confirmed(contract, 1).readyDevelopment().
 			readyBaseline().baseline(ContractFixtures.BIG_CELL, 49, 0).build()), "bigBaselineShort").isFalse();
 	}
 
 	/**
-	 * Verifies that the gate requires readiness in the development cells only: an empty cell outside them does not
-	 * block it, and a cell where a certification attempt of the lineage adopted a failure must be ready too.
+	 * Verifies that the gate applies to the development cells only: an empty cell outside them does not
+	 * block it, and a cell where a certification attempt of the lineage adopted a failure must meet it too.
 	 */
 	@Test
 	public void gateCoversDevelopmentCells()
@@ -250,12 +250,12 @@ public final class ReadinessGateTest
 		Contract contract = TierFixtures.tieredContract();
 		Builder weakest = new Builder().confirmed(contract, 1).working(1).readyBaseline().
 			development(TierFixtures.SMALL_HIGH, 100, 0).development(TierFixtures.SAFETY, 100, 0);
-		requireThat(ReadinessGate.isMet(weakest.build()), "weakestReady").isTrue();
+		requireThat(CommitGate.isMet(weakest.build()), "weakestReady").isTrue();
 
 		DrawnTestCase failure = new Generator(contract).draw(TierFixtures.BIG_HIGH,
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
 		Campaign failed = weakest.certificationAttempt(1).failure(failure).outcome(Outcome.INCONCLUSIVE).build();
-		requireThat(ReadinessGate.isMet(failed), "certificationFailure").isFalse();
+		requireThat(CommitGate.isMet(failed), "certificationFailure").isFalse();
 	}
 
 	/**
@@ -267,13 +267,13 @@ public final class ReadinessGateTest
 	{
 		// Requirement: R-D1
 		BigDecimal ninety = new BigDecimal("0.90");
-		requireThat(ReadinessGate.isReady(counts(98, 1, 1), ninety), "98of100").isTrue();
-		requireThat(ReadinessGate.isReady(counts(97, 2, 1), ninety), "97of100").isFalse();
-		requireThat(ReadinessGate.isReady(counts(98, 0, 2), ninety), "twoInLatest").isTrue();
-		requireThat(ReadinessGate.isReady(counts(297, 0, 0, 0, 0, 0, 3), ninety), "threeInLatest").isFalse();
-		requireThat(ReadinessGate.minimumObservedPassRate(ninety), "minimumObservedPassRate").
+		requireThat(CommitGate.isMetInCell(counts(98, 1, 1), ninety), "98of100").isTrue();
+		requireThat(CommitGate.isMetInCell(counts(97, 2, 1), ninety), "97of100").isFalse();
+		requireThat(CommitGate.isMetInCell(counts(98, 0, 2), ninety), "twoInLatest").isTrue();
+		requireThat(CommitGate.isMetInCell(counts(297, 0, 0, 0, 0, 0, 3), ninety), "threeInLatest").isFalse();
+		requireThat(CommitGate.minimumObservedPassRate(ninety), "minimumObservedPassRate").
 			isEqualTo(new BigDecimal("0.98"));
-		requireThat(ReadinessGate.batchFailureLimit(ninety), "batchFailureLimit").isEqualTo(2);
+		requireThat(CommitGate.batchFailureLimit(ninety), "batchFailureLimit").isEqualTo(2);
 	}
 
 	/**
@@ -285,8 +285,8 @@ public final class ReadinessGateTest
 	{
 		// Requirement: R-D1
 		BigDecimal ninetySeven = new BigDecimal("0.97");
-		requireThat(ReadinessGate.isReady(counts(299, 0, 0, 0, 1, 0, 0), ninetySeven), "earlierFailure").isTrue();
-		requireThat(ReadinessGate.isReady(counts(299, 0, 0, 0, 0, 1, 0), ninetySeven), "previousFailure").isFalse();
-		requireThat(ReadinessGate.batchFailureLimit(ninetySeven), "batchFailureLimit").isEqualTo(0);
+		requireThat(CommitGate.isMetInCell(counts(299, 0, 0, 0, 1, 0, 0), ninetySeven), "earlierFailure").isTrue();
+		requireThat(CommitGate.isMetInCell(counts(299, 0, 0, 0, 0, 1, 0), ninetySeven), "previousFailure").isFalse();
+		requireThat(CommitGate.batchFailureLimit(ninetySeven), "batchFailureLimit").isEqualTo(0);
 	}
 }

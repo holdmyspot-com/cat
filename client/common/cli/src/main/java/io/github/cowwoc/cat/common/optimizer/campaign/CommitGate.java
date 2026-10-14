@@ -6,22 +6,22 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Checks whether development is ready to freeze the working candidate and start certification.
+ * Checks whether the working candidate meets the commit gate, which freezes it and starts a certification attempt.
  * <p>
  * Each {@link CellTier development cell}, a prompt test under one runner profile, must meet the development
- * thresholds below. Passing these checks controls when certification starts; it does not certify the candidate.
+ * thresholds below. Passing the gate permits a commit; it does not certify the candidate.
  */
-public final class ReadinessGate
+public final class CommitGate
 {
 	/**
-	 * Require at least this many representative development trials before treating a cell as ready.
+	 * Require at least this many representative development trials before a cell meets the gate.
 	 */
 	public static final int MINIMUM_TRIALS = 100;
 
 	/**
 	 * Prevents instantiation.
 	 */
-	private ReadinessGate()
+	private CommitGate()
 	{
 	}
 
@@ -32,10 +32,10 @@ public final class ReadinessGate
 	 *
 	 * @param counts the cell's development counts
 	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
-	 * @return {@code true} if the cell is ready
+	 * @return {@code true} if the cell meets the gate
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static boolean isReady(CellCounts counts, BigDecimal minimumPassRate)
+	public static boolean isMetInCell(CellCounts counts, BigDecimal minimumPassRate)
 	{
 		requireThat(counts, "counts").isNotNull();
 		int outcomes = counts.outcomes();
@@ -49,7 +49,7 @@ public final class ReadinessGate
 	}
 
 	/**
-	 * Returns the most failures that a complete batch may have for its cell to be ready, for the minimum pass rate
+	 * Returns the most failures that a complete batch may have for its cell to meet the gate, for the minimum pass rate
 	 * {@code p_min}: {@code floor(20 (1 - p_min))}, which allows a {@value CellCounts#BATCH_SIZE}-trial batch two fifths
 	 * of the failure rate that certification tolerates.
 	 *
@@ -64,9 +64,9 @@ public final class ReadinessGate
 	}
 
 	/**
-	 * Returns the observed pass rate that a ready cell's development outcomes must reach, for the minimum pass rate
-	 * {@code p_min}: {@code 1 - (1 - p_min) / 5}, which allows one fifth of the failure rate that certification
-	 * tolerates.
+	 * Returns the observed pass rate that a cell's development outcomes must reach to meet the gate, for the minimum
+	 * pass rate {@code p_min}: {@code 1 - (1 - p_min) / 5}, which allows one fifth of the failure rate that
+	 * certification tolerates.
 	 *
 	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
 	 * @return the rate
@@ -80,7 +80,7 @@ public final class ReadinessGate
 
 	/**
 	 * Indicates whether a cell's development outcomes reach {@link #minimumObservedPassRate(BigDecimal)}. Empty counts
-	 * meet this rate check; the readiness gate separately requires a minimum number of outcomes.
+	 * meet this rate check; the gate separately requires a minimum number of outcomes.
 	 *
 	 * @param counts the cell's development counts
 	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
@@ -97,7 +97,7 @@ public final class ReadinessGate
 	}
 
 	/**
-	 * Indicates whether the working candidate meets the gate: every development cell is ready, no diagnosis, round or
+	 * Indicates whether the working candidate meets the gate: every development cell meets it, no diagnosis, round or
 	 * prompt author attempt is unresolved, no ended attempt is reproducing its formal failures, the working candidate's
 	 * latest outcome on every regression test case is not a failure or is a {@link RegressionTestCase#settled()
 	 * settled} failure, and the incumbent baseline is met.
@@ -116,7 +116,7 @@ public final class ReadinessGate
 			return false;
 		for (String cell : CellTier.developmentCellIds(campaign))
 		{
-			if (!isReady(development.count(cell), campaign.contract().minimumPassRate()))
+			if (!isMetInCell(development.count(cell), campaign.contract().minimumPassRate()))
 				return false;
 		}
 		for (RegressionTestCase regression : campaign.lineage().regressionSet())

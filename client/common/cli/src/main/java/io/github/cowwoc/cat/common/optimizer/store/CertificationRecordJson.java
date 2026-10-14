@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.VERSION;
+import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.bool;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.elements;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.field;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.integer;
@@ -16,6 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord.CellRe
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.io.IOException;
@@ -40,8 +42,10 @@ import tools.jackson.databind.node.ObjectNode;
  * Converts a {@link CertificationRecord} to and from the JSON file that a certified delivery writes to the project.
  * <p>
  * The file holds the target, the certification index, the scope's identifier, the minimum pass rate and the
- * significance level {@code alpha} as decimal strings, each cell's counts with the pairs of each assertion's control
- * and incumbent comparisons, each prompt file's content hash and the measurement conditions.
+ * significance level {@code alpha} as decimal strings, whether the control and incumbent comparisons follow from the
+ * minimum pass rate, each cell's counts with the pairs of each assertion's control and incumbent comparisons, each
+ * prompt file's content hash and the measurement conditions. A cell whose comparisons follow from the minimum pass
+ * rate has no pairs.
  * <p>
  * {@code alpha} is {@code 1 / threshold} of the level. A reciprocal that has no finite decimal form is rounded up to
  * {@value #ALPHA_DIGITS} significant digits, so the written value never understates the level's error probability.
@@ -55,7 +59,7 @@ public final class CertificationRecordJson
 	/**
 	 * The format version that this version of CAT writes and reads.
 	 */
-	private static final int FORMAT_VERSION = 5;
+	private static final int FORMAT_VERSION = 6;
 	private static final String MALFORMED = "is malformed";
 	/**
 	 * The significant digits of an {@code alpha} that has no finite decimal form.
@@ -97,6 +101,7 @@ public final class CertificationRecordJson
 		root.put("scope", record.scope().id());
 		CertificationParameters parameters = record.parameters();
 		root.put("minimum_pass_rate", parameters.minimumPassRate().toPlainString());
+		root.put("comparisons_implied", PairedComparison.isImpliedBy(parameters.minimumPassRate()));
 		root.put("alpha", alpha(parameters.level()));
 
 		ArrayNode cells = root.putArray("cells");
@@ -191,6 +196,12 @@ public final class CertificationRecordJson
 			new IllegalArgumentException("scope: " + scopeId + " is not a certification scope"));
 		CertificationParameters parameters = new CertificationParameters(
 			CampaignJson.decimal(root, "minimum_pass_rate"), level(CampaignJson.decimal(root, "alpha")));
+		boolean comparisonsImplied = bool(root, "comparisons_implied");
+		if (comparisonsImplied != PairedComparison.isImpliedBy(parameters.minimumPassRate()))
+		{
+			throw new IllegalArgumentException("comparisons_implied: " + comparisonsImplied +
+				" contradicts minimum_pass_rate " + parameters.minimumPassRate().toPlainString());
+		}
 
 		List<CellResult> cells = new ArrayList<>();
 		for (JsonNode element : elements(root, "cells"))

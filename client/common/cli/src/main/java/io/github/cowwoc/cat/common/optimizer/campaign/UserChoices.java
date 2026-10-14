@@ -215,7 +215,7 @@ final class UserChoices
 	/**
 	 * Applies the user's answer to each failure group of an attempt that did not reproduce, and resolves the decision.
 	 * More rounds resume the groups' reproduction; a new attempt leaves them unreproduced, so development resumes
-	 * with the unchanged candidate and the readiness gate decides when the next attempt starts.
+	 * with the unchanged candidate and the commit gate decides when the next attempt starts.
 	 *
 	 * @param draft the state
 	 * @param pending the decision

@@ -36,6 +36,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.test.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 import io.github.cowwoc.cat.common.secrets.CertificationAttemptSecrets;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +50,12 @@ import org.testng.annotations.Test;
  */
 public final class DecisionTableTest
 {
+	/**
+	 * The standard boundaries at a minimum pass rate below 0.95, under which a certified minimum-pass-rate part still
+	 * waits for the control and incumbent comparisons.
+	 */
+	private static final DecisionBoundaries PAIRED = Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE);
+
 	/**
 	 * Creates the test.
 	 */
@@ -65,10 +72,11 @@ public final class DecisionTableTest
 	 */
 	private static DecisionBoundaries worseAtTwo()
 	{
+		BigDecimal paired = Boundaries.PAIRED_MINIMUM_PASS_RATE;
 		return Boundaries.decision(Boundaries.STANDARD_CAP, 100, 50, 5,
-			List.of(Boundaries.comparison(Boundaries.STANDARD_CAP, 250, 0, 2),
-				Boundaries.comparison(Boundaries.STANDARD_CAP, 250, 0, 2),
-				Boundaries.comparison(Boundaries.STANDARD_CAP, 250, 0, 2)));
+			List.of(Boundaries.comparison(Boundaries.STANDARD_CAP, 250, 0, 2, paired),
+				Boundaries.comparison(Boundaries.STANDARD_CAP, 250, 0, 2, paired),
+				Boundaries.comparison(Boundaries.STANDARD_CAP, 250, 0, 2, paired)), paired);
 	}
 
 	/**
@@ -276,7 +284,7 @@ public final class DecisionTableTest
 	public void certifiedAttemptIsDelivered()
 	{
 		// Requirement: R-F3
-		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).boundaries(PAIRED).
 			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 100, 0).
 			controlPairing("safety", oneControlShort()).build();
 		campaign = TransitionSteps.adoptReference(campaign, Reference.CONTROL, "safety", Verdict.FAIL, List.of());
@@ -506,7 +514,7 @@ public final class DecisionTableTest
 	 */
 	private static CertificationAttempt safetyAttempt(int passes, int failures, Pairing pairing)
 	{
-		return new Builder().confirmed().certificationAttempt(1).cell("formatting", 100, 0).
+		return new Builder().confirmed().certificationAttempt(1).boundaries(PAIRED).cell("formatting", 100, 0).
 			cell("plain_list", 100, 0).cell("safety", passes, failures).controlPairing("safety", pairing).build().attempt(1);
 	}
 
@@ -543,7 +551,7 @@ public final class DecisionTableTest
 	private static CertificationAttempt candidateAttempt(int passes, int failures, Pairing control,
 		Pairing incumbent)
 	{
-		return new Builder().confirmed().working(1).certificationAttempt(1).cell("formatting", 100, 0).
+		return new Builder().confirmed().working(1).certificationAttempt(1).boundaries(PAIRED).cell("formatting", 100, 0).
 			cell("plain_list", 100, 0).cell("safety", passes, failures).controlPairing("safety", control).
 			incumbentPairing("safety", incumbent).build().attempt(1);
 	}
@@ -624,7 +632,7 @@ public final class DecisionTableTest
 		requireThat(DecisionTable.attemptDecision(sameCell), "sameCellAttempt").
 			isEqualTo(AttemptDecision.BELOW_CONTROL);
 
-		CertificationAttempt otherCells = new Builder().confirmed().working(1).certificationAttempt(1).
+		CertificationAttempt otherCells = new Builder().confirmed().working(1).certificationAttempt(1).boundaries(PAIRED).
 			cell("formatting", 100, 0).controlPairing("formatting", comparing(passed, passed)).
 			incumbentPairing("formatting", comparing(passed, below)).cell("plain_list", 100, 0).
 			cell("safety", 100, 0).controlPairing("safety", comparing(below, passed)).build().attempt(1);
@@ -667,7 +675,8 @@ public final class DecisionTableTest
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>(comparing(new PairCounts(0, 7, 0, 0),
 			new PairCounts(0, 0, 7, 0)).comparisons());
 		Campaign campaign = new Builder().confirmed().working(1).development("safety", 100, 0).
-			development("formatting", 100, 0).certificationAttempt(1).cell("formatting", 30, 0).cell("safety", 100, 0).
+			development("formatting", 100, 0).certificationAttempt(1).boundaries(PAIRED).cell("formatting", 30, 0).
+			cell("safety", 100, 0).
 			controlPairing("safety", new Pairing(List.of(waiting), comparisons)).build();
 		campaign = TransitionSteps.adoptReference(campaign, Reference.CONTROL, "safety", Verdict.PASS, List.of());
 
@@ -720,7 +729,8 @@ public final class DecisionTableTest
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>(comparing(new PairCounts(0, 7, 0, 0),
 			new PairCounts(0, 0, 7, 0)).comparisons());
 		Campaign campaign = new Builder().confirmed().working(1).development("safety", 100, 0).
-			development("formatting", 100, 0).certificationAttempt(1).cell("formatting", 30, 0).cell("safety", 100, 0).
+			development("formatting", 100, 0).certificationAttempt(1).boundaries(PAIRED).cell("formatting", 30, 0).
+			cell("safety", 100, 0).
 			controlPairing("safety", comparing(passed, passed)).
 			incumbentPairing("safety", new Pairing(List.of(waiting), comparisons)).build();
 		campaign = TransitionSteps.adoptReference(campaign, Reference.INCUMBENT, "safety", Verdict.PASS, List.of());
@@ -745,7 +755,7 @@ public final class DecisionTableTest
 	public void formalTrialStartsComparisons()
 	{
 		// Requirement: R-F7
-		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).boundaries(PAIRED).
 			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 99, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		TrialKey first = TransitionSteps.last(campaign);
@@ -774,6 +784,38 @@ public final class DecisionTableTest
 	}
 
 	/**
+	 * Verifies that at a minimum pass rate of 0.95 the candidate formal trial that certifies a cell's
+	 * minimum-pass-rate part certifies the cell and the attempt without starting any comparison, because the minimum
+	 * pass rate implies them, and that the same trial below 0.95 starts the comparisons and waits for them.
+	 */
+	@Test
+	public void impliedComparisonsCertifyOnMinimum()
+	{
+		// Requirement: R-F9
+		Campaign implied = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 99, 0).build();
+		implied = TransitionSteps.assign(implied, Purpose.FORMAL, "safety");
+		implied = TransitionSteps.run(implied, TransitionSteps.last(implied), Verdict.PASS);
+
+		requireThat(implied.attempt(1).pairing(Reference.CONTROL, "safety"), "control").isEqualTo(Pairing.EMPTY);
+		requireThat(implied.attempt(1).pairing(Reference.INCUMBENT, "safety"), "incumbent").isEqualTo(Pairing.EMPTY);
+		requireThat(DecisionTable.cellDecision(implied.attempt(1), "safety"), "cellDecision").
+			isEqualTo(CellDecision.CERTIFIED);
+		requireThat(implied.attempt(1).outcome(), "attempt.outcome").isEqualTo(Outcome.CERTIFIED);
+
+		Campaign paired = new Builder().confirmed().working(1).certificationAttempt(1).
+			boundaries(PAIRED).cell("formatting", 100, 0).
+			cell("plain_list", 100, 0).cell("safety", 99, 0).build();
+		paired = TransitionSteps.assign(paired, Purpose.FORMAL, "safety");
+		paired = TransitionSteps.run(paired, TransitionSteps.last(paired), Verdict.PASS);
+
+		requireThat(paired.attempt(1).pairing(Reference.CONTROL, "safety").isComparing(), "pairedControl").isTrue();
+		requireThat(DecisionTable.cellDecision(paired.attempt(1), "safety"), "pairedDecision").
+			isEqualTo(CellDecision.UNDECIDED);
+		requireThat(paired.attempt(1).outcome(), "paired.outcome").isNull();
+	}
+
+	/**
 	 * Verifies that the candidate formal trial that certifies a cell's minimum-pass-rate part starts only the cell's
 	 * control comparisons when the candidate is the incumbent.
 	 */
@@ -781,7 +823,7 @@ public final class DecisionTableTest
 	public void noIncumbentPairsForIncumbent()
 	{
 		// Requirement: R-F8
-		Campaign campaign = new Builder().confirmed().certificationAttempt(1).cell("formatting", 100, 0).
+		Campaign campaign = new Builder().confirmed().certificationAttempt(1).boundaries(PAIRED).cell("formatting", 100, 0).
 			cell("plain_list", 100, 0).cell("safety", 99, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.PASS);

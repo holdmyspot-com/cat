@@ -23,6 +23,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.contract.test.TierFixtures;
+import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -229,9 +230,9 @@ public final class CellTierTest
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		for (Assertion assertion : contract.testOf(contract.findCell(BIG_MEDIUM).orElseThrow()).allAssertions())
 			comparisons.put(assertion.id(), new PairCounts(0, 0, 8, 0));
-		Campaign below = new Builder().confirmed(contract, 1).working(1).certificationAttempt(1).
-			cell(BIG_MEDIUM, 100, 0).controlPairing(BIG_MEDIUM, new Pairing(List.of(), comparisons)).
-			outcome(Outcome.BELOW_CONTROL).build();
+		Builder start = new Builder().confirmed(contract, 1).working(1);
+		Campaign below = start.certificationAttempt(1).boundaries(paired(start)).cell(BIG_MEDIUM, 100, 0).
+			controlPairing(BIG_MEDIUM, new Pairing(List.of(), comparisons)).outcome(Outcome.BELOW_CONTROL).build();
 		requireThat(ids(CellTier.developmentCells(below.contract(), below.lineage().number(), below.attempts())),
 			"below").isEqualTo(List.of(BIG_MEDIUM, SMALL_HIGH, SAFETY));
 	}
@@ -251,10 +252,24 @@ public final class CellTierTest
 			passed.put(assertion.id(), new PairCounts(0, 8, 0, 0));
 			below.put(assertion.id(), new PairCounts(0, 0, 8, 0));
 		}
-		Campaign ended = new Builder().confirmed(contract, 1).working(1).certificationAttempt(1).
-			cell(BIG_MEDIUM, 100, 0).controlPairing(BIG_MEDIUM, new Pairing(List.of(), passed)).
+		Builder start = new Builder().confirmed(contract, 1).working(1);
+		Campaign ended = start.certificationAttempt(1).boundaries(paired(start)).cell(BIG_MEDIUM, 100, 0).
+			controlPairing(BIG_MEDIUM, new Pairing(List.of(), passed)).
 			incumbentPairing(BIG_MEDIUM, new Pairing(List.of(), below)).outcome(Outcome.BELOW_INCUMBENT).build();
 		requireThat(ids(CellTier.developmentCells(ended.contract(), ended.lineage().number(), ended.attempts())),
 			"below").isEqualTo(List.of(BIG_MEDIUM, SMALL_HIGH, SAFETY));
+	}
+
+	/**
+	 * Returns the standard boundaries of a campaign's certification scope at a minimum pass rate below 0.95, under
+	 * which a certified minimum-pass-rate part still waits for the control and incumbent comparisons.
+	 *
+	 * @param start the builder of the campaign, whose contract is confirmed
+	 * @return the boundaries
+	 */
+	private static DecisionBoundaries paired(Builder start)
+	{
+		return Boundaries.standard(CellTier.scopeCellIds(start.build().contract()).size(),
+			Boundaries.PAIRED_MINIMUM_PASS_RATE);
 	}
 }

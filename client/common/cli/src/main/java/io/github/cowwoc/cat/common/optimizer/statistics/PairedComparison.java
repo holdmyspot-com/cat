@@ -116,6 +116,23 @@ public final class PairedComparison
 	}
 
 	/**
+	 * Indicates whether a certified minimum pass rate implies that every comparison of the cell passes. A cell passes
+	 * only when each of its assertions passes, so a cell pass probability above {@code minimumPassRate} puts each
+	 * assertion's pass probability {@code pC} above it too. When {@code minimumPassRate >= 1 - margin}, that gives
+	 * {@code pC > 1 - margin >= pR - margin} for every reference pass probability {@code pR}, which is the claim of
+	 * a passed comparison.
+	 *
+	 * @param minimumPassRate the minimum pass rate {@code p_min} of the attempt
+	 * @return {@code true} if {@code minimumPassRate} is at least {@code 1 - }{@link #MARGIN}
+	 * @throws NullPointerException if {@code minimumPassRate} is null
+	 */
+	public static boolean isImpliedBy(BigDecimal minimumPassRate)
+	{
+		requireThat(minimumPassRate, "minimumPassRate").isNotNull();
+		return minimumPassRate.compareTo(BigDecimal.ONE.subtract(MARGIN)) >= 0;
+	}
+
+	/**
 	 * Indicates whether the comparison passes: {@code E_up} exceeds a level's threshold.
 	 *
 	 * @param tally the adopted pairs

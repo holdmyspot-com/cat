@@ -11,8 +11,8 @@ import java.util.Optional;
  * Decides when a cell needs user review before more development trials run. A cell is a prompt test under
  * one runner profile.
  * <p>
- * Review is due when a cell of an unchanged candidate is not ready and reaches its review point: 200 representative
- * trials, or the point that the user named when extending it.
+ * Review is due when a cell of an unchanged candidate does not meet the commit gate and reaches its review point: 200
+ * representative trials, or the point that the user named when extending it.
  */
 public final class ReviewCheckpoint
 {
@@ -29,7 +29,7 @@ public final class ReviewCheckpoint
 	 * @param development the development state
 	 * @param cell the cell identifier
 	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
-	 * @return {@code true} if the cell reached its review point and is not ready
+	 * @return {@code true} if the cell reached its review point and does not meet the commit gate
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static boolean isDue(Development development, String cell, BigDecimal minimumPassRate)
@@ -37,7 +37,7 @@ public final class ReviewCheckpoint
 		requireThat(development, "development").isNotNull();
 		requireThat(cell, "cell").isNotNull();
 		CellCounts counts = development.count(cell);
-		return counts.outcomes() >= development.reviewPoint(cell) && !ReadinessGate.isReady(counts, minimumPassRate);
+		return counts.outcomes() >= development.reviewPoint(cell) && !CommitGate.isMetInCell(counts, minimumPassRate);
 	}
 
 	/**

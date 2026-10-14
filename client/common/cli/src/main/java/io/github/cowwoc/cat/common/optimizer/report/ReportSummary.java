@@ -98,8 +98,8 @@ final class ReportSummary
 		{
 			lines.add("Reverted candidate " + revert.withdrawn().number() + " (" +
 				revert.withdrawn().snapshot().hex() + ") in cell " + revert.cell() + ": development 95% Wilson " +
-				"upper bound " + decimal(revert.upperBound()) + " < predecessor rate " +
-				decimal(revert.predecessorRate()));
+				"upper bound " + decimal(revert.upperBound()) + " < predecessor lower bound " +
+				decimal(revert.predecessorLowerBound()));
 		}
 		addedTestCases(lines, report.addedTestCases());
 		if (!report.choices().isEmpty())
@@ -299,9 +299,9 @@ final class ReportSummary
 		StringBuilder comparisonText = new StringBuilder(300).append("  comparison with the minimum pass rate ").
 			append(comparison.minimumPassRate().movePointRight(2).stripTrailingZeros().toPlainString()).append("%: ").
 			append(comparison.state());
-		if (comparison.readiness() != null)
+		if (comparison.commitGate() != null)
 		{
-			comparisonText.append(" (").append(comparison.readiness());
+			comparisonText.append(" (commit gate ").append(comparison.commitGate());
 			if (!comparison.reasons().isEmpty())
 				comparisonText.append(": ").append(String.join("; ", comparison.reasons()));
 			comparisonText.append(')');
@@ -329,7 +329,6 @@ final class ReportSummary
 		}
 	}
 
-
 	/**
 	 * Appends a line for each assertion's comparison with one kind of reference trial.
 	 *
@@ -344,7 +343,11 @@ final class ReportSummary
 			StringBuilder text = new StringBuilder(120).append("  ").append(reference).append(" comparison ").
 				append(report.assertionId()).append(": ").append(report.state());
 			if (report.pairs() == 0)
-				text.append(", no pairs");
+			{
+				// An implied comparison's state already says that it runs no pairs
+				if (!report.state().equals(CellReport.PairedReport.IMPLIED))
+					text.append(", no pairs");
+			}
 			else
 			{
 				text.append(", candidate ").append(percent(report.candidateRate())).append(" (").
@@ -355,6 +358,7 @@ final class ReportSummary
 			lines.add(text.toString());
 		}
 	}
+
 	/**
 	 * Adds the minimum remaining trials.
 	 *

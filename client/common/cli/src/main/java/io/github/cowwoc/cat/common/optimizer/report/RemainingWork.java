@@ -13,7 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.Reference;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
@@ -50,9 +50,9 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	public enum Kind
 	{
 		/**
-		 * Development trials that the readiness gate still requires of a cell.
+		 * Development trials that the commit gate still requires of a cell.
 		 */
-		READINESS,
+		COMMIT_GATE,
 		/**
 		 * Trials that the incumbent's baseline still requires of a cell.
 		 */
@@ -136,7 +136,7 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	 * Computes the minimum remaining trials of a campaign.
 	 * <p>
 	 * <b>Development:</b> for every development cell, inside the certification scope or not, the fewest further
-	 * all-pass trials after which the readiness gate's count conditions hold (at least
+	 * all-pass trials after which the commit gate's count conditions hold (at least
 	 * {@code max(0, max(100, 100·f) − n)} with {@code f} failures in {@code n} outcomes, and more when a recent batch
 	 * holds 2 or more failures), plus, for every cell of the certification scope, the incumbent baseline's remaining
 	 * trials if every one passes and the next certification attempt's all-pass minimum.
@@ -171,7 +171,7 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	}
 
 	/**
-	 * Computes the minimum remaining trials of the development phase: readiness in each development cell, and the
+	 * Computes the minimum remaining trials of the development phase: the commit gate in each development cell, and the
 	 * incumbent baseline and the next attempt in each cell of the certification scope.
 	 *
 	 * @param campaign the campaign
@@ -191,9 +191,9 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 		{
 			if (development.contains(id))
 			{
-				int readiness = readinessRemaining(campaign.development().count(id), minimumPassRate);
-				entries.add(new Entry(id, Kind.READINESS, readiness, null));
-				total += readiness;
+				int commitGate = commitGateRemaining(campaign.development().count(id), minimumPassRate);
+				entries.add(new Entry(id, Kind.COMMIT_GATE, commitGate, null));
+				total += commitGate;
 			}
 			if (scopeIds.contains(id))
 			{
@@ -207,17 +207,17 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	}
 
 	/**
-	 * Returns the fewest further all-pass trials after which a cell meets the readiness gate's count conditions: at
+	 * Returns the fewest further all-pass trials after which a cell meets the commit gate's count conditions: at
 	 * least 100 trials, the minimum observed pass rate, and the latest two complete batches within the failure limit.
 	 *
 	 * @param counts the cell's development counts
 	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
 	 * @return the trials
 	 */
-	private static int readinessRemaining(CellCounts counts, BigDecimal minimumPassRate)
+	private static int commitGateRemaining(CellCounts counts, BigDecimal minimumPassRate)
 	{
 		int trials = 0;
-		while (!ReadinessGate.isReady(counts, minimumPassRate))
+		while (!CommitGate.isMetInCell(counts, minimumPassRate))
 		{
 			counts = counts.add(Verdict.PASS);
 			++trials;
@@ -256,12 +256,17 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	 */
 	private static RemainingWork formal(Campaign campaign, CertificationAttempt attempt)
 	{
+		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		List<Reference> references;
-		if (attempt.candidate().snapshot().equals(campaign.incumbent().snapshot()))
+		if (PairedComparison.isImpliedBy(boundaries.minimumPassRate()))
+		{
+			// The comparisons follow from the minimum pass rate, so they need no pairs
+			references = List.of();
+		}
+		else if (attempt.candidate().snapshot().equals(campaign.incumbent().snapshot()))
 			references = List.of(Reference.CONTROL);
 		else
 			references = List.of(Reference.CONTROL, Reference.INCUMBENT);
-		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		List<Entry> entries = new ArrayList<>();
 		int total = 0;
 		boolean available = true;

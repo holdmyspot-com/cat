@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
+import io.github.cowwoc.cat.common.optimizer.campaign.test.Boundaries;
 import io.github.cowwoc.cat.common.optimizer.campaign.test.Builder;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorBrief.BelowReference;
@@ -40,7 +41,8 @@ public final class EndedAttemptTest
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		comparisons.put("asks_before_deleting", new PairCounts(1, 7, 0, 0));
 		comparisons.put(TestCase.EXPECTED_OUTCOME, below);
-		Campaign campaign = new Builder().confirmed().certificationAttempt(1).cell("formatting", 100, 0).
+		Campaign campaign = new Builder().confirmed().certificationAttempt(1).
+			boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).cell("formatting", 100, 0).
 			cell("plain_list", 100, 0).cell("safety", 100, 0).
 			controlPairing("safety", new Pairing(List.of(), comparisons)).outcome(Outcome.BELOW_CONTROL).build();
 
@@ -66,7 +68,8 @@ public final class EndedAttemptTest
 		Map<String, PairCounts> incumbent = new LinkedHashMap<>();
 		incumbent.put("asks_before_deleting", passed);
 		incumbent.put(TestCase.EXPECTED_OUTCOME, below);
-		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).cell("formatting", 100, 0).
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).cell("formatting", 100, 0).
 			cell("plain_list", 100, 0).cell("safety", 100, 0).
 			controlPairing("safety", new Pairing(List.of(), control)).
 			incumbentPairing("safety", new Pairing(List.of(), incumbent)).outcome(Outcome.BELOW_INCUMBENT).build();

@@ -209,7 +209,8 @@ public final class SchedulerTest
 	{
 		return working().development("formatting", 200, 0).development("plain_list", 200, 0).
 			development("safety", 200, 0).slowStart(new SlowStart(8, 0)).certificationAttempt(1).
-			cell("formatting", 100, 0).cell("plain_list", 100, 0);
+			boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).cell("formatting", 100, 0).
+			cell("plain_list", 100, 0);
 	}
 
 	/**
@@ -224,6 +225,28 @@ public final class SchedulerTest
 		{
 			if (admission instanceof Admission.Assign assign)
 				requireThat(assign.purpose(), "purpose").isEqualTo(Purpose.FORMAL);
+		}
+	}
+
+	/**
+	 * Verifies that at the minimum pass rate 0.95 a cell whose minimum-pass-rate part certifies runs no control,
+	 * incumbent or further candidate formal trial, because the comparisons follow from the minimum pass rate.
+	 */
+	@Test
+	public void noPairedTrialWhenComparisonsAreImplied()
+	{
+		// Requirement: R-F9, R-E3
+		Campaign campaign = working().development("formatting", 200, 0).development("plain_list", 200, 0).
+			development("safety", 200, 0).slowStart(new SlowStart(8, 0)).certificationAttempt(1).
+			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 99, 0).campaign().build();
+		campaign = runNext(campaign, Verdict.PASS);
+		for (Admission admission : Scheduler.plan(campaign, NOW, 8))
+		{
+			if (admission instanceof Admission.Assign assign)
+			{
+				requireThat(assign.purpose(), "purpose").isEqualTo(Purpose.FORMAL);
+				requireThat(assign.allocation().rule(), "rule").isNotEqualTo(AllocationRule.PAIRED);
+			}
 		}
 	}
 
@@ -337,7 +360,8 @@ public final class SchedulerTest
 		DrawnTestCase logs = Builder.testCase("safety", "logs");
 		Campaign campaign = new Builder().confirmed().readyBaseline().development("formatting", 200, 0).
 			development("plain_list", 200, 0).development("safety", 200, 0).slowStart(new SlowStart(8, 0)).
-			certificationAttempt(1).cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 100, 0).
+			certificationAttempt(1).boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).
+			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 100, 0).
 			controlPairing("safety", safetyPairing(new PairCounts(0, 6, 0, 0), List.of(logs))).campaign().build();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(
 			new Admission.Assign(Purpose.CONTROL, 1, Builder.CONTROL, "safety", logs,
@@ -785,8 +809,9 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Verifies that the first working candidate samples only development cells, with no screen of the other cells,
-	 * and that development assigns nothing once every development cell is ready, however empty the other cells are.
+	 * Verifies that the first working candidate samples only development cells, with no screen of the other cells, and
+	 * that development assigns nothing once every development cell meets the commit gate, however empty the other cells
+	 * are.
 	 */
 	@Test
 	public void noScreenAndNoWidening()

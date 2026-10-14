@@ -54,6 +54,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialState;
 import io.github.cowwoc.cat.common.optimizer.campaign.TriedTestCase;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
+import io.github.cowwoc.cat.common.optimizer.campaign.test.Boundaries;
 import io.github.cowwoc.cat.common.optimizer.campaign.test.Builder;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
@@ -1199,6 +1200,7 @@ public abstract class CampaignStoreContract
 				Outcome.IMPROVED_NOT_CERTIFIED)).
 			certificationAttempt(1).
 			lineage(1).
+			boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).
 			candidate(new Candidate(2, Builder.snapshot("candidate-2"))).
 			cell("formatting", 60, 2).
 			cell("safety", 55, 0).
@@ -1210,6 +1212,7 @@ public abstract class CampaignStoreContract
 			campaign().
 			certificationAttempt(2).
 			identity(Builder.confirmedIdentity("model-a")).
+			boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).
 			cell("safety", 30, 1).
 			controlPairing("safety", controlPairing()).
 			build();

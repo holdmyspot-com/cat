@@ -24,6 +24,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.test.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.statistics.DecisionBoundaries;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -140,10 +141,11 @@ public final class KeepImprovementTest
 	public void certifiedCellNeedsControlComparisons()
 	{
 		// Requirement: R-F6, R-F7
+		BigDecimal paired = Boundaries.PAIRED_MINIMUM_PASS_RATE;
 		DecisionBoundaries early = Boundaries.decision(Boundaries.STANDARD_CAP, 20, 50, 6,
-			List.of(Boundaries.comparison(Boundaries.STANDARD_CAP, 60, 40, 8),
-				Boundaries.comparison(Boundaries.STANDARD_CAP, 1000, 0, Boundaries.STANDARD_CAP + 1),
-				Boundaries.comparison(Boundaries.STANDARD_CAP, 150, 40, 8)));
+			List.of(Boundaries.comparison(Boundaries.STANDARD_CAP, 60, 40, 8, paired),
+				Boundaries.comparison(Boundaries.STANDARD_CAP, 1000, 0, Boundaries.STANDARD_CAP + 1, paired),
+				Boundaries.comparison(Boundaries.STANDARD_CAP, 150, 40, 8, paired)), paired);
 		CertificationAttempt compared = new Builder().confirmed().certificationAttempt(1).boundaries(early).
 			cell("formatting", 60, 0).cell("plain_list", 20, 0).cell("safety", 150, 0).
 			outcome(Outcome.BELOW_CONTROL).build().attempt(1);

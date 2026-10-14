@@ -146,18 +146,18 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	/**
 	 * The comparison with the minimum pass rate.
 	 * <p>
-	 * In development, {@code state} is always {@code not certified} and {@code readiness} holds the readiness
-	 * assessment. In a certification attempt, {@code state} is the minimum-pass-rate part's {@code certified},
-	 * {@code clearly below} or {@code undecided}, the bounds hold the attempt's level, {@code controls} and
-	 * {@code incumbents} hold each assertion's control and incumbent comparisons, and {@code cellState} decides the
-	 * cell from both parts.
+	 * In development, {@code state} is always {@code not certified} and {@code commitGate} says whether the cell
+	 * meets the commit gate. In a certification attempt, {@code state} is the minimum-pass-rate part's
+	 * {@code certified}, {@code clearly below} or {@code undecided}, the bounds hold the attempt's level,
+	 * {@code controls} and {@code incumbents} hold each assertion's control and incumbent comparisons, and
+	 * {@code cellState} decides the cell from both parts.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param state the state of the comparison
 	 * @param minimumPassRate the minimum pass rate {@code p_min} that the cell is compared with
-	 * @param readiness {@code ready} or {@code not ready} for development, otherwise {@code null}
-	 * @param reasons why a development cell is not ready, empty if it is ready or the phase is formal
+	 * @param commitGate {@code met} or {@code not met} for development, otherwise {@code null}
+	 * @param reasons why a development cell does not meet the commit gate, empty if it meets it or the phase is formal
 	 * @param lowerBound the one-sided lower confidence bound {@code LC} at {@code α_i}, or {@code null} in development
 	 * @param upperBound the one-sided upper confidence bound at {@code α_i}, or {@code null} in development
 	 * @param alpha the attempt's certification level {@code α_i}, or {@code null} in development
@@ -167,7 +167,7 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	 * @param cellState the cell's {@code certified}, {@code clearly below}, {@code below control},
 	 *   {@code below incumbent}, {@code inconclusive} or {@code undecided}, or {@code null} in development
 	 */
-	public record Threshold(String state, BigDecimal minimumPassRate, String readiness, List<String> reasons,
+	public record Threshold(String state, BigDecimal minimumPassRate, String commitGate, List<String> reasons,
 		Double lowerBound, Double upperBound, Double alpha, List<PairedReport> controls, List<PairedReport> incumbents,
 		String cellState)
 	{
@@ -176,8 +176,8 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 		 *
 		 * @param state the state of the comparison
 		 * @param minimumPassRate the minimum pass rate {@code p_min} that the cell is compared with
-		 * @param readiness {@code ready} or {@code not ready} for development, otherwise {@code null}
-		 * @param reasons why a development cell is not ready
+		 * @param commitGate {@code met} or {@code not met} for development, otherwise {@code null}
+		 * @param reasons why a development cell does not meet the commit gate
 		 * @param lowerBound the one-sided lower confidence bound {@code LC} at {@code α_i}
 		 * @param upperBound the one-sided upper confidence bound at {@code α_i}
 		 * @param alpha the attempt's certification level {@code α_i}
@@ -207,8 +207,8 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
 	 * @param assertionId the identifier of the assertion
-	 * @param state {@code passed}, {@code below control} or {@code below incumbent}, {@code undecided} or
-	 *   {@code not run}
+	 * @param state {@code passed}, {@code below control} or {@code below incumbent}, {@code undecided},
+	 *   {@code not run} or {@value #IMPLIED}
 	 * @param pairs the adopted pairs of a candidate formal trial and its reference trial
 	 * @param candidatePasses the pairs whose candidate trial passed the assertion
 	 * @param referencePasses the pairs whose reference trial passed the assertion
@@ -217,11 +217,16 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 		int referencePasses)
 	{
 		/**
+		 * The state of a comparison that the attempt's minimum pass rate implies, which runs no pairs.
+		 */
+		public static final String IMPLIED = "implied by the minimum pass rate";
+
+		/**
 		 * Creates a comparison.
 		 *
 		 * @param assertionId the identifier of the assertion
-		 * @param state {@code passed}, {@code below control} or {@code below incumbent}, {@code undecided} or
-		 *   {@code not run}
+		 * @param state {@code passed}, {@code below control} or {@code below incumbent}, {@code undecided},
+		 *   {@code not run} or {@value #IMPLIED}
 		 * @param pairs the adopted pairs of a candidate formal trial and its reference trial
 		 * @param candidatePasses the pairs whose candidate trial passed the assertion
 		 * @param referencePasses the pairs whose reference trial passed the assertion

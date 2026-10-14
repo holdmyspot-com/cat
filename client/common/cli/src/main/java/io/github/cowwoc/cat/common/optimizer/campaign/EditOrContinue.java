@@ -71,7 +71,7 @@ public final class EditOrContinue
 
 	/**
 	 * Returns the most representative development failures that a cell may have before an edit starts, for the minimum
-	 * pass rate {@code p_min}: {@code floor(40 (1 - p_min))}. A cell with more failures cannot meet the readiness gate's
+	 * pass rate {@code p_min}: {@code floor(40 (1 - p_min))}. A cell with more failures cannot meet the commit gate's
 	 * observed pass rate by the review checkpoint.
 	 *
 	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}

@@ -24,6 +24,11 @@ public final class Boundaries
 	 * The cap of {@link #standard(int)}.
 	 */
 	public static final int STANDARD_CAP = 300;
+	/**
+	 * A minimum pass rate below {@code 1 - PairedComparison.MARGIN}, at which certification compares each assertion
+	 * with control and incumbent trials.
+	 */
+	public static final BigDecimal PAIRED_MINIMUM_PASS_RATE = new BigDecimal("0.90");
 
 	/**
 	 * Prevents instantiation.
@@ -45,10 +50,22 @@ public final class Boundaries
 	 */
 	public static DecisionBoundaries standard(int cells)
 	{
+		return standard(cells, Contract.DEFAULT_MINIMUM_PASS_RATE);
+	}
+
+	/**
+	 * Returns the boundaries of {@link #standard(int)} at another minimum pass rate.
+	 *
+	 * @param cells the number of cells requiring comparison boundaries
+	 * @param minimumPassRate the minimum pass rate {@code p_min}
+	 * @return the boundaries
+	 */
+	public static DecisionBoundaries standard(int cells, BigDecimal minimumPassRate)
+	{
 		List<ComparisonBoundaries> comparisons = new ArrayList<>();
 		for (int i = 0; i < cells; ++i)
-			comparisons.add(comparison(STANDARD_CAP, 60, 40, 4));
-		return decision(STANDARD_CAP, 100, 50, 5, comparisons);
+			comparisons.add(comparison(STANDARD_CAP, 60, 40, 4, minimumPassRate));
+		return decision(STANDARD_CAP, 100, 50, 5, comparisons, minimumPassRate);
 	}
 
 	/**
@@ -64,8 +81,25 @@ public final class Boundaries
 	public static DecisionBoundaries decision(int cap, int base, int step, int belowFailures,
 		List<ComparisonBoundaries> comparisons)
 	{
+		return decision(cap, base, step, belowFailures, comparisons, Contract.DEFAULT_MINIMUM_PASS_RATE);
+	}
+
+	/**
+	 * Returns decision boundaries at a minimum pass rate.
+	 *
+	 * @param cap the maximum number of outcomes per cell
+	 * @param base the passes that certify with no failures
+	 * @param step the additional passes that each failure requires
+	 * @param belowFailures the minimum failures for a clearly-below decision when passes are below the certifying minimum
+	 * @param comparisons the comparison boundaries, one per cell, at the same minimum pass rate
+	 * @param minimumPassRate the minimum pass rate {@code p_min}
+	 * @return the boundaries
+	 */
+	public static DecisionBoundaries decision(int cap, int base, int step, int belowFailures,
+		List<ComparisonBoundaries> comparisons, BigDecimal minimumPassRate)
+	{
 		List<Integer> minimums = minimums(cap, base, step);
-		return new DecisionBoundaries(ErrorBudget.certificationLevel(1), Contract.DEFAULT_MINIMUM_PASS_RATE, cap, minimums,
+		return new DecisionBoundaries(ErrorBudget.certificationLevel(1), minimumPassRate, cap, minimums,
 			maximums(cap, minimums, belowFailures), comparisons);
 	}
 
@@ -81,9 +115,26 @@ public final class Boundaries
 	 */
 	public static ComparisonBoundaries comparison(int cap, int base, int step, int worseFailures)
 	{
+		return comparison(cap, base, step, worseFailures, Contract.DEFAULT_MINIMUM_PASS_RATE);
+	}
+
+	/**
+	 * Returns comparison boundaries at a minimum pass rate.
+	 *
+	 * @param cap the maximum number of outcomes per cell
+	 * @param base the passes that prove better with no failures
+	 * @param step the additional passes that each failure requires
+	 * @param worseFailures the minimum failures for a proven-worse decision when passes are below the proven-better
+	 *   minimum
+	 * @param minimumPassRate the minimum pass rate {@code p_min}
+	 * @return the boundaries
+	 */
+	public static ComparisonBoundaries comparison(int cap, int base, int step, int worseFailures,
+		BigDecimal minimumPassRate)
+	{
 		List<Integer> minimums = minimums(cap, base, step);
 		Comparison comparison = new Comparison(new BigDecimal("0.9000"), new BigDecimal("0.8000"),
-			ErrorBudget.improvementLevel(1, 2), Contract.DEFAULT_MINIMUM_PASS_RATE);
+			ErrorBudget.improvementLevel(1, 2), minimumPassRate);
 		return new ComparisonBoundaries(comparison, minimums, maximums(cap, minimums, worseFailures));
 	}
 

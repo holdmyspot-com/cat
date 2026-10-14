@@ -13,7 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DecisionTable;
 import io.github.cowwoc.cat.common.optimizer.campaign.IncumbentBaseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.PairCounts;
 import io.github.cowwoc.cat.common.optimizer.campaign.Reference;
-import io.github.cowwoc.cat.common.optimizer.campaign.ReadinessGate;
+import io.github.cowwoc.cat.common.optimizer.campaign.CommitGate;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.statistics.PairedComparison;
@@ -157,7 +157,7 @@ final class CellReports
 	}
 
 	/**
-	 * Returns the readiness assessment of a development cell.
+	 * Returns whether a development cell meets the commit gate, and why not.
 	 *
 	 * @param counts the cell's development counts
 	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
@@ -167,11 +167,11 @@ final class CellReports
 	{
 		List<String> reasons = new ArrayList<>();
 		int trials = counts.outcomes();
-		if (trials < ReadinessGate.MINIMUM_TRIALS)
-			reasons.add("fewer than " + ReadinessGate.MINIMUM_TRIALS + " outcomes");
-		if (!ReadinessGate.meetsPassRateThreshold(counts, minimumPassRate))
+		if (trials < CommitGate.MINIMUM_TRIALS)
+			reasons.add("fewer than " + CommitGate.MINIMUM_TRIALS + " outcomes");
+		if (!CommitGate.meetsPassRateThreshold(counts, minimumPassRate))
 		{
-			reasons.add("fewer than " + ReadinessGate.minimumObservedPassRate(minimumPassRate).movePointRight(2).
+			reasons.add("fewer than " + CommitGate.minimumObservedPassRate(minimumPassRate).movePointRight(2).
 				stripTrailingZeros().toPlainString() + "% passes");
 		}
 		List<Integer> batches = counts.completedBatchFailures();
@@ -181,7 +181,7 @@ final class CellReports
 		{
 			int latest = batches.getLast();
 			int previous = batches.get(batches.size() - 2);
-			int limit = ReadinessGate.batchFailureLimit(minimumPassRate);
+			int limit = CommitGate.batchFailureLimit(minimumPassRate);
 			if (Math.max(latest, previous) > limit)
 			{
 				String failures = "failures";
@@ -190,10 +190,10 @@ final class CellReports
 				reasons.add("a latest complete batch has more than " + limit + " " + failures);
 			}
 		}
-		String readiness = "not ready";
-		if (ReadinessGate.isReady(counts, minimumPassRate))
-			readiness = "ready";
-		return new CellReport.Threshold(NOT_CERTIFIED, minimumPassRate, readiness, reasons, null, null, null,
+		String commitGate = "not met";
+		if (CommitGate.isMetInCell(counts, minimumPassRate))
+			commitGate = "met";
+		return new CellReport.Threshold(NOT_CERTIFIED, minimumPassRate, commitGate, reasons, null, null, null,
 			List.of(), List.of(), null);
 	}
 
@@ -244,9 +244,10 @@ final class CellReports
 	}
 
 	/**
-	 * Returns the comparison of each assertion of a cell with one kind of reference trial. Before the comparisons
-	 * start, each assertion of the cell's prompt test is listed as not run. When the candidate is the incumbent, the
-	 * cell has no incumbent comparisons.
+	 * Returns the comparison of each assertion of a cell with one kind of reference trial. When the attempt's minimum
+	 * pass rate implies the comparisons, each assertion of the cell's prompt test is listed as implied by it; otherwise,
+	 * before the comparisons start, each is listed as not run. When the candidate is the incumbent, the cell has no
+	 * incumbent comparisons.
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the attempt
@@ -264,14 +265,20 @@ final class CellReports
 			return reports;
 		}
 		Pairing pairing = attempt.pairing(reference, cell);
-		if (!pairing.isComparing())
+		boolean implied = PairedComparison.isImpliedBy(attempt.procedure().boundaries().minimumPassRate());
+		if (implied || !pairing.isComparing())
 		{
 			Optional<PromptTest> test = campaign.contract().findCell(cell).
 				flatMap(found -> campaign.contract().findTest(found.testId()));
 			if (test.isEmpty())
 				return reports;
+			String state;
+			if (implied)
+				state = CellReport.PairedReport.IMPLIED;
+			else
+				state = NOT_RUN;
 			for (Assertion assertion : test.get().allAssertions())
-				reports.add(new CellReport.PairedReport(assertion.id(), NOT_RUN, 0, 0, 0));
+				reports.add(new CellReport.PairedReport(assertion.id(), state, 0, 0, 0));
 			return reports;
 		}
 

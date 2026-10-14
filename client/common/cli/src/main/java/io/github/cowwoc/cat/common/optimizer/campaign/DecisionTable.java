@@ -151,7 +151,8 @@ public final class DecisionTable
 	 * then is below control once any assertion's control comparison is, and otherwise below incumbent once any
 	 * assertion's incumbent comparison is. It certifies once every assertion's control and incumbent comparisons
 	 * passed, and reaches its cap once its formal outcomes reach the cap and each has its trial of every kind whose
-	 * comparisons have not all passed. A cell has no incumbent comparisons when the candidate is the incumbent.
+	 * comparisons have not all passed. A cell has no incumbent comparisons when the candidate is the incumbent. When
+	 * the attempt's minimum pass rate implies the comparisons, the cell's decision is its minimum-pass-rate part's.
 	 *
 	 * @param attempt the attempt
 	 * @param cell the identifier of the cell
@@ -165,6 +166,8 @@ public final class DecisionTable
 		requireThat(cell, "cell").isNotNull();
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		CellCounts counts = attempt.count(cell);
+		if (PairedComparison.isImpliedBy(boundaries.minimumPassRate()))
+			return minimumDecision(boundaries, counts);
 		Pairing control = attempt.pairing(Reference.CONTROL, cell);
 		if (!control.isComparing())
 		{

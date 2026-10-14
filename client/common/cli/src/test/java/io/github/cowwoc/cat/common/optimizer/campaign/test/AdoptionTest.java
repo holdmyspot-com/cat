@@ -125,7 +125,8 @@ public final class AdoptionTest
 			new UnpairedTrial(Builder.testCase("formatting", "formal"), all),
 			new UnpairedTrial(Builder.testCase("formatting", "casual"), all)), comparisons);
 		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
-			cell("formatting", 100, 0).controlPairing("formatting", pairing).cell("safety", 10, 0).build();
+			boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).cell("formatting", 100, 0).
+			controlPairing("formatting", pairing).cell("safety", 10, 0).build();
 		campaign = TransitionSteps.assignReference(campaign, Reference.CONTROL, "formatting");
 		TrialKey deciding = TransitionSteps.last(campaign);
 		campaign = TransitionSteps.assignReference(campaign, Reference.CONTROL, "formatting");

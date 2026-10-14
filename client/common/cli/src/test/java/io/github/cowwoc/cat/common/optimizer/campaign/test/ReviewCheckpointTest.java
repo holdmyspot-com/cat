@@ -51,7 +51,7 @@ public final class ReviewCheckpointTest
 			isTrue();
 		requireThat(ReviewCheckpoint.isDue(new Builder().confirmed().
 			development("formatting", 198, List.of(0, 0, 1, 1)).build().development(), "formatting",
-			Contract.DEFAULT_MINIMUM_PASS_RATE), "ready").
+			Contract.DEFAULT_MINIMUM_PASS_RATE), "met").
 			isFalse();
 	}
 

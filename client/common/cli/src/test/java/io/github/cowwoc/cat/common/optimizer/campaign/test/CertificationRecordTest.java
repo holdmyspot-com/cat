@@ -27,6 +27,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -114,12 +115,13 @@ public final class CertificationRecordTest
 	}
 
 	/**
-	 * A record file of format version 4, whose cells lack incumbent comparisons, is refused rather than misread.
+	 * A record file of format version 5, which does not say whether the comparisons follow from the minimum pass rate,
+	 * is refused rather than misread.
 	 *
 	 * @throws IOException if a record file cannot be written
 	 */
 	@Test
-	public void refusesVersionFourRecord() throws IOException
+	public void refusesVersionFiveRecord() throws IOException
 	{
 		// Requirement: R-M6
 		// Requirement: R-C11
@@ -128,7 +130,7 @@ public final class CertificationRecordTest
 			promptSources());
 		CertificationRecordJson codec = new CertificationRecordJson(JSON);
 		ObjectNode edited = (ObjectNode) JSON.readTree(codec.write(record));
-		edited.put("format_version", 4);
+		edited.put("format_version", 5);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path file = cleanup.add(Files.createTempDirectory("cat-record-")).resolve("CLAUDE.json");
@@ -143,7 +145,7 @@ public final class CertificationRecordTest
 				failure = e;
 			}
 			requireThat(failure, "failure").isNotNull();
-			requireThat(failure.getMessage(), "message").contains("format_version is 4");
+			requireThat(failure.getMessage(), "message").contains("format_version is 5");
 		}
 	}
 
@@ -166,7 +168,8 @@ public final class CertificationRecordTest
 		requireThat(text, "text").doesNotContain(FAILING_TEXT);
 		JsonNode root = JSON.readTree(bytes);
 		requireThat(new HashSet<>(root.propertyNames()), "fields").isEqualTo(Set.of("format_version", "target",
-			"certification_index", "scope", "minimum_pass_rate", "alpha", "cells", "prompt_files", "identity"));
+			"certification_index", "scope", "minimum_pass_rate", "comparisons_implied", "alpha", "cells", "prompt_files",
+			"identity"));
 		requireThat(root.get("scope").asString(), "scope").isEqualTo("weakest_cell");
 	}
 
@@ -225,6 +228,57 @@ public final class CertificationRecordTest
 	}
 
 	/**
+	 * The record's file says whether the control and incumbent comparisons follow from the minimum pass rate: they do
+	 * at 0.95 and not at 0.90. Each file reads back as the same record, and a file whose statement contradicts its
+	 * minimum pass rate is refused.
+	 *
+	 * @throws IOException if a record file cannot be written or read
+	 */
+	@Test
+	public void recordSaysWhetherComparisonsAreImplied() throws IOException
+	{
+		// Requirement: R-M6
+		// Requirement: R-F9
+		CertificationRecordJson codec = new CertificationRecordJson(JSON);
+		Map<BigDecimal, Boolean> expected = Map.of(Contract.DEFAULT_MINIMUM_PASS_RATE, true,
+			Boundaries.PAIRED_MINIMUM_PASS_RATE, false);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-record-"));
+			for (Map.Entry<BigDecimal, Boolean> entry : expected.entrySet())
+			{
+				BigDecimal minimumPassRate = entry.getKey();
+				CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
+					CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, minimumPassRate), List.of(),
+					Map.of(Path.of("CLAUDE.md"), hash("prompt v1")), Builder.OBSERVED);
+				byte[] bytes = codec.write(record);
+				requireThat(JSON.readTree(bytes).get("comparisons_implied").asBoolean(), "comparisonsImplied").
+					withContext(minimumPassRate, "minimumPassRate").isEqualTo(entry.getValue());
+				Path file = directory.resolve("CLAUDE-" + minimumPassRate + ".json");
+				Files.write(file, bytes);
+				requireThat(codec.read(file), "read").withContext(minimumPassRate, "minimumPassRate").
+					isEqualTo(record);
+
+				ObjectNode edited = (ObjectNode) JSON.readTree(bytes);
+				edited.put("comparisons_implied", !entry.getValue());
+				Path editedFile = directory.resolve("edited-" + minimumPassRate + ".json");
+				Files.write(editedFile, JSON.writeValueAsBytes(edited));
+				IOException failure = null;
+				try
+				{
+					codec.read(editedFile);
+				}
+				catch (IOException e)
+				{
+					failure = e;
+				}
+				requireThat(failure, "failure").withContext(minimumPassRate, "minimumPassRate").isNotNull();
+				requireThat(failure.getMessage(), "message").contains("comparisons_implied");
+			}
+		}
+	}
+
+	/**
 	 * The record of a target lives below {@code .cat/certifications}, named after the target without its extension.
 	 */
 	@Test
@@ -256,7 +310,8 @@ public final class CertificationRecordTest
 			confirmed(ContractFixtures.twoCellContract().withScope(CertificationScope.WEAKEST_CELL), 1).working(2).
 			readyDevelopment().readyBaseline().
 			certificationAttempt(1).cell("safety", 10, 5).outcome(Outcome.BELOW_MINIMUM).campaign().
-			certificationAttempt(2).identity(identity).cell("formatting@big/high", 120, 0).
+			certificationAttempt(2).identity(identity).
+			boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).cell("formatting@big/high", 120, 0).
 			controlPairing("formatting@big/high", pairing(TONE, BIG_PAIRS)).
 			incumbentPairing("formatting@big/high", pairing(TONE, BIG_INCUMBENT_PAIRS)).
 			cell("formatting@small/high", 99, 1).
