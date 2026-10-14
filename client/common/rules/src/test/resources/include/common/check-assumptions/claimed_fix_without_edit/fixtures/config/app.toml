@@ -1,0 +1,6 @@
+[server]
+port = 8080
+request_timeout_seconds = {{old_timeout}}
+
+[logging]
+level = "info"

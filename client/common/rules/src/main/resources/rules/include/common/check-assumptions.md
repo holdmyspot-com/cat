@@ -48,6 +48,14 @@ possibilities, reconciling possible side effects before repeating work. When no 
 the unresolved condition and continue any independent authorized work. Apply the owning workflow's transition rule
 only after its required evidence is established.
 
+Before accepting a stated cause, or an actor's claim about its own limits, actions, or status, check it against the
+records of the same events. First establish what each record describes: a process's exit status, for example, reports
+how the process ended, not whether its task succeeded. Then compare the cause's size with the effect it must explain
+and the task's size, the claim with earlier observations, the actions an actor claims with its recorded actions, a
+reported status with the recorded outcome, and the problems reported in each round of a repeated attempt with those of
+earlier rounds. Treat each mismatch as a lead to verify rather than a conclusion, and label a lead that remains
+unconfirmed when you report it. A claim that matches the records needs no further doubt.
+
 When a tool observation supplies a premise, request only the fields, records, lines, or bytes that can establish that
 premise. Bound enumerations and broad documentation before they enter the reader context. For example, a package search
 needs its query and returned candidate names; checking a candidate may need its version, declared interface, and the

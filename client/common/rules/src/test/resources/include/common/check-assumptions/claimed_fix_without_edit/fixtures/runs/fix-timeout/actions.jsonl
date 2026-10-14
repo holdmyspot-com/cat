@@ -1,0 +1,4 @@
+{"tool": "Read", "path": "config/app.toml"}
+{"tool": "Grep", "pattern": "request_timeout", "path": "."}
+{"tool": "Read", "path": "docs/configuration.md"}
+{"tool": "Read", "path": "config/app.toml"}

@@ -1,0 +1,4 @@
+{"tool": "Read", "path": "config/app.toml"}
+{"tool": "Grep", "pattern": "request_timeout", "path": "."}
+{"tool": "Edit", "path": "config/app.toml", "old": "request_timeout_seconds = {{old_timeout}}", "new": "request_timeout_seconds = {{new_timeout}}"}
+{"tool": "Read", "path": "config/app.toml"}
