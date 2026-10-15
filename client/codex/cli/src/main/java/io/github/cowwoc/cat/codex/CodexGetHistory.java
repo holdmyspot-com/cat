@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.codex;
 
 import io.github.cowwoc.cat.codex.optimizer.RolloutInterruptSignal;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.history.SessionHistory;
 import io.github.cowwoc.cat.codex.secrets.CodexGetHistoryAccess;
@@ -122,19 +123,21 @@ public final class CodexGetHistory
 	 * Returns the Codex home that holds the rollouts.
 	 *
 	 * @param environment the caller's environment
-	 * @return {@code CODEX_HOME} when it is set and non-blank, otherwise {@code .codex} below {@code HOME}
-	 * @throws IOException if {@code CODEX_HOME} and {@code HOME} are both unset or blank
+	 * @return {@code CODEX_HOME} when it is set and non-blank, otherwise {@code .codex} below the user's home directory
+	 *   ({@code HOME}, or {@code USERPROFILE} on Windows)
+	 * @throws IOException if {@code CODEX_HOME} and the user's home directory are both unset or blank
 	 */
 	private static Path codexHome(Map<String, String> environment) throws IOException
 	{
 		String configured = environment.get("CODEX_HOME");
-		String home = environment.get("HOME");
+		String homeVariable = Platform.current().homeVariable();
+		String home = environment.get(homeVariable);
 		if (home != null && !home.isBlank())
 			return RolloutInterruptSignal.codexHome(Path.of(home.strip()), configured);
 		if (configured == null || configured.isBlank())
 		{
-			throw new IOException("Neither CODEX_HOME nor HOME is set, so the Codex home that holds the rollouts " +
-				"cannot be located. Set HOME, or set CODEX_HOME to the Codex home.");
+			throw new IOException("Neither CODEX_HOME nor " + homeVariable + " is set, so the Codex home that holds " +
+				"the rollouts cannot be located. Set " + homeVariable + ", or set CODEX_HOME to the Codex home.");
 		}
 		return Path.of(configured.strip());
 	}

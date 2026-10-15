@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.claude;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.HookScope;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,7 +32,8 @@ final class ClaudeHookScope
 	 */
 	static HookScope open(Map<String, String> environment) throws IOException
 	{
-		return HookScope.fromEnvironment(environment, "Claude", "CLAUDE_PLUGIN_ROOT", "HOME");
+		return HookScope.fromEnvironment(environment, "Claude", "CLAUDE_PLUGIN_ROOT",
+			Platform.current().homeVariable());
 	}
 
 	/**

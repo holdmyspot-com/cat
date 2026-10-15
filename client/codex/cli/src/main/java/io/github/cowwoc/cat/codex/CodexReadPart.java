@@ -322,19 +322,6 @@ public final class CodexReadPart
 	}
 
 	/**
-	 * Returns the environment variable that names the user's home folder, in which Codex keeps its {@code .codex}
-	 * folder when {@code CODEX_HOME} is unset. Codex on Windows ignores {@code HOME}, which Git Bash and Cygwin set.
-	 *
-	 * @return {@code USERPROFILE} on Windows, otherwise {@code HOME}
-	 */
-	private static String homeVariable()
-	{
-		if (Platform.current().isWindows())
-			return "USERPROFILE";
-		return "HOME";
-	}
-
-	/**
 	 * Returns the {@code tool_output_token_limit} of Codex's {@code config.toml}.
 	 *
 	 * @param environment the environment
@@ -349,7 +336,10 @@ public final class CodexReadPart
 			if (codexHome != null && !codexHome.isEmpty())
 				configuration = Path.of(codexHome, "config.toml");
 			else
-				configuration = Path.of(environment.getOrDefault(homeVariable(), ""), ".codex", "config.toml");
+			{
+				String home = environment.getOrDefault(Platform.current().homeVariable(), "");
+				configuration = Path.of(home, ".codex", "config.toml");
+			}
 		}
 		catch (InvalidPathException _)
 		{

@@ -98,6 +98,20 @@ public enum Platform
 	}
 
 	/**
+	 * Returns the environment variable that names the current user's home directory. Windows sets
+	 * {@code USERPROFILE}, which Windows programs such as Codex and Claude Code read; only POSIX layers such as Git Bash
+	 * and Cygwin set {@code HOME} there, so a program that a Windows program starts, such as a Codex hook, may lack it.
+	 *
+	 * @return {@code USERPROFILE} on Windows, otherwise {@code HOME}
+	 */
+	public String homeVariable()
+	{
+		if (isWindows())
+			return "USERPROFILE";
+		return "HOME";
+	}
+
+	/**
 	 * Returns the identifier used in distribution filenames.
 	 *
 	 * @return the identifier

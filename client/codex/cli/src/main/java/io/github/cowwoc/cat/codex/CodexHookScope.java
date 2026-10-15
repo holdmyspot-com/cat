@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.codex;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.HookScope;
 import java.io.IOException;
 import java.util.Map;
@@ -26,6 +27,6 @@ final class CodexHookScope
 	 */
 	static HookScope open(Map<String, String> environment) throws IOException
 	{
-		return HookScope.fromEnvironment(environment, "Codex", "PLUGIN_ROOT", "HOME");
+		return HookScope.fromEnvironment(environment, "Codex", "PLUGIN_ROOT", Platform.current().homeVariable());
 	}
 }

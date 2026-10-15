@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.CodexSubagentStartHook;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.ByteArrayInputStream;
@@ -65,7 +66,7 @@ public final class CodexSubagentStartHookTest
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
-		harnessEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
+		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
 		CodexSubagentStartHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)), output,
 			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));

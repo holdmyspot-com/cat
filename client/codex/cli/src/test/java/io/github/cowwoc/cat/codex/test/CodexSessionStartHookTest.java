@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.CodexSessionStartHook;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
@@ -125,7 +126,7 @@ public final class CodexSessionStartHookTest
 				"personal guidance");
 
 			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(),
-				"CODEX_HOME", codexHome.toString(), "HOME", userHome.toString()), Path.of("."));
+				"CODEX_HOME", codexHome.toString(), Platform.current().homeVariable(), userHome.toString()), Path.of("."));
 
 			requireThat(sessionRules(result), "rules").contains("personal guidance");
 			requireThat(result.error(), "error").isEmpty();
@@ -447,7 +448,7 @@ public final class CodexSessionStartHookTest
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
-		harnessEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
+		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
 		CodexSessionStartHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)), output,
 			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));

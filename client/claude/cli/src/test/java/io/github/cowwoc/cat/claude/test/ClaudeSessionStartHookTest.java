@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.claude.ClaudeSessionEndHook;
 import io.github.cowwoc.cat.claude.ClaudeSessionStartHook;
 import io.github.cowwoc.cat.claude.ClaudeSubagentStartHook;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
@@ -88,7 +89,8 @@ public final class ClaudeSessionStartHookTest
 			write(userHome, ".cat/rules/common/personal.md", "personal guidance");
 
 			HookResult result = invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
-				"CLAUDE_CONFIG_DIR", configuration.toString(), "HOME", userHome.toString()), project);
+				"CLAUDE_CONFIG_DIR", configuration.toString(), Platform.current().homeVariable(), userHome.toString()),
+				project);
 
 			requireThat(completeContext(result), "context").contains("personal guidance");
 			requireThat(result.error(), "error").isEmpty();
@@ -531,7 +533,7 @@ public final class ClaudeSessionStartHookTest
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
-		harnessEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
+		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
 		ClaudeSessionStartHook.run(args, new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output,
 			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
@@ -553,7 +555,7 @@ public final class ClaudeSessionStartHookTest
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
-		harnessEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
+		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
 		ClaudeSubagentStartHook.run(new String[0], new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output,
 			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
@@ -574,7 +576,7 @@ public final class ClaudeSessionStartHookTest
 		assert workingDirectory != null;
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
-		harnessEnvironment.putIfAbsent("HOME", workingDirectory.resolve("home").toString());
+		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
 		ClaudeSessionEndHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)),
 			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
 		return error.toString(UTF_8);

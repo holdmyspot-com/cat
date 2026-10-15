@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.claude.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.claude.ClaudeGetHistory;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -65,8 +66,8 @@ public final class ClaudeGetHistoryTest
 	}
 
 	/**
-	 * Verifies that without {@code CLAUDE_CONFIG_DIR} the transcript is read from {@code .claude} below {@code HOME},
-	 * the environment of an ordinary Claude Code tool shell.
+	 * Verifies that without {@code CLAUDE_CONFIG_DIR} the transcript is read from {@code .claude} below the user's home
+	 * directory ({@code HOME}, or {@code USERPROFILE} on Windows), the environment of an ordinary Claude Code tool shell.
 	 */
 	@Test
 	public void readsTranscriptBelowHomeByDefault() throws IOException
@@ -80,7 +81,8 @@ public final class ClaudeGetHistoryTest
 				".jsonl");
 			Files.writeString(transcript, "{\"type\":\"user\"}\n");
 
-			String result = ClaudeGetHistory.execute(Map.of("HOME", home.toString()), new String[]{sessionId, "analyze"});
+			String result = ClaudeGetHistory.execute(Map.of(Platform.current().homeVariable(), home.toString()),
+				new String[]{sessionId, "analyze"});
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
 				contains("records=1");
@@ -88,15 +90,23 @@ public final class ClaudeGetHistoryTest
 	}
 
 	/**
-	 * Verifies the command names both variables when neither {@code CLAUDE_CONFIG_DIR} nor {@code HOME} locates the
-	 * Claude Code configuration directory.
+	 * Verifies the command names both variables when neither {@code CLAUDE_CONFIG_DIR} nor the variable that names the
+	 * user's home directory locates the Claude Code configuration directory.
 	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*CLAUDE_CONFIG_DIR.*HOME.*")
-	public void rejectsMissingConfigDirectoryAndHome() throws IOException
+	@Test
+	public void rejectsMissingConfigDirectoryAndHome()
 	{
 		// Requirement: R-I5
-		ClaudeGetHistory.execute(Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
+		try
+		{
+			ClaudeGetHistory.execute(Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
+			throw new AssertionError("The command accepted an environment without a configuration directory");
+		}
+		catch (IOException e)
+		{
+			requireThat(e.getMessage(), "message").contains("CLAUDE_CONFIG_DIR").
+				contains(Platform.current().homeVariable());
+		}
 	}
 
 	/**

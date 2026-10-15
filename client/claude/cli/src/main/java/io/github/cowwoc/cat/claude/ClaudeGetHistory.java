@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.claude;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.history.SessionHistory;
 import java.io.IOException;
@@ -162,20 +163,22 @@ public final class ClaudeGetHistory
 	 * Returns the Claude Code configuration directory that holds the transcripts.
 	 *
 	 * @param environment the caller's environment
-	 * @return {@code CLAUDE_CONFIG_DIR} when it is set and non-blank, otherwise {@code .claude} below {@code HOME}
-	 * @throws IOException if {@code CLAUDE_CONFIG_DIR} and {@code HOME} are both unset or blank
+	 * @return {@code CLAUDE_CONFIG_DIR} when it is set and non-blank, otherwise {@code .claude} below the user's home
+	 *   directory ({@code HOME}, or {@code USERPROFILE} on Windows)
+	 * @throws IOException if {@code CLAUDE_CONFIG_DIR} and the user's home directory are both unset or blank
 	 */
 	private static Path configurationDirectory(Map<String, String> environment) throws IOException
 	{
 		String configured = environment.get("CLAUDE_CONFIG_DIR");
-		String home = environment.get("HOME");
+		String homeVariable = Platform.current().homeVariable();
+		String home = environment.get(homeVariable);
 		if (home != null && !home.isBlank())
 			return ClaudeConfiguration.resolveDirectory(Path.of(home.strip()), configured);
 		if (configured == null || configured.isBlank())
 		{
-			throw new IOException("Neither CLAUDE_CONFIG_DIR nor HOME is set, so the Claude Code configuration " +
-				"directory that holds the transcripts cannot be located. Set HOME, or set CLAUDE_CONFIG_DIR to the Claude " +
-				"Code configuration directory.");
+			throw new IOException("Neither CLAUDE_CONFIG_DIR nor " + homeVariable + " is set, so the Claude Code " +
+				"configuration directory that holds the transcripts cannot be located. Set " + homeVariable + ", or set " +
+				"CLAUDE_CONFIG_DIR to the Claude Code configuration directory.");
 		}
 		// Preserve this command's path trimming when it receives only an explicit configuration directory.
 		return ClaudeConfiguration.resolveDirectory(null, configured.strip());

@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.codex.CodexGetHistory;
 import io.github.cowwoc.cat.codex.secrets.CodexGetHistorySecrets;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -63,8 +64,8 @@ public final class CodexGetHistoryTest
 				"rollout-2026-08-14T01-00-00-" + threadId + ".jsonl");
 			Files.writeString(transcript, "{\"type\":\"session_meta\"}\n");
 
-			String result = CodexGetHistorySecrets.access().execute(Map.of("HOME", home.toString()),
-				new String[]{threadId, "analyze"});
+			String result = CodexGetHistorySecrets.access().execute(Map.of(Platform.current().homeVariable(),
+				home.toString()), new String[]{threadId, "analyze"});
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
 				contains("records=1");

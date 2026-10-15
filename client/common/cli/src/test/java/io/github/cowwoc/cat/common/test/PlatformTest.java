@@ -50,6 +50,24 @@ public final class PlatformTest
 	}
 
 	/**
+	 * Verifies that Windows names the user's home directory in {@code USERPROFILE} and the other platforms in
+	 * {@code HOME}.
+	 */
+	@Test
+	public void namesHomeVariable()
+	{
+		for (Platform platform : Platform.values())
+		{
+			String expected;
+			if (platform.isWindows())
+				expected = "USERPROFILE";
+			else
+				expected = "HOME";
+			requireThat(platform.homeVariable(), platform.id()).isEqualTo(expected);
+		}
+	}
+
+	/**
 	 * Verifies unsupported operating systems are rejected.
 	 */
 	@Test(expectedExceptions = UnsupportedOperationException.class,
