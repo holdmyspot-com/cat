@@ -351,7 +351,8 @@ public final class StagedSourceTest
 			}
 			catch (WorkspaceException e)
 			{
-				requireThat(e.getMessage(), "message").contains("loop-a").contains("docs/self").contains("cycle");
+				requireThat(e.getMessage(), "message").contains("loop-a").contains(Path.of("docs/self").toString()).
+					contains("cycle");
 			}
 			requireThat(childCount(storage), "leftovers").isEqualTo(0L);
 		}
@@ -534,7 +535,7 @@ public final class StagedSourceTest
 	 *
 	 * @throws IOException if the fixture cannot be created, or because the base lacks the dependent
 	 */
-	@Test(expectedExceptions = WorkspaceException.class, expectedExceptionsMessageRegExp = ".*bin/run-part.*")
+	@Test(expectedExceptions = WorkspaceException.class, expectedExceptionsMessageRegExp = ".*bin[/\\\\]run-part.*")
 	public void refusesMissingPluginDependent() throws IOException
 	{
 		// Requirement: R-W10

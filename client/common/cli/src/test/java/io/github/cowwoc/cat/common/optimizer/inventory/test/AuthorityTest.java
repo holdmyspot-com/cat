@@ -142,7 +142,8 @@ public final class AuthorityTest
 	 * Verifies that the authority rejects a prompt source given as an absolute path, because prompt sources lie inside
 	 * the project.
 	 */
-	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*/project/prompts.*")
+	@Test(expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*[/\\\\]project[/\\\\]prompts.*")
 	public void rejectsAbsolutePromptSource()
 	{
 		new Authority(Set.of(Path.of("/project/prompts").toAbsolutePath()), Set.of(), NO_LINKS);
