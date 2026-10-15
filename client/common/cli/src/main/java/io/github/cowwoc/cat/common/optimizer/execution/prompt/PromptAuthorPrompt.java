@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellCounts;
@@ -115,7 +116,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 		List<Path> sorted = Set.copyOf(paths).stream().sorted().toList();
 		if (sorted.isEmpty())
 			return "- none";
-		return sorted.stream().map(path -> "- " + path).collect(Collectors.joining("\n"));
+		return sorted.stream().map(path -> "- " + PortablePaths.text(path)).collect(Collectors.joining("\n"));
 	}
 
 	/**
@@ -129,7 +130,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 		if (links.isEmpty())
 			return "- none";
 		return new TreeMap<>(links).entrySet().stream().
-			map(entry -> "- " + entry.getKey() + " -> " + entry.getValue()).
+			map(entry -> "- " + PortablePaths.text(entry.getKey()) + " -> " + PortablePaths.text(entry.getValue())).
 			collect(Collectors.joining("\n"));
 	}
 
@@ -167,9 +168,9 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 		for (AuthorityWarning warning : warnings)
 		{
 			StringBuilder line = new StringBuilder("- requirement ").append(warning.requirement()).append(": ").
-				append(warning.path());
+				append(PortablePaths.text(warning.path()));
 			if (!warning.target().equals(warning.path()))
-				line.append(" -> ").append(warning.target());
+				line.append(" -> ").append(PortablePaths.text(warning.target()));
 			line.append(" (").append(EnumNames.lowerCase(warning.limit())).append(')');
 			lines.add(line.toString());
 		}
@@ -317,7 +318,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 			for (HunkEvidence hunk : diagnosis.hunks())
 			{
 				hunks.addObject().put("id", hunk.id()).
-					put("path", hunk.path().toString()).
+					put("path", PortablePaths.text(hunk.path())).
 					put("before_start", hunk.beforeStart()).
 					put("before_end", hunk.beforeEnd()).
 					put("after_start", hunk.afterStart()).

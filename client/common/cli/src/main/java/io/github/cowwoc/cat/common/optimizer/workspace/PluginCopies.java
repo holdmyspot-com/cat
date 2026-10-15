@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
@@ -75,7 +76,8 @@ final class PluginCopies
 				if (!Files.isDirectory(directory, NOFOLLOW_LINKS))
 				{
 					throw new WorkspaceException("The staged source " + source + " has no plugin root " +
-						root.directory() + ". Run revise so that the contract author names the plugin's directory.");
+						PortablePaths.text(root.directory()) + ". Run revise so that the contract author names the plugin's " +
+						"directory.");
 				}
 				yield directory;
 			}
@@ -128,7 +130,7 @@ final class PluginCopies
 		StringJoiner text = new StringJoiner("\n");
 		text.add(plugin.baseDigest());
 		for (PluginUnderTest.Mapping mapping : plugin.mappings())
-			text.add(mapping.source() + "\0" + mapping.target());
+			text.add(PortablePaths.text(mapping.source()) + "\0" + PortablePaths.text(mapping.target()));
 		for (Dependent dependent : removals.dependents())
 		{
 			String removal = switch (dependent.removal())
@@ -137,7 +139,7 @@ final class PluginCopies
 				case Dependent.Span span -> "span\0" + span.text();
 				case Dependent.HookRegistration hook -> "hook\0" + hook.event() + "\0" + hook.command();
 			};
-			text.add("remove\0" + dependent.path() + "\0" + removal);
+			text.add("remove\0" + PortablePaths.text(dependent.path()) + "\0" + removal);
 		}
 		return Sha256.of(text.toString().getBytes(UTF_8));
 	}

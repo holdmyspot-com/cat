@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.PortableFiles;
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
@@ -665,9 +666,9 @@ public final class Delivery
 		List<String> existing = new ArrayList<>();
 		for (DeliveryChange change : changes)
 		{
-			targets.add(change.target().toString());
+			targets.add(PortablePaths.text(change.target()));
 			if (change.postimage().isPresent())
-				existing.add(change.target().toString());
+				existing.add(PortablePaths.text(change.target()));
 		}
 		if (targets.isEmpty())
 			return "";

@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.git.replay;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -68,7 +69,7 @@ public final class PatchArtifacts
 		Path resolvedPatch = patchFile.toAbsolutePath().normalize();
 		if (!resolvedPatch.startsWith(directory))
 			throw new IOException("Topic-replay patch file must be below the manifest directory: " + patchFile);
-		String relativePatch = directory.relativize(resolvedPatch).toString().replace('\\', '/');
+		String relativePatch = PortablePaths.text(directory.relativize(resolvedPatch));
 		return new PatchArtifact(relativePatch, sha256(resolvedPatch));
 	}
 

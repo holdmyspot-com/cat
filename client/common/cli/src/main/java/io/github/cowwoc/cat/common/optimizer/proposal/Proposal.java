@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
@@ -452,7 +453,7 @@ public final class Proposal
 	private String linksAndConflictsRefusal()
 	{
 		String linksMessage = "";
-		List<String> blocking = links.blocking().stream().map(entry -> entry.link().toString()).toList();
+		List<String> blocking = links.blocking().stream().map(entry -> PortablePaths.text(entry.link())).toList();
 		if (!blocking.isEmpty())
 		{
 			linksMessage = "These symbolic links block confirmation until they are resolved: " +

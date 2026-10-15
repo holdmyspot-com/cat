@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.inventory;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import java.util.List;
 
 /**
@@ -38,10 +39,10 @@ public final class UnifiedDiff
 	{
 		List<String> before = Hunks.lines(file.before()).orElse(null);
 		List<String> after = Hunks.lines(file.after()).orElse(null);
+		String path = PortablePaths.text(file.path());
 		if (file.before() != null && before == null || file.after() != null && after == null)
 		{
-			diff.append("Binary files a/").append(file.path()).append(" and b/").append(file.path()).
-				append(" differ\n");
+			diff.append("Binary files a/").append(path).append(" and b/").append(path).append(" differ\n");
 			return;
 		}
 		if (before == null)
@@ -52,12 +53,12 @@ public final class UnifiedDiff
 		if (file.before() == null)
 			diff.append("/dev/null");
 		else
-			diff.append("a/").append(file.path());
+			diff.append("a/").append(path);
 		diff.append("\n+++ ");
 		if (file.after() == null)
 			diff.append("/dev/null");
 		else
-			diff.append("b/").append(file.path());
+			diff.append("b/").append(path);
 		diff.append('\n');
 
 		List<Hunk> hunks;

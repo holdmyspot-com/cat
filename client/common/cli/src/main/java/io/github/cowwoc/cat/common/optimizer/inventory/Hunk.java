@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import java.nio.file.Path;
 
 /**
@@ -58,6 +59,6 @@ public record Hunk(Path path, int ordinal, int beforeStart, int beforeEnd, int a
 	 */
 	public String id()
 	{
-		return path + "#" + ordinal;
+		return PortablePaths.text(path) + "#" + ordinal;
 	}
 }

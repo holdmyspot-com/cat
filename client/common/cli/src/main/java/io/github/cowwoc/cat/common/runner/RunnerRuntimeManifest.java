@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.runner;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -144,7 +145,7 @@ public final class RunnerRuntimeManifest
 		Path path = Path.of(fields[2]);
 		if (path.isAbsolute() || path.normalize().startsWith("..") || !isRuntimePath(path))
 			throw new IOException("Unsafe runner runtime manifest path at " + manifest + ":" + lineNumber);
-		return new Entry(fields[0], fields[1], path.toString().replace(path.getFileSystem().getSeparator(), "/"));
+		return new Entry(fields[0], fields[1], PortablePaths.text(path));
 	}
 
 	/**
@@ -201,7 +202,7 @@ public final class RunnerRuntimeManifest
 		if (Files.isSymbolicLink(file))
 		{
 			kind = "link";
-			fingerprint = sha256(Files.readSymbolicLink(file).toString());
+			fingerprint = sha256(PortablePaths.text(Files.readSymbolicLink(file)));
 		}
 		else
 		{
@@ -210,9 +211,7 @@ public final class RunnerRuntimeManifest
 				kind = "generated-file";
 			fingerprint = sha256(file);
 		}
-		return new Entry(kind, fingerprint, root.relativize(file).toString().replace(file.getFileSystem().
-				getSeparator(),
-			"/"));
+		return new Entry(kind, fingerprint, PortablePaths.text(root.relativize(file)));
 	}
 
 	/**

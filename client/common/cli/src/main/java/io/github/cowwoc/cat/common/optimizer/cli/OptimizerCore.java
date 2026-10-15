@@ -6,6 +6,7 @@ import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.lock
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.PluginInfo;
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
@@ -180,7 +181,7 @@ public final class OptimizerCore implements Core
 		{
 			TrialProfile binding = profiles.binding(Files.readString(staged.resolve(file), StandardCharsets.UTF_8));
 			if (binding.isBound())
-				bindings.put(file.toString(), binding);
+				bindings.put(PortablePaths.text(file), binding);
 		}
 		return new ProfileEvidence(inventory, profiles.ranking(), bindings);
 	}
@@ -347,7 +348,7 @@ public final class OptimizerCore implements Core
 	private static CommandRefusedException refused(Header header)
 	{
 		String owner = header.harness().commandName();
-		return new CommandRefusedException("Campaign " + header.id() + " for " + header.target() +
+		return new CommandRefusedException("Campaign " + header.id() + " for " + PortablePaths.text(header.target()) +
 			" was started by " + owner + " and can only be resumed there. Use `status " + header.id() +
 			"` to read it from here.");
 	}
@@ -687,7 +688,7 @@ public final class OptimizerCore implements Core
 			return report(root, require(store, header.get().id(), false), null, null);
 		if (record.isEmpty())
 		{
-			String absent = "no campaign or certification record exists for " + relative + ".";
+			String absent = "no campaign or certification record exists for " + PortablePaths.text(relative) + ".";
 			if (isId)
 				throw new CommandRefusedException("No campaign has the identifier " + subject + ", and " + absent);
 			throw new CommandRefusedException("N" + absent.substring(1));
@@ -867,7 +868,7 @@ public final class OptimizerCore implements Core
 	private static String unheld(ForkView fork, Participants participants)
 	{
 		FileInventory held = fork.inventory();
-		return participants.existing().stream().filter(path -> !held.holds(path)).map(Path::toString).
+		return participants.existing().stream().filter(path -> !held.holds(path)).map(PortablePaths::text).
 			collect(Collectors.joining(", "));
 	}
 
@@ -1702,7 +1703,7 @@ public final class OptimizerCore implements Core
 		StringBuilder lines = new StringBuilder();
 		for (Path path : scope.loaderConfiguration().stream().sorted().toList())
 		{
-			lines.append(path).append('=');
+			lines.append(PortablePaths.text(path)).append('=');
 			Optional<FileEntry> entry = files.entry(path);
 			if (entry.isEmpty())
 				lines.append("absent");
@@ -1711,7 +1712,7 @@ public final class OptimizerCore implements Core
 				switch (entry.get())
 				{
 					case FileEntry.RegularFile file -> lines.append(file.contentHash().hex());
-					case FileEntry.SymbolicLink link -> lines.append("link:").append(link.target());
+					case FileEntry.SymbolicLink link -> lines.append("link:").append(PortablePaths.text(link.target()));
 					case FileEntry.SpecialFile _ -> lines.append("special");
 				}
 			}

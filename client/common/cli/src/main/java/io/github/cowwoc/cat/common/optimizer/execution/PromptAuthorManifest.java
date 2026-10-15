@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.HunkEvidence;
@@ -140,7 +141,8 @@ public record PromptAuthorManifest(List<PromptAuthorKind> kinds, List<HunkEviden
 					!file.contentHash().equals(content.hash()) ||
 					!new String(content.bytes(), StandardCharsets.UTF_8).contains(quotation.text()))
 				{
-					violations.add("Conflict quotation is absent from the confirmed prompt system: " + quotation.path());
+					violations.add("Conflict quotation is absent from the confirmed prompt system: " +
+						PortablePaths.text(quotation.path()));
 				}
 			}
 		}
@@ -247,8 +249,8 @@ public record PromptAuthorManifest(List<PromptAuthorKind> kinds, List<HunkEviden
 			if (contract.findTest(evidence.dissimilar()).isPresent())
 				continue;
 			List<String> testIds = contract.tests().stream().map(PromptTest::id).toList();
-			violations.add("Hunk at " + evidence.path() + " (working lines " + evidence.beforeStart() + ".." +
-				evidence.beforeEnd() + ", prompt author lines " + evidence.afterStart() + ".." + evidence.afterEnd() +
+			violations.add("Hunk at " + PortablePaths.text(evidence.path()) + " (working lines " + evidence.beforeStart() +
+				".." + evidence.beforeEnd() + ", prompt author lines " + evidence.afterStart() + ".." + evidence.afterEnd() +
 				") names the dissimilar case '" + evidence.dissimilar() + "', which is not a test of the confirmed " +
 				"contract. Name the id of one of its tests: " + testIds);
 		}
@@ -278,11 +280,11 @@ public record PromptAuthorManifest(List<PromptAuthorKind> kinds, List<HunkEviden
 					violations.add("Duplicate evidence for hunk: " + hunk.id());
 			}
 			if (!matched)
-				violations.add("Manifest range contains no changed hunk: " + evidence.path());
+				violations.add("Manifest range contains no changed hunk: " + PortablePaths.text(evidence.path()));
 			for (String failure : evidence.failures())
 			{
 				if (!received.contains(failure))
-					violations.add("Unknown failure " + failure + " cited at " + evidence.path());
+					violations.add("Unknown failure " + failure + " cited at " + PortablePaths.text(evidence.path()));
 			}
 		}
 		for (Hunk hunk : changed)

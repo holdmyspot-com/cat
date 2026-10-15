@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
@@ -46,7 +47,7 @@ public sealed interface PluginUnderTest
 		if (path.isAbsolute() || text.isEmpty() || !path.normalize().equals(path) || path.startsWith(".."))
 		{
 			throw new IllegalArgumentException(name + " must be a normalized relative path that stays below its " +
-				"root: " + path);
+				"root: " + PortablePaths.text(path));
 		}
 	}
 
@@ -126,7 +127,7 @@ public sealed interface PluginUnderTest
 			for (Mapping mapping : mappings)
 			{
 				if (!sources.add(mapping.source()))
-					throw new IllegalArgumentException("The source " + mapping.source() + " is mapped twice");
+					throw new IllegalArgumentException("The source " + PortablePaths.text(mapping.source()) + " is mapped twice");
 			}
 		}
 

@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
@@ -185,8 +186,8 @@ public final class Workspace implements WorkspacePort
 		{
 			case RegularFile file -> tree.writeFile(candidate, key, file, location);
 			case SymbolicLink link -> Files.createSymbolicLink(location, link.target());
-			case SpecialFile _ -> throw new IOException("The fork records " + key + " as a special file, which a " +
-				"worktree cannot hold.");
+			case SpecialFile _ -> throw new IOException("The fork records " + PortablePaths.text(key) + " as a special " +
+				"file, which a worktree cannot hold.");
 		}
 	}
 }

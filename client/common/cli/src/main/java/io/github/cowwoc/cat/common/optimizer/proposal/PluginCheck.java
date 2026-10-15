@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
@@ -105,7 +106,7 @@ public record PluginCheck(Optional<PluginUnderTest> plugin, List<String> refusal
 			{
 				if (!holdsManifest(project, root.directory()))
 				{
-					refusals.add("The plugin root `" + root.directory() + "` holds neither " +
+					refusals.add("The plugin root `" + PortablePaths.text(root.directory()) + "` holds neither " +
 						quoted(PluginManifest.MANIFESTS) + ". Run revise with feedback that names the directory " +
 						"that holds the plugin's manifest.");
 				}
@@ -175,7 +176,7 @@ public record PluginCheck(Optional<PluginUnderTest> plugin, List<String> refusal
 							differing.add(path);
 					}
 					else
-						missing.add("`" + path + "` → `" + mapped + "`");
+						missing.add("`" + PortablePaths.text(path) + "` → `" + PortablePaths.text(mapped) + "`");
 				}
 			}
 		}
@@ -199,7 +200,7 @@ public record PluginCheck(Optional<PluginUnderTest> plugin, List<String> refusal
 			case PluginUnderTest.Root root ->
 			{
 				if (promptFile.startsWith(root.directory()))
-					return Optional.of("`" + root.directory() + "`");
+					return Optional.of("`" + PortablePaths.text(root.directory()) + "`");
 			}
 			case PluginUnderTest.Built built ->
 			{
@@ -213,7 +214,7 @@ public record PluginCheck(Optional<PluginUnderTest> plugin, List<String> refusal
 		for (Path directory = promptFile.getParent(); directory != null; directory = directory.getParent())
 		{
 			if (holdsManifest(project, directory))
-				return Optional.of("`" + directory + "`");
+				return Optional.of("`" + PortablePaths.text(directory) + "`");
 		}
 		if (holdsManifest(project, Path.of("")))
 			return Optional.of("`.`");
@@ -245,6 +246,6 @@ public record PluginCheck(Optional<PluginUnderTest> plugin, List<String> refusal
 	 */
 	private static String quoted(List<Path> paths)
 	{
-		return String.join(" nor ", paths.stream().map(path -> "`" + path + "`").toList());
+		return String.join(" nor ", paths.stream().map(path -> "`" + PortablePaths.text(path) + "`").toList());
 	}
 }

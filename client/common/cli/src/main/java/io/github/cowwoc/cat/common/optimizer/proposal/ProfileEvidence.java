@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileBinding;
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
@@ -99,7 +100,7 @@ public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking rankin
 		String stripped = path.strip();
 		try
 		{
-			return Path.of(stripped).normalize().toString();
+			return PortablePaths.text(Path.of(stripped).normalize());
 		}
 		catch (InvalidPathException _)
 		{

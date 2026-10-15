@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
@@ -498,7 +499,7 @@ public final class Commands
 		ObjectNode root = json.createObjectNode();
 		root.put("status", Outcome.CERTIFIED.label());
 		root.putNull("campaign");
-		root.put("target", record.target().toString());
+		root.put("target", PortablePaths.text(record.target()));
 		root.put("attempt", record.certificationIndex());
 		root.put("scope", record.scope().id());
 		DeliveryJson.applicability(root.putObject("applicability"), certification.applicability());

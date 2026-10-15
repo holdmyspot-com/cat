@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.codex.runner.CodexConnectionConfiguration;
 import io.github.cowwoc.cat.common.BoundedInput;
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.runner.PluginManifest;
 
 import java.io.IOException;
@@ -149,7 +150,7 @@ public final class CodexHookApprovals
 		{
 			return;
 		}
-		String key = plugin.relativize(file.normalize()).toString().replace('\\', '/');
+		String key = PortablePaths.text(plugin.relativize(file.normalize()));
 		sources.add(new HookSource(key, declaration));
 	}
 

@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.util.ArrayList;
@@ -153,7 +154,7 @@ public final class Hunks
 			FileContent content;
 			if (before == null || after == null)
 			{
-				if (retained.contains(file.path() + "#1"))
+				if (retained.contains(PortablePaths.text(file.path()) + "#1"))
 					content = file.after();
 				else
 					content = file.before();

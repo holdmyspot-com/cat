@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import java.nio.file.Path;
 
 /**
@@ -35,7 +36,7 @@ public record Dependent(Location location, Path path, Removal removal, String se
 		if (path.isAbsolute() || text.isEmpty() || !path.normalize().equals(path) || path.startsWith(".."))
 		{
 			throw new IllegalArgumentException("path must be a normalized relative path that stays below its root: " +
-				path);
+				PortablePaths.text(path));
 		}
 		requireThat(removal, "removal").isNotNull();
 		requireThat(serves, "serves").isNotBlank();

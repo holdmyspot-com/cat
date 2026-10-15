@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
@@ -369,7 +370,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	private static String cited(Path project, Path file)
 	{
 		if (file.startsWith(project))
-			return project.relativize(file).toString();
+			return PortablePaths.text(project.relativize(file));
 		return file.toString();
 	}
 

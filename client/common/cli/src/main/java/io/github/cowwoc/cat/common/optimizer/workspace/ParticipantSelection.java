@@ -6,6 +6,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
@@ -165,7 +166,7 @@ record ParticipantSelection(Set<Path> added, Set<Path> selected)
 				text.append(SELECTED);
 			else
 				text.append(LEFT_OUT);
-			text.append(path).append('\0');
+			text.append(PortablePaths.text(path)).append('\0');
 		}
 		Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
 		Files.writeString(temporary, text, UTF_8);

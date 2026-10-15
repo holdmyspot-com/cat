@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.runner;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -40,7 +41,8 @@ public final class LocalMarketplace
 			{
 				if (Files.isSymbolicLink(directory))
 				{
-					throw new IOException("Artifact directory is a symbolic link: " + artifact.relativize(directory) +
+					throw new IOException("Artifact directory is a symbolic link: " +
+						PortablePaths.text(artifact.relativize(directory)) +
 						". Replace it with a real directory before installing the artifact.");
 				}
 				Files.createDirectories(plugin.resolve(artifact.relativize(directory)));
@@ -58,8 +60,8 @@ public final class LocalMarketplace
 					if (!resolvedTarget.startsWith(artifact) || !Files.isRegularFile(resolvedTarget,
 						NOFOLLOW_LINKS))
 					{
-						throw new IOException("Artifact symbolic link " + artifact.relativize(file) + " points to " +
-				target +
+						throw new IOException("Artifact symbolic link " + PortablePaths.text(artifact.relativize(file)) +
+							" points to " + PortablePaths.text(target) +
 							", which is outside the artifact or not a regular file. Replace it with a link to a regular file " +
 
 							"inside the artifact.");

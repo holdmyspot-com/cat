@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 
 import java.nio.ByteBuffer;
@@ -242,8 +243,8 @@ public final class DependentRemoval
 		Path path = dependent.path();
 		return switch (dependent.location())
 		{
-			case PROJECT -> "the project file " + path;
-			case PLUGIN -> "the plugin file " + path;
+			case PROJECT -> "the project file " + PortablePaths.text(path);
+			case PLUGIN -> "the plugin file " + PortablePaths.text(path);
 		};
 	}
 }

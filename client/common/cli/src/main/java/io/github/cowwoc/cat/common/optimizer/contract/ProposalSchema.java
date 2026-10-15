@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import java.io.IOException;
 import java.io.InputStream;
@@ -340,7 +341,7 @@ public final class ProposalSchema
 		{
 			ObjectNode node = dependents.addObject();
 			node.put("location", EnumNames.lowerCase(dependent.location()));
-			node.put("path", dependent.path().toString());
+			node.put("path", PortablePaths.text(dependent.path()));
 			node.putNull("text");
 			node.putNull("event");
 			node.putNull("command");
@@ -376,7 +377,7 @@ public final class ProposalSchema
 		{
 			case PluginUnderTest.Root root ->
 			{
-				node.put("root", root.directory().toString());
+				node.put("root", PortablePaths.text(root.directory()));
 				node.putNull("base");
 			}
 			case PluginUnderTest.Built built ->
@@ -392,8 +393,8 @@ public final class ProposalSchema
 		for (PluginUnderTest.Mapping mapping : mappings)
 		{
 			ObjectNode mappingNode = mappingNodes.addObject();
-			mappingNode.put("source", mapping.source().toString());
-			mappingNode.put("target", mapping.target().toString());
+			mappingNode.put("source", PortablePaths.text(mapping.source()));
+			mappingNode.put("target", PortablePaths.text(mapping.target()));
 		}
 		node.put("depends_on_cat", plugin.dependsOnCat());
 		node.put("cat_evidence", plugin.catEvidence());

@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.evidence;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
@@ -89,7 +90,7 @@ public final class FileChanges
 	private static void append(StringBuilder result, String operation, Path path, FileEntry before, FileEntry after,
 		Path initialProject, Path effects) throws IOException
 	{
-		result.append(operation).append(": ").append(path);
+		result.append(operation).append(": ").append(PortablePaths.text(path));
 		Path initialFile = initialProject.resolve(path);
 		Path effectsFile = effects.toAbsolutePath().normalize().resolve(path);
 		if (oversized(initialFile, before) || oversized(effectsFile, after))
@@ -140,7 +141,7 @@ public final class FileChanges
 	private static String text(Path file, FileEntry entry) throws IOException
 	{
 		if (entry instanceof SymbolicLink link)
-			return link.target().toString();
+			return PortablePaths.text(link.target());
 		if (!(entry instanceof RegularFile))
 			return null;
 		try
@@ -187,12 +188,12 @@ public final class FileChanges
 		if (earlier == null)
 			result.append("/dev/null");
 		else
-			result.append("a/").append(path);
+			result.append("a/").append(PortablePaths.text(path));
 		result.append("\n+++ ");
 		if (later == null)
 			result.append("/dev/null");
 		else
-			result.append("b/").append(path);
+			result.append("b/").append(PortablePaths.text(path));
 		result.append('\n');
 
 		List<String> before = lines(earlier);

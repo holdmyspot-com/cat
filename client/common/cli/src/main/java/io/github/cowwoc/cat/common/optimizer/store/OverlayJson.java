@@ -7,6 +7,7 @@ import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.requireVers
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.text;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
@@ -78,7 +79,7 @@ final class OverlayJson
 		for (Entry<Path, OverlayEntry> entry : overlay.entries().entrySet())
 		{
 			ObjectNode node = entries.addObject();
-			node.put("path", entry.getKey().toString());
+			node.put("path", PortablePaths.text(entry.getKey()));
 			switch (entry.getValue())
 			{
 				case Write write ->

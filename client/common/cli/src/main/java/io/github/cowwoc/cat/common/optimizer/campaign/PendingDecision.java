@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorConflict;
 
@@ -307,7 +308,7 @@ public sealed interface PendingDecision
 				PromptAuthorConflict conflict = conflicts.get(i);
 				feedback.append("Requirements: ").append(String.join(", ", conflict.requirementIds())).append('\n');
 				for (PromptAuthorConflict.Quotation quotation : conflict.quotations())
-					feedback.append(quotation.path()).append(": ").append(quotation.text()).append('\n');
+					feedback.append(PortablePaths.text(quotation.path())).append(": ").append(quotation.text()).append('\n');
 				feedback.append("Resolution: ").append(conflict.resolutions().get(chosen.get(i) - 1)).append('\n');
 			}
 			return feedback.toString();

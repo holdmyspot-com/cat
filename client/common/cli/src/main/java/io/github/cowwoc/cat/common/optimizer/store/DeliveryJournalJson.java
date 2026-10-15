@@ -9,6 +9,7 @@ import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.requireVers
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.text;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Create;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Delete;
@@ -89,7 +90,7 @@ final class DeliveryJournalJson
 	private ObjectNode writeChange(DeliveryChange change)
 	{
 		ObjectNode node = json.createObjectNode();
-		node.put("target", change.target().toString());
+		node.put("target", PortablePaths.text(change.target()));
 		switch (change)
 		{
 			case Create create ->

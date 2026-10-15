@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -221,7 +222,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 				LinkOption.NOFOLLOW_LINKS);
 			if (attributes.isDirectory())
 				continue;
-			String relative = root.relativize(path).toString().replace(path.getFileSystem().getSeparator(), "/");
+			String relative = PortablePaths.text(root.relativize(path));
 			if (!pattern.matches(relative))
 				continue;
 			if (!attributes.isRegularFile())

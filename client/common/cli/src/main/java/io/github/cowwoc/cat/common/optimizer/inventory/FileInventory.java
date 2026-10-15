@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
@@ -244,12 +245,12 @@ public final class FileInventory
 	 */
 	private static void addEntry(CanonicalDigest digest, Path path, FileEntry entry)
 	{
-		digest.text(path.toString());
+		digest.text(PortablePaths.text(path));
 		switch (entry)
 		{
 			case RegularFile file -> digest.text("file").text(file.contentHash().hex()).
 				text(PosixFilePermissions.toString(file.permissions()));
-			case SymbolicLink link -> digest.text("link").text(link.target().toString());
+			case SymbolicLink link -> digest.text("link").text(PortablePaths.text(link.target()));
 			case SpecialFile _ -> digest.text("special");
 		}
 	}

@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -90,7 +91,7 @@ public final class StagedSources
 			return candidate.hex();
 		StringJoiner paths = new StringJoiner("\n");
 		for (Path path : new TreeSet<>(excluded))
-			paths.add(path.normalize().toString());
+			paths.add(PortablePaths.text(path.normalize()));
 		return candidate.hex() + EXCLUSION_SEPARATOR + Sha256.of(paths.toString().getBytes(UTF_8)).hex();
 	}
 

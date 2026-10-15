@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.report;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
@@ -44,8 +45,8 @@ public record CertificationStatus(CertificationRecord record, Applicability appl
 	{
 		List<String> lines = new ArrayList<>();
 		CertificationScope scope = record.scope();
-		lines.add("Certification record of " + record.target() + ", scope " + scope.id() + " (" + scope.summary() +
-			")");
+		lines.add("Certification record of " + PortablePaths.text(record.target()) + ", scope " + scope.id() + " (" +
+			scope.summary() + ")");
 		ReportSummary.attempt(lines, AttemptSummary.of(record.certificationIndex(), Outcome.CERTIFIED.label(),
 			applicability));
 		return String.join("\n", lines);

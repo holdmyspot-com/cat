@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
@@ -295,7 +296,7 @@ public final class ContractAuthorProtocol
 	 */
 	String targetPromptFile()
 	{
-		return "`" + scenarios.project().relativize(target) + "`";
+		return "`" + PortablePaths.text(scenarios.project().relativize(target)) + "`";
 	}
 
 	/**

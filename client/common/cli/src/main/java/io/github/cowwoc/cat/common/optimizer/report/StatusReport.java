@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.report;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
@@ -412,7 +413,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			{
 				List<String> edits = new ArrayList<>();
 				for (AuthorityWarning warning : warnings.warnings())
-					edits.add("requirement " + warning.requirement() + " at " + warning.path());
+					edits.add("requirement " + warning.requirement() + " at " + PortablePaths.text(warning.path()));
 				yield "a prompt author needs edits outside the edit authority: " + String.join("; ", edits);
 			}
 			case PendingDecision.TestRevisionBlocked blocked -> describeBlocked(blocked);
@@ -470,7 +471,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		StringBuilder text = new StringBuilder(256);
 		text.append("conflicting requirements: ").append(String.join(", ", conflict.requirementIds())).append('\n');
 		for (PromptAuthorConflict.Quotation quotation : conflict.quotations())
-			text.append(quotation.path()).append(": ").append(quotation.text()).append('\n');
+			text.append(PortablePaths.text(quotation.path())).append(": ").append(quotation.text()).append('\n');
 		for (int i = 0; i < conflict.resolutions().size(); ++i)
 		{
 			text.append("  ").append(i + 1).append(". ").append(conflict.resolutions().get(i));

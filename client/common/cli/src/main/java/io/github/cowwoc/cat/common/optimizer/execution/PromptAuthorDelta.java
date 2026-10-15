@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.execution;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -116,9 +117,9 @@ final class PromptAuthorDelta
 				continue;
 			FileContent content = new FileContent(Files.readAllBytes(source));
 			if (!content.hash().equals(expected.contentHash()))
-				throw new IOException("The working bytes changed while reading " + target);
+				throw new IOException("The working bytes changed while reading " + PortablePaths.text(target));
 			return content;
 		}
-		throw new IOException("No authoring source holds the working bytes of " + target);
+		throw new IOException("No authoring source holds the working bytes of " + PortablePaths.text(target));
 	}
 }

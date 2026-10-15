@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.VERSION;
@@ -340,7 +341,7 @@ final class CampaignJson
 			{
 				ObjectNode element = hunks.addObject();
 				element.put("id", hunk.id());
-				element.put("path", hunk.path().toString());
+				element.put("path", PortablePaths.text(hunk.path()));
 				element.put("before_start", hunk.beforeStart());
 				element.put("before_end", hunk.beforeEnd());
 				element.put("after_start", hunk.afterStart());
@@ -976,7 +977,7 @@ final class CampaignJson
 		ObjectNode node = json.createObjectNode();
 		node.put("id", header.id());
 		node.put("root", header.root().toString());
-		node.put("target", header.target().toString());
+		node.put("target", PortablePaths.text(header.target()));
 		node.put("harness", EnumNames.lowerCase(header.harness()));
 		node.put("lifecycle", EnumNames.lowerCase(header.lifecycle()));
 		node.put("goal", header.goal());
@@ -1385,7 +1386,7 @@ final class CampaignJson
 		for (FileDelta file : state.files())
 		{
 			ObjectNode element = files.addObject();
-			element.put("path", file.path().toString());
+			element.put("path", PortablePaths.text(file.path()));
 			element.put("permissions", PosixFilePermissions.toString(file.permissions()));
 			putContent(element, "before", file.before());
 			putContent(element, "after", file.after());
@@ -1877,8 +1878,8 @@ final class CampaignJson
 	private static void writeWarning(ObjectNode node, AuthorityWarning warning)
 	{
 		node.put("requirement", warning.requirement());
-		node.put("path", warning.path().toString());
-		node.put("target", warning.target().toString());
+		node.put("path", PortablePaths.text(warning.path()));
+		node.put("target", PortablePaths.text(warning.target()));
 		node.put("limit", EnumNames.lowerCase(warning.limit()));
 		ArrayNode choices = node.putArray("choices");
 		for (AuthorityWarning.Choice choice : warning.choices())
@@ -1966,7 +1967,7 @@ final class CampaignJson
 			for (PromptAuthorConflict.Quotation quotation : conflict.quotations())
 			{
 				ObjectNode entry = quotations.addObject();
-				entry.put("path", quotation.path().toString());
+				entry.put("path", PortablePaths.text(quotation.path()));
 				entry.put("text", quotation.text());
 			}
 			ArrayNode resolutions = node.putArray("resolutions");

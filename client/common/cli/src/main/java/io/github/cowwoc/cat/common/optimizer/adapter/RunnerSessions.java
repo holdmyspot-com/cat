@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.RuleSource;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
@@ -256,7 +257,7 @@ public abstract class RunnerSessions implements SessionPort
 	private static String name(Path project, Path file)
 	{
 		if (file.startsWith(project))
-			return slashes(project.relativize(file));
+			return PortablePaths.text(project.relativize(file));
 		return file.toString();
 	}
 
@@ -283,7 +284,7 @@ public abstract class RunnerSessions implements SessionPort
 				continue;
 			Path source = mapping.source().resolve(mapping.target().relativize(relative));
 			if (Files.isRegularFile(project.resolve(source)))
-				return slashes(source);
+				return PortablePaths.text(source);
 		}
 		return plugin.base().toAbsolutePath().normalize().resolve(relative).toString();
 	}
@@ -334,17 +335,6 @@ public abstract class RunnerSessions implements SessionPort
 				Files.copy(file, copy, StandardCopyOption.REPLACE_EXISTING);
 			}
 		}
-	}
-
-	/**
-	 * Returns a relative path with {@code /} between its names.
-	 *
-	 * @param path the relative path
-	 * @return the path's text
-	 */
-	private static String slashes(Path path)
-	{
-		return path.toString().replace(path.getFileSystem().getSeparator(), "/");
 	}
 
 	/**

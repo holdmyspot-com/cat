@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.git.replay;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.git.Git;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -349,7 +350,7 @@ public final class Finalization
 				sorted(Comparator.comparing(Path::toString)).toList();
 			List<ArtifactDigest> result = new ArrayList<>();
 			for (Path file : files)
-				result.add(new ArtifactDigest(directory.relativize(file).toString(), sha256(file)));
+				result.add(new ArtifactDigest(PortablePaths.text(directory.relativize(file)), sha256(file)));
 			return result;
 		}
 	}

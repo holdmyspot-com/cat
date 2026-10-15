@@ -11,6 +11,7 @@ import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.stringValue
 import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.text;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord.CellResult;
@@ -96,7 +97,7 @@ public final class CertificationRecordJson
 		requireThat(record, "record").isNotNull();
 		ObjectNode root = json.createObjectNode();
 		root.put(VERSION, FORMAT_VERSION);
-		root.put("target", record.target().toString());
+		root.put("target", PortablePaths.text(record.target()));
 		root.put("certification_index", record.certificationIndex());
 		root.put("scope", record.scope().id());
 		CertificationParameters parameters = record.parameters();
@@ -119,7 +120,7 @@ public final class CertificationRecordJson
 
 		ObjectNode promptFiles = root.putObject("prompt_files");
 		for (Entry<Path, Sha256> entry : record.promptFiles().entrySet())
-			promptFiles.put(entry.getKey().toString(), entry.getValue().hex());
+			promptFiles.put(PortablePaths.text(entry.getKey()), entry.getValue().hex());
 		root.set("identity", new CampaignJson(json).writeIdentity(record.identity()));
 		return json.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
 	}

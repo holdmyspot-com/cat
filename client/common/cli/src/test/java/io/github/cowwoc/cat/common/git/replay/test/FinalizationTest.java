@@ -90,7 +90,7 @@ public final class FinalizationTest
 			finalization.verifyManifestDigest(manifest, receipt);
 			finalization.verifyFinalizationEvidence(manifest, receipt.evidence());
 			requireThat(receipt.evidence().stream().map(Finalization.ArtifactDigest::path).toList(), "evidencePaths").
-				contains(Path.of("gates", "replay-result.log").toString()).
+				contains("gates/replay-result.log").
 				doesNotContain("manifest.json.finalization-receipt.json");
 		}
 	}
