@@ -110,7 +110,7 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void powerShellCutPartRepeatsItsStart() throws IOException
 	{
-		String readPart = "& 'C:\\Program Files\\cat\\bin\\read-part.cmd' 'C:\\work\\out 1.txt'";
+		String readPart = "& 'C:\\Program Files\\cat\\bin\\read-part.cmd' '\"C:\\work\\out 1.txt\"'";
 		String result = """
 			Warning: truncated output (original token count: 10108)
 			line 40
@@ -126,7 +126,7 @@ public final class CodexPostToolUseHookTest
 	/**
 	 * Verifies that in PowerShell, a cut last part of a {@code run-part} command ends with an instruction that runs the
 	 * {@code read-part} launcher of the same folder on the saved output from its first line, quoting the saved file's
-	 * path for PowerShell.
+	 * path for PowerShell and for the {@code cmd.exe} that runs the launcher.
 	 *
 	 * @throws IOException if the hook response is not JSON
 	 */
@@ -140,11 +140,11 @@ public final class CodexPostToolUseHookTest
 			last
 			[End of C:\\work\\it's here.txt]
 			""";
-		HookResult hook = invoke(CommandShell.POWERSHELL, "@'\nGet-Content notes.md\n'@ | & C:\\cat\\bin\\run-part.cmd",
-			result);
+		HookResult hook = invoke(CommandShell.POWERSHELL, "$OutputEncoding = [Text.UTF8Encoding]::new()\n" +
+			"@'\nGet-Content notes.md\n'@ | & C:\\cat\\bin\\run-part.cmd", result);
 
 		requireThat(reason(hook), "reason").endsWith("last\n" + INSTRUCTION +
-			"& C:\\cat\\bin\\read-part.cmd 'C:\\work\\it''s here.txt' 1]\n");
+			"& C:\\cat\\bin\\read-part.cmd '\"C:\\work\\it''s here.txt\"' 1]\n");
 	}
 
 	/**

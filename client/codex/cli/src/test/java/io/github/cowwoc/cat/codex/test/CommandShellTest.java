@@ -45,12 +45,24 @@ public final class CommandShellTest
 	@Test
 	public void powerShellQuotesChangedWords()
 	{
-		requireThat(CommandShell.POWERSHELL.command("C:\\Program Files\\cat\\bin\\read-part.cmd",
+		requireThat(CommandShell.POWERSHELL.command("C:\\Program Files\\cat\\bin\\read-part.exe",
 			"C:\\work\\it's here.txt", "C:\\work\\notes.txt", "4"), "command").
-			isEqualTo("& 'C:\\Program Files\\cat\\bin\\read-part.cmd' 'C:\\work\\it''s here.txt' C:\\work\\notes.txt 4");
+			isEqualTo("& 'C:\\Program Files\\cat\\bin\\read-part.exe' 'C:\\work\\it''s here.txt' C:\\work\\notes.txt 4");
 		requireThat(CommandShell.POWERSHELL.quote("a\u2019b"), "curlyQuote").isEqualTo("'a\u2019\u2019b'");
 		requireThat(CommandShell.POWERSHELL.quote("$HOME"), "variable").isEqualTo("'$HOME'");
 		requireThat(CommandShell.POWERSHELL.launcher("read-part"), "launcher").isEqualTo("read-part.cmd");
+	}
+
+	/**
+	 * Verifies that a PowerShell command that runs a batch file double-quotes each argument that PowerShell would quote,
+	 * so that {@code cmd.exe}, which runs the batch file, reads none of its characters as commands.
+	 */
+	@Test
+	public void powerShellDoubleQuotesBatchArguments()
+	{
+		requireThat(CommandShell.POWERSHELL.command("C:\\Program Files\\cat\\bin\\read-part.cmd",
+			"C:\\R&D\\it's here.txt", "C:\\work\\notes.txt", "4"), "command").
+			isEqualTo("& 'C:\\Program Files\\cat\\bin\\read-part.cmd' '\"C:\\R&D\\it''s here.txt\"' C:\\work\\notes.txt 4");
 	}
 
 	/**
@@ -60,7 +72,7 @@ public final class CommandShellTest
 	@Test
 	public void wordsUndoQuoting()
 	{
-		List<String> words = List.of("C:\\Program Files\\cat\\bin\\read-part.cmd", "C:\\work\\it's here.txt", "4");
+		List<String> words = List.of("C:\\Program Files\\cat\\bin\\read-part.exe", "C:\\work\\it's here.txt", "4");
 		for (CommandShell shell : CommandShell.values())
 		{
 			String command = shell.command(words) + "; echo done";

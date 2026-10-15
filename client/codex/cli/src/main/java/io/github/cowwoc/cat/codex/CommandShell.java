@@ -177,6 +177,15 @@ public enum CommandShell
 		 */
 		private static final String UTF8_OUTPUT = "try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } " +
 			"catch {}\n";
+		/**
+		 * The statement that makes PowerShell write the text that it pipes to a program as UTF-8. Windows PowerShell
+		 * otherwise writes it as ASCII, replacing every other character with {@code ?}.
+		 */
+		private static final String UTF8_INPUT = "$OutputEncoding = [Text.UTF8Encoding]::new()";
+		/**
+		 * The file names of the programs that Windows runs with {@code cmd.exe}.
+		 */
+		private static final Pattern BATCH_FILE = Pattern.compile("(?i).*\\.(?:cmd|bat)");
 
 		@Override
 		public String quote(String word)
@@ -199,8 +208,25 @@ public enum CommandShell
 		public String command(List<String> words)
 		{
 			requireThat(words, "words").isNotEmpty();
-			// The call operator runs a program whose path is quoted, which PowerShell would otherwise print as a string
-			return "& " + join(words);
+			if (!BATCH_FILE.matcher(words.getFirst()).matches())
+			{
+				// The call operator runs a program whose path is quoted, which PowerShell would otherwise print as a string
+				return "& " + join(words);
+			}
+			// cmd.exe runs the text after a character such as & as another command unless the character is inside double
+			// quotes, which PowerShell adds only around an argument that holds whitespace. Each argument that needs quotes is
+			// therefore double-quoted inside its PowerShell string, which PowerShell passes as it is. cmd.exe still expands
+			// a %name% that names a variable.
+			List<String> arguments = new ArrayList<>(words.size());
+			arguments.add(words.getFirst());
+			for (String argument : words.subList(1, words.size()))
+			{
+				if (PLAIN_WORD.matcher(argument).matches())
+					arguments.add(argument);
+				else
+					arguments.add('"' + argument + '"');
+			}
+			return "& " + join(arguments);
 		}
 
 		@Override
@@ -326,7 +352,8 @@ public enum CommandShell
 		@Override
 		public String runPartUsage()
 		{
-			return "usage: a @' line, then the command on the lines that follow, then a '@ | run-part line";
+			return "usage: a " + UTF8_INPUT + " line, a @' line, then the command on the lines that follow, then a " +
+				"'@ | run-part line";
 		}
 
 		@Override
