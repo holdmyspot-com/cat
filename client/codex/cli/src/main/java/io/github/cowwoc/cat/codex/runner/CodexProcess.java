@@ -169,6 +169,9 @@ public final class CodexProcess implements HarnessProcess
 	 * On the first turn, the listener first receives the lines Codex printed during start-up, such as the
 	 * {@code thread/started} notification, in arrival order; later turns do not receive them again. The listener then
 	 * receives each line of this turn. The result's event stream holds the same lines.
+	 * <p>
+	 * When Codex answers the {@code turn/start} request with an error, such as for a prompt longer than its input
+	 * limit, the turn fails with Codex's error message.
 	 *
 	 * @param request the non-blank user prompt
 	 * @param listener receives each harness event line
@@ -211,6 +214,13 @@ public final class CodexProcess implements HarnessProcess
 				events.append(line).append('\n');
 				listener.accept(line);
 				JsonNode event = parse(line);
+				// Codex sends no turn/completed for a turn that it refused to start
+				String refusal = turnStartError(event, turnRequestId);
+				if (refusal != null)
+				{
+					return new HarnessProcessResult(1, events.toString(), "Codex app-server did not start the turn: " +
+						refusal);
+				}
 				identifyTurn(event, turnRequestId);
 				String rootMessage = rootAgentMessage(event);
 				if (rootMessage != null && !rootMessage.isBlank())
@@ -323,6 +333,23 @@ public final class CodexProcess implements HarnessProcess
 			if (interruptRequested)
 				writeInterrupt();
 		}
+	}
+
+	/**
+	 * Returns the message of Codex's error answer to the {@code turn/start} request.
+	 *
+	 * @param event a harness event, or {@code null} if the line was not JSON
+	 * @param turnRequestId the {@code turn/start} request's identifier
+	 * @return the error's message, or {@code null} if the event is not an error answer to that request
+	 */
+	private static String turnStartError(JsonNode event, long turnRequestId)
+	{
+		if (event == null || event.path("id").asLong(-1) != turnRequestId)
+			return null;
+		JsonNode error = event.path("error");
+		if (!error.isObject())
+			return null;
+		return error.path("message").asString("");
 	}
 
 	/**

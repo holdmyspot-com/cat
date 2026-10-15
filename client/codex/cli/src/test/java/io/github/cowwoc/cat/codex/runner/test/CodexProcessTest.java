@@ -349,6 +349,29 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * Verifies that when Codex refuses to start a turn, the turn fails at once with Codex's own error message rather
+	 * than waiting for a completion that Codex never sends. The error's shape follows the response that codex-cli
+	 * 0.160.0 printed for a prompt longer than its input limit.
+	 *
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void reportsTurnStartError() throws IOException
+	{
+		AppServer server = new AppServer(id -> List.of("{\"error\":{\"code\":-32602,\"data\":{\"input_error_code\":" +
+			"\"input_too_large\",\"max_chars\":1048576,\"actual_chars\":1098863},\"message\":\"Input exceeds the " +
+			"maximum length of 1048576 characters.\"},\"id\":" + id + "}"), NO_ANSWER);
+		try (CodexProcess process = server.start())
+		{
+			HarnessProcessResult result = process.sendTurn("Judge the evidence.");
+
+			requireThat(result.completed(), "completed").isFalse();
+			requireThat(result.standardError(), "standardError").isEqualTo(
+				"Codex app-server did not start the turn: Input exceeds the maximum length of 1048576 characters.");
+		}
+	}
+
+	/**
 	 * Returns Codex's answer to a {@code turn/start} request followed by the root turn's start notification.
 	 *
 	 * @param requestId the {@code turn/start} request's identifier
