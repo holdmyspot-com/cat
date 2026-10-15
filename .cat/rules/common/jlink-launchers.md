@@ -34,8 +34,9 @@ such as its arguments, output and exit status, with Java tests that call it dire
 
 ## Windows Launchers
 
-On Windows, jlink writes `bin/<name>.bat` instead of `bin/<name>`; `Platform.jlinkLauncher(name)` names the file of
-each platform. `JlinkImageBuilder` rewrites each batch launcher too: it gives it the JVM options of the POSIX launchers,
+On Windows, jlink writes the batch launcher `bin/<name>.bat` beside the POSIX launcher `bin/<name>`. `cmd.exe` and
+PowerShell run the batch launcher, and Git Bash, which Claude Code runs hooks in, runs the POSIX launcher, so both must
+work there. `JlinkImageBuilder` rewrites each batch launcher too: it gives it the JVM options of the POSIX launchers,
 and quotes the folder's assignment as `set "DIR=%~dp0"`, because an unquoted `&` in a folder name, such as a user's
 name, ends the command there. Keep both launchers' JVM options in one constant.
 
@@ -52,3 +53,8 @@ standard input or in a file instead.
 Codex runs a hook's `commandWindows` in PowerShell, not `cmd.exe`, so the command starts a `.cmd` launcher with the
 call operator, `& "${PLUGIN_ROOT}\hooks\<name>.cmd"`. A quoted path without `&` is only a string, which PowerShell
 prints. `CodexPluginHooksTest` runs each hook's command as Codex does on the platform that runs the test.
+
+Claude Code runs a hook's `command` in a POSIX shell, Git Bash on Windows, and the shell expands
+`${CLAUDE_PLUGIN_ROOT}`, so the command double-quotes it, as in `"${CLAUDE_PLUGIN_ROOT}/hooks/<name>.sh"`; a space in
+the plugin's path, such as one in a user's name, otherwise splits the command. `ClaudePluginHooksTest` runs each hook's
+command from a plugin path that holds a space.
