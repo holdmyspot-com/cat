@@ -21,6 +21,7 @@ public final class PortableFilesTest
 {
 	private static final Set<PosixFilePermission> WRITABLE = PosixFilePermissions.fromString("rw-r--r--");
 	private static final Set<PosixFilePermission> READ_ONLY = PosixFilePermissions.fromString("r--r--r--");
+	private static final Set<PosixFilePermission> EXECUTABLE = PosixFilePermissions.fromString("rwxr-xr-x");
 
 	/**
 	 * Creates the test fixture.
@@ -45,6 +46,26 @@ public final class PortableFilesTest
 			PortableFiles.setMode(file, WRITABLE);
 
 			requireThat(PortableFiles.mode(file), "mode").isEqualTo(WRITABLE);
+		}
+	}
+
+	/**
+	 * Verifies that a file whose name ends with an extension that Windows runs, in any letter case, reads back as
+	 * executable on every file system.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void readsExecutableModeOfWindowsProgram() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("portable-files-"));
+			Path file = Files.writeString(directory.resolve("tool.Cmd"), "@echo off");
+
+			PortableFiles.setMode(file, EXECUTABLE);
+
+			requireThat(PortableFiles.mode(file), "mode").isEqualTo(EXECUTABLE);
 		}
 	}
 

@@ -79,8 +79,8 @@ public final class WorktreeTest
 			WorkspacePort port = new Workspace(project.tree(), project.campaign(), worktree);
 			Overlay fork = Overlay.of(project.tree().inventory());
 			Overlay edited = fork.
-				write(Path.of("prompt.md"), content("edited"), EXECUTABLE).
-				write(Path.of("new/created.md"), content("created"), READ_WRITE).
+				write(Path.of("prompt.md"), content("edited"), READ_WRITE).
+				write(Path.of("new/created.cmd"), content("@echo off\n"), EXECUTABLE).
 				write(project.external().resolve("shared.md"), content("external edit"), READ_WRITE).
 				delete(Path.of("rules/a.md"));
 			port.materialize(fork);
@@ -96,7 +96,7 @@ public final class WorktreeTest
 
 			writeFile(worktree.resolve("unowned.md"), "unowned", READ_WRITE);
 			Files.writeString(worktree.resolve("rules/b.md"), "tampered", UTF_8);
-			Files.delete(worktree.resolve("run.sh"));
+			Files.delete(worktree.resolve("run.cmd"));
 			requireThat(InventoryDiff.between(edited.snapshot(), port.scanWorktree()).changes().size(), "changes").
 				isEqualTo(3);
 

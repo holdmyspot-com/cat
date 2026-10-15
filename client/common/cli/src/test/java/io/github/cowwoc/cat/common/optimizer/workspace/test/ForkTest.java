@@ -429,8 +429,8 @@ public final class ForkTest
 			FileInventory inventory = fork.inventory();
 			requireThat(inventory.root(), "root").isEqualTo(base);
 			requireThat(inventory.entries().get(Path.of("prompt.md")), "prompt").isEqualTo(file("prompt"));
-			requireThat(inventory.entries().get(Path.of("run.sh")), "executable").
-				isEqualTo(file("#!/bin/sh\n", EXECUTABLE));
+			requireThat(inventory.entries().get(Path.of("run.cmd")), "executable").
+				isEqualTo(file("@echo off\n", EXECUTABLE));
 			requireThat(inventory.entries().get(Path.of("alias.md")), "link").
 				isEqualTo(new SymbolicLink(Path.of("prompt.md")));
 			requireThat(inventory.entries().get(Path.of("ignored.md")), "ignored").isEqualTo(file("ignored"));
@@ -806,7 +806,8 @@ public final class ForkTest
 		git.run("config", "core.excludesFile", noExcludes.toString());
 		writeFile(base.resolve(".gitignore"), "ignored.md\n", READ_WRITE);
 		writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
-		writeFile(base.resolve("run.sh"), "#!/bin/sh\n", EXECUTABLE);
+		// Windows records a file as executable only by its name, and Linux only by the mode set here
+		writeFile(base.resolve("run.cmd"), "@echo off\n", EXECUTABLE);
 		Files.createSymbolicLink(base.resolve("alias.md"), Path.of("prompt.md"));
 		git.run("add", "--all");
 		git.run("commit", "--quiet", "-m", "initial");

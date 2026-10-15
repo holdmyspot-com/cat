@@ -55,7 +55,7 @@ public final class ForkTreeTest
 
 			Map<Path, FileEntry> expected = Map.ofEntries(
 				Map.entry(Path.of("prompt.md"), file("prompt")),
-				Map.entry(Path.of("run.sh"), file("#!/bin/sh\n", EXECUTABLE)),
+				Map.entry(Path.of("run.cmd"), file("@echo off\n", EXECUTABLE)),
 				Map.entry(Path.of("rules/a.md"), file("rule a")),
 				Map.entry(Path.of("rules/b.md"), file("rule b")),
 				Map.entry(Path.of("fixtures/data.txt"), file("fixture data")),

@@ -55,7 +55,8 @@ public final class InventoryScannerTest
 			writeFile(project.resolve("ignored.md"), "ignored", READ_WRITE);
 			// git check-ignore fails unless Git ignores the file, which makes this fixture's ignored file real
 			git.run("check-ignore", "--quiet", "ignored.md");
-			writeFile(project.resolve("prompt.md"), "prompt", EXECUTABLE);
+			writeFile(project.resolve("prompt.md"), "prompt", READ_WRITE);
+			writeFile(project.resolve("run.cmd"), "@echo off\n", EXECUTABLE);
 			writeFile(project.resolve("sub/inner.md"), "inner", READ_WRITE);
 			writeFile(project.resolve(".cat/work/state.json"), "{}", READ_WRITE);
 			Files.createSymbolicLink(project.resolve("alias.md"), Path.of("prompt.md"));
@@ -68,7 +69,8 @@ public final class InventoryScannerTest
 			requireThat(inventory.entries(), "entries").isEqualTo(Map.of(
 				Path.of(".gitignore"), file("ignored.md\n"),
 				Path.of("ignored.md"), file("ignored"),
-				Path.of("prompt.md"), file("prompt", EXECUTABLE),
+				Path.of("prompt.md"), file("prompt"),
+				Path.of("run.cmd"), file("@echo off\n", EXECUTABLE),
 				Path.of("sub/inner.md"), file("inner"),
 				Path.of("alias.md"), new SymbolicLink(Path.of("prompt.md")),
 				Path.of("docs"), new SymbolicLink(Path.of("sub")),

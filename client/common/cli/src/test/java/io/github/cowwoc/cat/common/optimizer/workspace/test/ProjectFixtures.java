@@ -114,7 +114,8 @@ final class ProjectFixtures
 		Path external = Files.createDirectories(root.resolve("external"));
 		Path campaign = root.resolve("campaign");
 		writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
-		writeFile(base.resolve("run.sh"), "#!/bin/sh\n", EXECUTABLE);
+		// Windows records a file as executable only by its name, and Linux only by the mode set here
+		writeFile(base.resolve("run.cmd"), "@echo off\n", EXECUTABLE);
 		writeFile(base.resolve("rules/a.md"), "rule a", READ_WRITE);
 		writeFile(base.resolve("rules/b.md"), "rule b", READ_WRITE);
 		writeFile(base.resolve("fixtures/data.txt"), "fixture data", READ_WRITE);
@@ -131,7 +132,7 @@ final class ProjectFixtures
 		Set<Path> paths = new HashSet<>();
 		for (String relative : new String[]
 			{
-				"prompt.md", "run.sh", "rules", "fixtures", ".cat", "alias.md", "docs", "shared.md", "ext-dir"
+				"prompt.md", "run.cmd", "rules", "fixtures", ".cat", "alias.md", "docs", "shared.md", "ext-dir"
 			})
 		{
 			paths.add(Path.of(relative));
