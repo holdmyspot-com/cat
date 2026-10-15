@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -21,6 +22,10 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 public final class HookScope implements AutoCloseable
 {
 	private static final int MAXIMUM_EVENT_BYTES = 1_048_576;
+	/**
+	 * The variables in which a jlink launcher saves the caller's locale, whenever that locale is not UTF-8.
+	 */
+	private static final Set<String> SAVED_LOCALE = Set.of("CAT_CALLER_LC_ALL", "CAT_CALLER_LC_CTYPE");
 	private boolean closed;
 	private final Path pluginRoot;
 	private final Path userRulesRoot;
@@ -58,7 +63,8 @@ public final class HookScope implements AutoCloseable
 	 * @throws IllegalArgumentException if {@code harness}, {@code pluginRootVariable} or {@code homeVariable} are
 	 *   blank
 	 * @throws IOException if either variable is unset or blank, or if the environment sets a {@code CAT_} variable
-	 *   other than a {@code CAT_INSTALL_DIR} that names the plugin root
+	 *   other than a {@code CAT_INSTALL_DIR} that names the plugin root or a variable in which the hook's launcher
+	 *   saved the caller's locale
 	 */
 	public static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
 		String homeVariable) throws IOException
@@ -78,7 +84,7 @@ public final class HookScope implements AutoCloseable
 		for (Map.Entry<String, String> entry : environment.entrySet())
 		{
 			String name = entry.getKey();
-			if (!name.startsWith("CAT_"))
+			if (!name.startsWith("CAT_") || SAVED_LOCALE.contains(name))
 				continue;
 			if (name.equals("CAT_INSTALL_DIR") &&
 				Path.of(entry.getValue().strip()).toAbsolutePath().normalize().equals(resolvedPluginRoot))

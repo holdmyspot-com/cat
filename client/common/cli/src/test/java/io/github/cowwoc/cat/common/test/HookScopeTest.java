@@ -128,6 +128,25 @@ public final class HookScopeTest
 	}
 
 	/**
+	 * Verifies that a scope accepts the variables in which a jlink launcher saves the caller's locale, which it sets
+	 * whenever the caller's locale is not UTF-8.
+	 */
+	@Test
+	public void acceptsTheCallersSavedLocale() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
+			Map<String, String> environment = Map.of("ROOT", plugin.toString(), "USER_HOME", plugin.toString(),
+				"CAT_CALLER_LC_ALL", "+C", "CAT_CALLER_LC_CTYPE", "-");
+			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME"))
+			{
+				requireThat(scope.pluginRoot(), "pluginRoot").isEqualTo(plugin.toAbsolutePath().normalize());
+			}
+		}
+	}
+
+	/**
 	 * Verifies a hook environment without the plugin root is rejected with the harness and the variable's name.
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "Harness ROOT is not set")
