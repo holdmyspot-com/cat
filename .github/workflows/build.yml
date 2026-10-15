@@ -26,7 +26,15 @@ jobs:
             runner: macos-26-intel
           - platform: macos-arm64
             runner: macos-26
+          # CAT does not support Windows yet. This job shows what fails there, so it does not fail the workflow.
+          - platform: windows-x64
+            runner: windows-2025
+            probe: true
     runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.probe == true }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -44,11 +52,14 @@ jobs:
       - name: Verify
         run: client/mvnw -f client/pom.xml verify
       - name: Verify bootstrap boundaries
+        if: runner.os != 'Windows'
         run: >-
           bats client/common/distribution/src/test/bats/bootstrap-common.bats
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
       - name: Verify the jlink launcher template
+        if: runner.os != 'Windows'
         run: bats client/common/distribution/src/test/bats/jlink-launchers.bats
       - name: Verify the Codex plugin's part launchers
+        if: runner.os != 'Windows'
         run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
