@@ -232,7 +232,8 @@ public final class StreamJsonEvidenceTest
 
 	/**
 	 * Verifies that interrupted commands and errors without the reported exit-code form preserve output without
-	 * inventing an exit status.
+	 * inventing an exit status, and that an error reported as a string is the content shown to the agent, since Claude
+	 * Code's string is its own wording of the error rather than fuller output.
 	 */
 	@Test
 	public void preservesOutputWithUnreportedExitStatus()
@@ -247,10 +248,20 @@ public final class StreamJsonEvidenceTest
 			"{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"u\"," +
 				"\"name\":\"Bash\",\"input\":{\"command\":\"rm forbidden\"}}]}}",
 			"{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"u\"," +
-				"\"is_error\":true,\"content\":\"rejected\"}]},\"tool_use_result\":\"Error: permission denied\"}"));
+				"\"is_error\":true,\"content\":\"rejected\"}]},\"tool_use_result\":\"Error: permission denied\"}",
+			"{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b\"," +
+				"\"name\":\"Bash\",\"input\":{\"command\":\"sleep 60\"}}]}}",
+			"{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"b\"," +
+				"\"is_error\":true,\"content\":\"<tool_use_error>Blocked: sleep 60</tool_use_error>\"}]}," +
+				"\"tool_use_result\":\"Error: Blocked: sleep 60\"}"));
 		requireThat(evidence.entries(), "entries").isEqualTo(List.of(
 			new SessionEvidence.Tool(1, "root", "Bash", "make", true, null, "partial output"),
-			new SessionEvidence.Tool(1, "root", "Bash", "rm forbidden", true, null, "Error: permission denied")));
+			new SessionEvidence.Tool(1, "root", "Bash", "rm forbidden", true, null, "rejected"),
+			new SessionEvidence.Tool(1, "root", "Bash", "sleep 60", true, null,
+				"<tool_use_error>Blocked: sleep 60</tool_use_error>")));
+		requireThat(evidence.render(), "rendered").
+			contains("Output: 8 characters; the agent received all of it\n").
+			contains("Output: 50 characters; the agent received all of it\n");
 	}
 
 	/**
