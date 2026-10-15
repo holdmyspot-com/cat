@@ -10,6 +10,7 @@ paths:
 - Give every program the same view of the file system as its caller, so files it writes for a later call or reads on the
   caller's behalf are where the caller expects them.
 - Test the launcher template that all jlink launchers share once, rather than once for each program or harness.
+- Start every program on Windows with the same JVM options and the same arguments as on Linux and macOS.
 
 ## Guidance
 
@@ -30,3 +31,24 @@ One Bats test, `jlink-launchers.bats`, verifies the launcher template for all la
 add a Bats test for a launcher or a harness merely to show that its launcher starts its program, runs from a path with
 spaces, or works in another locale; extend that test instead when the template changes. Test a program's own behavior,
 such as its arguments, output and exit status, with Java tests that call it directly.
+
+## Windows Launchers
+
+On Windows, jlink writes `bin/<name>.bat` instead of `bin/<name>`; `Platform.jlinkLauncher(name)` names the file of
+each platform. `JlinkImageBuilder` rewrites each batch launcher too: it gives it the JVM options of the POSIX launchers,
+and quotes the folder's assignment as `set "DIR=%~dp0"`, because an unquoted `&` in a folder name, such as a user's
+name, ends the command there. Keep both launchers' JVM options in one constant.
+
+The JVM options include `-Dstdout.encoding=UTF-8` and `-Dstderr.encoding=UTF-8`, so a program writes UTF-8 whatever
+the console's code page, and `--enable-native-access` for the module that holds `CommandLineArguments`. The `java`
+launcher reads its command line in the system's ANSI code page and replaces each character that the code page lacks;
+every `main` that reads file names or text from its arguments passes them through `CommandLineArguments.recover`,
+which reads them again from the process's UTF-16 command line.
+
+A batch file expands `%NAME%` in its own arguments when `NAME` is a defined variable, and an unquoted `&` in an
+argument ends the command, so a caller must not pass untrusted text to a batch launcher as an argument; pass it on
+standard input or in a file instead.
+
+Codex runs a hook's `commandWindows` in PowerShell, not `cmd.exe`, so the command starts a `.cmd` launcher with the
+call operator, `& "${PLUGIN_ROOT}\hooks\<name>.cmd"`. A quoted path without `&` is only a string, which PowerShell
+prints. `CodexPluginHooksTest` runs each hook's command as Codex does on the platform that runs the test.
