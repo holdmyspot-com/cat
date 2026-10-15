@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -279,21 +278,21 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		{
 			if (dependent.location() == Dependent.Location.PLUGIN && plugin.isEmpty())
 			{
-				throw new IllegalArgumentException("The dependent " + PortablePaths.text(dependent.path()) + " lies in the " +
-					"plugin under test, and the contract has none");
+				throw new IllegalArgumentException("The dependent " + dependent.path() + " lies in the plugin under " +
+					"test, and the contract has none");
 			}
 			List<Dependent.Removal> ofFile = removals.computeIfAbsent(dependent.location(),
 				_ -> new HashMap<>()).computeIfAbsent(dependent.path(), _ -> new ArrayList<>());
 			if (ofFile.contains(dependent.removal()))
 			{
-				throw new IllegalArgumentException("The dependent " + PortablePaths.text(dependent.path()) + " lists " +
+				throw new IllegalArgumentException("The dependent " + dependent.path() + " lists " +
 					dependent.removal() + " twice");
 			}
 			ofFile.add(dependent.removal());
 			if (ofFile.size() > 1 && ofFile.stream().anyMatch(Dependent.WholeFile.class::isInstance))
 			{
-				throw new IllegalArgumentException("The dependents of " + PortablePaths.text(dependent.path()) +
-					" remove the whole file and also a part of it. List the file once, as a whole file");
+				throw new IllegalArgumentException("The dependents of " + dependent.path() + " remove the whole file " +
+					"and also a part of it. List the file once, as a whole file");
 			}
 		}
 	}

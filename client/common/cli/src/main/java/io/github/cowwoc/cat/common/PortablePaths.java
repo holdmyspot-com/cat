@@ -6,10 +6,11 @@ import java.util.StringJoiner;
 /**
  * Relative paths written the same way on every operating system.
  * <p>
- * {@link Path#toString()} separates names with the platform's separator, which is {@code \} on Windows. CAT writes a
- * relative path into contracts, campaign records, prompts and messages with {@code /} instead, so that the text names
- * the same file on every platform and matches what models and users write. A path that starts at a root names a file
- * on one machine only, so it keeps the platform's form.
+ * {@link Path#toString()} separates names with the platform's separator, which is {@code \} on Windows. Paths keep
+ * the platform's form in memory and in messages for people. CAT writes a relative path with {@code /} only where
+ * another process or platform reads the text: stored records and contracts, the text of a stored digest, and prompts
+ * whose paths a model copies into a stored record. {@link Path#of(String, String...)} reads that text back on every
+ * platform. A path that starts at a root names a file on one machine only, so it keeps the platform's form.
  */
 public final class PortablePaths
 {

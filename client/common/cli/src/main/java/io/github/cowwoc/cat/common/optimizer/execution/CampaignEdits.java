@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.execution;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -109,6 +108,6 @@ final class CampaignEdits
 		if (entry == null && content == null)
 			return;
 		if (entry == null || content == null || !entry.contentHash().equals(content.hash()))
-			throw new IOException("The recorded snapshot bytes do not match " + PortablePaths.text(path));
+			throw new IOException("The recorded snapshot bytes do not match " + path);
 	}
 }

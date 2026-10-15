@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.workspace;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
@@ -218,14 +217,11 @@ final class Dereferenced
 		for (Map.Entry<Path, Status> problem : problems.entrySet())
 		{
 			Path link = problem.getKey();
-			message.append("\n  ").append(PortablePaths.text(link));
+			message.append("\n  ").append(link);
 			if (problem.getValue() == Status.CYCLE)
 				message.append(": link cycle");
 			else
-			{
-				message.append(" -> ").append(PortablePaths.text(inventory.resolve(link).orElse(link))).
-					append(": missing target");
-			}
+				message.append(" -> ").append(inventory.resolve(link).orElse(link)).append(": missing target");
 		}
 		throw new WorkspaceException(message.toString());
 	}

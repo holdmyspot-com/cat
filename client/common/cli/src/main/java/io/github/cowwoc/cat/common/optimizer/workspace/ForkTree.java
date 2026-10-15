@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.cowwoc.cat.common.PortableFiles;
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
@@ -289,8 +288,8 @@ public final class ForkTree
 			source = base.resolve(path);
 		if (Files.notExists(source, NOFOLLOW_LINKS))
 		{
-			throw new WorkspaceException("The participating path " + PortablePaths.text(path) + " does not exist, so it " +
-				"cannot be recorded in the fork.");
+			throw new WorkspaceException("The participating path " + path + " does not exist, so it cannot be " +
+				"recorded in the fork.");
 		}
 		return source;
 	}

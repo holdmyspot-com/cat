@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -108,8 +107,8 @@ public final class Registry
 		}
 		if (resumable.size() > 1)
 		{
-			throw new IllegalStateException("More than one resumable campaign exists for " + PortablePaths.text(target) +
-				" in " + root + ": " + resumable);
+			throw new IllegalStateException("More than one resumable campaign exists for " + target + " in " +
+				root + ": " + resumable);
 		}
 		if (resumable.isEmpty())
 			return new Opening.Create();

@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.execution;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict;
@@ -67,17 +66,17 @@ public final class SliceReports
 			{
 				StringJoiner targets = new StringJoiner(", ");
 				for (DeliveryConflict conflict : conflicted.conflicts())
-					targets.add(PortablePaths.text(conflict.target()));
+					targets.add(conflict.target().toString());
 				yield "The base worktree changed files that the candidate also changes, so the delivery stopped: " +
 					targets;
 			}
 			case DeliveryResult.ConcurrentEdit edit -> "A file changed while CAT delivered the candidate, so the " +
-				"delivery stopped after " + edit.applied() + " changes: " + PortablePaths.text(edit.change().target());
+				"delivery stopped after " + edit.applied() + " changes: " + edit.change().target();
 			case DeliveryResult.VerificationFailed failed ->
 			{
 				StringJoiner paths = new StringJoiner(", ");
 				for (Path path : failed.mismatched())
-					paths.add(PortablePaths.text(path));
+					paths.add(path.toString());
 				yield "The delivered files do not match the candidate, so the delivery is incomplete: " + paths;
 			}
 		};
@@ -112,7 +111,7 @@ public final class SliceReports
 	{
 		StringJoiner paths = new StringJoiner(", ");
 		for (PathChange change : changes)
-			paths.add(PortablePaths.text(change.path()));
+			paths.add(change.path().toString());
 		return paths.toString();
 	}
 }

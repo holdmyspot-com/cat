@@ -76,8 +76,7 @@ final class PluginCopies
 				if (!Files.isDirectory(directory, NOFOLLOW_LINKS))
 				{
 					throw new WorkspaceException("The staged source " + source + " has no plugin root " +
-						PortablePaths.text(root.directory()) + ". Run revise so that the contract author names the plugin's " +
-						"directory.");
+						root.directory() + ". Run revise so that the contract author names the plugin's directory.");
 				}
 				yield directory;
 			}

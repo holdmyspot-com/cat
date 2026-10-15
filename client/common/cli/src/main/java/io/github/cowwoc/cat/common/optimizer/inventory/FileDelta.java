@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Set;
@@ -33,7 +32,7 @@ public record FileDelta(Path path, FileContent before, FileContent after, Set<Po
 		FileInventory.requireInventoryPath(path, "path");
 		requireThat(permissions, "permissions").isNotNull();
 		if (Objects.equals(before, after))
-			throw new IllegalArgumentException("A file delta must change its bytes: " + PortablePaths.text(path));
+			throw new IllegalArgumentException("A file delta must change its bytes: " + path);
 		permissions = Set.copyOf(permissions);
 	}
 }

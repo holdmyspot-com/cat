@@ -348,7 +348,7 @@ public final class OptimizerCore implements Core
 	private static CommandRefusedException refused(Header header)
 	{
 		String owner = header.harness().commandName();
-		return new CommandRefusedException("Campaign " + header.id() + " for " + PortablePaths.text(header.target()) +
+		return new CommandRefusedException("Campaign " + header.id() + " for " + header.target() +
 			" was started by " + owner + " and can only be resumed there. Use `status " + header.id() +
 			"` to read it from here.");
 	}
@@ -688,7 +688,7 @@ public final class OptimizerCore implements Core
 			return report(root, require(store, header.get().id(), false), null, null);
 		if (record.isEmpty())
 		{
-			String absent = "no campaign or certification record exists for " + PortablePaths.text(relative) + ".";
+			String absent = "no campaign or certification record exists for " + relative + ".";
 			if (isId)
 				throw new CommandRefusedException("No campaign has the identifier " + subject + ", and " + absent);
 			throw new CommandRefusedException("N" + absent.substring(1));
@@ -868,7 +868,7 @@ public final class OptimizerCore implements Core
 	private static String unheld(ForkView fork, Participants participants)
 	{
 		FileInventory held = fork.inventory();
-		return participants.existing().stream().filter(path -> !held.holds(path)).map(PortablePaths::text).
+		return participants.existing().stream().filter(path -> !held.holds(path)).map(Path::toString).
 			collect(Collectors.joining(", "));
 	}
 

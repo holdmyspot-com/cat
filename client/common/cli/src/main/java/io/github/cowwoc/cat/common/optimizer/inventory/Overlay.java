@@ -89,8 +89,8 @@ public final class Overlay
 		{
 			if (!larger.entry(entry.getKey()).equals(Optional.of(entry.getValue())))
 			{
-				throw new IllegalArgumentException("The larger fork does not hold " + PortablePaths.text(entry.getKey()) +
-					" as this overlay's fork records it.");
+				throw new IllegalArgumentException("The larger fork does not hold " + entry.getKey() + " as this " +
+					"overlay's fork records it.");
 			}
 		}
 		Overlay moved = of(larger);
@@ -159,17 +159,16 @@ public final class Overlay
 		Optional<Path> resolved = fork.resolve(target);
 		if (!resolved.equals(Optional.of(target)))
 		{
-			throw new IllegalArgumentException("The fork reaches " + PortablePaths.text(target) + " through a symbolic " +
-				"link, so an edit there applies to its resolved target " +
-				resolved.map(PortablePaths::text).orElse("(a link cycle)") + ".");
+			throw new IllegalArgumentException("The fork reaches " + target + " through a symbolic link, so an edit " +
+				"there applies to its resolved target " + resolved.map(Path::toString).orElse("(a link cycle)") + ".");
 		}
 		Optional<FileEntry> recorded = fork.entry(target);
 		if (recorded.isEmpty())
 			return Optional.empty();
 		if (recorded.get() instanceof RegularFile file)
 			return Optional.of(file);
-		throw new IllegalArgumentException("The fork records " + PortablePaths.text(target) + " as " + recorded.get() +
-			", but an overlay changes only regular files.");
+		throw new IllegalArgumentException("The fork records " + target + " as " + recorded.get() + ", but an overlay " +
+			"changes only regular files.");
 	}
 
 	/**

@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorKind;
@@ -226,8 +225,8 @@ final class ReportSummary
 		List<String> choices = new ArrayList<>();
 		for (AuthorityWarning.Choice choice : warning.choices())
 			choices.add(ReportJson.command(choice).replace('_', ' '));
-		return "Authority warning: requirement " + warning.requirement() + " needs an edit at " +
-			PortablePaths.text(warning.path()) + ", which resolves to " + PortablePaths.text(warning.target()) + " (limit: " +
+		return "Authority warning: requirement " + warning.requirement() + " needs an edit at " + warning.path() +
+			", which resolves to " + warning.target() + " (limit: " +
 			EnumNames.lowerCase(warning.limit()).replace('_', ' ') + "); choices: " +
 			String.join(", ", choices);
 	}

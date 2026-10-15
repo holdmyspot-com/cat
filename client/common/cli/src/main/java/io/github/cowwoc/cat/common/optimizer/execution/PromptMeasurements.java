@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptSize;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -54,7 +53,7 @@ final class PromptMeasurements
 				if (!(inventory.entries().get(resolved) instanceof RegularFile expected) ||
 					!content.hash().equals(expected.contentHash()))
 				{
-					throw new IOException("Staged prompt bytes differ from the snapshot at " + PortablePaths.text(relative));
+					throw new IOException("Staged prompt bytes differ from the snapshot at " + relative);
 				}
 				byte[] observed = content.bytes();
 				bytes += observed.length;

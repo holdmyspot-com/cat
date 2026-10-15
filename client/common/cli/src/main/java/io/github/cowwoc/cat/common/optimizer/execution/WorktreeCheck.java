@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.execution;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
@@ -93,7 +92,7 @@ final class WorktreeCheck
 		for (PathChange change : InventoryDiff.between(new FileInventory(root, projectEntries(expected.snapshot())),
 			new FileInventory(root, projectEntries(worktree))).changes())
 		{
-			paths.add(PortablePaths.text(change.path()));
+			paths.add(change.path().toString());
 		}
 		return "The optimization worktree has changes that CAT did not make: " + paths;
 	}

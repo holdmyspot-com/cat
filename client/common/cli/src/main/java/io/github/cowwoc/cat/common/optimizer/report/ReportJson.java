@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.report;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -185,8 +184,8 @@ final class ReportJson
 		{
 			ObjectNode node = array.addObject();
 			node.put("requirement", warning.requirement());
-			node.put("path", PortablePaths.text(warning.path()));
-			node.put("target", PortablePaths.text(warning.target()));
+			node.put("path", warning.path().toString());
+			node.put("target", warning.target().toString());
 			node.put("limit", EnumNames.lowerCase(warning.limit()));
 			ArrayNode choices = node.putArray("choices");
 			for (AuthorityWarning.Choice choice : warning.choices())

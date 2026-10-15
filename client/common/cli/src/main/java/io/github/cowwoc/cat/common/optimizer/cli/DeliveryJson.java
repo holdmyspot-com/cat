@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.cli;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameter;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -58,8 +57,8 @@ final class DeliveryJson
 				{
 					ObjectNode node = array.addObject();
 					node.put("kind", EnumNames.lowerCase(conflict.kind()));
-					node.put("target", PortablePaths.text(conflict.target()));
-					node.put("path", PortablePaths.text(conflict.path()));
+					node.put("target", conflict.target().toString());
+					node.put("path", conflict.path().toString());
 				}
 			}
 			case DeliveryResult.UnownedChange unowned ->
@@ -69,7 +68,7 @@ final class DeliveryJson
 				for (PathChange change : unowned.changes())
 				{
 					ObjectNode node = array.addObject();
-					node.put("path", PortablePaths.text(change.path()));
+					node.put("path", change.path().toString());
 					node.put("kind", switch (change)
 					{
 						case PathChange.Added _ -> "added";
@@ -81,7 +80,7 @@ final class DeliveryJson
 			case DeliveryResult.ConcurrentEdit edit ->
 			{
 				root.put("result", "concurrent_edit");
-				root.put("target", PortablePaths.text(edit.change().target()));
+				root.put("target", edit.change().target().toString());
 				root.put("applied", edit.applied());
 			}
 			case DeliveryResult.VerificationFailed failed ->
@@ -122,6 +121,6 @@ final class DeliveryJson
 	private static void paths(ArrayNode array, Iterable<Path> paths)
 	{
 		for (Path path : paths)
-			array.add(PortablePaths.text(path));
+			array.add(path.toString());
 	}
 }

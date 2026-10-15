@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
@@ -157,10 +156,7 @@ public final class ControlSource
 		requireThat(dependents, "dependents").isNotNull();
 		requireThat(json, "json").isNotNull();
 		if (!(fork.entry(target).orElse(null) instanceof RegularFile targetFile))
-		{
-			throw new IllegalArgumentException("The fork does not record the target prompt file " +
-				PortablePaths.text(target));
-		}
+			throw new IllegalArgumentException("The fork does not record the target prompt file " + target);
 		Overlay incumbent = Overlay.of(fork);
 		Overlay control = incumbent.write(target, EMPTY, targetFile.permissions());
 		for (Dependent dependent : dependents)

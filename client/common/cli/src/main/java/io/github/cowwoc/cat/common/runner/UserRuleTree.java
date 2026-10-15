@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.runner;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -42,10 +41,7 @@ public final class UserRuleTree
 			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException
 			{
 				if (Files.isSymbolicLink(directory))
-				{
-					throw new IOException("User rule directory is a symbolic link: " +
-						PortablePaths.text(source.relativize(directory)));
-				}
+					throw new IOException("User rule directory is a symbolic link: " + source.relativize(directory));
 				Files.createDirectories(destination.resolve(source.relativize(directory)));
 				return CONTINUE;
 			}
@@ -54,10 +50,7 @@ public final class UserRuleTree
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
 			{
 				if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, NOFOLLOW_LINKS))
-				{
-					throw new IOException("User rule is not a regular file: " +
-						PortablePaths.text(source.relativize(file)));
-				}
+					throw new IOException("User rule is not a regular file: " + source.relativize(file));
 				Files.copy(file, destination.resolve(source.relativize(file)));
 				return CONTINUE;
 			}

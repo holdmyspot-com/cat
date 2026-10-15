@@ -2,7 +2,6 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
@@ -309,8 +308,7 @@ public final class Markdown
 		Path file = deliveredTest.location().directory().resolve(PromptTestFiles.SCENARIO);
 		if (test.regressionScenarios().isEmpty())
 		{
-			text.append("- Scenario: written by the contract author; delivery creates `").
-				append(PortablePaths.text(file)).append("`\n");
+			text.append("- Scenario: written by the contract author; delivery creates `").append(file).append("`\n");
 			return;
 		}
 		for (String citation : test.regressionScenarios())
@@ -341,8 +339,7 @@ public final class Markdown
 			else
 			{
 				text.append("- Scenario: converted from the recorded scenario `").append(citation).
-					append("`; delivery creates `").append(PortablePaths.text(file)).
-					append("`, which differs from it by:\n");
+					append("`; delivery creates `").append(file).append("`, which differs from it by:\n");
 			}
 			String diff = UnifiedDiff.of(List.of(new FileDelta(file, new FileContent(recorded.getBytes(UTF_8)),
 				new FileContent(written.getBytes(UTF_8)), Set.of())));
@@ -608,8 +605,8 @@ public final class Markdown
 	private void controlSource()
 	{
 		heading("Control source");
-		text.append("Control trials run the incumbent with the target prompt file `").
-			append(PortablePaths.text(controlFile)).append("` emptied to zero bytes");
+		text.append("Control trials run the incumbent with the target prompt file `").append(controlFile).
+			append("` emptied to zero bytes");
 		List<Dependent> dependents = contract.dependents();
 		if (dependents.isEmpty())
 		{
@@ -627,7 +624,7 @@ public final class Markdown
 				case PROJECT -> text.append("The project file `");
 				case PLUGIN -> text.append("The plugin file `");
 			}
-			text.append(PortablePaths.text(dependent.path())).append("`: ");
+			text.append(dependent.path()).append("`: ");
 			switch (dependent.removal())
 			{
 				case Dependent.WholeFile _ -> text.append("deleted");
@@ -663,15 +660,14 @@ public final class Markdown
 		switch (underTest)
 		{
 			case PluginUnderTest.Root root -> text.append("Each trial installs the plugin root `").
-				append(PortablePaths.text(root.directory())).append("` of its staged source.\n");
+				append(root.directory()).append("` of its staged source.\n");
 			case PluginUnderTest.Built built ->
 			{
 				text.append("Each trial installs a copy of the built plugin `").append(built.base()).
 					append("` with these directories of its staged source written over it:\n\n");
 				for (PluginUnderTest.Mapping mapping : built.mappings())
 				{
-					text.append("- `").append(PortablePaths.text(mapping.source())).append("` → `").
-						append(PortablePaths.text(mapping.target())).
+					text.append("- `").append(mapping.source()).append("` → `").append(mapping.target()).
 						append("`\n");
 				}
 			}
@@ -681,7 +677,7 @@ public final class Markdown
 			text.append("\nWarning: the content of these mapped files differs from the base's, because the base " +
 				"predates them or the build changes them. Trials load the project's content:\n\n");
 			for (Path path : plugin.differing())
-				text.append("- `").append(PortablePaths.text(path)).append("`\n");
+				text.append("- `").append(path).append("`\n");
 		}
 		if (underTest.dependsOnCat())
 			text.append("\nTrials install CAT: ");
@@ -718,15 +714,15 @@ public final class Markdown
 		}
 		for (LinkReport.Entry entry : links.entries())
 		{
-			text.append("- `").append(PortablePaths.text(entry.link())).append('`');
+			text.append("- `").append(entry.link()).append('`');
 			switch (entry.status())
 			{
 				case CYCLE -> text.append(": the links form a cycle; this blocks confirmation");
-				case MISSING_TARGET -> text.append(" -> `").append(PortablePaths.text(entry.target().orElseThrow())).
+				case MISSING_TARGET -> text.append(" -> `").append(entry.target().orElseThrow()).
 					append("`: the target is missing; this blocks confirmation");
 				case RESOLVED ->
 				{
-					text.append(" -> `").append(PortablePaths.text(entry.target().orElseThrow())).append("`: ");
+					text.append(" -> `").append(entry.target().orElseThrow()).append("`: ");
 					if (entry.isInsideProject())
 						text.append("inside the project; ");
 					else
