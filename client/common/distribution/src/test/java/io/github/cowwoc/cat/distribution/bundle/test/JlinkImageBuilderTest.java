@@ -40,6 +40,12 @@ public final class JlinkImageBuilderTest
 		esac
 		""";
 
+	/**
+	 * The options of every launcher's JVM: warnings on standard error only, and UTF-8 output on every platform.
+	 */
+	private static final String VM_OPTIONS = "-Xlog:all=off:stdout -Xlog:all=warning:stderr " +
+		"-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8";
+
 	/** Creates a test instance. */
 	public JlinkImageBuilderTest()
 	{
@@ -87,11 +93,36 @@ public final class JlinkImageBuilderTest
 			requireThat(launcher, "launcher").
 				contains("bwrap --bind / / --tmpfs \"/tmp/hsperfdata_$(id -un)\" --proc /proc --dev /dev --").
 				doesNotContain("--tmpfs /tmp ").
-				contains("JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr'").
+				contains("JLINK_VM_OPTIONS='" + VM_OPTIONS + "'").
 				contains("if command -v bwrap >/dev/null 2>&1; then").
 				contains("\nfi\nexec \"$DIR/java\" ").
 				contains(LOCALE_SETUP + "if command -v bwrap").
 				doesNotContain("PerfDisableSharedMem");
+		}
+	}
+
+	/**
+	 * Verifies that the batch launcher that jlink writes on Windows gets the same JVM options, and quotes the assignment
+	 * of its folder, whose name may hold a character that {@code cmd.exe} reads as a command separator.
+	 */
+	@Test
+	public void rewritesBatchLauncher() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			FakeToolProvider tool = new FakeToolProvider(0, "");
+			Path output = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Files.delete(output);
+			JlinkImageBuilder builder = JlinkImageBuilderSecrets.access().create(tool);
+			builder.build(List.of(Path.of("app.jar")), Set.of("app"),
+				List.of(new JlinkImageBuilder.Launcher("read-part", "app", "example.Main")), output);
+
+			requireThat(Files.readString(output.resolve("bin/read-part.bat")), "launcher").isEqualTo("""
+				@echo off\r
+				set JLINK_VM_OPTIONS=%s\r
+				set "DIR=%%~dp0"\r
+				"%%DIR%%\\java" %%JLINK_VM_OPTIONS%% -m app/example.Main %%*\r
+				""".formatted(VM_OPTIONS));
 		}
 	}
 
@@ -169,6 +200,9 @@ public final class JlinkImageBuilderTest
 						Files.writeString(launcher,
 							"#!/bin/sh\nJLINK_VM_OPTIONS=\nDIR=`dirname $0`\n$DIR/java -m " + target + " \"$@\"\n");
 						requireThat(launcher.toFile().setExecutable(true), "launcherExecutable").isTrue();
+						// jlink writes this launcher only on Windows, in this form
+						Files.writeString(launcher.resolveSibling(name + ".bat"), "@echo off\r\nset JLINK_VM_OPTIONS=\r\n" +
+							"set DIR=%~dp0\r\n\"%DIR%\\java\" %JLINK_VM_OPTIONS% -m " + target + " %*\r\n");
 					}
 				}
 				catch (IOException exception)

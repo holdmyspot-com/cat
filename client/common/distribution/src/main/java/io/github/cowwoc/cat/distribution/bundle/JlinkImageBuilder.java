@@ -23,6 +23,13 @@ import java.util.spi.ToolProvider;
 public final class JlinkImageBuilder
 {
 	private static final int MAXIMUM_LAUNCHER_BYTES = 1_048_576;
+	/**
+	 * The options of every launcher's JVM. The CLI's standard output carries structured responses, so JVM warnings go to
+	 * standard error instead of corrupting that channel. Java writes its standard streams in the console's or the
+	 * system's character set, which on Windows is not UTF-8, while the harnesses read UTF-8.
+	 */
+	private static final String VM_OPTIONS = "-Xlog:all=off:stdout -Xlog:all=warning:stderr " +
+		"-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8";
 
 	static
 	{
@@ -137,6 +144,7 @@ public final class JlinkImageBuilder
 			throw new IOException("jlink failed with exit code " + exitCode + details);
 		}
 		rewriteLaunchersForWhitespacePaths(output, launchers);
+		rewriteBatchLaunchers(output, launchers);
 		return output;
 	}
 
@@ -164,10 +172,8 @@ public final class JlinkImageBuilder
 	 */
 	private void rewriteLaunchersForWhitespacePaths(Path output, List<Launcher> launchers) throws IOException
 	{
-		// The CLI's standard output carries structured responses. Keep JVM warnings observable on standard error instead
-		// of letting an unrelated runtime diagnostic corrupt that response channel.
 		String unconfiguredVmOptions = "JLINK_VM_OPTIONS=\n";
-		String configuredVmOptions = "JLINK_VM_OPTIONS='-Xlog:all=off:stdout -Xlog:all=warning:stderr'\n";
+		String configuredVmOptions = "JLINK_VM_OPTIONS='" + VM_OPTIONS + "'\n";
 		String unquotedDirectory = "DIR=`dirname $0`\n";
 		String unquotedInvocation = "$DIR/java ";
 		String quotedDirectory = "DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n";
@@ -203,6 +209,33 @@ public final class JlinkImageBuilder
 				replace(unquotedDirectory, quotedDirectory);
 			rewritten = rewritten.substring(0, rewritten.indexOf(unquotedInvocation)) + localeSetup + isolatedInvocation +
 				rewritten.substring(rewritten.indexOf('\n', rewritten.indexOf(unquotedInvocation)));
+			Files.writeString(script, rewritten, UTF_8);
+		}
+	}
+
+	/**
+	 * Gives the batch launchers that jlink writes on Windows the JVM options of the POSIX launchers, and quotes the
+	 * assignment of the launcher's folder, whose name may hold a character, such as {@code &}, that {@code cmd.exe}
+	 * reads as a command separator. Other platforms have no batch launchers.
+	 *
+	 * @param output the runtime-image directory
+	 * @param launchers the launchers to rewrite
+	 * @throws IOException if a launcher cannot be read or written
+	 */
+	private void rewriteBatchLaunchers(Path output, List<Launcher> launchers) throws IOException
+	{
+		String unconfiguredVmOptions = "set JLINK_VM_OPTIONS=\r\n";
+		String unquotedDirectory = "set DIR=%~dp0\r\n";
+		for (Launcher launcher : launchers)
+		{
+			Path script = output.resolve("bin").resolve(launcher.name() + ".bat");
+			if (Files.notExists(script))
+				continue;
+			String content = BoundedInput.readUtf8(script, MAXIMUM_LAUNCHER_BYTES, "jlink launcher");
+			if (!content.contains(unconfiguredVmOptions) || !content.contains(unquotedDirectory))
+				throw new IOException("Unexpected jlink launcher format: " + script);
+			String rewritten = content.replace(unconfiguredVmOptions, "set JLINK_VM_OPTIONS=" + VM_OPTIONS + "\r\n").
+				replace(unquotedDirectory, "set \"DIR=%~dp0\"\r\n");
 			Files.writeString(script, rewritten, UTF_8);
 		}
 	}
