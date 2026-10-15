@@ -66,8 +66,9 @@ lazy load `../include/common/numeric-precision.md`.
 When writing or changing a boolean expression that contains a negation, lazy load
 `../include/common/boolean-negation.md`.
 
-When defining, changing, reviewing, or auditing type, function, or method names, or changing a type's responsibility
-without renaming it, lazy load `../include/common/identifier-naming.md`.
+When defining, changing, reviewing, or auditing type, function, or method names, or the names of variables declared
+outside a function body, or changing a type's responsibility without renaming it, lazy load
+`../include/common/identifier-naming.md`.
 
 When defining, changing, or auditing terminology used for a shared concept across source code, configuration,
 documentation, commands, or rules, lazy load `../include/common/consistent-terminology.md`. This includes naming a
@@ -79,6 +80,9 @@ When defining, changing, or reviewing parameter validation for a caller-facing o
 
 When writing or editing maintained documentation, including product, legal, API, function, method, command,
 configuration, or user-facing workflow documentation, lazy load `../include/documentation/general.md`.
+
+When declaring a variable outside a function body, such as a field, constant, or module-level variable, or changing the
+value or contents of an existing one, lazy load `../include/documentation/variables.md`.
 
 When applying a skill would cause you to ask for permission or confirmation, pause, leave requested work unfinished, or
 diverge from the user's intent, lazy load `../include/common/skill-interruption-reporting.md` before taking that action.

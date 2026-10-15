@@ -9,15 +9,19 @@ depends-on:
 - Make every affected type, function, and method name communicate the responsibility or behavior and the target that
   its contract, callers, and implementation establish, and verify that across all comparable identifiers rather than by
   searching for particular name fragments.
+- Make every affected variable declared outside a function body, such as a field, constant, or module-level variable,
+  name what its value represents and the role the code gives it, so a reader can tell it apart from any other value of
+  the same kind without reading the code that uses it.
 - Keep a type's name accurate after its responsibility changes, so readers do not infer an earlier or narrower job from
   a name that no longer describes the current one.
 
 ## Guidance
 
-When identifier naming is in scope, list every affected type, function, and method in the relevant source languages.
-For a change or its review, an identifier is affected when the change adds or renames it or changes its
-responsibility; do not propose renaming an unchanged identifier while reviewing an unrelated edit. A requested naming
-audit affects every identifier in its stated scope. For each one, use its contract, callers, and implementation to state its responsibility or behavior and its target in
+When identifier naming is in scope, list every affected type, function, method, and variable declared outside a
+function body in the relevant source languages. For a change or its review, an identifier is affected when the change
+adds or renames it, changes its responsibility, or changes what a variable holds; do not propose renaming an unchanged
+identifier while reviewing an unrelated edit. A requested naming audit affects every identifier in its stated scope.
+For each one, use its contract, callers, and implementation to state its responsibility or behavior and its target in
 plain language. Then check that its name communicates that same statement under the Clear Writing naming criteria.
 Correct each name that fails the check, or report it when renaming is outside the task's scope.
 
@@ -32,6 +36,14 @@ When a change adds to, removes from, or otherwise alters a type's responsibility
 current responsibility and compare the existing name with it. A name that described the earlier responsibility but now
 hides part of the current one fails the check even when the type's design is sound: correct the name instead of
 splitting a coherent type to fit it.
+
+Name a variable declared outside a function body after what its value represents: the record, message, resource, or
+domain set its contents come from, and the role the code gives them. Do not name it after only its container or element
+kind, such as `FIELDS`, `NAMES`, `KEYS`, or `VALUES`; such a name fits every collection of that kind and leaves the
+reader to search its uses to learn which items it holds and why. For example, a set of the hook-input fields that a
+handler parses, while it skips every other field, is `PARSED_HOOK_FIELDS`, not `FIELDS`. Omit a word that the
+enclosing type's name already supplies, as the Clear Writing qualifier check allows, but keep the word that states the
+role.
 
 For a function or method, distinguish one that returns an already-known value from one that searches for a value,
 chooses among candidates, converts input, makes a value canonical, checks a condition, creates something, or removes
@@ -48,5 +60,6 @@ Use a product or framework name in an identifier only when that product's behavi
 contract. Otherwise name the applicable generic role, such as a parent process or child process.
 
 Do not use a search for particular name fragments as evidence that the audit is complete. An identifier can have an
-inaccurate name without containing an expected fragment. Review every in-scope type, function, and method that performs
-the relevant responsibility or behavior against its contract and implementation.
+inaccurate name without containing an expected fragment. Review every in-scope type, function, method, and variable
+declared outside a function body that performs the relevant responsibility or holds the relevant value against its
+contract and implementation.
