@@ -127,8 +127,8 @@ final class ToolRecords
 	}
 
 	/**
-	 * Returns every line of the trial's tool output, without trailing whitespace, both as written and without a
-	 * line-number prefix.
+	 * Returns every line of the tool results that the trial's agents received, without trailing whitespace, both as
+	 * written and without a line-number prefix.
 	 *
 	 * @param record the trial's record
 	 * @return the lines
@@ -136,9 +136,9 @@ final class ToolRecords
 	static Set<String> outputLines(TrialRecord record)
 	{
 		Set<String> lines = new HashSet<>();
-		for (Tool call : record.tools())
+		for (String result : record.received())
 		{
-			for (String line : call.output().split("\n", -1))
+			for (String line : result.split("\n", -1))
 			{
 				String stripped = line.stripTrailing();
 				lines.add(stripped);

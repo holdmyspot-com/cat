@@ -52,7 +52,9 @@ The prompt author's kinds of failure that concern the test, as JSON, or an empty
 `fault` that the prompt author found in the test, and its `failures`. Each failure gives its test case's `values` and
 `expected_outcome`, its `cell`, the `rationale` of its failure, the assertions that it failed with their `behavior`,
 the agent's `responses` by turn, and its trial's `evidence_section`, or `null` if the trial's events are no longer
-retained:
+retained. The `evidence_section` gives each tool call's input, exit status and output size, and for a command whether
+the agent received all of the output or only part of it; it leaves out the text of each output and names the trial's
+transcript, which holds each tool's complete output:
 
 {{kinds}}
 

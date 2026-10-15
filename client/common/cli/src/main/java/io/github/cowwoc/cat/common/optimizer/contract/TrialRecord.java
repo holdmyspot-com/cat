@@ -30,6 +30,14 @@ public interface TrialRecord
 	List<SessionEvidence.Tool> tools();
 
 	/**
+	 * Returns every tool result as the trial's agents received it. A harness can shorten a tool's output before its
+	 * model receives it, so a result can hold less than the output that {@link #tools()} records.
+	 *
+	 * @return the results, in no particular order
+	 */
+	List<String> received();
+
+	/**
 	 * Indicates whether a path exists in the trial's workspace after the trial.
 	 *
 	 * @param path a normalized path relative to the workspace, which uses {@code /} as the separator

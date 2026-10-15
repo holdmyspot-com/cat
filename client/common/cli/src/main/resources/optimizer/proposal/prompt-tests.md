@@ -137,8 +137,8 @@ only the reply to turn n, counted from 1.
 | `tool-used <tool>` | the trial called the tool | `tool_not_called` |
 | `tool-unused <tool>` | the trial never called the tool | `tool_called` |
 | `no-tool-call` | the trial called no tool | `unneeded_tool_call` |
-| `read-in-full <path>` | every non-blank line of the file as staged appeared in the trial's tool output | `file_not_read_in_full` |
-| `read-at-most <path> <percent>` | at most that percentage of the file's non-blank lines appeared in the trial's tool output | `file_read_beyond_limit` |
+| `read-in-full <path>` | every non-blank line of the file as staged appeared in the tool output that the trial's agents received | `file_not_read_in_full` |
+| `read-at-most <path> <percent>` | at most that percentage of the file's non-blank lines appeared in the tool output that the trial's agents received | `file_read_beyond_limit` |
 
 CAT refuses a built-in tool whose evidence the harness does not report, such as `exit-status` for a harness that
 reports no exit statuses.

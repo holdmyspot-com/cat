@@ -4,12 +4,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.runner.CodexProcess;
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
 import io.github.cowwoc.cat.common.runner.fakes.test.FakeHarnessCli;
 import io.github.cowwoc.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +27,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongFunction;
 import java.util.stream.Stream;
 
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -44,12 +48,87 @@ public final class CodexProcessTest
 	 * Request lines that the tests play no part in.
 	 */
 	private static final LongFunction<List<String>> NO_ANSWER = _ -> List.of();
+	/**
+	 * The directory that holds each runner process's Codex home and rollouts directory.
+	 */
+	private Path temporary;
 
 	/**
 	 * Creates the test fixture.
 	 */
 	public CodexProcessTest()
 	{
+	}
+
+	/**
+	 * Creates the directory that holds each runner process's Codex home and rollouts directory.
+	 *
+	 * @throws IOException if the directory cannot be created
+	 */
+	@BeforeClass
+	public void createTemporary() throws IOException
+	{
+		temporary = Files.createTempDirectory("codex-process-test-");
+	}
+
+	/**
+	 * Deletes the directory that holds each runner process's Codex home and rollouts directory.
+	 *
+	 * @throws IOException if the directory cannot be deleted
+	 */
+	@AfterClass(alwaysRun = true)
+	public void deleteTemporary() throws IOException
+	{
+		if (temporary != null)
+			TemporaryDirectories.deleteRecursively(temporary);
+	}
+
+	/**
+	 * Verifies that closing the process copies every rollout below the Codex home's {@code sessions} directory into
+	 * the rollouts directory, without the other files there.
+	 *
+	 * @throws IOException if the files cannot be written or read
+	 */
+	@Test(timeOut = 10_000)
+	public void closeKeepsRollouts() throws IOException
+	{
+		Path directory = Files.createTempDirectory(temporary, "rollouts-");
+		Path day = Files.createDirectories(directory.resolve("home/sessions/2026/10/15"));
+		Files.writeString(day.resolve("rollout-2026-10-15T10-00-00-root.jsonl"), "{\"root\":true}\n", UTF_8);
+		Files.writeString(day.resolve("notes.txt"), "not a rollout\n", UTF_8);
+		Files.writeString(directory.resolve("home/sessions/rollout-child.jsonl"), "{\"child\":true}\n", UTF_8);
+
+		new AppServer(NO_ANSWER, NO_ANSWER).start(directory).close();
+
+		Path rollouts = directory.resolve("rollouts");
+		try (Stream<Path> files = Files.list(rollouts))
+		{
+			requireThat(files.map(file -> file.getFileName().toString()).sorted().toList(), "rollouts").
+				isEqualTo(List.of("rollout-2026-10-15T10-00-00-root.jsonl", "rollout-child.jsonl"));
+		}
+		requireThat(Files.readString(rollouts.resolve("rollout-2026-10-15T10-00-00-root.jsonl"), UTF_8), "root").
+			isEqualTo("{\"root\":true}\n");
+		requireThat(Files.readString(rollouts.resolve("rollout-child.jsonl"), UTF_8), "child").
+			isEqualTo("{\"child\":true}\n");
+	}
+
+	/**
+	 * Verifies that closing a process whose Codex home recorded no session still creates the rollouts directory, so
+	 * that a session without threads reads as having received no tool results.
+	 *
+	 * @throws IOException if the directory cannot be created or listed
+	 */
+	@Test(timeOut = 10_000)
+	public void closeWithoutSessionsCreatesRollouts() throws IOException
+	{
+		Path directory = Files.createTempDirectory(temporary, "rollouts-");
+
+		new AppServer(NO_ANSWER, NO_ANSWER).start(directory).close();
+
+		try (Stream<Path> files = Files.list(directory.resolve("rollouts")))
+		{
+			requireThat(files.toList(), "rollouts").isEmpty();
+		}
 	}
 
 	/**
@@ -447,7 +526,7 @@ public final class CodexProcessTest
 	 * deliver it; it makes no claim about harness timing. EOF-before-exit uses {@link FakeHarnessCli}'s generic process
 	 * lifecycle model.
 	 */
-	private static final class AppServer
+	private final class AppServer
 	{
 		private final JsonMapper json = JsonMapper.builder().build();
 		private final LongFunction<List<String>> onTurnStart;
@@ -530,7 +609,36 @@ public final class CodexProcessTest
 		 */
 		private CodexProcess start(String model, String effort) throws IOException
 		{
-			CodexProcess result = new CodexProcess(process, new TestHarnessRunnerScope(), false);
+			return start(Files.createTempDirectory(temporary, "process-"), model, effort);
+		}
+
+		/**
+		 * Starts a runner process over this app-server, whose Codex home and rollouts directory are the {@code home}
+		 * and {@code rollouts} directories of a directory, and creates its root thread.
+		 *
+		 * @param directory the directory
+		 * @return the initialized runner process
+		 * @throws IOException if initialization fails
+		 */
+		private CodexProcess start(Path directory) throws IOException
+		{
+			return start(directory, "", "");
+		}
+
+		/**
+		 * Starts a runner process over this app-server under a profile, whose Codex home and rollouts directory are
+		 * the {@code home} and {@code rollouts} directories of a directory, and creates its root thread.
+		 *
+		 * @param directory the directory
+		 * @param model the model to select, or empty for Codex's default
+		 * @param effort the reasoning effort to select, or empty for Codex's default
+		 * @return the initialized runner process
+		 * @throws IOException if initialization fails
+		 */
+		private CodexProcess start(Path directory, String model, String effort) throws IOException
+		{
+			CodexProcess result = new CodexProcess(process, new TestHarnessRunnerScope(), false,
+				directory.resolve("home"), directory.resolve("rollouts"));
 			result.initialize(PROJECT, model, "", effort);
 			return result;
 		}

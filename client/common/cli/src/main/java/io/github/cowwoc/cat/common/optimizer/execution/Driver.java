@@ -1345,7 +1345,8 @@ public final class Driver implements AutoCloseable
 				Files.isDirectory(files.initialProject()))
 			{
 				SessionEvidence activity = context.sessions().readEvidence(files.transcript());
-				sections.put(index, EvidenceSection.render(activity, files.effects(), files.initialProject()));
+				sections.put(index, EvidenceSection.render(activity, files.transcript(), files.effects(),
+					files.initialProject()));
 			}
 		}
 		return sections;

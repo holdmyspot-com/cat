@@ -74,7 +74,7 @@ public final class TrialEvidence implements TrialRecord
 	 */
 	public String render() throws IOException
 	{
-		return EvidenceSection.render(activity, trial.effects(), trial.initialProject());
+		return EvidenceSection.render(activity, trial.transcript(), trial.effects(), trial.initialProject());
 	}
 
 	@Override
@@ -93,6 +93,12 @@ public final class TrialEvidence implements TrialRecord
 				tools.add(tool);
 		}
 		return tools;
+	}
+
+	@Override
+	public List<String> received()
+	{
+		return activity.received();
 	}
 
 	@Override

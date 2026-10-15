@@ -93,7 +93,8 @@ public final class JudgePromptTest
 	}
 
 	/**
-	 * Checks that the effects directory is read-only and the transcript is excluded from evidence templates.
+	 * Checks that the effects directory and the directory that holds the transcript are read-only, and that a transcript
+	 * in the effects directory or without a directory adds no other directory.
 	 */
 	@Test
 	public void requestProtectsEvidence()
@@ -102,7 +103,7 @@ public final class JudgePromptTest
 		// Requirement: R-E13
 		SessionRequest request = prompt.request(profile(), testCase(), completed(List.of(List.of("Should I delete?"))),
 			DECIDED, List.of(), SECTION);
-		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS));
+		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS, TRANSCRIPT.getParent()));
 		SessionRequest colocated = prompt.request(profile(), testCase(),
 			completed(List.of(List.of("Should I delete?")), EFFECTS.resolve("transcript.jsonl"), EFFECTS),
 			DECIDED, List.of(), SECTION);
@@ -182,7 +183,8 @@ public final class JudgePromptTest
 	}
 
 	/**
-	 * Checks that the evidence section replaces the transcript path and the prompt names the effects directory.
+	 * Checks that the packaged template carries the evidence section and names the effects directory and the transcript,
+	 * whose directory becomes readable.
 	 */
 	@Test
 	public void requestRendersEvidenceSection()
@@ -195,8 +197,8 @@ public final class JudgePromptTest
 		SessionRequest request = prompt.request(profile, testCase(), completed(List.of(List.of("Should I delete?"))),
 			DECIDED, List.of(), SECTION);
 		requireThat(request.turns().getFirst(), "turn").contains(SECTION).doesNotContain("{{evidence}}").
-			contains(EFFECTS.toString()).doesNotContain(TRANSCRIPT.toString());
-		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS));
+			contains(EFFECTS.toString()).contains(TRANSCRIPT.toString());
+		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(EFFECTS, TRANSCRIPT.getParent()));
 	}
 
 	/**

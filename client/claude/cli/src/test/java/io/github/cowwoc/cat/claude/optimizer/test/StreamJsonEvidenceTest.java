@@ -62,7 +62,8 @@ public final class StreamJsonEvidenceTest
 	}
 
 	/**
-	 * Verifies that shell commands, other arguments and complete results survive rendering recorded tool calls.
+	 * Verifies that shell commands, other arguments and complete results survive parsing recorded tool calls, that each
+	 * result is received as the content shown to the agent, and that rendering gives each result's size.
 	 *
 	 * @throws IOException if the recordings cannot be read
 	 */
@@ -73,13 +74,18 @@ public final class StreamJsonEvidenceTest
 		SessionEvidence evidence = parse(recorded("claude-tool-calls.jsonl"));
 		requireThat(evidence.entries(), "entries").isEqualTo(List.of(
 			new SessionEvidence.Tool(1, "root", "Bash", "true", true, 0, ""),
-			new SessionEvidence.Tool(1, "root", "Bash", "false", true, 1, "Error: Exit code 1"),
+			new SessionEvidence.Tool(1, "root", "Bash", "false", true, 1, "Exit code 1"),
 			new SessionEvidence.Tool(1, "root", "Read", "{\"file_path\":\"/recorded-project/sample.txt\"}", false,
 				null, "1\tsample\n2\t")));
 		String rendered = evidence.render();
 		requireThat(rendered.contains("true"), "command").isTrue();
 		requireThat(rendered.contains("Exit status: 0"), "exitStatus").isTrue();
-		requireThat(rendered.contains("1\tsample\n2\t"), "completeOutput").isTrue();
+		requireThat(evidence.received(), "received").
+			isEqualTo(List.of("(Bash completed with no output)", "Exit code 1", "1\tsample\n2\t"));
+		requireThat(rendered, "rendered").contains("Output: none\n").
+			contains("Output: 11 characters; the agent received all of it\n").
+			contains("Output: 11 characters\n").
+			doesNotContain("1\tsample");
 		requireThat(rendered.contains("input_tokens"), "telemetry").isFalse();
 	}
 
@@ -96,9 +102,10 @@ public final class StreamJsonEvidenceTest
 		List<Integer> statuses = evidence.entries().stream().map(entry -> ((SessionEvidence.Tool) entry).exitStatus()).
 			toList();
 		requireThat(statuses, "statuses").isEqualTo(Arrays.asList(0, 1, 42, 1, null, null));
-		requireThat(evidence.render().contains("Error: Exit code 42"), "errorOutput").isTrue();
-		requireThat(evidence.render().contains("Command running in background with ID: bty01sqtm."),
-			"backgroundOutput").isTrue();
+		requireThat(evidence.received().contains("Exit code 42"), "errorOutput").isTrue();
+		requireThat(evidence.received().stream().anyMatch(result ->
+			result.startsWith("Command running in background with ID: bty01sqtm.")), "backgroundOutput").isTrue();
+		requireThat(evidence.render(), "rendered").doesNotContain("only part");
 	}
 
 	/**
@@ -201,7 +208,8 @@ public final class StreamJsonEvidenceTest
 
 	/**
 	 * Verifies that the full stdout and stderr survive even when their size exceeds 200,000 characters and the
-	 * tool-result display contains a shortened value.
+	 * tool-result display contains a shortened value, and that the evidence reports that the agent received only part
+	 * of the output.
 	 */
 	@Test
 	public void preservesLargeCompleteToolOutput()
@@ -217,7 +225,9 @@ public final class StreamJsonEvidenceTest
 				"tool_use_result", Map.of("stdout", stdout, "stderr", stderr, "interrupted", false)))));
 		SessionEvidence.Tool tool = (SessionEvidence.Tool) evidence.entries().getFirst();
 		requireThat(tool.output(), "output").isEqualTo(stdout + stderr);
-		requireThat(evidence.render().contains(stdout + stderr), "completeRenderedOutput").isTrue();
+		requireThat(evidence.received(), "received").isEqualTo(List.of("shortened"));
+		requireThat(evidence.render(), "rendered").
+			contains("Output: " + (stdout + stderr).length() + " characters; the agent received only part of it");
 	}
 
 	/**

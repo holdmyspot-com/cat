@@ -69,10 +69,19 @@ public final class StreamJsonEvents extends HarnessEvents
 	private static final String RATE_LIMITED_STATUS = "rejected";
 	private static final int RATE_LIMITED_ERROR = 429;
 	private static final int REFUSED_ERROR = 403;
+	/**
+	 * The prefix that Claude Code adds to the content of a failed tool's result when it reports the result as a string.
+	 */
+	private static final String ERROR_PREFIX = "Error: ";
 	private static final Pattern EXIT_CODE = Pattern.compile("Error: Exit code (\\d{1,9})(?:\n|$)");
 	private final Map<String, RateLimitWindow> windows = new LinkedHashMap<>();
 	private final Map<String, ToolCall> calls = new LinkedHashMap<>();
 	private final List<SessionEvidence.Entry> entries = new ArrayList<>();
+	/**
+	 * The content of each {@code tool_result}, which is what the agent received; Claude Code can shorten it below the
+	 * tool's complete output.
+	 */
+	private final List<String> received = new ArrayList<>();
 	private final Map<String, Integer> toolEntries = new HashMap<>();
 	private final Map<String, Integer> hookEntries = new HashMap<>();
 	private final Map<String, Integer> messageEntries = new HashMap<>();
@@ -163,7 +172,7 @@ public final class StreamJsonEvents extends HarnessEvents
 			blockIndex += 1;
 		}
 		setToolCalls(calls.values().stream().toList());
-		setEvidence(new SessionEvidence(entries));
+		setEvidence(new SessionEvidence(entries, received));
 	}
 
 	/**
@@ -194,7 +203,8 @@ public final class StreamJsonEvents extends HarnessEvents
 	}
 
 	/**
-	 * Records tool outputs and the exit status of each command that a {@code tool_result} answers.
+	 * Records tool outputs, the exit status of each command that a {@code tool_result} answers, and the content of each
+	 * {@code tool_result} as received.
 	 *
 	 * @param event the user message event
 	 */
@@ -207,6 +217,7 @@ public final class StreamJsonEvents extends HarnessEvents
 		{
 			if (!block.path("type").asString("").equals("tool_result"))
 				continue;
+			received.add(contentText(block.path("content")));
 			String id = block.path("tool_use_id").asString("");
 			Integer index = toolEntries.get(id);
 			if (index == null)
@@ -226,11 +237,13 @@ public final class StreamJsonEvents extends HarnessEvents
 				calls.put(id, new ToolCall(call.tool(), call.command(), status));
 		}
 		setToolCalls(calls.values().stream().toList());
-		setEvidence(new SessionEvidence(entries));
+		setEvidence(new SessionEvidence(entries, received));
 	}
 
 	/**
-	 * Selects complete command output or tool content while omitting metadata outside the result's content.
+	 * Selects complete command output or tool content while omitting metadata outside the result's content. A result
+	 * that is a string adding only Claude Code's {@code Error: } prefix to the content shown to the assistant is that
+	 * content.
 	 *
 	 * @param tool the tool name
 	 * @param result the record's structured result
@@ -240,7 +253,12 @@ public final class StreamJsonEvents extends HarnessEvents
 	private static String toolOutput(String tool, JsonNode result, JsonNode content)
 	{
 		if (result.isString())
+		{
+			String shown = contentText(content);
+			if (result.stringValue().equals(ERROR_PREFIX + shown))
+				return shown;
 			return result.stringValue();
+		}
 		if (tool.equals("Bash") && result.isObject() && !result.has("backgroundTaskId") &&
 			(result.has("stdout") || result.has("stderr")))
 		{
@@ -353,7 +371,7 @@ public final class StreamJsonEvents extends HarnessEvents
 		}
 		else
 			entries.set(index, entry);
-		setEvidence(new SessionEvidence(entries));
+		setEvidence(new SessionEvidence(entries, received));
 	}
 
 	/**
@@ -479,7 +497,7 @@ public final class StreamJsonEvents extends HarnessEvents
 			recordAssistant(eventTurn, agent, "result", text);
 		if (agent.equals(ROOT_AGENT))
 			turnCompleted = true;
-		setEvidence(new SessionEvidence(entries));
+		setEvidence(new SessionEvidence(entries, received));
 
 		JsonNode models = event.path("modelUsage");
 		if (models.isObject() && !models.isEmpty())

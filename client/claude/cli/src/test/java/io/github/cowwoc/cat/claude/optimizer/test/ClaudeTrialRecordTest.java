@@ -65,6 +65,12 @@ public final class ClaudeTrialRecordTest
 		}
 
 		@Override
+		public List<String> received()
+		{
+			return activity.received();
+		}
+
+		@Override
 		public boolean exists(String path)
 		{
 			return false;

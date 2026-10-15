@@ -72,8 +72,11 @@ public final class CodexJudgeVersionTest
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
 				root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			CodexSessions sessions = new CodexSessions(settings);
+			Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1,
+				"error building bubblewrap command: app-server socket directory must be a user-owned directory with " +
+					"mode 0700\n")));
 			// Run directories differ per run, so the hash covers the section with their root replaced
-			String section = EvidenceSection.render(sessions.readEvidence(EVENTS), effects, source).
+			String section = EvidenceSection.render(sessions.readEvidence(transcript), transcript, effects, source).
 				replace(root.toString(), "<root>");
 			CodexProfileInventory inventory = new CodexProfileInventory(ARTIFACT.toAbsolutePath().normalize(), "codex",
 				_ ->

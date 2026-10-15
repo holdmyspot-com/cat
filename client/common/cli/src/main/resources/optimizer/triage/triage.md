@@ -50,12 +50,18 @@ assistant messages in order, including interim messages and ending with the fina
 {{responses}}
 
 The trial's tool calls, child activity and hook outcomes, in turn order, followed by every file change against the
-source the trial started from:
+source the trial started from. Each tool call shows its input and exit status, and the size of its output instead of
+the output's text. For a command, it also says whether the agent received all of the output or only part of it,
+because the harness can shorten a long output before the agent receives it:
 
 {{evidence}}
 
 The trial's project directory after the trial, {{effects}}, is available read-only so that you can open a whole file
-when its diff or note is not enough.
+when its diff or note is not enough. The trial's transcript, {{transcript}}, is available read-only, together with the
+other records in its directory. It holds the harness's events, including each tool's complete output. When an
+assertion depends on what a tool printed, search the transcript for that text rather than reading it whole. Text of an
+output that the agent received only part of may never have reached the agent; the other records in the transcript's
+directory can show what the agent received.
 
 The results of the test's built-in tools, as JSON: the assertion that each tool decided, what that assertion
 requires, the tool and its arguments, its `on_tool_failure`, whether it passed and the value that it observed. A failed

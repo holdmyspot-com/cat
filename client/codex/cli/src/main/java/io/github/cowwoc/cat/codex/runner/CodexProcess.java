@@ -14,12 +14,16 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -39,6 +43,14 @@ public final class CodexProcess implements HarnessProcess
 	private final BufferedReader output;
 	private final HarnessStandardError standardError;
 	private final boolean verifyCatHookDelivery;
+	/**
+	 * The Codex home whose {@code sessions} directory holds the rollouts of the app-server's threads.
+	 */
+	private final Path codexHome;
+	/**
+	 * The directory that keeps the rollouts once the app-server exits.
+	 */
+	private final Path rollouts;
 	private final StringBuilder startupEvents = new StringBuilder();
 	/**
 	 * The next JSON-RPC request identifier; guarded by {@link #input}.
@@ -66,15 +78,22 @@ public final class CodexProcess implements HarnessProcess
 	 * @param process the started Codex app-server process
 	 * @param scope services owned for this app-server lifetime
 	 * @param verifyCatHookDelivery whether CAT hook configuration and delegated-hook delivery must be verified
-	 * @throws NullPointerException if {@code process} or {@code scope} are null
+	 * @param codexHome the Codex home of the app-server, whose {@code sessions} directory holds its threads' rollouts
+	 * @param rollouts the directory that keeps the rollouts once the app-server exits
+	 * @throws NullPointerException if {@code process}, {@code scope}, {@code codexHome} or {@code rollouts} are null
 	 */
-	public CodexProcess(Process process, HarnessRunnerScope scope, boolean verifyCatHookDelivery)
+	public CodexProcess(Process process, HarnessRunnerScope scope, boolean verifyCatHookDelivery, Path codexHome,
+		Path rollouts)
 	{
 		requireThat(process, "process").isNotNull();
 		requireThat(scope, "scope").isNotNull();
+		requireThat(codexHome, "codexHome").isNotNull();
+		requireThat(rollouts, "rollouts").isNotNull();
 		this.process = process;
 		this.scope = scope;
 		this.verifyCatHookDelivery = verifyCatHookDelivery;
+		this.codexHome = codexHome;
+		this.rollouts = rollouts;
 		input = new OutputStreamWriter(process.getOutputStream(), UTF_8);
 		output = new BufferedReader(new InputStreamReader(process.getInputStream(), UTF_8));
 		standardError = new HarnessStandardError(process.getErrorStream());
@@ -449,9 +468,10 @@ public final class CodexProcess implements HarnessProcess
 	}
 
 	/**
-	 * Closes app-server input and requests graceful termination.
+	 * Closes app-server input, waits for the app-server to exit, and then copies the rollouts of its threads into the
+	 * rollouts directory, so that what each thread's model received outlives the Codex home.
 	 *
-	 * @throws IOException if closing input fails
+	 * @throws IOException if closing input fails or the rollouts cannot be copied
 	 */
 	@Override
 	public void close() throws IOException
@@ -469,7 +489,32 @@ public final class CodexProcess implements HarnessProcess
 				Thread.currentThread().interrupt();
 				throw new IOException("Interrupted while waiting for Codex to exit", e);
 			}
+			keepRollouts();
 		}
+	}
+
+	/**
+	 * Copies every rollout file below the Codex home's {@code sessions} directory into the rollouts directory, which
+	 * is created even when the app-server started no thread. Links are not followed.
+	 *
+	 * @throws IOException if the rollouts cannot be listed or copied
+	 */
+	private void keepRollouts() throws IOException
+	{
+		Files.createDirectories(rollouts);
+		Path sessions = codexHome.resolve("sessions");
+		if (!Files.isDirectory(sessions, LinkOption.NOFOLLOW_LINKS))
+			return;
+		List<Path> files;
+		try (Stream<Path> walk = Files.walk(sessions))
+		{
+			files = walk.filter(file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)).
+				filter(file -> file.getFileName().toString().startsWith("rollout-")).
+				filter(file -> file.getFileName().toString().endsWith(".jsonl")).
+				toList();
+		}
+		for (Path file : files)
+			Files.copy(file, rollouts.resolve(file.getFileName()), StandardCopyOption.REPLACE_EXISTING);
 	}
 
 	/**

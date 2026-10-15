@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.optimizer.CodexSessions;
 import io.github.cowwoc.cat.codex.runner.CodexProcess;
+import io.github.cowwoc.cat.codex.runner.CodexRunner;
 import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
@@ -152,7 +153,8 @@ final class RecordedAppServer implements Bridge
 			manager.initialize(run, runRoot, Path.of(ScriptedHarness.optionValue(arguments, "--project")),
 				"recorded", List.of("recorded"));
 			TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
-			CodexProcess adapter = new CodexProcess(process, scope, false);
+			CodexProcess adapter = new CodexProcess(process, scope, false, run.directory().resolve("home"),
+				run.directory().resolve("artifacts").resolve(CodexRunner.ROLLOUTS));
 			adapter.initialize(run.directory().resolve("project"), "requested-alias");
 			return new HarnessRunSession(run, adapter, scope);
 		}, input, output);

@@ -30,6 +30,11 @@ public final class CodexTrialRecordTest
 	 * The recorded events of a session whose commands {@code true} and {@code false} failed to start in the sandbox.
 	 */
 	private static final Path EVENTS = Path.of("src/test/resources/optimizer/codex-tool-calls.jsonl");
+	/**
+	 * The output of each recorded command.
+	 */
+	private static final String SANDBOX_ERROR = "error building bubblewrap command: app-server socket directory must " +
+		"be a user-owned directory with mode 0700\n";
 
 	/**
 	 * Creates the test.
@@ -62,6 +67,12 @@ public final class CodexTrialRecordTest
 					tools.add(tool);
 			}
 			return tools;
+		}
+
+		@Override
+		public List<String> received()
+		{
+			return activity.received();
 		}
 
 		@Override
@@ -100,7 +111,8 @@ public final class CodexTrialRecordTest
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
 				root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			CodexSessions sessions = new CodexSessions(settings);
-			Recorded record = new Recorded(sessions.readEvidence(EVENTS), Map.of());
+			Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1, SANDBOX_ERROR)));
+			Recorded record = new Recorded(sessions.readEvidence(transcript), Map.of());
 
 			requireThat(sessions.reportsExitStatus(), "reportsExitStatus").isTrue();
 			requireThat(record.tools(), "tools").isNotEmpty();
@@ -113,6 +125,42 @@ public final class CodexTrialRecordTest
 			requireThat(decide("exit-status \"-lc true$\" 0", record), "succeeded").isFalse();
 			requireThat(decide("tool-used commandExecution", record), "toolUsed").isTrue();
 			requireThat(decide("no-tool-call", record), "noToolCall").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that when Codex gave the agent only part of a command's output, the evidence says so and reading counts
+	 * only the part that the agent received, while a whole result counts as reading the whole file.
+	 *
+	 * @throws IOException if the trial cannot be written or read
+	 * @throws UndecidableToolException if a check lacks evidence
+	 */
+	@Test
+	public void readingCountsOnlyReceivedOutput() throws IOException, UndecidableToolException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trial-record-"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
+				root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			CodexSessions sessions = new CodexSessions(settings);
+			Map<String, String> initial = Map.of("error.log", SANDBOX_ERROR);
+			Path whole = RecordedTrial.write(Files.createDirectories(root.resolve("whole")), EVENTS,
+				List.of(RecordedTrial.commandResult(1, SANDBOX_ERROR)));
+			Path cut = RecordedTrial.write(Files.createDirectories(root.resolve("cut")), EVENTS,
+				List.of(RecordedTrial.commandResult(1, "error building bubblewrap command: app-ser\n…12 tokens truncated…")));
+
+			SessionEvidence wholeEvidence = sessions.readEvidence(whole);
+			SessionEvidence cutEvidence = sessions.readEvidence(cut);
+
+			requireThat(wholeEvidence.render(), "whole.render()").
+				contains("Output: " + SANDBOX_ERROR.length() + " characters; the agent received all of it").
+				doesNotContain("only part");
+			requireThat(cutEvidence.render(), "cut.render()").
+				contains("Output: " + SANDBOX_ERROR.length() + " characters; the agent received only part of it").
+				doesNotContain("all of it");
+			requireThat(decide("read-in-full error.log", new Recorded(wholeEvidence, initial)), "wholeRead").isTrue();
+			requireThat(decide("read-in-full error.log", new Recorded(cutEvidence, initial)), "cutRead").isFalse();
 		}
 	}
 

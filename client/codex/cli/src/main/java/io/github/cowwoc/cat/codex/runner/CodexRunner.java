@@ -35,6 +35,11 @@ import java.util.Set;
  */
 public final class CodexRunner
 {
+	/**
+	 * The directory, beside a run's transcript in its {@code artifacts} directory, that keeps the rollouts of the
+	 * session's threads after the run's Codex home is deleted. A rollout records what a thread's model received.
+	 */
+	public static final String ROLLOUTS = "rollouts";
 	private static final Set<String> AUTHENTICATION_VARIABLES = Set.of("CODEX_API_KEY", "OPENAI_API_KEY");
 	/**
 	 * The path of a Codex plugin's manifest, relative to the plugin directory.
@@ -260,7 +265,7 @@ public final class CodexRunner
 			HarnessRunnerScope scope = new MainHarnessRunnerScope();
 			lock = manager.acquireLock(run);
 			CodexProcess process = new CodexProcess(processes.start(command, worktree, isolatedEnvironment), scope,
-				installCat);
+				installCat, isolatedHome, run.directory().resolve("artifacts").resolve(ROLLOUTS));
 			try
 			{
 				manager.recordHarnessProcess(run, process.pid(), process.startedAt());

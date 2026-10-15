@@ -36,7 +36,9 @@ import tools.jackson.databind.json.JsonMapper;
  * loading. When a session ends, the run's isolated home, which holds a copy of the login, is
  * deleted.
  * <p>
- * A subclass supplies its harness's event parsers, its read-only evidence options and its login classification.
+ * A subclass supplies its harness's event parsers, its read-only evidence options and its login classification. A
+ * harness that can shorten a tool's output before its model receives it also supplies the results that its agents
+ * received.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -78,7 +80,8 @@ public abstract class RunnerSessions implements SessionPort
 	public final SessionEvidence readEvidence(Path transcript) throws IOException
 	{
 		requireThat(transcript, "transcript").isNotNull();
-		HarnessEvents events = newEvents(JsonMapper.builder().build());
+		JsonMapper json = JsonMapper.builder().build();
+		HarnessEvents events = newEvents(json);
 		try (BufferedReader reader = Files.newBufferedReader(transcript))
 		{
 			String line = reader.readLine();
@@ -88,7 +91,25 @@ public abstract class RunnerSessions implements SessionPort
 				line = reader.readLine();
 			}
 		}
-		return events.evidence();
+		return readReceived(events.evidence(), transcript, json);
+	}
+
+	/**
+	 * Adds the tool results as the session's agents received them to the activity read from its harness events.
+	 * <p>
+	 * This implementation returns the activity unchanged, which holds each recorded tool output as received. A harness
+	 * that can shorten a tool's output before its model receives it overrides this method.
+	 *
+	 * @param activity   the activity read from the harness events
+	 * @param transcript the file that holds the harness events
+	 * @param json       the JSON mapper
+	 * @return the activity with the received tool results
+	 * @throws IOException if the harness's record of what its agents received cannot be read
+	 */
+	protected SessionEvidence readReceived(SessionEvidence activity, Path transcript, JsonMapper json)
+		throws IOException
+	{
+		return activity;
 	}
 
 	/**

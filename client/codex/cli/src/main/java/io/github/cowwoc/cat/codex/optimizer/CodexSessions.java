@@ -4,11 +4,13 @@ import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.codex.runner.CodexRunner;
 import io.github.cowwoc.cat.codex.runner.CodexRunnerCli;
 import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
 import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
@@ -30,6 +32,10 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * The Codex runner has no option for read-only evidence, so {@link SessionRequest#readOnly()}
  * is not passed to it. A judge reads the evidence by path, and only file permissions protect it.
+ * <p>
+ * Codex can shorten a tool's output before its model receives it. The runner keeps each thread's rollout, which
+ * records what the thread's model received, in the {@value CodexRunner#ROLLOUTS} directory beside the transcript, and
+ * the tool results that the agents received are read from there.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -58,7 +64,7 @@ public final class CodexSessions extends RunnerSessions
 	 * profile, prompt, rubric, decision rule or result schema, or the evidence section rendered for the same harness
 	 * events, and register the new version with the hash of the judge profile and the rendered evidence section.
 	 */
-	private static final int JUDGE_VERSION = 7;
+	private static final int JUDGE_VERSION = 8;
 
 	/**
 	 * Creates a port that runs sessions through the real Codex runner.
@@ -124,6 +130,22 @@ public final class CodexSessions extends RunnerSessions
 	protected HarnessEvents newEvents(JsonMapper json)
 	{
 		return new AppServerEvents(json);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The results are read from the rollouts that the runner kept beside the transcript.
+	 */
+	@Override
+	protected SessionEvidence readReceived(SessionEvidence activity, Path transcript, JsonMapper json)
+		throws IOException
+	{
+		requireThat(activity, "activity").isNotNull();
+		requireThat(transcript, "transcript").isNotNull();
+		requireThat(json, "json").isNotNull();
+		List<String> received = RolloutToolResults.read(transcript.resolveSibling(CodexRunner.ROLLOUTS), json);
+		return new SessionEvidence(activity.entries(), received);
 	}
 
 	@Override

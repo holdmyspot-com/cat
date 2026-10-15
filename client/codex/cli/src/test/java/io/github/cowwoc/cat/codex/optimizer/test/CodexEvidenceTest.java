@@ -54,8 +54,9 @@ public final class CodexEvidenceTest
 	}
 
 	/**
-	 * Retains each recorded command, its numeric exit status and its entire completed output, once and in order.
-	 * Root responses are markers and a session-start hook contributes only its outcome.
+	 * Retains each recorded command, its numeric exit status and its entire completed output, once and in order, and
+	 * renders the output's size in place of its text. Root responses are markers and a session-start hook contributes
+	 * only its outcome.
 	 *
 	 * @param recording the complete recording
 	 * @param commandCount the number of completed shell calls
@@ -86,8 +87,11 @@ public final class CodexEvidenceTest
 			requireThat(tool.exitStatus(), "exitStatus").isEqualTo(item.path("exitCode").intValue());
 			requireThat(tool.output(), "output").isEqualTo(item.path("aggregatedOutput").asString(""));
 			requireThat(rendered, "rendered").contains(tool.input());
-			if (!tool.output().isEmpty())
-				requireThat(rendered, "rendered").contains(tool.output());
+			if (!tool.output().isBlank())
+			{
+				requireThat(rendered, "rendered").
+					contains("Output: " + tool.output().codePointCount(0, tool.output().length()) + " characters");
+			}
 		}
 		List<Assistant> responses = evidence.entries().stream().filter(Assistant.class::isInstance).
 			map(Assistant.class::cast).toList();
@@ -177,7 +181,8 @@ public final class CodexEvidenceTest
 	}
 
 	/**
-	 * Session-start context, prompts, deltas and telemetry are absent while complete tool output has no size cap.
+	 * Session-start context, prompts, deltas and telemetry are absent, while the complete tool output is retained without
+	 * a size cap and rendered as its size.
 	 */
 	@Test
 	public void omitsContextDeltasAndTelemetry()
@@ -213,8 +218,9 @@ public final class CodexEvidenceTest
 		requireThat(evidence.entries(), "entries").isEqualTo(List.of(new Hook(1, "root", "sessionStart", "completed"),
 			new Assistant(1, "root", 1, ""), new Tool(1, "root", "commandExecution", "run-command", true, 7, output)));
 		String rendered = evidence.render();
-		requireThat(rendered, "rendered").contains(output);
-		requireThat(rendered, "rendered").contains("7");
+		requireThat(rendered, "rendered").contains("Output: " + output.length() + " characters").
+			doesNotContain("complete-output-");
+		requireThat(rendered, "rendered").contains("Exit status: 7");
 		for (String omitted : List.of("injected-session-text", "hook-detail", "candidate-prompt-text",
 			"streaming-delta-fragment", "inputTokens", "rateLimits", "already-in-responses"))
 		{

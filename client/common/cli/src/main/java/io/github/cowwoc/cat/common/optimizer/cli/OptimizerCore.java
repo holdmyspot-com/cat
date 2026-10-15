@@ -598,7 +598,7 @@ public final class OptimizerCore implements Core
 				Files.isDirectory(files.initialProject()))
 			{
 				SessionEvidence activity = scope.sessions().readEvidence(files.transcript());
-				sections.put(failure.getKey(), EvidenceSection.render(activity, files.effects(),
+				sections.put(failure.getKey(), EvidenceSection.render(activity, files.transcript(), files.effects(),
 					files.initialProject()));
 			}
 		}

@@ -269,7 +269,7 @@ public final class PromptAuthorTest
 
 	/**
 	 * Verifies that each development failure carries its own trial's evidence section, with the trial's tool calls,
-	 * their exit statuses and their outputs.
+	 * their exit statuses and the sizes of their outputs.
 	 */
 	@Test
 	public void eachFailureCarriesItsTrialEvidence()
@@ -299,7 +299,7 @@ public final class PromptAuthorTest
 			isEqualTo(mistyped).
 			contains("read-file docs/handbok.md").
 			contains("Exit status: 127").
-			contains("bash: read-file: command not found");
+			contains("Output: 34 characters; the agent received all of it");
 		requireThat(shown.get(1).get("evidence_section").asString(), "second.evidence_section").isEqualTo(deleted);
 	}
 

@@ -20,6 +20,7 @@ import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -71,7 +72,7 @@ public final class TriagePrompt implements TriageProtocol
 	 * <p>
 	 * The prompt defines both impacts and gives the result schema, then the evidence as data: the failure record, the
 	 * test case, every message of the reply and the built-in tool results as JSON, and the rendered trial activity and
-	 * file changes. The effects directory is readable.
+	 * file changes. The effects directory and the directory that holds the trial's transcript are readable.
 	 */
 	@Override
 	public SessionRequest request(TrialProfile profile, DrawnTestCase testCase, SessionResult.Completed evidence,
@@ -107,10 +108,16 @@ public final class TriagePrompt implements TriageProtocol
 			"responses", pretty(responseArray),
 			"evidence", evidenceSection,
 			"effects", evidence.effects().toString(),
+			"transcript", evidence.transcript().toString(),
 			"tool_results", pretty(resultArray),
 			"result_schema", resultSchema));
-		return new SessionRequest(SessionRole.TRIAGE, Part.DEVELOPMENT, triageDirectory, List.of(turn),
-			List.of(evidence.effects()), TIME_LIMIT, profile);
+		List<Path> readOnly = new ArrayList<>();
+		readOnly.add(evidence.effects());
+		Path transcriptDirectory = evidence.transcript().getParent();
+		if (transcriptDirectory != null && !readOnly.contains(transcriptDirectory))
+			readOnly.add(transcriptDirectory);
+		return new SessionRequest(SessionRole.TRIAGE, Part.DEVELOPMENT, triageDirectory, List.of(turn), readOnly,
+			TIME_LIMIT, profile);
 	}
 
 	/**

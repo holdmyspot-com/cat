@@ -203,8 +203,9 @@ public final class TrialEvidenceTest
 			requireThat(evidence.content("notes.md"), "content").isEqualTo(Optional.of("after\n"));
 			requireThat(evidence.initial("missing.md"), "missingInitial").isEmpty();
 			requireThat(evidence.render(), "section").
-				isEqualTo(EvidenceSection.render(activity, effects, initialProject)).
-				startsWith("Effects directory: " + effects + "\n\n" + activity.render()).
+				isEqualTo(EvidenceSection.render(activity, root.resolve("transcript"), effects, initialProject)).
+				startsWith("Transcript: " + root.resolve("transcript") + "\nEffects directory: " + effects + "\n\n" +
+					activity.render()).
 				contains("Modified: notes.md").
 				doesNotContain("fixture.md");
 		}

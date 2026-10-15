@@ -773,8 +773,8 @@ public sealed interface BuiltInTool
 	}
 
 	/**
-	 * Every non-blank line of a file, as it was when the trial started, appeared in the trial's tool output, as a whole
-	 * output line or after a line-number prefix.
+	 * Every non-blank line of a file, as it was when the trial started, appeared in the tool output that the trial's
+	 * agents received, as a whole output line or after a line-number prefix.
 	 *
 	 * @param path the normalized project-relative path of the file, which uses {@code /} as the separator
 	 */
@@ -836,16 +836,17 @@ public sealed interface BuiltInTool
 			if (missing == 0)
 			{
 				return new Decision(true, "all " + lines.size() + " non-blank lines of `" + filled +
-					"` appeared in tool output");
+					"` appeared in the tool output that the agents received");
 			}
 			return new Decision(false, missing + " of " + lines.size() + " non-blank lines of `" + filled +
-				"` never appeared in tool output, the first being " + ToolSupport.quote(firstMissing));
+				"` never appeared in the tool output that the agents received, the first being " +
+				ToolSupport.quote(firstMissing));
 		}
 	}
 
 	/**
-	 * At most a percentage of the non-blank lines of a file, as it was when the trial started, appeared in the trial's
-	 * tool output, as whole output lines or after a line-number prefix.
+	 * At most a percentage of the non-blank lines of a file, as it was when the trial started, appeared in the tool
+	 * output that the trial's agents received, as whole output lines or after a line-number prefix.
 	 *
 	 * @param path    the normalized project-relative path of the file, which uses {@code /} as the separator
 	 * @param percent the largest percentage of the lines that may appear, from 0 to 100
@@ -919,8 +920,8 @@ public sealed interface BuiltInTool
 			else
 				share = appeared.divide(total, REPORTED_SCALE, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
 			return new Decision(passed, seen + " of " + lines.size() + " non-blank lines of `" + filled +
-				"` (" + share + "%) appeared in tool output, where at most " + percent.toPlainString() +
-				"% may appear");
+				"` (" + share + "%) appeared in the tool output that the agents received, where at most " +
+				percent.toPlainString() + "% may appear");
 		}
 	}
 }

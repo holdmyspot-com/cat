@@ -46,9 +46,10 @@ public final class BuiltInToolTest
 	 * @param tools every tool call
 	 * @param after the text of each file after the trial, by path
 	 * @param initial the text of each file when the trial started, by path
+	 * @param received every tool result as the trial's agents received it
 	 */
 	private record Recorded(List<List<String>> replies, List<Tool> tools, Map<String, String> after,
-		Map<String, String> initial) implements TrialRecord
+		Map<String, String> initial, List<String> received) implements TrialRecord
 	{
 		@Override
 		public boolean exists(String path)
@@ -78,7 +79,7 @@ public final class BuiltInToolTest
 	private static Recorded replies(String... replies)
 	{
 		return new Recorded(List.of(replies).stream().map(List::of).toList(), List.of(), Map.of(), Map.of(NOTES_PATH,
-			NOTES));
+			NOTES), List.of());
 	}
 
 	/**
@@ -89,18 +90,19 @@ public final class BuiltInToolTest
 	 */
 	private static Recorded files(Map<String, String> after)
 	{
-		return new Recorded(List.of(List.of("Done.")), List.of(), after, Map.of());
+		return new Recorded(List.of(List.of("Done.")), List.of(), after, Map.of(), List.of());
 	}
 
 	/**
-	 * Returns a record that holds tool calls.
+	 * Returns a record that holds tool calls whose agents received each output whole.
 	 *
 	 * @param tools the tool calls
 	 * @return the record
 	 */
 	private static Recorded tools(Tool... tools)
 	{
-		return new Recorded(List.of(List.of("Done.")), List.of(tools), Map.of(), Map.of(NOTES_PATH, NOTES));
+		List<String> received = List.of(tools).stream().map(Tool::output).toList();
+		return new Recorded(List.of(List.of("Done.")), List.of(tools), Map.of(), Map.of(NOTES_PATH, NOTES), received);
 	}
 
 	/**
@@ -306,7 +308,7 @@ public final class BuiltInToolTest
 	{
 		// Requirement: R-C12
 		Recorded record = new Recorded(List.of(List.of("forbidden progress", "Done.")), List.of(), Map.of(),
-			Map.of());
+			Map.of(), List.of());
 		requireThat(BuiltInTool.parse("forbidden-text forbidden").decide(record, Map.of()).passed(), "interim").
 			isFalse();
 		requireThat(BuiltInTool.parse("exact-text \"forbidden progress\nDone.\"").decide(record, Map.of()).passed(),
@@ -385,5 +387,25 @@ public final class BuiltInToolTest
 	{
 		// Requirement: R-C9
 		BuiltInTool.parse("read-in-full docs/missing.md").decide(tools(), Map.of());
+	}
+
+	/**
+	 * Verifies that the reading tools count only the lines that the agent received, so that a file whose whole text
+	 * a command printed is not read in full when the harness cut the output before the agent received it.
+	 *
+	 * @throws IOException if a record cannot be read
+	 * @throws UndecidableToolException if a record lacks what the tool observes
+	 */
+	@Test
+	public void readingCountsOnlyReceivedLines() throws IOException, UndecidableToolException
+	{
+		Tool printed = command("cat docs/notes.md", 0, NOTES);
+		Recorded record = new Recorded(List.of(List.of("Done.")), List.of(printed), Map.of(),
+			Map.of(NOTES_PATH, NOTES), List.of("# Notes\n\nalpha\n[4 lines cut]"));
+
+		Decision inFull = BuiltInTool.parse("read-in-full " + NOTES_PATH).decide(record, Map.of());
+		requireThat(inFull.passed(), "inFull.passed()").withContext(inFull.observed(), "observed").isFalse();
+		Decision atMost = BuiltInTool.parse("read-at-most " + NOTES_PATH + " 40").decide(record, Map.of());
+		requireThat(atMost.passed(), "atMost.passed()").withContext(atMost.observed(), "observed").isTrue();
 	}
 }

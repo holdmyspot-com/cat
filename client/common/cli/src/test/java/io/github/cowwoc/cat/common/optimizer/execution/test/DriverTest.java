@@ -655,7 +655,8 @@ public final class DriverTest
 				requireThat(brief.evidenceSections().keySet(), "evidenceSections").
 					isEqualTo(Set.of(brief.developmentId(0)));
 				requireThat(brief.evidenceSections().get(brief.developmentId(0)), "section").
-					startsWith("Effects directory: " + failed.get().effects() + "\n\n" + activity.render()).
+					startsWith("Transcript: " + failed.get().transcript() + "\nEffects directory: " +
+						failed.get().effects() + "\n\n" + activity.render()).
 					contains("\nFile changes\n");
 			}
 		}
@@ -4623,7 +4624,7 @@ public final class DriverTest
 				requireThat(request.source(), "judgeDirectory").isEqualTo(harness.directory().resolve("judge"));
 				Path effects = request.readOnly().getFirst();
 				requireThat(request.readOnly(), "readOnly").
-					isEqualTo(List.of(effects));
+					isEqualTo(List.of(effects, effects.getParent().resolve("artifacts")));
 				requireThat(turn, "turn").contains(contract.judge().rubric()).contains(contract.judge().decisionRule());
 				requireThat(request.timeLimit(), "timeLimit").isEqualTo(Duration.ofMinutes(10));
 			}
@@ -4659,9 +4660,11 @@ public final class DriverTest
 			}
 			SessionRequest request = judgeRequests(harness).getFirst();
 			requireThat(request.turns().getFirst(), "turn").
-				contains("Effects directory: " + evidence.get().effects() + "\n\n" + activity.render()).
+				contains("Transcript: " + evidence.get().transcript() + "\nEffects directory: " +
+					evidence.get().effects() + "\n\n" + activity.render()).
 				contains("\nFile changes\n");
-			requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(request.readOnly().getFirst()));
+			requireThat(request.readOnly(), "readOnly").
+				isEqualTo(List.of(evidence.get().effects(), evidence.get().transcript().getParent()));
 		}
 	}
 

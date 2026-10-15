@@ -43,7 +43,8 @@ public final class SessionEvidenceTest
 		String rendered = evidence.render();
 		requireThat(rendered, "rendered").contains("Turn 1").contains("Turn 2").contains("Actor: root").
 			contains("Actor: child child-7").contains("Input:\nprintf ready\n").contains("Exit status: 0").
-			contains("Output:\nready\n").contains("{\"path\":\"VERSION\"}").
+			contains("Output: 6 characters; the agent received all of it\n").contains("{\"path\":\"VERSION\"}").
+			contains("Output: 3 characters\n").contains("Output: none\n").
 			contains("Hook: after-tool; status: completed").contains("Assistant response position: 1").
 			contains("Version read.").doesNotContain("Root response is already supplied.");
 		requireThat(rendered.indexOf("printf ready"), "firstToolPosition").
@@ -55,17 +56,47 @@ public final class SessionEvidenceTest
 	}
 
 	/**
-	 * Verifies that a tool's entire output remains present beyond 200,000 characters.
+	 * Verifies that a tool's output is described by its size instead of being copied, so that the evidence stays
+	 * short however much a trial prints.
 	 */
 	@Test
-	public void keepsLargeOutputComplete()
+	public void leavesOutOutputText()
 	{
-		// Requirement: R-E21
 		String output = "complete output\n".repeat(15_000) + "final sentinel";
 		String rendered = new SessionEvidence(List.of(new Tool(1, "root", "shell", "cat large.txt", true, 0,
 			output))).render();
 
-		requireThat(rendered, "rendered").contains(output);
+		requireThat(rendered, "rendered").doesNotContain("complete output").doesNotContain("final sentinel").
+			contains("Output: 240014 characters; the agent received all of it\n");
+	}
+
+	/**
+	 * Verifies that a command whose output the agent received only part of is reported as such, and that a blank
+	 * line or trailing whitespace that the agent did not receive does not count as a missing part.
+	 */
+	@Test
+	public void reportsPartlyReceivedOutput()
+	{
+		Tool whole = new Tool(1, "root", "shell", "cat short.txt", true, 0, "first  \n\nsecond\n");
+		Tool cut = new Tool(1, "root", "shell", "cat long.txt", true, 0, "first\nsecond\nthird\n");
+		String rendered = new SessionEvidence(List.of(whole, cut), List.of("first\nsecond\n[3 lines cut]")).render();
+
+		requireThat(rendered, "rendered").
+			contains("Input:\ncat short.txt\nExit status: 0\nOutput: 16 characters; the agent received all of it\n").
+			contains("Input:\ncat long.txt\nExit status: 0\nOutput: 19 characters; the agent received only part of " +
+				"it\n");
+	}
+
+	/**
+	 * Verifies that a size counts characters rather than UTF-16 code units.
+	 */
+	@Test
+	public void sizeCountsCharacters()
+	{
+		String rendered = new SessionEvidence(List.of(new Tool(1, "root", "shell", "echo", true, 0,
+			"\uD83D\uDE00\n"))).render();
+
+		requireThat(rendered, "rendered").contains("Output: 2 characters; the agent received all of it\n");
 	}
 
 	/**
@@ -79,7 +110,7 @@ public final class SessionEvidenceTest
 	}
 
 	/**
-	 * Verifies that the activity list is independent of subsequent caller changes.
+	 * Verifies that the activity list and the received tool results are independent of subsequent caller changes.
 	 */
 	@Test
 	public void copiesEntries()
@@ -87,9 +118,26 @@ public final class SessionEvidenceTest
 		// Requirement: R-E21
 		List<Entry> entries = new ArrayList<>();
 		entries.add(new Hook(1, "root", "before-turn", "completed"));
-		SessionEvidence evidence = new SessionEvidence(entries);
+		List<String> received = new ArrayList<>();
+		received.add("result");
+		SessionEvidence evidence = new SessionEvidence(entries, received);
 		entries.clear();
+		received.clear();
 
 		requireThat(evidence.entries().size(), "entryCount").isEqualTo(1);
+		requireThat(evidence.received(), "received").isEqualTo(List.of("result"));
+	}
+
+	/**
+	 * Verifies that evidence created without received tool results holds every recorded tool output as received,
+	 * which describes a harness whose agents receive each output whole.
+	 */
+	@Test
+	public void outputsAreReceivedByDefault()
+	{
+		SessionEvidence evidence = new SessionEvidence(List.of(new Hook(1, "root", "before-turn", "completed"),
+			new Tool(1, "root", "shell", "true", true, 0, ""), new Tool(1, "root", "Read", "{}", false, null, "text")));
+
+		requireThat(evidence.received(), "received").isEqualTo(List.of("", "text"));
 	}
 }
