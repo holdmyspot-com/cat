@@ -1,0 +1,8 @@
+# Paths that ripgrep and other tools that read .ignore files leave out of searches by default. Run rg -uu to search
+# them anyway.
+
+# Recorded agent sessions that each release's changelog cites as evidence. Their JSON event logs hold lines hundreds of
+# kilobytes long, so a search that matches them fills the searching agent's context with machine-written text instead
+# of source. The pattern has no leading folder because ripgrep applies a parent folder's anchored pattern only to
+# searches that start in that folder.
+captures/
