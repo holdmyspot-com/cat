@@ -37,10 +37,10 @@ public final class CodexSubagentStartHookTest
 			Files.writeString(rules.resolve("subagents.md"), "---\nagents: [\"subagents\"]\n---\nsubagent guidance");
 			Files.writeString(rules.resolve("reviewer.md"), "---\nagents: [\"cat:reviewer\"]\n---\nreviewer guidance");
 
-			String reviewer = context(invoke("{\"cwd\":\"" + project +
-				"\",\"agent_type\":\"cat:reviewer\"}", Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
-			String worker = context(invoke("{\"cwd\":\"" + project +
-				"\",\"agent_type\":\"cat:worker\"}", Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
+			String reviewer = context(invoke("{\"cwd\":" + jsonString(project) +
+				",\"agent_type\":\"cat:reviewer\"}", Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
+			String worker = context(invoke("{\"cwd\":" + jsonString(project) +
+				",\"agent_type\":\"cat:worker\"}", Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
 
 			requireThat(reviewer, "reviewer").contains("subagent guidance").contains("reviewer guidance").
 				doesNotContain("main guidance");
@@ -96,5 +96,16 @@ public final class CodexSubagentStartHookTest
 	 */
 	private record HookResult(String output, String error)
 	{
+	}
+
+	/**
+	 * Returns a path as a JSON string, escaping the separators of a Windows path.
+	 *
+	 * @param path a path
+	 * @return the JSON string, including its quotes
+	 */
+	private static String jsonString(Path path)
+	{
+		return "\"" + path.toString().replace("\\", "\\\\") + "\"";
 	}
 }

@@ -165,6 +165,17 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Returns text in which the user's project is named by its absolute path, which starts with a drive on Windows.
+	 *
+	 * @param text text that names the user's project {@code /staged/incumbent}
+	 * @return the text with each {@code /staged/incumbent} replaced by the project's absolute path
+	 */
+	private static String incumbent(String text)
+	{
+		return text.replace("/staged/incumbent", PROMPT_SYSTEM.toString());
+	}
+
+	/**
 	 * Returns a completed contract author session that wrote its output to its output file. The session's project
 	 * directory replaces each occurrence of {@link #STAGED} in the output.
 	 *
@@ -178,7 +189,9 @@ public final class ProposalTest
 			Path initialProject = directories.add(Files.createTempDirectory("contract-author-initial-"));
 			Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
 			String name = OutputFile.name(initialProject);
-			Files.writeString(effects.resolve(name), output.replace(STAGED, effects.toString()), UTF_8);
+			// The output is JSON text, so a Windows path's separators must be escaped
+			String escaped = effects.toString().replace("\\", "\\\\");
+			Files.writeString(effects.resolve(name), output.replace(STAGED, escaped), UTF_8);
 			return session(effects, initialProject, "The proposal is in " + name + ".");
 		}
 		catch (IOException e)
@@ -405,9 +418,10 @@ public final class ProposalTest
 
 		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
 		Conflict expected = new Conflict(List.of("r1", "r2"),
-			"[AGENTS.md:6](/staged/incumbent/AGENTS.md:6) contradicts /staged/incumbent/rules/safety.md.",
-			List.of("Edit /staged/incumbent/AGENTS.md.", "Edit [safety.md](/staged/incumbent/rules/safety.md)."), 1,
-			"Keeps [AGENTS.md](/staged/incumbent/AGENTS.md) and /staged/incumbent/rules/safety.md consistent.");
+			incumbent("[AGENTS.md:6](/staged/incumbent/AGENTS.md:6) contradicts /staged/incumbent/rules/safety.md."),
+			List.of(incumbent("Edit /staged/incumbent/AGENTS.md."),
+				incumbent("Edit [safety.md](/staged/incumbent/rules/safety.md).")), 1,
+			incumbent("Keeps [AGENTS.md](/staged/incumbent/AGENTS.md) and /staged/incumbent/rules/safety.md consistent."));
 		requireThat(derived.conflicts(), "conflicts").isEqualTo(List.of(expected));
 		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/contract-author/project");
 		requireThat(contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT).conflicts(),
@@ -429,7 +443,7 @@ public final class ProposalTest
 
 		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
 		ScopeCondition expected = new ScopeCondition(Outcome.UNSUPPORTED_OUTPUT, List.of("r1"),
-			"[CLAUDE.md:2](/staged/incumbent/CLAUDE.md:2) loads /staged/incumbent/rules/images.md.");
+			incumbent("[CLAUDE.md:2](/staged/incumbent/CLAUDE.md:2) loads /staged/incumbent/rules/images.md."));
 		requireThat(derived.scopeConditions(), "scopeConditions").isEqualTo(List.of(expected));
 		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/contract-author/project");
 		requireThat(contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT).scopeConditions(),
@@ -515,7 +529,7 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(json.writeValueAsString(output)), PROFILES, SALT);
 
 		requireThat(json.readTree(derived.derivation()).at(pointer).asString(), "savedText").
-			isEqualTo("/staged/incumbent/notes.md");
+			isEqualTo(incumbent("/staged/incumbent/notes.md"));
 		DerivedProposal reread = contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT);
 		requireThat(reread.contract(), "storedContract").isEqualTo(derived.contract());
 	}

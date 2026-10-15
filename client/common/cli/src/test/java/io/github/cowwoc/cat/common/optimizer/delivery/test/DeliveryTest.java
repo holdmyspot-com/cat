@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.delivery.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
@@ -1139,7 +1140,7 @@ public final class DeliveryTest
 		requireThat(read(base.resolve("rules/new.md")), "new.md").isEqualTo("new rule\n");
 		requireThat(Files.notExists(base.resolve("rules/old.md")), "oldIsAbsent").isTrue();
 		requireThat(read(fixture.shared()), "shared.md").isEqualTo("shared v1\n");
-		requireThat(Files.getPosixFilePermissions(base.resolve("rules/new.md")), "newPermissions").
+		requireThat(PortableFiles.mode(base.resolve("rules/new.md")), "newPermissions").
 			isEqualTo(READ_WRITE);
 		requireThat(read(base.resolve("rules/main.md")), "main.md").isEqualTo("main v2\n");
 	}

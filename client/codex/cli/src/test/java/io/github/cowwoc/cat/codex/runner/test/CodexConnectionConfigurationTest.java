@@ -144,8 +144,8 @@ public final class CodexConnectionConfigurationTest
 
 			String configuration = Files.readString(destination);
 			requireThat(configuration, "configuration").contains("[sandbox_workspace_write]").contains(
-				"writable_roots = [\"" + cache + "\"]").contains("[shell_environment_policy.set]").contains(
-				"NPM_CONFIG_CACHE = \"" + cache + "\"").contains("TMPDIR = \"" + temporaryDirectory + "\"");
+				"writable_roots = [\"" + toml(cache) + "\"]").contains("[shell_environment_policy.set]").contains(
+				"NPM_CONFIG_CACHE = \"" + toml(cache) + "\"").contains("TMPDIR = \"" + toml(temporaryDirectory) + "\"");
 		}
 	}
 
@@ -266,8 +266,8 @@ public final class CodexConnectionConfigurationTest
 			CodexConnectionConfiguration.addValidatorProfile(destination, List.of(evidence));
 
 			requireThat(Files.readString(destination), "configuration").contains("[permissions.cat-validator]").
-				contains("extends = \"cat-runner\"").contains("\"" + canonicalEvidence + "\" = \"read\"").
-				doesNotContain("\"" + canonicalEvidence + "\" = \"write\"");
+				contains("extends = \"cat-runner\"").contains("\"" + toml(canonicalEvidence) + "\" = \"read\"").
+				doesNotContain("\"" + toml(canonicalEvidence) + "\" = \"write\"");
 		}
 	}
 
@@ -297,8 +297,8 @@ public final class CodexConnectionConfigurationTest
 				"[permissions.cat-denied-reads]",
 				"extends = \"cat-runner\"",
 				"[permissions.cat-denied-reads.filesystem]",
-				"\"" + snapshot.toRealPath() + "\" = \"deny\"",
-				"\"" + trials.toRealPath() + "\" = \"deny\"",
+				"\"" + toml(snapshot.toRealPath()) + "\" = \"deny\"",
+				"\"" + toml(trials.toRealPath()) + "\" = \"deny\"",
 				""));
 		}
 	}
@@ -326,12 +326,12 @@ public final class CodexConnectionConfigurationTest
 
 			requireThat(profile, "profile").isEqualTo("cat-denied-reads");
 			requireThat(Files.readString(destination), "configuration").
-				contains("\"" + evidence.toRealPath() + "\" = \"read\"").
+				contains("\"" + toml(evidence.toRealPath()) + "\" = \"read\"").
 				contains(String.join(System.lineSeparator(),
 					"[permissions.cat-denied-reads]",
 					"extends = \"cat-validator\"",
 					"[permissions.cat-denied-reads.filesystem]",
-					"\"" + snapshot.toRealPath() + "\" = \"deny\"",
+					"\"" + toml(snapshot.toRealPath()) + "\" = \"deny\"",
 					""));
 		}
 	}
@@ -436,5 +436,16 @@ public final class CodexConnectionConfigurationTest
 					"trusted_hash = \"sha256:c29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3\"").
 				doesNotContain("release-docs-extra").doesNotContain("cat@cat").doesNotContain("enabled = true");
 		}
+	}
+
+	/**
+	 * Returns a path as the content of a TOML basic string, escaping the separators of a Windows path.
+	 *
+	 * @param path a path
+	 * @return the escaped path
+	 */
+	private static String toml(Path path)
+	{
+		return path.toString().replace("\\", "\\\\");
 	}
 }

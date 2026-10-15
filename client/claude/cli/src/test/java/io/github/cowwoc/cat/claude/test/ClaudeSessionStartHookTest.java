@@ -44,7 +44,7 @@ public final class ClaudeSessionStartHookTest
 			write(project, ".cat/rules/claude/claude.md", "project claude");
 			write(project, ".cat/rules/codex/codex.md", "project codex");
 
-			HookResult result = invoke("{\"cwd\":\"" + project + "\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()),
+			HookResult result = invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()),
 				project);
 			String instruction = context(result);
 			Path rules = referencedFile(instruction);
@@ -87,7 +87,7 @@ public final class ClaudeSessionStartHookTest
 			Path configuration = userHome.resolve(".claude");
 			write(userHome, ".cat/rules/common/personal.md", "personal guidance");
 
-			HookResult result = invoke("{\"cwd\":\"" + project + "\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+			HookResult result = invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
 				"CLAUDE_CONFIG_DIR", configuration.toString(), "HOME", userHome.toString()), project);
 
 			requireThat(completeContext(result), "context").contains("personal guidance");
@@ -108,11 +108,11 @@ public final class ClaudeSessionStartHookTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			write(plugin, "rules/common/rule.md", "rule");
 
-			HookResult matching = invoke("{\"cwd\":\"" + project + "\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+			HookResult matching = invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
 				"CAT_INSTALL_DIR", plugin.toString()), project);
-			HookResult conflicting = invoke("{\"cwd\":\"" + project + "\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+			HookResult conflicting = invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
 				"CAT_INSTALL_DIR", conflictingPlugin.toString()), project);
-			HookResult unsupported = invoke("{\"cwd\":\"" + project + "\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+			HookResult unsupported = invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
 				"CAT_PROJECT_DIR", project.toString()), project);
 
 			requireThat(completeContext(matching), "matchingContext").contains("rule");
@@ -137,7 +137,7 @@ public final class ClaudeSessionStartHookTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			write(plugin, "rules/common/rules.md", "rules");
-			Path context = referencedFile(context(invoke("{\"cwd\":\"" + project + "\"}",
+			Path context = referencedFile(context(invoke(cwdInput(project),
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project)));
 
 			String sessionId = context.getFileName().toString().replace(".md", "");
@@ -165,9 +165,9 @@ public final class ClaudeSessionStartHookTest
 			String firstSession = UUID.randomUUID().toString();
 			String secondSession = UUID.randomUUID().toString();
 			Map<String, String> environment = Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString());
-			Path first = referencedFile(context(invoke("{\"cwd\":\"" + project + "\",\"session_id\":\"" +
+			Path first = referencedFile(context(invoke("{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" +
 				firstSession + "\"}", environment, project)));
-			Path second = referencedFile(context(invoke("{\"cwd\":\"" + project + "\",\"session_id\":\"" +
+			Path second = referencedFile(context(invoke("{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" +
 				secondSession + "\"}", environment, project)));
 
 			requireThat(Files.exists(first), "firstBeforeSessionEnd").isTrue();
@@ -191,7 +191,7 @@ public final class ClaudeSessionStartHookTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			write(plugin, "rules/common/rules.md", "rules");
-			Path context = referencedFile(context(invokeSubagent("{\"cwd\":\"" + project + "\"}",
+			Path context = referencedFile(context(invokeSubagent(cwdInput(project),
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project)));
 			String suffix = "-agent-test.md";
 			String sessionId = context.getFileName().toString().replace(suffix, "");
@@ -219,7 +219,7 @@ public final class ClaudeSessionStartHookTest
 			write(harnessProject, ".cat/rules/claude/path.md", "---\npaths: [\"*.java\"]\n---\nproject Java rule");
 			write(harnessProject, ".cat/rules/claude/rule.md", "harness project");
 
-			String context = completeContext(invoke("{\"cwd\":\"" + harnessProject + "\"}",
+			String context = completeContext(invoke(cwdInput(harnessProject),
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), harnessProject));
 
 			requireThat(context, "context").contains("harness project").
@@ -245,10 +245,10 @@ public final class ClaudeSessionStartHookTest
 			write(plugin, "rules/common/subagents.md", "---\nagents: [\"subagents\"]\n---\nsubagent guidance");
 			write(plugin, "rules/common/reviewer.md", "---\nagents: [\"cat:reviewer\"]\n---\nreviewer guidance");
 
-			String reviewer = completeContext(invokeSubagent("{\"cwd\":\"" + project +
-				"\",\"agent_type\":\"cat:reviewer\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project));
-			String explorer = completeContext(invokeSubagent("{\"cwd\":\"" + project +
-				"\",\"agent_type\":\"Explore\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project));
+			String reviewer = completeContext(invokeSubagent("{\"cwd\":" + jsonString(project) +
+				",\"agent_type\":\"cat:reviewer\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project));
+			String explorer = completeContext(invokeSubagent("{\"cwd\":" + jsonString(project) +
+				",\"agent_type\":\"Explore\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project));
 
 			requireThat(reviewer, "reviewer").contains("subagent guidance").contains("reviewer guidance").
 				doesNotContain("main guidance");
@@ -272,7 +272,7 @@ public final class ClaudeSessionStartHookTest
 			write(plugin, "rules/common/default-rules.md", "Before editing Java, lazy load `../include/java/javadoc.md`.\n");
 			write(plugin, "rules/include/java/javadoc.md", "Javadoc guidance\n");
 
-			String context = completeContext(invoke("{\"cwd\":\"" + project + "\"}",
+			String context = completeContext(invoke(cwdInput(project),
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project));
 
 			requireThat(context, "context").contains("`${CAT_PLUGIN_ROOT}/rules/include/java/javadoc.md`").
@@ -294,7 +294,7 @@ public final class ClaudeSessionStartHookTest
 			Files.createDirectories(parent.resolve(".cat"));
 			Path session = Files.createDirectories(parent.resolve("module"));
 
-			HookResult result = invoke("{\"cwd\":\"" + session + "\"}",
+			HookResult result = invoke(cwdInput(session),
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), session);
 
 			requireThat(result.error(), "error").isEmpty();
@@ -320,7 +320,7 @@ public final class ClaudeSessionStartHookTest
 			Map<String, String> environment = Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
 				"CLAUDE_PROJECT_DIR", project.toString());
 
-			HookResult result = invoke("{\"cwd\":\"" + module + "\"}", environment, module);
+			HookResult result = invoke(cwdInput(module), environment, module);
 			Path context = referencedFile(context(result));
 
 			requireThat(result.error(), "error").isEmpty();
@@ -332,7 +332,7 @@ public final class ClaudeSessionStartHookTest
 			requireThat(Files.exists(module.resolve(".cat")), "moduleCatExists").isFalse();
 
 			String sessionId = context.getFileName().toString().replace(".md", "");
-			String error = invokeSessionEnd("{\"cwd\":\"" + module + "\",\"session_id\":\"" + sessionId + "\"}",
+			String error = invokeSessionEnd("{\"cwd\":" + jsonString(module) + ",\"session_id\":\"" + sessionId + "\"}",
 				environment, module);
 
 			requireThat(error, "sessionEndError").isEmpty();
@@ -353,7 +353,7 @@ public final class ClaudeSessionStartHookTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 
-			HookResult result = invoke("{\"cwd\":\"" + project + "\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+			HookResult result = invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
 				"CLAUDE_PROJECT_DIR", project.resolve("missing").toString()), project);
 
 			requireThat(result.output(), "output").isEqualTo("{}\n");
@@ -377,7 +377,7 @@ public final class ClaudeSessionStartHookTest
 			write(plugin, "rules/claude/cat-env.md", "The plugin directory is `" +
 				ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "`. Replace `${CAT_PLUGIN_ROOT}` with it.\n");
 
-			String context = completeContext(invoke("{\"cwd\":\"" + project + "\"}",
+			String context = completeContext(invoke(cwdInput(project),
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project));
 
 			requireThat(context, "context").contains("The plugin directory is `" + plugin + "`.").
@@ -440,7 +440,7 @@ public final class ClaudeSessionStartHookTest
 			Files.writeString(outside, "outside rule");
 			Files.createSymbolicLink(rules.resolve("unsafe.md"), outside);
 
-			HookResult invalidProject = invoke("{\"cwd\":\"" + project.resolve("missing") + "\"}",
+			HookResult invalidProject = invoke(cwdInput(project.resolve("missing")),
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project);
 			HookResult unsafeRule = invoke("{}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project);
 			Files.delete(rules.resolve("unsafe.md"));
@@ -663,5 +663,27 @@ public final class ClaudeSessionStartHookTest
 	 */
 	private record HookResult(String output, String error)
 	{
+	}
+
+	/**
+	 * Returns hook input that names only the session's working directory.
+	 *
+	 * @param cwd the session's working directory
+	 * @return the JSON input
+	 */
+	private static String cwdInput(Path cwd)
+	{
+		return "{\"cwd\":" + jsonString(cwd) + "}";
+	}
+
+	/**
+	 * Returns a path as a JSON string, escaping the separators of a Windows path.
+	 *
+	 * @param path a path
+	 * @return the JSON string, including its quotes
+	 */
+	private static String jsonString(Path path)
+	{
+		return "\"" + path.toString().replace("\\", "\\\\") + "\"";
 	}
 }

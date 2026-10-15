@@ -340,7 +340,7 @@ public final class CodexSessionStartHookTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			writeReadingGuidance(plugin);
 
-			HookResult result = invoke("{\"cwd\":\"" + project + "\"}", Map.of("PLUGIN_ROOT", plugin.toString()),
+			HookResult result = invoke("{\"cwd\":" + jsonString(project) + "}", Map.of("PLUGIN_ROOT", plugin.toString()),
 				Path.of("."));
 
 			assertStopped(result, "missingSessionId");
@@ -472,7 +472,7 @@ public final class CodexSessionStartHookTest
 	private static String event(Path cwd)
 	{
 		assert cwd != null;
-		return "{\"session_id\":\"" + sessionId() + "\",\"cwd\":\"" + cwd + "\"}";
+		return "{\"session_id\":\"" + sessionId() + "\",\"cwd\":" + jsonString(cwd) + "}";
 	}
 
 	/**
@@ -543,5 +543,16 @@ public final class CodexSessionStartHookTest
 	 */
 	private record HookResult(String output, String error)
 	{
+	}
+
+	/**
+	 * Returns a path as a JSON string, escaping the separators of a Windows path.
+	 *
+	 * @param path a path
+	 * @return the JSON string, including its quotes
+	 */
+	private static String jsonString(Path path)
+	{
+		return "\"" + path.toString().replace("\\", "\\\\") + "\"";
 	}
 }
