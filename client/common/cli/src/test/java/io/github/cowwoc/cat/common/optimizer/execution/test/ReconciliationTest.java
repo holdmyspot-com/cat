@@ -408,7 +408,7 @@ public final class ReconciliationTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("reconcile")),
 				developing().build());
-			FileInventory edited = new FileInventory(Path.of("/project"), Map.of(DriverHarness.PROMPT,
+			FileInventory edited = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(DriverHarness.PROMPT,
 				new RegularFile(Sha256.of("user edit".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"))));
 			harness.workspace().changeWorktree(edited);
 			try (Driver _ = harness.open())

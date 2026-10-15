@@ -84,7 +84,7 @@ public abstract class CandidateOverlaysContract
 	 */
 	protected static FileInventory fork()
 	{
-		return new FileInventory(Path.of("/project"), Map.<Path, FileEntry>of(
+		return new FileInventory(Path.of("/project").toAbsolutePath(), Map.<Path, FileEntry>of(
 			Path.of("prompt.md"), new RegularFile(Sha256.of(bytes("original")), READ_WRITE),
 			Path.of("obsolete.md"), new RegularFile(Sha256.of(bytes("obsolete")), READ_WRITE),
 			Path.of("alias.md"), new SymbolicLink(Path.of("prompt.md"))));
@@ -105,7 +105,8 @@ public abstract class CandidateOverlaysContract
 			write(Path.of("tools/run.sh"), content("#!/bin/sh\n" + variant), PosixFilePermissions.fromString(
 				"rwxr-xr-x")).
 			delete(Path.of("obsolete.md")).
-			write(Path.of("/external/rules.md"), new FileContent(new byte[]{0, (byte) 0xFF, 10}), READ_WRITE);
+			write(Path.of("/external/rules.md").toAbsolutePath(), new FileContent(new byte[]{0, (byte) 0xFF, 10}),
+			READ_WRITE);
 	}
 
 	/**

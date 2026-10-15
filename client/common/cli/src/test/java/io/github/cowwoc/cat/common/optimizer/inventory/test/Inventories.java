@@ -24,7 +24,7 @@ final class Inventories
 	/**
 	 * The project root that in-memory inventories describe; no test reads or writes it.
 	 */
-	static final Path ROOT = Path.of("/project");
+	static final Path ROOT = Path.of("/project").toAbsolutePath();
 	/**
 	 * The permissions of an ordinary non-executable file.
 	 */

@@ -2998,7 +2998,7 @@ public final class OptimizerCoreTest
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
-			Path target = Path.of("/external/shared.md");
+			Path target = Path.of("/external/shared.md").toAbsolutePath();
 			AuthorityWarning warning = new AuthorityWarning("R1", Path.of("shared.md"), target,
 				Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
 				AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN));

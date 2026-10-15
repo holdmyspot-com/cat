@@ -311,8 +311,8 @@ public abstract class CampaignStoreContract
 						"The turn tells the agent that it is tested.")),
 				List.of(new HunkEvidence("h1", Path.of("CLAUDE.md"), 1, 2, 1, 3, List.of("f1", "f2"), "Another read",
 					"plain_list")),
-				List.of("Uncited changed hunk: CLAUDE.md#2"), Path.of("/transcripts/prompt-author-3.jsonl"),
-				Path.of("/effects/prompt-author-3"));
+				List.of("Uncited changed hunk: CLAUDE.md#2"), Path.of("/transcripts/prompt-author-3.jsonl").toAbsolutePath(),
+				Path.of("/effects/prompt-author-3").toAbsolutePath());
 			Campaign campaign = Transitions.apply(new Builder().header(header("campaign-prompt-author")).confirmed().
 				working(1).build(), new CampaignEvent.RetainPromptAuthorDiagnosis(diagnosis));
 			fixture.store().replaceSnapshot(campaign);
@@ -408,8 +408,9 @@ public abstract class CampaignStoreContract
 		// Requirement: R-C24
 		try (StoreFixture fixture = open())
 		{
-			Header header = new Header("campaign-goal", Path.of("/project"), Path.of("/project/AGENTS.md"),
-				Harness.CODEX, Lifecycle.ACTIVE, "Read files whole.\nKeep searches narrow.");
+			Header header = new Header("campaign-goal", Path.of("/project").toAbsolutePath(),
+				Path.of("/project/AGENTS.md").toAbsolutePath(), Harness.CODEX, Lifecycle.ACTIVE,
+				"Read files whole.\nKeep searches narrow.");
 			Campaign campaign = Campaign.start(header, Campaign.DEFAULT_CEILING, Builder.INCUMBENT, Builder.OBSERVED);
 			fixture.store().replaceSnapshot(campaign);
 
@@ -433,7 +434,8 @@ public abstract class CampaignStoreContract
 			List<AuthorityWarning.Choice> choices = List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
 				AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN);
 			Campaign campaign = new Builder().header(header("campaign-answered")).confirmed().working(1).
-				answered(new AuthorityWarning("R1", Path.of("docs/reply-rules.md"), Path.of("/external/reply-rules.md"),
+				answered(new AuthorityWarning("R1", Path.of("docs/reply-rules.md"),
+				Path.of("/external/reply-rules.md").toAbsolutePath(),
 					Limit.EXTERNAL_TARGET_READ_ONLY, choices)).
 				answered(new AuthorityWarning("R2", Path.of("rules/loop.md"), Path.of("rules/loop.md"), Limit.LINK_CYCLE,
 					choices)).
@@ -909,8 +911,8 @@ public abstract class CampaignStoreContract
 	 */
 	static Header header(String id)
 	{
-		return new Header(id, Path.of("/project"), Path.of("/project/AGENTS.md"), Harness.CODEX,
-			Lifecycle.ACTIVE);
+		return new Header(id, Path.of("/project").toAbsolutePath(), Path.of("/project/AGENTS.md").toAbsolutePath(),
+			Harness.CODEX, Lifecycle.ACTIVE);
 	}
 
 	/**
@@ -1177,7 +1179,7 @@ public abstract class CampaignStoreContract
 			pending(new PendingDecision.CertificationUnavailable(Outcome.UNSUPPORTED_TEST_INTERACTION)).
 			pending(new PendingDecision.FailuresNotReproduced(1)).
 			pending(new PendingDecision.AuthorityWarnings(List.of(
-				new AuthorityWarning("R1", Path.of("rules/shared.md"), Path.of("/external/shared.md"),
+				new AuthorityWarning("R1", Path.of("rules/shared.md"), Path.of("/external/shared.md").toAbsolutePath(),
 					Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
 						AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN)),
 				new AuthorityWarning("R2", Path.of("rules/loop.md"), Path.of("rules/loop.md"), Limit.LINK_CYCLE,

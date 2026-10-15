@@ -59,7 +59,7 @@ public final class LocalMarketplaceTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-artifact-"));
-			Files.createSymbolicLink(artifact.resolve("external"), Path.of("/etc/passwd"));
+			Files.createSymbolicLink(artifact.resolve("external"), Path.of("/etc/passwd").toAbsolutePath());
 
 			LocalMarketplace.copy(artifact, cleanup.add(Files.createTempDirectory("cat-plugin-")));
 		}

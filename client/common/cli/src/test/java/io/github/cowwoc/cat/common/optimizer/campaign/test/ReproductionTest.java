@@ -135,8 +135,8 @@ public final class ReproductionTest
 	private static Builder.AttemptBuilder failed(Harness harness, DrawnTestCase testCase)
 	{
 		Failure failure = new Failure(testCase, "", List.of(WRONG_TONE), null, List.of(), List.of(), Builder.FILES);
-		Header header = new Header("campaign-1", Path.of("/project"), Path.of("/project/AGENTS.md"), harness,
-			Lifecycle.ACTIVE);
+		Header header = new Header("campaign-1", Path.of("/project").toAbsolutePath(),
+			Path.of("/project/AGENTS.md").toAbsolutePath(), harness, Lifecycle.ACTIVE);
 		return new Builder().header(header).confirmed(TierFixtures.tieredContract(), 1).working(1).readyBaseline().
 			readyDevelopment().certificationAttempt(1).failure(failure).failure(failure).outcome(Outcome.BELOW_MINIMUM);
 	}

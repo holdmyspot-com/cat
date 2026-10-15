@@ -42,7 +42,7 @@ public final class CodexAppServerProtocolTest
 	@Test
 	public void framesHeadlessThread()
 	{
-		String request = CodexAppServerProtocol.threadStart(Path.of("/").toAbsolutePath(), "", "", "");
+		String request = CodexAppServerProtocol.threadStart(Path.of("/").toAbsolutePath().toAbsolutePath(), "", "", "");
 		requireThat(request, "request").contains("\"sandbox\":\"workspace-write\"").
 			contains("\"approvalPolicy\":\"never\"").contains("\"sessionStartSource\":\"startup\"").
 			contains("\"id\":2");

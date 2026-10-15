@@ -130,8 +130,8 @@ public final class StatusReportTest
 				new PromptAuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of(), "")),
 			List.of(new HunkEvidence("h1", Path.of("rules/safety.md"), 1, 2, 1, 3, List.of("f1", "f2"),
 				"Overwriting a file", "plain_list")),
-			List.of("Uncited changed hunk: CLAUDE.md#2"), Path.of("/runs/prompt-author-3/transcript.jsonl"),
-			Path.of("/runs/prompt-author-3/effects"));
+			List.of("Uncited changed hunk: CLAUDE.md#2"), Path.of("/runs/prompt-author-3/transcript.jsonl").toAbsolutePath(),
+			Path.of("/runs/prompt-author-3/effects").toAbsolutePath());
 		Campaign campaign = Transitions.apply(new Builder().confirmed().working(1).build(),
 			new CampaignEvent.RetainPromptAuthorDiagnosis(diagnosis));
 
@@ -1551,7 +1551,7 @@ public final class StatusReportTest
 	{
 		// Requirement: R-W4
 		AuthorityWarning warning = new AuthorityWarning("R1", Path.of("rules/shared.md"),
-			Path.of("/external/shared.md"), Limit.EXTERNAL_TARGET_READ_ONLY, List.of(
+			Path.of("/external/shared.md").toAbsolutePath(), Limit.EXTERNAL_TARGET_READ_ONLY, List.of(
 				AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
 				AuthorityWarning.Choice.REVISE_CAMPAIGN));
 		Campaign campaign = confirmed().pending(new PendingDecision.AuthorityWarnings(List.of(warning))).build();

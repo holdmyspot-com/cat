@@ -61,8 +61,9 @@ public final class PromptAuthorManifestTest
 		String response = """
 			{"needed_edits": [], "kinds": [], "hunks": [], "conflicts": []}
 			""";
-		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
-			Path.of("/effects"), Path.of("/initial-project"), "model", null, null, List.of(), "none", List.of());
+		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript").toAbsolutePath(),
+			List.of(List.of(response)), Path.of("/effects").toAbsolutePath(), Path.of("/initial-project").toAbsolutePath(),
+			"model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.neededEdits(result).isPresent(), "accepted").isTrue();
 	}
 
@@ -82,8 +83,9 @@ public final class PromptAuthorManifestTest
 			 "quotations":[{"path":"CLAUDE.md","text":"Ask first."}],
 			 "resolutions":["Keep asking","Allow deletion"],"recommended":1,"reason":"Keeps permission."}]}
 			""";
-		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
-			Path.of("/effects"), Path.of("/initial-project"), "model", null, null, List.of(), "none", List.of());
+		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript").toAbsolutePath(),
+			List.of(List.of(response)), Path.of("/effects").toAbsolutePath(), Path.of("/initial-project").toAbsolutePath(),
+			"model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.report(result).isPresent(), "accepted").isTrue();
 		PromptAuthorConflict conflict = prompt.report(result).orElseThrow().conflicts().getFirst();
 		requireThat(conflict.resolutions(), "resolutions").isEqualTo(List.of("Keep asking", "Allow deletion"));
@@ -128,10 +130,9 @@ public final class PromptAuthorManifestTest
 			 "resolutions":["First","Second"],"recommended":1,"reason":"Reason"}]}
 			""");
 		((ObjectNode) report.get("conflicts").get(0)).set(property, json.readTree(value));
-		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"),
-			List.of(List.of(json.writeValueAsString(report))), Path.of("/effects"), Path.of("/initial-project"), "model",
-			null, null,
-			List.of(), "none", List.of());
+		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript").toAbsolutePath(),
+			List.of(List.of(json.writeValueAsString(report))), Path.of("/effects").toAbsolutePath(),
+			Path.of("/initial-project").toAbsolutePath(), "model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.report(result), "malformed").isEmpty();
 	}
 
@@ -144,7 +145,7 @@ public final class PromptAuthorManifestTest
 		// Requirement: R-D13
 		Path path = Path.of("CLAUDE.md");
 		FileContent content = new FileContent("Ask first.".getBytes(StandardCharsets.UTF_8));
-		FileInventory incumbent = new FileInventory(Path.of("/project"),
+		FileInventory incumbent = new FileInventory(Path.of("/project").toAbsolutePath(),
 			Map.of(path, new FileEntry.RegularFile(content.hash(), Set.of())));
 		PromptAuthorConflict conflict = new PromptAuthorConflict(List.of("f"), List.of("r1", "r2"),
 			List.of(new PromptAuthorConflict.Quotation(path, "Ask first.")), List.of("Keep asking", "Allow deletion"),
@@ -170,7 +171,7 @@ public final class PromptAuthorManifestTest
 	public void validatesConflictReferences()
 	{
 		// Requirement: R-D13
-		FileInventory incumbent = new FileInventory(Path.of("/project"), Map.of());
+		FileInventory incumbent = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of());
 		PromptAuthorConflict conflict = new PromptAuthorConflict(List.of("f"), List.of("r1", "unknown"),
 			List.of(new PromptAuthorConflict.Quotation(Path.of("missing.md"), "Missing text")),
 			List.of("First", "Second"), 3, "Reason");
@@ -200,7 +201,7 @@ public final class PromptAuthorManifestTest
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
 			Map.of(), "", List.of(), List.of(), List.of());
-		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
+		String turn = prompt.request(brief, Path.of("/copy").toAbsolutePath()).turns().getFirst();
 		requireThat(turn, "instructions").contains("routing").contains("not_guidance").contains("smallest").
 			contains("contradiction").contains("analogous").contains("dissimilar").contains("manifest");
 	}
@@ -237,7 +238,7 @@ public final class PromptAuthorManifestTest
 			"Another deletion request", dissimilar)));
 
 		List<String> violations = manifest.violations(Set.of("f"), List.of(hunk), ContractFixtures.contract(),
-			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of(), Map.of());
+			new FileInventory(Path.of("/project").toAbsolutePath(), Map.of()), Map.of(), List.of(), Map.of());
 
 		if (accepted)
 			requireThat(violations, "violations").isEmpty();
@@ -369,8 +370,9 @@ public final class PromptAuthorManifestTest
 			{"needed_edits":[],"kinds":[{"name":"named the test","failures":["f"],"classification":"test_defect",
 			 "hunks":[],"fault":"The turn tells the agent that it is tested."}],"hunks":[],"conflicts":[]}
 			""";
-		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
-			Path.of("/effects"), Path.of("/initial-project"), "model", null, null, List.of(), "none", List.of());
+		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript").toAbsolutePath(),
+			List.of(List.of(response)), Path.of("/effects").toAbsolutePath(), Path.of("/initial-project").toAbsolutePath(),
+			"model", null, null, List.of(), "none", List.of());
 
 		PromptAuthorKind kind = prompt.report(result).orElseThrow().manifest().kinds().getFirst();
 
@@ -403,7 +405,7 @@ public final class PromptAuthorManifestTest
 				"The turn tells the agent that it is tested.")), List.of());
 
 		List<String> violations = manifest.violations(Set.of("f"), List.of(), ContractFixtures.contract(),
-			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of(), Map.of("f", "safety"));
+			new FileInventory(Path.of("/project").toAbsolutePath(), Map.of()), Map.of(), List.of(), Map.of("f", "safety"));
 
 		requireThat(violations.toString(), "violations").contains("safety").contains("sound");
 	}
@@ -419,7 +421,7 @@ public final class PromptAuthorManifestTest
 	private static List<String> violations(PromptAuthorManifest manifest, Set<String> received, List<Hunk> changed)
 	{
 		return manifest.violations(received, changed, ContractFixtures.contract(),
-			new FileInventory(Path.of("/project"), Map.of()), Map.of(), List.of(), Map.of());
+			new FileInventory(Path.of("/project").toAbsolutePath(), Map.of()), Map.of(), List.of(), Map.of());
 	}
 
 	/**
@@ -436,7 +438,7 @@ public final class PromptAuthorManifestTest
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(),
 			List.of());
-		String turn = prompt.request(brief, Path.of("/copy")).turns().getFirst();
+		String turn = prompt.request(brief, Path.of("/copy").toAbsolutePath()).turns().getFirst();
 
 		requireThat(turn, "instructions").contains("the `id` of a test in the confirmed contract").
 			contains("\"plain_list\"");
@@ -474,8 +476,9 @@ public final class PromptAuthorManifestTest
 			{"needed_edits":[{"requirement":"R1","path":"%s","operation":"create"}],
 			 "kinds":[],"hunks":[],"conflicts":[]}
 			""".formatted(path);
-		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript"), List.of(List.of(response)),
-			Path.of("/effects"), Path.of("/initial-project"), "model", null, null, List.of(), "none", List.of());
+		SessionResult.Completed result = new SessionResult.Completed(Path.of("/transcript").toAbsolutePath(),
+			List.of(List.of(response)), Path.of("/effects").toAbsolutePath(), Path.of("/initial-project").toAbsolutePath(),
+			"model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.report(result).isPresent(), "reader").isEqualTo(accepted);
 		String schema = PromptTemplateSecrets.access().readResource("/optimizer/prompt-author/report.schema.json");
 		String pattern = json.readTree(schema).get("$defs").get("path").get("pattern").asString();

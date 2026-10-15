@@ -146,7 +146,7 @@ public final class MinimalityTest
 			new FileContent("a\nx\nb\ny\nc\nz\nd\n".getBytes(UTF_8)),
 			new FileContent("needed-a\nx\nunneeded-b\ny\nneeded-c\nz\nunneeded-d\n".getBytes(UTF_8)),
 			PosixFilePermissions.fromString("rw-r--r--"));
-		Overlay working = Overlay.of(new FileInventory(Path.of("/project"), Map.of(file.path(),
+		Overlay working = Overlay.of(new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(file.path(),
 			new RegularFile(file.before().hash(), file.permissions()))));
 		DrawnTestCase first = Builder.targeted("safety", "logs");
 		DrawnTestCase second = Builder.targeted("safety", "cache");

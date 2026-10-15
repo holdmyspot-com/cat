@@ -57,8 +57,8 @@ public final class TestCaseTest
 		fixtures.add(new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of("before")));
 		fixtures.add(new PromptTestFiles.Fixture("logo.png", false, Set.of()));
 		fixtures.addAll(List.of(extraFixtures));
-		return new PromptTestFiles(Path.of("/project/tests"), Path.of("/project/tests/case"), scenario,
-			List.of("fixtures/**"), fixtures, List.of());
+		return new PromptTestFiles(Path.of("/project/tests").toAbsolutePath(),
+			Path.of("/project/tests/case").toAbsolutePath(), scenario, List.of("fixtures/**"), fixtures, List.of());
 	}
 
 	/**

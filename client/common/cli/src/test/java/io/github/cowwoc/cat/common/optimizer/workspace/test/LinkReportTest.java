@@ -26,8 +26,8 @@ import org.testng.annotations.Test;
  */
 public final class LinkReportTest
 {
-	private static final Path ROOT = Path.of("/project");
-	private static final Path EXTERNAL = Path.of("/shared/rules.md");
+	private static final Path ROOT = Path.of("/project").toAbsolutePath();
+	private static final Path EXTERNAL = Path.of("/shared/rules.md").toAbsolutePath();
 
 	/**
 	 * Creates the test.
@@ -214,7 +214,7 @@ public final class LinkReportTest
 		// Requirement: R-W6
 		FileInventory inventory = inventory(Map.of(
 			Path.of("gone.md"), new SymbolicLink(Path.of("nowhere.md")),
-			Path.of("outside.md"), new SymbolicLink(Path.of("/not/recorded.md"))));
+			Path.of("outside.md"), new SymbolicLink(Path.of("/not/recorded.md").toAbsolutePath())));
 
 		LinkReport report = LinkReport.of(inventory, new Authority(Set.of(), Set.of(), inventory));
 
@@ -222,7 +222,7 @@ public final class LinkReportTest
 			isEqualTo(List.of(Status.MISSING_TARGET, Status.MISSING_TARGET));
 		requireThat(report.entries().getFirst().target(), "target").isEqualTo(Optional.of(Path.of("nowhere.md")));
 		requireThat(report.entries().get(1).target(), "externalTarget").
-			isEqualTo(Optional.of(Path.of("/not/recorded.md")));
+			isEqualTo(Optional.of(Path.of("/not/recorded.md").toAbsolutePath()));
 	}
 
 	/**

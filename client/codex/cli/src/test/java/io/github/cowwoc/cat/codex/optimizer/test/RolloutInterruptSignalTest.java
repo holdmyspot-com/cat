@@ -191,7 +191,8 @@ public final class RolloutInterruptSignalTest
 			Path codexHome = RolloutInterruptSignal.codexHome(home, null);
 			requireThat(codexHome, "default").isEqualTo(home.resolve(".codex"));
 			requireThat(RolloutInterruptSignal.codexHome(home, ""), "blank").isEqualTo(codexHome);
-			requireThat(RolloutInterruptSignal.codexHome(home, "/custom"), "configured").isEqualTo(Path.of("/custom"));
+			requireThat(RolloutInterruptSignal.codexHome(home, "/custom"),
+				"configured").isEqualTo(Path.of("/custom").toAbsolutePath());
 
 			Path day = Files.createDirectories(codexHome.resolve("sessions").resolve("2026").resolve("10").
 				resolve("01"));

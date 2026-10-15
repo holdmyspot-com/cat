@@ -46,8 +46,8 @@ public final class PortFakesTest
 	 */
 	private static SessionRequest request(String turn)
 	{
-		return new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, Path.of("/staged"), List.of(turn), List.of(),
-			Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+		return new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, Path.of("/staged").toAbsolutePath(), List.of(turn),
+			List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
 	}
 
 	/**
@@ -121,7 +121,7 @@ public final class PortFakesTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fake-workspace-"));
-			FileInventory fork = new FileInventory(Path.of("/project"), Map.of());
+			FileInventory fork = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of());
 			FakeWorkspacePort workspace = new FakeWorkspacePort(root.resolve("workspace"), fork);
 			Overlay incumbent = Overlay.of(fork);
 

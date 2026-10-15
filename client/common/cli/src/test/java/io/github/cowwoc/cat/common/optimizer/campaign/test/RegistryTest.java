@@ -17,8 +17,8 @@ import org.testng.annotations.Test;
  */
 public final class RegistryTest
 {
-	private static final Path ROOT = Path.of("/project");
-	private static final Path TARGET = Path.of("/project/CLAUDE.md");
+	private static final Path ROOT = Path.of("/project").toAbsolutePath();
+	private static final Path TARGET = Path.of("/project/CLAUDE.md").toAbsolutePath();
 
 	/**
 	 * Creates the test.
@@ -49,11 +49,11 @@ public final class RegistryTest
 		// Requirement: R-L1
 		requireThat(Registry.open(List.of(), ROOT, TARGET, Harness.CLAUDE), "empty").
 			isEqualTo(new Opening.Create());
-		Header otherTarget = new Header("c1", ROOT, Path.of("/project/AGENTS.md"), Harness.CLAUDE,
+		Header otherTarget = new Header("c1", ROOT, Path.of("/project/AGENTS.md").toAbsolutePath(), Harness.CLAUDE,
 			Lifecycle.ACTIVE);
 		requireThat(Registry.open(List.of(otherTarget), ROOT, TARGET, Harness.CLAUDE), "otherTarget").
 			isEqualTo(new Opening.Create());
-		Header otherRoot = new Header("c1", Path.of("/other"), TARGET, Harness.CLAUDE,
+		Header otherRoot = new Header("c1", Path.of("/other").toAbsolutePath(), TARGET, Harness.CLAUDE,
 			Lifecycle.ACTIVE);
 		requireThat(Registry.open(List.of(otherRoot), ROOT, TARGET, Harness.CLAUDE), "otherRoot").
 			isEqualTo(new Opening.Create());

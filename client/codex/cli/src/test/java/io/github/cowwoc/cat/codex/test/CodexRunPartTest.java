@@ -24,13 +24,13 @@ import org.testng.annotations.Test;
  */
 public final class CodexRunPartTest
 {
-	private static final Path READ_PART = Path.of("/plugin/bin/read-part");
+	private static final Path READ_PART = Path.of("/plugin/bin/read-part").toAbsolutePath();
 	private static final Pattern LAST_PART = Pattern.compile("\\[End of (?<path>[^\n]+)]\n\\z");
 	/**
 	 * A folder that no CAT project contains, so that {@code run-part} saves the output of a command that runs there
 	 * under {@code TMPDIR}.
 	 */
-	private static final Path OUTSIDE_PROJECT = Path.of("/");
+	private static final Path OUTSIDE_PROJECT = Path.of("/").toAbsolutePath();
 
 	/**
 	 * Creates a test instance.

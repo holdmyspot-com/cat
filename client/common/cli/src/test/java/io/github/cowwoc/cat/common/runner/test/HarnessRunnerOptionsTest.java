@@ -43,16 +43,16 @@ public final class HarnessRunnerOptionsTest
 			"--project", "/project", "--run-root", "/caller-temp/runs", "--executable", "/bin/harness", "--model",
 			"test-model", "--effort", "high", "--output", "/output", "--receipt", "/receipt", "--keep-run",
 			"--install-cat"},
-			"harness", Path.of("/caller-temp"));
+			"harness", Path.of("/caller-temp").toAbsolutePath());
 
-		requireThat(result.artifact(), "artifact").isEqualTo(Path.of("/artifact"));
-		requireThat(result.project(), "project").isEqualTo(Path.of("/project"));
-		requireThat(result.runRoot(), "runRoot").isEqualTo(Path.of("/caller-temp/runs"));
+		requireThat(result.artifact(), "artifact").isEqualTo(Path.of("/artifact").toAbsolutePath());
+		requireThat(result.project(), "project").isEqualTo(Path.of("/project").toAbsolutePath());
+		requireThat(result.runRoot(), "runRoot").isEqualTo(Path.of("/caller-temp/runs").toAbsolutePath());
 		requireThat(result.executable(), "executable").isEqualTo("/bin/harness");
 		requireThat(result.model(), "model").isEqualTo("test-model");
 		requireThat(result.effort(), "effort").isEqualTo("high");
-		requireThat(result.output(), "output").isEqualTo(Path.of("/output"));
-		requireThat(result.receipt(), "receipt").isEqualTo(Path.of("/receipt"));
+		requireThat(result.output(), "output").isEqualTo(Path.of("/output").toAbsolutePath());
+		requireThat(result.receipt(), "receipt").isEqualTo(Path.of("/receipt").toAbsolutePath());
 		requireThat(result.keepRun(), "keepRun").isTrue();
 		requireThat(result.installCat(), "installCat").isTrue();
 		requireThat(result.includeUserRules(), "includeUserRules").isTrue();
@@ -65,7 +65,7 @@ public final class HarnessRunnerOptionsTest
 	public void excludesUserRulesWhenRequested()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--install-cat", "--exclude-user-rules"}, "harness", Path.of("/caller-temp"));
+			"--install-cat", "--exclude-user-rules"}, "harness", Path.of("/caller-temp").toAbsolutePath());
 
 		requireThat(result.installCat(), "installCat").isTrue();
 		requireThat(result.includeUserRules(), "includeUserRules").isFalse();
@@ -80,11 +80,11 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-C21
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--fixtures", "/runs/fixtures/trial"}, "harness", Path.of("/caller-temp"));
+			"--fixtures", "/runs/fixtures/trial"}, "harness", Path.of("/caller-temp").toAbsolutePath());
 		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
-			"harness", Path.of("/caller-temp"));
+			"harness", Path.of("/caller-temp").toAbsolutePath());
 
-		requireThat(result.fixtures(), "fixtures").isEqualTo(Path.of("/runs/fixtures/trial"));
+		requireThat(result.fixtures(), "fixtures").isEqualTo(Path.of("/runs/fixtures/trial").toAbsolutePath());
 		requireThat(without.fixtures(), "without").isNull();
 	}
 
@@ -97,11 +97,11 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-W12
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--plugin", "/campaign/plugins/candidate"}, "harness", Path.of("/caller-temp"));
+			"--plugin", "/campaign/plugins/candidate"}, "harness", Path.of("/caller-temp").toAbsolutePath());
 		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
-			"harness", Path.of("/caller-temp"));
+			"harness", Path.of("/caller-temp").toAbsolutePath());
 
-		requireThat(result.plugin(), "plugin").isEqualTo(Path.of("/campaign/plugins/candidate"));
+		requireThat(result.plugin(), "plugin").isEqualTo(Path.of("/campaign/plugins/candidate").toAbsolutePath());
 		requireThat(without.plugin(), "without").isNull();
 	}
 
@@ -114,10 +114,11 @@ public final class HarnessRunnerOptionsTest
 		// Requirement: R-E24
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
 			"--deny-read", "/campaign/campaign.json", "--deny-read", "/campaign/trials"}, "harness",
-			Path.of("/caller-temp"));
+			Path.of("/caller-temp").toAbsolutePath());
 
-		requireThat(result.deniedReads(), "deniedReads").isEqualTo(List.of(Path.of("/campaign/campaign.json"),
-			Path.of("/campaign/trials")));
+		requireThat(result.deniedReads(),
+			"deniedReads").isEqualTo(List.of(Path.of("/campaign/campaign.json").toAbsolutePath(),
+			Path.of("/campaign/trials").toAbsolutePath()));
 	}
 
 	/**
@@ -129,7 +130,7 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E24
 		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--deny-read", "campaign.json"},
-			"harness", Path.of("/caller-temp"));
+			"harness", Path.of("/caller-temp").toAbsolutePath());
 	}
 
 	/**
@@ -140,7 +141,7 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E24
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
-			"harness", Path.of("/caller-temp"));
+			"harness", Path.of("/caller-temp").toAbsolutePath());
 
 		requireThat(result.deniedReads(), "deniedReads").isEmpty();
 	}
@@ -152,7 +153,7 @@ public final class HarnessRunnerOptionsTest
 	public void defaultsToNoCatInstallation()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
-			"harness", Path.of("/caller-temp"));
+			"harness", Path.of("/caller-temp").toAbsolutePath());
 
 		requireThat(result.installCat(), "installCat").isFalse();
 	}
@@ -163,7 +164,7 @@ public final class HarnessRunnerOptionsTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsMissingArtifact()
 	{
-		HarnessRunnerOptions.parse(new String[0], "harness", Path.of("/caller-temp"));
+		HarnessRunnerOptions.parse(new String[0], "harness", Path.of("/caller-temp").toAbsolutePath());
 	}
 
 	/**
@@ -173,7 +174,7 @@ public final class HarnessRunnerOptionsTest
 	public void rejectsIncompleteReceiptEvidence()
 	{
 		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--receipt", "/receipt"}, "harness",
-			Path.of("/caller-temp"));
+			Path.of("/caller-temp").toAbsolutePath());
 	}
 
 	/**
@@ -183,7 +184,7 @@ public final class HarnessRunnerOptionsTest
 	public void rejectsUserRuleExclusionWithoutCat()
 	{
 		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--exclude-user-rules"}, "harness",
-			Path.of("/caller-temp"));
+			Path.of("/caller-temp").toAbsolutePath());
 	}
 
 	/**
@@ -194,7 +195,7 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E8
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
-			"harness", Path.of("/caller-temp"));
+			"harness", Path.of("/caller-temp").toAbsolutePath());
 
 		requireThat(result.maximumConcurrency(), "maximumConcurrency").isEqualTo(16);
 	}
@@ -207,9 +208,9 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E8
 		HarnessRunnerOptions lowest = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--max-concurrency", "1"}, "harness", Path.of("/caller-temp"));
+			"--max-concurrency", "1"}, "harness", Path.of("/caller-temp").toAbsolutePath());
 		HarnessRunnerOptions highest = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--max-concurrency", "16"}, "harness", Path.of("/caller-temp"));
+			"--max-concurrency", "16"}, "harness", Path.of("/caller-temp").toAbsolutePath());
 
 		requireThat(lowest.maximumConcurrency(), "lowest").isEqualTo(1);
 		requireThat(highest.maximumConcurrency(), "highest").isEqualTo(16);
@@ -223,7 +224,7 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E8
 		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--max-concurrency", "0"}, "harness",
-			Path.of("/caller-temp"));
+			Path.of("/caller-temp").toAbsolutePath());
 	}
 
 	/**
@@ -234,6 +235,6 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E8
 		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--max-concurrency", "17"}, "harness",
-			Path.of("/caller-temp"));
+			Path.of("/caller-temp").toAbsolutePath());
 	}
 }

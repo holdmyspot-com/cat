@@ -192,14 +192,12 @@ public final class InventoryDiffTest
 
 		AttemptReview review = InventoryDiff.between(before, after).review(fork, promptAuthority(fork));
 
-		requireThat(review.forbidden(), "forbidden").isEqualTo(List.of(
-			new ForbiddenOperation(Path.of("prompts/alias.md"), Path.of("prompts/a.md"), Operation.CHANGE_LINK,
-				Limit.LINK_FIXED),
-			new ForbiddenOperation(Path.of("prompts/library/y.md"), Path.of("/external/library/y.md"), Operation.CREATE,
-				Limit.EXTERNAL_TARGET_READ_ONLY),
-			new ForbiddenOperation(Path.of("prompts/loop/z.md"), Path.of("prompts/loop/z.md"), Operation.CREATE,
-				Limit.LINK_CYCLE),
-			new ForbiddenOperation(Path.of("prompts/shared.md"), Path.of("/external/shared.md"), Operation.EDIT_CONTENT,
-				Limit.EXTERNAL_TARGET_READ_ONLY)));
+		requireThat(review.forbidden(), "forbidden").isEqualTo(List.of(new ForbiddenOperation(Path.of("prompts/alias.md"),
+			Path.of("prompts/a.md"), Operation.CHANGE_LINK, Limit.LINK_FIXED),
+			new ForbiddenOperation(Path.of("prompts/library/y.md"), Path.of("/external/library/y.md").toAbsolutePath(),
+			Operation.CREATE, Limit.EXTERNAL_TARGET_READ_ONLY), new ForbiddenOperation(Path.of("prompts/loop/z.md"),
+			Path.of("prompts/loop/z.md"), Operation.CREATE, Limit.LINK_CYCLE),
+			new ForbiddenOperation(Path.of("prompts/shared.md"), Path.of("/external/shared.md").toAbsolutePath(),
+			Operation.EDIT_CONTENT, Limit.EXTERNAL_TARGET_READ_ONLY)));
 	}
 }

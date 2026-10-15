@@ -97,11 +97,12 @@ public final class AuthorityTest
 	{
 		// Requirement: R-W4
 		Authority authority = promptAuthority(NO_LINKS);
-		Path shared = Path.of("/external/shared.md");
+		Path shared = Path.of("/external/shared.md").toAbsolutePath();
 		Optional<Limit> readOnly = Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY);
 
 		requireThat(authority.limitOf(Operation.EDIT_CONTENT, shared), "edit").isEqualTo(readOnly);
-		requireThat(authority.limitOf(Operation.CREATE, Path.of("/external/new.md")), "create").isEqualTo(readOnly);
+		requireThat(authority.limitOf(Operation.CREATE, Path.of("/external/new.md").toAbsolutePath()),
+			"create").isEqualTo(readOnly);
 		requireThat(authority.limitOf(Operation.DELETE, shared), "delete").isEqualTo(readOnly);
 		requireThat(authority.limitOf(Operation.CHANGE_MODE, shared), "mode").isEqualTo(readOnly);
 		requireThat(authority.limitOf(Operation.CHANGE_LINK, shared), "retarget").isEqualTo(readOnly);
@@ -126,14 +127,14 @@ public final class AuthorityTest
 			Optional<AuthorityWarning> throughLink = authority.diagnose("R-3", Path.of("prompts/shared.md"), operation,
 				fork);
 			requireThat(throughLink, "throughLink." + operation).isEqualTo(Optional.of(new AuthorityWarning("R-3",
-				Path.of("prompts/shared.md"), Path.of("/external/shared.md"), Limit.EXTERNAL_TARGET_READ_ONLY,
+				Path.of("prompts/shared.md"), Path.of("/external/shared.md").toAbsolutePath(), Limit.EXTERNAL_TARGET_READ_ONLY,
 				withoutEdit)));
 
-			Optional<AuthorityWarning> direct = authority.diagnose("R-3", Path.of("/external/shared.md"), operation,
-				fork);
+			Optional<AuthorityWarning> direct = authority.diagnose("R-3", Path.of("/external/shared.md").toAbsolutePath(),
+				operation, fork);
 			requireThat(direct, "direct." + operation).isEqualTo(Optional.of(new AuthorityWarning("R-3",
-				Path.of("/external/shared.md"), Path.of("/external/shared.md"), Limit.EXTERNAL_TARGET_READ_ONLY,
-				withoutEdit)));
+				Path.of("/external/shared.md").toAbsolutePath(), Path.of("/external/shared.md").toAbsolutePath(),
+				Limit.EXTERNAL_TARGET_READ_ONLY, withoutEdit)));
 		}
 	}
 
@@ -144,7 +145,7 @@ public final class AuthorityTest
 	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*/project/prompts.*")
 	public void rejectsAbsolutePromptSource()
 	{
-		new Authority(Set.of(Path.of("/project/prompts")), Set.of(), NO_LINKS);
+		new Authority(Set.of(Path.of("/project/prompts").toAbsolutePath()), Set.of(), NO_LINKS);
 	}
 
 	/**
@@ -324,7 +325,7 @@ public final class AuthorityTest
 		Authority authority = promptAuthority(fork);
 		Optional<Limit> readOnly = Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY);
 
-		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("/external/shared.md")), "target").
+		requireThat(authority.limitOf(Operation.EDIT_CONTENT, Path.of("/external/shared.md").toAbsolutePath()), "target").
 			isEqualTo(readOnly);
 		requireThat(authority.diagnose("R-3", Path.of("prompts/shared.md"), Operation.EDIT_CONTENT, fork).
 			map(AuthorityWarning::limit), "atLink").isEqualTo(readOnly);

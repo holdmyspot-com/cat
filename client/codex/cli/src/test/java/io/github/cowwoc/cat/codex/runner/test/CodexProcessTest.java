@@ -43,7 +43,7 @@ public final class CodexProcessTest
 	private static final String ROOT_THREAD = "thread-root";
 	private static final String CHILD_THREAD = "thread-child";
 	private static final String ROOT_TURN = "turn-root";
-	private static final Path PROJECT = Path.of("/project");
+	private static final Path PROJECT = Path.of("/project").toAbsolutePath();
 	/**
 	 * Request lines that the tests play no part in.
 	 */

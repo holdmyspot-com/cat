@@ -21,8 +21,8 @@ import org.testng.annotations.Test;
  */
 public final class AuthorityWarningsTest
 {
-	private static final Path TARGET = Path.of("/external/shared.md");
-	private static final Path OTHER_TARGET = Path.of("/external/other.md");
+	private static final Path TARGET = Path.of("/external/shared.md").toAbsolutePath();
+	private static final Path OTHER_TARGET = Path.of("/external/other.md").toAbsolutePath();
 	private static final List<AuthorityWarning.Choice> CHOICES = List.of(
 		AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
 		AuthorityWarning.Choice.REVISE_CAMPAIGN);

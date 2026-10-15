@@ -246,7 +246,7 @@ public final class DeliveryPlanTest
 			"/external/s.md", file("s")));
 		Overlay candidate = Overlay.of(fork).
 			write(Path.of("prompts/a.md"), content("A"), READ_WRITE).
-			write(Path.of("/external/s.md"), content("S"), READ_WRITE);
+			write(Path.of("/external/s.md").toAbsolutePath(), content("S"), READ_WRITE);
 
 		IllegalArgumentException refusal = null;
 		try

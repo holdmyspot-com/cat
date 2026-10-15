@@ -93,11 +93,11 @@ public final class Builder
 	 * Where a judged trial's harness events and file changes were retained, for trials whose evidence a test does not
 	 * read.
 	 */
-	public static final TrialFiles FILES = new TrialFiles(Path.of("/runs/trial/transcript.jsonl"),
-		Path.of("/runs/trial/effects"), Path.of("/runs/trial/initial-project"));
+	public static final TrialFiles FILES = new TrialFiles(Path.of("/runs/trial/transcript.jsonl").toAbsolutePath(),
+		Path.of("/runs/trial/effects").toAbsolutePath(), Path.of("/runs/trial/initial-project").toAbsolutePath());
 
-	private Header header = new Header("campaign-1", Path.of("/project"),
-		Path.of("/project/CLAUDE.md"), Harness.CLAUDE, Lifecycle.ACTIVE);
+	private Header header = new Header("campaign-1", Path.of("/project").toAbsolutePath(),
+		Path.of("/project/CLAUDE.md").toAbsolutePath(), Harness.CLAUDE, Lifecycle.ACTIVE);
 	private int ceiling = Campaign.DEFAULT_CEILING;
 	private Contract contract;
 	private int lineage;

@@ -1075,7 +1075,7 @@ public final class TransitionsTest
 	 */
 	private static AuthorityWarning externalWarning(String link)
 	{
-		return new AuthorityWarning("R1", Path.of(link), Path.of("/external").resolve(link),
+		return new AuthorityWarning("R1", Path.of(link), Path.of("/external").toAbsolutePath().resolve(link),
 			Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
 				AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN));
 	}

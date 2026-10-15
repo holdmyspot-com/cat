@@ -56,7 +56,7 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class PromptAuthorTest
 {
-	private static final Path COPY = Path.of("/runs/prompt-author-3/project");
+	private static final Path COPY = Path.of("/runs/prompt-author-3/project").toAbsolutePath();
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
 
@@ -195,10 +195,10 @@ public final class PromptAuthorTest
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md"), Path.of("rules")),
 			Set.of(Path.of(".claude/settings.json")));
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION, contract,
-			List.of(failure()), Map.of(), Map.of("safety", new CellCounts(40, 2, List.of(2))),
-			List.of(new EndedAttempt(1, Outcome.INCONCLUSIVE, Map.of("safety", new CellCounts(30, 1, List.of(1))),
-				List.of(failure().summary()), List.of(), List.of())),
-			Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md")), "", List.of(), List.of(), List.of());
+			List.of(failure()), Map.of(), Map.of("safety", new CellCounts(40, 2, List.of(2))), List.of(new EndedAttempt(1,
+			Outcome.INCONCLUSIVE, Map.of("safety", new CellCounts(30, 1, List.of(1))), List.of(failure().summary()),
+			List.of(), List.of())), Map.of(Path.of("rules/shared.md"), Path.of("/shared/rules.md").toAbsolutePath()), "",
+			List.of(), List.of(), List.of());
 
 		SessionRequest request = prompt.request(brief, COPY);
 
@@ -528,13 +528,13 @@ public final class PromptAuthorTest
 		List<AuthorityWarning.Choice> choices = List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
 			AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN);
 		List<AuthorityWarning> declined = List.of(
-			new AuthorityWarning("R1", Path.of("shared.md"), Path.of("/external/shared.md"),
+			new AuthorityWarning("R1", Path.of("shared.md"), Path.of("/external/shared.md").toAbsolutePath(),
 				Limit.EXTERNAL_TARGET_READ_ONLY, choices),
 			new AuthorityWarning("R2", Path.of(".claude/settings.json"), Path.of(".claude/settings.json"),
 				Limit.LOADER_CONFIGURATION_FIXED, choices));
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", declined, List.of(), List.of());
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(Path.of("shared.md"),
+			Path.of("/external/shared.md").toAbsolutePath()), "", declined, List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -572,8 +572,8 @@ public final class PromptAuthorTest
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md"),
 			Path.of("shared.md")), Set.of());
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", List.of(), List.of(), List.of());
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(Path.of("shared.md"),
+			Path.of("/external/shared.md").toAbsolutePath()), "", List.of(), List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -591,8 +591,8 @@ public final class PromptAuthorTest
 		// Requirement: R-W4
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("shared.md")), Set.of());
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(),
-			Map.of(Path.of("shared.md"), Path.of("/external/shared.md")), "", List.of(), List.of(), List.of());
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(Path.of("shared.md"),
+			Path.of("/external/shared.md").toAbsolutePath()), "", List.of(), List.of(), List.of());
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
@@ -717,12 +717,11 @@ public final class PromptAuthorTest
 		// Requirement: R-D10
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		PromptAuthorDiagnosis earlier = new PromptAuthorDiagnosis(4, 1, "safety", Builder.snapshot("candidate-1"),
-			List.of(new PromptAuthorKind("skipped confirmation", List.of("f1", "f2"), FailureKind.GUIDANCE,
-			List.of("h1"), ""),
-				new PromptAuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of(), "")),
-			List.of(new HunkEvidence("h1", Path.of("rules/safety.md"), 2, 3, 2, 5, List.of("f1", "f2"),
-				"Overwriting a file", "plain_list")),
-			List.of(), Path.of("/runs/prompt-author-4/transcript.jsonl"), Path.of("/runs/prompt-author-4/effects"));
+			List.of(new PromptAuthorKind("skipped confirmation", List.of("f1", "f2"), FailureKind.GUIDANCE, List.of("h1"),
+			""), new PromptAuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of(), "")),
+			List.of(new HunkEvidence("h1", Path.of("rules/safety.md"), 2, 3, 2, 5, List.of("f1", "f2"), "Overwriting a file",
+			"plain_list")), List.of(), Path.of("/runs/prompt-author-4/transcript.jsonl").toAbsolutePath(),
+			Path.of("/runs/prompt-author-4/effects").toAbsolutePath());
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
 			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(),
 			List.of(new PromptAuthorBrief.EarlierManifest(earlier, PromptAuthorBrief.PromotionResult.NOT_PROMOTED)),
@@ -758,7 +757,7 @@ public final class PromptAuthorTest
 	{
 		String report = response.replace("{\"needed_edits\":",
 			"{\"kinds\": [], \"hunks\": [], \"conflicts\": [], \"needed_edits\":");
-		return new SessionResult.Completed(Path.of("/runs/prompt-author-3/artifacts/transcript.jsonl"),
+		return new SessionResult.Completed(Path.of("/runs/prompt-author-3/artifacts/transcript.jsonl").toAbsolutePath(),
 			List.of(List.of("working", report)), COPY, COPY.resolveSibling("initial-project"), "prompt-author-model", null,
 			null, List.of(), "none", List.of());
 	}
@@ -783,9 +782,9 @@ public final class PromptAuthorTest
 			  {"requirement": "R2", "path": "rules/new.md", "operation": "create"}
 			]}
 			```"""));
-		requireThat(edits, "edits").isEqualTo(Optional.of(List.of(
-			new NeededEdit("R1", Path.of("rules/shared.md"), Operation.EDIT_CONTENT, Path.of("/external/shared.md")),
-			new NeededEdit("R2", Path.of("rules/new.md"), Operation.CREATE, null))));
+		requireThat(edits, "edits").isEqualTo(Optional.of(List.of(new NeededEdit("R1", Path.of("rules/shared.md"),
+			Operation.EDIT_CONTENT, Path.of("/external/shared.md").toAbsolutePath()), new NeededEdit("R2",
+			Path.of("rules/new.md"), Operation.CREATE, null))));
 	}
 
 	/**

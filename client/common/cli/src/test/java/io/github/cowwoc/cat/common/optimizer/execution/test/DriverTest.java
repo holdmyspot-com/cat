@@ -1907,7 +1907,7 @@ public final class DriverTest
 		Map<Path, FileEntry> entries = new HashMap<>();
 		for (Map.Entry<Path, String> file : files.entrySet())
 			entries.put(file.getKey(), new RegularFile(Sha256.of(file.getValue().getBytes(UTF_8)), permissions));
-		FileInventory fork = new FileInventory(Path.of("/project"), entries);
+		FileInventory fork = new FileInventory(Path.of("/project").toAbsolutePath(), entries);
 		Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
 		for (String cell : contract.cellIds())
 			start.development(cell, CommitGate.MINIMUM_TRIALS - 1, 0);
@@ -2937,9 +2937,9 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				developing().build());
-			harness.workspace().changeWorktree(new FileInventory(Path.of("/project"), Map.of(DriverHarness.PROMPT,
-				new FileEntry.RegularFile(Sha256.of("user edit".getBytes(UTF_8)),
-					PosixFilePermissions.fromString("rw-r--r--")))));
+			harness.workspace().changeWorktree(new FileInventory(Path.of("/project").toAbsolutePath(),
+				Map.of(DriverHarness.PROMPT, new FileEntry.RegularFile(Sha256.of("user edit".getBytes(UTF_8)),
+				PosixFilePermissions.fromString("rw-r--r--")))));
 			try (Driver driver = harness.open())
 			{
 				requireThat(harness.campaign().pending(), "pending").isInstanceOf(PendingDecision.UnownedChange.class);
@@ -3408,7 +3408,7 @@ public final class DriverTest
 	public void trialsInstallPluginUnderTest() throws IOException
 	{
 		// Requirement: R-W12
-		PluginUnderTest plugin = new PluginUnderTest.Built(Path.of("/plugin-base"), "a".repeat(64),
+		PluginUnderTest plugin = new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath(), "a".repeat(64),
 			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
 			"No prompt file invokes a CAT skill, agent or command.");
 		Contract contract = ContractFixtures.contract().withPlugin(Optional.of(plugin));
@@ -3446,7 +3446,7 @@ public final class DriverTest
 	public void controlTrialsRemovePluginDependents() throws IOException
 	{
 		// Requirement: R-W10
-		PluginUnderTest plugin = new PluginUnderTest.Built(Path.of("/plugin-base"), "a".repeat(64),
+		PluginUnderTest plugin = new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath(), "a".repeat(64),
 			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
 			"No prompt file invokes a CAT skill, agent or command.");
 		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(Optional.of(plugin)),
@@ -3643,8 +3643,8 @@ public final class DriverTest
 		Failure failure = new Failure(failed, "", List.of(wrongTone), null, List.of(), List.of(), Builder.FILES);
 		FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, test.id(), wrongTone, 2, FailureGroup.ROUNDS,
 			List.of(new ReproductionRound(TierFixtures.BIG_LOW, tried)), FailureGroup.Status.REPRODUCING);
-		Campaign start = new Builder().header(new Header(DriverHarness.CAMPAIGN, Path.of("/project"),
-			Path.of("/project").resolve(DriverHarness.PROMPT), Harness.CODEX, Lifecycle.ACTIVE)).
+		Campaign start = new Builder().header(new Header(DriverHarness.CAMPAIGN, Path.of("/project").toAbsolutePath(),
+			Path.of("/project").toAbsolutePath().resolve(DriverHarness.PROMPT), Harness.CODEX, Lifecycle.ACTIVE)).
 			confirmed(contract, 1).working(1).readyBaseline().readyDevelopment().certificationAttempt(1).
 			failure(failure).failure(failure).outcome(Outcome.BELOW_MINIMUM).groups(List.of(group)).campaign().build();
 		List<TrialProfile> limitedProfiles = new CopyOnWriteArrayList<>();
@@ -5138,7 +5138,7 @@ public final class DriverTest
 			Path link = Path.of("shared.md");
 			Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
 			RegularFile externalFile = new RegularFile(Sha256.of("external".getBytes(UTF_8)), permissions);
-			FileInventory fork = new FileInventory(Path.of("/project"), Map.of(
+			FileInventory fork = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
 				DriverHarness.PROMPT, new RegularFile(Sha256.of("fork".getBytes(UTF_8)), permissions),
 				link, new FileEntry.SymbolicLink(target),
 				target, externalFile));
@@ -5247,9 +5247,10 @@ public final class DriverTest
 		// Requirement: R-W4
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			AuthorityWarning warning = new AuthorityWarning("r2", Path.of("shared.md"), Path.of("/external/shared.md"),
-				Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
-				AuthorityWarning.Choice.STOP_CAMPAIGN, AuthorityWarning.Choice.REVISE_CAMPAIGN));
+			AuthorityWarning warning = new AuthorityWarning("r2", Path.of("shared.md"),
+				Path.of("/external/shared.md").toAbsolutePath(), Limit.EXTERNAL_TARGET_READ_ONLY,
+				List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
+				AuthorityWarning.Choice.REVISE_CAMPAIGN));
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				authoring().answered(warning).build());
 			try (Driver driver = harness.open())
@@ -5329,7 +5330,7 @@ public final class DriverTest
 		{
 			Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
 			RegularFile content = new RegularFile(Sha256.of("fork".getBytes(UTF_8)), permissions);
-			FileInventory fork = new FileInventory(Path.of("/project"), Map.of(
+			FileInventory fork = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
 				DriverHarness.PROMPT, content,
 				Path.of("docs/handbook.md"), new FileEntry.SymbolicLink(Path.of("../shared/handbook.md")),
 				Path.of("shared/handbook.md"), content));
@@ -5562,7 +5563,7 @@ public final class DriverTest
 	{
 		RegularFile file = new RegularFile(Sha256.of("base".getBytes(UTF_8)),
 			PosixFilePermissions.fromString("rw-r--r--"));
-		Path target = Path.of("/project/CLAUDE.md");
+		Path target = Path.of("/project/CLAUDE.md").toAbsolutePath();
 		return new Object[][]
 		{
 			{new DeliveryResult.UnownedChange(List.of(new PathChange.Added(Path.of("notes.md"), file)))},

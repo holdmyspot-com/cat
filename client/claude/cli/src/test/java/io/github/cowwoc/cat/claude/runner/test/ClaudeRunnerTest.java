@@ -24,10 +24,10 @@ public final class ClaudeRunnerTest
 	@Test
 	public void resolvesRunLaunchConfiguration()
 	{
-		Path temporaryDirectory = Path.of("/system-temporary-directory/.cat/claude/claude/run-id/claude");
+		Path temporaryDirectory = Path.of("/system-temporary-directory/.cat/claude/claude/run-id/claude").toAbsolutePath();
 
 		requireThat(ClaudeRunner.launchConfigurationPath(temporaryDirectory), "launchConfiguration").isEqualTo(
-			Path.of("/system-temporary-directory/.cat/claude/claude/run-id/.claude/launch.json"));
+			Path.of("/system-temporary-directory/.cat/claude/claude/run-id/.claude/launch.json").toAbsolutePath());
 	}
 
 	/**

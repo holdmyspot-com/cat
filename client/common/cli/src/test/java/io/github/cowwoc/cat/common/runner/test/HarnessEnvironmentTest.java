@@ -59,7 +59,7 @@ public final class HarnessEnvironmentTest
 	public void preventsHostGitDiscovery()
 	{
 		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(Map.of("PATH", "/bin")));
-		Path runDirectory = Path.of("/owned/run");
+		Path runDirectory = Path.of("/owned/run").toAbsolutePath();
 
 		HarnessEnvironment.preventGitDiscoveryAbove(environment, runDirectory);
 

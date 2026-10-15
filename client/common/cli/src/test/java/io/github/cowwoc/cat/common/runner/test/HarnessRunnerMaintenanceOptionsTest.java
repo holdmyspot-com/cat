@@ -29,11 +29,11 @@ public final class HarnessRunnerMaintenanceOptionsTest
 	public void parsesExplicitDeletion()
 	{
 		HarnessRunnerMaintenanceOptions result = HarnessRunnerMaintenanceOptions.parse(new String[] {"--delete-run",
-			"--run-id", "abc-123", "--run-root", "/caller-temp/runs"}, Path.of("/caller-temp"));
+			"--run-id", "abc-123", "--run-root", "/caller-temp/runs"}, Path.of("/caller-temp").toAbsolutePath());
 
 		requireThat(result.operation(), "operation").isEqualTo(HarnessRunnerMaintenanceOptions.Operation.DELETE_RUN);
 		requireThat(result.runId(), "runId").isEqualTo("abc-123");
-		requireThat(result.runRoot(), "runRoot").isEqualTo(Path.of("/caller-temp/runs"));
+		requireThat(result.runRoot(), "runRoot").isEqualTo(Path.of("/caller-temp/runs").toAbsolutePath());
 	}
 
 	/**
@@ -44,7 +44,7 @@ public final class HarnessRunnerMaintenanceOptionsTest
 	{
 		HarnessRunnerMaintenanceOptions result = HarnessRunnerMaintenanceOptions.parse(new String[] {
 			"--delete-stale-runs", "--older-than", "PT48H", "--run-root", "/caller-temp/runs"},
-			Path.of("/caller-temp"));
+			Path.of("/caller-temp").toAbsolutePath());
 
 		requireThat(result.operation(), "operation").isEqualTo(
 			HarnessRunnerMaintenanceOptions.Operation.DELETE_STALE_RUNS);
@@ -58,11 +58,11 @@ public final class HarnessRunnerMaintenanceOptionsTest
 	public void parsesTerminalRuntimePruning()
 	{
 		HarnessRunnerMaintenanceOptions result = HarnessRunnerMaintenanceOptions.parse(new String[] {
-			"--prune-terminal-runtimes", "--run-root", "/caller-temp/runs"}, Path.of("/caller-temp"));
+			"--prune-terminal-runtimes", "--run-root", "/caller-temp/runs"}, Path.of("/caller-temp").toAbsolutePath());
 
 		requireThat(result.operation(), "operation").isEqualTo(
 			HarnessRunnerMaintenanceOptions.Operation.PRUNE_TERMINAL_RUNTIMES);
-		requireThat(result.runRoot(), "runRoot").isEqualTo(Path.of("/caller-temp/runs"));
+		requireThat(result.runRoot(), "runRoot").isEqualTo(Path.of("/caller-temp/runs").toAbsolutePath());
 	}
 
 	/**
@@ -72,7 +72,7 @@ public final class HarnessRunnerMaintenanceOptionsTest
 	public void parsesDependencyCacheValidation()
 	{
 		HarnessRunnerMaintenanceOptions result = HarnessRunnerMaintenanceOptions.parse(new String[] {
-			"--verify-dependency-cache"}, Path.of("/caller-temp"));
+			"--verify-dependency-cache"}, Path.of("/caller-temp").toAbsolutePath());
 
 		requireThat(result.operation(), "operation").isEqualTo(
 			HarnessRunnerMaintenanceOptions.Operation.VERIFY_DEPENDENCY_CACHE);
@@ -86,7 +86,7 @@ public final class HarnessRunnerMaintenanceOptionsTest
 	{
 		HarnessRunnerMaintenanceOptions result = HarnessRunnerMaintenanceOptions.parse(new String[] {"--fail-run",
 			"--run-id", "abc-123", "--exit-code", "143", "--diagnostic", "capture timed out after 600 seconds",
-			"--run-root", "/caller-temp/runs"}, Path.of("/caller-temp"));
+			"--run-root", "/caller-temp/runs"}, Path.of("/caller-temp").toAbsolutePath());
 
 		requireThat(result.operation(), "operation").isEqualTo(HarnessRunnerMaintenanceOptions.Operation.FAIL_RUN);
 		requireThat(result.runId(), "runId").isEqualTo("abc-123");
@@ -100,6 +100,6 @@ public final class HarnessRunnerMaintenanceOptionsTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsPathLikeRunIdentifier()
 	{
-		new HarnessRun("harness", "../outside", Path.of("/runs/harness/outside"));
+		new HarnessRun("harness", "../outside", Path.of("/runs/harness/outside").toAbsolutePath());
 	}
 }

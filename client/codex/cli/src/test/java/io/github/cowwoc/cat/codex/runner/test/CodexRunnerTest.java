@@ -78,9 +78,9 @@ public final class CodexRunnerTest
 	{
 		List<String> command = CodexRunner.appServerCommand("codex", false);
 
-		requireThat(CodexRunner.withPrivateTmp(command, Path.of("/usr/bin/bwrap"), Path.of("/work/run")),
-			"command").isEqualTo(List.of("/usr/bin/bwrap", "--dev-bind", "/", "/", "--tmpfs", "/tmp",
-			"--die-with-parent", "--", "codex", "app-server", "--stdio", "--disable", "plugins"));
+		requireThat(CodexRunner.withPrivateTmp(command, Path.of("/usr/bin/bwrap").toAbsolutePath(),
+			Path.of("/work/run").toAbsolutePath()), "command").isEqualTo(List.of("/usr/bin/bwrap", "--dev-bind", "/", "/",
+			"--tmpfs", "/tmp", "--die-with-parent", "--", "codex", "app-server", "--stdio", "--disable", "plugins"));
 	}
 
 	/**
@@ -91,10 +91,10 @@ public final class CodexRunnerTest
 	{
 		List<String> command = CodexRunner.appServerCommand("codex", true);
 
-		requireThat(CodexRunner.withPrivateTmp(command, Path.of("/usr/bin/bwrap"), Path.of("/tmp/runs/run")),
-			"command").isEqualTo(List.of("/usr/bin/bwrap", "--dev-bind", "/", "/", "--tmpfs", "/tmp",
-			"--bind", "/tmp/runs/run", "/tmp/runs/run", "--die-with-parent", "--", "codex", "app-server", "--stdio",
-			"--enable", "hooks"));
+		requireThat(CodexRunner.withPrivateTmp(command, Path.of("/usr/bin/bwrap").toAbsolutePath(),
+			Path.of("/tmp/runs/run").toAbsolutePath()), "command").isEqualTo(List.of("/usr/bin/bwrap", "--dev-bind", "/", "/",
+			"--tmpfs", "/tmp", "--bind", "/tmp/runs/run", "/tmp/runs/run", "--die-with-parent", "--", "codex", "app-server",
+			"--stdio", "--enable", "hooks"));
 	}
 
 	/**

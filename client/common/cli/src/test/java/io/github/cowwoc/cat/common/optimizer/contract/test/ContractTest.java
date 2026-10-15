@@ -627,7 +627,7 @@ public final class ContractTest
 	{
 		// Requirement: R-W10
 		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(Optional.of(
-				new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath(), "0".repeat(64),
+				new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath().toAbsolutePath(), "0".repeat(64),
 					List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
 					"No prompt file invokes a CAT skill."))),
 			List.of(

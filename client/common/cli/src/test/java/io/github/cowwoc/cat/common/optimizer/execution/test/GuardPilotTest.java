@@ -462,7 +462,7 @@ public final class GuardPilotTest
 	 */
 	private static PluginUnderTest builtPlugin(String digit)
 	{
-		return new PluginUnderTest.Built(Path.of("/plugin-base"), digit.repeat(64),
+		return new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath(), digit.repeat(64),
 			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), true,
 			"The prompt files invoke CAT skills.");
 	}
@@ -532,8 +532,8 @@ public final class GuardPilotTest
 	 */
 	private static FileInventory fork()
 	{
-		return new FileInventory(Path.of("/project"), Map.of(PROMPT, new RegularFile(Sha256.of("fork".getBytes(UTF_8)),
-			PosixFilePermissions.fromString("rw-r--r--"))));
+		return new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(PROMPT,
+			new RegularFile(Sha256.of("fork".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"))));
 	}
 
 	/**

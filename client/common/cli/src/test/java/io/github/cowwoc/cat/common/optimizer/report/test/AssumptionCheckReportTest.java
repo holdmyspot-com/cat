@@ -26,7 +26,7 @@ public final class AssumptionCheckReportTest
 	/**
 	 * The campaign's protected root.
 	 */
-	private static final Path PROTECTED = Path.of("/project/.cat/work/optimizer/c1");
+	private static final Path PROTECTED = Path.of("/project/.cat/work/optimizer/c1").toAbsolutePath();
 
 	/**
 	 * Creates the test.
@@ -57,7 +57,7 @@ public final class AssumptionCheckReportTest
 		// level 1: 2 passes in 3 trials; level 4: 2 passes in 2 trials
 		AssumptionReport report = AssumptionReport.of(evidence(List.of(new Observation(4, Verdict.PASS),
 			new Observation(1, Verdict.PASS), new Observation(1, Verdict.FAIL), new Observation(4, Verdict.PASS),
-			new Observation(1, Verdict.PASS)), List.of(Path.of("/project/src/a.md"))));
+			new Observation(1, Verdict.PASS)), List.of(Path.of("/project/src/a.md").toAbsolutePath())));
 		requireThat(report.passRatesByConcurrency(), "rates").isEqualTo(List.of(
 			new LevelRate(1, 2, 3, ExploratoryBounds.wilson(2, 3)),
 			new LevelRate(4, 2, 2, ExploratoryBounds.wilson(2, 2))));
@@ -73,7 +73,7 @@ public final class AssumptionCheckReportTest
 	{
 		// Requirement: R-P2
 		AssumptionReport report = AssumptionReport.of(evidence(List.of(),
-			List.of(Path.of("/project/.cat/work/optimizer/c1/trials.json"))));
+			List.of(Path.of("/project/.cat/work/optimizer/c1/trials.json").toAbsolutePath())));
 		requireThat(report.dependenceDetected(), "dependenceDetected").isTrue();
 		requireThat(report.consequence(), "consequence").isEqualTo(Outcome.INVALID_STATISTICAL_ASSUMPTIONS);
 		requireThat(report.passRatesByConcurrency(), "rates").isEmpty();
@@ -88,7 +88,7 @@ public final class AssumptionCheckReportTest
 		// Requirement: R-P2
 		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().build();
 		ReportEvidence dependent = evidence(List.of(new Observation(1, Verdict.PASS)),
-			List.of(Path.of("/project/.cat/work/optimizer/c1/x")));
+			List.of(Path.of("/project/.cat/work/optimizer/c1/x").toAbsolutePath()));
 		StatusReport report = StatusReport.of(campaign, dependent);
 		requireThat(report.outcome(), "outcome").isEqualTo(Outcome.INVALID_STATISTICAL_ASSUMPTIONS.label());
 		requireThat(report.assumptions().passRatesByConcurrency().size(), "rates").isEqualTo(1);

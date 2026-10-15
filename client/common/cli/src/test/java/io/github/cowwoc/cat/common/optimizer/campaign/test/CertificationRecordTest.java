@@ -52,7 +52,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class CertificationRecordTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
-	private static final Path ROOT = Path.of("/project");
+	private static final Path ROOT = Path.of("/project").toAbsolutePath();
 	private static final String FAILING_TEXT = "logs";
 	/**
 	 * The largest file that the fixture's record may need, which keeps the record a few kilobytes.
@@ -346,7 +346,7 @@ public final class CertificationRecordTest
 			Path.of("CLAUDE.md"), file("prompt v2"),
 			Path.of("rules/style.md"), file("style v1"),
 			Path.of("README.md"), file("readme v1"),
-			Path.of("/home/user/shared.md"), file("shared v1")));
+			Path.of("/home/user/shared.md").toAbsolutePath(), file("shared v1")));
 	}
 
 	/**
@@ -357,7 +357,7 @@ public final class CertificationRecordTest
 	 */
 	private static Set<Path> promptSources()
 	{
-		return Set.of(Path.of("CLAUDE.md"), Path.of("rules"), Path.of("/home/user/shared.md"));
+		return Set.of(Path.of("CLAUDE.md"), Path.of("rules"), Path.of("/home/user/shared.md").toAbsolutePath());
 	}
 
 	/**

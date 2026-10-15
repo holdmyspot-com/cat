@@ -38,8 +38,8 @@ public final class SessionRequestTest
 	 */
 	private static SessionRequest request(SessionRole role, Part part)
 	{
-		return new SessionRequest(role, part, Path.of("/staged"), List.of("turn"), List.of(), Duration.ofMinutes(1),
-			TrialProfile.HARNESS_DEFAULT);
+		return new SessionRequest(role, part, Path.of("/staged").toAbsolutePath(), List.of("turn"), List.of(),
+			Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
 	}
 
 	/**
@@ -115,13 +115,13 @@ public final class SessionRequestTest
 		// Requirement: R-C21
 		WorkspaceFixtures files = new WorkspaceFixtures(Map.of("notes.md", new FixtureFile("notes.md", "notes")),
 			Map.of(), "outcome");
-		SessionRequest trial = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, Path.of("/staged"),
+		SessionRequest trial = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, Path.of("/staged").toAbsolutePath(),
 			List.of("turn"), List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT, files);
 		requireThat(trial.files(), "files").isEqualTo(files);
 		try
 		{
-			new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, Path.of("/staged"), List.of("turn"), List.of(),
-				Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT, files);
+			new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, Path.of("/staged").toAbsolutePath(), List.of("turn"),
+				List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT, files);
 			throw new AssertionError("A judge received fixture files");
 		}
 		catch (IllegalArgumentException e)

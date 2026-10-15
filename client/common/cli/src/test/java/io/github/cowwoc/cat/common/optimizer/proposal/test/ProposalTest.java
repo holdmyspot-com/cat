@@ -97,7 +97,7 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class ProposalTest
 {
-	private static final Path PROMPT_SYSTEM = Path.of("/staged/incumbent");
+	private static final Path PROMPT_SYSTEM = Path.of("/staged/incumbent").toAbsolutePath();
 	/**
 	 * The campaign's target prompt file.
 	 */
@@ -197,7 +197,7 @@ public final class ProposalTest
 	 */
 	private static SessionResult.Completed session(Path effects, Path initialProject, String response)
 	{
-		return new SessionResult.Completed(Path.of("/runs/contract-author/artifacts/transcript.jsonl"),
+		return new SessionResult.Completed(Path.of("/runs/contract-author/artifacts/transcript.jsonl").toAbsolutePath(),
 			List.of(List.of("I will inspect the prompt system.", response)), effects, initialProject, "model", null,
 			null, List.of(), OBSERVED, List.of());
 	}
@@ -221,8 +221,8 @@ public final class ProposalTest
 	{
 		// Requirement: R-C12
 		JsonResponse responses = new JsonResponse(json);
-		SessionResult.Completed earlier = session(Path.of(STAGED), Path.of("/runs/contract-author/initial-project"),
-			"{\"answer\":1}");
+		SessionResult.Completed earlier = session(Path.of(STAGED),
+			Path.of("/runs/contract-author/initial-project").toAbsolutePath(), "{\"answer\":1}");
 		SessionResult.Completed invalidFinal = new SessionResult.Completed(earlier.transcript(),
 			List.of(List.of("{\"answer\":1}"), List.of("{\"answer\":2}", "No structured output.")),
 			earlier.effects(), earlier.initialProject(), earlier.model(), null, null, List.of(), OBSERVED, List.of());
@@ -283,7 +283,7 @@ public final class ProposalTest
 	 */
 	private static LinkReport noLinks()
 	{
-		FileInventory inventory = new FileInventory(Path.of("/project"), Map.of());
+		FileInventory inventory = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of());
 		return LinkReport.of(inventory, new Authority(Set.of(Path.of("prompts")), Set.of(), inventory));
 	}
 
@@ -301,14 +301,14 @@ public final class ProposalTest
 		Map<Path, FileEntry> entries = new HashMap<>(Map.of(
 			Path.of("prompts/main.md"), file,
 			Path.of("alias.md"), new FileEntry.SymbolicLink(Path.of("prompts/main.md")),
-			Path.of("shared.md"), new FileEntry.SymbolicLink(Path.of("/shared/rules.md")),
-			Path.of("/shared/rules.md"), file));
+			Path.of("shared.md"), new FileEntry.SymbolicLink(Path.of("/shared/rules.md").toAbsolutePath()),
+			Path.of("/shared/rules.md").toAbsolutePath(), file));
 		if (cycle)
 		{
 			entries.put(Path.of("loop-a.md"), new FileEntry.SymbolicLink(Path.of("loop-b.md")));
 			entries.put(Path.of("loop-b.md"), new FileEntry.SymbolicLink(Path.of("loop-a.md")));
 		}
-		FileInventory inventory = new FileInventory(Path.of("/project"), entries);
+		FileInventory inventory = new FileInventory(Path.of("/project").toAbsolutePath(), entries);
 		return LinkReport.of(inventory, new Authority(Set.of(Path.of("prompts")), Set.of(), inventory));
 	}
 
@@ -1302,7 +1302,7 @@ public final class ProposalTest
 			Path base = cleanup.add(Files.createTempDirectory("plugin-base-"));
 			Files.createDirectories(base.resolve("rules/codex"));
 			Files.writeString(base.resolve("rules/codex/read-file.md"), "Read the whole file.");
-			FileInventory project = new FileInventory(Path.of("/project"), Map.of(
+			FileInventory project = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
 				Path.of("source/rules/read-file.md"), regularFile("Read the whole file."),
 				Path.of("source/rules/search.md"), regularFile("Search before reading.")));
 
@@ -1325,7 +1325,7 @@ public final class ProposalTest
 	@Test
 	public void refusesTargetsInTwoPlugins() throws IOException, InvalidProposalException
 	{
-		FileInventory project = new FileInventory(Path.of("/project"), Map.of(
+		FileInventory project = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
 			Path.of("plugins/docs/.codex-plugin/plugin.json"), regularFile("{\"name\": \"docs\"}"),
 			Path.of("plugins/docs/rules.md"), regularFile("Cite every source."),
 			Path.of("plugins/style/.claude-plugin/plugin.json"), regularFile("{\"name\": \"style\"}"),
@@ -1363,7 +1363,7 @@ public final class ProposalTest
 			Path base = cleanup.add(Files.createTempDirectory("plugin-base-"));
 			Files.createDirectories(base.resolve("rules/codex"));
 			Files.writeString(base.resolve("rules/codex/read-file.md"), "Read the whole file.");
-			FileInventory project = new FileInventory(Path.of("/project"), Map.of(
+			FileInventory project = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
 				Path.of("source/rules/read-file.md"), regularFile("Read every line of the file.")));
 
 			Proposal proposal = pluginProposal(builtPlugin(base), project,
@@ -1397,7 +1397,7 @@ public final class ProposalTest
 			Path base = cleanup.add(Files.createTempDirectory("plugin-base-"));
 			Files.createDirectories(base.resolve("rules/codex"));
 			Files.writeString(base.resolve("rules/codex/read-file.md"), "Read the whole file.");
-			FileInventory project = new FileInventory(Path.of("/project"), Map.of(
+			FileInventory project = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
 				Path.of("source/rules/read-file.md"), regularFile("Read the whole file.")));
 			Set<Path> promptFiles = Set.of(Path.of("source/rules/read-file.md"));
 
@@ -2114,8 +2114,8 @@ public final class ProposalTest
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("requirements").get(0)).
 			put("source", Requirement.GOAL));
 		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
-		Campaign campaign = new Builder().header(new Header("campaign-1", Path.of("/project"),
-			Path.of("/project/CLAUDE.md"), Harness.CLAUDE, Lifecycle.ACTIVE, goal)).build();
+		Campaign campaign = new Builder().header(new Header("campaign-1", Path.of("/project").toAbsolutePath(),
+			Path.of("/project/CLAUDE.md").toAbsolutePath(), Harness.CLAUDE, Lifecycle.ACTIVE, goal)).build();
 		String text = Proposal.of(derived, campaign, noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 

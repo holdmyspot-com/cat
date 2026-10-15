@@ -162,7 +162,7 @@ public final class DriverHarness
 	 */
 	public DriverHarness(Path directory, Campaign campaign, HostLogin login) throws IOException
 	{
-		this(directory, campaign, new FileInventory(Path.of("/project"), Map.of(PROMPT, new RegularFile(
+		this(directory, campaign, new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(PROMPT, new RegularFile(
 			Sha256.of("fork".getBytes(UTF_8)), PERMISSIONS))), null, login);
 	}
 
