@@ -12,6 +12,7 @@ import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
+import io.github.cowwoc.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -56,7 +57,7 @@ public final class InventoryScannerTest
 			// git check-ignore fails unless Git ignores the file, which makes this fixture's ignored file real
 			git.run("check-ignore", "--quiet", "ignored.md");
 			writeFile(project.resolve("prompt.md"), "prompt", READ_WRITE);
-			writeFile(project.resolve("run.cmd"), "@echo off\n", EXECUTABLE);
+			writeFile(project.resolve(ProgramFixture.name("run")), ProgramFixture.TEXT, EXECUTABLE);
 			writeFile(project.resolve("sub/inner.md"), "inner", READ_WRITE);
 			writeFile(project.resolve(".cat/work/state.json"), "{}", READ_WRITE);
 			Files.createSymbolicLink(project.resolve("alias.md"), Path.of("prompt.md"));
@@ -70,7 +71,7 @@ public final class InventoryScannerTest
 				Path.of(".gitignore"), file("ignored.md\n"),
 				Path.of("ignored.md"), file("ignored"),
 				Path.of("prompt.md"), file("prompt"),
-				Path.of("run.cmd"), file("@echo off\n", EXECUTABLE),
+				Path.of(ProgramFixture.name("run")), file(ProgramFixture.TEXT, EXECUTABLE),
 				Path.of("sub/inner.md"), file("inner"),
 				Path.of("alias.md"), new SymbolicLink(Path.of("prompt.md")),
 				Path.of("docs"), new SymbolicLink(Path.of("sub")),

@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkTree;
+import io.github.cowwoc.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -115,7 +116,7 @@ final class ProjectFixtures
 		Path campaign = root.resolve("campaign");
 		writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
 		// Windows records a file as executable only by its name, and Linux only by the mode set here
-		writeFile(base.resolve("run.cmd"), "@echo off\n", EXECUTABLE);
+		writeFile(base.resolve(ProgramFixture.name("run")), ProgramFixture.TEXT, EXECUTABLE);
 		writeFile(base.resolve("rules/a.md"), "rule a", READ_WRITE);
 		writeFile(base.resolve("rules/b.md"), "rule b", READ_WRITE);
 		writeFile(base.resolve("fixtures/data.txt"), "fixture data", READ_WRITE);
@@ -132,7 +133,7 @@ final class ProjectFixtures
 		Set<Path> paths = new HashSet<>();
 		for (String relative : new String[]
 			{
-				"prompt.md", "run.cmd", "rules", "fixtures", ".cat", "alias.md", "docs", "shared.md", "ext-dir"
+				"prompt.md", ProgramFixture.name("run"), "rules", "fixtures", ".cat", "alias.md", "docs", "shared.md", "ext-dir"
 			})
 		{
 			paths.add(Path.of(relative));

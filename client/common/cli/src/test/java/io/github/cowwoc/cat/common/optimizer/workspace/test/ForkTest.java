@@ -23,6 +23,7 @@ import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport.Entry;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport.Status;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
+import io.github.cowwoc.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -436,8 +437,8 @@ public final class ForkTest
 			FileInventory inventory = fork.inventory();
 			requireThat(inventory.root(), "root").isEqualTo(base);
 			requireThat(inventory.entries().get(Path.of("prompt.md")), "prompt").isEqualTo(file("prompt"));
-			requireThat(inventory.entries().get(Path.of("run.cmd")), "executable").
-				isEqualTo(file("@echo off\n", EXECUTABLE));
+			requireThat(inventory.entries().get(Path.of(ProgramFixture.name("run"))), "executable").
+				isEqualTo(file(ProgramFixture.TEXT, EXECUTABLE));
 			requireThat(inventory.entries().get(Path.of("alias.md")), "link").
 				isEqualTo(new SymbolicLink(Path.of("prompt.md")));
 			requireThat(inventory.entries().get(Path.of("ignored.md")), "ignored").isEqualTo(file("ignored"));
@@ -872,7 +873,7 @@ public final class ForkTest
 		writeFile(base.resolve(".gitignore"), "ignored.md\n", READ_WRITE);
 		writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
 		// Windows records a file as executable only by its name, and Linux only by the mode set here
-		writeFile(base.resolve("run.cmd"), "@echo off\n", EXECUTABLE);
+		writeFile(base.resolve(ProgramFixture.name("run")), ProgramFixture.TEXT, EXECUTABLE);
 		Files.createSymbolicLink(base.resolve("alias.md"), Path.of("prompt.md"));
 		git.run("add", "--all");
 		git.run("commit", "--quiet", "-m", "initial");

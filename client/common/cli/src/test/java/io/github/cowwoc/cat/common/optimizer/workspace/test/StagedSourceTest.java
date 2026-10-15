@@ -26,6 +26,7 @@ import io.github.cowwoc.cat.common.optimizer.workspace.Workspace;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
 import io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.LinkedProject;
 import io.github.cowwoc.cat.common.secrets.ForkTreeSecrets;
+import io.github.cowwoc.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -88,7 +89,8 @@ public final class StagedSourceTest
 			Map<Path, FileEntry> entries = InventoryScanner.scan(staged, Set.of()).entries();
 			requireThat(entries.get(Path.of("prompt.md")), "prompt").isEqualTo(file("edited"));
 			requireThat(entries.get(Path.of("new.md")), "created").isEqualTo(file("new"));
-			requireThat(entries.get(Path.of("run.cmd")), "executable").isEqualTo(file("@echo off\n", EXECUTABLE));
+			requireThat(entries.get(Path.of(ProgramFixture.name("run"))), "executable").
+				isEqualTo(file(ProgramFixture.TEXT, EXECUTABLE));
 			requireThat(entries.get(Path.of("rules/a.md")), "rule").isEqualTo(file("rule a"));
 			requireThat(entries.containsKey(Path.of("rules/b.md")), "deletedRuleRecorded").isFalse();
 			requireThat(entries.get(Path.of("fixtures/data.txt")), "fixture").isEqualTo(file("fixture data"));
@@ -243,7 +245,8 @@ public final class StagedSourceTest
 			requireThat(entries.get(Path.of("rules/a.md")), "otherPromptFile").isEqualTo(file("rule a"));
 			requireThat(entries.get(Path.of("docs/b.md")), "directoryLink").isEqualTo(file("rule b"));
 			requireThat(entries.get(Path.of("shared.md")), "externalFileLink").isEqualTo(file("shared"));
-			requireThat(entries.get(Path.of("run.cmd")), "executable").isEqualTo(file("@echo off\n", EXECUTABLE));
+			requireThat(entries.get(Path.of(ProgramFixture.name("run"))), "executable").
+				isEqualTo(file(ProgramFixture.TEXT, EXECUTABLE));
 			requireThat(entries.get(Path.of(".cat/rules/r.md")), "catRule").isEqualTo(file("cat rule"));
 		}
 	}

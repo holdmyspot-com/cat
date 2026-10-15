@@ -14,6 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.workspace.Workspace;
 import io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.LinkedProject;
+import io.github.cowwoc.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -80,7 +81,7 @@ public final class WorktreeTest
 			Overlay fork = Overlay.of(project.tree().inventory());
 			Overlay edited = fork.
 				write(Path.of("prompt.md"), content("edited"), READ_WRITE).
-				write(Path.of("new/created.cmd"), content("@echo off\n"), EXECUTABLE).
+				write(Path.of(ProgramFixture.name("new/created")), content(ProgramFixture.TEXT), EXECUTABLE).
 				write(project.external().resolve("shared.md"), content("external edit"), READ_WRITE).
 				delete(Path.of("rules/a.md"));
 			port.materialize(fork);
@@ -96,7 +97,7 @@ public final class WorktreeTest
 
 			writeFile(worktree.resolve("unowned.md"), "unowned", READ_WRITE);
 			Files.writeString(worktree.resolve("rules/b.md"), "tampered", UTF_8);
-			Files.delete(worktree.resolve("run.cmd"));
+			Files.delete(worktree.resolve(ProgramFixture.name("run")));
 			requireThat(InventoryDiff.between(edited.snapshot(), port.scanWorktree()).changes().size(), "changes").
 				isEqualTo(3);
 

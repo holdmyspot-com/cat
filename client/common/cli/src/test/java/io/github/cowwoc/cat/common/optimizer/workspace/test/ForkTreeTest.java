@@ -15,6 +15,7 @@ import io.github.cowwoc.cat.common.optimizer.workspace.ForkTree;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
 import io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.LinkedProject;
 import io.github.cowwoc.cat.common.secrets.ForkTreeSecrets;
+import io.github.cowwoc.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -55,7 +56,7 @@ public final class ForkTreeTest
 
 			Map<Path, FileEntry> expected = Map.ofEntries(
 				Map.entry(Path.of("prompt.md"), file("prompt")),
-				Map.entry(Path.of("run.cmd"), file("@echo off\n", EXECUTABLE)),
+				Map.entry(Path.of(ProgramFixture.name("run")), file(ProgramFixture.TEXT, EXECUTABLE)),
 				Map.entry(Path.of("rules/a.md"), file("rule a")),
 				Map.entry(Path.of("rules/b.md"), file("rule b")),
 				Map.entry(Path.of("fixtures/data.txt"), file("fixture data")),
