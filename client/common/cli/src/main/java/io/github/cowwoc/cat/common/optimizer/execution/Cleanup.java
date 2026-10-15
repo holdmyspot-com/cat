@@ -242,7 +242,7 @@ public final class Cleanup
 		Optional<CampaignLock> lock = CampaignLock.tryAcquire(FileCampaignStore.lockFile(base, id));
 		if (lock.isEmpty())
 			return false;
-		// Deleting the campaign directory deletes the open lock file, which releases nothing until the lock closes
+		// Deleting the open lock file releases nothing until the lock closes
 		try (CampaignLock _ = lock.get())
 		{
 			beforeStep.accept(Step.WORKTREE);
@@ -255,6 +255,9 @@ public final class Cleanup
 				removeRuns(runRoot, owners);
 
 			beforeStep.accept(Step.CAMPAIGN_DIRECTORY);
+			// Windows refuses to rename a directory that holds an open file, and deleting the campaign directory
+			// renames it first
+			Files.deleteIfExists(FileCampaignStore.lockFile(base, id));
 			FileCampaignStore.delete(base, id);
 		}
 		return true;
