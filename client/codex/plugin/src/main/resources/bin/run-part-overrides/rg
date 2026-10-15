@@ -29,7 +29,25 @@ if [[ -z "${ripgrep}" ]]; then
 	exit 127
 fi
 
-if [[ -z "${CAT_RUN_PART_OUTPUT:-}" ]] || ! [[ /dev/stdout -ef "${CAT_RUN_PART_OUTPUT}" ]]; then
+# Returns whether this script's standard output is the file that saves run-part's output. Linux resolves /dev/stdout to
+# that file. macOS does not, so the second test compares the device and inode that BSD stat reports for its standard
+# input, which it reads when it names no file, after standard output is copied there. GNU stat reads -f as a request
+# for file-system information and the format as a missing file, so on Linux that test fails.
+writes_to_saved_output()
+{
+	if [[ -z "${CAT_RUN_PART_OUTPUT:-}" ]]; then
+		return 1
+	fi
+	if [[ /dev/stdout -ef "${CAT_RUN_PART_OUTPUT}" ]]; then
+		return 0
+	fi
+	local descriptor saved
+	{ descriptor=$(stat -f '%d:%i' 0<&4 2>/dev/null); } 4>&1 || return 1
+	saved=$(stat -f '%d:%i' "${CAT_RUN_PART_OUTPUT}" 2>/dev/null) || return 1
+	[[ -n "${descriptor}" && "${descriptor}" == "${saved}" ]]
+}
+
+if ! writes_to_saved_output; then
 	exec "${ripgrep}" "$@"
 fi
 # Help and version output are not search results
