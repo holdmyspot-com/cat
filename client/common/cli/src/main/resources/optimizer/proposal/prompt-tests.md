@@ -140,5 +140,8 @@ only the reply to turn n, counted from 1.
 | `read-in-full <path>` | every non-blank line of the file as staged appeared in the tool output that the trial's agents received | `file_not_read_in_full` |
 | `read-at-most <path> <percent>` | at most that percentage of the file's non-blank lines appeared in the tool output that the trial's agents received | `file_read_beyond_limit` |
 
+`read-in-full` and `read-at-most` count only the tool output that reached the agents: Codex and Claude Code can shorten
+a tool's output before the model receives it, and the part that they cut off does not count.
+
 CAT refuses a built-in tool whose evidence the harness does not report, such as `exit-status` for a harness that
 reports no exit statuses.

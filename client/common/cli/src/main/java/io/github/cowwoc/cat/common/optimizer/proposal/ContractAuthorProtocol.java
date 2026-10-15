@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
@@ -99,6 +100,10 @@ public final class ContractAuthorProtocol
 	private final Path target;
 	private final String goal;
 	private final boolean reportsExitStatus;
+	/**
+	 * The files that load in production, each with the rule that loads it, as a Markdown list.
+	 */
+	private final String loadedFiles;
 
 	/**
 	 * Creates the contract author request builder and response validator.
@@ -112,12 +117,14 @@ public final class ContractAuthorProtocol
 	 *   stated no goal
 	 * @param reportsExitStatus {@code true} if the harness reports the exit status of commands, so that a built-in
 	 *   check that needs it can be decided
+	 * @param loadedFiles the files that load in production, each with the rule that loads it
 	 * @throws NullPointerException if any of the arguments other than {@code goal} are null
 	 * @throws IllegalArgumentException if {@code target} is relative or {@code goal} is blank
 	 * @throws UncheckedIOException if a packaged prompt or schema cannot be read
 	 */
 	public ContractAuthorProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge,
-		RegressionScenarios scenarios, Path target, String goal, boolean reportsExitStatus)
+		RegressionScenarios scenarios, Path target, String goal, boolean reportsExitStatus,
+		List<DerivedSource> loadedFiles)
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(schema, "schema").isNotNull();
@@ -127,6 +134,7 @@ public final class ContractAuthorProtocol
 		requireThat(target.isAbsolute(), "target.isAbsolute()").isTrue();
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
+		requireThat(loadedFiles, "loadedFiles").isNotNull();
 		this.json = json;
 		this.schema = schema;
 		this.judge = judge;
@@ -134,6 +142,7 @@ public final class ContractAuthorProtocol
 		this.target = target.normalize();
 		this.goal = goal;
 		this.reportsExitStatus = reportsExitStatus;
+		this.loadedFiles = loadedFiles(loadedFiles);
 		this.outputFile = new OutputFile(json);
 		this.prompt = withPromptTests(PROMPT_RESOURCE);
 		this.outputSchema = outputSchema(json, schema);
@@ -255,12 +264,28 @@ public final class ContractAuthorProtocol
 		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "profile_inventory",
 			profiles.toString(), "capability_ranking", evidence.ranking().describe(), "output_schema", outputSchema,
 			"regression_scenarios", scenarios.prompt(), "generators", ValueGenerators.describeAll(), "target_prompt_file",
-			targetPromptFile(), "goal", goal()));
+			targetPromptFile(), "goal", goal(), "loaded_files", loadedFiles));
 		String file = OutputFile.name(promptSystem);
 		FollowUp correct = result -> correction(result, evidence, salt, file);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn,
 			outputTurn.fill(Map.of("output_file", file))), List.of(), TIME_LIMIT, role(), WorkspaceFixtures.NONE,
 			Optional.empty(), Optional.of(correct));
+	}
+
+	/**
+	 * Returns the files that load in production as a Markdown list.
+	 *
+	 * @param files the files, each with the rule that loads it
+	 * @return a list item for each file, or {@code none} if there are none
+	 */
+	private static String loadedFiles(List<DerivedSource> files)
+	{
+		if (files.isEmpty())
+			return "none";
+		StringJoiner list = new StringJoiner("\n");
+		for (DerivedSource file : files)
+			list.add("- `" + file.path() + "`: " + file.rule());
+		return list.toString();
 	}
 
 	/**

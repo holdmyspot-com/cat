@@ -135,7 +135,7 @@ public final class ProposalTest
 	private final ProposalSchema schema = new ProposalSchema(json);
 	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
 	private final ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
-		new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true);
+		new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of());
 
 	/**
 	 * Creates the test fixture.
@@ -1891,7 +1891,7 @@ public final class ProposalTest
 		ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of(new RegressionScenarios.Scenario(
 				PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, recorded.render(),
-				new RegressionScenarios.Current(files, List.of())))), TARGET, null, true);
+				new RegressionScenarios.Current(files, List.of())))), TARGET, null, true, List.of());
 
 		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 		Contract contract = contractAuthor.proposal(session(output), PROFILES, SALT).contract();
@@ -1946,7 +1946,7 @@ public final class ProposalTest
 		ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of(new RegressionScenarios.Scenario(
 				PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, recorded.render(),
-				new RegressionScenarios.Current(files, List.of(notes))))), TARGET, null, true);
+				new RegressionScenarios.Current(files, List.of(notes))))), TARGET, null, true, List.of());
 
 		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
@@ -1974,7 +1974,7 @@ public final class ProposalTest
 	{
 		return new ContractAuthorProtocol(json, schema, judge, new RegressionScenarios(PROMPT_SYSTEM, List.of(
 			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, content, EARLIER))), TARGET,
-			null, true);
+			null, true, List.of());
 	}
 
 	/**
@@ -1992,7 +1992,8 @@ public final class ProposalTest
 				EARLIER),
 			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("CLAUDE.md"), "unrelated.md", "Unrelated case",
 				EARLIER)));
-		return new ContractAuthorProtocol(json, schema, judge, scenarios, PROMPT_SYSTEM.resolve("rules"), null, true);
+		return new ContractAuthorProtocol(json, schema, judge, scenarios, PROMPT_SYSTEM.resolve("rules"), null, true,
+			List.of());
 	}
 
 	/**
@@ -2055,9 +2056,27 @@ public final class ProposalTest
 		// Requirement: R-C24
 		String goal = "Summaries must stay safe for a general audience.";
 		ContractAuthorProtocol withGoal = new ContractAuthorProtocol(json, schema, judge,
-			new RegressionScenarios(PROMPT_SYSTEM, List.of()), PROMPT_SYSTEM.resolve("rules/safety.md"), goal, true);
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), PROMPT_SYSTEM.resolve("rules/safety.md"), goal, true,
+			List.of());
 		String prompt = withGoal.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 		requireThat(prompt, "prompt").contains("`rules/safety.md`").contains(goal);
+	}
+
+	/**
+	 * Verifies that the contract author's request lists the files that load in production, with the rule that loads
+	 * each, so that the author need not work out the loading rules.
+	 */
+	@Test
+	public void requestListsLoadedFiles()
+	{
+		ContractAuthorProtocol withLoaded = new ContractAuthorProtocol(json, schema, judge,
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(
+				new DerivedSource("AGENTS.md", "Codex reads the project's instruction file."),
+				new DerivedSource("/plugins/cat/rules/codex/read-file.md", "CAT's rule loader injects the rule.")));
+		String prompt = withLoaded.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+		requireThat(prompt, "prompt").
+			contains("- `AGENTS.md`: Codex reads the project's instruction file.\n").
+			contains("- `/plugins/cat/rules/codex/read-file.md`: CAT's rule loader injects the rule.\n");
 	}
 
 	/**
@@ -2206,7 +2225,7 @@ public final class ProposalTest
 		contractAuthor.proposal(session(output), PROFILES, SALT);
 
 		ContractAuthorProtocol unreported = new ContractAuthorProtocol(json, schema, judge,
-			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, false);
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, false, List.of());
 		try
 		{
 			unreported.proposal(session(output), PROFILES, SALT);

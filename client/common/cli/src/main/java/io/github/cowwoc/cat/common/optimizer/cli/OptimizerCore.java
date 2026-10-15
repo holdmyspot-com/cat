@@ -140,20 +140,22 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns a contract author protocol for a campaign, with the target's current recorded scenarios and the
-	 * harness's role profile.
+	 * Returns a contract author protocol for a campaign, with the target's current recorded scenarios, the
+	 * harness's role profile and the files that load in production.
 	 *
 	 * @param root the original project root, where scenarios are recorded
 	 * @param campaign the campaign, whose header holds the target and the user's goal
 	 * @return the protocol
-	 * @throws IOException if recorded scenarios or the installed role profile cannot be read
+	 * @throws IOException if recorded scenarios, the installed role profile or a file that loads in production cannot
+	 *   be read
 	 */
 	private ContractAuthorProtocol contractAuthor(Path root, Campaign campaign) throws IOException
 	{
 		Header header = campaign.header();
 		return new ContractAuthorProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
 			scope.profiles().roleProfile()), RegressionScenarios.read(scope.json(), root, scope.home()),
-			header.target(), header.goal(), scope.sessions().reportsExitStatus());
+			header.target(), header.goal(), scope.sessions().reportsExitStatus(),
+			scope.sessions().derivedSources(root, Optional.empty()));
 	}
 
 	/**

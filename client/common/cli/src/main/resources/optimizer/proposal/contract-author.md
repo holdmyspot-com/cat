@@ -11,9 +11,6 @@
 - Check every requirement with assertions in prompt tests whose test cases vary the content that the agent works on
   and spread their expected outcomes over both parts of CAT's split, so that certification measures the prompts on
   test cases that prompt editing never saw.
-- Name every prompt file that loads for this prompt system although no harness event reports it loading,
-  together with the documented rule that loads it, so CAT can record that this loading was derived rather than
-  observed.
 - Name the harness plugin that holds the target prompt file, how a build assembles it from the project and whether
   it needs CAT, so that each trial installs that plugin with the trial's version of the prompt files.
 - Name every part of the prompt system that exists only to deliver the target prompt file or to carry out, enforce or
@@ -41,6 +38,10 @@
   CAT rejects a proposal that contains one. Of the judge, you write only `judge.rubric` and `judge.decision_rule`.
 - Never write code. An assertion that a program can decide names one of CAT's built-in tools; CAT implements every
   built-in tool.
+- CAT checks the proposal file when you write it and returns each problem with the JSON path of the value it concerns,
+  so that you can correct it. Learn what CAT accepts, and how it stages, runs and records trials, from this prompt,
+  the output schema and those problems. Do not read the source code of CAT's optimizer for it, even when the project
+  holds that code.
 
 ### Target prompt file and goal
 
@@ -55,12 +56,16 @@ The user's goal for the target, in the user's own words, or `none` if the user s
 
 ### What to inspect
 
-- The prompt system is the current directory. Determine which prompt files load in production by following the
-  harness's documented loading rules and CAT's rule loader, which injects the rule files under `.cat/rules/`.
-- Include files reached through symbolic links and readable files outside the project that the prompt system loads
-  or references as instructions.
+- The prompt system is the current directory. CAT lists below the files that load in production: the harness's
+  instruction files and the files that CAT's rules give the agent, each with the rule that loads it. Start from this
+  list instead of working out the loading rules or reading CAT's rule loader, and read a listed file when its content
+  matters to the proposal. A path outside the project is a file of an installed plugin or of the user's rules.
+- Add the files that a listed file references as instructions, including files reached through symbolic links and
+  readable files outside the project.
 - Record the `source` of a requirement that a prompt file states as the path of that file. For a file reached through a
   link, give the link path and its resolved target.
+
+{{loaded_files}}
 
 ### Requirements
 
@@ -160,8 +165,10 @@ plugin of the user's harness.
   harness installed. Set `root` to `null`. Find the build step that copies the prompt files into the plugin, and give
   each project directory that it copies file for file as a `mappings` entry: its `source`, relative to the project, and
   the `target` directory that receives its files, relative to the plugin directory. Cover the target prompt file and
-  every other project file that the prompt system loads. CAT refuses a mapping when a file of its source has no file at
-  the mapped path in the base, because the plugin's users never receive that file.
+  every other project file that the prompt system loads. A trial's copy of the plugin is the base with each regular file
+  under a mapping's `source`, at any depth, written over the same relative path under its `target`; every other file
+  of the base stays as built. CAT refuses a mapping when a file of its source has no file at the mapped path in the
+  base, because the plugin's users never receive that file.
 - Set `depends_on_cat` to `true` when the plugin needs CAT installed beside it: its manifest names CAT as a dependency,
   or its prompt files invoke CAT's skills, agents or commands or name CAT's plugin directory. Quote the manifest entry
   or file passages that show it in `cat_evidence`, or say that none exist. A plugin that is CAT itself is installed
