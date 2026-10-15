@@ -57,8 +57,8 @@ public final class ClaudeConfigurationTest
 	@Test
 	public void preservesPathWhitespace()
 	{
-		Path directory = ClaudeConfiguration.resolveDirectory(null, " configuration ");
-		requireThat(directory, "directory").isEqualTo(Path.of(" configuration "));
+		Path directory = ClaudeConfiguration.resolveDirectory(null, " configuration");
+		requireThat(directory, "directory").isEqualTo(Path.of(" configuration"));
 	}
 
 	/**

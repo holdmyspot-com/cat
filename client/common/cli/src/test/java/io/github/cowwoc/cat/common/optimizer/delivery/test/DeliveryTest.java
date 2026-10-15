@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.PortableFiles;
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
@@ -613,7 +614,8 @@ public final class DeliveryTest
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
 			requireThat(new CertificationRecordJson(JSON).read(fixture.resolve(RECORD_FILE)), "record").
 				isEqualTo(RECORD.orElseThrow());
-			requireThat(delivered.diff(), "diff").contains("+++ b/" + RECORD_FILE).contains("\"certification_index\"");
+			requireThat(delivered.diff(), "diff").contains("+++ b/" + PortablePaths.text(RECORD_FILE)).
+				contains("\"certification_index\"");
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
 			requireThat(delivered.applicability().status(), "status").isEqualTo(Applicability.Status.CURRENT);
 		}
@@ -643,7 +645,7 @@ public final class DeliveryTest
 			requireThat(last, "last").isInstanceOf(Edit.class);
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
 			requireThat(codec.read(fixture.resolve(RECORD_FILE)), "record").isEqualTo(RECORD.orElseThrow());
-			requireThat(delivered.diff(), "diff").contains("+++ b/" + RECORD_FILE).
+			requireThat(delivered.diff(), "diff").contains("+++ b/" + PortablePaths.text(RECORD_FILE)).
 				contains("-  \"certification_index\" : 3").contains("+  \"certification_index\" : 1");
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
 		}

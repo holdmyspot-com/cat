@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.codex.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.codex.runner.CodexRunner;
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
@@ -15,6 +16,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -76,6 +78,7 @@ public final class CodexRunnerTest
 	@Test
 	public void startsAppServerWithPrivateTmp()
 	{
+		requirePosixFileSystem();
 		List<String> command = CodexRunner.appServerCommand("codex", false);
 
 		requireThat(CodexRunner.withPrivateTmp(command, Path.of("/usr/bin/bwrap").toAbsolutePath(),
@@ -89,6 +92,7 @@ public final class CodexRunnerTest
 	@Test
 	public void keepsRunDirectoryInPrivateTmp()
 	{
+		requirePosixFileSystem();
 		List<String> command = CodexRunner.appServerCommand("codex", true);
 
 		requireThat(CodexRunner.withPrivateTmp(command, Path.of("/usr/bin/bwrap").toAbsolutePath(),
@@ -106,6 +110,7 @@ public final class CodexRunnerTest
 	@Test
 	public void findsBubblewrapOnPath() throws IOException
 	{
+		requirePosixFileSystem();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path empty = cleanup.add(Files.createTempDirectory("cat-path-"));
@@ -149,5 +154,16 @@ public final class CodexRunnerTest
 				directory.resolve("run.json"), directory.resolve("initial-project"), directory.resolve("home/sessions")));
 			requireThat(Files.isDirectory(directory.resolve("home/sessions")), "sessionLogsExist").isTrue();
 		}
+	}
+
+	/**
+	 * Skips a test of bubblewrap, which runs only on Linux, where the file system has POSIX paths and permissions.
+	 *
+	 * @throws SkipException if the default file system has no POSIX permissions
+	 */
+	private static void requirePosixFileSystem()
+	{
+		if (!PortableFiles.hasModes(Path.of("")))
+			throw new SkipException("bubblewrap needs a file system with POSIX paths and permissions");
 	}
 }
