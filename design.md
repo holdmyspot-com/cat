@@ -181,7 +181,8 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Base worktree | The user's Git worktree. Apart from campaign storage in its Git-ignored `.cat/work/` directory ([§4.1](#41-storage)), only delivery writes to it. |
 | Optimization worktree | CAT's fork of the base, holding the working candidate. |
 | Staged source | A symbolic-link-free directory for one snapshot, which the runner copies for each trial. |
-| Plugin under test | The harness plugin that holds the target prompt file. Each trial installs it from a copy in which the snapshot's prompt files replace the plugin's own ([§4.4](#44-trial-staging)). |
+| Campaign configuration | The committed `campaign-config.json` in the target's test directory, which lists for each harness the trial plugins, and how the project builds each one that it builds ([§4.4](#44-trial-staging)). |
+| Trial plugin | A harness plugin that the campaign configuration lists, which every trial installs. A plugin that the project builds is installed from a build of the fork commit, with the snapshot's prompt files in place of the build's copies ([§4.4](#44-trial-staging)). |
 | Runner | CAT's existing component that runs one nested Claude or Codex session in a fresh isolated run directory (`ClaudeRunner`, `CodexRunner`). |
 | Driver | The Java process that each `prompt-optimizer run` command starts. It makes every deterministic decision ([§3.1](#31-nested-sessions), [§3.7](#37-process-model)). |
 | Slice | One time-bounded run of the driver inside a foreground command. |
@@ -813,10 +814,9 @@ and prompt author sessions run under the harness's **role profile**: the model a
 `optimize-xhigh`, the most capable of CAT's implementation agents, binds in that harness. The contract records the role
 profile as part of the frozen judge. Changing it is a judge change ([§5](#5-measurement-identity-and-applicability)).
 
-Trial sessions run as the prompt system's users run it. When the target prompt file belongs to a plugin under test
-([§4.4](#44-trial-staging)), a trial installs that plugin from its snapshot's copy, together with the project's own
-files, and installs CAT only when the confirmed contract says that the plugin depends on CAT. When the plugin under test
-is CAT itself, the trial installs CAT only from that copy. Otherwise trials run with CAT installed. The contract author,
+Trial sessions run as the prompt system's users run it: a trial installs the trial plugins that the campaign
+configuration lists for the campaign's harness, and no other plugin, together with the project's own files
+([§4.4](#44-trial-staging)). A trial runs with CAT only when the configuration lists CAT. The contract author,
 judge, triage and prompt author sessions run without CAT's plugin, so no CAT session rules, hooks or path triggers reach
 them, and neither do the user's or the project's rules. Each one's brief carries the complete text of the rules its role
 applies instead, read from the installed CAT artifact: the prompt author receives the clear-writing, failure-prevention,
@@ -1082,6 +1082,7 @@ Campaign data lives under `<base>/.cat/work/optimizer/<campaign-id>/`:
     test case's values and expected outcome, and the salt of the split;
   - the guard pilot's trial records;
   - one record file per logical trial;
+- the base copy of each trial plugin ([§4.4](#44-trial-staging));
 - candidate overlays, and staged sources, which are caches: CAT deletes a staged source once its snapshot is no longer
   scheduled and rebuilds it from the overlay when needed;
 - the optimization worktree;
@@ -1169,8 +1170,8 @@ The runner refuses a project that contains symbolic links (`HarnessRunManager.co
 else in the project. CAT therefore materializes one **staged source** per candidate, including the incumbent. It is a
 directory the runner copies for each trial, and it contains:
 
-- the fork commit's tracked files, except every prompt test directory of the confirmed contract: its scenario,
-  `fixtures/` and values file;
+- the fork commit's tracked files, except every prompt test directory of the confirmed contract, with its scenario,
+  `fixtures/` and values file, and except the campaign configuration;
 - the recorded participating ignored and external prompt files;
 - any ignored paths the confirmed contract lists as trial fixtures;
 - the candidate overlay;
@@ -1178,45 +1179,88 @@ directory the runner copies for each trial, and it contains:
   copy and never a live target. A link cycle, or a link to a missing target, is reported in the proposal and blocks
   confirmation until it is resolved.
 
-**Plugin under test (user ruling, 2026-10-11).** When the target prompt file belongs to a harness plugin, a trial must
-load the candidate's version of it from that plugin, as the plugin's users do, not from an installed copy that no
-candidate changes. The confirmed contract therefore names one plugin under test in one of two forms:
+**Campaign configuration (user rulings, 2026-10-15).** Which plugins a trial installs is the user's decision, so CAT
+reads it from the campaign configuration instead of inferring it from file contents. The configuration is the file
+`campaign-config.json` in the target's test directory ([§8](#8-skill-and-command-interface)), committed with the
+target's prompt tests; for the Claude rule `cat-env.md`, it is
+`client/claude/rules/src/test/resources/claude/cat-env/campaign-config.json`. It holds one key per harness, `claude` or
+`codex`, and each of those holds `plugins`, the list of trial plugins that a campaign started in that harness installs.
+For example:
 
-- **Plugin root:** a project directory that holds the harness's plugin manifest (`.codex-plugin/plugin.json` or
-  `.claude-plugin/plugin.json`). The plugin copy is that directory of the staged source.
-- **Built plugin:** a built plugin directory, the **base**, and the **mappings** from project source directories or
-  files to directories or files of the plugin. A mapped source file reaches the plugin at its mapped path unchanged.
-  CAT copies the base into campaign storage when the user confirms, and the plugin copy of a staged source is that base
-  copy with every mapped file of the staged source written over its mapped path.
+```json
+{
+  "claude": {
+    "plugins": [
+      {
+        "name": "cat",
+        "build": {
+          "command": ["client/mvnw", "-f", "client/pom.xml", "-B", "package", "-DskipTests"],
+          "output": "client/common/distribution/target/runtime/claude"
+        }
+      },
+      {"name": "formatter@acme-tools"}
+    ]
+  }
+}
+```
 
-**Deriving the plugin under test (user ruling, 2026-10-15).** Which plugin holds the target, and where the build puts
-each file, follows from comparing files, so CAT works it out before the contract author starts and the author never
-reads the build ([§6.1](#61-derivation-and-confirmation)):
+- `name` is the plugin's name. For a plugin that the project does not build, it is `<plugin>@<marketplace>`, as the
+  harness's install records name it.
+- `build` describes a plugin that the project builds: `output` is the project directory, relative to the project root,
+  where the build writes the plugin, and `command` is the build command as a list of arguments, run from the project
+  root. A plugin whose project directory is the plugin itself, with no build step, names that directory as its
+  `output` and gives no `command`.
 
-1. A project directory that holds the target, at any depth, and a plugin manifest makes the plugin a plugin root.
-2. Otherwise the base is the plugin installed in the user's harness home that holds, byte for byte, the most of the
-   prompt system's in-project files. When no installed plugin holds any of them, the target is in no plugin.
-3. CAT maps a project directory to the base directory that holds a file at every one of its files' relative paths,
+`start` refuses, before creating anything, a target whose test directory holds no campaign configuration or whose
+configuration has no key for the harness that runs `start`, and names the file to write. Every trial installs every
+plugin that the configuration lists for the campaign's harness, and no other plugin, including CAT and the plugins
+installed in the user's harness home. Without CAT, neither the project's nor the user's CAT rules load in trials, as
+for the users of a prompt system who do not install CAT.
+
+**Plugins that the project builds.** A project-built plugin's installed copy can predate its sources, and neither
+harness records which sources an installed plugin came from, so CAT installs such a plugin in trials from a build that
+it runs itself, never from the user's installed copy. When `start` checks the configuration, it refuses a listed plugin
+without `build` whose name matches a plugin manifest (`.claude-plugin/plugin.json` or `.codex-plugin/plugin.json`)
+tracked in the project, because the project builds that plugin. After adding the optimization worktree
+([§4.2](#42-fork-and-optimization-worktree)), CAT runs each `build.command` there. The base worktree has no uncommitted
+changes when a campaign starts, so the build output reflects the user's current sources exactly, and the user's own
+build output is never read or changed. Running the project's own build command makes this independent of the project's
+language and build tool. `start` stops, showing the command's exit status and the end of its output, when a command
+fails, or when an output directory then lacks the harness's plugin manifest or its manifest's `name` differs from the
+listed name. CAT then copies each output directory, the plugin's **base**, into campaign storage. A campaign builds
+once: its fork commit never changes, and a revision adds only recorded files to the fork
+([§4.2](#42-fork-and-optimization-worktree)).
+
+A plugin that the project does not build comes from the user's harness home, where the harness's install records
+locate it: Claude Code's `installed_plugins.json`, or Codex's `config.toml` and plugin cache. `start` refuses when the
+records do not identify exactly one installed copy, and copies that copy into campaign storage as the plugin's base, so
+that a later update of the user's installation does not change the campaign's trials.
+
+**Mappings.** A trial must load a candidate's version of a prompt file that a project-built plugin ships, as the
+plugin's users do, not the copy in the base that no candidate changes. Where the build puts each file follows from
+comparing files, so CAT works it out for each project-built plugin before the contract author starts, and the author
+never reads the build ([§6.1](#61-derivation-and-confirmation)):
+
+1. CAT maps a project directory to the base directory that holds a file at every one of its files' relative paths,
    choosing the one where the most of them are identical. When no base directory holds all of them, as when the build
    places a directory's files in different plugin directories, CAT maps each of its files on its own to the base path
    that holds an identical copy.
-4. A participating in-project prompt file that no mapping covers, such as one that the build transforms, is listed in
-   the proposal, because a candidate's edit to it would not reach trials.
+2. A participating in-project prompt file that does not load from the project itself and that no mapping covers, such
+   as one that the build transforms, is listed in the proposal, because a candidate's edit to it would not reach
+   trials.
 
-CAT refuses a contract whose in-project prompt files lie in more than one plugin. A mapped file whose content differs
-from the base's is a warning, because the base
-may predate the source or its build may transform the file; trials load the source's content. Each trial installs the
-plugin copy of its staged source into the trial's harness home under the plugin's own name, and the trial's project
-copy keeps the project's own files. The runner reuses the user's existing approvals of the plugin's hooks, as it does
-for CAT's. A Codex hook that the user has not approved does not run in trials, and the proposal lists it as a
-limitation. Claude Code runs every hook of an installed plugin without an approval, so its proposals list none.
+The plugin copy of a staged source is the plugin's base copy with every mapped file of the staged source written over
+its mapped path. A prompt file may map into more than one plugin, and each receives it. A mapped file whose content
+differs from the base's is a warning, because the build may transform the file; trials load the source's content.
+Mappings copy files unchanged, so a prompt file that the build generates or compiles cannot be a target. CAT refuses a
+campaign whose target would not load in trials, such as a rule that only an unlisted plugin loads, and the proposal
+lists every other prompt file that loads in production but not in trials.
 
-A trial installs CAT only when the plugin under test depends on it: its manifest declares the dependency, or its prompt
-files invoke CAT's skills, agents or commands or name CAT's plugin directory. CAT reads the manifest and searches the
-plugin's prompt files for those names itself, and the proposal shows each match as the dependency's evidence for the
-user to confirm. Without CAT, neither the project's nor the user's CAT rules load
-in trials, as for the plugin's users who do not install CAT. Mappings copy files unchanged, so a prompt file that the
-build generates or compiles cannot be a target.
+Each trial installs every trial plugin into the trial's harness home under its own name: a project-built plugin from
+the plugin copy of its staged source, any other from its base copy. The trial's project copy keeps the project's own
+files. The runner reuses the user's existing approvals of each plugin's hooks, as it does for CAT's. A Codex hook that
+the user has not approved does not run in trials, and the proposal lists it as a limitation. Claude Code runs every
+hook of an installed plugin without an approval, so its proposals list none.
 
 Staging excludes `.cat/work/`. This keeps a trial agent from reading other trials, judge results or formal assignments.
 Excluding the prompt test directories keeps a trial agent from reading a test's assertions, expected outcomes or other
@@ -1234,10 +1278,10 @@ included, to the run's **initial project**. A built-in tool that reads a file as
 trial record's file changes, compare with that copy rather than with the staged source, so a fixture is part of the
 workspace that the trial started with, not a file that the trial created.
 
-**Control source (user rulings, 2026-10-13).** Control trials ([§2.3](#23-sequential-tests)) and the guard pilot
-use one more staged source: the incumbent with the target prompt file emptied to zero bytes, so the file still exists
-but gives no instruction, and with every dependent of the target removed. A dependent is a part of the prompt system,
-or of the plugin under test, that exists only to deliver the target or to carry out, enforce or repair what the target
+**Control source (user rulings, 2026-10-13).** Control trials ([§2.3](#23-sequential-tests)) and the guard pilot use one
+more staged source: the incumbent with the target prompt file emptied to zero bytes, so the file still exists but gives
+no instruction, and with every dependent of the target removed. A dependent is a part of the prompt system, or of a
+project-built trial plugin, that exists only to deliver the target or to carry out, enforce or repair what the target
 instructs, so that it has no purpose once the target is gone. For example, a hook that repairs the output of a command
 that only the target tells the agent to run is a dependent, and so is a route whose only effect is to load the target.
 The control source removes nothing else: a file, hook or sentence that still has a purpose without the target stays as
@@ -1245,13 +1289,13 @@ the incumbent has it, even when it mentions the target, so control trials measur
 without the target, not an agent without any project rules.
 
 CAT works out the control source itself; the user does not write it. The contract author lists each dependent with the
-part it removes (a whole file, which is deleted; a hook registration, which is unregistered; or an exact span of a
-file, which is deleted) and the target instruction it serves. CAT refuses an entry that names the target, a path
-outside the prompt system and the plugin under test, or a span that does not occur exactly once, and the user confirms
-the list with the proposal ([§6.1](#61-derivation-and-confirmation)). The control source is the same for every
-candidate. Its plugin copy is built from it in the same way, so a target or dependent that belongs to the plugin under
-test is removed there too. When a file that stays still references the target lazily, the reference stays, and the
-agent may still try to read it; the proposal records this as a limitation.
+part it removes (a whole file, which is deleted; a hook registration, which is unregistered; or an exact span of a file,
+which is deleted) and the target instruction it serves. CAT refuses an entry that names the target, a path outside the
+prompt system and the project-built trial plugins, or a span that does not occur exactly once, and the user confirms the
+list with the proposal ([§6.1](#61-derivation-and-confirmation)). The control source is the same for every candidate.
+Its plugin copies are built from it in the same way, so a target or dependent that a project-built trial plugin ships is
+removed there too. When a file that stays still references the target lazily, the reference stays, and the agent may
+still try to read it; the proposal records this as a limitation.
 
 ### 4.5 Symbolic-link warning
 
@@ -1328,8 +1372,8 @@ Every result is a point-in-time observation. CAT records the conditions needed t
   model receives or how its actions take effect: injected content, hooks, the settings and limits the runner applies,
   and the sandbox. A test keeps the runner's generated session settings tied to it;
 - the runner and CAT versions, recorded for information;
-- the plugin under test: its plugin root, or the identity of its base copy and its mappings, and whether trials
-  install CAT;
+- the trial plugins: each one's name and the identity of its base copy, with the build command and mappings of each
+  one that the project builds;
 - the loader configuration and the prompt sources observed loading at session start, including links, resolved
   targets and staged identities. A hook that runs on a later event, such as a tool call or a child session's start,
   runs only when the trial takes that action, so it is not a measurement condition; the loader configuration and the
@@ -1350,7 +1394,7 @@ to any of these:
 - the contract, including its prompt tests and test cases, or the judge version, which define the desired behavior;
 - a certification parameter whose new value the certification's claim does not imply (see below);
 - the trial model, reasoning profile or provider;
-- the plugin under test, its base, its mappings, or whether trials install CAT, which change what the model receives;
+- the trial plugins, their bases, build commands or mappings, which change what the model receives;
 - the harness version, the session environment version, the loader configuration, the prompt sources, or an external
   or MCP source, each of which changes what the model receives.
 
@@ -1415,7 +1459,7 @@ inspects the prompt system and proposes the complete contract. Loading follows p
 behaviour: CAT observes loading where the harness exposes it (premise P9), and otherwise derives it from the harness's
 documented loading rules and CAT's rule loader, recording that limit. Both harnesses expose hook runs, and Claude
 exposes its skill and command inventory; no harness names the instruction files it loaded, so those are derived (H21).
-CAT lists the derived files itself when the contract author finishes, from the plugin under test; the contract author
+CAT lists the derived files itself when the contract author finishes, from the trial plugins; the contract author
 does not list them. The contract author's request already lists the files that load in production with the rule that
 loads each, so the author neither works out the loading rules nor reads CAT's implementation; CAT's validation reports
 what the proposal must change.
@@ -1450,8 +1494,8 @@ session that reaches its time limit leaves the files it finished for diagnosis.
 the work that every proposal needs before the session starts, and puts the result in the request:
 
 - the files that load in production, with the rule that loads each (above);
-- the plugin under test, with its dependency on CAT and that dependency's evidence ([§4.4](#44-trial-staging));
-- every hook registration of the prompt system and of the plugin under test, with its event, matcher and command, from
+- the trial plugins, with the mappings of each one that the project builds ([§4.4](#44-trial-staging));
+- every hook registration of the prompt system and of the trial plugins, with its event, matcher and command, from
   which the author chooses the dependents;
 - the draft directory with the recorded prompt tests (above).
 
@@ -1498,9 +1542,10 @@ Aggregate counts never stand in for the items themselves. The proposal that CAT 
 - the judge's rubric and decision rule;
 - the target prompt file that the control source empties, and each dependent it removes with the target instruction
   that the dependent serves ([§4.4](#44-trial-staging));
-- the plugin under test, if any, as CAT derived it: its plugin root, or its base and mappings with each participating
-  project file that no mapping covers; its hooks that the user has not approved; and whether trials install CAT, with
-  the evidence that the plugin depends on CAT or the statement that none was found ([§4.4](#44-trial-staging));
+- the trial plugins as the campaign configuration lists them, each with the source of its base: the build output with
+  its build command, or the user's installed copy; each project-built plugin's mappings, with each participating
+  project file that no mapping covers; the prompt files that load in production but not in trials; and the hooks that
+  the user has not approved ([§4.4](#44-trial-staging));
 - the guard pilot's results (below);
 - ignored paths needed as trial fixtures;
 - the statistical procedure: the joint budget, bets, caps for the first attempts, the commit gate, the review
@@ -1547,12 +1592,12 @@ CAT, not the contract author, does these things:
   refuses a proposal that lists no prompt test for one of them ([§8](#8-skill-and-command-interface)). The contract
   author keeps each one, converting a scenario in an earlier format to the current one in place
   ([§6.3](#63-prompt-tests-and-test-cases));
-- derives the plugin under test, the files that load and the hook registrations, and provides the contract tools
-  (above);
+- builds the trial plugins that the project builds, derives their mappings, the files that load and the hook
+  registrations, and provides the contract tools (above);
 - refuses a proposal in which a requirement has no prompt test that proves it;
 - refuses a proposal in which a requirement that names a trigger has no test where that trigger is absent;
 - refuses a proposal in which a Codex prompt file binds a model below version 6 ([§6.6](#66-trial-profiles));
-- refuses in-project prompt files that lie in more than one plugin ([§4.4](#44-trial-staging));
+- refuses a target that would not load in trials ([§4.4](#44-trial-staging));
 - validates every scenario and test case, gives each generated value its seed and version, splits each prompt test's
   test cases by expected outcome, and refuses a prompt test with fewer than 2 distinct expected outcomes in either part
   ([§6.3](#63-prompt-tests-and-test-cases));
@@ -2065,6 +2110,8 @@ wants a prompt file improved until it is certified. The host agent:
 
 The harness-specific `prompt-optimizer` launcher provides `start`, `run`, `status`, `confirm`, `revise`, `choose` and
 `cancel`. `start` takes the target prompt file and, optionally, the user's goal; it refuses a directory, naming it.
+It reads the campaign configuration from the target's test directory (below) and refuses a target without one, naming
+the file to write ([§4.4](#44-trial-staging)).
 Each prints one JSON status object to standard output, holding the status, campaign identity, a summary for the user
 and any choices. The skill never interprets statistics itself. The launcher also provides the contract tools,
 `contract check` and `contract fixtures`, for contract author sessions ([§6.1](#61-derivation-and-confirmation)); the
@@ -2088,7 +2135,8 @@ lives in `<root>/.cat/tests/<path>/<case>/scenario.md`. One for guidance package
 `<module>/src/main/resources/<top>/<path>.md`, such as CAT's plugin rules, skills and optimizer prompts, lives with
 the module's tests in `<module>/src/test/resources/<path>/<case>/scenario.md`. One for other guidance in the project
 lives in `<project>/.cat/tests/<path relative to the project, without .md>/<case>/scenario.md` (user rulings, 2026-10-02
-and 2026-10-10).
+and 2026-10-10). The directory that holds a target's prompt tests, such as `<module>/src/test/resources/<path>/`, is
+the target's **test directory**; it also holds the target's campaign configuration ([§4.4](#44-trial-staging)).
 Rule loading never reads them. Nothing runs
 a scenario outside a campaign, so a correction is recorded, not tested, until the user starts a campaign whose target
 prompt files include that guidance; its contract then holds every recorded scenario of those files
@@ -2331,6 +2379,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D75 | Revert a promoted candidate only when its development 95% Wilson upper bound in an addressed cell is below its predecessor's development 95% Wilson lower bound there, so the two intervals do not overlap (user ruling, 2026-10-14). | The predecessor's observed rate carries its own sampling error, so comparing with it withdrew a candidate as good as its predecessor 25–36% of the time. With non-overlapping intervals and a predecessor of 50 trials, that falls to 2–6%. Refusing at commit a candidate clearly worse than the best earlier committed one was considered and dropped: a candidate that meets the commit gate has an upper bound of at least 99.57%, above any earlier candidate's lower bound of at most 98.1% at 200 trials, so the rule could never fire. | A clearly worse candidate takes longer to withdraw: one at 70% against a predecessor at 90% is withdrawn within 50 trials 58% of the time rather than 99%. Each revert record holds the predecessor's lower bound instead of its observed rate. |
 | D76 | Call the gate that a development cell must meet before a commit the commit gate rather than the readiness gate (user ruling, 2026-10-14). | Passing the gate permits a commit, which starts a certification attempt; "readiness" did not say ready for what. "Certification gate" would suggest that passing it certifies the candidate, which only the formal trials do. | Reports, the remaining-work kind and the status JSON use the new name; stored campaigns are unaffected because the gate's state is derived from trial counts. |
 | D77 | Have the contract author write prompt tests as files in a draft directory that CAT seeds with the recorded ones, keep in the proposal only what belongs to the contract, and move work that needs no judgment into CAT: the plugin under test, the hook registrations and the recorded prompt tests before the session, and the `contract check` and `contract fixtures` commands during it (user rulings, 2026-10-15). | Restating every prompt test in the proposal JSON made the author re-type each cited scenario's turns, variables and assertions, about 5,000 characters for the four scenarios of `read-file.md`, and let the user review a form that delivery later converted. Leaving the plugin under test to the author made it read the distribution build to find where each file lands, which a comparison of file contents settles. Validating only after the session made the author write its own checks. Ending an inspection turn before writing anything made a session that reached its time limit leave nothing. | The scenario format gains a section, CAT needs a plugin-matching step and two commands, and a draft directory must move into the held-out directory when the session ends. |
+| D78 | Read the plugins that trials install from the campaign configuration, a committed `campaign-config.json` in the target's test directory that lists them for each harness, and install each plugin that the project builds from a build that `start` runs on the fork commit instead of from the user's installed copy (user rulings, 2026-10-15). This replaces deriving the plugin under test and its dependency on CAT from file contents (D69, D77). | Deriving the plugins guessed: a plugin that ships none of the target's files was never installed, and a dependency on CAT rested on a search for CAT's names. An installed copy can predate its sources, as CAT's did on 2026-10-15, when it lacked a fix that the build output held, and neither harness records which sources an installed plugin came from. Running the project's own build command works for any language and build tool, and a list in the configuration lets one campaign install several plugins. | A target needs a configuration before its first campaign. Every campaign start runs the project's build. A prompt file that the build transforms still cannot be a target. |
 
 ## 14. Acceptance evidence
 
@@ -2346,7 +2395,7 @@ a named end-to-end boundary.
 | G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** detected dependence yields `invalid statistical assumptions`. **Held-out test cases:** the split by normalized expected outcome is fixed at the first validated proposal, and outcomes that differ only in case or whitespace share a part; committed test cases go to development and a new test case sharing a committed outcome does too; development trials, targeted runs and prompt author sessions receive only development test cases; formal and baseline trials draw only held-out ones; a formal failure reaches development only as its cell, test, failed assertions and behaviors, and the development test cases added after it never share a held-out expected outcome and join development only after two reproduction failures with the failure's behavior in its cell or a stressed profile, the contract author replacing test cases that do not reproduce, with a pause after 4 rounds; in both harnesses, no session whose output reaches development can read the held-out directory or the held-out run root. |
 | G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a changed command that an unchanged prompt tells the model to run leaves it current; a runner or CAT version change with an unchanged session environment version leaves it current; a raised threshold or a lowered error level makes it historical, and a lowered threshold or a raised error level does not; a new judge version makes it historical; after cleanup, `status` reports from the certification record, naming each changed condition and each unchecked one; a comparability field that only one side records makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: testing environment changed`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. **Size:** the status shows the candidate's prompt size and median trial input tokens against the incumbent's. |
 | G6 | **End-to-end in both harnesses:** ESC during a slice, then `run`, retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. Codex ESC stops admissions within 15 seconds. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** the other harness cannot advance the campaign. |
-| G7 | **End-to-end in both harnesses:** trials, judges, prompt authors and the contract author run through the existing runners. A trial uses a host tool, and a text-output case and a file-effect case are each judged. A prompt test's fixtures, with a generated value, appear in the trial workspace; a failed built-in tool decides its trial without a judge session unless its `on_tool_failure` is `judge`, when the judge decides its assertion; control trials run on the control source, where the target prompt file is empty and every other prompt file is unchanged, each with its paired formal trial's test case. **Delivery:** a certified delivery and keeping the incumbent both write each confirmed prompt test's values file, and its scenario and fixtures when the contract author created or edited them. Trials run under the profile of their cell, as the harness events show. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. **Plugin under test:** in a campaign whose target prompt file belongs to a plugin under test, a candidate's edit to it and a control's emptied copy reach the plugin that the trial loads; a trial of a plugin that does not depend on CAT runs without CAT, and one that does runs with it. |
+| G7 | **End-to-end in both harnesses:** trials, judges, prompt authors and the contract author run through the existing runners. A trial uses a host tool, and a text-output case and a file-effect case are each judged. A prompt test's fixtures, with a generated value, appear in the trial workspace; a failed built-in tool decides its trial without a judge session unless its `on_tool_failure` is `judge`, when the judge decides its assertion; control trials run on the control source, where the target prompt file is empty and every other prompt file is unchanged, each with its paired formal trial's test case. **Delivery:** a certified delivery and keeping the incumbent both write each confirmed prompt test's values file, and its scenario and fixtures when the contract author created or edited them. Trials run under the profile of their cell, as the harness events show. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. **Trial plugins:** a trial installs exactly the plugins that the campaign configuration lists for its harness, and a campaign whose configuration lists two plugins installs both; a project-built plugin comes from the build that `start` ran on the fork commit, not from the user's installed copy; a candidate's edit to a target that a project-built plugin ships, and a control's emptied copy, reach the plugin that the trial loads; a configuration without CAT runs trials without CAT; and `start` refuses a target without a configuration. |
 | G8 | **Unit:** representative development trials go only to development cells; the weakest cell is the lowest effort of the least capable model in the scope by the proposal's capability ranking, and no trial runs to find it; a cell with a formal failure becomes a development cell; formal trials go to a prompt test's development cells first and to another scope cell only after every development cell and every cell below it are certified; allocation picks the riskiest prompt test first; control trials run only in cells certified by their built-in tools and judge, and extra formal trials run only to complete pairs; concurrency follows [§3.3](#33-allocation-and-concurrency) exactly, including the reset after a failure, the risk ceiling, the cell limit and the ceilings. **Throttling:** it responds to utilization, rejections and provider refusals, and a hold set by one process delays every other process's acquisition. **Volume warning:** the authentication warning appears for a subscription login. |
 | G9 | The optimizer and capacity unit tests pass under parallel methods with `HOME` and `user.home` pointing at a nonexistent directory. A source audit finds no static mutable state, no `Thread.sleep` on tested paths, and no mutable test-class fields. Calibration and each Git operation have exactly one owning test, and no Java test starts a runner, a harness process or a model. |
 | G10 | Both harness artifacts ship the new skill and the `prompt-optimizer` launcher. No reference to the old procedure remains, `failure-regression-promotion.md` follows D13, every recorded regression scenario is a prompt test directory in the format and location that [§6.3](#63-prompt-tests-and-test-cases) and §8 name, and a proposal that omits one is refused. |
