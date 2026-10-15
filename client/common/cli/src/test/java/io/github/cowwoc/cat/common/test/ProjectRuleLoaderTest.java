@@ -3,12 +3,15 @@ package io.github.cowwoc.cat.common.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
+import io.github.cowwoc.cat.common.RuleSource;
 import io.github.cowwoc.cat.common.SessionRules;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Optional;
 import org.testng.annotations.Test;
 
 /**
@@ -609,6 +612,61 @@ public final class ProjectRuleLoaderTest
 				contains("`" + userLazyRule + "`").doesNotContain("user terms");
 			requireThat(context.indexOf("bundled rule"), "bundledIndex").isLessThan(context.indexOf("user rule"));
 			requireThat(context.indexOf("user rule"), "userIndex").isLessThan(context.indexOf("project rule"));
+		}
+	}
+
+	/**
+	 * Verifies that the sources of a primary agent's rules are, once each: every rule that the loader injects or routes
+	 * to, then every file that a listed file includes or refers to, and every prerequisite of a listed included rule.
+	 * Rules for other harnesses and other recipients, files that no listed file names, and references that leave the
+	 * rule roots or name no file are left out.
+	 *
+	 * @throws IOException if the rules cannot be written or read
+	 */
+	@Test
+	public void listsSourcesForMainAgent() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/default.md", "<!-- cat:include ../include/common/body.md -->\n\n" +
+				"Load `${CAT_PLUGIN_ROOT}/rules/include/common/lazy.md`.");
+			write(plugin, "rules/include/common/body.md", "Before drafting, load `write.md`.");
+			write(plugin, "rules/include/common/write.md", "Write clearly. See `lazy.md`.");
+			write(plugin, "rules/include/common/lazy.md", "Lazy guidance");
+			write(plugin, "rules/include/common/unused.md", "Never named");
+			write(plugin, "rules/common/subagent.md", "---\nagents: [subagents]\n---\nSubagent rule");
+			write(plugin, "rules/harnessa/path.md", "---\npaths: [\"*.java\"]\n---\nJava rule");
+			write(plugin, "rules/harnessb/other.md", "Other harness");
+			write(userRules, "common/personal.md", "Load `../include/common/detail.md`.");
+			write(userRules, "include/common/detail.md", "---\ndepends-on: [prerequisite.md]\n---\nDetail");
+			write(userRules, "include/common/prerequisite.md", "Prerequisite");
+			write(project, ".cat/rules/common/project.md", "Project rule. See `missing.md` and `" +
+				plugin.resolve("rules/include/common/unused.md") + "`.");
+
+			List<RuleSource> sources = new ProjectRuleLoader(scope.yaml()).sourcesForMainAgent(plugin, userRules,
+				project, "harnessa");
+
+			Path defaultRule = plugin.resolve("rules/common/default.md");
+			Path body = plugin.resolve("rules/include/common/body.md");
+			Path personal = userRules.resolve("common/personal.md");
+			Path detail = userRules.resolve("include/common/detail.md");
+			requireThat(sources, "sources").isEqualTo(List.of(
+				new RuleSource(defaultRule, RuleSource.Kind.INJECTED, Optional.empty()),
+				new RuleSource(plugin.resolve("rules/harnessa/path.md"), RuleSource.Kind.ROUTED, Optional.empty()),
+				new RuleSource(personal, RuleSource.Kind.INJECTED, Optional.empty()),
+				new RuleSource(project.resolve(".cat/rules/common/project.md"), RuleSource.Kind.INJECTED,
+					Optional.empty()),
+				new RuleSource(body, RuleSource.Kind.INCLUDED, Optional.of(defaultRule)),
+				new RuleSource(plugin.resolve("rules/include/common/lazy.md"), RuleSource.Kind.REFERENCED,
+					Optional.of(defaultRule)),
+				new RuleSource(detail, RuleSource.Kind.REFERENCED, Optional.of(personal)),
+				new RuleSource(plugin.resolve("rules/include/common/write.md"), RuleSource.Kind.REFERENCED,
+					Optional.of(body)),
+				new RuleSource(userRules.resolve("include/common/prerequisite.md"), RuleSource.Kind.PREREQUISITE,
+					Optional.of(detail))));
 		}
 	}
 

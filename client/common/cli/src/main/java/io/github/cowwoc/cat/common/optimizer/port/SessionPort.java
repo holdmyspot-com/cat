@@ -1,5 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.port;
 
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 
 import java.io.IOException;
@@ -99,6 +101,21 @@ public interface SessionPort
 	 * @throws IOException if a settings file exists but cannot be read
 	 */
 	Optional<String> findHeldOutExposure(Path project) throws IOException;
+
+	/**
+	 * Lists the prompt files that a trial of this harness loads although no harness event reports them: each
+	 * instruction file that the harness reads at the project root by convention, and, when the trial installs CAT,
+	 * each file that CAT's rules give the trial's primary agent. A file inside the project is named relative to it,
+	 * and a file that the plugin under test's build copies from the project is named as the project's file; other
+	 * files are named by their absolute paths.
+	 *
+	 * @param project the project's root directory
+	 * @param plugin  the plugin under test, or empty if trials install none
+	 * @return the files, once each, with the rule that loads each one
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a file cannot be read or a rule is invalid
+	 */
+	List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin) throws IOException;
 
 	/**
 	 * Lists the directories that hold the runs of every session that this port starts, for the run of every campaign

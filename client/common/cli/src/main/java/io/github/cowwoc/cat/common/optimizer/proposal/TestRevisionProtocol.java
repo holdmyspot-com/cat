@@ -353,7 +353,7 @@ public final class TestRevisionProtocol
 		try
 		{
 			revised = contractAuthor.proposal(output, confirmed.observedSources(), examined.profiles(),
-				confirmed.contract().salt());
+				confirmed.contract().salt()).withDerivedSources(confirmed.derivedSources());
 		}
 		catch (InvalidProposalException e)
 		{

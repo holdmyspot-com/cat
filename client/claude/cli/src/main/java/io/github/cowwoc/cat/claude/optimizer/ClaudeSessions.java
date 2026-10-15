@@ -9,6 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
 import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -240,6 +242,46 @@ public final class ClaudeSessions extends RunnerSessions
 	protected HarnessEvents newEvents(JsonMapper json)
 	{
 		return new StreamJsonEvents(json);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Claude Code reads {@code CLAUDE.md}, {@code .claude/CLAUDE.md} and {@code CLAUDE.local.md} at the project root,
+	 * and the Markdown rules below {@code .claude/rules}. The files that a listed file imports are not listed.
+	 */
+	@Override
+	protected List<DerivedSource> instructionFiles(Path project) throws IOException
+	{
+		requireThat(project, "project").isNotNull();
+		List<DerivedSource> files = new ArrayList<>();
+		for (String name : List.of("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"))
+		{
+			if (Files.isRegularFile(project.resolve(name)))
+			{
+				files.add(new DerivedSource(name, "Claude Code reads " + name + " at the project root in every " +
+					"session"));
+			}
+		}
+		Path rules = project.resolve(".claude/rules");
+		if (!Files.isDirectory(rules))
+			return files;
+		List<String> names = new ArrayList<>();
+		try (Stream<Path> paths = Files.walk(rules))
+		{
+			for (Path path : (Iterable<Path>) paths::iterator)
+			{
+				if (Files.isRegularFile(path) && path.getFileName().toString().endsWith(".md"))
+					names.add(project.relativize(path).toString().replace(path.getFileSystem().getSeparator(), "/"));
+			}
+		}
+		names.sort(null);
+		for (String name : names)
+		{
+			files.add(new DerivedSource(name, "Claude Code loads the rules below .claude/rules: each one in every " +
+				"session, or when the agent reads a file that its paths match"));
+		}
+		return files;
 	}
 
 	@Override

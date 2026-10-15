@@ -19,7 +19,7 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * Validates {@link ContractAuthorProtocol}'s additional findings alongside the proposed contract:
- * {@code derived_sources}, {@code profile_restriction}, {@code capability_ranking}, {@code certification_profiles},
+ * {@code profile_restriction}, {@code capability_ranking}, {@code certification_profiles},
  * {@code scope_conditions} and {@code conflicts}, as {@code contract-author-findings.schema.json} describes them.
  * <p>
  * Each violation is reported at its location in the contract author's output, in the form that the proposal schema
@@ -28,7 +28,7 @@ import tools.jackson.databind.JsonNode;
 final class Findings
 {
 	/**
-	 * The property that lists the derived prompt sources.
+	 * The property that lists the derived prompt sources, which CAT computes instead of the contract author.
 	 */
 	static final String DERIVED_SOURCES = "derived_sources";
 	/**
@@ -74,32 +74,6 @@ final class Findings
 	Findings(List<String> problems)
 	{
 		this.problems = problems;
-	}
-
-	/**
-	 * Reads the derived prompt sources.
-	 *
-	 * @param node the {@code derived_sources} value, or null if the output omits it
-	 * @return the sources that are valid
-	 */
-	List<DerivedSource> derivedSources(JsonNode node)
-	{
-		List<DerivedSource> sources = new ArrayList<>();
-		String location = "$." + DERIVED_SOURCES;
-		if (!isArray(node, location))
-			return sources;
-		for (int i = 0; i < node.size(); ++i)
-		{
-			String itemLocation = location + "[" + i + "]";
-			JsonNode item = node.get(i);
-			if (!isObject(item, itemLocation, Set.of("path", "rule")))
-				continue;
-			String path = text(item, "path", itemLocation);
-			String rule = text(item, "rule", itemLocation);
-			if (path != null && rule != null)
-				sources.add(new DerivedSource(path, rule));
-		}
-		return sources;
 	}
 
 	/**

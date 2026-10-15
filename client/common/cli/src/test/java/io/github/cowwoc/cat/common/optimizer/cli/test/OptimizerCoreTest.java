@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.fakes.test.ManualClock;
 import io.github.cowwoc.cat.common.git.Git;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
@@ -388,10 +389,11 @@ public final class OptimizerCoreTest
 		// Requirement: R-W10
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
-			Repository repository = repository(scope, _ -> derivation(output ->
-				output.withArray("derived_sources").addObject().put("path", "read-file.md").
-					put("rule", "CLAUDE.md lazy loads the read rule.")),
-				Set.of(Path.of("CLAUDE.md"), Path.of("read-file.md")));
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), Path.of("read-file.md")));
+			repository.sessions().addDerivedSources(List.of(new DerivedSource("read-file.md",
+				"CLAUDE.md lazy loads the read rule.")));
 			Files.writeString(repository.root().resolve("read-file.md"), "Read files whole.\n");
 			repository.core().start(Path.of("read-file.md"));
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
@@ -457,6 +459,11 @@ public final class OptimizerCoreTest
 		 * The hooks that {@link #unapprovedHooks(Path)} returns for each plugin directory.
 		 */
 		private final Map<Path, List<String>> unapprovedHooks = new HashMap<>();
+		/**
+		 * The prompt files that {@link #derivedSources(Path, Optional)} returns.
+		 */
+		private volatile List<DerivedSource> derivedSources = List.of(new DerivedSource("CLAUDE.md",
+			"The harness reads the project instruction file in the project root at startup."));
 
 		/**
 		 * Creates the port.
@@ -498,6 +505,24 @@ public final class OptimizerCoreTest
 		public List<Path> runRoots()
 		{
 			return List.of();
+		}
+
+		@Override
+		public List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin)
+		{
+			return derivedSources;
+		}
+
+		/**
+		 * Adds prompt files to those that {@link #derivedSources(Path, Optional)} returns.
+		 *
+		 * @param sources the files
+		 */
+		void addDerivedSources(List<DerivedSource> sources)
+		{
+			List<DerivedSource> all = new ArrayList<>(derivedSources);
+			all.addAll(sources);
+			derivedSources = List.copyOf(all);
 		}
 
 		@Override
@@ -1966,8 +1991,31 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that a resumed campaign presents the derived sources that the session port listed when the contract
+	 * author finished, as the stored proposal keeps them, instead of listing them again.
+	 */
+	@Test
+	public void resumeKeepsDerivedSources() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String listed = "- CLAUDE.md: The harness reads the project instruction file in the project root at startup.";
+			requireThat(repository.core().start(Path.of("CLAUDE.md")).proposal(), "started").contains(listed);
+			repository.sessions().addDerivedSources(List.of(new DerivedSource("extra.local.md",
+				"The harness loads the file by convention.")));
+
+			String resumed = repository.core().start(Path.of("CLAUDE.md")).proposal();
+			requireThat(resumed, "resumed").contains(listed).doesNotContain("extra.local.md: The harness loads");
+		}
+	}
+
+	/**
 	 * Verifies that the fork of a confirmed campaign holds the derived sources that Git ignores or that lie outside
-	 * the project, so trials never read them live.
+	 * the project, so trials never read them live. The session port lists the derived sources when the contract author
+	 * finishes, and the stored proposal keeps them for the confirmation.
 	 */
 	@Test
 	public void recordsDerivedSources() throws Exception
@@ -1977,16 +2025,13 @@ public final class OptimizerCoreTest
 		{
 			Path outside = scope.add(Files.createTempDirectory("optimizer-shared")).toRealPath().resolve("shared.md");
 			Files.writeString(outside, "Shared rules.\n");
-			Repository repository = repository(scope, _ -> derivation(output ->
+			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
-				ArrayNode sources = (ArrayNode) output.get("derived_sources");
-				for (String path : List.of("extra.local.md", outside.toString()))
-				{
-					ObjectNode source = sources.addObject();
-					source.put("path", path);
-					source.put("rule", "The harness loads the file by convention.");
-				}
 			}));
+			List<DerivedSource> sources = new ArrayList<>();
+			for (String path : List.of("extra.local.md", outside.toString()))
+				sources.add(new DerivedSource(path, "The harness loads the file by convention."));
+			repository.sessions().addDerivedSources(sources);
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));

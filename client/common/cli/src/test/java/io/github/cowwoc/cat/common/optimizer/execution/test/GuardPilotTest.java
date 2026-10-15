@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedAssertion;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
@@ -763,6 +764,12 @@ public final class GuardPilotTest
 
 		@Override
 		public List<Path> runRoots()
+		{
+			return List.of();
+		}
+
+		@Override
+		public List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin)
 		{
 			return List.of();
 		}

@@ -1396,6 +1396,8 @@ inspects the prompt system and proposes the complete contract. Loading follows p
 behaviour: CAT observes loading where the harness exposes it (premise P9), and otherwise derives it from the harness's
 documented loading rules and CAT's rule loader, recording that limit. Both harnesses expose hook runs, and Claude
 exposes its skill and command inventory; no harness names the instruction files it loaded, so those are derived (H21).
+CAT lists the derived files itself when the contract author finishes, from the plugin under test that the proposal
+names; the contract author does not list them.
 Aggregate counts never stand in for the items themselves. The proposal lists:
 
 - every requirement and its source, including files reached through links and readable files outside the project. With a

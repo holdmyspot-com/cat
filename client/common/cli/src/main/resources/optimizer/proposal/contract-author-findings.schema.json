@@ -1,19 +1,6 @@
 {
 	"description": "The contract author's findings that the contract does not hold. CAT adds these properties to the proposal schema for the contract author's output.",
 	"properties": {
-		"derived_sources": {
-			"description": "Every prompt file that loads for this prompt system although no harness event reports it, with the documented rule that loads it. Empty if none.",
-			"type": "array",
-			"items": {
-				"type": "object",
-				"additionalProperties": false,
-				"required": ["path", "rule"],
-				"properties": {
-					"path": {"type": "string", "pattern": "\\S"},
-					"rule": {"type": "string", "pattern": "\\S"}
-				}
-			}
-		},
 		"profile_restriction": {
 			"description": "The trial profiles that the user's feedback restricts every prompt test to, as patterns over the harness's profile inventory. An empty model or effort matches every value. Empty unless the user asked for a restriction.",
 			"type": "array",
@@ -90,6 +77,6 @@
 			}
 		}
 	},
-	"required": ["derived_sources", "profile_restriction", "capability_ranking", "certification_profiles",
+	"required": ["profile_restriction", "capability_ranking", "certification_profiles",
 		"scope_conditions", "conflicts"]
 }

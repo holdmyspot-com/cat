@@ -7,7 +7,9 @@ import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.fakes.test.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
 import io.github.cowwoc.cat.common.optimizer.port.FollowUp;
@@ -279,6 +281,112 @@ public final class RunnerSessionsTest
 				isEqualTo(artifact.toString());
 			requireThat(withoutPlugin, "withoutPlugin").contains("--install-cat").doesNotContain("--plugin");
 		}
+	}
+
+	/**
+	 * Verifies that the derived sources of a trial whose plugin under test is CAT, built from the project, are the
+	 * harness's instruction file and every file that CAT's rules give the trial's agent from the plugin, the user's
+	 * rules and the project's rules. A plugin file that a mapping copies from the project is named as the project's
+	 * file, and other files outside the project by their absolute paths.
+	 *
+	 * @throws IOException if the files cannot be written or read
+	 */
+	@Test
+	public void derivesSourcesOfBuiltCat() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-")).
+				toRealPath();
+			Path artifact = manifest(root.resolve("artifact"), "cat");
+			Path base = manifest(root.resolve("base"), "cat");
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path home = Files.createDirectories(root.resolve("home"));
+			write(base.resolve("rules/common/default.md"), "Load `../include/common/lazy.md`.");
+			write(base.resolve("rules/include/common/lazy.md"), "Lazy guidance");
+			write(project.resolve("rules/include/common/lazy.md"), "Lazy guidance");
+			write(project.resolve(TestSessions.INSTRUCTIONS), "Project instructions");
+			write(project.resolve(".cat/rules/common/project.md"), "Project rule");
+			write(home.resolve(".cat/rules/common/personal.md"), "Personal rule");
+			PluginUnderTest plugin = new PluginUnderTest.Built(base, "",
+				List.of(new PluginUnderTest.Mapping(Path.of("rules/include"), Path.of("rules/include"))), false,
+				"The plugin is CAT.");
+			TestSessions sessions = new TestSessions(new RunnerSessions.Settings(artifact, root.resolve("runs"),
+				List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
+				Optional.of(home.resolve(".cat/rules"))), (_, _, _) ->
+			{
+			});
+
+			List<DerivedSource> sources = sessions.derivedSources(project, Optional.of(plugin));
+
+			String defaultRule = base.resolve("rules/common/default.md").toString();
+			requireThat(sources, "sources").isEqualTo(List.of(
+				new DerivedSource(TestSessions.INSTRUCTIONS, TestSessions.INSTRUCTIONS_RULE),
+				new DerivedSource(defaultRule, "CAT injects this rule into every session"),
+				new DerivedSource(home.resolve(".cat/rules/common/personal.md").toString(),
+					"CAT injects this rule into every session"),
+				new DerivedSource(".cat/rules/common/project.md", "CAT injects this rule into every session"),
+				new DerivedSource("rules/include/common/lazy.md", "`" + defaultRule + "` tells the agent to load " +
+					"this file")));
+		}
+	}
+
+	/**
+	 * Verifies that a trial's derived sources include CAT's rules from the installed artifact exactly when the trial
+	 * installs it: beside a plugin under test that depends on CAT, or without a plugin under test when the runner
+	 * installs CAT.
+	 *
+	 * @throws IOException if the files cannot be written or read
+	 */
+	@Test
+	public void derivesSourcesOfInstalledCat() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-")).
+				toRealPath();
+			Path artifact = manifest(root.resolve("artifact"), "cat");
+			Path project = Files.createDirectories(root.resolve("project"));
+			manifest(project.resolve("plugins/docs"), "docs");
+			Path rule = artifact.resolve("rules/common/default.md");
+			write(rule, "Artifact rule");
+			DerivedSource artifactRule = new DerivedSource(rule.toString(), "CAT injects this rule into every session");
+
+			for (boolean installCat : List.of(true, false))
+			{
+				TestSessions sessions = new TestSessions(new RunnerSessions.Settings(artifact, root.resolve("runs"),
+					List::of, "", installCat, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC()),
+					(_, _, _) ->
+				{
+				});
+				for (boolean dependsOnCat : List.of(true, false))
+				{
+					PluginUnderTest plugin = new PluginUnderTest.Root(Path.of("plugins/docs"), dependsOnCat,
+						"The manifest names CAT.");
+					List<DerivedSource> expected = List.of();
+					if (dependsOnCat)
+						expected = List.of(artifactRule);
+					requireThat(sessions.derivedSources(project, Optional.of(plugin)), "sources").isEqualTo(expected);
+				}
+				List<DerivedSource> expected = List.of();
+				if (installCat)
+					expected = List.of(artifactRule);
+				requireThat(sessions.derivedSources(project, Optional.empty()), "sources").isEqualTo(expected);
+			}
+		}
+	}
+
+	/**
+	 * Writes a file, creating its directory.
+	 *
+	 * @param file the file
+	 * @param content its content
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void write(Path file, String content) throws IOException
+	{
+		Files.createDirectories(file.getParent());
+		Files.writeString(file, content);
 	}
 
 	/**

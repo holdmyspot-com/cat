@@ -146,14 +146,6 @@ CAT refuses a proposal when no test cites one of these scenarios, naming every m
 
 {{regression_scenarios}}
 
-### Derived sources
-
-`derived_sources` lists every prompt file that loads for this prompt system although no harness event reports it, with
-the file's `path` and the documented `rule` that loads it. No harness reports loading an instruction file, so list
-every instruction file that the harness reads by convention, including the one in the current directory, and every
-rule file that CAT's rule loader injects. Harness events report hook runs, and some harnesses report their skill
-inventory; do not list those.
-
 ### Plugin under test
 
 `plugin_under_test` names the harness plugin that holds the target prompt file, or is `null` when it is not in a

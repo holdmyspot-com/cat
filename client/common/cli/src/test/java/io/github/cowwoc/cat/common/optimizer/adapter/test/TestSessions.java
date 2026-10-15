@@ -4,8 +4,10 @@ import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
 import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +45,14 @@ final class TestSessions extends RunnerSessions
 	 * An event that reports that the provider refused a request and the harness gave up on it.
 	 */
 	static final String REFUSED_EVENT = "{\"type\":\"refused\"}";
+	/**
+	 * The instruction file that the harness reads at the project root.
+	 */
+	static final String INSTRUCTIONS = "HARNESS.md";
+	/**
+	 * The rule that loads {@link #INSTRUCTIONS}.
+	 */
+	static final String INSTRUCTIONS_RULE = "The harness reads HARNESS.md at the project root in every session";
 
 	/**
 	 * Creates a port.
@@ -82,6 +92,14 @@ final class TestSessions extends RunnerSessions
 	@Override
 	public List<String> unapprovedHooks(Path plugin)
 	{
+		return List.of();
+	}
+
+	@Override
+	protected List<DerivedSource> instructionFiles(Path project)
+	{
+		if (Files.isRegularFile(project.resolve(INSTRUCTIONS)))
+			return List.of(new DerivedSource(INSTRUCTIONS, INSTRUCTIONS_RULE));
 		return List.of();
 	}
 

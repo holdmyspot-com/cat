@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
@@ -45,9 +46,9 @@ final class ProposalFile
 	 * The version of the proposal layout, including regression scenario citations, the variables of each prompt test
 	 * and whether each is outcome-changing, the triggers of the requirements, the shipped capability
 	 * ranking, the salt, the judge prompt's placeholders and the assertions of each prompt test, including what a
-	 * failure of each assertion's built-in tool means.
+	 * failure of each assertion's built-in tool means, and the derived prompt sources that CAT listed.
 	 */
-	private static final int FORMAT_VERSION = 16;
+	private static final int FORMAT_VERSION = 17;
 	private final Path file;
 	private final JsonMapper json;
 
@@ -57,25 +58,41 @@ final class ProposalFile
 	 * @param derivation the contract author's output, whose text already names the user's project and which the caller
 	 *   validates again
 	 * @param observedSources the prompt sources that the harness reported loading in the contract author session
+	 * @param derivedSources the prompt files that CAT listed as loading although no harness event reports them
 	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the contract author ran
 	 * @param salt the salt that CAT drew for the proposal
 	 */
-	record Stored(String derivation, String observedSources, ProfileEvidence profiles, long salt)
+	record Stored(String derivation, String observedSources, List<DerivedSource> derivedSources,
+		ProfileEvidence profiles, long salt)
 	{
 		/**
 		 * Creates a stored proposal.
 		 *
 		 * @param derivation the contract author's output
 		 * @param observedSources the prompt sources that the harness reported loading in the contract author session
+		 * @param derivedSources the prompt files that CAT listed as loading although no harness event reports them
 		 * @param profiles the profile inventory and bindings
 		 * @param salt the salt that CAT drew for the proposal
-		 * @throws NullPointerException if any of the arguments are null
+		 * @throws NullPointerException if any of the arguments are null, or {@code derivedSources} contains null
 		 */
 		Stored
 		{
 			requireThat(derivation, "derivation").isNotNull();
 			requireThat(observedSources, "observedSources").isNotNull();
+			derivedSources = List.copyOf(derivedSources);
 			requireThat(profiles, "profiles").isNotNull();
+		}
+
+		/**
+		 * Returns the stored proposal after a validation of its output, with the derived sources that CAT listed.
+		 *
+		 * @param validated the proposal that validating {@link #derivation()} returned
+		 * @return the proposal
+		 * @throws NullPointerException if {@code validated} is null
+		 */
+		DerivedProposal restore(DerivedProposal validated)
+		{
+			return validated.withDerivedSources(derivedSources);
 		}
 	}
 
@@ -109,6 +126,9 @@ final class ProposalFile
 		ObjectNode root = json.createObjectNode();
 		root.put("format_version", FORMAT_VERSION);
 		root.put("observed_sources", derived.observedSources());
+		ArrayNode derivedSources = root.putArray("derived_sources");
+		for (DerivedSource source : derived.derivedSources())
+			derivedSources.addObject().put("path", source.path()).put("rule", source.rule());
 		root.put("derivation", derived.derivation());
 		root.put("salt", derived.contract().salt());
 		root.put("inventory_source", profiles.inventory().source());
@@ -162,6 +182,7 @@ final class ProposalFile
 				"version " + FORMAT_VERSION + ". Run `start` again to derive a new proposal.");
 		}
 		if (!root.path("derivation").isString() || !root.path("observed_sources").isString() ||
+			!root.path("derived_sources").isArray() ||
 			!root.path("inventory_source").isString() || !root.path("inventory").isArray() ||
 			!root.path("ranking_source").isString() || !root.path("ranking").isArray() ||
 			!root.path("bindings").isArray() || !root.path("salt").isIntegralNumber() ||
@@ -170,9 +191,12 @@ final class ProposalFile
 			throw new IOException(file + " is not a valid version " + version + " proposal file.");
 		}
 		String derivation = root.get("derivation").asString();
+		List<DerivedSource> derivedSources = new ArrayList<>();
 		ProfileEvidence profiles;
 		try
 		{
+			for (JsonNode node : root.get("derived_sources"))
+				derivedSources.add(new DerivedSource(node.path("path").asString(), node.path("rule").asString()));
 			List<TrialProfile> inventory = new ArrayList<>();
 			for (JsonNode node : root.get("inventory"))
 				inventory.add(profile(node));
@@ -187,9 +211,9 @@ final class ProposalFile
 		}
 		catch (IllegalArgumentException e)
 		{
-			throw new IOException(file + " holds invalid trial profiles: " + e.getMessage(), e);
+			throw new IOException(file + " holds invalid derived sources or trial profiles: " + e.getMessage(), e);
 		}
-		return Optional.of(new Stored(derivation, root.get("observed_sources").asString(), profiles,
+		return Optional.of(new Stored(derivation, root.get("observed_sources").asString(), derivedSources, profiles,
 			root.get("salt").asLong()));
 	}
 

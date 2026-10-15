@@ -333,15 +333,14 @@ public final class ContractAuthorProtocol
 	 * @param salt the salt that CAT drew for the proposal, which splits each test's outcome-changing combinations into
 	 *   the development part and the held-out part, and from which the seeds of the generator calls derive, so that
 	 *   reading the same output again gives the same contract
-	 * @return the proposal
+	 * @return the proposal, without derived sources, which the caller lists
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws InvalidProposalException if the session wrote no output file or the file is not exactly one JSON object,
-	 *   or the object violates the contract author's output schema, supplies a judge field or the
-	 *   trial profiles that CAT owns, declares an assertion whose built-in tool needs exit statuses that the harness
-	 *   does not report, restricts the
-	 *   profiles to a set that the inventory cannot satisfy, describes a certification profile that matches no
-	 *   inventory profile, ranks a family twice, omits a citation for a recorded scenario of the target, or breaks a
-	 *   rule of the contract model. The exception lists every problem found.
+	 *   or the object violates the contract author's output schema, supplies a judge field, the trial profiles or the
+	 *   derived sources that CAT owns, declares an assertion whose built-in tool needs exit statuses that the harness
+	 *   does not report, restricts the profiles to a set that the inventory cannot satisfy, describes a certification
+	 *   profile that matches no inventory profile, ranks a family twice, omits a citation for a recorded scenario of
+	 *   the target, or breaks a rule of the contract model. The exception lists every problem found.
 	 */
 	public DerivedProposal proposal(SessionResult.Completed result, ProfileEvidence profiles, long salt)
 		throws InvalidProposalException
@@ -362,7 +361,7 @@ public final class ContractAuthorProtocol
 	 * @param profiles the profile inventory, its shipped capability ranking and the bindings that CAT read when the
 	 *   contract author ran
 	 * @param salt the salt that CAT drew for the proposal
-	 * @return the proposal
+	 * @return the proposal, without derived sources, which the caller restores from the stored proposal
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws InvalidProposalException if {@code derivation} is not exactly one JSON object or breaks a rule that
 	 *   {@link #proposal(SessionResult.Completed, ProfileEvidence, long)} lists
@@ -385,7 +384,7 @@ public final class ContractAuthorProtocol
 	 * @param profiles the profile inventory, its shipped capability ranking and the bindings that CAT read when the
 	 *   contract author ran
 	 * @param salt the salt that CAT drew for the proposal
-	 * @return the proposal
+	 * @return the proposal, without derived sources
 	 * @throws InvalidProposalException if the output breaks a rule that
 	 *   {@link #proposal(SessionResult.Completed, ProfileEvidence, long)} lists
 	 */
@@ -399,7 +398,6 @@ public final class ContractAuthorProtocol
 		JsonNode scopeNode = output.remove(Findings.SCOPE_CONDITIONS);
 		JsonNode conflictsNode = output.remove(Findings.CONFLICTS);
 		List<Conflict> conflicts = findings.conflicts(conflictsNode);
-		List<DerivedSource> derivedSources = findings.derivedSources(output.remove(Findings.DERIVED_SOURCES));
 		List<ScopeCondition> scopeConditions = findings.scopeConditions(scopeNode);
 		List<TrialProfile> restriction = findings.profileRestriction(
 			output.remove(Findings.PROFILE_RESTRICTION));
@@ -411,6 +409,11 @@ public final class ContractAuthorProtocol
 		{
 			problems.add("$." + ProposalSchema.TRIAL_PROFILES +
 				": CAT computes the trial profiles, so the contract author " + "must leave them out");
+		}
+		if (output.remove(Findings.DERIVED_SOURCES) != null)
+		{
+			problems.add("$." + Findings.DERIVED_SOURCES +
+				": CAT computes the derived sources, so the contract author must leave them out");
 		}
 		if (output.get("judge") instanceof ObjectNode judgeNode)
 		{
@@ -443,7 +446,7 @@ public final class ContractAuthorProtocol
 		problems.addAll(scenarios.missingCitations(citations(output)));
 		if (!problems.isEmpty())
 			throw new InvalidProposalException(problems);
-		return new DerivedProposal(contract, derivedSources, scopeConditions, conflicts, observedSources, derivation,
+		return new DerivedProposal(contract, List.of(), scopeConditions, conflicts, observedSources, derivation,
 			citedScenarios(contract));
 	}
 

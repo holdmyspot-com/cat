@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
 import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -18,6 +19,7 @@ import io.github.cowwoc.cat.codex.secrets.CodexSessionsAccess;
 import io.github.cowwoc.cat.codex.secrets.CodexSessionsSecrets;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -146,6 +148,23 @@ public final class CodexSessions extends RunnerSessions
 		requireThat(json, "json").isNotNull();
 		List<String> received = RolloutToolResults.read(transcript.resolveSibling(CodexRunner.ROLLOUTS), json);
 		return new SessionEvidence(activity.entries(), received);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Codex reads {@code AGENTS.override.md} at the project root if it exists, and {@code AGENTS.md} otherwise.
+	 */
+	@Override
+	protected List<DerivedSource> instructionFiles(Path project) throws IOException
+	{
+		requireThat(project, "project").isNotNull();
+		for (String name : List.of("AGENTS.override.md", "AGENTS.md"))
+		{
+			if (Files.isRegularFile(project.resolve(name)))
+				return List.of(new DerivedSource(name, "Codex reads " + name + " at the project root in every session"));
+		}
+		return List.of();
 	}
 
 	@Override

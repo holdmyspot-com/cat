@@ -21,6 +21,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
@@ -51,7 +52,6 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.proposal.Conflict;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
-import io.github.cowwoc.cat.common.optimizer.proposal.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JsonResponse;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
@@ -337,8 +337,8 @@ public final class ProposalTest
 		requireThat(List.copyOf(judgeProperties.propertyNames()), "judge.properties").
 			isEqualTo(List.of("rubric", "decision_rule"));
 		List<String> required = outputSchema.get("required").valueStream().map(JsonNode::asString).toList();
-		requireThat(required, "required").contains("derived_sources").contains("scope_conditions").
-			contains("requirements");
+		requireThat(required, "required").contains("scope_conditions").contains("requirements").
+			doesNotContain("derived_sources");
 		for (ValueGenerator generator : ValueGenerators.all())
 			requireThat(prompt, "prompt").contains(generator.describe());
 	}
@@ -374,8 +374,7 @@ public final class ProposalTest
 			isEqualTo(PromptTemplate.load("/optimizer/judge/judge.md").text());
 		requireThat(json.readTree(derived.contract().judge().resultSchema()), "judge.resultSchema").
 			isEqualTo(json.readTree(PromptTemplateSecrets.access().readResource("/optimizer/judge/verdict.schema.json")));
-		requireThat(derived.derivedSources(), "derivedSources").isEqualTo(List.of(new DerivedSource("CLAUDE.md",
-			"The harness reads the project instruction file in the project root at startup.")));
+		requireThat(derived.derivedSources(), "derivedSources").isEmpty();
 		requireThat(derived.scopeConditions(), "scopeConditions").isEqualTo(List.of(new ScopeCondition(
 			Outcome.UNSUPPORTED_OUTPUT, List.of("r1"), "CLAUDE.md asks for a diagram image with every summary.")));
 		requireThat(derived.observedSources(), "observedSources").isEqualTo(OBSERVED);
@@ -477,7 +476,6 @@ public final class ProposalTest
 		return new Object[][]
 		{
 			{"/requirements/0/description"}, {"/requirements/0/source"},
-			{"/derived_sources/0/path"}, {"/derived_sources/0/rule"},
 			{"/tests/0/applicability"},
 			{"/tests/0/turns/0"}, {"/tests/0/expected_behavior"},
 			{"/tests/0/regression_scenarios/0"},
@@ -683,7 +681,6 @@ public final class ProposalTest
 			ObjectNode condition = (ObjectNode) root.get("scope_conditions").get(0);
 			condition.put("condition", "slow_output");
 			condition.putArray("requirement_ids").add("r9");
-			((ObjectNode) root.get("derived_sources").get(0)).remove("rule");
 		});
 		try
 		{
@@ -694,8 +691,28 @@ public final class ProposalTest
 		{
 			requireThat(String.join("\n", e.problems()), "problems").
 				contains("$.scope_conditions[0].condition").
-				contains("$.scope_conditions[0].requirement_ids[0]: r9 is not a requirement of the proposal").
-				contains("$.derived_sources[0].rule");
+				contains("$.scope_conditions[0].requirement_ids[0]: r9 is not a requirement of the proposal");
+		}
+	}
+
+	/**
+	 * Verifies that an output listing derived sources is rejected, since CAT lists the files that its rules and the
+	 * harness load.
+	 */
+	@Test
+	public void rejectsDerivedSources()
+	{
+		String output = changedDerivation(root -> root.putArray("derived_sources").addObject().
+			put("path", "CLAUDE.md").put("rule", "The harness reads it at startup."));
+		try
+		{
+			contractAuthor.proposal(session(output), PROFILES, SALT);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems(), "problems").contains("$.derived_sources: CAT computes the derived sources, " +
+				"so the contract author must leave them out");
 		}
 	}
 
@@ -1048,7 +1065,11 @@ public final class ProposalTest
 	public void recordsObservedAndDerivedLoading() throws InvalidProposalException
 	{
 		// Requirement: R-C7
-		Proposal proposal = proposal(noLinks(), HostLogin.API_KEY);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT).
+			withDerivedSources(List.of(new DerivedSource("CLAUDE.md",
+				"The harness reads the project instruction file in the project root at startup.")));
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 
 		requireThat(proposal.render(), "render").contains("- hook: .claude/hooks/session-start.sh\n").
 			contains("- skill: release-notes\n").

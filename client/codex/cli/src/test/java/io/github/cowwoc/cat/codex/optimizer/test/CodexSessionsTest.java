@@ -9,6 +9,7 @@ import io.github.cowwoc.cat.codex.secrets.CodexSessionsSecrets;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
@@ -34,6 +35,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -626,5 +628,45 @@ public final class CodexSessionsTest
 				"Codex turn finished with status failed", List.of()));
 			requireThat(requests, "requests").isEqualTo(List.of("one"));
 		}
+	}
+
+	/**
+	 * Verifies that the instruction file that a Codex trial reads at the project root is {@code AGENTS.override.md}
+	 * when it exists and {@code AGENTS.md} otherwise, and that a project with neither has none.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void derivesAgentsInstructions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-instructions-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+
+			requireThat(sessions.derivedSources(project, Optional.empty()), "none").isEmpty();
+			Files.writeString(project.resolve("AGENTS.md"), "Instructions");
+			requireThat(paths(sessions.derivedSources(project, Optional.empty())), "agents").
+				isEqualTo(List.of("AGENTS.md"));
+			Files.writeString(project.resolve("AGENTS.override.md"), "Override");
+			requireThat(paths(sessions.derivedSources(project, Optional.empty())), "override").
+				isEqualTo(List.of("AGENTS.override.md"));
+		}
+	}
+
+	/**
+	 * Returns the paths of derived sources.
+	 *
+	 * @param sources the sources
+	 * @return their paths
+	 */
+	private static List<String> paths(List<DerivedSource> sources)
+	{
+		return sources.stream().map(DerivedSource::path).toList();
 	}
 }

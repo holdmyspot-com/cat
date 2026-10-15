@@ -4,6 +4,7 @@ import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
 import io.github.cowwoc.cat.common.optimizer.adapter.DeferredInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
@@ -155,7 +156,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(HARNESS_ID);
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, heldOut, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS_ID,
-				HarnessCapacity.MAXIMUM_CONCURRENCY), clock);
+				HarnessCapacity.MAXIMUM_CONCURRENCY), clock, Optional.of(ProjectRuleLoader.rulesDirectory(home)));
 		return new CodexSessions(settings);
 	}
 

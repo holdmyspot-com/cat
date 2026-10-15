@@ -8,12 +8,16 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Deque;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.stream.Stream;
@@ -58,6 +62,11 @@ public final class ProjectRuleLoader
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
+	/**
+	 * The start of a bundled rule's reference to another bundled rule through the installation directory that the
+	 * injected CAT environment rule states.
+	 */
+	private static final String PLUGIN_RULES_REFERENCE = "${CAT_PLUGIN_ROOT}/rules/";
 	private static final String RULES_DIRECTORY = ".cat/rules";
 	private static final Set<String> FRONTMATTER_KEYS = Set.of("agents", "depends-on", "paths");
 
@@ -199,6 +208,150 @@ public final class ProjectRuleLoader
 			return new SessionRules("", context(rules, userRulesRoot, projectRoot, audience));
 		rules.remove(readFile);
 		return new SessionRules(readFile.context().strip(), context(rules, userRulesRoot, projectRoot, audience));
+	}
+
+	/**
+	 * Lists every file that the rules for a harness's primary agent give it: each rule that the loader injects or
+	 * routes to, in injection order, followed by each file that a listed file includes or refers to and each
+	 * prerequisite of a listed included rule, in the order found. A reference counts only when it names a file inside
+	 * the referring file's rule root.
+	 *
+	 * @param pluginRoot a non-null CAT installation directory
+	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
+	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
+	 * @param harness a non-blank lowercase harness identifier
+	 * @return the files, once each
+	 * @throws NullPointerException if {@code pluginRoot}, {@code projectRoot}, or {@code harness} are null
+	 * @throws IllegalArgumentException if {@code harness} is blank or invalid
+	 * @throws IOException if a rule directory or file is not a real directory or regular file, or its content is invalid
+	 */
+	public List<RuleSource> sourcesForMainAgent(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness)
+		throws IOException
+	{
+		requireThat(pluginRoot, "pluginRoot").isNotNull();
+		requireThat(projectRoot, "projectRoot").isNotNull();
+		RuleAudience audience = RuleAudience.primary();
+		Map<Path, RuleSource> sources = new LinkedHashMap<>();
+		Deque<Path> unread = new ArrayDeque<>();
+		for (Rule rule : orderedRules(pluginRoot, userRulesRoot, projectRoot, harness, audience))
+		{
+			RuleSource.Kind kind;
+			if (rule.direct())
+				kind = RuleSource.Kind.INJECTED;
+			else
+				kind = RuleSource.Kind.ROUTED;
+			addSource(new RuleSource(absolute(rule.file()), kind, Optional.empty()), sources, unread);
+		}
+
+		Path pluginRules = absolute(pluginRoot).resolve("rules");
+		Path projectRules = absolute(rulesDirectory(projectRoot));
+		while (!unread.isEmpty())
+		{
+			Path file = unread.remove();
+			Path ruleRoot;
+			RuleRoot root;
+			if (file.startsWith(pluginRules))
+			{
+				ruleRoot = pluginRules;
+				root = RuleRoot.PLUGIN;
+			}
+			else if (userRulesRoot != null && file.startsWith(absolute(userRulesRoot)))
+			{
+				ruleRoot = absolute(userRulesRoot);
+				root = RuleRoot.USER;
+			}
+			else
+			{
+				ruleRoot = projectRules;
+				root = RuleRoot.PROJECT;
+			}
+			addReferences(file, ruleRoot, root, audience, sources, unread);
+		}
+		return List.copyOf(sources.values());
+	}
+
+	/**
+	 * Lists the files that one listed file includes, refers to or needs.
+	 *
+	 * @param file the listed file
+	 * @param ruleRoot the rule root that holds {@code file} and bounds its references
+	 * @param root the source kind of {@code ruleRoot}
+	 * @param audience the recipient whose rules are listed
+	 * @param sources the listed files, which this method adds to
+	 * @param unread the listed files whose references are not listed yet, which this method adds to
+	 * @throws IOException if the file cannot be read, an include is unsafe, or the file's metadata is invalid
+	 */
+	private void addReferences(Path file, Path ruleRoot, RuleRoot root, RuleAudience audience,
+		Map<Path, RuleSource> sources, Deque<Path> unread) throws IOException
+	{
+		String content = readRule(ruleRoot, file, root);
+		Frontmatter frontmatter = frontmatter(content, file.toString());
+		String body = content;
+		if (frontmatter != null)
+			body = frontmatter.body();
+		body = DESIGN_GOALS.matcher(body).replaceFirst("");
+		Optional<Path> referrer = Optional.of(file);
+
+		Matcher directive = MarkdownIncludes.DIRECTIVE.matcher(body);
+		while (directive.find())
+		{
+			Path included = MarkdownIncludes.resolve(file, directive.group(1), "Direct rule include", ruleRoot);
+			addSource(new RuleSource(absolute(included), RuleSource.Kind.INCLUDED, referrer), sources, unread);
+		}
+
+		Matcher reference = LAZY_RULE_REFERENCE.matcher(body);
+		while (reference.find())
+		{
+			String text = reference.group(1);
+			if (root == RuleRoot.PLUGIN && text.startsWith(PLUGIN_RULES_REFERENCE))
+				text = ruleRoot + text.substring(PLUGIN_RULES_REFERENCE.length() - 1);
+			Path declared;
+			try
+			{
+				declared = Path.of(text);
+			}
+			catch (java.nio.file.InvalidPathException _)
+			{
+				continue;
+			}
+			Path resolved = file.getParent().resolve(declared).normalize();
+			if (resolved.startsWith(ruleRoot) && Files.isRegularFile(resolved, NOFOLLOW_LINKS))
+				addSource(new RuleSource(resolved, RuleSource.Kind.REFERENCED, referrer), sources, unread);
+		}
+
+		Path include = ruleRoot.resolve("include");
+		if (root == RuleRoot.PLUGIN || !file.startsWith(include) || !matches(frontmatter, file.toString(), audience))
+			return;
+		for (String dependency : dependencies(frontmatter, file.toString()))
+		{
+			Path resolved = file.getParent().resolve(dependency).normalize();
+			if (resolved.startsWith(include) && Files.isRegularFile(resolved, NOFOLLOW_LINKS))
+				addSource(new RuleSource(resolved, RuleSource.Kind.PREREQUISITE, referrer), sources, unread);
+		}
+	}
+
+	/**
+	 * Lists a file unless it is already listed.
+	 *
+	 * @param source the file and how it reaches the agent
+	 * @param sources the listed files, which this method adds to
+	 * @param unread the listed files whose references are not listed yet, which this method adds to
+	 */
+	private static void addSource(RuleSource source, Map<Path, RuleSource> sources, Deque<Path> unread)
+	{
+		if (sources.putIfAbsent(source.file(), source) == null)
+			unread.add(source.file());
+	}
+
+	/**
+	 * Returns a path as an absolute, normalized path.
+	 *
+	 * @param path the path
+	 * @return the absolute path
+	 */
+	private static Path absolute(Path path)
+	{
+		return path.toAbsolutePath().normalize();
 	}
 
 	/**
@@ -474,7 +627,7 @@ public final class ProjectRuleLoader
 		if (paths == null)
 		{
 			String injected = renderBody(ownerRoot, file, ruleRoot, root, frontmatter, content);
-			return new Rule(root, path, displayPath(ownerRoot, root, file), true, dependencies(frontmatter, path),
+			return new Rule(root, path, displayPath(ownerRoot, root, file), file, true, dependencies(frontmatter, path),
 				injected);
 		}
 		if (!paths.isArray())
@@ -488,7 +641,7 @@ public final class ProjectRuleLoader
 				throw new IOException("Invalid paths frontmatter: " + path);
 			globs.add(glob.asString());
 		}
-		return new Rule(root, path, displayPath(ownerRoot, root, file), false, List.of(), pathScopedInstruction(
+		return new Rule(root, path, displayPath(ownerRoot, root, file), file, false, List.of(), pathScopedInstruction(
 			file.toAbsolutePath().normalize().toString(), globs));
 	}
 
@@ -977,8 +1130,8 @@ public final class ProjectRuleLoader
 		}
 	}
 
-	private record Rule(RuleRoot root, String path, String displayPath, boolean direct, List<String> dependencies,
-		String context)
+	private record Rule(RuleRoot root, String path, String displayPath, Path file, boolean direct,
+		List<String> dependencies, String context)
 	{
 	}
 }

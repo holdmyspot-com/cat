@@ -3,6 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.execution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
@@ -384,6 +386,12 @@ public final class SliceTest
 		public List<Path> runRoots()
 		{
 			return delegate.runRoots();
+		}
+
+		@Override
+		public List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin) throws IOException
+		{
+			return delegate.derivedSources(project, plugin);
 		}
 
 		@Override

@@ -2,23 +2,34 @@ package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.ProjectRuleLoader;
+import io.github.cowwoc.cat.common.RuleSource;
+import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
+import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
+import io.github.cowwoc.cat.common.runner.PluginManifest;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
  * Runs nested sessions through a harness runner.
@@ -44,6 +55,10 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public abstract class RunnerSessions implements SessionPort
 {
+	/**
+	 * The directory of a CAT installation that holds its rules.
+	 */
+	private static final String RULES = "rules";
 	private final String harness;
 	private final Settings settings;
 	private final Bridge bridge;
@@ -125,6 +140,230 @@ public abstract class RunnerSessions implements SessionPort
 		return Optional.empty();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The sources are the harness's instruction files at the project root followed, when the trial installs CAT, by
+	 * every file that CAT's rules give the trial's agent from CAT's installation, the user's rules that the settings
+	 * name and the project's rules. A built plugin's rules are read from its base with each mapped project
+	 * directory written over its mapped path, as the trial installs them.
+	 */
+	@Override
+	public final List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin) throws IOException
+	{
+		requireThat(project, "project").isNotNull();
+		requireThat(plugin, "plugin").isNotNull();
+		Path root = project.toAbsolutePath().normalize();
+		List<DerivedSource> sources = new ArrayList<>(instructionFiles(root));
+		if (plugin.isPresent() && plugin.get() instanceof PluginUnderTest.Built built &&
+			isCat(built.base().toAbsolutePath().normalize()))
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path overlay = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+				overlayRules(built, root, overlay);
+				sources.addAll(ruleSources(overlay, root, file -> builtName(built, root, overlay, file)));
+			}
+			return sources;
+		}
+		Optional<Path> catRoot = catRoot(root, plugin);
+		if (catRoot.isPresent())
+			sources.addAll(ruleSources(catRoot.get(), root, file -> name(root, file)));
+		return sources;
+	}
+
+	/**
+	 * Returns the CAT installation that a trial loads, unless the trial is a built CAT plugin: a plugin root that is
+	 * CAT, the CAT artifact beside a plugin under test that depends on CAT, or the CAT artifact when a trial without
+	 * a plugin under test installs CAT.
+	 *
+	 * @param project the absolute, normalized project directory
+	 * @param plugin the trial's plugin under test, if any
+	 * @return the installation directory, or empty if the trial does not install CAT
+	 * @throws IOException if a manifest cannot be read
+	 */
+	private Optional<Path> catRoot(Path project, Optional<PluginUnderTest> plugin) throws IOException
+	{
+		if (plugin.isEmpty())
+		{
+			if (settings.installCat())
+				return Optional.of(settings.artifact().toAbsolutePath().normalize());
+			return Optional.empty();
+		}
+		if (plugin.get() instanceof PluginUnderTest.Root pluginRoot)
+		{
+			Path directory = project.resolve(pluginRoot.directory()).normalize();
+			if (isCat(directory))
+				return Optional.of(directory);
+		}
+		if (plugin.get().dependsOnCat())
+			return Optional.of(settings.artifact().toAbsolutePath().normalize());
+		return Optional.empty();
+	}
+
+	/**
+	 * Lists the files that CAT's rules give a trial's agent.
+	 *
+	 * @param catRoot the absolute CAT installation directory
+	 * @param project the absolute, normalized project directory
+	 * @param naming names each file as the derived sources list it
+	 * @return the derived sources
+	 * @throws IOException if a rule cannot be read
+	 */
+	private List<DerivedSource> ruleSources(Path catRoot, Path project, Function<Path, String> naming)
+		throws IOException
+	{
+		Path userRules = settings.userRules().map(path -> path.toAbsolutePath().normalize()).orElse(null);
+		ProjectRuleLoader loader = new ProjectRuleLoader(YAMLMapper.builder().build());
+		List<DerivedSource> sources = new ArrayList<>();
+		for (RuleSource source : loader.sourcesForMainAgent(catRoot, userRules, project, harness))
+		{
+			String referrer = "";
+			if (source.referrer().isPresent())
+				referrer = naming.apply(source.referrer().get());
+			sources.add(new DerivedSource(naming.apply(source.file()), describe(source.kind(), referrer)));
+		}
+		return sources;
+	}
+
+	/**
+	 * Describes how a file reaches a trial's agent.
+	 *
+	 * @param kind how the file reaches the agent
+	 * @param referrer the name of the file that includes, refers to or needs the file, or empty if there is none
+	 * @return the rule that the derived source records
+	 */
+	private static String describe(RuleSource.Kind kind, String referrer)
+	{
+		return switch (kind)
+		{
+			case INJECTED -> "CAT injects this rule into every session";
+			case ROUTED -> "CAT tells the agent to load this rule when it reads or edits a file that the rule's paths " +
+				"match";
+			case INCLUDED -> "`" + referrer + "` includes this file, which CAT injects with it";
+			case REFERENCED -> "`" + referrer + "` tells the agent to load this file";
+			case PREREQUISITE -> "CAT tells the agent to load this file before `" + referrer + "`";
+		};
+	}
+
+	/**
+	 * Names a file: relative to the project if it is inside it, and by its absolute path otherwise.
+	 *
+	 * @param project the absolute, normalized project directory
+	 * @param file the absolute, normalized file
+	 * @return the name
+	 */
+	private static String name(Path project, Path file)
+	{
+		if (file.startsWith(project))
+			return slashes(project.relativize(file));
+		return file.toString();
+	}
+
+	/**
+	 * Names a file of a built plugin's rule overlay: as the project file that a mapping copies to it, or else by its
+	 * absolute path in the plugin's base.
+	 *
+	 * @param plugin the built plugin
+	 * @param project the absolute, normalized project directory
+	 * @param overlay the directory that holds the overlaid rules
+	 * @param file the absolute, normalized file below {@code overlay}, or a file outside it
+	 * @return the name
+	 */
+	private static String builtName(PluginUnderTest.Built plugin, Path project, Path overlay, Path file)
+	{
+		if (!file.startsWith(overlay))
+			return name(project, file);
+		Path relative = overlay.relativize(file);
+		List<PluginUnderTest.Mapping> mappings = plugin.mappings();
+		for (int i = mappings.size() - 1; i >= 0; --i)
+		{
+			PluginUnderTest.Mapping mapping = mappings.get(i);
+			if (!relative.startsWith(mapping.target()) && !mapping.target().toString().isEmpty())
+				continue;
+			Path source = mapping.source().resolve(mapping.target().relativize(relative));
+			if (Files.isRegularFile(project.resolve(source)))
+				return slashes(source);
+		}
+		return plugin.base().toAbsolutePath().normalize().resolve(relative).toString();
+	}
+
+	/**
+	 * Copies a built plugin's rules as the trial installs them: the base's {@code rules} directory with each mapped
+	 * project directory written over its mapped path.
+	 *
+	 * @param plugin the built plugin
+	 * @param project the absolute, normalized project directory
+	 * @param overlay the empty directory that receives the rules
+	 * @throws IOException if the rules cannot be copied
+	 */
+	private static void overlayRules(PluginUnderTest.Built plugin, Path project, Path overlay) throws IOException
+	{
+		Path rules = Path.of(RULES);
+		copyTree(plugin.base().resolve(rules), overlay.resolve(rules));
+		for (PluginUnderTest.Mapping mapping : plugin.mappings())
+		{
+			Path source = project.resolve(mapping.source());
+			Path target = mapping.target();
+			if (target.startsWith(rules))
+				copyTree(source, overlay.resolve(target));
+			else if (target.toString().isEmpty() || rules.startsWith(target))
+				copyTree(source.resolve(target.relativize(rules)), overlay.resolve(rules));
+		}
+	}
+
+	/**
+	 * Copies the regular files below a directory, replacing files that exist. A missing directory copies nothing.
+	 *
+	 * @param source the directory to copy
+	 * @param target the directory that receives the files
+	 * @throws IOException if a file cannot be copied
+	 */
+	private static void copyTree(Path source, Path target) throws IOException
+	{
+		if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
+			return;
+		try (Stream<Path> files = Files.walk(source))
+		{
+			for (Path file : (Iterable<Path>) files::iterator)
+			{
+				if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+					continue;
+				Path copy = target.resolve(source.relativize(file).toString());
+				Files.createDirectories(copy.getParent());
+				Files.copy(file, copy, StandardCopyOption.REPLACE_EXISTING);
+			}
+		}
+	}
+
+	/**
+	 * Returns a relative path with {@code /} between its names.
+	 *
+	 * @param path the relative path
+	 * @return the path's text
+	 */
+	private static String slashes(Path path)
+	{
+		return path.toString().replace(path.getFileSystem().getSeparator(), "/");
+	}
+
+	/**
+	 * Returns whether a plugin copy is CAT: whether its manifest name is the name in the CAT artifact's manifest.
+	 *
+	 * @param copy the plugin copy
+	 * @return {@code true} if the copy is CAT
+	 * @throws IOException if a manifest cannot be read
+	 */
+	final boolean isCat(Path copy) throws IOException
+	{
+		for (Path manifest : PluginManifest.MANIFESTS)
+		{
+			if (Files.isRegularFile(settings.artifact().resolve(manifest)) && Files.isRegularFile(copy.resolve(manifest)))
+				return PluginManifest.name(copy, manifest).equals(PluginManifest.name(settings.artifact(), manifest));
+		}
+		return false;
+	}
+
 	@Override
 	public final List<Path> runRoots()
 	{
@@ -195,6 +434,15 @@ public abstract class RunnerSessions implements SessionPort
 	protected abstract PromptSources newPromptSources(JsonMapper json, Map<String, Path> directories);
 
 	/**
+	 * Lists the instruction files that the harness reads at a project's root by convention in every session.
+	 *
+	 * @param project the project's root directory
+	 * @return the files that exist, relative to the project, with the rule that loads each one
+	 * @throws IOException if the project cannot be read
+	 */
+	protected abstract List<DerivedSource> instructionFiles(Path project) throws IOException;
+
+	/**
 	 * Returns the runner options that pass a request's read-only evidence.
 	 *
 	 * @param evidence the paths that the session may read but not change
@@ -215,9 +463,12 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param configurationDirectory the host's harness configuration directory, which holds the login
 	 * @param capacity the shared capacity from which every session takes one permit
 	 * @param clock the clock for time limits
+	 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they load
+	 *   none
 	 */
 	public record Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
-		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock)
+		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
+		Optional<Path> userRules)
 	{
 		/**
 		 * Creates settings.
@@ -231,6 +482,8 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param configurationDirectory the host's harness configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit
 		 * @param clock the clock for time limits
+		 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they
+		 *   load none
 		 * @throws NullPointerException if any argument is null
 		 * @throws IllegalArgumentException if {@code runRoot} is not absolute or is a file system root
 		 */
@@ -245,9 +498,32 @@ public abstract class RunnerSessions implements SessionPort
 			requireThat(configurationDirectory, "configurationDirectory").isNotNull();
 			requireThat(capacity, "capacity").isNotNull();
 			requireThat(clock, "clock").isNotNull();
+			requireThat(userRules, "userRules").isNotNull();
 			runRoot = runRoot.normalize();
 			requireThat(runRoot.getFileName(), "runRoot.getFileName()").isNotNull();
 			environment = Map.copyOf(environment);
+		}
+
+		/**
+		 * Creates settings whose trials load no user rules.
+		 *
+		 * @param artifact the complete harness artifact that the runner validates and installs
+		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
+		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
+		 * @param executable the harness executable, or blank for the harness's default command
+		 * @param installCat whether the runner installs CAT into trial sessions' isolated homes
+		 * @param environment the host environment that the runner scrubs for the session
+		 * @param configurationDirectory the host's harness configuration directory, which holds the login
+		 * @param capacity the shared capacity from which every session takes one permit
+		 * @param clock the clock for time limits
+		 * @throws NullPointerException if any argument is null
+		 * @throws IllegalArgumentException if {@code runRoot} is not absolute or is a file system root
+		 */
+		public Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
+			Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock)
+		{
+			this(artifact, runRoot, heldOut, executable, installCat, environment, configurationDirectory, capacity,
+				clock, Optional.empty());
 		}
 
 		/**

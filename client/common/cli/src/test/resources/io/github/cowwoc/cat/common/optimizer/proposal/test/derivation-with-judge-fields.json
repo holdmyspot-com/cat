@@ -251,12 +251,6 @@
 	"profile_restriction": [],
 	"capability_ranking": [],
 	"certification_profiles": [],
-	"derived_sources": [
-		{
-			"path": "CLAUDE.md",
-			"rule": "The harness reads the project instruction file in the project root at startup."
-		}
-	],
 	"conflicts": [],
 	"scope_conditions": [
 		{

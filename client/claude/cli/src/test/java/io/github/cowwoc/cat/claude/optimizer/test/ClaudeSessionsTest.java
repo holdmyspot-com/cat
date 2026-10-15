@@ -9,6 +9,7 @@ import io.github.cowwoc.cat.claude.secrets.ClaudeSessionsSecrets;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
@@ -683,6 +684,39 @@ public final class ClaudeSessionsTest
 			requireThat(result, "result").isEqualTo(new SessionResult.Failed(
 				"Claude reported an error result (api_error_status=500, terminal_reason=model_error)", List.of()));
 			requireThat(requests, "requests").isEqualTo(List.of("one"));
+		}
+	}
+
+	/**
+	 * Verifies that the instruction files that a Claude Code trial reads at the project root are {@code CLAUDE.md},
+	 * {@code .claude/CLAUDE.md}, {@code CLAUDE.local.md} and every Markdown file below {@code .claude/rules}, in that
+	 * order, and that other files are left out.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void derivesClaudeInstructions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-instructions-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			for (String file : List.of("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md", ".claude/rules/style.md",
+				".claude/rules/java/testing.md", ".claude/rules/notes.txt", "docs/CLAUDE.md"))
+			{
+				Path path = project.resolve(file);
+				Files.createDirectories(path.getParent());
+				Files.writeString(path, "Instructions");
+			}
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			ClaudeSessions sessions = ClaudeSessionsSecrets.access().newClaudeSessions(settings, (_, _, _) ->
+			{
+			});
+
+			requireThat(sessions.derivedSources(project, Optional.empty()).stream().map(DerivedSource::path).toList(),
+				"paths").isEqualTo(List.of("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md",
+				".claude/rules/java/testing.md", ".claude/rules/style.md"));
 		}
 	}
 }

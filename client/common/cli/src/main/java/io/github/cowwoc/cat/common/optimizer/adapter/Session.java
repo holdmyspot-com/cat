@@ -9,7 +9,6 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
-import io.github.cowwoc.cat.common.runner.PluginManifest;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 
@@ -571,23 +570,6 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Returns whether a plugin copy is CAT: whether its manifest name is the name in the CAT artifact's manifest.
-	 *
-	 * @param copy the plugin copy
-	 * @return {@code true} if the copy is CAT
-	 * @throws IOException if a manifest cannot be read
-	 */
-	private boolean isCat(Path copy) throws IOException
-	{
-		for (Path manifest : PluginManifest.MANIFESTS)
-		{
-			if (Files.isRegularFile(settings.artifact().resolve(manifest)) && Files.isRegularFile(copy.resolve(manifest)))
-				return PluginManifest.name(copy, manifest).equals(PluginManifest.name(settings.artifact(), manifest));
-		}
-		return false;
-	}
-
-	/**
 	 * Builds the runner's command-line options. A trial whose plugin under test is CAT installs CAT from the plugin's
 	 * copy; a trial with another plugin under test installs the plugin's copy, with the CAT artifact as the request
 	 * says; a trial without one installs CAT as the settings say; other sessions install no plugin.
@@ -604,7 +586,7 @@ final class Session implements SessionHandle
 		if (request.plugin().isPresent())
 		{
 			TrialPlugin plugin = request.plugin().get();
-			if (isCat(plugin.copy()))
+			if (sessions.isCat(plugin.copy()))
 			{
 				artifact = plugin.copy();
 				installCat = true;

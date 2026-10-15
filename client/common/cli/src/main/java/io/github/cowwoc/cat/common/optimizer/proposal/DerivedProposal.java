@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -53,5 +54,18 @@ public record DerivedProposal(Contract contract, List<DerivedSource> derivedSour
 		conflicts = List.copyOf(conflicts);
 		requireThat(citedScenarios, "citedScenarios").isNotNull();
 		citedScenarios = Collections.unmodifiableMap(new LinkedHashMap<>(citedScenarios));
+	}
+
+	/**
+	 * Returns this proposal with other derived sources.
+	 *
+	 * @param sources the prompt files that load although no harness event reports them
+	 * @return the proposal
+	 * @throws NullPointerException if {@code sources} is null or contains null
+	 */
+	public DerivedProposal withDerivedSources(List<DerivedSource> sources)
+	{
+		return new DerivedProposal(contract, sources, scopeConditions, conflicts, observedSources, derivation,
+			citedScenarios);
 	}
 }

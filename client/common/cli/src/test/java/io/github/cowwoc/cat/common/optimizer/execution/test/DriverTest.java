@@ -61,6 +61,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
@@ -5107,6 +5108,12 @@ public final class DriverTest
 			public Optional<String> findHeldOutExposure(Path project) throws IOException
 			{
 				return delegate.findHeldOutExposure(project);
+			}
+
+			@Override
+			public List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin) throws IOException
+			{
+				return delegate.derivedSources(project, plugin);
 			}
 		};
 	}

@@ -61,7 +61,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
-import io.github.cowwoc.cat.common.optimizer.proposal.DerivedSource;
+import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
@@ -464,8 +464,8 @@ public final class OptimizerCore implements Core
 		DerivedProposal current;
 		try
 		{
-			current = contractAuthor.proposal(stored.derivation(), stored.observedSources(), stored.profiles(),
-				stored.salt());
+			current = stored.restore(contractAuthor.proposal(stored.derivation(), stored.observedSources(),
+				stored.profiles(), stored.salt()));
 		}
 		catch (InvalidProposalException e)
 		{
@@ -1213,6 +1213,7 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, "The contract author's proposal is invalid: " +
 				String.join("; ", e.problems()) + ". " + invalidRetry);
 		}
+		derived = derived.withDerivedSources(scope.sessions().derivedSources(root, derived.contract().plugin()));
 		new ProposalFile(heldOutDirectory(root, campaign.header().id()), scope.json()).write(derived, profiles);
 		return present(root, store, campaign, fork, derived);
 	}
@@ -1442,8 +1443,8 @@ public final class OptimizerCore implements Core
 			return Optional.empty();
 		try
 		{
-			return Optional.of(contractAuthor(root, campaign).proposal(stored.get().derivation(),
-				stored.get().observedSources(), stored.get().profiles(), stored.get().salt()));
+			return Optional.of(stored.get().restore(contractAuthor(root, campaign).proposal(stored.get().derivation(),
+				stored.get().observedSources(), stored.get().profiles(), stored.get().salt())));
 		}
 		catch (InvalidProposalException e)
 		{
