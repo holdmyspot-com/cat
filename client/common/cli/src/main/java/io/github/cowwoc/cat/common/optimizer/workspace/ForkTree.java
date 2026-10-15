@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
@@ -504,7 +505,7 @@ public final class ForkTree
 	void writeFile(Overlay candidate, Path key, RegularFile file, Path location) throws IOException
 	{
 		Files.write(location, readFile(candidate, key).bytes());
-		Files.setPosixFilePermissions(location, file.permissions());
+		PortableFiles.setMode(location, file.permissions());
 	}
 
 	/**

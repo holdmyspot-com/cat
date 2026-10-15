@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace.test;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkTree;
@@ -60,7 +61,7 @@ final class ProjectFixtures
 	{
 		Files.createDirectories(file.getParent());
 		Files.writeString(file, text, UTF_8);
-		Files.setPosixFilePermissions(file, permissions);
+		PortableFiles.setMode(file, permissions);
 		return file;
 	}
 

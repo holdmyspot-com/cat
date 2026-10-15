@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
@@ -186,6 +187,6 @@ public final class InventoryScanner
 				digest.update(buffer, 0, count);
 			}
 		}
-		return new RegularFile(Sha256.of(digest), Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS));
+		return new RegularFile(Sha256.of(digest), PortableFiles.mode(path));
 	}
 }

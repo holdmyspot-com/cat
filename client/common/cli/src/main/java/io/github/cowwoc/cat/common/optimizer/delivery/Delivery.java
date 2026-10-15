@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.delivery;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
@@ -50,7 +51,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.PosixFileAttributes;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -531,10 +532,10 @@ public final class Delivery
 	 */
 	private static Optional<FileEntry> liveState(Path file) throws IOException
 	{
-		PosixFileAttributes attributes;
+		BasicFileAttributes attributes;
 		try
 		{
-			attributes = Files.readAttributes(file, PosixFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+			attributes = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
 		}
 		catch (NoSuchFileException _)
 		{
@@ -542,7 +543,7 @@ public final class Delivery
 		}
 		if (!attributes.isRegularFile())
 			return Optional.of(new SpecialFile());
-		return Optional.of(new RegularFile(Sha256.of(Files.readAllBytes(file)), attributes.permissions()));
+		return Optional.of(new RegularFile(Sha256.of(Files.readAllBytes(file)), PortableFiles.mode(file)));
 	}
 
 	/**
@@ -565,7 +566,7 @@ public final class Delivery
 			case Delete _ ->
 			{
 				Files.delete(file);
-				force(file.getParent());
+				PortableFiles.forceDirectory(file.getParent());
 			}
 		}
 	}
@@ -587,15 +588,15 @@ public final class Delivery
 		Files.write(temporary, content.bytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
 			StandardOpenOption.WRITE);
 		force(temporary);
-		Files.setPosixFilePermissions(temporary, permissions);
+		PortableFiles.setMode(temporary, permissions);
 		Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-		force(file.getParent());
+		PortableFiles.forceDirectory(file.getParent());
 	}
 
 	/**
-	 * Forces a file or directory to the storage device.
+	 * Forces a file to the storage device.
 	 *
-	 * @param path the file or directory
+	 * @param path the file
 	 * @throws IOException if it cannot be forced
 	 */
 	private static void force(Path path) throws IOException

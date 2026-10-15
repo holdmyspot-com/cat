@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.optimizer.CodexProfileInventory;
 import io.github.cowwoc.cat.codex.optimizer.CodexSessions;
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
@@ -67,7 +68,7 @@ public final class CodexJudgeVersionTest
 			Files.writeString(source.resolve("README.md"), "Before\n", UTF_8);
 			Files.writeString(effects.resolve("README.md"), "After\n", UTF_8);
 			for (Path file : List.of(source.resolve("README.md"), effects.resolve("README.md")))
-				Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-r--r--"));
+				PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
 
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
 				root, HarnessCapacity.unlimited(), Clock.systemUTC());

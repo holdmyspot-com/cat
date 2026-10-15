@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace.test;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
@@ -179,6 +180,6 @@ public final class ContractWorkspace implements WorkspaceContract.Subject
 	private static void write(Path file, String content) throws IOException
 	{
 		Files.writeString(file, content, UTF_8);
-		Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-r--r--"));
+		PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
 	}
 }

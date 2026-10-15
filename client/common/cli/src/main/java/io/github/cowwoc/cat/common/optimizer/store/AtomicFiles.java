@@ -3,9 +3,10 @@ package io.github.cowwoc.cat.common.optimizer.store;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static java.nio.file.StandardOpenOption.CREATE;
-import static java.nio.file.StandardOpenOption.READ;
 import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 import static java.nio.file.StandardOpenOption.WRITE;
+
+import io.github.cowwoc.cat.common.PortableFiles;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -98,9 +99,6 @@ final class AtomicFiles
 	 */
 	private static void force(Path directory) throws IOException
 	{
-		try (FileChannel channel = FileChannel.open(directory, READ))
-		{
-			channel.force(true);
-		}
+		PortableFiles.forceDirectory(directory);
 	}
 }

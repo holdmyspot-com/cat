@@ -6,6 +6,7 @@ import static io.github.cowwoc.cat.common.optimizer.inventory.test.Inventories.f
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
@@ -125,7 +126,7 @@ public final class InventoryScannerTest
 	{
 		Files.createDirectories(path.getParent());
 		Files.writeString(path, text, UTF_8);
-		Files.setPosixFilePermissions(path, permissions);
+		PortableFiles.setMode(path, permissions);
 		return path;
 	}
 }

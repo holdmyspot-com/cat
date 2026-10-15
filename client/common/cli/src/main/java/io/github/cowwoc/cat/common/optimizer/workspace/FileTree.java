@@ -4,6 +4,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
@@ -70,7 +71,7 @@ final class FileTree
 				else if (attributes.isRegularFile())
 				{
 					Files.copy(file, copy, REPLACE_EXISTING);
-					Files.setPosixFilePermissions(copy, Files.getPosixFilePermissions(file, NOFOLLOW_LINKS));
+					PortableFiles.setMode(copy, PortableFiles.mode(file));
 				}
 				return FileVisitResult.CONTINUE;
 			}
