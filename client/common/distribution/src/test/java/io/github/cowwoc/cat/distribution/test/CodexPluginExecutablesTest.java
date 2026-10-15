@@ -49,6 +49,7 @@ public final class CodexPluginExecutablesTest
 		{
 			{"bin/read-part"},
 			{"bin/run-part"},
+			{"bin/run-part-overrides/rg"},
 			{"hooks/post-tool-use.sh"}
 		};
 	}

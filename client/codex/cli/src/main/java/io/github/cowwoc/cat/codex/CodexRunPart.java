@@ -26,6 +26,10 @@ import java.util.Map;
  * the last part, {@code run-part} or {@code read-part}, exits with that status; a part that more parts follow exits
  * with status 0. The output stays inside the project: it is saved in the CAT temporary folder, {@code .cat/work/temp},
  * of the nearest folder that holds one, starting from the folder that the command runs in.
+ * <p>
+ * The command finds the plugin's {@code bin/run-part-overrides} folder first on its {@code PATH} and receives the saved
+ * output's path in {@code CAT_RUN_PART_OUTPUT}. A program in that folder, such as {@code rg}, keeps output that it
+ * writes straight into that file small enough for the agent that reads it, and leaves other output unchanged.
  */
 public final class CodexRunPart
 {
@@ -38,6 +42,11 @@ public final class CodexRunPart
 	 * The CAT temporary folder relative to a project folder. The session-start hook creates it in the session's project.
 	 */
 	private static final Path CAT_TEMP = Path.of(".cat/work/temp");
+	/**
+	 * The folder, next to the {@code read-part} launcher, of the programs that the command finds before the caller's
+	 * {@code PATH}.
+	 */
+	private static final String OVERRIDES = "run-part-overrides";
 
 	/**
 	 * Runs {@code run-part}.
@@ -64,10 +73,12 @@ public final class CodexRunPart
 	 * @param terminal {@code true} if {@code input} is a terminal, which holds no command
 	 * @param workingDirectory the folder that the command runs in; the output is saved in the CAT temporary folder of
 	 *   the nearest folder that holds one, starting from this folder
-	 * @param readPart the {@code read-part} launcher that the line that ends a part names
+	 * @param readPart the {@code read-part} launcher that the line that ends a part names; its folder holds the
+	 *   {@code run-part-overrides} folder
 	 * @param environment the environment: when no folder from {@code workingDirectory} upward holds a CAT temporary
 	 *   folder, {@code TMPDIR} names the folder of the saved output, which is {@code /tmp} when it is unset; the command
-	 *   runs in this environment with the caller's locale restored
+	 *   runs in this environment with the caller's locale restored, the overrides folder first on a set {@code PATH},
+	 *   and {@code CAT_RUN_PART_OUTPUT} naming the saved output
 	 * @param output receives the part
 	 * @param error receives diagnostics
 	 * @return the exit status of {@code read-part}, 1 if the command cannot be run, or 2 for a usage error
@@ -103,6 +114,10 @@ public final class CodexRunPart
 			Map<String, String> childEnvironment = builder.environment();
 			childEnvironment.clear();
 			childEnvironment.putAll(callerEnvironment(environment));
+			childEnvironment.put("CAT_RUN_PART_OUTPUT", saved.toString());
+			String path = childEnvironment.get("PATH");
+			if (path != null)
+				childEnvironment.put("PATH", readPart.resolveSibling(OVERRIDES) + File.pathSeparator + path);
 			int status = builder.start().waitFor();
 			Files.writeString(Path.of(saved + ".exit-status"), status + "\n");
 			return CodexReadPart.run(new String[]{saved.toString()}, readPart, environment, output, error);

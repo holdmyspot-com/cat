@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Runs ripgrep for a command that run-part runs. run-part puts this folder first on the command's PATH and names the
+# file that saves the command's output in CAT_RUN_PART_OUTPUT. When ripgrep writes straight into that file, which the
+# agent reads, a search that matches long lines or too many lines would fill the agent's context, so this script cuts
+# each line to its first 500 bytes and, when the output passes the line limit, prints none of it and fails instead,
+# telling the agent to narrow the search. Output that goes anywhere else, such as a pipe or a file that the command
+# names, is ripgrep's own.
+set -u
+
+# The longest line, in bytes, that the agent receives whole; a longer line keeps its first 500 bytes
+readonly LINE_WIDTH=500
+# The most lines that the agent receives from one search unless CAT_RG_LINE_LIMIT sets another limit; 0 means no limit
+readonly DEFAULT_LINE_LIMIT=250
+
+overrides=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+ripgrep=""
+IFS=: read -r -a folders <<<"${PATH}"
+for folder in "${folders[@]}"; do
+	if [[ -z "${folder}" || "${folder}" -ef "${overrides}" ]]; then
+		continue
+	fi
+	if [[ -x "${folder}/rg" ]]; then
+		ripgrep="${folder}/rg"
+		break
+	fi
+done
+if [[ -z "${ripgrep}" ]]; then
+	echo "rg: command not found" >&2
+	exit 127
+fi
+
+if [[ -z "${CAT_RUN_PART_OUTPUT:-}" ]] || ! [[ /dev/stdout -ef "${CAT_RUN_PART_OUTPUT}" ]]; then
+	exec "${ripgrep}" "$@"
+fi
+# Help and version output are not search results
+for argument in "$@"; do
+	case "${argument}" in
+		--) break ;;
+		-h | --help | -V | --version | --type-list) exec "${ripgrep}" "$@" ;;
+	esac
+done
+
+limit="${CAT_RG_LINE_LIMIT:-${DEFAULT_LINE_LIMIT}}"
+if ! [[ "${limit}" =~ ^[0-9]+$ ]]; then
+	echo "rg: CAT_RG_LINE_LIMIT must be a whole number of lines, or 0 for no limit, but was: ${limit}" >&2
+	exit 2
+fi
+if ((limit == 0)); then
+	exec "${ripgrep}" "--max-columns=${LINE_WIDTH}" --max-columns-preview "$@"
+fi
+
+# awk holds the lines until the output ends, so that it prints nothing when the output passes the limit. Exiting early
+# stops ripgrep at its next write.
+readonly HOLD_LINES="NR > limit { exit 1 }
+	{ lines[NR] = \$0 }
+	END { if (NR <= limit) for (i = 1; i <= NR; ++i) print lines[i] }"
+"${ripgrep}" "--max-columns=${LINE_WIDTH}" --max-columns-preview "$@" | awk -v limit="${limit}" "${HOLD_LINES}"
+statuses=("${PIPESTATUS[@]}")
+if ((statuses[1] != 0)); then
+	echo "rg: the search produced more than ${limit} lines, so none are shown. Run it again with a more specific" \
+		"pattern, a narrower path, or a --glob filter. To show every line, put CAT_RG_LINE_LIMIT=0 before rg." >&2
+	exit 2
+fi
+exit "${statuses[0]}"

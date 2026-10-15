@@ -373,7 +373,8 @@ public final class DistributionMain
 
 	/**
 	 * Returns the layer of the Codex plugin's own resources, including the launchers that the Codex read-file rule tells
-	 * agents to run and the launcher of the PostToolUse hook.
+	 * agents to run, the programs that commands run by {@code run-part} find first, and the launcher of the PostToolUse
+	 * hook.
 	 *
 	 * @param jar the Codex plugin resource JAR
 	 * @return the layer
@@ -381,7 +382,7 @@ public final class DistributionMain
 	static ArtifactLayer codexPluginLayer(Path jar)
 	{
 		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("bin/read-part", "bin/run-part",
-			"hooks/post-tool-use.sh"));
+			"bin/run-part-overrides/rg", "hooks/post-tool-use.sh"));
 	}
 
 	/**

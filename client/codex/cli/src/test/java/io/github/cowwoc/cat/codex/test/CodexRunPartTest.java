@@ -159,6 +159,30 @@ public final class CodexRunPartTest
 	}
 
 	/**
+	 * Verifies that the command finds the plugin's {@code run-part} overrides before the caller's {@code PATH} and is
+	 * told which file saves its output, so that an override can tell whether it writes straight into that file.
+	 *
+	 * @throws IOException if the temporary folder cannot be created
+	 */
+	@Test
+	public void commandFindsOverridesFirst() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "PATH", "/usr/bin:/bin");
+
+			Call call = runPart("printf '%s|%s\\n' \"$PATH\" \"${CAT_RUN_PART_OUTPUT-unset}\"", false, OUTSIDE_PROJECT,
+				environment);
+
+			Matcher lastPart = LAST_PART.matcher(call.output());
+			requireThat(lastPart.find(), "lastPart").isTrue();
+			requireThat(call.output(), "output").isEqualTo("/plugin/bin/run-part-overrides:/usr/bin:/bin|" +
+				lastPart.group("path") + "\n[End of " + lastPart.group("path") + "]\n");
+		}
+	}
+
+	/**
 	 * Verifies that a call without a command prints how to use {@code run-part} and saves nothing.
 	 *
 	 * @throws IOException if the temporary folder cannot be created or listed
