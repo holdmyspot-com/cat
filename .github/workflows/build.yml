@@ -49,6 +49,13 @@ jobs:
       - name: Install test tools on macOS
         if: runner.os == 'macOS'
         run: brew install bats-core shellcheck
+      - name: Show how stat sees a redirected standard output
+        if: runner.os == 'macOS'
+        run: |
+          bash --version | head -1
+          f="$RUNNER_TEMP/out.txt"
+          bash -c 'stat -L -f "dev/stdout %d:%i %HT" /dev/stdout >&2; { stat -f "fd %d:%i %HT" 0<&4 >&2; } 4>&1; [[ /dev/stdout -ef "$1" ]] && echo "-ef true" >&2 || echo "-ef false" >&2' _ "$f" > "$f"
+          stat -f "file %d:%i %HT" "$f"
       - name: Verify
         run: client/mvnw -f client/pom.xml verify
       # The job log names a failing module but not why its tests could not run; the reports and dump files hold that.
