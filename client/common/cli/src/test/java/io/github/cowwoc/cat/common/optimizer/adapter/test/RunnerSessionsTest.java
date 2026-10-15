@@ -162,7 +162,36 @@ public final class RunnerSessionsTest
 	private static SessionResult await(SessionHandle handle)
 		throws InterruptedException, ExecutionException, TimeoutException
 	{
-		return handle.completion().toCompletableFuture().get(60, TimeUnit.SECONDS);
+		try
+		{
+			return handle.completion().toCompletableFuture().get(60, TimeUnit.SECONDS);
+		}
+		catch (TimeoutException e)
+		{
+			// Only the Windows CI runner has been seen to hang here, so the report shows where every thread waited
+			TimeoutException timeout = new TimeoutException("The session did not end within 60 seconds. Threads:\n" +
+				describeThreads());
+			timeout.initCause(e);
+			throw timeout;
+		}
+	}
+
+	/**
+	 * Returns the name, state and stack trace of every live thread.
+	 *
+	 * @return the description
+	 */
+	private static String describeThreads()
+	{
+		StringBuilder description = new StringBuilder();
+		for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet())
+		{
+			description.append('"').append(entry.getKey().getName()).append("\" ").
+				append(entry.getKey().getState()).append('\n');
+			for (StackTraceElement frame : entry.getValue())
+				description.append("\tat ").append(frame).append('\n');
+		}
+		return description.toString();
 	}
 
 	/**
