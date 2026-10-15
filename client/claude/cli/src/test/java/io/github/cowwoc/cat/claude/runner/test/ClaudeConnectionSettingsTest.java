@@ -246,8 +246,37 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
 				isEqualTo(List.of("/secrets", snapshot.toString(), trials.toString()));
 			requireThat(strings(result.path("permissions").path("deny")), "deny").isEqualTo(List.of(
-				"Read(//secrets/**)", "Read(/" + snapshot + ")", "Read(/" + trials + "/**)"));
+				"Read(//secrets/**)", "Read(/" + ClaudeConnectionSettings.rulePath(snapshot) + ")",
+				"Read(/" + ClaudeConnectionSettings.rulePath(trials) + "/**)"));
 		}
+	}
+
+	/**
+	 * Verifies that a permission rule names an absolute path in the form that Claude Code matches rules against on
+	 * every platform: a leading {@code /} followed by the path's names, separated by {@code /}.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void rulePathsUseSlashes() throws IOException
+	{
+		// Requirement: R-E24
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-rule-path-"));
+			String result = ClaudeConnectionSettings.rulePath(root.resolve("trials").resolve("one.json"));
+			requireThat(result, "result").startsWith("/").endsWith("/" + root.getFileName() + "/trials/one.json").
+				doesNotContain("\\");
+		}
+	}
+
+	/**
+	 * Verifies that a relative path is rejected, because a rule names an absolute path.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void rulePathRejectsRelativePath()
+	{
+		ClaudeConnectionSettings.rulePath(Path.of("trials"));
 	}
 
 	/**
@@ -274,7 +303,7 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
 				isEqualTo(List.of(snapshot.toString()));
 			requireThat(strings(result.path("permissions").path("deny")), "deny").
-				isEqualTo(List.of("Read(/" + snapshot + ")"));
+				isEqualTo(List.of("Read(/" + ClaudeConnectionSettings.rulePath(snapshot) + ")"));
 		}
 	}
 

@@ -1,6 +1,9 @@
 package io.github.cowwoc.cat.claude.runner;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import io.github.cowwoc.cat.common.BoundedInput;
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.runner.HarnessEnvironment;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 
@@ -177,8 +180,30 @@ public final class ClaudeConnectionSettings
 				descendants = "/**";
 			else
 				descendants = "";
-			permissionDenials.add("Read(/" + deniedRead + descendants + ")");
+			permissionDenials.add("Read(/" + rulePath(deniedRead) + descendants + ")");
 		}
+	}
+
+	/**
+	 * Returns the form in which a permission rule names an absolute path. Claude Code converts a Windows path to the
+	 * form it has on POSIX file systems before matching it against a rule, so that {@code C:\Users\alice} becomes
+	 * {@code /c/Users/alice}.
+	 *
+	 * @param path an absolute path
+	 * @return the path that a rule names, starting with {@code /} and separating names with {@code /}
+	 * @throws NullPointerException     if {@code path} is null
+	 * @throws IllegalArgumentException if {@code path} is relative
+	 */
+	public static String rulePath(Path path)
+	{
+		requireThat(path, "path").isAbsolute();
+		String root = path.getRoot().toString();
+		if (root.equals("/"))
+			return path.toString();
+		String names = PortablePaths.text(path.getRoot().relativize(path));
+		if (root.length() >= 2 && root.charAt(1) == ':')
+			return "/" + Character.toLowerCase(root.charAt(0)) + "/" + names;
+		return root.replace('\\', '/') + names;
 	}
 
 	/**

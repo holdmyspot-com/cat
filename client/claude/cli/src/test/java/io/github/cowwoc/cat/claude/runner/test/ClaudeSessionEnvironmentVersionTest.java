@@ -17,6 +17,8 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.testng.annotations.Test;
 
 /**
@@ -72,12 +74,29 @@ public final class ClaudeSessionEnvironmentVersionTest
 				claudeTemporaryDirectory.resolve("home"), List.of(deniedFile, deniedDirectory));
 
 			// Run directories differ per run, so the hash covers the settings with their root replaced
-			String settings = Files.readString(destination, UTF_8).replace(root.toString(), "<root>");
+			String settings = replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root);
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(root, root, List::of, "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			int version = new ClaudeSessions(sessionSettings).sessionEnvironmentVersion();
 			VersionRegistry.requireRegistered(REGISTRY, "session environment", version,
 				VersionRegistry.hash(settings));
 		}
+	}
+
+	/**
+	 * Replaces each path below a root in the settings with {@code <root>} followed by the path's names, separated by
+	 * {@code /}, so that every platform hashes the same content.
+	 *
+	 * @param settings the settings
+	 * @param root     the root, which the settings name inside JSON strings that escape each backslash, or in the
+	 *                 form that a permission rule names it
+	 * @return the settings with the root replaced
+	 */
+	private static String replaceRoot(String settings, Path root)
+	{
+		String escaped = root.toString().replace("\\", "\\\\");
+		String result = Pattern.compile(Pattern.quote(escaped) + "([^\"]*)").matcher(settings).
+			replaceAll(match -> Matcher.quoteReplacement("<root>" + match.group(1).replace("\\\\", "/")));
+		return result.replace(ClaudeConnectionSettings.rulePath(root), "<root>");
 	}
 }
