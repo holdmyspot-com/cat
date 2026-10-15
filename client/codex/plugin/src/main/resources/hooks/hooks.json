@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${PLUGIN_ROOT}/hooks/session-start.sh",
-            "commandWindows": "\"${PLUGIN_ROOT}\\hooks\\session-start.cmd\"",
+            "command": "\"${PLUGIN_ROOT}/hooks/session-start.sh\"",
+            "commandWindows": "& \"${PLUGIN_ROOT}\\hooks\\session-start.cmd\"",
             "additionalContextLimit": 0
           }
         ]
@@ -19,8 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${PLUGIN_ROOT}/hooks/post-tool-use.sh",
-            "commandWindows": "\"${PLUGIN_ROOT}\\hooks\\post-tool-use.cmd\""
+            "command": "\"${PLUGIN_ROOT}/hooks/post-tool-use.sh\"",
+            "commandWindows": "& \"${PLUGIN_ROOT}\\hooks\\post-tool-use.cmd\""
           }
         ]
       }
@@ -30,8 +30,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${PLUGIN_ROOT}/hooks/subagent-start.sh",
-            "commandWindows": "\"${PLUGIN_ROOT}\\hooks\\subagent-start.cmd\"",
+            "command": "\"${PLUGIN_ROOT}/hooks/subagent-start.sh\"",
+            "commandWindows": "& \"${PLUGIN_ROOT}\\hooks\\subagent-start.cmd\"",
             "additionalContextLimit": 0
           }
         ]

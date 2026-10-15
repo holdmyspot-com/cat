@@ -5,6 +5,7 @@ module io.github.cowwoc.cat.distribution.test
 	requires io.github.cowwoc.requirements13.java;
 	requires org.apache.commons.compress;
 	requires org.testng;
+	requires tools.jackson.databind;
 
 	exports io.github.cowwoc.cat.distribution.bundle.test to org.testng;
 	exports io.github.cowwoc.cat.distribution.license.test to org.testng;
