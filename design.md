@@ -147,7 +147,9 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Held-out part | The test cases of each prompt test that only formal trials, control trials of an attempt and the incumbent's baseline trials draw. No session that shapes a candidate sees them ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Fixture | A file in a prompt test's `fixtures/` directory. CAT copies it into each trial's workspace, replacing each variable in its name and content with the test case's value ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Value generator | A function built into CAT that expands a seed and parameters, such as a line count, into fixture text, giving the same bytes on every machine ([§6.3](#63-prompt-tests-and-test-cases)). |
-| Values file | The committed `values.json` beside a scenario, which holds its test cases' values and expected outcomes. Delivery writes it at the end of a campaign ([§4.7](#47-delivery)). |
+| Values file | The committed `values.json` beside a scenario, which holds its test cases' values and expected outcomes. Delivery writes it at the end of a campaign ([§4.7](#47-delivery)). In a draft directory it also holds the contract author's new test cases. |
+| Draft directory | A new directory that CAT creates for each contract author session, holding a copy of every recorded prompt test of the target. The session edits those copies and creates its new prompt tests there, and delivery writes the confirmed ones ([§6.1](#61-derivation-and-confirmation)). |
+| Contract tools | The commands that CAT gives a contract author session for work that needs no judgment, such as validating its draft or measuring a test case's fixtures ([§6.1](#61-derivation-and-confirmation)). |
 | Reply | Every assistant message the trial agent sends during one turn, in order: its interim messages, such as a progress note before a tool call, and its final response (D29). |
 | Built-in tool | A tool that ships with CAT and decides one assertion from the trial record without a model. An assertion names it in its `tool` key, and its `on_tool_failure` key says whether a failure of the tool fails the trial or leaves the assertion to the judge ([§6.4](#64-judge)). |
 | Trial record | The normalized record of one trial that CAT builds from the harness events and the trial's file changes. Built-in tools read it, and the judge receives it as its evidence section ([§6.4](#64-judge)). |
@@ -575,16 +577,18 @@ checkpoint.
 
 **Test revision (user rulings, 2026-10-13).** For each prompt test with a *test defect* kind, CAT starts a test
 revision: a contract author session that receives the confirmed contract, the user's goal, the prompt test, the kind
-with its failing test cases and their evidence, and the prompt author's reasons. The session rewrites the prompt test
-so that it keeps every test design rule of [§6.3](#63-prompt-tests-and-test-cases) and proves the same requirements,
-or reports that the test is sound, with its reasons. The user confirmed the requirements, and choosing how to test them
-is the contract author's work, so a revision that keeps them needs no confirmation. CAT validates the revised contract
-as it validates a proposal ([§6.1](#61-derivation-and-confirmation)), refuses one whose requirements differ from the
-confirmed ones, gives the revised prompt test new test cases in both parts, and reruns the guard pilot for it. The
-revised contract starts a new lineage ([§7](#7-campaign-lifecycle)); a certification attempt that is running ends
-`not certified: stopped for test revision`, and the certification index and the spent allowance carry on. The progress
-summary and the report show each revision as a difference from the earlier scenario, with its reasons. A report that
-the test is sound returns the kind to the next round, which classifies it as *routing* or *guidance*.
+with its failing test cases and their evidence, and the prompt author's reasons. The session rewrites the prompt test's
+directory in a draft directory that holds a copy of it, with the contract tools
+([§6.1](#61-derivation-and-confirmation)), so that it keeps every test design rule of
+[§6.3](#63-prompt-tests-and-test-cases) and proves the same requirements, or reports that the test is sound, with its
+reasons. The user confirmed the requirements, and choosing how to test them is the contract author's work, so a revision
+that keeps them needs no confirmation. CAT validates the revised contract as it validates a proposal
+([§6.1](#61-derivation-and-confirmation)), refuses one whose requirements differ from the confirmed ones, gives the
+revised prompt test new test cases in both parts, and reruns the guard pilot for it. The revised contract starts a new
+lineage ([§7](#7-campaign-lifecycle)); a certification attempt that is running ends `not certified: stopped for test
+revision`, and the certification index and the spent allowance carry on. The progress summary and the report show each
+revision as a difference from the earlier scenario, with its reasons. A report that the test is sound returns the kind
+to the next round, which classifies it as *routing* or *guidance*.
 
 The workflow tunes the prompt system by itself and asks the user only when it cannot make progress. CAT pauses the
 campaign for the user's choice, as for a conflict, when a test revision reports that no prompt test within the test
@@ -1074,8 +1078,8 @@ Campaign data lives under `<base>/.cat/work/optimizer/<campaign-id>/`:
 - the held-out directory `held-out/` ([§6.3](#63-prompt-tests-and-test-cases)), holding:
   - `campaign.json`: a compact snapshot holding identities, the frozen contract and procedure, `(S, F)` per candidate
     and cell, each control and incumbent comparison's pair counts, allocation positions, and pending decisions;
-  - the latest proposal, including its derived prompt sources, its prompt tests and every test case's values and
-    expected outcome, and the salt of the split;
+  - the latest proposal, including its derived prompt sources, its draft directory with its prompt tests and every
+    test case's values and expected outcome, and the salt of the split;
   - the guard pilot's trial records;
   - one record file per logical trial;
 - candidate overlays, and staged sources, which are caches: CAT deletes a staged source once its snapshot is no longer
@@ -1180,13 +1184,27 @@ candidate changes. The confirmed contract therefore names one plugin under test 
 
 - **Plugin root:** a project directory that holds the harness's plugin manifest (`.codex-plugin/plugin.json` or
   `.claude-plugin/plugin.json`). The plugin copy is that directory of the staged source.
-- **Built plugin:** a built plugin directory, the **base**, and the **mappings** from project source directories to
-  directories of the plugin. A mapped source file reaches the plugin at its mapped path unchanged. CAT copies the base
-  into campaign storage when the user confirms, and the plugin copy of a staged source is that base copy with every
-  mapped file of the staged source written over its mapped path.
+- **Built plugin:** a built plugin directory, the **base**, and the **mappings** from project source directories or
+  files to directories or files of the plugin. A mapped source file reaches the plugin at its mapped path unchanged.
+  CAT copies the base into campaign storage when the user confirms, and the plugin copy of a staged source is that base
+  copy with every mapped file of the staged source written over its mapped path.
 
-CAT refuses a contract that maps a source file to a path that the base does not hold, or whose in-project prompt
-files lie in more than one plugin. A mapped file whose content differs from the base's is a warning, because the base
+**Deriving the plugin under test (user ruling, 2026-10-15).** Which plugin holds the target, and where the build puts
+each file, follows from comparing files, so CAT works it out before the contract author starts and the author never
+reads the build ([§6.1](#61-derivation-and-confirmation)):
+
+1. A project directory that holds the target, at any depth, and a plugin manifest makes the plugin a plugin root.
+2. Otherwise the base is the plugin installed in the user's harness home that holds, byte for byte, the most of the
+   prompt system's in-project files. When no installed plugin holds any of them, the target is in no plugin.
+3. CAT maps a project directory to the base directory that holds a file at every one of its files' relative paths,
+   choosing the one where the most of them are identical. When no base directory holds all of them, as when the build
+   places a directory's files in different plugin directories, CAT maps each of its files on its own to the base path
+   that holds an identical copy.
+4. A participating in-project prompt file that no mapping covers, such as one that the build transforms, is listed in
+   the proposal, because a candidate's edit to it would not reach trials.
+
+CAT refuses a contract whose in-project prompt files lie in more than one plugin. A mapped file whose content differs
+from the base's is a warning, because the base
 may predate the source or its build may transform the file; trials load the source's content. Each trial installs the
 plugin copy of its staged source into the trial's harness home under the plugin's own name, and the trial's project
 copy keeps the project's own files. The runner reuses the user's existing approvals of the plugin's hooks, as it does
@@ -1194,8 +1212,9 @@ for CAT's. A Codex hook that the user has not approved does not run in trials, a
 limitation. Claude Code runs every hook of an installed plugin without an approval, so its proposals list none.
 
 A trial installs CAT only when the plugin under test depends on it: its manifest declares the dependency, or its prompt
-files invoke CAT's skills, agents or commands or name CAT's plugin directory. The contract author proposes the
-dependency with that evidence and the user confirms it. Without CAT, neither the project's nor the user's CAT rules load
+files invoke CAT's skills, agents or commands or name CAT's plugin directory. CAT reads the manifest and searches the
+plugin's prompt files for those names itself, and the proposal shows each match as the dependency's evidence for the
+user to confirm. Without CAT, neither the project's nor the user's CAT rules load
 in trials, as for the plugin's users who do not install CAT. Mappings copy files unchanged, so a prompt file that the
 build generates or compiles cannot be a target.
 
@@ -1396,11 +1415,64 @@ inspects the prompt system and proposes the complete contract. Loading follows p
 behaviour: CAT observes loading where the harness exposes it (premise P9), and otherwise derives it from the harness's
 documented loading rules and CAT's rule loader, recording that limit. Both harnesses expose hook runs, and Claude
 exposes its skill and command inventory; no harness names the instruction files it loaded, so those are derived (H21).
-CAT lists the derived files itself when the contract author finishes, from the plugin under test that the proposal
-names; the contract author does not list them. The contract author's request already lists the files that load in
-production with the rule that loads each, so the author neither works out the loading rules nor reads CAT's
-implementation; CAT's validation reports what the proposal must change.
-Aggregate counts never stand in for the items themselves. The proposal lists:
+CAT lists the derived files itself when the contract author finishes, from the plugin under test; the contract author
+does not list them. The contract author's request already lists the files that load in production with the rule that
+loads each, so the author neither works out the loading rules nor reads CAT's implementation; CAT's validation reports
+what the proposal must change.
+
+**Prompt tests as files (user ruling, 2026-10-15).** Each part of a contract is written once, in the form that outlives
+the campaign. A prompt test outlives it as its directory ([§6.3](#63-prompt-tests-and-test-cases)), so the contract
+author writes prompt tests as files rather than restating them in the proposal. Before the session starts, CAT creates
+a new draft directory and copies into it, at their test paths, the directory of every recorded prompt test of the
+target: its scenario, `fixtures/` and values file. The author edits those copies, converting a scenario in an earlier
+format in place, and creates each new prompt test as a new directory. It adds each new test case to the prompt test's
+values file without a seed; CAT gives it one when it validates the proposal. The proposal file holds only what belongs
+to this contract and to no prompt test:
+
+- the requirements, each with its source, trigger and behaviors;
+- for each prompt test, its directory in the draft directory, its risk rank, the requirements it proves, the
+  requirements whose trigger it leaves absent, its applicability, the requirement that each assertion checks, and any
+  interaction it cannot cover;
+- the minimum pass rate, the judge's rubric and decision rule, the dependents, the conflicts, the limitations and the
+  ignored paths needed as trial fixtures.
+
+A recorded prompt test that the author leaves unchanged therefore costs it nothing to carry, and the user reviews the
+same files that delivery writes ([§4.7](#47-delivery)). The draft directory lies in the contract author's run
+directory. When the session ends, CAT moves it into the held-out directory with the proposal ([§4.1](#41-storage)),
+because its values files hold expected outcomes of both parts. A revision's draft directory starts as a copy of the
+latest proposal's.
+
+The request names the draft directory and the proposal file, so the author writes each file once it settles it, in the
+turn that inspects the prompt system, instead of ending an inspection turn and writing everything in a second one. A
+session that reaches its time limit leaves the files it finished for diagnosis.
+
+**Contract tools (user ruling, 2026-10-15).** Work that needs no judgment is CAT's, not the contract author's. CAT does
+the work that every proposal needs before the session starts, and puts the result in the request:
+
+- the files that load in production, with the rule that loads each (above);
+- the plugin under test, with its dependency on CAT and that dependency's evidence ([§4.4](#44-trial-staging));
+- every hook registration of the prompt system and of the plugin under test, with its event, matcher and command, from
+  which the author chooses the dependents;
+- the draft directory with the recorded prompt tests (above).
+
+Work on what the author is drafting is a contract tool, a command that the request names by its absolute path:
+
+- `contract check` applies to the proposal file and the draft directory, as they stand, every validation that CAT
+  applies when the session ends, and prints every problem at once with its file and line or its JSON path. It also
+  prints each prompt test's number of distinct expected outcomes. It does not split them into parts, so that the author
+  cannot tell which of its test cases are held out; CAT checks the split when the session ends
+  ([§6.3](#63-prompt-tests-and-test-cases)).
+- `contract fixtures` writes one test case's workspace files into a directory that the author names: the fixtures that
+  the prompt test's patterns select, with the case's values in place of the placeholders and its generator calls
+  expanded. It prints each file's path, size in bytes and line count, and how its size compares with the tool-output
+  limit of each trial profile of the prompt test, so the author can size a fixture just over a limit without reading
+  the harness's or CAT's implementation.
+
+The author still decides everything that needs judgment: the requirements, the prompt tests and their content, the
+test cases' values and expected outcomes, the dependents, the conflicts, the limitations, and the judge's rubric and
+decision rule.
+
+Aggregate counts never stand in for the items themselves. The proposal that CAT presents lists:
 
 - every requirement and its source, including files reached through links and readable files outside the project. With a
   goal, the contract author first derives the requirements that the goal asks for, each an observable outcome rather
@@ -1426,9 +1498,9 @@ Aggregate counts never stand in for the items themselves. The proposal lists:
 - the judge's rubric and decision rule;
 - the target prompt file that the control source empties, and each dependent it removes with the target instruction
   that the dependent serves ([§4.4](#44-trial-staging));
-- the plugin under test, if any: its plugin root, or its base and mappings with each mapped file whose content differs
-  from the base's; its hooks that the user has not approved; and whether trials install CAT, with the evidence that the
-  plugin depends on CAT or the statement that none was found ([§4.4](#44-trial-staging));
+- the plugin under test, if any, as CAT derived it: its plugin root, or its base and mappings with each participating
+  project file that no mapping covers; its hooks that the user has not approved; and whether trials install CAT, with
+  the evidence that the plugin depends on CAT or the statement that none was found ([§4.4](#44-trial-staging));
 - the guard pilot's results (below);
 - ignored paths needed as trial fixtures;
 - the statistical procedure: the joint budget, bets, caps for the first attempts, the commit gate, the review
@@ -1471,14 +1543,16 @@ CAT, not the contract author, does these things:
 
 - adds the expected-outcome assertion to every prompt test ([§6.3](#63-prompt-tests-and-test-cases));
 - computes the profile sets;
-- sends the contract author the recorded regression scenarios of the target prompt file, and only those, and refuses a
-  proposal that omits one of them ([§8](#8-skill-and-command-interface)). The contract author includes each one,
-  converting a scenario in an earlier format to the current one ([§6.3](#63-prompt-tests-and-test-cases));
+- copies the recorded regression scenarios of the target prompt file, and only those, into the draft directory, and
+  refuses a proposal that lists no prompt test for one of them ([§8](#8-skill-and-command-interface)). The contract
+  author keeps each one, converting a scenario in an earlier format to the current one in place
+  ([§6.3](#63-prompt-tests-and-test-cases));
+- derives the plugin under test, the files that load and the hook registrations, and provides the contract tools
+  (above);
 - refuses a proposal in which a requirement has no prompt test that proves it;
 - refuses a proposal in which a requirement that names a trigger has no test where that trigger is absent;
 - refuses a proposal in which a Codex prompt file binds a model below version 6 ([§6.6](#66-trial-profiles));
-- refuses a plugin under test with a mapping to a path that its base does not hold, and in-project prompt files that
-  lie in more than one plugin ([§4.4](#44-trial-staging));
+- refuses in-project prompt files that lie in more than one plugin ([§4.4](#44-trial-staging));
 - validates every scenario and test case, gives each generated value its seed and version, splits each prompt test's
   test cases by expected outcome, and refuses a prompt test with fewer than 2 distinct expected outcomes in either part
   ([§6.3](#63-prompt-tests-and-test-cases));
@@ -1525,6 +1599,11 @@ has these sections:
   workspace ([Shared fixtures](#63-prompt-tests-and-test-cases)). Without the section, `patterns` is `fixtures/**`;
 - `## Scenario`, the turn sequence. A single turn is the section's `description`. Several turns are `### Turn <n>`
   subsections, numbered from 1, each with its own `description`;
+- `## Expected Behavior`, the keys `description`, what a compliant agent does across the turns, or that an obligated
+  action does not occur when the test leaves its trigger absent, and `time_limit_seconds`, how long a compliant agent
+  needs, with margin. A recorded scenario that lacks the section is still valid; the contract author adds it, and the
+  proposal shows the addition as an edit. These belong to the test, not to one contract, so they live in the scenario
+  (user ruling, 2026-10-15);
 - `## Assertions`, one `### <id>` subsection per assertion, with a snake_case id. Its keys are `kind`, which is `effect`
   or `guard`; optionally `tool`, a code span holding `<name> <arguments>` ([§6.4](#64-judge)); optionally
   `on_tool_failure`, which is `fail`, the default, or `judge` and requires a `tool`; and `description`, which states
@@ -1563,11 +1642,11 @@ When was release {{release}} published? The notes are in `docs/{{notes}}`.
 - **description**: The agent reads all of `docs/{{notes}}` before it answers.
 ```
 
-`{{name}}` is a placeholder for a declared variable. CAT replaces only declared names, so other text in double
-braces, such as `${{ github.token }}` in a workflow fixture, stays as it is. `{{expected_outcome}}` is reserved: it
-stands for the test case's expected outcome, and no variable may take that name. A scenario never states its test
-cases: they come from the contract author ([§6.1](#61-derivation-and-confirmation)). An assertion whose id is
-`expected_outcome` is reserved too.
+`{{name}}` is a placeholder for a declared variable. CAT replaces only declared names, so other text in double braces,
+such as `${{ github.token }}` in a workflow fixture, stays as it is. `{{expected_outcome}}` is reserved: it stands for
+the test case's expected outcome, and no variable may take that name. A scenario never states its test cases: the
+contract author writes them to the values file beside it ([§6.1](#61-derivation-and-confirmation)). An assertion whose
+id is `expected_outcome` is reserved too.
 
 **Declared kind.** An assertion's `kind` states how the contract author expects it to fare without the target
 prompt, and CAT checks that expectation instead of deriving it. The guard pilot
@@ -1721,8 +1800,8 @@ coverage gap and leads to `certification unavailable: unsupported test interacti
 failure is an infrastructure failure, not evidence.
 
 **Earlier scenarios.** A scenario written before this format, with its context in prose and its values fixed in the
-text, is input that the contract author converts: it writes the variables, the turns with placeholders, the fixtures
-and the test cases, and the proposal shows the conversion as an edit of the recorded file.
+text, is input that the contract author converts in the draft directory: it writes the variables, the turns with
+placeholders, the fixtures and the test cases, and the proposal shows the conversion as an edit of the recorded file.
 
 ### 6.4 Judge
 
@@ -1987,7 +2066,9 @@ wants a prompt file improved until it is certified. The host agent:
 The harness-specific `prompt-optimizer` launcher provides `start`, `run`, `status`, `confirm`, `revise`, `choose` and
 `cancel`. `start` takes the target prompt file and, optionally, the user's goal; it refuses a directory, naming it.
 Each prints one JSON status object to standard output, holding the status, campaign identity, a summary for the user
-and any choices. The skill never interprets statistics itself.
+and any choices. The skill never interprets statistics itself. The launcher also provides the contract tools,
+`contract check` and `contract fixtures`, for contract author sessions ([§6.1](#61-derivation-and-confirmation)); the
+skill does not use them.
 
 Agents locate CAT's installed files without shell variables that the harness does not define. The session hooks
 render the plugin root into the injected CAT environment rule, and CAT derives the harness home from `CODEX_HOME` or
@@ -2249,6 +2330,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D74 | Run the control and incumbent comparisons only when the minimum pass rate `p_min` is below 0.95; at 0.95 or above, certify a cell on its minimum-pass-rate part alone and say in the certification record that the comparisons follow from it (user ruling, 2026-10-14). | A trial passes only when every assertion passes, so `pC(k, a) ≥ pC(k) > p_min ≥ 0.95 ≥ pR(k, a) − 0.05` for either reference `R`: a true minimum-pass-rate claim makes both comparisons true. Running them anyway added no assurance, yet a comparison on a guard that the candidate and its reference both pass 99% of the time was undecided at the cap of attempt 1 6% of the time, and 17% of the time against a reference that always passes, and even a perfect candidate needs 105 pairs against the 93 formal trials of the minimum-pass-rate part. | At `p_min ≥ 0.95` no control or incumbent trial runs in certification, so a certified claim rests on the minimum pass rate alone. Below 0.95 the comparisons and their cost are unchanged. |
 | D75 | Revert a promoted candidate only when its development 95% Wilson upper bound in an addressed cell is below its predecessor's development 95% Wilson lower bound there, so the two intervals do not overlap (user ruling, 2026-10-14). | The predecessor's observed rate carries its own sampling error, so comparing with it withdrew a candidate as good as its predecessor 25–36% of the time. With non-overlapping intervals and a predecessor of 50 trials, that falls to 2–6%. Refusing at commit a candidate clearly worse than the best earlier committed one was considered and dropped: a candidate that meets the commit gate has an upper bound of at least 99.57%, above any earlier candidate's lower bound of at most 98.1% at 200 trials, so the rule could never fire. | A clearly worse candidate takes longer to withdraw: one at 70% against a predecessor at 90% is withdrawn within 50 trials 58% of the time rather than 99%. Each revert record holds the predecessor's lower bound instead of its observed rate. |
 | D76 | Call the gate that a development cell must meet before a commit the commit gate rather than the readiness gate (user ruling, 2026-10-14). | Passing the gate permits a commit, which starts a certification attempt; "readiness" did not say ready for what. "Certification gate" would suggest that passing it certifies the candidate, which only the formal trials do. | Reports, the remaining-work kind and the status JSON use the new name; stored campaigns are unaffected because the gate's state is derived from trial counts. |
+| D77 | Have the contract author write prompt tests as files in a draft directory that CAT seeds with the recorded ones, keep in the proposal only what belongs to the contract, and move work that needs no judgment into CAT: the plugin under test, the hook registrations and the recorded prompt tests before the session, and the `contract check` and `contract fixtures` commands during it (user rulings, 2026-10-15). | Restating every prompt test in the proposal JSON made the author re-type each cited scenario's turns, variables and assertions, about 5,000 characters for the four scenarios of `read-file.md`, and let the user review a form that delivery later converted. Leaving the plugin under test to the author made it read the distribution build to find where each file lands, which a comparison of file contents settles. Validating only after the session made the author write its own checks. Ending an inspection turn before writing anything made a session that reached its time limit leave nothing. | The scenario format gains a section, CAT needs a plugin-matching step and two commands, and a draft directory must move into the held-out directory when the session ends. |
 
 ## 14. Acceptance evidence
 
