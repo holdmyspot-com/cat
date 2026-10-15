@@ -1,17 +1,20 @@
 package io.github.cowwoc.cat.common.test;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Verifies that {@link TemporaryDirectories} deletes symbolic links rather than the files they point to.
+ * Verifies that {@link TemporaryDirectories} deletes symbolic links rather than the files they point to, and deletes
+ * read-only files.
  */
 public final class TemporaryDirectoriesTest
 {
@@ -62,6 +65,31 @@ public final class TemporaryDirectoriesTest
 
 			requireThat(Files.exists(deleted, LinkOption.NOFOLLOW_LINKS), "deletedExists").isFalse();
 			requireThat(Files.readString(kept), "kept").isEqualTo("kept");
+		}
+	}
+
+	/**
+	 * Verifies that a read-only file, such as a Git object file, is deleted on every file system, including Windows,
+	 * which refuses to delete a file whose read-only attribute is set.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void deletesReadOnlyFile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("temporary-directories-"));
+			Path deleted = Files.createDirectories(root.resolve("deleted"));
+			Path file = Files.writeString(deleted.resolve("object"), "content");
+			if (PortableFiles.hasModes(file))
+				PortableFiles.setMode(file, PosixFilePermissions.fromString("r--r--r--"));
+			else
+				Files.setAttribute(file, "dos:readonly", true);
+
+			TemporaryDirectories.deleteRecursively(deleted);
+
+			requireThat(Files.exists(deleted, LinkOption.NOFOLLOW_LINKS), "deletedExists").isFalse();
 		}
 	}
 }
