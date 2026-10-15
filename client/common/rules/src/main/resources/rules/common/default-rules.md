@@ -213,6 +213,9 @@ Before changing testable production behavior, lazy load `../include/common/tdd.m
 When creating, using, or handing off temporary files or directories, lazy load
 `../include/common/temporary-resources.md` to assign and verify cleanup ownership.
 
+When writing or changing code that stores a file path in a file, database, or other durable record, lazy load
+`../include/common/persisted-paths.md`.
+
 When designing, changing, or reviewing tests, lazy load `../include/common/testing.md` to keep their observable claims,
 boundaries, and fixtures aligned.
 
