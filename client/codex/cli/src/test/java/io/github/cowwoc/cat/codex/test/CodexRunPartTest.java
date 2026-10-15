@@ -4,15 +4,18 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.CodexRunPart;
+import io.github.cowwoc.cat.codex.CommandShell;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -24,7 +27,15 @@ import org.testng.annotations.Test;
  */
 public final class CodexRunPartTest
 {
-	private static final Path READ_PART = Path.of("/plugin/bin/read-part").toAbsolutePath();
+	/**
+	 * The shell that runs the command on this platform.
+	 */
+	private static final CommandShell SHELL = CommandShell.current();
+	private static final Path READ_PART = Path.of("/plugin/bin").toAbsolutePath().resolve(SHELL.launcher("read-part"));
+	/**
+	 * The line separator that the shell's commands end their lines with.
+	 */
+	private static final String EOL = System.lineSeparator();
 	private static final Pattern LAST_PART = Pattern.compile("\\[End of (?<path>[^\n]+)]\n\\z");
 	/**
 	 * A folder that no CAT project contains, so that {@code run-part} saves the output of a command that runs there
@@ -53,16 +64,37 @@ public final class CodexRunPartTest
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 
-			Call call = runPart("printf 'out\\n'\necho err >&2\nexit 3\n", false, OUTSIDE_PROJECT,
+			Call call = runPart(script("printf 'out\\n'\necho err >&2\nexit 3\n",
+				"Write-Output out\n[Console]::Error.WriteLine('err')\nexit 3\n"), false, OUTSIDE_PROJECT,
 				Map.of("TMPDIR", temporary.toString()));
 
 			Matcher lastPart = LAST_PART.matcher(call.output());
 			requireThat(lastPart.find(), "lastPart").isTrue();
 			Path saved = Path.of(lastPart.group("path"));
 			requireThat(saved.getParent().getParent(), "folder").isEqualTo(temporary);
-			requireThat(call.output(), "output").isEqualTo("out\nerr\n[End of " + saved + "]\n");
+			requireThat(call.output(), "output").isEqualTo("out" + EOL + "err" + EOL + "[End of " + saved + "]\n");
 			requireThat(call.status(), "status").isEqualTo(3);
 			requireThat(Files.readString(Path.of(saved + ".exit-status")), "exitStatus").isEqualTo("3\n");
+		}
+	}
+
+	/**
+	 * Verifies that the shell receives the command unchanged, including its double quotes and a backslash before a
+	 * closing quote.
+	 *
+	 * @throws IOException if the temporary folder cannot be created
+	 */
+	@Test
+	public void shellReceivesCommandUnchanged() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+
+			Call call = runPart(script("printf '%s\\n' \"a \\\"b\\\" c\\\\\"", "Write-Output \"a \"\"b\"\" c\\\""), false,
+				OUTSIDE_PROJECT, Map.of("TMPDIR", temporary.toString()));
+
+			requireThat(call.output(), "output").startsWith("a \"b\" c\\" + EOL + "[End of ");
 		}
 	}
 
@@ -82,14 +114,14 @@ public final class CodexRunPartTest
 			Path folder = Files.createDirectories(project.resolve("src/main"));
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 
-			Call call = runPart("pwd", false, folder, Map.of("TMPDIR", temporary.toString()));
+			Call call = runPart(script("pwd", "(Get-Location).Path"), false, folder, Map.of("TMPDIR", temporary.toString()));
 
 			Matcher lastPart = LAST_PART.matcher(call.output());
 			requireThat(lastPart.find(), "lastPart").isTrue();
 			Path saved = Path.of(lastPart.group("path"));
 			requireThat(saved.getParent().getParent(), "folder").isEqualTo(catTemp);
 			// pwd prints the folder's real path, which differs where the temporary folder is a symbolic link, as on macOS
-			requireThat(call.output(), "output").isEqualTo(folder.toRealPath() + "\n[End of " + saved + "]\n");
+			requireThat(call.output(), "output").isEqualTo(folder.toRealPath() + EOL + "[End of " + saved + "]\n");
 		}
 	}
 
@@ -108,11 +140,11 @@ public final class CodexRunPartTest
 			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "CODEX_THREAD_ID", "thread",
 				"CODEX_HOME", temporary.toString());
 
-			Call call = runPart("seq 1 20000; exit 4", false, OUTSIDE_PROJECT, environment);
+			Call call = runPart(script("seq 1 20000; exit 4", "1..20000; exit 4"), false, OUTSIDE_PROJECT, environment);
 
-			requireThat(call.output(), "output").startsWith("1\n2\n3\n").
+			requireThat(call.output(), "output").startsWith("1" + EOL + "2" + EOL + "3" + EOL).
 				matches("(?s).*\\[More output follows\\. Before any other command or answer, run: " +
-					Pattern.quote(READ_PART.toString()) + " \\S+/output\\.txt [1-9][0-9]*]\n");
+					Pattern.quote(SHELL.command(READ_PART.toString())) + " \\S+[/\\\\]output\\.txt [1-9][0-9]*]\n");
 			requireThat(call.status(), "status").isEqualTo(0);
 		}
 	}
@@ -129,9 +161,10 @@ public final class CodexRunPartTest
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 
-			Call call = runPart("cat; echo done", false, OUTSIDE_PROJECT, Map.of("TMPDIR", temporary.toString()));
+			Call call = runPart(script("cat; echo done", "[Console]::In.ReadToEnd() | Out-Null; 'done'"), false,
+				OUTSIDE_PROJECT, Map.of("TMPDIR", temporary.toString()));
 
-			requireThat(call.output(), "output").startsWith("done\n[End of ");
+			requireThat(call.output(), "output").startsWith("done" + EOL + "[End of ");
 			requireThat(call.status(), "status").isEqualTo(0);
 		}
 	}
@@ -151,10 +184,11 @@ public final class CodexRunPartTest
 			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "LC_CTYPE", "C.UTF-8",
 				"CAT_CALLER_LC_ALL", "+C", "CAT_CALLER_LC_CTYPE", "-");
 
-			Call call = runPart("printf '%s|%s|%s\\n' \"${LC_ALL-unset}\" \"${LC_CTYPE-unset}\" " +
-				"\"${CAT_CALLER_LC_ALL-unset}\"", false, OUTSIDE_PROJECT, environment);
+			Call call = runPart(script("printf '%s|%s|%s\\n' \"${LC_ALL-unset}\" \"${LC_CTYPE-unset}\" " +
+				"\"${CAT_CALLER_LC_ALL-unset}\"", variables("LC_ALL", "LC_CTYPE", "CAT_CALLER_LC_ALL")), false,
+				OUTSIDE_PROJECT, environment);
 
-			requireThat(call.output(), "output").startsWith("C|unset|unset\n");
+			requireThat(call.output(), "output").startsWith("C|unset|unset" + EOL);
 		}
 	}
 
@@ -170,15 +204,17 @@ public final class CodexRunPartTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
-			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "PATH", "/usr/bin:/bin");
+			String path = Path.of("/usr/bin").toAbsolutePath() + File.pathSeparator + Path.of("/bin").toAbsolutePath();
+			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "PATH", path);
 
-			Call call = runPart("printf '%s|%s\\n' \"$PATH\" \"${CAT_RUN_PART_OUTPUT-unset}\"", false, OUTSIDE_PROJECT,
-				environment);
+			Call call = runPart(script("printf '%s|%s\\n' \"$PATH\" \"${CAT_RUN_PART_OUTPUT-unset}\"",
+				variables("PATH", "CAT_RUN_PART_OUTPUT")), false, OUTSIDE_PROJECT, environment);
 
 			Matcher lastPart = LAST_PART.matcher(call.output());
 			requireThat(lastPart.find(), "lastPart").isTrue();
-			requireThat(call.output(), "output").isEqualTo("/plugin/bin/run-part-overrides:/usr/bin:/bin|" +
-				lastPart.group("path") + "\n[End of " + lastPart.group("path") + "]\n");
+			requireThat(call.output(), "output").isEqualTo(READ_PART.resolveSibling("run-part-overrides") +
+				File.pathSeparator + path + "|" + lastPart.group("path") + EOL + "[End of " + lastPart.group("path") +
+				"]\n");
 		}
 	}
 
@@ -198,14 +234,42 @@ public final class CodexRunPartTest
 			{
 				requireThat(call.status(), "status").isEqualTo(2);
 				requireThat(call.output(), "output").isEmpty();
-				requireThat(call.error(), "error").isEqualTo("usage: run-part <<'EOF', then the command on the lines " +
-					"that follow, then EOF\n");
+				requireThat(call.error(), "error").isEqualTo(SHELL.runPartUsage() + EOL);
 			}
 			try (Stream<Path> files = Files.list(temporary))
 			{
 				requireThat(files.toList(), "files").isEmpty();
 			}
 		}
+	}
+
+	/**
+	 * Returns the form of a command for the shell that runs it on this platform.
+	 *
+	 * @param posix the command for a POSIX shell
+	 * @param powerShell the command for PowerShell
+	 * @return the command
+	 */
+	private static String script(String posix, String powerShell)
+	{
+		if (SHELL == CommandShell.POWERSHELL)
+			return powerShell;
+		return posix;
+	}
+
+	/**
+	 * Returns a PowerShell command that prints environment variables on one line, separated by {@code |}, with
+	 * {@code unset} for each variable that is unset.
+	 *
+	 * @param names the names of the variables
+	 * @return the command
+	 */
+	private static String variables(String... names)
+	{
+		StringJoiner values = new StringJoiner("|", "Write-Output \"", "\"");
+		for (String name : names)
+			values.add("$(if ($null -eq $env:" + name + ") { 'unset' } else { $env:" + name + " })");
+		return values.toString();
 	}
 
 	/**
@@ -223,7 +287,7 @@ public final class CodexRunPartTest
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		int status = CodexRunPart.run(new String[0], new ByteArrayInputStream(command.getBytes(UTF_8)), terminal,
-			workingDirectory, READ_PART, environment, output, new PrintStream(error, true, UTF_8));
+			workingDirectory, SHELL, READ_PART, environment, output, new PrintStream(error, true, UTF_8));
 		return new Call(output.toString(UTF_8), error.toString(UTF_8), status);
 	}
 

@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.lang.ProcessBuilder.Redirect;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -21,11 +20,13 @@ import java.util.Map;
  * file: the part ends with the command that prints the next part.
  * <p>
  * Usage: {@code run-part <<'EOF'}, then the shell command on the lines that follow, as it would be written without
- * {@code run-part}, then {@code EOF}. It runs the command with {@code bash} and saves what it writes to standard output
- * and standard error. It saves the command's exit status in {@code <file>.exit-status}, so that whichever call prints
- * the last part, {@code run-part} or {@code read-part}, exits with that status; a part that more parts follow exits
- * with status 0. The output stays inside the project: it is saved in the CAT temporary folder, {@code .cat/work/temp},
- * of the nearest folder that holds one, starting from the folder that the command runs in.
+ * {@code run-part}, then {@code EOF}. On Windows, the command is a PowerShell here-string piped to {@code run-part}: a
+ * {@code @'} line, the command, then a {@code '@ | run-part} line. It runs the command in the shell that Codex runs
+ * commands in, {@code bash} or PowerShell, and saves what it writes to standard output and standard error. It saves
+ * the command's exit status in {@code <file>.exit-status}, so that whichever call prints the last part,
+ * {@code run-part} or {@code read-part}, exits with that status; a part that more parts follow exits with status 0.
+ * The output stays inside the project: it is saved in the CAT temporary folder, {@code .cat/work/temp}, of the nearest
+ * folder that holds one, starting from the folder that the command runs in.
  * <p>
  * The command finds the plugin's {@code bin/run-part-overrides} folder first on its {@code PATH} and receives the saved
  * output's path in {@code CAT_RUN_PART_OUTPUT}. A program in that folder, such as {@code rg}, keeps output that it
@@ -33,7 +34,6 @@ import java.util.Map;
  */
 public final class CodexRunPart
 {
-	private static final String USAGE = "usage: run-part <<'EOF', then the command on the lines that follow, then EOF";
 	/**
 	 * The locale variables that the launcher changes for the JVM and saves for the programs that it starts.
 	 */
@@ -59,8 +59,9 @@ public final class CodexRunPart
 		requireThat(args, "args").isNotNull();
 		Console console = System.console();
 		boolean terminal = console != null && console.isTerminal();
-		int status = run(args, System.in, terminal, Path.of("").toAbsolutePath(), CodexReadPart.launcher("read-part"),
-			System.getenv(), System.out, System.err);
+		CommandShell shell = CommandShell.current();
+		int status = run(args, System.in, terminal, Path.of("").toAbsolutePath(), shell,
+			CodexReadPart.launcher(shell.launcher("read-part")), System.getenv(), System.out, System.err);
 		System.out.flush();
 		System.exit(status);
 	}
@@ -73,10 +74,12 @@ public final class CodexRunPart
 	 * @param terminal {@code true} if {@code input} is a terminal, which holds no command
 	 * @param workingDirectory the folder that the command runs in; the output is saved in the CAT temporary folder of
 	 *   the nearest folder that holds one, starting from this folder
+	 * @param shell the shell that runs the command, and that runs the commands that this program prints
 	 * @param readPart the {@code read-part} launcher that the line that ends a part names; its folder holds the
 	 *   {@code run-part-overrides} folder
 	 * @param environment the environment: when no folder from {@code workingDirectory} upward holds a CAT temporary
-	 *   folder, {@code TMPDIR} names the folder of the saved output, which is {@code /tmp} when it is unset; the command
+	 *   folder, {@code TMPDIR}, or else {@code TEMP}, names the folder of the saved output, which is the JVM's
+	 *   temporary folder ({@code java.io.tmpdir}) when both are unset; the command
 	 *   runs in this environment with the caller's locale restored, the overrides folder first on a set {@code PATH},
 	 *   and {@code CAT_RUN_PART_OUTPUT} naming the saved output
 	 * @param output receives the part
@@ -84,12 +87,13 @@ public final class CodexRunPart
 	 * @return the exit status of {@code read-part}, 1 if the command cannot be run, or 2 for a usage error
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static int run(String[] args, InputStream input, boolean terminal, Path workingDirectory, Path readPart,
-		Map<String, String> environment, OutputStream output, PrintStream error)
+	public static int run(String[] args, InputStream input, boolean terminal, Path workingDirectory, CommandShell shell,
+		Path readPart, Map<String, String> environment, OutputStream output, PrintStream error)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
+		requireThat(shell, "shell").isNotNull();
 		requireThat(readPart, "readPart").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(output, "output").isNotNull();
@@ -101,16 +105,15 @@ public final class CodexRunPart
 				command = new String(input.readAllBytes(), UTF_8);
 			if (command.isBlank())
 			{
-				error.println(USAGE);
+				error.println(shell.runPartUsage());
 				return 2;
 			}
 			Path saved = Files.createTempDirectory(outputFolder(workingDirectory, environment), "run-part-").
 				resolve("output.txt");
-			ProcessBuilder builder = new ProcessBuilder("bash", "-c", command).
+			ProcessBuilder builder = new ProcessBuilder(shell.processArguments(command, environment)).
 				directory(workingDirectory.toFile()).
 				redirectErrorStream(true).
-				redirectOutput(saved.toFile()).
-				redirectInput(Redirect.from(new File("/dev/null")));
+				redirectOutput(saved.toFile());
 			Map<String, String> childEnvironment = builder.environment();
 			childEnvironment.clear();
 			childEnvironment.putAll(callerEnvironment(environment));
@@ -118,9 +121,15 @@ public final class CodexRunPart
 			String path = childEnvironment.get("PATH");
 			if (path != null)
 				childEnvironment.put("PATH", readPart.resolveSibling(OVERRIDES) + File.pathSeparator + path);
-			int status = builder.start().waitFor();
+			int status;
+			try (Process process = builder.start())
+			{
+				// The command reads no input: closing its standard input ends any read at once, on every platform
+				process.getOutputStream().close();
+				status = process.waitFor();
+			}
 			Files.writeString(Path.of(saved + ".exit-status"), status + "\n");
-			return CodexReadPart.run(new String[]{saved.toString()}, readPart, environment, output, error);
+			return CodexReadPart.run(new String[]{saved.toString()}, shell, readPart, environment, output, error);
 		}
 		catch (IOException | InvalidPathException e)
 		{
@@ -141,7 +150,7 @@ public final class CodexRunPart
 	 * @param workingDirectory the folder that the command runs in
 	 * @param environment the environment of the JVM
 	 * @return the CAT temporary folder of the nearest folder that holds one, starting from {@code workingDirectory};
-	 *   otherwise {@code TMPDIR}, or {@code /tmp} when it is unset
+	 *   otherwise {@code TMPDIR}, or else {@code TEMP}, or the JVM's temporary folder when both are unset
 	 */
 	private static Path outputFolder(Path workingDirectory, Map<String, String> environment)
 	{
@@ -151,10 +160,13 @@ public final class CodexRunPart
 			if (Files.isDirectory(catTemp))
 				return catTemp;
 		}
-		String temporary = environment.get("TMPDIR");
-		if (temporary == null || temporary.isEmpty())
-			return Path.of("/tmp");
-		return Path.of(temporary);
+		for (String name : new String[]{"TMPDIR", "TEMP"})
+		{
+			String temporary = environment.get(name);
+			if (temporary != null && !temporary.isEmpty())
+				return Path.of(temporary);
+		}
+		return Path.of(System.getProperty("java.io.tmpdir"));
 	}
 
 	/**

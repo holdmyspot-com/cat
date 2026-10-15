@@ -31,16 +31,32 @@ public final class PlatformTest
 		requireThat(Platform.detect("Darwin", "amd64"), "darwinAmd64Platform").isEqualTo(Platform.MACOS_X64);
 		requireThat(Platform.detect("Mac OS X", "aarch64"), "macosAarch64Platform").isEqualTo(Platform.MACOS_ARM64);
 		requireThat(Platform.detect("Darwin", "arm64"), "darwinArm64Platform").isEqualTo(Platform.MACOS_ARM64);
+		requireThat(Platform.detect("Windows 11", "amd64"), "windowsAmd64Platform").isEqualTo(Platform.WINDOWS_X64);
+		requireThat(Platform.detect("Windows Server 2025", "aarch64"), "windowsAarch64Platform").
+			isEqualTo(Platform.WINDOWS_ARM64);
+	}
+
+	/**
+	 * Verifies that only the Windows platforms report that they are Windows.
+	 */
+	@Test
+	public void identifiesWindows()
+	{
+		for (Platform platform : Platform.values())
+		{
+			boolean windows = platform == Platform.WINDOWS_X64 || platform == Platform.WINDOWS_ARM64;
+			requireThat(platform.isWindows(), platform.id()).isEqualTo(windows);
+		}
 	}
 
 	/**
 	 * Verifies unsupported operating systems are rejected.
 	 */
 	@Test(expectedExceptions = UnsupportedOperationException.class,
-		expectedExceptionsMessageRegExp = "Unsupported platform: os.name=Windows 11, os.arch=amd64")
+		expectedExceptionsMessageRegExp = "Unsupported platform: os.name=FreeBSD, os.arch=amd64")
 	public void rejectsUnsupportedOperatingSystems()
 	{
-		Platform.detect("Windows 11", "amd64");
+		Platform.detect("FreeBSD", "amd64");
 	}
 
 	/**

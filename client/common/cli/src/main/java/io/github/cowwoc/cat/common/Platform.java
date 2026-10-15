@@ -13,7 +13,9 @@ public enum Platform
 	LINUX_X64("linux-x64"),
 	LINUX_ARM64("linux-arm64"),
 	MACOS_X64("macos-x64"),
-	MACOS_ARM64("macos-arm64");
+	MACOS_ARM64("macos-arm64"),
+	WINDOWS_X64("windows-x64"),
+	WINDOWS_ARM64("windows-arm64");
 
 	/**
 	 * Detects the current platform.
@@ -42,23 +44,32 @@ public enum Platform
 		requireThat(architecture, "architecture").isNotBlank();
 
 		String normalizedOs = osName.toLowerCase(Locale.ROOT);
-		boolean linux = normalizedOs.equals("linux");
-		if (!linux && !normalizedOs.equals("mac os x") && !normalizedOs.equals("darwin"))
-			throw new UnsupportedOperationException("Unsupported platform: os.name=" + osName + ", os.arch=" + architecture);
-
 		String normalizedArchitecture = architecture.toLowerCase(Locale.ROOT);
-		if (normalizedArchitecture.equals("amd64") || normalizedArchitecture.equals("x86_64"))
+		Platform x64Platform = null;
+		Platform arm64Platform = null;
+		if (normalizedOs.equals("linux"))
 		{
-			if (linux)
-				return LINUX_X64;
-			return MACOS_X64;
+			x64Platform = LINUX_X64;
+			arm64Platform = LINUX_ARM64;
 		}
-		if (normalizedArchitecture.equals("aarch64") || normalizedArchitecture.equals("arm64"))
+		else if (normalizedOs.equals("mac os x") || normalizedOs.equals("darwin"))
 		{
-			if (linux)
-				return LINUX_ARM64;
-			return MACOS_ARM64;
+			x64Platform = MACOS_X64;
+			arm64Platform = MACOS_ARM64;
 		}
+		else if (normalizedOs.startsWith("windows"))
+		{
+			x64Platform = WINDOWS_X64;
+			arm64Platform = WINDOWS_ARM64;
+		}
+		Platform platform = switch (normalizedArchitecture)
+		{
+			case "amd64", "x86_64" -> x64Platform;
+			case "aarch64", "arm64" -> arm64Platform;
+			default -> null;
+		};
+		if (platform != null)
+			return platform;
 
 		throw new UnsupportedOperationException("Unsupported platform: os.name=" + osName + ", os.arch=" + architecture);
 	}
@@ -74,6 +85,16 @@ public enum Platform
 	{
 		assert that(id, "id").isNotBlank().elseThrow();
 		this.id = id;
+	}
+
+	/**
+	 * Returns whether the platform is Windows.
+	 *
+	 * @return {@code true} for Windows
+	 */
+	public boolean isWindows()
+	{
+		return this == WINDOWS_X64 || this == WINDOWS_ARM64;
 	}
 
 	/**

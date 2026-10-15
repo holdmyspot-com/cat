@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.CodexReadPart;
+import io.github.cowwoc.cat.codex.CommandShell;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -23,14 +24,22 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class CodexReadPartTest
 {
-	private static final Path READ_PART = Path.of("/plugin/bin/read-part").toAbsolutePath();
+	/**
+	 * The shell that runs the commands that {@code read-part} prints on this platform.
+	 */
+	private static final CommandShell SHELL = CommandShell.current();
+	private static final Path READ_PART = Path.of("/plugin/bin").toAbsolutePath().resolve(SHELL.launcher("read-part"));
+	/**
+	 * The line separator that ends each line of diagnostics.
+	 */
+	private static final String EOL = System.lineSeparator();
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	/**
 	 * The line that ends a part that more parts follow.
 	 */
 	private static final Pattern NEXT_PART = Pattern.compile("\\[(?<inside>The last line continues at the start of " +
 		"the next part\\. )?More output follows\\. Before any other command or answer, run: " +
-		Pattern.quote(READ_PART.toString()) + " (?<path>\\S+) (?<position>\\S+)]\n\\z");
+		Pattern.quote(SHELL.command(READ_PART.toString())) + " (?<path>\\S+) (?<position>\\S+)]\n\\z");
 
 	/**
 	 * Creates a test instance.
@@ -223,7 +232,7 @@ public final class CodexReadPartTest
 				requireThat(call.status(), "status").isEqualTo(2);
 				requireThat(call.output(), "output").isEmpty();
 				requireThat(call.error(), "error").isEqualTo("read-part: \"" + position +
-					"\" is not a position that read-part printed\n");
+					"\" is not a position that read-part printed" + EOL);
 			}
 		}
 	}
@@ -237,7 +246,7 @@ public final class CodexReadPartTest
 		Call call = readPart(Map.of());
 
 		requireThat(call.status(), "status").isEqualTo(2);
-		requireThat(call.error(), "error").isEqualTo("usage: read-part <path> [<position>]\n");
+		requireThat(call.error(), "error").isEqualTo("usage: read-part <path> [<position>]" + EOL);
 	}
 
 	/**
@@ -258,9 +267,10 @@ public final class CodexReadPartTest
 			Call call = readPart(Map.of(), typo.toString(), "4");
 
 			requireThat(call.status(), "status").isEqualTo(1);
-			requireThat(call.error(), "error").isEqualTo("read-part: cannot read \"" + typo + "\"\n" +
+			requireThat(call.error(), "error").isEqualTo("read-part: cannot read \"" + typo + "\"" + EOL +
 				"read-part: \"" + directory + "\" holds no such file, but it holds \"notes.txt\". If you meant it, run " +
-				READ_PART + " " + directory.resolve("notes.txt") + " 4 before any other command or your answer.\n");
+				SHELL.command(READ_PART.toString(), directory.resolve("notes.txt").toString(), "4") +
+				" before any other command or your answer." + EOL);
 		}
 	}
 
@@ -282,7 +292,7 @@ public final class CodexReadPartTest
 			requireThat(call.status(), "status").isEqualTo(1);
 			requireThat(call.output(), "output").isEmpty();
 			requireThat(call.error(), "error").isEqualTo("read-part: \"" + file + "\" holds NUL bytes, so it is " +
-				"binary, not text; inspect it with a tool for its format instead\n");
+				"binary, not text; inspect it with a tool for its format instead" + EOL);
 		}
 	}
 
@@ -348,7 +358,7 @@ public final class CodexReadPartTest
 	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		int status = CodexReadPart.run(args, READ_PART, environment, output, new PrintStream(error, true, UTF_8));
+		int status = CodexReadPart.run(args, SHELL, READ_PART, environment, output, new PrintStream(error, true, UTF_8));
 		return new Call(output.toByteArray(), error.toString(UTF_8), status);
 	}
 

@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.CodexPostToolUseHook;
+import io.github.cowwoc.cat.codex.CommandShell;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -48,7 +49,7 @@ public final class CodexPostToolUseHookTest
 			line 90
 			[More output follows. Before any other command or answer, run: %sread-part /tmp/out\\ 1.txt 91]
 			""".formatted(BIN);
-		HookResult hook = invoke(BIN + "read-part /tmp/out\\ 1.txt 40", result);
+		HookResult hook = invoke(CommandShell.POSIX, BIN + "read-part /tmp/out\\ 1.txt 40", result);
 
 		requireThat(reason(hook), "reason").isEqualTo("""
 			Warning: truncated output (original token count: 10108)
@@ -73,7 +74,7 @@ public final class CodexPostToolUseHookTest
 			[The last line continues at the start of the next part. More output follows. Before any other command \
 			or answer, run: %sread-part /tmp/out.txt 7:80001]
 			""".formatted(BIN);
-		HookResult hook = invoke(BIN + "read-part /tmp/out.txt 7:40001; echo done", result);
+		HookResult hook = invoke(CommandShell.POSIX, BIN + "read-part /tmp/out.txt 7:40001; echo done", result);
 
 		requireThat(reason(hook), "reason").endsWith(INSTRUCTION + BIN + "read-part /tmp/out.txt 7:40001]\n");
 	}
@@ -94,10 +95,56 @@ public final class CodexPostToolUseHookTest
 			last
 			[End of /tmp/it's here.txt]
 			""";
-		HookResult hook = invoke(BIN + "run-part <<'EOF'\ncat notes.md\nEOF", result);
+		HookResult hook = invoke(CommandShell.POSIX, BIN + "run-part <<'EOF'\ncat notes.md\nEOF", result);
 
 		requireThat(reason(hook), "reason").endsWith("last\n" + INSTRUCTION + BIN +
 			"read-part '/tmp/it'\"'\"'s here.txt' 1]\n");
+	}
+
+	/**
+	 * Verifies that in PowerShell, a cut part of a {@code read-part} command whose quoted path holds spaces ends with an
+	 * instruction to print the same part again from the position at which the agent's command started it.
+	 *
+	 * @throws IOException if the hook response is not JSON
+	 */
+	@Test
+	public void powerShellCutPartRepeatsItsStart() throws IOException
+	{
+		String readPart = "& 'C:\\Program Files\\cat\\bin\\read-part.cmd' 'C:\\work\\out 1.txt'";
+		String result = """
+			Warning: truncated output (original token count: 10108)
+			line 40
+			…120 tokens truncated…
+			line 90
+			[More output follows. Before any other command or answer, run: %s 91]
+			""".formatted(readPart);
+		HookResult hook = invoke(CommandShell.POWERSHELL, readPart + " 40", result);
+
+		requireThat(reason(hook), "reason").endsWith("line 90\n" + INSTRUCTION + readPart + " 40]\n");
+	}
+
+	/**
+	 * Verifies that in PowerShell, a cut last part of a {@code run-part} command ends with an instruction that runs the
+	 * {@code read-part} launcher of the same folder on the saved output from its first line, quoting the saved file's
+	 * path for PowerShell.
+	 *
+	 * @throws IOException if the hook response is not JSON
+	 */
+	@Test
+	public void powerShellCutLastPartReadsSavedFile() throws IOException
+	{
+		String result = """
+			Warning: truncated output (original token count: 9000)
+			first
+			…40 tokens truncated…
+			last
+			[End of C:\\work\\it's here.txt]
+			""";
+		HookResult hook = invoke(CommandShell.POWERSHELL, "@'\nGet-Content notes.md\n'@ | & C:\\cat\\bin\\run-part.cmd",
+			result);
+
+		requireThat(reason(hook), "reason").endsWith("last\n" + INSTRUCTION +
+			"& C:\\cat\\bin\\read-part.cmd 'C:\\work\\it''s here.txt' 1]\n");
 	}
 
 	/**
@@ -110,7 +157,8 @@ public final class CodexPostToolUseHookTest
 	public void cutResultWithoutPartEndingRerunsCommand() throws IOException
 	{
 		String command = BIN + "read-part /tmp/out.txt 400";
-		HookResult hook = invoke(command, "…2 tokens truncated…\n[/tmp/out.txt ends before position 400]\n");
+		HookResult hook = invoke(CommandShell.POSIX, command,
+			"…2 tokens truncated…\n[/tmp/out.txt ends before position 400]\n");
 
 		requireThat(reason(hook), "reason").isEqualTo("…2 tokens truncated…\n" + INSTRUCTION + command + "]\n");
 	}
@@ -121,7 +169,7 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void uncutResultPassesUnchanged()
 	{
-		HookResult hook = invoke(BIN + "read-part /tmp/out.txt", "line 1\n[End of /tmp/out.txt]\n");
+		HookResult hook = invoke(CommandShell.POSIX, BIN + "read-part /tmp/out.txt", "line 1\n[End of /tmp/out.txt]\n");
 
 		requireThat(hook.output(), "output").isEmpty();
 		requireThat(hook.error(), "error").isEmpty();
@@ -133,7 +181,8 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void otherCommandPassesUnchanged()
 	{
-		HookResult hook = invoke("cat notes.md", "Warning: truncated output (original token count: 20000)\n[x]\n");
+		HookResult hook = invoke(CommandShell.POSIX, "cat notes.md",
+			"Warning: truncated output (original token count: 20000)\n[x]\n");
 
 		requireThat(hook.output(), "output").isEmpty();
 		requireThat(hook.error(), "error").isEmpty();
@@ -145,7 +194,7 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void malformedEventPassesUnchanged()
 	{
-		HookResult hook = invoke(new ByteArrayInputStream("{".getBytes(UTF_8)));
+		HookResult hook = invoke(CommandShell.POSIX, new ByteArrayInputStream("{".getBytes(UTF_8)));
 
 		requireThat(hook.output(), "output").isEmpty();
 		requireThat(hook.error(), "error").startsWith("CAT PostToolUse: ");
@@ -154,31 +203,33 @@ public final class CodexPostToolUseHookTest
 	/**
 	 * Runs the hook on a Bash PostToolUse event.
 	 *
+	 * @param shell the shell that ran the command
 	 * @param command the shell command that the agent ran
 	 * @param result the command's result as Codex showed it
 	 * @return the captured streams
 	 */
-	private static HookResult invoke(String command, String result)
+	private static HookResult invoke(CommandShell shell, String command, String result)
 	{
 		assert command != null;
 		assert result != null;
 		byte[] event = JSON.writeValueAsBytes(Map.of("hook_event_name", "PostToolUse", "tool_name", "Bash",
 			"tool_input", Map.of("command", command), "tool_response", result));
-		return invoke(new ByteArrayInputStream(event));
+		return invoke(shell, new ByteArrayInputStream(event));
 	}
 
 	/**
 	 * Runs the hook on an event.
 	 *
+	 * @param shell the shell that ran the event's command
 	 * @param input the event
 	 * @return the captured streams
 	 */
-	private static HookResult invoke(ByteArrayInputStream input)
+	private static HookResult invoke(CommandShell shell, ByteArrayInputStream input)
 	{
 		assert input != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		CodexPostToolUseHook.run(new String[0], input, output, new PrintStream(error, true, UTF_8));
+		CodexPostToolUseHook.run(new String[0], shell, input, output, new PrintStream(error, true, UTF_8));
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

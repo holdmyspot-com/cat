@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,10 +47,12 @@ public final class CodexPostToolUseHook
 	 */
 	private static final Pattern CLOSING_LINE = Pattern.compile("\n\\[[^\n]*]\\s*\\z");
 	/**
-	 * The program that a command runs, and the folder that holds both programs.
+	 * The program that a command runs, and the folder that holds both programs. The program's path may be quoted, in
+	 * which case it may hold spaces, and on Windows it ends with {@code .cmd}.
 	 */
-	private static final Pattern SCRIPT = Pattern.compile("(?<folder>[^\\s'\"]*/bin/)(?<name>run-part|read-part)" +
-		"(?:\\s|$)");
+	private static final Pattern SCRIPT = Pattern.compile("['\"](?<quotedFolder>[^'\"\n]*[/\\\\]bin[/\\\\])" +
+		"(?<quotedName>run-part|read-part)(?:\\.cmd)?['\"]|(?<folder>[^\\s'\"]*[/\\\\]bin[/\\\\])" +
+		"(?<name>run-part|read-part)(?:\\.cmd)?(?=\\s|$)");
 	/**
 	 * A position that {@code read-part} prints: {@code <line>} or {@code <line>:<byte>}.
 	 */
@@ -66,7 +67,7 @@ public final class CodexPostToolUseHook
 	public static void main(String[] args)
 	{
 		requireThat(args, "args").isNotNull();
-		run(args, System.in, System.out, System.err);
+		run(args, CommandShell.current(), System.in, System.out, System.err);
 	}
 
 	/**
@@ -74,14 +75,17 @@ public final class CodexPostToolUseHook
 	 * reports the failure on {@code error}, because stopping the session would lose more output than the cut did.
 	 *
 	 * @param args a non-null empty command-line argument array
+	 * @param shell the shell that ran the agent's command, and that runs the command that the repaired result names
 	 * @param input non-null harness hook input
 	 * @param output non-null harness hook output
 	 * @param error non-null diagnostic output
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static void run(String[] args, InputStream input, OutputStream output, PrintStream error)
+	public static void run(String[] args, CommandShell shell, InputStream input, OutputStream output,
+		PrintStream error)
 	{
 		requireThat(args, "args").isNotNull();
+		requireThat(shell, "shell").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(error, "error").isNotNull();
@@ -98,7 +102,7 @@ public final class CodexPostToolUseHook
 			JsonNode result = event.path("tool_response");
 			if (!command.isString() || !result.isString())
 				return;
-			Optional<String> repaired = repair(command.stringValue(), result.stringValue());
+			Optional<String> repaired = repair(shell, command.stringValue(), result.stringValue());
 			if (repaired.isEmpty())
 				return;
 			output.write(json.writeValueAsBytes(Map.of("decision", "block", "reason", repaired.get())));
@@ -116,11 +120,12 @@ public final class CodexPostToolUseHook
 	 * cut part started, without running the original command a second time. A result without a part's closing line
 	 * instead ends with an instruction to run the agent's command again.
 	 *
+	 * @param shell the shell that ran the command
 	 * @param command the shell command that the agent ran
 	 * @param result the command's result as Codex showed it
 	 * @return the repaired result, or empty when Codex did not cut it or the command runs neither program
 	 */
-	private static Optional<String> repair(String command, String result)
+	private static Optional<String> repair(CommandShell shell, String command, String result)
 	{
 		Matcher script = SCRIPT.matcher(command);
 		if (!script.find() || !CUT.matcher(result).find())
@@ -129,14 +134,15 @@ public final class CodexPostToolUseHook
 		if (nextPart.find())
 		{
 			return Optional.of(result.substring(0, nextPart.start() + 1) +
-				instruction(nextPart.group("command") + " " + start(command, script)));
+				instruction(nextPart.group("command") + " " + start(shell, command, script)));
 		}
 		Matcher lastPart = LAST_PART.matcher(result);
 		if (lastPart.find())
 		{
-			String readPart = script.group("folder") + "read-part";
+			String folder = group(script, "folder", "quotedFolder");
+			String readPart = folder + shell.launcher("read-part");
 			return Optional.of(result.substring(0, lastPart.start() + 1) +
-				instruction(readPart + " " + ShellWords.quote(lastPart.group("path")) + " " + start(command, script)));
+				instruction(shell.command(readPart, lastPart.group("path"), start(shell, command, script))));
 		}
 		Matcher closingLine = CLOSING_LINE.matcher(result);
 		String kept;
@@ -161,112 +167,39 @@ public final class CodexPostToolUseHook
 	}
 
 	/**
+	 * Returns a part of the match of the program that a command runs, whether or not the program's path is quoted.
+	 *
+	 * @param script the match
+	 * @param unquoted the name of the part in a match of an unquoted path
+	 * @param quoted the name of the part in a match of a quoted path
+	 * @return the part
+	 */
+	private static String group(Matcher script, String unquoted, String quoted)
+	{
+		String part = script.group(unquoted);
+		if (part != null)
+			return part;
+		return script.group(quoted);
+	}
+
+	/**
 	 * Returns the position at which the agent's command started the part that it printed: the position that a
 	 * {@code read-part} command names, or {@code 1} for a {@code read-part} command that names none and for a
 	 * {@code run-part} command, whose part is the first one.
 	 *
+	 * @param shell the shell that ran the command
 	 * @param command the shell command that the agent ran
 	 * @param script the match of the program that the command runs
 	 * @return the position
 	 */
-	private static String start(String command, Matcher script)
+	private static String start(CommandShell shell, String command, Matcher script)
 	{
-		if (script.group("name").equals("run-part"))
+		if (group(script, "name", "quotedName").equals("run-part"))
 			return "1";
-		Optional<List<String>> words = words(command.substring(script.start()));
+		Optional<List<String>> words = shell.words(command.substring(script.start()));
 		if (words.isPresent() && words.get().size() > 2 && POSITION.matcher(words.get().get(2)).matches())
 			return words.get().get(2);
 		return "1";
-	}
-
-	/**
-	 * Splits the start of a shell command into the words that the shell passes to its first program. The words end at
-	 * the first unquoted {@code ;}, {@code &}, {@code |}, {@code <}, {@code >}, {@code (} or {@code )}.
-	 *
-	 * @param command the command
-	 * @return the words, or empty if a quote is not closed
-	 */
-	private static Optional<List<String>> words(String command)
-	{
-		List<String> words = new ArrayList<>();
-		StringBuilder word = new StringBuilder();
-		boolean inWord = false;
-		int i = 0;
-		while (i < command.length())
-		{
-			char c = command.charAt(i);
-			if (Character.isWhitespace(c) || "();<>|&".indexOf(c) >= 0)
-			{
-				if (inWord)
-					words.add(word.toString());
-				word.setLength(0);
-				inWord = false;
-				if (!Character.isWhitespace(c))
-					return Optional.of(words);
-				++i;
-				continue;
-			}
-			inWord = true;
-			switch (c)
-			{
-				case '\'' ->
-				{
-					int end = command.indexOf('\'', i + 1);
-					if (end < 0)
-						return Optional.empty();
-					word.append(command, i + 1, end);
-					i = end + 1;
-				}
-				case '"' ->
-				{
-					i = appendDoubleQuoted(command, i + 1, word);
-					if (i < 0)
-						return Optional.empty();
-				}
-				case '\\' ->
-				{
-					if (i + 1 < command.length())
-						word.append(command.charAt(i + 1));
-					i += 2;
-				}
-				default ->
-				{
-					word.append(c);
-					++i;
-				}
-			}
-		}
-		if (inWord)
-			words.add(word.toString());
-		return Optional.of(words);
-	}
-
-	/**
-	 * Appends the text of a double-quoted shell string to a word.
-	 *
-	 * @param command the command
-	 * @param from the index after the opening quote
-	 * @param word the word
-	 * @return the index after the closing quote, or {@code -1} if the string is not closed
-	 */
-	private static int appendDoubleQuoted(String command, int from, StringBuilder word)
-	{
-		int i = from;
-		while (i < command.length())
-		{
-			char c = command.charAt(i);
-			if (c == '"')
-				return i + 1;
-			if (c == '\\' && i + 1 < command.length() && "\\\"$`\n".indexOf(command.charAt(i + 1)) >= 0)
-			{
-				word.append(command.charAt(i + 1));
-				i += 2;
-				continue;
-			}
-			word.append(c);
-			++i;
-		}
-		return -1;
 	}
 
 	/**

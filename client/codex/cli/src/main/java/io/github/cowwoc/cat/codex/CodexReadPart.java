@@ -4,8 +4,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.Platform;
+
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -16,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -98,7 +102,8 @@ public final class CodexReadPart
 	public static void main(String[] args)
 	{
 		requireThat(args, "args").isNotNull();
-		int status = run(args, launcher("read-part"), System.getenv(), System.out, System.err);
+		CommandShell shell = CommandShell.current();
+		int status = run(args, shell, launcher(shell.launcher("read-part")), System.getenv(), System.out, System.err);
 		System.out.flush();
 		System.exit(status);
 	}
@@ -107,7 +112,7 @@ public final class CodexReadPart
 	 * Returns the path of a launcher that agents run: the launcher of the same name in the {@code bin} folder of the
 	 * plugin whose {@code client} folder holds the runtime image that runs this program.
 	 *
-	 * @param name the launcher's name
+	 * @param name the launcher's file name
 	 * @return the path
 	 */
 	static Path launcher(String name)
@@ -119,20 +124,22 @@ public final class CodexReadPart
 	 * Prints the part of a file that starts at a position.
 	 *
 	 * @param args the path, then optionally the position
+	 * @param shell the shell that runs the commands that this program prints
 	 * @param readPart the {@code read-part} launcher that the line that ends a part names
 	 * @param environment the environment: {@code CODEX_THREAD_ID} is set in a Codex thread, and
-	 *   {@code CODEX_HOME}, or else {@code HOME}'s {@code .codex} folder, holds the {@code config.toml} that may cap
-	 *   the budget
+	 *   {@code CODEX_HOME}, or else the {@code .codex} folder of the user's home folder ({@code HOME}, or
+	 *   {@code USERPROFILE} on Windows), holds the {@code config.toml} that may cap the budget
 	 * @param output receives the part
 	 * @param error receives diagnostics
 	 * @return the exit status: 0 for a part that more parts follow, the saved status of the last part, 1 when the file
 	 *   cannot be printed, or 2 for a usage error
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static int run(String[] args, Path readPart, Map<String, String> environment, OutputStream output,
-		PrintStream error)
+	public static int run(String[] args, CommandShell shell, Path readPart, Map<String, String> environment,
+		OutputStream output, PrintStream error)
 	{
 		requireThat(args, "args").isNotNull();
+		requireThat(shell, "shell").isNotNull();
 		requireThat(readPart, "readPart").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(output, "output").isNotNull();
@@ -164,7 +171,7 @@ public final class CodexReadPart
 		if (file == null || !Files.isRegularFile(file) || !Files.isReadable(file))
 		{
 			error.println("read-part: cannot read \"" + path + "\"");
-			suggest(path, args, readPart, error);
+			suggest(path, args, shell, readPart, error);
 			return 1;
 		}
 		try
@@ -176,8 +183,7 @@ public final class CodexReadPart
 					"with a tool for its format instead");
 				return 1;
 			}
-			Part part = new Part(path, ShellWords.quote(readPart.toString()) + " " + ShellWords.quote(path),
-				limit(environment), count);
+			Part part = new Part(path, shell.command(readPart.toString(), path), limit(environment), count);
 			long line = parse(position.group("line"), Long.MAX_VALUE);
 			int column = 1;
 			if (position.group("byte") != null)
@@ -315,6 +321,19 @@ public final class CodexReadPart
 	}
 
 	/**
+	 * Returns the environment variable that names the user's home folder, in which Codex keeps its {@code .codex}
+	 * folder when {@code CODEX_HOME} is unset. Codex on Windows ignores {@code HOME}, which Git Bash and Cygwin set.
+	 *
+	 * @return {@code USERPROFILE} on Windows, otherwise {@code HOME}
+	 */
+	private static String homeVariable()
+	{
+		if (Platform.current().isWindows())
+			return "USERPROFILE";
+		return "HOME";
+	}
+
+	/**
 	 * Returns the {@code tool_output_token_limit} of Codex's {@code config.toml}.
 	 *
 	 * @param environment the environment
@@ -329,7 +348,7 @@ public final class CodexReadPart
 			if (codexHome != null && !codexHome.isEmpty())
 				configuration = Path.of(codexHome, "config.toml");
 			else
-				configuration = Path.of(environment.getOrDefault("HOME", ""), ".codex", "config.toml");
+				configuration = Path.of(environment.getOrDefault(homeVariable(), ""), ".codex", "config.toml");
 		}
 		catch (InvalidPathException _)
 		{
@@ -367,10 +386,11 @@ public final class CodexReadPart
 	 *
 	 * @param path the path that names no readable file
 	 * @param args the arguments of this call
+	 * @param shell the shell that runs the suggested command
 	 * @param readPart the {@code read-part} launcher
 	 * @param error receives the suggestion
 	 */
-	private static void suggest(String path, String[] args, Path readPart, PrintStream error)
+	private static void suggest(String path, String[] args, CommandShell shell, Path readPart, PrintStream error)
 	{
 		String folder = folder(path);
 		Path folderPath;
@@ -419,16 +439,16 @@ public final class CodexReadPart
 		if (ties != 1)
 			return;
 		String suggestion;
-		if (folder.equals(".") && !path.startsWith("./"))
+		if (folder.equals(".") && !path.startsWith("."))
 			suggestion = closest;
-		else if (folder.endsWith("/"))
+		else if (isSeparator(folder.charAt(folder.length() - 1)))
 			suggestion = folder + closest;
 		else
-			suggestion = folder + "/" + closest;
-		StringBuilder command = new StringBuilder(ShellWords.quote(readPart.toString())).append(' ').
-			append(ShellWords.quote(suggestion));
+			suggestion = folder + path.charAt(lastSeparator(withoutTrailingSlashes(path))) + closest;
+		List<String> words = new ArrayList<>(List.of(readPart.toString(), suggestion));
 		if (args.length > 1)
-			command.append(' ').append(args[1]);
+			words.add(args[1]);
+		String command = shell.command(words);
 		error.println("read-part: \"" + folder + "\" holds no such file, but it holds \"" + closest + "\". If you " +
 			"meant it, run " + command + " before any other command or your answer.");
 	}
@@ -442,13 +462,40 @@ public final class CodexReadPart
 	private static String folder(String path)
 	{
 		String trimmed = withoutTrailingSlashes(path);
-		int slash = trimmed.lastIndexOf('/');
+		int slash = lastSeparator(trimmed);
 		if (slash < 0)
 			return ".";
 		String parent = withoutTrailingSlashes(trimmed.substring(0, slash));
 		if (parent.isEmpty())
-			return "/";
+			return String.valueOf(trimmed.charAt(slash));
 		return parent;
+	}
+
+	/**
+	 * Returns whether a character separates the names of a path: {@code /}, or the platform's own separator.
+	 *
+	 * @param character the character
+	 * @return {@code true} if the character separates names
+	 */
+	private static boolean isSeparator(char character)
+	{
+		return character == '/' || character == File.separatorChar;
+	}
+
+	/**
+	 * Returns the index of the last character of a path that separates its names.
+	 *
+	 * @param path the path
+	 * @return the index, or {@code -1} if the path has one name
+	 */
+	private static int lastSeparator(String path)
+	{
+		for (int i = path.length() - 1; i >= 0; --i)
+		{
+			if (isSeparator(path.charAt(i)))
+				return i;
+		}
+		return -1;
 	}
 
 	/**
@@ -460,9 +507,9 @@ public final class CodexReadPart
 	private static String name(String path)
 	{
 		String trimmed = withoutTrailingSlashes(path);
-		if (trimmed.equals("/"))
+		if (trimmed.length() == 1 && isSeparator(trimmed.charAt(0)))
 			return trimmed;
-		return trimmed.substring(trimmed.lastIndexOf('/') + 1);
+		return trimmed.substring(lastSeparator(trimmed) + 1);
 	}
 
 	/**
@@ -474,7 +521,7 @@ public final class CodexReadPart
 	private static String withoutTrailingSlashes(String path)
 	{
 		int end = path.length();
-		while (end > 1 && path.charAt(end - 1) == '/')
+		while (end > 1 && isSeparator(path.charAt(end - 1)))
 			--end;
 		return path.substring(0, end);
 	}
