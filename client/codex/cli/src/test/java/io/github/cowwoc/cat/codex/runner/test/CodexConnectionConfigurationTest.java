@@ -187,12 +187,14 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies an isolated Codex process retains the parent's CAT filesystem permission policy.
+	 * Verifies that an isolated Codex process receives none of the host's permission profiles, which grant the
+	 * host's own directories, so that it can neither write nor learn the paths of the host's Codex home, CAT user
+	 * directory or other workspaces.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void copiesCatPermissionPolicy() throws IOException
+	public void omitsHostPermissionProfiles() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -202,8 +204,10 @@ public final class CodexConnectionConfigurationTest
 			Files.writeString(source, """
 				[permissions.cat]
 				extends = ":workspace"
+				[permissions.cat.workspace_roots]
+				"/host/worktrees" = true
 				[permissions.cat.filesystem]
-				"/cache" = "write"
+				"/host/.codex" = "write"
 				[permissions.cat.filesystem.":workspace_roots"]
 				"." = "write"
 				[permissions.other]
@@ -212,9 +216,35 @@ public final class CodexConnectionConfigurationTest
 
 			CodexConnectionConfiguration.copy(source, destination);
 
-			requireThat(Files.readString(destination), "configuration").contains("[permissions.cat]").
-				contains("\"/cache\" = \"write\"").contains("[permissions.cat.filesystem.\":workspace_roots\"]").
-				doesNotContain("[permissions.other]");
+			requireThat(Files.readString(destination), "configuration").doesNotContain("[permissions.cat]").
+				doesNotContain("[permissions.cat.").doesNotContain("/host/").doesNotContain("[permissions.other]").
+				contains("[permissions.cat-runner]" + System.lineSeparator() + "extends = \":workspace\"");
+		}
+	}
+
+	/**
+	 * Verifies that the runner profile keeps the host's workspace-write network access, which a thread that names a
+	 * profile instead of the workspace-write sandbox would otherwise lose.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void runnerProfileKeepsNetworkAccess() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-permissions-"));
+			Path source = Files.writeString(root.resolve("host.toml"), """
+				[sandbox_workspace_write]
+				network_access = true
+				""");
+			Path destination = root.resolve("isolated/config.toml");
+
+			CodexConnectionConfiguration.copy(source, destination);
+
+			requireThat(Files.readString(destination), "configuration").
+				contains("[permissions.cat-runner.network]" + System.lineSeparator() + "enabled = true" +
+					System.lineSeparator());
 		}
 	}
 
@@ -326,35 +356,6 @@ public final class CodexConnectionConfigurationTest
 
 			requireThat(profile, "profile").isEmpty();
 			requireThat(Files.readString(destination), "configuration").isEqualTo(before);
-		}
-	}
-
-	/**
-	 * Verifies that the profile that denies reads keeps the parent's workspace-write network access, which a thread
-	 * that names a profile instead of the workspace-write sandbox would otherwise lose.
-	 *
-	 * @throws IOException if fixture I/O fails
-	 */
-	@Test
-	public void deniedReadsKeepNetworkAccess() throws IOException
-	{
-		// Requirement: R-E24
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-denied-reads-"));
-			Path source = Files.writeString(root.resolve("host.toml"), """
-				[sandbox_workspace_write]
-				network_access = true
-				""");
-			Path destination = root.resolve("isolated/config.toml");
-			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
-			CodexConnectionConfiguration.copy(source, destination);
-
-			CodexConnectionConfiguration.addSessionProfile(destination, List.of(), List.of(snapshot));
-
-			requireThat(Files.readString(destination), "configuration").
-				contains("[permissions.cat-denied-reads.network]" + System.lineSeparator() + "enabled = true" +
-					System.lineSeparator());
 		}
 	}
 

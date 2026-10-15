@@ -25,12 +25,10 @@ public final class CodexConnectionConfiguration
 	static final String RUNNER_PERMISSION_PROFILE = "cat-runner";
 	private static final String VALIDATOR_PERMISSION_PROFILE = "cat-validator";
 	private static final String DENIED_READS_PERMISSION_PROFILE = "cat-denied-reads";
-	private static final String CAT_PERMISSION_PROFILE = "cat";
 	private static final String TEMPORARY_DIRECTORY = ":tmpdir";
 	private static final Set<String> CONNECTION_SETTINGS = Set.of("forced_login_method", "model",
 		"model_reasoning_effort", "openai_base_url");
 	private static final Pattern NETWORK_ACCESS = Pattern.compile("^network_access\\s*=\\s*(true|false)\\s*(?:#.*)?$");
-	private static final Pattern CAT_PERMISSION_SECTION = Pattern.compile("^\\[permissions\\.cat(?:[.].*)?]\\s*$");
 	static final List<String> CAT_HOOK_KEYS = List.of("cat@cat:hooks/hooks.json:session_start:0:0",
 		"cat@cat:hooks/hooks.json:subagent_start:0:0", "cat@cat:hooks/hooks.json:post_tool_use:0:0");
 	private static final Pattern TRUSTED_HASH = Pattern.compile(
@@ -110,7 +108,6 @@ public final class CodexConnectionConfiguration
 			}
 
 			networkAccess = workspaceWriteNetworkAccess(configuration);
-			copyCatPermissions(configuration, copied);
 		}
 		if (networkAccess != null || npmCache != null)
 		{
@@ -128,7 +125,7 @@ public final class CodexConnectionConfiguration
 		else
 			copied.append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
 		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator());
-		appendRunnerProfile(copied, destination.getParent(), npmCache, temporaryDirectory);
+		appendRunnerProfile(copied, destination.getParent(), npmCache, temporaryDirectory, networkAccess);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
 	}
@@ -139,29 +136,33 @@ public final class CodexConnectionConfiguration
 	 * <p>
 	 * The harness shell starts from the copied project, while the runner deliberately puts its credentials, session
 	 * state, plugins, and configuration in a sibling isolated home. A workspace-only profile cannot initialize that
-	 * shell because its required home lies outside the workspace. The child profile preserves the parent's CAT policy
-	 * when available and adds only the newly created isolated home, the harness temporary directory, and the shared
-	 * dependency cache. Codex's Linux sandbox creates its process lock and scratch state under the harness temporary
-	 * directory before a shell command can run, so it needs the same temporary-directory authority as the parent
-	 * workspace-write sandbox. Its temporary directory is created inside the runner-owned home beneath CAT work storage,
-	 * rather than granting global {@code /tmp}; the harness sandbox uses it before the first shell command can run.
+	 * shell because its required home lies outside the workspace. The child profile extends the built-in workspace
+	 * profile and adds only the newly created isolated home, the harness temporary directory, and the shared
+	 * dependency cache. It never extends the host's own permission profiles: they grant the host's Codex home, CAT user
+	 * directory and other workspaces, which a nested session must neither change nor see. Codex's Linux sandbox creates
+	 * its process lock and scratch state under the harness temporary directory before a shell command can run, so it
+	 * needs the same temporary-directory authority as the parent workspace-write sandbox. Its temporary directory is
+	 * created inside the runner-owned home beneath CAT work storage, rather than granting global {@code /tmp}; the
+	 * harness sandbox uses it before the first shell command can run.
+	 * <p>
+	 * A thread that names a profile ignores {@code [sandbox_workspace_write]}, and the built-in workspace profile denies
+	 * network access, so the profile carries the parent's explicit workspace-write network policy.
 	 *
 	 * @param configuration the isolated configuration being assembled
 	 * @param isolatedHome the fresh runtime home that the runner owns
 	 * @param npmCache the verified shared dependency cache, or {@code null} when no cache was supplied
 	 * @param temporaryDirectory the fresh harness temporary directory owned by the runner
+	 * @param networkAccess {@code true} or {@code false} when the parent declares a workspace-write network policy, or
+	 *   {@code null} when it does not
 	 */
 	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, Path npmCache,
-		Path temporaryDirectory)
+		Path temporaryDirectory, String networkAccess)
 	{
 		assert configuration != null;
 		assert isolatedHome != null;
 		assert temporaryDirectory != null;
-		String parentProfile = ":workspace";
-		if (configuration.indexOf("[permissions." + CAT_PERMISSION_PROFILE + "]") >= 0)
-			parentProfile = CAT_PERMISSION_PROFILE;
 		configuration.append(System.lineSeparator()).append("[permissions.").append(RUNNER_PERMISSION_PROFILE).
-			append(']').append(System.lineSeparator()).append("extends = \"").append(parentProfile).append('"').
+			append(']').append(System.lineSeparator()).append("extends = \":workspace\"").
 			append(System.lineSeparator()).append("[permissions.").append(RUNNER_PERMISSION_PROFILE).
 			append(".filesystem]").append(System.lineSeparator()).append('"').append(toml(isolatedHome)).
 			append("\" = \"write\"").append(System.lineSeparator()).append('"').append(TEMPORARY_DIRECTORY).
@@ -169,6 +170,11 @@ public final class CodexConnectionConfiguration
 			append(System.lineSeparator());
 		if (npmCache != null)
 			configuration.append('"').append(toml(npmCache)).append("\" = \"write\"").append(System.lineSeparator());
+		if (networkAccess != null)
+		{
+			configuration.append("[permissions.").append(RUNNER_PERMISSION_PROFILE).append(".network]").
+				append(System.lineSeparator()).append("enabled = ").append(networkAccess).append(System.lineSeparator());
+		}
 	}
 
 	/**
@@ -240,16 +246,6 @@ public final class CodexConnectionConfiguration
 			profile.append('"').append(toml(deniedRead.toRealPath())).append("\" = \"deny\"").
 				append(System.lineSeparator());
 		}
-
-		// A thread that names a profile ignores [sandbox_workspace_write], and the built-in ":workspace" profile that
-		// the runner profile extends when the host has no CAT profile denies network access. Copy the parent's explicit
-		// workspace-write network policy so that denying reads does not also change network access.
-		String networkAccess = workspaceWriteNetworkAccess(configuration);
-		if (networkAccess != null && !configuration.contains("[permissions." + CAT_PERMISSION_PROFILE + "]"))
-		{
-			profile.append(section).append(".network]").append(System.lineSeparator()).append("enabled = ").
-				append(networkAccess).append(System.lineSeparator());
-		}
 		Files.writeString(destination, profile.toString());
 	}
 
@@ -289,27 +285,6 @@ public final class CodexConnectionConfiguration
 			result.append('"').append(quotedEvidenceRoot).append("\" = \"read\"").append(System.lineSeparator());
 		}
 		return result.toString();
-	}
-
-	/**
-	 * Copies the parent's CAT permission policy so the isolated process receives the same sandbox filesystem authority.
-	 *
-	 * @param configuration the complete parent configuration
-	 * @param destination the isolated configuration being assembled
-	 */
-	private static void copyCatPermissions(String configuration, StringBuilder destination)
-	{
-		assert configuration != null;
-		assert destination != null;
-		boolean copying = false;
-		for (String line : configuration.lines().toList())
-		{
-			String trimmed = line.strip();
-			if (trimmed.startsWith("["))
-				copying = CAT_PERMISSION_SECTION.matcher(trimmed).matches();
-			if (copying)
-				destination.append(line).append(System.lineSeparator());
-		}
 	}
 
 	/**
