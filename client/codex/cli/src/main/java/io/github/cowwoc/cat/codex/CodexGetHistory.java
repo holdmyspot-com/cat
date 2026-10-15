@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.codex;
 
 import io.github.cowwoc.cat.codex.optimizer.RolloutInterruptSignal;
+import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.history.SessionHistory;
 import io.github.cowwoc.cat.codex.secrets.CodexGetHistoryAccess;
 import io.github.cowwoc.cat.codex.secrets.CodexGetHistorySecrets;
@@ -38,6 +39,7 @@ public final class CodexGetHistory
 	 */
 	public static void main(String[] args)
 	{
+		args = CommandLineArguments.recover(args);
 		try
 		{
 			System.out.print(execute(System.getenv(), args));

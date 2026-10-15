@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.claude;
 
+import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.history.SessionHistory;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,6 +24,7 @@ public final class ClaudeGetHistory
 	 */
 	public static void main(String[] args)
 	{
+		args = CommandLineArguments.recover(args);
 		try
 		{
 			System.out.print(execute(System.getenv(), args));

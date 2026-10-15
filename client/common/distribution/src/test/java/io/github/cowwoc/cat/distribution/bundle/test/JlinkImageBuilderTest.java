@@ -41,10 +41,11 @@ public final class JlinkImageBuilderTest
 		""";
 
 	/**
-	 * The options of every launcher's JVM: warnings on standard error only, and UTF-8 output on every platform.
+	 * The options of every launcher's JVM: warnings on standard error only, UTF-8 output on every platform, and native
+	 * access for the common module.
 	 */
 	private static final String VM_OPTIONS = "-Xlog:all=off:stdout -Xlog:all=warning:stderr " +
-		"-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8";
+		"-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 --enable-native-access=io.github.cowwoc.cat.common.cli";
 
 	/** Creates a test instance. */
 	public JlinkImageBuilderTest()

@@ -26,10 +26,12 @@ public final class JlinkImageBuilder
 	/**
 	 * The options of every launcher's JVM. The CLI's standard output carries structured responses, so JVM warnings go to
 	 * standard error instead of corrupting that channel. Java writes its standard streams in the console's or the
-	 * system's character set, which on Windows is not UTF-8, while the harnesses read UTF-8.
+	 * system's character set, which on Windows is not UTF-8, while the harnesses read UTF-8. On Windows, the common
+	 * module reads the program's arguments from the process's command line through native code, because the Java
+	 * launcher loses the characters that the system's code page lacks.
 	 */
 	private static final String VM_OPTIONS = "-Xlog:all=off:stdout -Xlog:all=warning:stderr " +
-		"-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8";
+		"-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 --enable-native-access=io.github.cowwoc.cat.common.cli";
 
 	static
 	{

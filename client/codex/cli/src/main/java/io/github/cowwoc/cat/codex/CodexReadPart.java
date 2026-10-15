@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.Platform;
 
 import java.io.BufferedOutputStream;
@@ -101,7 +102,7 @@ public final class CodexReadPart
 	 */
 	public static void main(String[] args)
 	{
-		requireThat(args, "args").isNotNull();
+		args = CommandLineArguments.recover(args);
 		CommandShell shell = CommandShell.current();
 		int status = run(args, shell, launcher(shell.launcher("read-part")), System.getenv(), System.out, System.err);
 		System.out.flush();

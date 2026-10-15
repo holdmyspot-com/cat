@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.git.replay;
 
+import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.git.Git;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -206,6 +207,7 @@ public final class GitTopicReplayEditor
 	 */
 	public static void main(String[] args) throws IOException
 	{
+		args = CommandLineArguments.recover(args);
 		new GitTopicReplayEditor(repositoryRoot(Path.of("."))).execute(args);
 	}
 

@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.CommandLineArguments;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
@@ -48,6 +49,7 @@ public final class PromptOptimizerCli
 	@SuppressWarnings("PMD.DoNotTerminateVM")
 	public static void main(String[] args, ScopeFactory factory)
 	{
+		args = CommandLineArguments.recover(args);
 		int exitCode = run(args, factory, ZoneId.systemDefault(), System.out);
 		if (exitCode != 0)
 			System.exit(exitCode);

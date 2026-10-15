@@ -5,6 +5,7 @@ import static io.github.cowwoc.cat.claude.ClaudePluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
@@ -43,7 +44,7 @@ public final class ClaudeRunnerCli
 	 */
 	public static void main(String[] args) throws IOException
 	{
-		requireThat(args, "args").isNotNull();
+		args = CommandLineArguments.recover(args);
 		if (args.length == 1 && args[0].equals("--help"))
 		{
 			System.out.println(HarnessRunnerOptions.usage("claude-runner"));

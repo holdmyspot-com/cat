@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.history;
 
+import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.secrets.SessionHistoryAccess;
 import io.github.cowwoc.cat.common.secrets.SessionHistorySecrets;
@@ -70,6 +71,7 @@ public final class SessionHistory
 	 */
 	public static void main(String[] args)
 	{
+		args = CommandLineArguments.recover(args);
 		try
 		{
 			System.out.print(execute(args));

@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.codex;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.CommandLineArguments;
 import java.io.Console;
 import java.io.File;
 import java.io.IOException;
@@ -56,7 +57,7 @@ public final class CodexRunPart
 	 */
 	public static void main(String[] args)
 	{
-		requireThat(args, "args").isNotNull();
+		args = CommandLineArguments.recover(args);
 		Console console = System.console();
 		boolean terminal = console != null && console.isTerminal();
 		CommandShell shell = CommandShell.current();
