@@ -27,7 +27,9 @@ import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -378,8 +380,8 @@ public final class CleanupTest
 			for (Path runRoot : runRoots)
 			{
 				Path run = Files.createDirectories(runRoot.resolve("claude/run-" + id));
-				Files.writeString(run.resolve("run.json"), "{\"project_path\": \"" +
-					directory.resolve("staged/project") + "\", \"state\": \"completed\"}", UTF_8);
+				Files.writeString(run.resolve("run.json"), JSON.writeValueAsString(Map.of(
+					"project_path", directory.resolve("staged/project").toString(), "state", "completed")), UTF_8);
 				Files.createDirectories(run.resolve("project"));
 				Files.writeString(run.resolve("project/CLAUDE.md"), "prompt v1\n", UTF_8);
 			}
@@ -420,6 +422,24 @@ public final class CleanupTest
 		}
 
 		/**
+		 * Returns the directories of the base repository's worktrees, as Git lists them.
+		 *
+		 * @return the directories
+		 * @throws IOException if Git fails
+		 */
+		List<Path> worktrees() throws IOException
+		{
+			String prefix = "worktree ";
+			List<Path> directories = new ArrayList<>();
+			for (String line : new Git(base).lines("worktree", "list", "--porcelain"))
+			{
+				if (line.startsWith(prefix))
+					directories.add(Path.of(line.substring(prefix.length())));
+			}
+			return directories;
+		}
+
+		/**
 		 * Requires every file of {@link #CAMPAIGN} to be removed, and every file of {@link #OTHER} and the malformed
 		 * runs to remain.
 		 *
@@ -433,8 +453,9 @@ public final class CleanupTest
 				requireThat(Files.notExists(runRoot.resolve("claude/run-" + CAMPAIGN)), "runIsAbsent").
 					withContext(runRoot, "runRoot").isTrue();
 			}
-			String worktrees = new Git(base).run("worktree", "list", "--porcelain");
-			requireThat(worktrees, "worktrees").doesNotContain(directory(CAMPAIGN).toString());
+			List<Path> worktrees = worktrees();
+			requireThat(worktrees.stream().noneMatch(worktree -> worktree.startsWith(directory(CAMPAIGN))),
+				"campaignWorktreeIsAbsent").withContext(worktrees, "worktrees").isTrue();
 			try (Stream<Path> entries = Files.list(directory(CAMPAIGN).getParent()))
 			{
 				requireThat(entries.map(path -> path.getFileName().toString()).toList(), "campaigns").
@@ -475,8 +496,9 @@ public final class CleanupTest
 				withContext(context, "context").isRegularFile();
 			requireThat(directory(OTHER).resolve("worktree/CLAUDE.md"), "otherWorktree").
 				withContext(context, "context").isRegularFile();
-			requireThat(new Git(base).run("worktree", "list", "--porcelain"), "worktrees").
-				withContext(context, "context").contains(directory(OTHER).toString());
+			List<Path> worktrees = worktrees();
+			requireThat(worktrees.stream().anyMatch(worktree -> worktree.startsWith(directory(OTHER))),
+				"otherWorktreeIsListed").withContext(context, "context").withContext(worktrees, "worktrees").isTrue();
 			for (Path runRoot : runRoots)
 			{
 				requireThat(runRoot.resolve("claude/run-" + OTHER + "/run.json"), "otherRun").
