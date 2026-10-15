@@ -71,12 +71,13 @@ project-owned transactional operation rather than its write mode directly. The o
 full reachable path set from its documented invocation and a disposable probe; a requested include or path filter is not
 scope evidence until the probe proves it. It snapshots the pre-operation bytes and filesystem metadata of every
 reachable tracked, untracked, and ignored file through one uniform content-addressed manifest, records every pre-image
-hash, and retains that manifest outside the reachable tree. Create one invocation-owned transaction directory with
-`mktemp -d -p ${CAT_TEMP} mutation-transaction-XXXXXX`, which prints the new directory's absolute path; retain the
-snapshot below its `snapshot/` child and the manifest and terminal receipt in that transaction directory. Use the
-printed path rather than synthesizing its unique suffix or substituting `/tmp` or a repository path. The operation then
-runs the tool, inventories actual changed paths and post-image hashes, and accepts the result only when all changes are
-inside the declared allowlist and the required parse, compile, test, and scoped static checks pass.
+hash, and retains that manifest outside the reachable tree. Create one invocation-owned transaction directory named for
+`mutation-transaction` with the command that the CAT Environment rule gives for a temporary directory, which prints the
+new directory's absolute path; retain the snapshot below its `snapshot/` child and the manifest and terminal receipt in
+that transaction directory. Use the printed path rather than synthesizing its unique suffix or substituting `/tmp` or a
+repository path. The operation then runs the tool, inventories actual changed paths and post-image hashes, and accepts
+the result only when all changes are inside the declared allowlist and the required parse, compile, test, and scoped
+static checks pass.
 
 On an out-of-allowlist change or failed gate, the operation conditionally restores a path only when its current hash
 equals the recorded tool-produced post-image; a different hash is a concurrent-write conflict that it preserves and

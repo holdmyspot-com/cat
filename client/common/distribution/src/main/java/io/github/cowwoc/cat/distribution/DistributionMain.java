@@ -247,7 +247,8 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Validates the rule graphs that each packaged harness will inject before modifying the assembled artifacts.
+	 * Validates the rule graphs that each packaged harness will inject before modifying the assembled artifacts. Each
+	 * artifact holds the Windows variants of its harness rules, so the graphs are validated with and without them.
 	 *
 	 * @param claudeRoot the assembled Claude artifact
 	 * @param codexRoot the assembled Codex artifact
@@ -258,9 +259,12 @@ public final class DistributionMain
 	private static void validateRuleDependencies(Path claudeRoot, Path codexRoot, Path projectRoot, YAMLMapper yamlMapper)
 		throws IOException
 	{
-		ProjectRuleLoader loader = new ProjectRuleLoader(yamlMapper);
-		loader.loadForMainAgent(claudeRoot, projectRoot, "claude");
-		loader.loadForMainAgent(codexRoot, projectRoot, "codex");
+		for (Platform platform : List.of(Platform.LINUX_X64, Platform.WINDOWS_X64))
+		{
+			ProjectRuleLoader loader = new ProjectRuleLoader(yamlMapper, platform);
+			loader.loadForMainAgent(claudeRoot, projectRoot, "claude");
+			loader.loadForMainAgent(codexRoot, projectRoot, "codex");
+		}
 	}
 
 	/**

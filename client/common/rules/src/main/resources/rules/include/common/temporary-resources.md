@@ -14,10 +14,10 @@ runs when later setup, normal work, validation, or error handling fails. Use the
 management when available; otherwise use a bounded cleanup block or equivalent reliable cleanup path. Recursively remove
 only the root created by that operation.
 
-For CAT-controlled workflow state, create a fresh child directory of CAT_TEMP with
-`mktemp -d -p ${CAT_TEMP} <workflow-name>-XXXXXX`. This includes runner homes, workspaces, staged inputs or
-outputs, diagnostic records, and native scratch space configured for a nested harness. Do not use `/tmp`, the operating
-system's default temporary directory, or another shared location for that state: those locations break CAT's isolation,
+For CAT-controlled workflow state, create a fresh child directory of CAT_TEMP with the command that the CAT Environment
+rule gives for a temporary directory. This includes runner homes, workspaces, staged inputs or outputs, diagnostic
+records, and native scratch space configured for a nested harness. Do not use `/tmp`, the operating system's default
+temporary directory, or another shared location for that state: those locations break CAT's isolation,
 cleanup, and retained-evidence ownership. Pass the fresh CAT_TEMP child to a nested native process through its supported
 temporary-directory setting before it starts, and grant write authority only to that child. A test-only fixture that is
 not CAT workflow state may use the test framework's isolated temporary directory, provided its test owns and cleans it

@@ -59,6 +59,11 @@ public final class ProjectRuleLoader
 	 * directive.
 	 */
 	private static final String READ_FILE_RULE = "read-file.md";
+	/**
+	 * The folder of a bundled harness's rules that holds its Windows variants. On Windows, each rule in it stands in for
+	 * the harness rule of the same name, because the harness runs commands in a different shell there.
+	 */
+	private static final String WINDOWS_RULES = "windows";
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
@@ -85,17 +90,32 @@ public final class ProjectRuleLoader
 	private static final Set<String> FRONTMATTER_KEYS = Set.of("agents", "depends-on", "paths");
 
 	private final YAMLMapper yamlMapper;
+	private final Platform platform;
 
 	/**
-	 * Creates a loader backed by a YAML mapper.
+	 * Creates a loader backed by a YAML mapper that loads the rules for the current platform.
 	 *
 	 * @param yamlMapper a non-null YAML parser
 	 * @throws NullPointerException if {@code yamlMapper} is null
 	 */
 	public ProjectRuleLoader(YAMLMapper yamlMapper)
 	{
+		this(yamlMapper, Platform.current());
+	}
+
+	/**
+	 * Creates a loader backed by a YAML mapper.
+	 *
+	 * @param yamlMapper a non-null YAML parser
+	 * @param platform   the platform whose variants of the bundled harness rules the loader loads
+	 * @throws NullPointerException if any argument is null
+	 */
+	public ProjectRuleLoader(YAMLMapper yamlMapper, Platform platform)
+	{
 		requireThat(yamlMapper, "yamlMapper").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		this.yamlMapper = yamlMapper;
+		this.platform = platform;
 	}
 
 	/**
@@ -447,8 +467,7 @@ public final class ProjectRuleLoader
 		Path pluginRules = pluginRoot.resolve("rules");
 		loadDirectory(pluginRoot, pluginRules.resolve("common"), pluginRules, RuleRoot.PLUGIN, audience,
 			rules);
-		loadDirectory(pluginRoot, pluginRules.resolve(harness), pluginRules, RuleRoot.PLUGIN,
-			audience, rules);
+		loadHarnessDirectory(pluginRoot, pluginRules.resolve(harness), pluginRules, audience, rules);
 		if (userRulesRoot != null)
 		{
 			loadDirectory(userRulesRoot, userRulesRoot.resolve("common"), userRulesRoot, RuleRoot.USER,
@@ -577,8 +596,69 @@ public final class ProjectRuleLoader
 		RuleAudience audience, List<Rule> rules)
 		throws IOException
 	{
+		for (Path file : ruleFiles(ownerRoot, directory, root))
+		{
+			Rule rule = render(ownerRoot, file, ruleRoot, root, audience);
+			if (rule != null)
+				rules.add(rule);
+		}
+	}
+
+	/**
+	 * Loads the bundled rules of one harness. On Windows, each rule in the harness's Windows folder stands in for the
+	 * harness rule of the same name: it keeps that rule's path, so it takes the rule's place in the injection order and
+	 * in other rules' prerequisites. The folder's other rules are added.
+	 *
+	 * @param pluginRoot a non-null CAT installation directory
+	 * @param directory a non-null harness rule directory
+	 * @param ruleRoot the plugin's rule directory
+	 * @param audience the recipient whose rules are loaded
+	 * @param rules a non-null list of discovered rules
+	 * @throws IOException if a directory is not a real directory or one of its rules is invalid
+	 */
+	private void loadHarnessDirectory(Path pluginRoot, Path directory, Path ruleRoot, RuleAudience audience,
+		List<Rule> rules) throws IOException
+	{
+		Map<String, Path> files = new HashMap<>();
+		for (Path file : ruleFiles(pluginRoot, directory, RuleRoot.PLUGIN))
+			files.put(file.getFileName().toString(), file);
+		Map<String, Path> variants = new HashMap<>();
+		if (platform.isWindows())
+		{
+			for (Path file : ruleFiles(pluginRoot, directory.resolve(WINDOWS_RULES), RuleRoot.PLUGIN))
+				variants.put(file.getFileName().toString(), file);
+		}
+		Map<String, Path> loaded = new HashMap<>(files);
+		loaded.putAll(variants);
+
+		for (Path file : loaded.values().stream().sorted(ruleFileOrder()).toList())
+		{
+			Rule rule = render(pluginRoot, file, ruleRoot, RuleRoot.PLUGIN, audience);
+			if (rule == null)
+				continue;
+			Path replaced = files.get(file.getFileName().toString());
+			if (replaced != null && !replaced.equals(file))
+			{
+				rule = new Rule(rule.root(), rulePath(pluginRoot, ruleRoot, RuleRoot.PLUGIN, replaced),
+					rule.displayPath(), rule.file(), rule.direct(), rule.dependencies(), rule.context());
+			}
+			rules.add(rule);
+		}
+	}
+
+	/**
+	 * Lists the rule files of one direct rule directory, in injection order.
+	 *
+	 * @param ownerRoot a non-null rule-source owner directory
+	 * @param directory a non-null rule directory
+	 * @param root the source kind that contains {@code directory}
+	 * @return the Markdown files directly inside the directory, or none if the directory does not exist
+	 * @throws IOException if the directory is not a real directory
+	 */
+	private List<Path> ruleFiles(Path ownerRoot, Path directory, RuleRoot root) throws IOException
+	{
 		if (!Files.exists(directory, NOFOLLOW_LINKS))
-			return;
+			return List.of();
 		if (Files.isSymbolicLink(directory))
 		{
 			throw new IOException("CAT rule directory is a symbolic link: " + displayPath(ownerRoot, root, directory) +
@@ -591,14 +671,19 @@ public final class ProjectRuleLoader
 		}
 		try (Stream<Path> entries = Files.list(directory))
 		{
-			for (Path file : entries.filter(path -> path.getFileName().toString().endsWith(".md")).sorted(
-				Comparator.comparing(this::ruleOrder).thenComparing(path -> path.getFileName().toString())).toList())
-			{
-				Rule rule = render(ownerRoot, file, ruleRoot, root, audience);
-				if (rule != null)
-					rules.add(rule);
-			}
+			return entries.filter(path -> path.getFileName().toString().endsWith(".md")).sorted(ruleFileOrder()).
+				toList();
 		}
+	}
+
+	/**
+	 * Returns the order in which the rules of one directory are injected.
+	 *
+	 * @return the order of rule files
+	 */
+	private Comparator<Path> ruleFileOrder()
+	{
+		return Comparator.comparing(this::ruleOrder).thenComparing(path -> path.getFileName().toString());
 	}
 
 	/**

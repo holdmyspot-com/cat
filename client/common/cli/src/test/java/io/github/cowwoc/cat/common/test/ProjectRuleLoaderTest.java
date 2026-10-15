@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.RuleSource;
 import io.github.cowwoc.cat.common.SessionRules;
@@ -263,6 +264,67 @@ public final class ProjectRuleLoaderTest
 			requireThat(session.rules().indexOf("# Routes"), "routes").
 				isLessThan(session.rules().indexOf("# Project"));
 		}
+	}
+
+	/**
+	 * Verifies that on Windows, each bundled harness rule in the harness's {@code windows} folder replaces the
+	 * harness rule of the same name, and keeps its place among the rules.
+	 */
+	@Test
+	public void loadsWindowsVariantsOnWindows() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			writeHarnessRules(plugin);
+
+			SessionRules session = new ProjectRuleLoader(scope.yaml(), Platform.WINDOWS_X64).
+				loadSessionForMainAgent(plugin, null, project, "harnessa");
+
+			requireThat(session.readingGuidance(), "readingGuidance").
+				isEqualTo("# Reading files\n\nRun run-part.cmd");
+			requireThat(session.rules(), "rules").startsWith("# CAT environment\n\nRemove-Item").
+				doesNotContain("rm -rf").contains("# Windows only").doesNotContain("# Reading files");
+		}
+	}
+
+	/**
+	 * Verifies that on other platforms, the bundled harness rules in the harness's {@code windows} folder are not
+	 * loaded.
+	 */
+	@Test
+	public void ignoresWindowsVariantsOnLinux() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			writeHarnessRules(plugin);
+
+			SessionRules session = new ProjectRuleLoader(scope.yaml(), Platform.LINUX_X64).
+				loadSessionForMainAgent(plugin, null, project, "harnessa");
+
+			requireThat(session.readingGuidance(), "readingGuidance").isEqualTo("# Reading files\n\nRun run-part");
+			requireThat(session.rules(), "rules").startsWith("# CAT environment\n\nrm -rf").
+				doesNotContain("Remove-Item").doesNotContain("# Windows only");
+		}
+	}
+
+	/**
+	 * Writes harness rules that have Windows variants, a Windows-only harness rule, and common and project rules.
+	 *
+	 * @param plugin the plugin directory
+	 * @throws IOException if a file cannot be written
+	 */
+	private static void writeHarnessRules(Path plugin) throws IOException
+	{
+		write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
+		write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\nrm -rf\n");
+		write(plugin, "rules/harnessa/read-file.md", "# Reading files\n\nRun run-part\n");
+		write(plugin, "rules/harnessa/windows/cat-env.md", "# CAT environment\n\nRemove-Item\n");
+		write(plugin, "rules/harnessa/windows/read-file.md", "# Reading files\n\nRun run-part.cmd\n");
+		write(plugin, "rules/harnessa/windows/shell.md", "# Windows only\n\nPowerShell guidance\n");
 	}
 
 	/**

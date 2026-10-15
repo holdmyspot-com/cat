@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.stream.Stream;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
@@ -70,7 +71,7 @@ public final class BundledRuleAudienceTest
 	/**
 	 * Verifies Codex agents receive the read-file rule at startup, stating the installed plugin's directory, which
 	 * holds the {@code run-part} and {@code read-part} commands it names, while Claude agents, which do not ship those
-	 * commands, do not receive the rule.
+	 * commands, do not receive the rule. On Windows, the rule names the batch files that PowerShell runs.
 	 *
 	 * @throws IOException if the bundled rules cannot be copied, routed, or loaded
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -84,17 +85,25 @@ public final class BundledRuleAudienceTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
 			copyBundledRules(plugin.resolve("rules"));
 			RuleArtifactRouter.route(plugin, scope.yaml());
-			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 			String pluginRoot = "the CAT plugin's root directory, `" + plugin.toAbsolutePath().normalize() + "`.";
 
-			for (String codex : List.of(loader.loadSessionForMainAgent(plugin, null, project, "codex").readingGuidance(),
-				loader.loadForSubagent(plugin, project, "codex", "cat:reviewer")))
+			for (Platform platform : List.of(Platform.LINUX_X64, Platform.WINDOWS_X64))
 			{
-				requireThat(codex, "codex").contains("# Reading Command Output").contains(pluginRoot).
-					contains("${CAT_PLUGIN_ROOT}/bin/run-part").doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
+				ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml(), platform);
+				String runPart;
+				if (platform.isWindows())
+					runPart = "& '${CAT_PLUGIN_ROOT}\\bin\\run-part.cmd'";
+				else
+					runPart = "${CAT_PLUGIN_ROOT}/bin/run-part <<'EOF'";
+				for (String codex : List.of(loader.loadSessionForMainAgent(plugin, null, project, "codex").
+					readingGuidance(), loader.loadForSubagent(plugin, project, "codex", "cat:reviewer")))
+				{
+					requireThat(codex, platform + "Codex").contains("# Reading Command Output").contains(pluginRoot).
+						contains(runPart).doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
+				}
+				requireThat(loader.loadForMainAgent(plugin, project, "claude"), platform + "Claude").
+					doesNotContain("# Reading Command Output");
 			}
-			requireThat(loader.loadForMainAgent(plugin, project, "claude"), "claude").
-				doesNotContain("# Reading Command Output");
 		}
 	}
 
