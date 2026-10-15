@@ -67,6 +67,20 @@ public final class ProjectRuleLoader
 	 * injected CAT environment rule states.
 	 */
 	private static final String PLUGIN_RULES_REFERENCE = "${CAT_PLUGIN_ROOT}/rules/";
+	/**
+	 * The notation that a bundled rule's text writes for the installation directory, which a caller-rendered rule
+	 * replaces with that directory.
+	 */
+	private static final String PLUGIN_ROOT_REFERENCE = "${CAT_PLUGIN_ROOT}";
+	/**
+	 * One name of a slash-separated path that follows a stand-in for the installation directory. A name ends before
+	 * whitespace, Markdown or sentence punctuation, and characters that no platform allows in a name.
+	 */
+	private static final String FOLLOWING_NAME = "[^/\\s`'\"<>()\\[\\]{},;:*?|]*[^/\\s`'\"<>()\\[\\]{},;:*?|.]";
+	private static final Pattern PLUGIN_ROOT_DIRECTIVE_PATH = Pattern.compile(Pattern.quote(PLUGIN_ROOT_DIRECTIVE) +
+		"((?:/" + FOLLOWING_NAME + ")*)");
+	private static final Pattern PLUGIN_ROOT_REFERENCE_PATH = Pattern.compile(Pattern.quote(PLUGIN_ROOT_REFERENCE) +
+		"((?:/" + FOLLOWING_NAME + ")*)");
 	private static final String RULES_DIRECTORY = ".cat/rules";
 	private static final Set<String> FRONTMATTER_KEYS = Set.of("agents", "depends-on", "paths");
 
@@ -136,8 +150,8 @@ public final class ProjectRuleLoader
 			throw new IOException("CAT rule leaves its installed rule directory: " + file);
 		String content = readRule(absoluteRoot, file, RuleRoot.PLUGIN);
 		Frontmatter frontmatter = frontmatter(content, file.toString());
-		return renderBody(absoluteRoot, file, ruleRoot, RuleRoot.PLUGIN, frontmatter, content).
-			replace("${CAT_PLUGIN_ROOT}", absoluteRoot.toString());
+		return replaceDirectory(renderBody(absoluteRoot, file, ruleRoot, RuleRoot.PLUGIN, frontmatter, content),
+			PLUGIN_ROOT_REFERENCE_PATH, absoluteRoot);
 	}
 
 	/**
@@ -693,8 +707,36 @@ public final class ProjectRuleLoader
 		String injected = injectedBody(null, expandDirectIncludes(body, file, ruleRoot, root, new HashSet<>()),
 			file, ruleRoot, root);
 		if (root == RuleRoot.PLUGIN)
-			injected = injected.replace(PLUGIN_ROOT_DIRECTIVE, ownerRoot.toAbsolutePath().normalize().toString());
+			injected = replaceDirectory(injected, PLUGIN_ROOT_DIRECTIVE_PATH, ownerRoot.toAbsolutePath().normalize());
 		return injected;
+	}
+
+	/**
+	 * Replaces each stand-in for a directory, together with the slash-separated names that follow it, with the path
+	 * that they name in the platform's form. A bundled rule is written once for every platform, while a path that
+	 * starts at a root names a file on one machine, so it keeps that machine's form.
+	 *
+	 * @param text the rendered text
+	 * @param standIn matches the stand-in, capturing the {@code /}-prefixed names that follow it
+	 * @param directory the absolute directory that the stand-in names
+	 * @return the text with each stand-in replaced
+	 */
+	private static String replaceDirectory(String text, Pattern standIn, Path directory)
+	{
+		Matcher matcher = standIn.matcher(text);
+		StringBuilder result = new StringBuilder(text.length());
+		while (matcher.find())
+		{
+			Path path = directory;
+			for (String name : matcher.group(1).split("/"))
+			{
+				if (!name.isEmpty())
+					path = path.resolve(name);
+			}
+			matcher.appendReplacement(result, Matcher.quoteReplacement(path.toString()));
+		}
+		matcher.appendTail(result);
+		return result.toString();
 	}
 
 	/**

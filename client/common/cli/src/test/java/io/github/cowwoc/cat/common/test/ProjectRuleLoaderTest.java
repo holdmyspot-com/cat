@@ -257,7 +257,7 @@ public final class ProjectRuleLoaderTest
 			}
 
 			requireThat(session.readingGuidance(), "readingGuidance").startsWith("# Reading files").
-				contains("Run `" + plugin + "/bin/run-part`").doesNotContain("# CAT environment").
+				contains("Run `" + plugin.resolve("bin/run-part") + "`").doesNotContain("# CAT environment").
 				doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
 			requireThat(session.rules(), "rules").startsWith("# CAT environment").doesNotContain("# Reading files");
 			requireThat(session.rules().indexOf("# Routes"), "routes").

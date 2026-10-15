@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.adapter;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,6 +30,10 @@ public abstract class PromptSources
 {
 	private final JsonMapper json;
 	private final List<Map.Entry<String, String>> roots;
+	/**
+	 * The separator of the directories' file system.
+	 */
+	private final char separator;
 	private final Object lock = new Object();
 	private final SortedSet<String> entries = new TreeSet<>();
 
@@ -50,6 +55,7 @@ public abstract class PromptSources
 		// The longest directory first, so that a nested directory wins over its parent.
 		sorted.sort(Comparator.comparingInt((Map.Entry<String, String> entry) -> entry.getValue().length()).reversed());
 		this.roots = List.copyOf(sorted);
+		this.separator = FileSystems.getDefault().getSeparator().charAt(0);
 	}
 
 	/**
@@ -104,7 +110,8 @@ public abstract class PromptSources
 	}
 
 	/**
-	 * Replaces a leading staged directory with its placeholder.
+	 * Replaces a leading staged directory with its placeholder. The harness may write the directory with the
+	 * platform's separator or with {@code /}, and either may separate it from the rest of the path.
 	 *
 	 * @param path the path or name that the event reported
 	 * @return the normalized text
@@ -114,11 +121,25 @@ public abstract class PromptSources
 		for (Map.Entry<String, String> root : roots)
 		{
 			String directory = root.getValue();
-			if (path.equals(directory))
-				return root.getKey();
-			if (path.startsWith(directory + "/"))
-				return root.getKey() + path.substring(directory.length());
+			for (String form : List.of(directory, directory.replace(separator, '/')))
+			{
+				if (path.equals(form))
+					return root.getKey();
+				if (path.startsWith(form) && isSeparator(path.charAt(form.length())))
+					return root.getKey() + path.substring(form.length());
+			}
 		}
 		return path;
+	}
+
+	/**
+	 * Indicates whether a character separates the names of a path.
+	 *
+	 * @param character a character
+	 * @return true if it is {@code /} or the platform's separator
+	 */
+	private boolean isSeparator(char character)
+	{
+		return character == '/' || character == separator;
 	}
 }

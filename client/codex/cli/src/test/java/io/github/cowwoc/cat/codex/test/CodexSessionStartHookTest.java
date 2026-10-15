@@ -292,7 +292,7 @@ public final class CodexSessionStartHookTest
 
 			Path rulesFile = project.resolve(".cat/work/temp/codex-context/" + sessionId() + ".md");
 			requireThat(context(result), "context").
-				startsWith("# Reading Command Output\n\nRun `" + plugin + "/bin/run-part`.\n\n# CAT Rules\n\n").
+				startsWith("# Reading Command Output\n\nRun `" + plugin.resolve("bin/run-part") + "`.\n\n# CAT Rules\n\n").
 				contains("CAT's rules for this session are in `" + rulesFile + "`. Read that whole file, as described " +
 					"above, before you plan, run another command, or respond, even when you could answer the request " +
 					"without it, then apply every instruction in it for the rest of this conversation.").
