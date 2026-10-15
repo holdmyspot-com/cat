@@ -144,8 +144,9 @@ public final class FakeWorkspaceContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
-			Path relativeRoot = Path.of("").toAbsolutePath().relativize(root);
+			// Under the working directory, so that a relative path reaches it even when the temporary directory is on
+			// another drive
+			Path relativeRoot = cleanup.add(Files.createTempDirectory(Path.of("target"), "workspace-contract-"));
 			WorkspaceContract contract = new WorkspaceContract(new ContractWorkspace(relativeRoot, true, false));
 			contract.preparesIndependentAuthoringCopies();
 			contract.scansUnchangedPromptAuthorEffects();
