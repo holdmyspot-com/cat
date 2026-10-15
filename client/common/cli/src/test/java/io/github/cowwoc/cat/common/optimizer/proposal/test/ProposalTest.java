@@ -1107,7 +1107,7 @@ public final class ProposalTest
 		Proposal proposal = proposal(links(false), HostLogin.API_KEY);
 
 		requireThat(proposal.render(), "render").
-			contains("- `alias.md` -> `prompts/main.md`: inside the project; its content may be edited").
+			contains("- `alias.md` -> `" + Path.of("prompts/main.md") + "`: inside the project; its content may be edited").
 			contains("- `shared.md` -> `/shared/rules.md`: outside the project; external target read only").
 			contains(LinkReport.STAGING_CONSEQUENCE);
 		requireThat(proposal.contract().limitations(), "limitations").contains(LinkReport.STAGING_CONSEQUENCE);
@@ -1131,10 +1131,10 @@ public final class ProposalTest
 		requireThat(proposal.render(), "render").contains("""
 			## Control source
 
-			Control trials run the incumbent with the target prompt file `prompts/main.md` emptied to zero bytes. \
+			Control trials run the incumbent with the target prompt file `%s` emptied to zero bytes. \
 			The contract lists no dependents of the target, so every other part of the prompt system stays as the \
 			incumbent has it.
-			""").contains(Proposal.CONTROL_SOURCE_LIMIT);
+			""".formatted(CONTROL_FILE)).contains(Proposal.CONTROL_SOURCE_LIMIT);
 		requireThat(proposal.contract().limitations(), "limitations").contains(Proposal.CONTROL_SOURCE_LIMIT);
 	}
 
@@ -1169,7 +1169,7 @@ public final class ProposalTest
 			List.of(refusal));
 
 		requireThat(accepted.render(), "render").contains("""
-			Control trials run the incumbent with the target prompt file `prompts/main.md` emptied to zero bytes and \
+			Control trials run the incumbent with the target prompt file `%s` emptied to zero bytes and \
 			these dependents of the target removed. Every other part of the prompt system stays as the incumbent has it.
 
 			- The project file `repair.sh`: deleted. Serves: Repairs the output.
@@ -1179,9 +1179,9 @@ public final class ProposalTest
 			  Read prompts/main.md.
 			  ```
 
-			- The project file `.codex/hooks.json`: its PostToolUse hook `repair.sh` unregistered. Serves: Runs the \
+			- The project file `%s`: its PostToolUse hook `repair.sh` unregistered. Serves: Runs the \
 			repair script.
-			""");
+			""".formatted(CONTROL_FILE, Path.of(".codex/hooks.json")));
 		requireThat(accepted.contract().dependents(), "dependents").isEqualTo(derived.contract().dependents());
 		requireThat(accepted.contract().dependents().size(), "dependents.size()").isEqualTo(3);
 		requireThat(accepted.isConfirmable(CertificationScope.LATEST_VERSIONS), "acceptedConfirmable").isTrue();
@@ -1324,7 +1324,8 @@ public final class ProposalTest
 				Set.of(Path.of("source/rules/read-file.md")));
 
 			requireThat(proposal.confirmationRefusal(CertificationScope.WEAKEST_CELL), "refusal").
-				contains("`source/rules/search.md`").contains("`rules/codex/search.md`");
+				contains("`" + Path.of("source/rules/search.md") + "`").
+				contains("`" + Path.of("rules/codex/search.md") + "`");
 		}
 	}
 
@@ -1356,7 +1357,7 @@ public final class ProposalTest
 		Proposal one = pluginProposal(root, project, Set.of(Path.of("plugins/docs/rules.md")));
 
 		requireThat(both.confirmationRefusal(CertificationScope.WEAKEST_CELL), "refusal").
-			contains("`plugins/docs`").contains("`plugins/style`");
+			contains("`" + Path.of("plugins/docs") + "`").contains("`" + Path.of("plugins/style") + "`");
 		requireThat(one.isConfirmable(CertificationScope.WEAKEST_CELL), "oneConfirmable").isTrue();
 	}
 
@@ -1386,9 +1387,9 @@ public final class ProposalTest
 			requireThat(proposal.isConfirmable(CertificationScope.WEAKEST_CELL), "confirmable").isTrue();
 			requireThat(proposal.render(), "text").contains("\n## Plugin under test\n").
 				contains("`" + base + "`").
-				contains("- `source/rules` → `rules/codex`\n").
+				contains("- `" + Path.of("source/rules") + "` → `" + Path.of("rules/codex") + "`\n").
 				contains("Warning: the content of these mapped files differs from the base's").
-				contains(":\n\n- `source/rules/read-file.md`\n").
+				contains(":\n\n- `" + Path.of("source/rules/read-file.md") + "`\n").
 				contains("Trials do not install CAT: " + NO_CAT_EVIDENCE);
 			PluginUnderTest.Built frozen = (PluginUnderTest.Built) proposal.contract().plugin().orElseThrow();
 			requireThat(frozen.baseDigest(), "baseDigest").matches("[0-9a-f]{64}");
@@ -1802,9 +1803,9 @@ public final class ProposalTest
 		requireThat(Proposal.of(proposal, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render(), "render").
 			contains("- Scenario: converted from the recorded scenario `reported.md`; delivery creates " +
-				"`.cat/tests/CLAUDE/formatting/scenario.md`, which differs from it by:\n").
+				"`" + Path.of(".cat/tests/CLAUDE/formatting/scenario.md") + "`, which differs from it by:\n").
 			contains("- Scenario: converted from the recorded scenario `analogous.md`; delivery creates " +
-				"`.cat/tests/CLAUDE/formatting/scenario.md`, which differs from it by:\n");
+				"`" + Path.of(".cat/tests/CLAUDE/formatting/scenario.md") + "`, which differs from it by:\n");
 	}
 
 	/**
@@ -1853,7 +1854,7 @@ public final class ProposalTest
 			"rewrites it with these changes:\n\n    ```diff\n    --- a/" + citation + "\n    +++ b/" + citation + "\n").
 			contains("\n    +### Turn 2\n").contains("\n    -### keeps_tone\n").
 			contains("- Scenario: written by the contract author; delivery creates " +
-				"`.cat/tests/CLAUDE/safety/scenario.md`\n");
+				"`" + Path.of(".cat/tests/CLAUDE/safety/scenario.md") + "`\n");
 
 		PromptTest test = edited.contract().findTest("formatting").orElseThrow();
 		String unchanged = test.scenario().renderFile("Formatting", test.expectedBehaviour());

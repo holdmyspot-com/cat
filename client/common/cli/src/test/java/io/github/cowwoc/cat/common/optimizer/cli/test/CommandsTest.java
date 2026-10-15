@@ -489,7 +489,8 @@ public final class CommandsTest
 		requireThat(delivery.get("label").asString(), "label").isEqualTo("certified");
 		requireThat(delivery.get("diff").asString(), "diff").isEqualTo("diff --git a/prompts/a.md b/prompts/a.md");
 		requireThat(delivery.get("base_only_changes").get(0).asString(), "baseOnly").isEqualTo("notes.md");
-		requireThat(delivery.get("changed_prompt_sources").get(0).asString(), "sources").isEqualTo("prompts/a.md");
+		requireThat(delivery.get("changed_prompt_sources").get(0).asString(), "sources").
+			isEqualTo(Path.of("prompts/a.md").toString());
 		JsonNode applicability = delivery.get("applicability");
 		requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
 		requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();

@@ -117,7 +117,7 @@ public final class OverlayTest
 		}
 		catch (IllegalArgumentException e)
 		{
-			requireThat(e.getMessage(), "message").contains("prompts/b.md");
+			requireThat(e.getMessage(), "message").contains(Path.of("prompts/b.md").toString());
 		}
 	}
 
@@ -172,12 +172,19 @@ public final class OverlayTest
 	 * Verifies that an overlay rejects an edit at a path that the fork reaches through a symbolic link, because the
 	 * edit belongs to the link's resolved target.
 	 */
-	@Test(expectedExceptions = IllegalArgumentException.class,
-		expectedExceptionsMessageRegExp = ".*alias\\.md.*prompts/a\\.md.*")
+	@Test
 	public void rejectsWriteAtLinkPath()
 	{
 		FileInventory fork = inventory(Map.of("prompts/a.md", file("a"), "alias.md", link("prompts/a.md")));
 
-		Overlay.of(fork).write(Path.of("alias.md"), content("A"), READ_WRITE);
+		try
+		{
+			Overlay.of(fork).write(Path.of("alias.md"), content("A"), READ_WRITE);
+			throw new AssertionError("An edit at a link path must be refused.");
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").contains("alias.md").contains(Path.of("prompts/a.md").toString());
+		}
 	}
 }

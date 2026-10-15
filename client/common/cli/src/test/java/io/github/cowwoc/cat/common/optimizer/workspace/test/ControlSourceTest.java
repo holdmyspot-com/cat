@@ -149,7 +149,8 @@ public final class ControlSourceTest
 
 			requireThat(problems, "problems").size().isEqualTo(2);
 			requireThat(problems.get(0), "copyProblem").contains("is the target prompt file's copy in the plugin");
-			requireThat(problems.get(1), "missingProblem").contains("bin/run-part").contains("is not a regular file");
+			requireThat(problems.get(1), "missingProblem").contains(Path.of("bin/run-part").toString()).
+				contains("is not a regular file");
 		}
 	}
 
