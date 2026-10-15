@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
+import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileBinding;
@@ -197,6 +198,31 @@ public final class ContractFixtures
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
 				test.assertions(), citations.getOrDefault(test.id(), List.of()), List.of()));
+		}
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.fixtures(),
+			contract.limitations(), contract.minimumPassRate(), contract.salt());
+	}
+
+	/**
+	 * Returns a contract in which one prompt test writes fixtures.
+	 *
+	 * @param contract the contract
+	 * @param testId the identifier of the prompt test that receives the fixtures
+	 * @param fixtures the fixtures
+	 * @return the contract with the fixtures
+	 */
+	public static Contract withFixtures(Contract contract, String testId, List<FixtureFile> fixtures)
+	{
+		List<PromptTest> tests = new ArrayList<>();
+		for (PromptTest test : contract.tests())
+		{
+			List<FixtureFile> testFixtures = test.fixtures();
+			if (test.id().equals(testId))
+				testFixtures = fixtures;
+			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
+				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
+				test.assertions(), test.regressionScenarios(), testFixtures));
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.fixtures(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());

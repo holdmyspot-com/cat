@@ -46,6 +46,25 @@ final class DevelopmentContract
 	}
 
 	/**
+	 * Removes from a contract's JSON the content of each fixture that CAT copied from a recorded scenario, leaving its
+	 * path and the file that it was copied from, for a session that works in a copy of the project and so can read that
+	 * file when it needs the content.
+	 *
+	 * @param contract the contract's JSON in the proposal schema
+	 */
+	static void omitRecordedContent(ObjectNode contract)
+	{
+		for (JsonNode test : contract.get("tests"))
+		{
+			JsonNode recorded = test.get(ProposalSchema.RECORDED_FIXTURES);
+			if (recorded == null)
+				continue;
+			for (JsonNode fixture : recorded)
+				((ObjectNode) fixture).remove("content");
+		}
+	}
+
+	/**
 	 * Removes from a test's JSON the test cases of the held-out part. Committed test cases all belong to the
 	 * development part.
 	 *

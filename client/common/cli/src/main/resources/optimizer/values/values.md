@@ -28,6 +28,8 @@ The failure group, as JSON:
 - `test`: the test's definition. Its turns, assertions and fixtures insert the value of each of its `variables` where
   the variable's name appears in double braces, and `{{expected_outcome}}` inserts the test case's expected outcome.
   `test_cases` lists only the development test cases; the test has held-out test cases that are not shown to you.
+  `recorded_fixtures`, when present, holds the fixtures that CAT copies from recorded scenarios, each with its `path`,
+  its `content` and the `source` file it was copied from.
 - `other_test_cases`: the test cases that earlier rounds added to the test. It is empty when there are none.
 - `cell`: the cell, a model with a reasoning effort, in which the formal failures occurred.
 - `assertion`: the failed assertion, with its `id`, its `statement`, the `requirement` whose compliance it shows, with

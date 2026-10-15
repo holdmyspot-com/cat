@@ -18,6 +18,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.campaign.test.Builder;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
@@ -222,6 +223,34 @@ public final class PromptAuthorTest
 		JsonNode confirmed = json.readTree(schema.toJson(contract));
 		for (String property : List.of("requirements", "trial_profiles", "judge", "fixtures", "limitations"))
 			requireThat(shown.get(property), property).isEqualTo(confirmed.get(property));
+	}
+
+	/**
+	 * Verifies that the prompt author receives each fixture that CAT copied from a recorded scenario as its path and the
+	 * file that it was copied from, without its content, and each fixture that a contract author wrote with its
+	 * content.
+	 */
+	@Test
+	public void requestOmitsRecordedFixtureContent()
+	{
+		FixtureFile recorded = new FixtureFile("notes.md", "Release 4.296 renamed the exporter.\n",
+			"plugin/src/test/resources/fixtures/notes.md");
+		FixtureFile written = new FixtureFile("todo.md", "Clean up {{target}}.\n");
+		Contract contract = ContractFixtures.withFixtures(ContractFixtures.contract(), "safety",
+			List.of(recorded, written));
+		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION, contract,
+			List.of(failure()), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(), List.of());
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		requireThat(turn, "turn").doesNotContain("renamed the exporter");
+		JsonNode shown = json.readTree(section(turn, "The confirmed contract", "\n\nThe edits that this campaign"));
+		JsonNode test = shown.get("tests").get(2);
+		requireThat(test.get("recorded_fixtures"), "recorded_fixtures").isEqualTo(json.createArrayNode().
+			add(json.createObjectNode().put("path", recorded.path()).put("source", recorded.source())));
+		requireThat(test.get("fixtures"), "fixtures").isEqualTo(json.createArrayNode().
+			add(json.createObjectNode().put("path", written.path()).put("content", written.content())));
 	}
 
 	/**

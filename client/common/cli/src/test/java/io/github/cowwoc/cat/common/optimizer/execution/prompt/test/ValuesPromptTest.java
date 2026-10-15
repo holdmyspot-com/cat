@@ -9,6 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TriedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.ValueGenerator;
@@ -132,6 +133,26 @@ public final class ValuesPromptTest
 		for (int i = 0; i < targets.size(); ++i)
 			tried.add(testCase(targets.get(i)).put("trials", 25).put("failures", failures[i]));
 		requireThat(entry.get("tried_rounds"), "tried_rounds").isEqualTo(rounds);
+	}
+
+	/**
+	 * Verifies that the contract author receives each fixture that CAT copied from a recorded scenario with its content
+	 * and the file that it was copied from, since the session works outside the project and cannot read that file.
+	 */
+	@Test
+	public void requestShowsRecordedFixtureContent()
+	{
+		FixtureFile recorded = new FixtureFile("notes.md", "Release 4.296 renamed the exporter.\n",
+			"plugin/src/test/resources/fixtures/notes.md");
+		Contract contract = ContractFixtures.withFixtures(ContractFixtures.contract(), TEST, List.of(recorded));
+
+		String turn = values.request(contract, KNOWN, GROUP).turns().getFirst();
+
+		JsonNode test = json.readTree(section(turn, "The failure group, as JSON", "\n\n### How to write")).
+			get("test");
+		requireThat(test.get("recorded_fixtures"), "recorded_fixtures").isEqualTo(json.createArrayNode().
+			add(json.createObjectNode().put("path", recorded.path()).put("content", recorded.content()).
+				put("source", recorded.source())));
 	}
 
 	/**

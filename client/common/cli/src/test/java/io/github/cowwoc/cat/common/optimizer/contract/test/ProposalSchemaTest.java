@@ -298,7 +298,7 @@ public final class ProposalSchemaTest
 		String output = json.writeValueAsString(proposal);
 
 		Contract contract = schema().parse(output, ContractFixtures::profiles, ContractFixtures.SALT,
-			new SplittableRandom(3), Map.of());
+			new SplittableRandom(3), Map.of(), Map.of());
 
 		PromptTest parsed = contract.tests().getFirst();
 		requireThat(parsed.fixtures(), "fixtures").isEqualTo(List.of(new FixtureFile("notes/{{tone}}.md",
@@ -322,6 +322,75 @@ public final class ProposalSchemaTest
 		}
 		InvalidProposalException e = rejection(json.writeValueAsString(stored));
 		requireThat(String.join(" | ", e.problems()), "problems").contains("seed");
+	}
+
+	/**
+	 * Verifies that CAT adds to a prompt test the fixtures of the recorded scenarios that it cites, before the fixtures
+	 * that the contract author wrote, that the stored contract keeps each with the file that CAT copied it from, and
+	 * that the contract author can neither write them nor write another fixture at one's path.
+	 *
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	@Test
+	public void addsRecordedFixtures() throws InvalidProposalException
+	{
+		ObjectNode proposal = (ObjectNode) json.readTree(ContractFixtures.resource("valid-proposal.json"));
+		proposal.remove(List.of("salt", "trial_profiles"));
+		for (JsonNode testNode : proposal.get("tests"))
+			((ObjectNode) testNode).remove("committed_test_cases");
+		FixtureFile written = new FixtureFile("notes/{{tone}}.md", "Write for {{audience}} readers.\n");
+		((ObjectNode) proposal.get("tests").get(0)).withArray("fixtures").addObject().put("path", written.path()).
+			put("content", written.content());
+		FixtureFile recorded = new FixtureFile("docs/glossary.md", "A glossary.\n",
+			"plugin/src/test/resources/fixtures/docs/glossary.md");
+		Map<String, List<FixtureFile>> recordedByTest = Map.of("formatting", List.of(recorded));
+
+		Contract contract = schema().parse(json.writeValueAsString(proposal), ContractFixtures::profiles,
+			ContractFixtures.SALT, new SplittableRandom(3), Map.of(), recordedByTest);
+
+		requireThat(contract.tests().getFirst().fixtures(), "fixtures").isEqualTo(List.of(recorded, written));
+		requireThat(contract.tests().get(1).fixtures(), "plain_list.fixtures").isEmpty();
+		JsonNode stored = json.readTree(schema().toJson(contract));
+		JsonNode storedTest = stored.get("tests").get(0);
+		requireThat(storedTest.get("recorded_fixtures"), "recorded_fixtures").isEqualTo(json.createArrayNode().
+			add(json.createObjectNode().put("path", recorded.path()).put("content", recorded.content()).
+				put("source", recorded.source())));
+		requireThat(storedTest.get("fixtures").size(), "fixtures.size()").isEqualTo(1);
+		requireThat(stored.get("tests").get(1).has("recorded_fixtures"), "plain_list.hasRecordedFixtures").isFalse();
+		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
+
+		ObjectNode copied = proposal.deepCopy();
+		((ObjectNode) copied.get("tests").get(0)).set("recorded_fixtures", storedTest.get("recorded_fixtures"));
+		requireThat(String.join(" | ", derivationRejection(copied, recordedByTest).problems()), "copied").
+			contains("recorded_fixtures");
+
+		ObjectNode colliding = proposal.deepCopy();
+		((ObjectNode) colliding.get("tests").get(0)).withArray("fixtures").addObject().put("path", recorded.path()).
+			put("content", "Another glossary.\n");
+		requireThat(String.join(" | ", derivationRejection(colliding, recordedByTest).problems()), "colliding").
+			contains("$.tests[0].fixtures[1]").contains(recorded.source());
+	}
+
+	/**
+	 * Parses contract author output that must be rejected.
+	 *
+	 * @param output   the contract author's output
+	 * @param recorded the fixtures of the cited recorded scenarios, by prompt test identifier
+	 * @return the rejection
+	 * @throws AssertionError if the output is accepted
+	 */
+	private InvalidProposalException derivationRejection(ObjectNode output, Map<String, List<FixtureFile>> recorded)
+	{
+		try
+		{
+			schema().parse(json.writeValueAsString(output), ContractFixtures::profiles, ContractFixtures.SALT,
+				new SplittableRandom(3), Map.of(), recorded);
+		}
+		catch (InvalidProposalException e)
+		{
+			return e;
+		}
+		throw new AssertionError("Output was accepted");
 	}
 
 	/**

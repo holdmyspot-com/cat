@@ -21,6 +21,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
@@ -1884,6 +1885,64 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that the contract author sees the file of each text fixture of a recorded scenario rather than its
+	 * content, that CAT adds the fixture to the prompt test that cites the scenario, and of no other test, and that the
+	 * proposal names the file that CAT copies it from rather than showing its content.
+	 *
+	 * @throws InvalidProposalException if the proposal is rejected
+	 * @throws ScenarioFormatException  if the recorded scenario does not follow the format
+	 */
+	@Test
+	public void citingTestReceivesRecordedFixtures() throws InvalidProposalException, ScenarioFormatException
+	{
+		String citation = ".cat/tests/CLAUDE/formatting/scenario.md";
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
+			putArray("regression_scenarios").add(citation));
+		Scenario recorded = Scenario.parse("""
+			# Formatting
+
+			## Variables
+
+			- **tone**: The tone of the summary.
+			- **audience**: The reader of the summary.
+
+			## Scenario
+
+			Summarize the notes in {{tone}} style for {{audience}} reader.
+
+			## Assertions
+
+			### keeps_tone
+
+			- **kind**: effect
+			- **description**: The summary keeps the {{tone}} tone.
+			""");
+		FixtureFile notes = new FixtureFile("notes/{{tone}}.md", "Release 4.296 renamed the exporter.\n",
+			".cat/tests/CLAUDE/fixtures/notes/{{tone}}.md");
+		PromptTestFiles files = new PromptTestFiles(PROMPT_SYSTEM.resolve(".cat/tests"),
+			PROMPT_SYSTEM.resolve(".cat/tests/CLAUDE/formatting"), recorded, List.of("../fixtures/**"), List.of(),
+			List.of());
+		ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
+			new RegressionScenarios(PROMPT_SYSTEM, List.of(new RegressionScenarios.Scenario(
+				PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, recorded.render(),
+				new RegressionScenarios.Current(files, List.of(notes))))), TARGET, null, true);
+
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
+		String rendered = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
+
+		requireThat(prompt, "prompt").contains("- `notes/{{tone}}.md`, the file `" +
+			PROMPT_SYSTEM.toAbsolutePath().normalize().resolve(notes.source()) + "`\n").
+			doesNotContain(notes.content());
+		requireThat(derived.contract().findTest("formatting").orElseThrow().fixtures(), "formatting").
+			isEqualTo(List.of(notes));
+		requireThat(derived.contract().findTest("safety").orElseThrow().fixtures(), "safety").isEmpty();
+		requireThat(rendered, "rendered").contains("  - `notes/{{tone}}.md`, copied from `" + notes.source() +
+			"`\n").doesNotContain(notes.content());
+	}
+
+	/**
 	 * Returns a contract author that holds one recorded scenario of the prompt system's instruction file.
 	 *
 	 * @param citation the scenario's citation
@@ -2778,7 +2837,8 @@ public final class ProposalTest
 
 	/**
 	 * Verifies that the contract author's output schema requires test cases, each with a value for every variable and
-	 * an expected outcome, and holds neither committed test cases, which CAT reads from values files, nor the salt.
+	 * an expected outcome, and holds neither committed test cases, which CAT reads from values files, nor recorded
+	 * fixtures, which CAT reads from the cited scenarios, nor the salt.
 	 */
 	@Test
 	public void outputSchemaRequiresTestCases()
@@ -2791,6 +2851,7 @@ public final class ProposalTest
 		List<String> testRequired = test.get("required").valueStream().map(JsonNode::asString).toList();
 		requireThat(testRequired, "test.required").contains("variables").contains("test_cases");
 		requireThat(test.get("properties").has("committed_test_cases"), "hasCommittedTestCases").isFalse();
+		requireThat(test.get("properties").has("recorded_fixtures"), "hasRecordedFixtures").isFalse();
 		List<String> variableRequired = test.get("properties").get("variables").get("items").get("required").
 			valueStream().map(JsonNode::asString).toList();
 		requireThat(variableRequired, "variable.required").containsExactly(List.of("name", "description"));

@@ -54,6 +54,11 @@ public final class ProposalSchema
 	 */
 	private static final String COMMITTED_TEST_CASES = "committed_test_cases";
 	/**
+	 * The property of a test that holds the fixtures of the recorded scenarios that it cites, which CAT copies from
+	 * the scenarios' files rather than the contract author writes.
+	 */
+	public static final String RECORDED_FIXTURES = "recorded_fixtures";
+	/**
 	 * The property that holds the contract's salt, which CAT draws rather than the contract author.
 	 */
 	private static final String SALT = "salt";
@@ -104,7 +109,7 @@ public final class ProposalSchema
 
 	/**
 	 * Returns the proposal schema without the parts that CAT computes: the salt, the trial profiles, each test's
-	 * committed test cases and the base digest of the plugin under test.
+	 * committed test cases and recorded fixtures, and the base digest of the plugin under test.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param schemaText the proposal schema
@@ -117,6 +122,7 @@ public final class ProposalSchema
 		removeProperty(json, root, SALT);
 		ObjectNode test = (ObjectNode) root.get("properties").get("tests").get("items");
 		removeProperty(json, test, COMMITTED_TEST_CASES);
+		removeProperty(json, test, RECORDED_FIXTURES);
 		ObjectNode plugin = (ObjectNode) root.get("properties").get(PLUGIN_UNDER_TEST);
 		removeProperty(json, plugin, BASE_DIGEST);
 		return root;
@@ -152,8 +158,8 @@ public final class ProposalSchema
 	}
 
 	/**
-	 * Returns the JSON schema of contract author output: the proposal schema without the salt, the trial profiles and
-	 * the committed test cases that CAT supplies.
+	 * Returns the JSON schema of contract author output: the proposal schema without the salt, the trial profiles, the
+	 * committed test cases and the recorded fixtures that CAT supplies.
 	 *
 	 * @return a copy of the schema, which the caller may change
 	 */
@@ -174,34 +180,38 @@ public final class ProposalSchema
 	public Contract parse(String proposal) throws InvalidProposalException
 	{
 		requireThat(proposal, "proposal").isNotNull();
-		return parse(proposal, validator, null, null, null, Map.of());
+		return parse(proposal, validator, null, null, null, Map.of(), Map.of());
 	}
 
 	/**
-	 * Validates contract author output that holds no salt, no trial profiles and no committed test cases, computes the
-	 * profiles, adds the committed test cases and converts the output to a contract.
+	 * Validates contract author output that holds no salt, no trial profiles, no committed test cases and no recorded
+	 * fixtures, computes the profiles, adds the committed test cases and the recorded fixtures, and converts the output
+	 * to a contract.
 	 *
-	 * @param proposal the contract author's JSON output, without {@value #SALT}, {@value #TRIAL_PROFILES} and
-	 *   {@value #COMMITTED_TEST_CASES}
+	 * @param proposal the contract author's JSON output, without {@value #SALT}, {@value #TRIAL_PROFILES},
+	 *   {@value #COMMITTED_TEST_CASES} and {@value #RECORDED_FIXTURES}
 	 * @param profiles computes the trial profiles from the proposal's requirements and tests
 	 * @param salt the salt that CAT drew for the proposal
 	 * @param seeds the source of the seeds that CAT adds to each generator call
 	 * @param committed the test cases that earlier campaigns committed, by the identifier of the prompt test that
 	 *   receives them; a prompt test that it does not name has none
+	 * @param recorded the fixtures of the recorded scenarios that each prompt test cites, by the identifier of the
+	 *   prompt test that receives them, each with its source; a prompt test that it does not name has none
 	 * @return the contract that the proposal describes
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws InvalidProposalException if {@code proposal} is not valid JSON, violates the schema, holds a salt or
-	 *   trial profiles, states a generator call's seed or version, breaks a rule that the schema cannot express, or
-	 *   {@code profiles} rejects it
+	 *   trial profiles, states a generator call's seed or version, writes a fixture at the path of a fixture that
+	 *   {@code recorded} gives its test, breaks a rule that the schema cannot express, or {@code profiles} rejects it
 	 */
 	public Contract parse(String proposal, ProfileRule profiles, long salt, RandomGenerator seeds,
-		Map<String, List<TestCase>> committed) throws InvalidProposalException
+		Map<String, List<TestCase>> committed, Map<String, List<FixtureFile>> recorded) throws InvalidProposalException
 	{
 		requireThat(proposal, "proposal").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
 		requireThat(seeds, "seeds").isNotNull();
 		requireThat(committed, "committed").isNotNull();
-		return parse(proposal, derivation, profiles, salt, seeds, committed);
+		requireThat(recorded, "recorded").isNotNull();
+		return parse(proposal, derivation, profiles, salt, seeds, committed, recorded);
 	}
 
 	/**
@@ -214,11 +224,13 @@ public final class ProposalSchema
 	 * @param seeds the source of the seeds that CAT adds to each generator call, or {@code null} if each call carries
 	 *   its seed and version
 	 * @param committed the committed test cases that CAT adds, by prompt test identifier, to tests whose JSON holds none
+	 * @param recorded the recorded fixtures that CAT adds, by prompt test identifier, to tests whose JSON holds none
 	 * @return the contract
 	 * @throws InvalidProposalException if the proposal is invalid
 	 */
 	private Contract parse(String proposal, SchemaValidator schema, ProfileRule profiles, Long salt,
-		RandomGenerator seeds, Map<String, List<TestCase>> committed) throws InvalidProposalException
+		RandomGenerator seeds, Map<String, List<TestCase>> committed, Map<String, List<FixtureFile>> recorded)
+		throws InvalidProposalException
 	{
 		JsonNode root;
 		try
@@ -237,7 +249,7 @@ public final class ProposalSchema
 			throw new InvalidProposalException(violations);
 
 		List<String> problems = new ArrayList<>();
-		Contract contract = new Builder(problems, seeds, committed).contract(root, profiles, salt);
+		Contract contract = new Builder(problems, seeds, committed, recorded).contract(root, profiles, salt);
 		if (contract == null)
 			throw new InvalidProposalException(problems);
 		return contract;
@@ -482,11 +494,23 @@ public final class ProposalSchema
 		ArrayNode scenarios = node.putArray(REGRESSION_SCENARIOS);
 		test.regressionScenarios().forEach(scenarios::add);
 		ArrayNode fixtures = node.putArray("fixtures");
+		ArrayNode recorded = null;
 		for (FixtureFile fixture : test.fixtures())
 		{
-			ObjectNode fixtureNode = fixtures.addObject();
+			ObjectNode fixtureNode;
+			if (fixture.source().isEmpty())
+				fixtureNode = fixtures.addObject();
+			else
+			{
+				// A test without recorded fixtures keeps the identity that it had before the property existed
+				if (recorded == null)
+					recorded = node.putArray(RECORDED_FIXTURES);
+				fixtureNode = recorded.addObject();
+			}
 			fixtureNode.put("path", fixture.path());
 			fixtureNode.put("content", fixture.content());
+			if (!fixture.source().isEmpty())
+				fixtureNode.put("source", fixture.source());
 		}
 		ArrayNode variables = node.putArray("variables");
 		for (VariableDeclaration variable : test.variables())
@@ -538,6 +562,7 @@ public final class ProposalSchema
 		private final List<String> problems;
 		private final RandomGenerator seeds;
 		private final Map<String, List<TestCase>> committed;
+		private final Map<String, List<FixtureFile>> recorded;
 		private final Set<Long> taken = new HashSet<>();
 
 		/**
@@ -548,12 +573,16 @@ public final class ProposalSchema
 		 *   carries its seed and version
 		 * @param committed the committed test cases that CAT adds, by prompt test identifier, to tests whose JSON
 		 *   holds none
+		 * @param recorded the recorded fixtures that CAT adds, by prompt test identifier, to tests whose JSON holds
+		 *   none
 		 */
-		Builder(List<String> problems, RandomGenerator seeds, Map<String, List<TestCase>> committed)
+		Builder(List<String> problems, RandomGenerator seeds, Map<String, List<TestCase>> committed,
+			Map<String, List<FixtureFile>> recorded)
 		{
 			this.problems = problems;
 			this.seeds = seeds;
 			this.committed = committed;
+			this.recorded = recorded;
 			for (List<TestCase> testCases : committed.values())
 			{
 				for (TestCase testCase : testCases)
@@ -751,8 +780,10 @@ public final class ProposalSchema
 			List<VariableDeclaration> variables = list(node.get("variables"), location + ".variables",
 				(variableNode, variableLocation) -> attempt(variableLocation, () ->
 					new VariableDeclaration(text(variableNode, "name"), text(variableNode, "description"))));
-			List<FixtureFile> fixtures = list(node.get("fixtures"), location + ".fixtures", (fixtureNode, at) ->
-				attempt(at, () -> new FixtureFile(text(fixtureNode, "path"), text(fixtureNode, "content"))));
+			List<FixtureFile> fixtures = recordedFixtures(node, location);
+			List<FixtureFile> written = list(node.get("fixtures"), location + ".fixtures", (fixtureNode, at) ->
+				attempt(at, () -> written(fixtureNode, fixtures)));
+			fixtures.addAll(written);
 			List<TestCase> committedTestCases = committed.getOrDefault(node.get("id").asString(), List.of());
 			JsonNode committedNode = node.get(COMMITTED_TEST_CASES);
 			if (committedNode != null)
@@ -775,6 +806,46 @@ public final class ProposalSchema
 			if (attempt(location, () -> test.scenario().render()) == null)
 				return null;
 			return test;
+		}
+
+		/**
+		 * Returns the recorded fixtures of one prompt test: those that its JSON holds, or else those that CAT adds.
+		 *
+		 * @param node the prompt test
+		 * @param location the location of the prompt test
+		 * @return a list that the caller may change, holding the fixtures that could be built
+		 */
+		private List<FixtureFile> recordedFixtures(JsonNode node, String location)
+		{
+			JsonNode recordedNode = node.get(RECORDED_FIXTURES);
+			if (recordedNode == null)
+				return new ArrayList<>(recorded.getOrDefault(node.get("id").asString(), List.of()));
+			return list(recordedNode, location + "." + RECORDED_FIXTURES, (fixtureNode, at) ->
+				attempt(at, () -> new FixtureFile(text(fixtureNode, "path"), text(fixtureNode, "content"),
+					text(fixtureNode, "source"))));
+		}
+
+		/**
+		 * Builds a fixture that the contract author wrote.
+		 *
+		 * @param node the fixture
+		 * @param recordedFixtures the recorded fixtures of the same prompt test
+		 * @return the fixture
+		 * @throws IllegalArgumentException if a recorded fixture has the same path, or a model constructor rejects a
+		 *   value
+		 */
+		private static FixtureFile written(JsonNode node, List<FixtureFile> recordedFixtures)
+		{
+			FixtureFile fixture = new FixtureFile(text(node, "path"), text(node, "content"));
+			for (FixtureFile recordedFixture : recordedFixtures)
+			{
+				if (recordedFixture.path().equals(fixture.path()))
+				{
+					throw new IllegalArgumentException("CAT adds the fixture '" + fixture.path() + "' from the file '" +
+						recordedFixture.source() + "' of a cited scenario. Leave it out of fixtures.");
+				}
+			}
+			return fixture;
 		}
 
 		/**

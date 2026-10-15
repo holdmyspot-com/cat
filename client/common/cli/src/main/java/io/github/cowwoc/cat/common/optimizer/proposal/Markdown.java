@@ -351,7 +351,8 @@ public final class Markdown
 	}
 
 	/**
-	 * Shows the files that a test writes into each trial's workspace, as the contract author wrote them.
+	 * Shows the files that a test writes into each trial's workspace: one that the contract author wrote with its
+	 * content, and one that CAT copies from a cited scenario by the file that it is copied from.
 	 *
 	 * @param test the prompt test
 	 */
@@ -365,6 +366,12 @@ public final class Markdown
 		text.append("- Fixtures, written into each trial's workspace with each test case's values:\n");
 		for (FixtureFile fixture : test.fixtures())
 		{
+			if (!fixture.source().isEmpty())
+			{
+				text.append("  - `").append(fixture.path()).append("`, copied from `").append(fixture.source()).
+					append("`\n");
+				continue;
+			}
 			String fence = "`".repeat(Math.max(3, longestBacktickRun(fixture.content()) + 1));
 			text.append("  - `").append(fixture.path()).append("`:\n\n    ").append(fence).append('\n');
 			String content = fixture.content();

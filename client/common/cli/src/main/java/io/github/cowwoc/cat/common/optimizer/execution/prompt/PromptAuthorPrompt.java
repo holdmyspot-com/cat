@@ -240,6 +240,9 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 					put("candidate_passes", pairs.candidatePasses()).put("incumbent_passes", pairs.referencePasses());
 			}
 		}
+		// The session works in a copy of the project, so it reads a recorded fixture's file if it needs the content
+		ObjectNode contract = DevelopmentContract.toJson(json, schema, brief.contract());
+		DevelopmentContract.omitRecordedContent(contract);
 		String turn = prompt.fill(Map.ofEntries(
 			Map.entry("hunk_definition", Hunk.DEFINITION),
 			Map.entry("prompt_sources", editableSources(brief.links())),
@@ -248,8 +251,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 			Map.entry("declined_edits", declinedEdits(brief.answeredWarnings())),
 			Map.entry("cell", brief.cell()),
 			Map.entry("approach", brief.approach().text()),
-			Map.entry("contract", json.writeValueAsString(DevelopmentContract.toJson(json, schema,
-				brief.contract()))),
+			Map.entry("contract", json.writeValueAsString(contract)),
 			Map.entry("campaign_edits", brief.campaignEdits()),
 			Map.entry("failures", pretty(failures)),
 			Map.entry("development_counts", pretty(encodeCounts(brief.developmentCounts()))),

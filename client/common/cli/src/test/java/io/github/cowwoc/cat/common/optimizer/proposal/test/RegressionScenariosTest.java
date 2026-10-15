@@ -239,7 +239,7 @@ public final class RegressionScenariosTest
 	/**
 	 * Verifies that a prompt test directory in the current format is read with its scenario, fixtures and committed
 	 * test cases, and that a scenario in an earlier format is kept for conversion with the reason it does not parse.
-	 * The contract author receives each scenario's format and the content of each text fixture.
+	 * The contract author receives each scenario's format and the file of each text fixture, not its content.
 	 *
 	 * @throws IOException if the scenario tree cannot be created or read
 	 */
@@ -293,20 +293,25 @@ public final class RegressionScenariosTest
 			requireThat(files.scenario().turns(), "turns").isEqualTo(List.of("Summarize `{{notes}}`."));
 			requireThat(files.fixtures().size(), "fixtures.size()").isEqualTo(1);
 			requireThat(files.testCases().size(), "testCases.size()").isEqualTo(1);
-			requireThat(texts, "texts").isEqualTo(List.of(new FixtureFile("{{notes}}", "Release 4.2 shipped.")));
+			String source = "plugin/src/test/resources/common/reading/whole_file_read/fixtures/{{notes}}";
+			requireThat(texts, "texts").isEqualTo(List.of(new FixtureFile("{{notes}}", "Release 4.2 shipped.",
+				source)));
 			requireThat(read.prompt(), "prompt").
 				contains("Citation: plugin/src/test/resources/common/reading/reported/scenario.md\n" +
 					"Format: earlier, which you convert: ").
 				contains("Citation: plugin/src/test/resources/common/reading/whole_file_read/scenario.md\n" +
 					"Format: current\n").
-				contains("Fixture `{{notes}}`:\n\n```\nRelease 4.2 shipped.\n```\n");
+				contains("Fixtures, which CAT adds to the test that cites this scenario:\n\n- `{{notes}}`, the file `" +
+					root.toAbsolutePath().normalize().resolve(source) + "`\n").
+				doesNotContain("Release 4.2 shipped.");
 		}
 	}
 
 	/**
 	 * Verifies that the contract author receives, with a prompt test, the text fixtures that its fixture patterns name
-	 * in shared {@code fixtures/} directories, and that a prompt test without a {@code ## Fixtures} section receives
-	 * none of the files that its ancestors hold.
+	 * in shared {@code fixtures/} directories, each with the file that it is copied from, that a test citing the prompt
+	 * test twice receives each once, and that a prompt test without a {@code ## Fixtures} section receives none of the
+	 * files that its ancestors hold.
 	 *
 	 * @throws IOException if the scenario tree cannot be created or read
 	 */
@@ -353,8 +358,8 @@ public final class RegressionScenariosTest
 			Path briefReply = Files.createDirectories(root.resolve(".cat/tests/wording/brief_reply"));
 			Files.writeString(briefReply.resolve("scenario.md"), scenario);
 
-			List<RegressionScenarios.Scenario> found = RegressionScenarios.read(JSON, root, root.resolve("home")).
-				scenarios();
+			RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"));
+			List<RegressionScenarios.Scenario> found = read.scenarios();
 			requireThat(found.size(), "found.size()").isEqualTo(2);
 			for (RegressionScenarios.Scenario regression : found)
 			{
@@ -365,10 +370,14 @@ public final class RegressionScenariosTest
 					expected = List.of();
 				else
 				{
-					expected = List.of(new FixtureFile("AGENTS.md", "Shared by the reading tests."),
-						new FixtureFile("shared.md", "Shared by every guidance."));
+					expected = List.of(new FixtureFile("AGENTS.md", "Shared by the reading tests.",
+							"plugin/src/test/resources/common/reading/fixtures/AGENTS.md"),
+						new FixtureFile("shared.md", "Shared by every guidance.",
+							"plugin/src/test/resources/fixtures/shared.md"));
 				}
 				requireThat(texts, "texts").withContext(regression.citation(), "citation").isEqualTo(expected);
+				requireThat(read.recordedFixtures(List.of(regression.citation(), regression.citation())),
+					"recordedFixtures").withContext(regression.citation(), "citation").isEqualTo(expected);
 			}
 		}
 	}

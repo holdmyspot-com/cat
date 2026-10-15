@@ -119,9 +119,14 @@ Otherwise keep it unchanged; the user decides whether the agent really fails it 
 ### Recorded regression scenarios
 
 CAT supplies the recorded scenarios of the target below. Each gives its guidance source, its citation, its format and
-its complete content; a scenario in the current format also gives the content of each of its text fixtures. For each
-scenario, write a prompt test that preserves its turns, expected behaviour, assertions and fixtures, and put its exact
-citation in that test's `regression_scenarios`.
+its complete content; a scenario in the current format also lists each of its text fixtures by its workspace path and
+the file that holds it. For each scenario, write a prompt test that preserves its turns, expected behaviour and
+assertions, and put its exact citation in that test's `regression_scenarios`.
+
+- CAT adds the fixtures of a scenario in the current format to the test that cites it, so leave them out of the test's
+  `fixtures`; CAT refuses a fixture at the path of one that it adds. When a test case depends on a fixture's content,
+  such as a fact that decides its expected outcome or the text around a placeholder, search the fixture's file for that
+  content instead of reading the whole file.
 
 - A scenario in the current format states each variable as a `- **<name>**: <description>` pair under
   `## Variables`, its turns under `## Scenario`, with one `### Turn <n>` subsection per turn when it has several, and

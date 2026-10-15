@@ -51,7 +51,8 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 * A prompt test directory in the current format.
 	 *
 	 * @param files        the prompt test's scenario, fixtures and committed test cases
-	 * @param textFixtures the content of each fixture that is UTF-8 text, in path order
+	 * @param textFixtures each fixture that is UTF-8 text, with its content and the file that it is copied from, in
+	 *                     path order
 	 */
 	public record Current(PromptTestFiles files, List<FixtureFile> textFixtures) implements Format
 	{
@@ -59,7 +60,8 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		 * Creates a current-format scenario.
 		 *
 		 * @param files        the prompt test's scenario, fixtures and committed test cases
-		 * @param textFixtures the content of each fixture that is UTF-8 text, in path order
+		 * @param textFixtures each fixture that is UTF-8 text, with its content and the file that it is copied from,
+		 *                     in path order
 		 * @throws NullPointerException if any of the arguments are null
 		 */
 		public Current
@@ -324,11 +326,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		List<Scenario> scenarios)
 		throws IOException
 	{
-		String citation;
-		if (file.startsWith(project))
-			citation = project.relativize(file).toString();
-		else
-			citation = file.toString();
+		String citation = cited(project, file);
 		Format format;
 		if (file.getFileName().toString().equals(SCENARIO))
 		{
@@ -340,7 +338,9 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 				{
 					if (fixture.text())
 					{
-						textFixtures.add(new FixtureFile(fixture.path(), Files.readString(files.source(fixture))));
+						Path fixtureSource = files.source(fixture);
+						textFixtures.add(new FixtureFile(fixture.path(), Files.readString(fixtureSource),
+							cited(project, fixtureSource)));
 					}
 				}
 				format = new Current(files, textFixtures);
@@ -360,8 +360,23 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	}
 
 	/**
+	 * Returns the path of a file relative to the project when it lies inside it.
+	 *
+	 * @param project the project
+	 * @param file    the file
+	 * @return the path, relative to {@code project} when it lies inside it, and absolute otherwise
+	 */
+	private static String cited(Path project, Path file)
+	{
+		if (file.startsWith(project))
+			return project.relativize(file).toString();
+		return file.toString();
+	}
+
+	/**
 	 * Returns every scenario's source, exact citation, format and complete content for the contract author, with the
-	 * content of each text fixture and each committed test case of a scenario in the current format.
+	 * file of each text fixture and each committed test case of a scenario in the current format. The contract author
+	 * reads a fixture's file when a test case depends on its content, so the content is not repeated here.
 	 *
 	 * @return the scenario material, or {@code none} when no scenario is recorded
 	 */
@@ -380,15 +395,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 				case Current current ->
 				{
 					entry.append("current\n\n").append(scenario.content());
-					for (FixtureFile fixture : current.textFixtures())
-					{
-						String fence = "`".repeat(Math.max(3, longestBacktickRun(fixture.content()) + 1));
-						entry.append("\n\nFixture `").append(fixture.path()).append("`:\n\n").append(fence).
-							append('\n').append(fixture.content());
-						if (!fixture.content().endsWith("\n"))
-							entry.append('\n');
-						entry.append(fence).append('\n');
-					}
+					appendFixtures(entry, current.textFixtures());
 					appendCommitted(entry, current.files().testCases());
 				}
 				case Earlier earlier -> entry.append("earlier, which you convert: ").append(earlier.problem()).
@@ -421,26 +428,22 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	}
 
 	/**
-	 * Returns the length of the longest run of backticks in text.
+	 * Appends the workspace path and the file of each text fixture of a scenario, if any.
 	 *
-	 * @param value the text
-	 * @return the number of backticks in the longest run, or {@code 0} if there are none
+	 * @param entry    the scenario's entry
+	 * @param fixtures the scenario's text fixtures
 	 */
-	private static int longestBacktickRun(String value)
+	private void appendFixtures(StringBuilder entry, List<FixtureFile> fixtures)
 	{
-		int longest = 0;
-		int run = 0;
-		for (int i = 0; i < value.length(); ++i)
+		if (fixtures.isEmpty())
+			return;
+		entry.append("\n\nFixtures, which CAT adds to the test that cites this scenario:\n");
+		for (FixtureFile fixture : fixtures)
 		{
-			if (value.charAt(i) == '`')
-			{
-				++run;
-				longest = Math.max(longest, run);
-			}
-			else
-				run = 0;
+			entry.append("\n- `").append(fixture.path()).append("`, the file `").
+				append(project.resolve(fixture.source())).append('`');
 		}
-		return longest;
+		entry.append('\n');
 	}
 
 	/**
@@ -463,6 +466,28 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 			}
 		}
 		return List.copyOf(testCases);
+	}
+
+	/**
+	 * Returns the text fixtures of the cited scenarios, which CAT adds to the prompt test that cites them.
+	 *
+	 * @param citations the citations of the scenarios that one prompt test covers
+	 * @return the fixtures, each with its source, in citation order, each once
+	 * @throws NullPointerException if {@code citations} is null
+	 */
+	public List<FixtureFile> recordedFixtures(List<String> citations)
+	{
+		requireThat(citations, "citations").isNotNull();
+		Set<FixtureFile> fixtures = new LinkedHashSet<>();
+		for (String citation : citations)
+		{
+			for (Scenario scenario : scenarios)
+			{
+				if (scenario.citation().equals(citation) && scenario.format() instanceof Current current)
+					fixtures.addAll(current.textFixtures());
+			}
+		}
+		return List.copyOf(fixtures);
 	}
 
 	/**

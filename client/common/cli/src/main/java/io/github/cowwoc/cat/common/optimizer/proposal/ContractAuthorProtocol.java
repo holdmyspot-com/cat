@@ -12,7 +12,6 @@ import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.BuiltInTool;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
-import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ValueGenerators;
@@ -36,6 +35,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.StringJoiner;
+import java.util.function.Function;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -429,7 +429,8 @@ public final class ContractAuthorProtocol
 			contract = schema.parse(json.writeValueAsString(output), (requirements, tests) ->
 				TrialProfiles.compute(profiles.inventory(), ranking, profiles.bindingsOf(requirements),
 					restriction, described, requirements, tests), salt, new SplittableRandom(salt),
-				committedTestCases(output));
+				byCitingTest(output, scenarios::committedTestCases),
+				byCitingTest(output, scenarios::recordedFixtures));
 			problems.addAll(unreportedExitStatuses(contract));
 			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
 			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
@@ -474,18 +475,21 @@ public final class ContractAuthorProtocol
 	}
 
 	/**
-	 * Returns the test cases that earlier campaigns committed for each prompt test of the contract author's output: those
-	 * of the recorded scenarios that the test cites. The schema validation that follows rejects a malformed test.
+	 * Returns what CAT adds to each prompt test of the contract author's output from the recorded scenarios that the
+	 * test cites. The schema validation that follows rejects a malformed test.
 	 *
+	 * @param <T> the type of item that CAT adds
 	 * @param output the contract author's output
-	 * @return the committed test cases, by prompt test identifier
+	 * @param ofScenarios returns the items of the scenarios that one test cites, from their citations
+	 * @return the items, by prompt test identifier; a test that receives none is left out
 	 */
-	private Map<String, List<TestCase>> committedTestCases(ObjectNode output)
+	private static <T> Map<String, List<T>> byCitingTest(ObjectNode output,
+		Function<List<String>, List<T>> ofScenarios)
 	{
-		Map<String, List<TestCase>> committed = new HashMap<>();
+		Map<String, List<T>> byTest = new HashMap<>();
 		JsonNode tests = output.get("tests");
 		if (tests == null || !tests.isArray())
-			return committed;
+			return byTest;
 		for (JsonNode test : tests)
 		{
 			JsonNode id = test.get("id");
@@ -498,11 +502,11 @@ public final class ContractAuthorProtocol
 				if (citation.isString())
 					cited.add(citation.asString());
 			}
-			List<TestCase> testCases = scenarios.committedTestCases(cited);
-			if (!testCases.isEmpty())
-				committed.put(id.asString(), testCases);
+			List<T> items = ofScenarios.apply(cited);
+			if (!items.isEmpty())
+				byTest.put(id.asString(), items);
 		}
-		return committed;
+		return byTest;
 	}
 
 	/**
