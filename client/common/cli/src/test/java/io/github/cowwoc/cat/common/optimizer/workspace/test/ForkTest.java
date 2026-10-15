@@ -7,6 +7,7 @@ import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtur
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
@@ -26,7 +27,13 @@ import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.attribute.UserPrincipal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -699,7 +706,7 @@ public final class ForkTest
 			Path missing = root.resolve("outside/missing.md");
 			Path sealed = Files.createDirectories(root.resolve("outside/sealed"));
 			commitLinks(base, Map.of("missing.md", missing, "up", root, "sealed", sealed));
-			Files.setPosixFilePermissions(sealed, Set.of());
+			denyListing(sealed);
 			try
 			{
 				Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
@@ -718,7 +725,7 @@ public final class ForkTest
 			}
 			finally
 			{
-				Files.setPosixFilePermissions(sealed, EXECUTABLE);
+				allowListing(sealed);
 			}
 		}
 	}
@@ -741,7 +748,7 @@ public final class ForkTest
 			Path hidden = root.resolve("outside/hidden");
 			Path participant = writeFile(hidden.resolve("shared.md"), "shared", READ_WRITE);
 			commitLinks(base, Map.of("hidden", hidden));
-			Files.setPosixFilePermissions(hidden, PosixFilePermissions.fromString("--x--x--x"));
+			denyListing(hidden);
 			try
 			{
 				Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of(participant));
@@ -750,9 +757,66 @@ public final class ForkTest
 			}
 			finally
 			{
-				Files.setPosixFilePermissions(hidden, EXECUTABLE);
+				allowListing(hidden);
 			}
 		}
+	}
+
+	/**
+	 * Takes away the permission to list a directory while leaving its entries reachable by name. A file system without
+	 * POSIX permissions gets an access-control entry that denies the current user the listing instead.
+	 *
+	 * @param directory a directory
+	 * @throws IOException if the directory's permissions cannot be changed
+	 */
+	private static void denyListing(Path directory) throws IOException
+	{
+		if (PortableFiles.hasModes(directory))
+		{
+			Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("--x--x--x"));
+			return;
+		}
+		AclFileAttributeView view = Files.getFileAttributeView(directory, AclFileAttributeView.class);
+		List<AclEntry> entries = new ArrayList<>(view.getAcl());
+		entries.addFirst(listingDenial(directory));
+		view.setAcl(entries);
+	}
+
+	/**
+	 * Gives back the permission that {@link #denyListing(Path)} took away, so that the directory can be deleted.
+	 *
+	 * @param directory a directory
+	 * @throws IOException if the directory's permissions cannot be changed
+	 */
+	private static void allowListing(Path directory) throws IOException
+	{
+		if (PortableFiles.hasModes(directory))
+		{
+			Files.setPosixFilePermissions(directory, EXECUTABLE);
+			return;
+		}
+		AclFileAttributeView view = Files.getFileAttributeView(directory, AclFileAttributeView.class);
+		List<AclEntry> entries = new ArrayList<>(view.getAcl());
+		entries.remove(listingDenial(directory));
+		view.setAcl(entries);
+	}
+
+	/**
+	 * Returns the access-control entry that denies the current user the listing of a directory.
+	 *
+	 * @param directory a directory
+	 * @return the entry
+	 * @throws IOException if the current user cannot be looked up
+	 */
+	private static AclEntry listingDenial(Path directory) throws IOException
+	{
+		UserPrincipal user = directory.getFileSystem().getUserPrincipalLookupService().
+			lookupPrincipalByName(System.getProperty("user.name"));
+		return AclEntry.newBuilder().
+			setType(AclEntryType.DENY).
+			setPrincipal(user).
+			setPermissions(AclEntryPermission.LIST_DIRECTORY).
+			build();
 	}
 
 	/**
@@ -804,6 +868,7 @@ public final class ForkTest
 		git.run("config", "user.email", "test@example.com");
 		git.run("config", "commit.gpgsign", "false");
 		git.run("config", "core.excludesFile", noExcludes.toString());
+		git.run("config", "core.autocrlf", "false");
 		writeFile(base.resolve(".gitignore"), "ignored.md\n", READ_WRITE);
 		writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
 		// Windows records a file as executable only by its name, and Linux only by the mode set here
