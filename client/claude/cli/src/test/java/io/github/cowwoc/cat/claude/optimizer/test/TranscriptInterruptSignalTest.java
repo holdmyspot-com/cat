@@ -203,8 +203,9 @@ public final class TranscriptInterruptSignalTest
 			String blank = "  ";
 			requireThat(ClaudeConfiguration.resolveDirectory(home, blank), "blank").
 				isEqualTo(configuration);
-			requireThat(ClaudeConfiguration.resolveDirectory(home, "/custom"), "configured").
-				isEqualTo(Path.of("/custom").toAbsolutePath());
+			Path custom = Path.of("/custom").toAbsolutePath();
+			requireThat(ClaudeConfiguration.resolveDirectory(home, custom.toString()), "configured").
+				isEqualTo(custom);
 
 			Path project = Files.createDirectories(configuration.resolve("projects").resolve("-work-fixture"));
 			Files.createDirectories(configuration.resolve("projects").resolve("-work-other"));

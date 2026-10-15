@@ -6,6 +6,7 @@ import static java.nio.file.attribute.PosixFilePermission.OTHERS_EXECUTE;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
 
 import io.github.cowwoc.cat.common.PluginInfo;
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.distribution.bundle.ArtifactLayer;
 import io.github.cowwoc.cat.distribution.bundle.JlinkImageBuilder;
@@ -111,9 +112,13 @@ public final class CodexPluginExecutablesTest
 
 			Path installed = artifact.resolve(path);
 			requireThat(Files.readAllBytes(installed), "installed").isEqualTo(content, "content");
-			Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(installed);
-			requireThat(permissions, "permissions").contains(OWNER_EXECUTE).contains(GROUP_EXECUTE).
-				contains(OTHERS_EXECUTE);
+			// Only a file system with POSIX permissions records the mode that the layer sets
+			if (PortableFiles.hasModes(installed))
+			{
+				Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(installed);
+				requireThat(permissions, "permissions").contains(OWNER_EXECUTE).contains(GROUP_EXECUTE).
+					contains(OTHERS_EXECUTE);
+			}
 		}
 	}
 }

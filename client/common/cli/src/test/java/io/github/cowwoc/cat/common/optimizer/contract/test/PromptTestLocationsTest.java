@@ -72,7 +72,7 @@ public final class PromptTestLocationsTest
 		Contract shared = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
 			"formatting", List.of(".cat/tests/main/tone_kept/scenario.md"),
 			"plain_list", List.of(".cat/tests/main/tone_kept/scenario.md"),
-			"safety", List.of("/home/user/.cat/tests/main/asks_first/scenario.md")));
+			"safety", List.of(Path.of("/home/user/.cat/tests/main/asks_first/scenario.md").toAbsolutePath().toString())));
 		requireThat(PromptTestLocations.of(shared, TARGET), "shared").isEqualTo(Map.of(
 			"formatting", new Location(Path.of(".cat/tests/main/formatting"), true),
 			"plain_list", new Location(Path.of(".cat/tests/main/plain_list"), true),
@@ -104,7 +104,8 @@ public final class PromptTestLocationsTest
 			Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
 				"formatting", List.of(".cat/tests/main/tone_kept/scenario.md"),
 				"plain_list", List.of(".cat/tests/other/list_given/scenario.md", ".cat/tests/other/old_list.md"),
-				"safety", List.of("/home/user/.cat/tests/main/asks_first/scenario.md")));
+				"safety", List.of(Path.of("/home/user/.cat/tests/main/asks_first/scenario.md").toAbsolutePath().
+					toString())));
 			requireThat(PromptTestLocations.excluded(contract, TARGET, project), "excluded").isEqualTo(Set.of(
 				Path.of(".cat/tests/main/tone_kept"), Path.of(".cat/tests/main/plain_list"),
 				Path.of(".cat/tests/main/safety"), Path.of(".cat/tests/other/list_given"),

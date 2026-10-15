@@ -211,7 +211,7 @@ public final class PromptAuthorTest
 			contains("- .claude/settings.json\n").
 			contains("- Read-only: external files, whether reached through links or read directly from outside the " +
 				"project.").
-			contains("- rules/shared.md -> /shared/rules.md\n").
+			contains("- rules/shared.md -> " + Path.of("/shared/rules.md").toAbsolutePath() + "\n").
 			contains("lists each one):\n\nsafety\n").
 			contains("\"cache\"").
 			contains(Outcome.INCONCLUSIVE.label()).
@@ -540,7 +540,8 @@ public final class PromptAuthorTest
 
 		requireThat(turn, "turn").contains("- The user declined these edits outside your authority. Do not report " +
 			"them again; meet each one's requirement through\n  the editable prompt sources above instead:\n\n" +
-			"- requirement R1: shared.md -> /external/shared.md (external_target_read_only)\n" +
+			"- requirement R1: shared.md -> " + Path.of("/external/shared.md").toAbsolutePath() +
+			" (external_target_read_only)\n" +
 			"- requirement R2: .claude/settings.json (loader_configuration_fixed)\n");
 	}
 
@@ -578,7 +579,8 @@ public final class PromptAuthorTest
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
 		requireThat(turn, "turn").contains("prompt\n  sources:\n\n- CLAUDE.md\n\n").
-			contains("resolve to these targets:\n\n- shared.md -> /external/shared.md\n");
+			contains("resolve to these targets:\n\n- shared.md -> " + Path.of("/external/shared.md").toAbsolutePath() +
+				"\n");
 	}
 
 	/**
@@ -774,16 +776,17 @@ public final class PromptAuthorTest
 
 		requireThat(prompt.neededEdits(completed("{\"needed_edits\": []}")), "none").
 			isEqualTo(Optional.of(List.of()));
+		Path target = Path.of("/external/shared.md").toAbsolutePath();
 		Optional<List<NeededEdit>> edits = prompt.neededEdits(completed("""
 			```json
 			{"needed_edits": [
 			  {"requirement": "R1", "path": "rules/shared.md", "operation": "edit_content",
-			   "target": "/external/shared.md"},
+			   "target": %s},
 			  {"requirement": "R2", "path": "rules/new.md", "operation": "create"}
 			]}
-			```"""));
+			```""".formatted(json.writeValueAsString(target.toString()))));
 		requireThat(edits, "edits").isEqualTo(Optional.of(List.of(new NeededEdit("R1", Path.of("rules/shared.md"),
-			Operation.EDIT_CONTENT, Path.of("/external/shared.md").toAbsolutePath()), new NeededEdit("R2",
+			Operation.EDIT_CONTENT, target), new NeededEdit("R2",
 			Path.of("rules/new.md"), Operation.CREATE, null))));
 	}
 

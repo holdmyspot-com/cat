@@ -454,7 +454,7 @@ public final class PromptAuthorManifestTest
 	{
 		return new Object[][]
 			{
-				{" ", true}, {"..notes.md", true}, {"rules//x.md", true}, {"rules/x.md/", true},
+				{"rules/ x.md", true}, {"..notes.md", true}, {"rules//x.md", true}, {"rules/x.md/", true},
 				{"../notes.md", false}, {"rules/./x.md", false}, {"rules/../x.md", false}, {"", false}
 			};
 	}

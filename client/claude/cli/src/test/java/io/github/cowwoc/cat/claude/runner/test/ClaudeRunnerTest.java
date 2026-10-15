@@ -64,7 +64,7 @@ public final class ClaudeRunnerTest
 		List<String> command = ClaudeRunner.command("claude", "sonnet", Path.of("marketplace"), true,
 			Path.of("hook-results"));
 
-		requireThat(command, "command").contains("marketplace/plugins/cat").contains("hook-results").
+		requireThat(command, "command").contains(Path.of("marketplace/plugins/cat").toString()).contains("hook-results").
 			doesNotContain("home");
 	}
 
@@ -93,7 +93,7 @@ public final class ClaudeRunnerTest
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "",
 			List.of(Path.of("release-docs-marketplace/plugins/release-docs")), Path.of("hook-results"), List.of());
 
-		requireThat(command, "command").contains("release-docs-marketplace/plugins/release-docs").
+		requireThat(command, "command").contains(Path.of("release-docs-marketplace/plugins/release-docs").toString()).
 			contains("hook-results");
 	}
 

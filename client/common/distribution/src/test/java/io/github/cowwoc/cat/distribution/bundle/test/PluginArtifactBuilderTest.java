@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import io.github.cowwoc.cat.common.PluginInfo;
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.distribution.bundle.ArtifactLayer;
@@ -163,10 +164,14 @@ public final class PluginArtifactBuilderTest
 			Path artifact = buildMinimal(temporary, List.of(new ArtifactLayer("plugin", plugin, Set.of(),
 				Set.of("hooks/session-start.sh"))));
 
-			Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(artifact.resolve(
-				"hooks/session-start.sh"));
-			requireThat(permissions, "permissions").contains(OWNER_EXECUTE).contains(GROUP_EXECUTE).
-				contains(OTHERS_EXECUTE);
+			Path installed = artifact.resolve("hooks/session-start.sh");
+			// Only a file system with POSIX permissions records the mode that the builder sets
+			if (PortableFiles.hasModes(installed))
+			{
+				Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(installed);
+				requireThat(permissions, "permissions").contains(OWNER_EXECUTE).contains(GROUP_EXECUTE).
+					contains(OTHERS_EXECUTE);
+			}
 		}
 	}
 

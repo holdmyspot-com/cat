@@ -189,7 +189,7 @@ public final class CommandsTest
 		for (List<String> command : commands)
 			requireThat(run(core, command, output), "exit").isEqualTo(0);
 		requireThat(core.calls, "calls").isEqualTo(List.of(
-			"start prompts/a.md",
+			"start " + Path.of("prompts/a.md"),
 			"run c1",
 			"status c1",
 			"status prompts/a.md",
@@ -236,7 +236,7 @@ public final class CommandsTest
 			StringBuilder output = new StringBuilder();
 			requireThat(run(core, List.of("start", "prompts/a.md", "--max-concurrency", ceiling), output),
 				"exit").isEqualTo(0);
-			requireThat(core.calls, "calls").isEqualTo(List.of("start prompts/a.md"));
+			requireThat(core.calls, "calls").isEqualTo(List.of("start " + Path.of("prompts/a.md")));
 			requireThat(core.ceiling, "ceiling").isEqualTo(Integer.parseInt(ceiling));
 		}
 	}
@@ -259,7 +259,7 @@ public final class CommandsTest
 			FakeCore core = new FakeCore();
 			StringBuilder output = new StringBuilder();
 			requireThat(run(core, command, output), "exit").isEqualTo(0);
-			requireThat(core.calls, "calls").isEqualTo(List.of("start prompts/a.md"));
+			requireThat(core.calls, "calls").isEqualTo(List.of("start " + Path.of("prompts/a.md")));
 			requireThat(core.goal, "goal").isEqualTo(goal);
 		}
 		FakeCore core = new FakeCore();

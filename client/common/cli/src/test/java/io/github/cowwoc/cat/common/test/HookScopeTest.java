@@ -65,7 +65,7 @@ public final class HookScopeTest
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory("cat-harness-project-"));
 			try (HookScope scope = new HookScope(plugin, plugin))
 			{
-				Path actual = scope.projectDir(scope.json().readTree("{\"cwd\":\"" + harnessDirectory + "\"}"),
+				Path actual = scope.projectDir(scope.json().createObjectNode().put("cwd", harnessDirectory.toString()),
 					Path.of("."));
 
 				requireThat(actual, "projectRoot").isEqualTo(harnessDirectory.toAbsolutePath().normalize());

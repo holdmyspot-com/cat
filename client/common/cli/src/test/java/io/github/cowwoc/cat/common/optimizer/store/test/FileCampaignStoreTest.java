@@ -28,6 +28,7 @@ import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.WriteStep;
 import java.nio.file.attribute.PosixFilePermissions;
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.optimizer.campaign.Allocation;
 import io.github.cowwoc.cat.common.optimizer.campaign.AllocationRule;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
@@ -48,6 +49,11 @@ import io.github.cowwoc.cat.common.optimizer.campaign.test.Builder;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
+import java.nio.file.attribute.UserPrincipal;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -978,7 +984,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			for (Path record : records)
 			{
 				Files.writeString(record, "{ not json", UTF_8);
-				Files.setPosixFilePermissions(record, Set.of());
+				denyReading(record);
 			}
 
 			FileCampaignStore restarted = new FileCampaignStore(base, JSON);
@@ -1411,7 +1417,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 * @throws IOException if the store fails
 	 */
 	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*campaign-1/held_out/campaign\\.json.*")
+		expectedExceptionsMessageRegExp = "(?s).*campaign-1[/\\\\]held_out[/\\\\]campaign\\.json.*")
 	public void rejectsMalformedSnapshot() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1743,5 +1749,31 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(running);
 		}
 		finish(store, running, trial.key(), Verdict.PASS);
+	}
+
+	/**
+	 * Takes away the permission to read a file. A file system without POSIX permissions gets an access-control entry
+	 * that denies the current user the reading instead. Either way, the file can still be deleted.
+	 *
+	 * @param file a file
+	 * @throws IOException if the file's permissions cannot be changed
+	 */
+	private static void denyReading(Path file) throws IOException
+	{
+		if (PortableFiles.hasModes(file))
+		{
+			Files.setPosixFilePermissions(file, Set.of());
+			return;
+		}
+		UserPrincipal user = file.getFileSystem().getUserPrincipalLookupService().
+			lookupPrincipalByName(System.getProperty("user.name"));
+		AclFileAttributeView view = Files.getFileAttributeView(file, AclFileAttributeView.class);
+		List<AclEntry> entries = new ArrayList<>(view.getAcl());
+		entries.addFirst(AclEntry.newBuilder().
+			setType(AclEntryType.DENY).
+			setPrincipal(user).
+			setPermissions(AclEntryPermission.READ_DATA).
+			build());
+		view.setAcl(entries);
 	}
 }

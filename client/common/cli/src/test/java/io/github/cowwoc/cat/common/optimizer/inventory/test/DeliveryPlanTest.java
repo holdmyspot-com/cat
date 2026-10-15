@@ -258,6 +258,7 @@ public final class DeliveryPlanTest
 			refusal = e;
 		}
 		requireThat(refusal, "refusal").isNotNull();
-		requireThat(refusal.getMessage(), "message").contains("/external/s.md").contains("read-only");
+		requireThat(refusal.getMessage(), "message").contains(Path.of("/external/s.md").toAbsolutePath().toString()).
+			contains("read-only");
 	}
 }

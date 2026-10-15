@@ -7,6 +7,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.Set;
 
 import io.github.cowwoc.cat.common.PluginInfo;
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.HarnessArtifact;
 import org.testng.annotations.Test;
@@ -85,8 +86,8 @@ public final class HarnessArtifactTest
 		Path sessionStart = artifact.resolve("client/bin/session-start");
 		Files.writeString(pluginInfo, "#!/bin/sh\n");
 		Files.writeString(sessionStart, "#!/bin/sh\n");
-		Files.setPosixFilePermissions(pluginInfo, permissions);
-		Files.setPosixFilePermissions(sessionStart, permissions);
+		PortableFiles.setMode(pluginInfo, permissions);
+		PortableFiles.setMode(sessionStart, permissions);
 		return artifact;
 	}
 }

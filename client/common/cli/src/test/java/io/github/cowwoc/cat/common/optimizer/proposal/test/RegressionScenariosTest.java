@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
@@ -61,7 +62,7 @@ public final class RegressionScenariosTest
 			@Override
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
 			{
-				String citation = root.relativize(file).toString();
+				String citation = PortablePaths.text(root.relativize(file));
 				if (file.getFileName().toString().equals("scenario.md") && citation.contains("/src/test/resources/"))
 					recorded.add(citation);
 				return FileVisitResult.CONTINUE;
@@ -73,7 +74,7 @@ public final class RegressionScenariosTest
 			try (Stream<Path> paths = Files.walk(tests))
 			{
 				for (Path file : paths.filter(path -> path.toString().endsWith(".md")).toList())
-					recorded.add(root.relativize(file).toString());
+					recorded.add(PortablePaths.text(root.relativize(file)));
 			}
 		}
 		requireThat(recorded, "recorded").isNotEmpty();

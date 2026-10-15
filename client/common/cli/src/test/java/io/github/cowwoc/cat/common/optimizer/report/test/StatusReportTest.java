@@ -124,13 +124,14 @@ public final class StatusReportTest
 	public void reportsPromptAuthorKinds()
 	{
 		// Requirement: R-D10
+		Path transcript = Path.of("/runs/prompt-author-3/transcript.jsonl").toAbsolutePath();
 		PromptAuthorDiagnosis diagnosis = new PromptAuthorDiagnosis(3, 1, "safety", Builder.snapshot("candidate-1"),
 			List.of(new PromptAuthorKind("skipped confirmation", List.of("f1", "f2"), FailureKind.GUIDANCE,
 			List.of("h1"), ""),
 				new PromptAuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of(), "")),
 			List.of(new HunkEvidence("h1", Path.of("rules/safety.md"), 1, 2, 1, 3, List.of("f1", "f2"),
 				"Overwriting a file", "plain_list")),
-			List.of("Uncited changed hunk: CLAUDE.md#2"), Path.of("/runs/prompt-author-3/transcript.jsonl").toAbsolutePath(),
+			List.of("Uncited changed hunk: CLAUDE.md#2"), transcript,
 			Path.of("/runs/prompt-author-3/effects").toAbsolutePath());
 		Campaign campaign = Transitions.apply(new Builder().confirmed().working(1).build(),
 			new CampaignEvent.RetainPromptAuthorDiagnosis(diagnosis));
@@ -150,8 +151,8 @@ public final class StatusReportTest
 			isEqualTo("Uncited changed hunk: CLAUDE.md#2");
 		requireThat(report.summary(ZoneOffset.UTC), "summary").
 			contains("Prompt author diagnosis of attempt 3 in cell " +
-			"safety: skipped confirmation (guidance), judge outage (not guidance); evidence " +
-			"/runs/prompt-author-3/transcript.jsonl\n  Rejected: Uncited changed hunk: CLAUDE.md#2");
+			"safety: skipped confirmation (guidance), judge outage (not guidance); evidence " + transcript +
+			"\n  Rejected: Uncited changed hunk: CLAUDE.md#2");
 	}
 
 	/**
@@ -1550,8 +1551,9 @@ public final class StatusReportTest
 	public void authorityWarningIsShown()
 	{
 		// Requirement: R-W4
-		AuthorityWarning warning = new AuthorityWarning("R1", Path.of("rules/shared.md"),
-			Path.of("/external/shared.md").toAbsolutePath(), Limit.EXTERNAL_TARGET_READ_ONLY, List.of(
+		Path link = Path.of("rules/shared.md");
+		Path target = Path.of("/external/shared.md").toAbsolutePath();
+		AuthorityWarning warning = new AuthorityWarning("R1", link, target, Limit.EXTERNAL_TARGET_READ_ONLY, List.of(
 				AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE, AuthorityWarning.Choice.STOP_CAMPAIGN,
 				AuthorityWarning.Choice.REVISE_CAMPAIGN));
 		Campaign campaign = confirmed().pending(new PendingDecision.AuthorityWarnings(List.of(warning))).build();
@@ -1566,8 +1568,8 @@ public final class StatusReportTest
 		ObjectNode json = report.toJson(JsonMapper.builder().build());
 		JsonNode shown = json.path("authority_warnings").get(0);
 		requireThat(shown.path("requirement").asString(), "requirement").isEqualTo("R1");
-		requireThat(shown.path("path").asString(), "path").isEqualTo("rules/shared.md");
-		requireThat(shown.path("target").asString(), "target").isEqualTo("/external/shared.md");
+		requireThat(shown.path("path").asString(), "path").isEqualTo(link.toString());
+		requireThat(shown.path("target").asString(), "target").isEqualTo(target.toString());
 		requireThat(shown.path("limit").asString(), "limit").isEqualTo("external_target_read_only");
 		List<String> choices = new ArrayList<>();
 		for (JsonNode choice : shown.path("choices"))
@@ -1575,8 +1577,8 @@ public final class StatusReportTest
 		requireThat(choices, "warningChoices").
 			isEqualTo(List.of("use_authorized_source", "stop", "revise"));
 		requireThat(report.summary(ZoneOffset.UTC), "summary").
-			contains("Authority warning: requirement R1 needs an edit at " +
-				"rules/shared.md, which resolves to /external/shared.md (limit: external target read only); " +
+			contains("Authority warning: requirement R1 needs an edit at " + link + ", which resolves to " + target +
+				" (limit: external target read only); " +
 				"choices: use authorized source, stop, revise");
 	}
 

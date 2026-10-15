@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.evidence.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.evidence.FileChanges;
 
@@ -135,13 +136,19 @@ public final class FileChangesTest
 			Path effects = cleanup.add(Files.createTempDirectory("cat-evidence-effects-"));
 			write(source.resolve("run.sh"), "echo ready\n");
 			write(effects.resolve("run.sh"), "echo ready\n");
-			Files.setPosixFilePermissions(effects.resolve("run.sh"), Set.of(PosixFilePermission.OWNER_READ));
+			// Only a file system with POSIX permissions can change a file's mode without changing its name
+			boolean hasModes = PortableFiles.hasModes(effects);
+			if (hasModes)
+				Files.setPosixFilePermissions(effects.resolve("run.sh"), Set.of(PosixFilePermission.OWNER_READ));
 			Files.createSymbolicLink(effects.resolve("link.txt"), Path.of("missing.txt"));
 
 			String rendered = FileChanges.render(source, effects);
 
-			requireThat(rendered, "rendered").contains("Modified: run.sh").contains("Permissions:").
-				contains("Created: link.txt").contains("+missing.txt");
+			requireThat(rendered, "rendered").contains("Created: link.txt").contains("+missing.txt");
+			if (hasModes)
+				requireThat(rendered, "rendered").contains("Modified: run.sh").contains("Permissions:");
+			else
+				requireThat(rendered, "rendered").doesNotContain("run.sh");
 		}
 	}
 

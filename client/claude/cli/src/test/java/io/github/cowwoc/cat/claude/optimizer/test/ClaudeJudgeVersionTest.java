@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.claude.optimizer.ClaudeProfileInventory;
 import io.github.cowwoc.cat.claude.optimizer.ClaudeSessions;
 import io.github.cowwoc.cat.common.PortableFiles;
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
@@ -74,8 +75,11 @@ public final class ClaudeJudgeVersionTest
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
 				root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			ClaudeSessions sessions = new ClaudeSessions(settings);
-			// Run directories differ per run, so the hash covers the section with their root replaced
+			// Run directories differ per run, so the hash covers the section with their root replaced. The paths that
+			// the section names are written with "/" so that every platform hashes the same content.
 			String section = EvidenceSection.render(sessions.readEvidence(EVENTS), EVENTS, effects, source).
+				replace(EVENTS.toString(), PortablePaths.text(EVENTS)).
+				replace(effects.toString(), "<root>/effects").
 				replace(root.toString(), "<root>");
 			TrialProfile role = new ClaudeProfileInventory(ARTIFACT.toAbsolutePath().normalize()).roleProfile();
 			JudgeProfile judge = new JudgeTemplate(JsonMapper.builder().build(), role).profile("The reply is brief.",

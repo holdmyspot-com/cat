@@ -88,9 +88,11 @@ public final class HarnessRunReceiptTest
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path response = Files.writeString(root.resolve("response.txt"), "completed response");
-			Path receipt = Files.writeString(root.resolve("receipt.json"), """
-				{"retained_project":"%s","raw_result":"%s","unexpected":true}
-				""".formatted(project, response));
+			ObjectNode fields = scope.json().createObjectNode();
+			fields.put("retained_project", project.toString());
+			fields.put("raw_result", response.toString());
+			fields.put("unexpected", true);
+			Path receipt = Files.writeString(root.resolve("receipt.json"), scope.json().writeValueAsString(fields));
 
 			HarnessRunReceipt.read(scope.json(), receipt);
 		}

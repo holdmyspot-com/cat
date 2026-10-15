@@ -13,6 +13,11 @@ import org.testng.annotations.Test;
 public final class HarnessRunnerOptionsTest
 {
 	/**
+	 * The root of the file system that holds the working directory, so that fixture paths are absolute on every
+	 * platform.
+	 */
+	private static final Path ROOT = Path.of("").toAbsolutePath().getRoot();
+	/**
 	 * Creates the test fixture.
 	 */
 	public HarnessRunnerOptionsTest()
@@ -39,20 +44,20 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void parsesBridgeOptions()
 	{
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--project", "/project", "--run-root", "/caller-temp/runs", "--executable", "/bin/harness", "--model",
-			"test-model", "--effort", "high", "--output", "/output", "--receipt", "/receipt", "--keep-run",
-			"--install-cat"},
-			"harness", Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--project", absolute("project"), "--run-root", absolute("caller-temp/runs"), "--executable", "/bin/harness",
+			"--model", "test-model", "--effort", "high", "--output", absolute("output"), "--receipt", absolute("receipt"),
+			"--keep-run", "--install-cat"},
+			"harness", path("caller-temp"));
 
-		requireThat(result.artifact(), "artifact").isEqualTo(Path.of("/artifact").toAbsolutePath());
-		requireThat(result.project(), "project").isEqualTo(Path.of("/project").toAbsolutePath());
-		requireThat(result.runRoot(), "runRoot").isEqualTo(Path.of("/caller-temp/runs").toAbsolutePath());
+		requireThat(result.artifact(), "artifact").isEqualTo(path("artifact"));
+		requireThat(result.project(), "project").isEqualTo(path("project"));
+		requireThat(result.runRoot(), "runRoot").isEqualTo(path("caller-temp/runs"));
 		requireThat(result.executable(), "executable").isEqualTo("/bin/harness");
 		requireThat(result.model(), "model").isEqualTo("test-model");
 		requireThat(result.effort(), "effort").isEqualTo("high");
-		requireThat(result.output(), "output").isEqualTo(Path.of("/output").toAbsolutePath());
-		requireThat(result.receipt(), "receipt").isEqualTo(Path.of("/receipt").toAbsolutePath());
+		requireThat(result.output(), "output").isEqualTo(path("output"));
+		requireThat(result.receipt(), "receipt").isEqualTo(path("receipt"));
 		requireThat(result.keepRun(), "keepRun").isTrue();
 		requireThat(result.installCat(), "installCat").isTrue();
 		requireThat(result.includeUserRules(), "includeUserRules").isTrue();
@@ -64,8 +69,8 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void excludesUserRulesWhenRequested()
 	{
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--install-cat", "--exclude-user-rules"}, "harness", Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--install-cat", "--exclude-user-rules"}, "harness", path("caller-temp"));
 
 		requireThat(result.installCat(), "installCat").isTrue();
 		requireThat(result.includeUserRules(), "includeUserRules").isFalse();
@@ -79,12 +84,12 @@ public final class HarnessRunnerOptionsTest
 	public void parsesFixtures()
 	{
 		// Requirement: R-C21
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--fixtures", "/runs/fixtures/trial"}, "harness", Path.of("/caller-temp").toAbsolutePath());
-		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
-			"harness", Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--fixtures", absolute("runs/fixtures/trial")}, "harness", path("caller-temp"));
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+			"harness", path("caller-temp"));
 
-		requireThat(result.fixtures(), "fixtures").isEqualTo(Path.of("/runs/fixtures/trial").toAbsolutePath());
+		requireThat(result.fixtures(), "fixtures").isEqualTo(path("runs/fixtures/trial"));
 		requireThat(without.fixtures(), "without").isNull();
 	}
 
@@ -96,12 +101,12 @@ public final class HarnessRunnerOptionsTest
 	public void parsesPluginUnderTest()
 	{
 		// Requirement: R-W12
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--plugin", "/campaign/plugins/candidate"}, "harness", Path.of("/caller-temp").toAbsolutePath());
-		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
-			"harness", Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--plugin", absolute("campaign/plugins/candidate")}, "harness", path("caller-temp"));
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+			"harness", path("caller-temp"));
 
-		requireThat(result.plugin(), "plugin").isEqualTo(Path.of("/campaign/plugins/candidate").toAbsolutePath());
+		requireThat(result.plugin(), "plugin").isEqualTo(path("campaign/plugins/candidate"));
 		requireThat(without.plugin(), "without").isNull();
 	}
 
@@ -112,13 +117,13 @@ public final class HarnessRunnerOptionsTest
 	public void parsesDeniedReads()
 	{
 		// Requirement: R-E24
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--deny-read", "/campaign/campaign.json", "--deny-read", "/campaign/trials"}, "harness",
-			Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--deny-read", absolute("campaign/campaign.json"), "--deny-read", absolute("campaign/trials")}, "harness",
+			path("caller-temp"));
 
 		requireThat(result.deniedReads(),
-			"deniedReads").isEqualTo(List.of(Path.of("/campaign/campaign.json").toAbsolutePath(),
-			Path.of("/campaign/trials").toAbsolutePath()));
+			"deniedReads").isEqualTo(List.of(path("campaign/campaign.json"),
+			path("campaign/trials")));
 	}
 
 	/**
@@ -129,8 +134,8 @@ public final class HarnessRunnerOptionsTest
 	public void rejectsRelativeDeniedRead()
 	{
 		// Requirement: R-E24
-		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--deny-read", "campaign.json"},
-			"harness", Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--deny-read", "campaign.json"},
+			"harness", path("caller-temp"));
 	}
 
 	/**
@@ -140,8 +145,8 @@ public final class HarnessRunnerOptionsTest
 	public void defaultsToNoDeniedReads()
 	{
 		// Requirement: R-E24
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
-			"harness", Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+			"harness", path("caller-temp"));
 
 		requireThat(result.deniedReads(), "deniedReads").isEmpty();
 	}
@@ -152,8 +157,8 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void defaultsToNoCatInstallation()
 	{
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
-			"harness", Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+			"harness", path("caller-temp"));
 
 		requireThat(result.installCat(), "installCat").isFalse();
 	}
@@ -164,7 +169,7 @@ public final class HarnessRunnerOptionsTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsMissingArtifact()
 	{
-		HarnessRunnerOptions.parse(new String[0], "harness", Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions.parse(new String[0], "harness", path("caller-temp"));
 	}
 
 	/**
@@ -173,8 +178,8 @@ public final class HarnessRunnerOptionsTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsIncompleteReceiptEvidence()
 	{
-		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--receipt", "/receipt"}, "harness",
-			Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--receipt", absolute("receipt")},
+			"harness", path("caller-temp"));
 	}
 
 	/**
@@ -183,8 +188,8 @@ public final class HarnessRunnerOptionsTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsUserRuleExclusionWithoutCat()
 	{
-		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--exclude-user-rules"}, "harness",
-			Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--exclude-user-rules"}, "harness",
+			path("caller-temp"));
 	}
 
 	/**
@@ -194,8 +199,8 @@ public final class HarnessRunnerOptionsTest
 	public void defaultsToCapacityCeiling()
 	{
 		// Requirement: R-E8
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact"},
-			"harness", Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+			"harness", path("caller-temp"));
 
 		requireThat(result.maximumConcurrency(), "maximumConcurrency").isEqualTo(16);
 	}
@@ -207,10 +212,10 @@ public final class HarnessRunnerOptionsTest
 	public void acceptsMaximumConcurrencyRange()
 	{
 		// Requirement: R-E8
-		HarnessRunnerOptions lowest = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--max-concurrency", "1"}, "harness", Path.of("/caller-temp").toAbsolutePath());
-		HarnessRunnerOptions highest = HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact",
-			"--max-concurrency", "16"}, "harness", Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions lowest = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--max-concurrency", "1"}, "harness", path("caller-temp"));
+		HarnessRunnerOptions highest = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--max-concurrency", "16"}, "harness", path("caller-temp"));
 
 		requireThat(lowest.maximumConcurrency(), "lowest").isEqualTo(1);
 		requireThat(highest.maximumConcurrency(), "highest").isEqualTo(16);
@@ -223,8 +228,8 @@ public final class HarnessRunnerOptionsTest
 	public void rejectsMaximumConcurrencyBelowRange()
 	{
 		// Requirement: R-E8
-		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--max-concurrency", "0"}, "harness",
-			Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--max-concurrency", "0"}, "harness",
+			path("caller-temp"));
 	}
 
 	/**
@@ -234,7 +239,29 @@ public final class HarnessRunnerOptionsTest
 	public void rejectsMaximumConcurrencyAboveRange()
 	{
 		// Requirement: R-E8
-		HarnessRunnerOptions.parse(new String[] {"--artifact", "/artifact", "--max-concurrency", "17"}, "harness",
-			Path.of("/caller-temp").toAbsolutePath());
+		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--max-concurrency", "17"}, "harness",
+			path("caller-temp"));
+	}
+
+	/**
+	 * Returns an absolute path below the file system root.
+	 *
+	 * @param relative the path relative to the root, using {@code /} as the separator
+	 * @return the path
+	 */
+	private static Path path(String relative)
+	{
+		return ROOT.resolve(relative);
+	}
+
+	/**
+	 * Returns an absolute path below the file system root as a command-line argument.
+	 *
+	 * @param relative the path relative to the root, using {@code /} as the separator
+	 * @return the argument
+	 */
+	private static String absolute(String relative)
+	{
+		return path(relative).toString();
 	}
 }

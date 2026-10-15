@@ -935,10 +935,11 @@ public final class ProposalSchemaTest
 	public void builtPluginIsPartOfTheIdentity() throws InvalidProposalException
 	{
 		String[] path = {"plugin_under_test"};
+		String base = json.writeValueAsString(Path.of("/opt/cat/plugin").toAbsolutePath().toString());
 		Contract contract = schema().parse(changed(path, json.readTree("""
-			{"root": null, "base": "/opt/cat/plugin", "depends_on_cat": true, "cat_evidence": "It is CAT.",
+			{"root": null, "base": %s, "depends_on_cat": true, "cat_evidence": "It is CAT.",
 			 "mappings": [{"source": "client/rules/codex", "target": "rules/codex"}]}
-			""")));
+			""".formatted(base))));
 		PluginUnderTest.Built built = (PluginUnderTest.Built) contract.plugin().orElseThrow();
 		requireThat(built.mappings(), "mappings").isEqualTo(List.of(new PluginUnderTest.Mapping(
 			Path.of("client/rules/codex"), Path.of("rules/codex"))));

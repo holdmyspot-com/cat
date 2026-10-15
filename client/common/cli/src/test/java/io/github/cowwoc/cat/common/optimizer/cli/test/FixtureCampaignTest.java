@@ -13,6 +13,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Verifies that the launcher fixture's stored campaign, including its frozen judge prompt, round-trips through the
@@ -24,6 +26,11 @@ public final class FixtureCampaignTest
 	 * The campaign's identifier.
 	 */
 	private static final String ID = "fixture-campaign";
+	/**
+	 * A JSON string that holds an absolute path of the committed fixture.
+	 */
+	private static final Pattern ABSOLUTE_PATH = Pattern.compile("\"(/project[^\"]*)\"");
+	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
 	 * Creates the test.
@@ -51,14 +58,35 @@ public final class FixtureCampaignTest
 			Path written = root.resolve(".cat/work/optimizer").resolve(ID).resolve("held_out/campaign.json");
 			Files.createDirectories(written.getParent());
 			Files.writeString(written, stored, StandardCharsets.UTF_8);
-			FileCampaignStore store = new FileCampaignStore(root, JsonMapper.builder().build());
+			FileCampaignStore store = new FileCampaignStore(root, JSON);
 			Campaign campaign = store.load(ID).orElseThrow();
 			store.replaceSnapshot(campaign);
 			String fresh = Files.readString(written, StandardCharsets.UTF_8);
 			Path copy = Path.of("target/fixture-campaign/campaign.json");
 			Files.createDirectories(copy.getParent());
 			Files.writeString(copy, fresh, StandardCharsets.UTF_8);
-			requireThat(fresh, "written").isEqualTo(stored);
+			requireThat(fresh, "written").isEqualTo(platformForm(stored));
 		}
+	}
+
+	/**
+	 * Returns the committed fixture as the store writes it on this platform. The fixture holds Linux's form of its
+	 * absolute paths and line endings, and the store writes a path that starts at a root, and each line ending, in the
+	 * platform's form.
+	 *
+	 * @param stored the committed fixture
+	 * @return the fixture in this platform's form
+	 */
+	private static String platformForm(String stored)
+	{
+		Matcher path = ABSOLUTE_PATH.matcher(stored);
+		StringBuilder result = new StringBuilder(stored.length());
+		while (path.find())
+		{
+			String platformPath = JSON.writeValueAsString(Path.of(path.group(1)).toString());
+			path.appendReplacement(result, Matcher.quoteReplacement(platformPath));
+		}
+		path.appendTail(result);
+		return result.toString().replace("\n", System.lineSeparator());
 	}
 }

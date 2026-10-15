@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.codex.optimizer.CodexProfileInventory;
 import io.github.cowwoc.cat.codex.optimizer.CodexSessions;
 import io.github.cowwoc.cat.common.PortableFiles;
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
@@ -76,8 +77,11 @@ public final class CodexJudgeVersionTest
 			Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1,
 				"error building bubblewrap command: app-server socket directory must be a user-owned directory with " +
 					"mode 0700\n")));
-			// Run directories differ per run, so the hash covers the section with their root replaced
+			// Run directories differ per run, so the hash covers the section with their root replaced. The paths that
+			// the section names are written with "/" so that every platform hashes the same content.
 			String section = EvidenceSection.render(sessions.readEvidence(transcript), transcript, effects, source).
+				replace(transcript.toString(), "<root>/" + PortablePaths.text(root.relativize(transcript))).
+				replace(effects.toString(), "<root>/effects").
 				replace(root.toString(), "<root>");
 			CodexProfileInventory inventory = new CodexProfileInventory(ARTIFACT.toAbsolutePath().normalize(), "codex",
 				_ ->

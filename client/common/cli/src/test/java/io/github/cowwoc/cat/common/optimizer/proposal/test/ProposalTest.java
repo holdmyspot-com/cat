@@ -1108,7 +1108,8 @@ public final class ProposalTest
 
 		requireThat(proposal.render(), "render").
 			contains("- `alias.md` -> `" + Path.of("prompts/main.md") + "`: inside the project; its content may be edited").
-			contains("- `shared.md` -> `/shared/rules.md`: outside the project; external target read only").
+			contains("- `shared.md` -> `" + Path.of("/shared/rules.md").toAbsolutePath() +
+				"`: outside the project; external target read only").
 			contains(LinkReport.STAGING_CONSEQUENCE);
 		requireThat(proposal.contract().limitations(), "limitations").contains(LinkReport.STAGING_CONSEQUENCE);
 		requireThat(proposal.isConfirmable(CertificationScope.LATEST_VERSIONS), "isConfirmable").isTrue();

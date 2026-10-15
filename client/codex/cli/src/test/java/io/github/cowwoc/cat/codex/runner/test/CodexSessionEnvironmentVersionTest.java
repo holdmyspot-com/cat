@@ -15,6 +15,8 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.testng.annotations.Test;
 
 /**
@@ -79,13 +81,34 @@ public final class CodexSessionEnvironmentVersionTest
 			CodexConnectionConfiguration.copyTrustedCatHooks(source, destination);
 
 			// Run directories differ per run, so the hash covers the configuration with their root replaced
-			String configuration = Files.readString(destination, UTF_8).replace("\r\n", "\n").
-				replace(root.toRealPath().toString(), "<root>").replace(root.toString(), "<root>");
+			String configuration = replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root);
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(root, root, List::of, "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			int version = new CodexSessions(sessionSettings).sessionEnvironmentVersion();
 			VersionRegistry.requireRegistered(REGISTRY, "session environment", version,
 				VersionRegistry.hash(configuration + "\nprofile = " + profile + "\n"));
 		}
+	}
+
+	/**
+	 * Replaces each path below a root in a configuration with {@code <root>} followed by the path's names, separated
+	 * by {@code /}, so that every platform hashes the same content.
+	 *
+	 * @param configuration the configuration
+	 * @param root          the root, which the configuration names in its own form or its real form, inside TOML
+	 *                      strings that escape each backslash
+	 * @return the configuration with the root replaced
+	 * @throws IOException if the root's real path cannot be read
+	 */
+	private static String replaceRoot(String configuration, Path root) throws IOException
+	{
+		String result = configuration;
+		for (Path form : List.of(root.toRealPath(), root))
+		{
+			String escaped = form.toString().replace("\\", "\\\\");
+			result = Pattern.compile(Pattern.quote(escaped) + "([^\"]*)").matcher(result).
+				replaceAll(match -> Matcher.quoteReplacement("<root>" + match.group(1).replace("\\\\", "/")));
+		}
+		return result;
 	}
 }

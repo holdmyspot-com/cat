@@ -57,7 +57,7 @@ public final class ModuleDescriptorPatcherTest
 			\texports example.one;
 			\texports example.two;
 			}
-			""");
+			""".replace("\n", System.lineSeparator()));
 		}
 	}
 

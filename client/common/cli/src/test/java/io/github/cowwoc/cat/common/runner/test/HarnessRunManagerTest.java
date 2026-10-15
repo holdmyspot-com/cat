@@ -23,6 +23,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link HarnessRunManager}.
@@ -422,9 +424,13 @@ public final class HarnessRunManagerTest
 			manager.initialize(run, artifact, project, "structured_protocol", List.of("harness", "--api-key", "secret"));
 
 			String manifest = Files.readString(run.directory().resolve("run.json"));
-			requireThat(manifest, "manifest").contains("\"artifact_path\": \"" + artifact + "\"").
-				contains("\"project_path\": \"" + project + "\"").contains("\"transport\": \"structured_protocol\"").
-				contains("\"harness_command\": \"harness --api-key <redacted>\"").doesNotContain("secret");
+			JsonNode fields = JsonMapper.builder().build().readTree(manifest);
+			requireThat(fields.get("artifact_path").asString(), "artifactPath").isEqualTo(artifact.toString());
+			requireThat(fields.get("project_path").asString(), "projectPath").isEqualTo(project.toString());
+			requireThat(fields.get("transport").asString(), "transport").isEqualTo("structured_protocol");
+			requireThat(fields.get("harness_command").asString(), "harnessCommand").
+				isEqualTo("harness --api-key <redacted>");
+			requireThat(manifest, "manifest").doesNotContain("secret");
 		}
 	}
 
