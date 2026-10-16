@@ -194,10 +194,12 @@ public final class ReplayExecution
 	 */
 	private String commitOutput(Output output, String authorSource, String tree, String parent) throws IOException
 	{
+		// A commit's author header is one line, so its name, email and date cannot contain a line break
+		List<String> author = git.lines("show", "-s", "--format=%an%n%ae%n%aI", authorSource);
 		Map<String, String> environment = Map.of(
-			"GIT_AUTHOR_NAME", git.lines("show", "-s", "--format=%an", authorSource).getFirst(),
-			"GIT_AUTHOR_EMAIL", git.lines("show", "-s", "--format=%ae", authorSource).getFirst(),
-			"GIT_AUTHOR_DATE", git.lines("show", "-s", "--format=%aI", authorSource).getFirst());
+			"GIT_AUTHOR_NAME", author.get(0),
+			"GIT_AUTHOR_EMAIL", author.get(1),
+			"GIT_AUTHOR_DATE", author.get(2));
 		return git.lines(environment, commitArguments(output, tree, parent).toArray(String[]::new)).getFirst();
 	}
 
