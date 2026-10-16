@@ -10,7 +10,8 @@ paths:
 - Ship each harness a complete skill whose frontmatter it supports while maintaining shared skill instructions once.
 - Keep a repeatedly selected skill's `SKILL.md` limited to routing, so its full `first-use.md` instructions are read on
   first use in the current conversation context and read again only after that context resets or is compacted.
-- Give each harness on each platform skill commands that the shell it runs them in can run.
+- Word each Codex skill once for every platform, although Codex runs commands in PowerShell on Windows and in a POSIX
+  shell elsewhere.
 
 ## Guidance
 
@@ -28,12 +29,11 @@ artifact for each harness: it must contain the complete body and only frontmatte
 include directive or its source-only body file to a harness. Use this indirection only when the same body is paired with
 different harness headers; otherwise keep the body inline in its single `SKILL.md`.
 
-Codex runs a skill's commands in PowerShell on Windows and in a POSIX shell elsewhere, so a Codex skill whose files hold
-commands needs a wording for each. Put a file's Windows wording in the skill's `windows` folder under the file's name,
-such as `skills/<name>/windows/first-use.md`; the folder holds only files. When `DistributionMain` builds the Codex
-artifact for Windows, `SkillPlatformVariants` moves each of them over the skill's file of the same name, and on other
-platforms it deletes them; either way the artifact holds no `windows` folder. A Windows `SKILL.md` may include a shared
-body, but the builder expands it before it moves the file, so write the include's path relative to the `windows`
-folder, such as `../../shared-first-use-route.md`. Do not give a Claude skill a `windows` folder: Claude Code runs
-commands in Git Bash on Windows, where the POSIX wording works. In a Windows wording, name a launcher by its `.bat`
-path, because the Codex image on Windows holds no POSIX launchers.
+Codex runs a skill's commands in PowerShell on Windows and in a POSIX shell elsewhere, and one skill file serves both.
+Do not write shell syntax in a Codex skill, such as a variable, a default value, a pipe, or a call operator; a
+single-quoted argument is the same in both shells. Describe each command as the launcher or program to run, its argument
+list, and the lines it reads on standard input, with each value the agent supplies written as a placeholder such as
+`<project>`, and say in words where a value comes from, such as an environment variable. Each platform's Codex
+`cat-env.md`, which every Codex session receives, states how its shell reads an environment variable, runs a launcher
+and pipes lines to standard input; add a convention there when a skill needs one that it lacks, in both versions. Claude
+Code runs commands in Git Bash on Windows, so a Claude skill may show bash commands.
