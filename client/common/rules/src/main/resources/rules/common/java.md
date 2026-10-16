@@ -26,6 +26,9 @@ When writing or reviewing a Java test whose assertion depends on elapsed time, l
 When writing or reviewing Java code, including tests, that starts an external process or relies on behavior that
 can differ between operating systems, lazy load `../include/java/portability.md`.
 
+When writing or reviewing a Java declaration whose type is `Optional`, or a call that passes `Optional` to a method or
+constructor, lazy load `../include/java/optional.md`.
+
 When a Java test needs direct access to non-public production behavior to avoid unrelated caller work, lazy load
 `../include/java/test-access.md`.
 

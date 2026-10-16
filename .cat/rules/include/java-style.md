@@ -107,10 +107,8 @@ no established order; never use it alone to reorder an established group.
 - Separate distinct method phases with blank lines: validation, normalization/setup, primary branching, and final
   failure/return handling. Do not add blank lines within one cohesive phase.
 - Use `switch` when selecting among a closed set of values; use `if` when conditions are not simple alternatives.
-- Declare `Optional` only as a method's return type or as the type of a `final` field that a getter returns as-is.
-  Declare a parameter as the underlying type instead: a caller passes `null` for an absent value, not
-  `Optional.empty()`, and passes a present value itself, not wrapped in `Optional`. Unwrap a returned `Optional`
-  promptly rather than storing it in any other field or a long-lived local.
+- In addition to what the bundled Java Optional rule permits, a `final` field that a getter returns as-is may be declared
+  `Optional`.
 - Use `StringBuilder.isEmpty()` rather than `length() == 0`.
 - Use `StringJoiner` for delimiter-separated output instead of manually injecting delimiters.
 - Use `equals()` for case-sensitive string comparisons and `equalsIgnoreCase()` only when the domain is intentionally
