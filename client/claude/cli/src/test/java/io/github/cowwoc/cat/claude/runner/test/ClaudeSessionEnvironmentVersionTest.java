@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.claude.optimizer.ClaudeSessions;
 import io.github.cowwoc.cat.claude.runner.ClaudeConnectionSettings;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.port.contract.test.VersionRegistry;
@@ -71,7 +72,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 				""", UTF_8);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(deniedFile, deniedDirectory));
+				claudeTemporaryDirectory.resolve("home"), List.of(deniedFile, deniedDirectory), Platform.LINUX_X64);
 
 			// Run directories differ per run, so the hash covers the settings with their root replaced
 			String settings = replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root);

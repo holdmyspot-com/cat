@@ -175,7 +175,8 @@ public final class ClaudeRunner
 			// isolatedEnvironment.put("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1");
 			ClaudeConnectionSettings.copy(scope, hostConfiguration.resolve("settings.json"), isolatedEnvironment);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
-				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome, deniedReads);
+				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome, deniedReads,
+				Platform.current());
 			if (requiresCredentialFiles(isolatedEnvironment))
 			{
 				HarnessCredentials.copyAllowedFiles(hostConfiguration, isolatedConfiguration, Set.of(".credentials.json"));

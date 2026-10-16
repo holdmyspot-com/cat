@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.claude.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.claude.runner.ClaudeConnectionSettings;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.fakes.test.TestHarnessRunnerScope;
@@ -123,7 +124,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of());
+				claudeTemporaryDirectory.resolve("home"), List.of(), Platform.LINUX_X64);
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(result.path("sandbox").path("network").path("allowedDomains").path(0).asString(),
@@ -172,7 +173,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of());
+				claudeTemporaryDirectory.resolve("home"), List.of(), Platform.LINUX_X64);
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(result.path("env").path("DISABLE_AUTOUPDATER").asString(), "autoUpdater").isEqualTo("1");
@@ -183,6 +184,75 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(result.path("sandbox").path("allowUnsandboxedCommands").asBoolean(), "unsandboxedCommands").
 			isFalse();
 			requireThat(result.path("sandbox").has("network"), "networkPolicy").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that on Windows, where Claude Code has no sandbox, isolated settings keep the parent's sandbox
+	 * settings instead of requiring a sandbox, while still permitting writes to the invocation-local home and denying
+	 * the listed reads.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void copiesParentSandboxOnWindows() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-sandbox-"));
+			Path source = root.resolve("settings.json");
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+			Path claudeHome = claudeTemporaryDirectory.resolve("home");
+			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
+			Files.writeString(source, """
+				{
+				  "sandbox": {
+				    "enabled": false,
+				    "autoAllowBashIfSandboxed": true,
+				    "filesystem": {"denyRead": ["/secrets"]}
+				  }
+				}
+				""");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
+				claudeHome, List.of(snapshot), Platform.WINDOWS_X64);
+
+			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
+			requireThat(sandbox.path("enabled").asBoolean(), "sandboxEnabled").isFalse();
+			requireThat(sandbox.has("failIfUnavailable"), "failIfUnavailable").isFalse();
+			requireThat(sandbox.has("allowUnsandboxedCommands"), "unsandboxedCommands").isFalse();
+			requireThat(sandbox.path("autoAllowBashIfSandboxed").asBoolean(), "autoAllowBash").isTrue();
+			requireThat(strings(sandbox.path("filesystem").path("allowWrite")), "allowWrite").
+				isEqualTo(List.of(claudeHome.toString()));
+			requireThat(strings(sandbox.path("filesystem").path("denyRead")), "denyRead").
+				isEqualTo(List.of("/secrets", snapshot.toString()));
+		}
+	}
+
+	/**
+	 * Verifies that on Windows, isolated settings do not enable a sandbox that the parent's settings do not declare.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void addsNoSandboxRequirementOnWindows() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-no-sandbox-"));
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(), Platform.WINDOWS_X64);
+
+			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
+			requireThat(sandbox.has("enabled"), "sandboxEnabled").isFalse();
+			requireThat(sandbox.has("failIfUnavailable"), "failIfUnavailable").isFalse();
+			requireThat(sandbox.has("allowUnsandboxedCommands"), "unsandboxedCommands").isFalse();
 		}
 	}
 
@@ -203,7 +273,7 @@ public final class ClaudeConnectionSettingsTest
 			Path claudeHome = claudeTemporaryDirectory.resolve("home");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeHome, List.of());
+				claudeTemporaryDirectory, claudeHome, List.of(), Platform.LINUX_X64);
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			JsonNode writablePaths = result.path("sandbox").path("filesystem").path("allowWrite");
@@ -240,7 +310,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(snapshot, trials));
+				claudeTemporaryDirectory.resolve("home"), List.of(snapshot, trials), Platform.LINUX_X64);
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
@@ -297,7 +367,7 @@ public final class ClaudeConnectionSettingsTest
 			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(snapshot));
+				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(snapshot), Platform.LINUX_X64);
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
@@ -331,9 +401,9 @@ public final class ClaudeConnectionSettingsTest
 			Path allowing = root.resolve("allowing/settings.json");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, denying, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(snapshot));
+				claudeTemporaryDirectory.resolve("home"), List.of(snapshot), Platform.LINUX_X64);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, allowing, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of());
+				claudeTemporaryDirectory.resolve("home"), List.of(), Platform.LINUX_X64);
 
 			JsonNode denied = scope.json().readTree(Files.readString(denying)).path("sandbox").path("filesystem");
 			requireThat(denied.has("allowRead"), "deniedHasAllowRead").isFalse();
