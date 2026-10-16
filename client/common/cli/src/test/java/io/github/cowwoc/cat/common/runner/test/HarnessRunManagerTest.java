@@ -700,6 +700,45 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
+	 * Verifies that a session is denied reading every other entry under the run root, including other runs, fixtures
+	 * and the records of its own run, but not the paths that it uses, the paths inside them, or the directories that
+	 * contain them.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void deniesReadingAllButAccessiblePaths() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(
+				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRun run = manager.create("harness");
+			HarnessRun other = manager.create("harness");
+			HarnessRun evidence = manager.create("harness");
+			Path project = Files.createDirectories(run.directory().resolve("project/src"));
+			Path artifacts = Files.createDirectories(run.directory().resolve("artifacts"));
+			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
+			Path evidenceProject = Files.createDirectories(evidence.directory().resolve("project"));
+			Path fixtures = Files.createDirectories(root.resolve("fixtures"));
+			Path otherHarness = Files.createDirectories(root.resolve("other-harness"));
+			Path outside = cleanup.add(Files.createTempDirectory(
+				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()), "cat-outside-"));
+
+			Path home = run.directory().resolve("home");
+
+			List<Path> deniedReads = manager.deniedReads(List.of(project.getParent(), home, evidenceArtifacts, outside));
+
+			// Creating a run writes its home directory, its manifest and its lock
+			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(artifacts,
+				run.directory().resolve("run.json"), run.directory().resolve(".lock"), other.directory(), evidenceProject,
+				evidence.directory().resolve("home"), evidence.directory().resolve("run.json"),
+				evidence.directory().resolve(".lock"), fixtures, otherHarness));
+		}
+	}
+
+	/**
 	 * Verifies stale terminal runs are reclaimed after the retention period.
 	 *
 	 * @throws IOException if the filesystem operation fails

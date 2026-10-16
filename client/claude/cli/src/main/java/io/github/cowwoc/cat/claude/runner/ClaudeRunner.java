@@ -174,13 +174,13 @@ public final class ClaudeRunner
 			//WORKAROUND: https://github.com/anthropics/claude-code/issues/84563
 			// isolatedEnvironment.put("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1");
 			ClaudeConnectionSettings.copy(scope, hostConfiguration.resolve("settings.json"), isolatedEnvironment);
-			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
-				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome, deniedReads,
-				Platform.current());
 			if (requiresCredentialFiles(isolatedEnvironment))
 			{
 				HarnessCredentials.copyAllowedFiles(hostConfiguration, isolatedConfiguration, Set.of(".credentials.json"));
 			}
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
+				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome,
+				sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads), Platform.current());
 			HarnessEnvironment.setHomeDirectory(isolatedEnvironment, isolatedProcessHome);
 			isolatedEnvironment.put("CLAUDE_CONFIG_DIR", isolatedConfiguration.toString());
 			// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
@@ -257,6 +257,41 @@ public final class ClaudeRunner
 			manager.fail(run, e.getMessage());
 			throw e;
 		}
+	}
+
+	/**
+	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
+	 * file and directory under the run root except the session's project, home, Claude temporary directory and
+	 * evidence, and the login that the runner copied into the session's home. The session therefore cannot read the
+	 * runner's records of its own run or of any other run, the fixtures of any run, or the login.
+	 *
+	 * @param manager the run manager
+	 * @param run the session's run
+	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
+	 * @param deniedReads the files and directories that the caller denies the session reading
+	 * @return the paths to deny
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if the run root cannot be listed
+	 */
+	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
+		List<Path> readOnlyEvidence, List<Path> deniedReads) throws IOException
+	{
+		requireThat(manager, "manager").isNotNull();
+		requireThat(run, "run").isNotNull();
+		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
+		requireThat(deniedReads, "deniedReads").isNotNull();
+		Path home = run.directory().resolve("home");
+		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
+		accessible.add(run.directory().resolve("project"));
+		accessible.add(home);
+		accessible.add(run.directory().resolve("claude"));
+		List<Path> result = new ArrayList<>(deniedReads);
+		result.addAll(manager.deniedReads(accessible));
+		// The Claude process reads the login itself; the denial confines only the session's tools and commands
+		Path login = home.resolve(".claude").resolve(".credentials.json");
+		if (Files.exists(login, NOFOLLOW_LINKS))
+			result.add(login);
+		return result;
 	}
 
 	/**

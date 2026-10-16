@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.testng.annotations.Test;
 
 /**
@@ -135,28 +136,39 @@ public final class CodexRunnerTest
 
 	/**
 	 * Verifies that a session is denied reading the runner's records of its own run, namely the run's artifacts,
-	 * manifest, initial project and Codex session logs, besides the paths that the caller denies, and that the session
-	 * log directory exists so that the sandbox can deny it.
+	 * manifest, lock, initial project and Codex session logs, the login that the run copied from the host, and the
+	 * other runs and fixtures under the run root, besides the paths that the caller denies. The session can still read
+	 * its project, the rest of its home and the evidence that it validates. The session log directory exists so that
+	 * the sandbox can deny it.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
 	@Test
-	public void deniesReadingRunRecords() throws IOException
+	public void deniesReadingRunRecordsOtherRunsAndLogin() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()), "cat-run-root-"));
+			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize());
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("codex");
-			manager.snapshotProject(run);
-			Path heldOut = Files.createDirectory(root.resolve("held-out"));
-
-			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(heldOut));
-
 			Path directory = run.directory();
-			requireThat(deniedReads, "deniedReads").containsExactly(List.of(heldOut, directory.resolve("artifacts"),
-				directory.resolve("run.json"), directory.resolve("initial-project"), directory.resolve("home/sessions")));
+			manager.snapshotProject(run);
+			Path login = Files.writeString(directory.resolve("home/auth.json"), "{}");
+			HarnessRun other = manager.create("codex");
+			HarnessRun evidence = manager.create("codex");
+			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
+			Path fixtures = Files.createDirectories(root.resolve("fixtures"));
+			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
+
+			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+				List.of(heldOut));
+
+			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
+				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
+				directory.resolve("initial-project"), directory.resolve("home/sessions"), login, other.directory(),
+				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
+				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock"), fixtures));
 			requireThat(Files.isDirectory(directory.resolve("home/sessions")), "sessionLogsExist").isTrue();
 		}
 	}

@@ -5,11 +5,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.claude.runner.ClaudeRunner;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
+import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.testng.annotations.Test;
 
 /**
@@ -118,6 +121,45 @@ public final class ClaudeRunnerTest
 
 			requireThat(Files.isSymbolicLink(alias), "alias").isTrue();
 			requireThat(Files.isSameFile(alias, canonical), "aliasTarget").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a session is denied reading the runner's records of its own run, namely the run's artifacts,
+	 * manifest, lock and initial project, the login that the run copied from the host, and the other runs and
+	 * fixtures under the run root, besides the paths that the caller denies. The session can still read its project,
+	 * the rest of its home, its Claude temporary directory and the evidence that it validates.
+	 *
+	 * @throws IOException if the run cannot be created
+	 */
+	@Test
+	public void deniesReadingRunRecordsOtherRunsAndLogin() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize());
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRun run = manager.create("claude");
+			Path directory = run.directory();
+			manager.snapshotProject(run);
+			Files.createDirectories(directory.resolve("claude"));
+			Path login = Files.writeString(Files.createDirectories(directory.resolve("home/.claude")).
+				resolve(".credentials.json"), "{}");
+			HarnessRun other = manager.create("claude");
+			HarnessRun evidence = manager.create("claude");
+			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
+			Path fixtures = Files.createDirectories(root.resolve("fixtures"));
+			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
+
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+				List.of(heldOut));
+
+			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
+				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
+				directory.resolve("initial-project"), login, other.directory(), evidence.directory().resolve("project"),
+				evidence.directory().resolve("home"), evidence.directory().resolve("run.json"),
+				evidence.directory().resolve(".lock"), fixtures));
 		}
 	}
 }

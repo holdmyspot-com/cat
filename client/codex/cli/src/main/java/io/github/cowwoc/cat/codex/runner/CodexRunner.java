@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.codex.runner;
 import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.runner.HarnessArtifact;
@@ -211,7 +212,7 @@ public final class CodexRunner
 			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache,
 				temporaryDirectory, toolOutputTokenLimit, Platform.current());
 			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
-				readOnlyEvidence, sessionDeniedReads(manager, run, deniedReads));
+				readOnlyEvidence, sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads));
 			String pluginName = "";
 			if (plugin != null)
 			{
@@ -309,27 +310,39 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns the files and directories that a session of a run must not read: those that the caller denies, the
-	 * runner's records of the run, and the directory where Codex logs the session's events. The method creates that
-	 * directory, because the sandbox skips a denied path that does not exist yet.
+	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
+	 * file and directory under the run root except the session's project, home and evidence, the directory where Codex
+	 * logs the session's events, and the login that the runner copied into the session's home. The session therefore
+	 * cannot read the runner's records of its own run or of any other run, the fixtures of any run, or the login. The
+	 * method creates the session log directory, because the sandbox skips a denied path that does not exist yet.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
+	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @return the paths to deny
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the session log directory cannot be created
+	 * @throws IOException if the run root cannot be listed or the session log directory cannot be created
 	 */
-	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run, List<Path> deniedReads)
-		throws IOException
+	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
+		List<Path> readOnlyEvidence, List<Path> deniedReads) throws IOException
 	{
 		requireThat(manager, "manager").isNotNull();
 		requireThat(run, "run").isNotNull();
+		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
+		Path home = run.directory().resolve("home");
+		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
+		accessible.add(run.directory().resolve("project"));
+		accessible.add(home);
 		List<Path> result = new ArrayList<>(deniedReads);
-		result.addAll(manager.runnerRecords(run));
+		result.addAll(manager.deniedReads(accessible));
 		// The session's events are the same record as the run's artifacts, kept by Codex instead of the runner
-		result.add(Files.createDirectories(run.directory().resolve("home").resolve("sessions")));
+		result.add(Files.createDirectories(home.resolve("sessions")));
+		// The Codex process reads the login itself; the sandbox confines only the commands that the session runs
+		Path login = home.resolve("auth.json");
+		if (Files.exists(login, NOFOLLOW_LINKS))
+			result.add(login);
 		return result;
 	}
 

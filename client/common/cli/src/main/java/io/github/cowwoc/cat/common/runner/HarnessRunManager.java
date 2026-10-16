@@ -450,25 +450,65 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Returns the existing records that the runner keeps about an owned run: its artifacts, its manifest and the
-	 * initial copy of its project. They describe the session's own events and outcome, so a harness session must not
-	 * read them.
+	 * Returns the existing files and directories under the run root that a harness session must not read: all of
+	 * them except the files and directories that the session uses, their contents, and the directories that contain
+	 * them. The session therefore cannot read another run, the fixtures of any run, or the runner's records of its own
+	 * run. A file or directory that is created after this method returns, such as the directory of a run that starts
+	 * later, is not included.
 	 *
-	 * @param run the owned run
-	 * @return the paths of the records that exist
-	 * @throws NullPointerException if {@code run} is null
+	 * @param accessible the files and directories that the session reads or writes; those outside the run root are
+	 *   ignored
+	 * @return the paths to deny, none of which contains another
+	 * @throws NullPointerException if {@code accessible} is null
+	 * @throws IOException if a directory cannot be listed
 	 */
-	public List<Path> runnerRecords(HarnessRun run)
+	public List<Path> deniedReads(List<Path> accessible) throws IOException
 	{
-		requireThat(run, "run").isNotNull();
-		List<Path> records = new ArrayList<>();
-		for (String name : List.of("artifacts", "run.json", "initial-project"))
+		requireThat(accessible, "accessible").isNotNull();
+		List<Path> kept = new ArrayList<>();
+		for (Path path : accessible)
 		{
-			Path record = run.directory().resolve(name);
-			if (Files.exists(record, NOFOLLOW_LINKS))
-				records.add(record);
+			Path normalized = path.toAbsolutePath().normalize();
+			if (normalized.startsWith(root))
+				kept.add(normalized);
 		}
-		return records;
+		List<Path> denied = new ArrayList<>();
+		if (Files.isDirectory(root, NOFOLLOW_LINKS))
+			addDeniedReads(root, kept, denied);
+		return denied;
+	}
+
+	/**
+	 * Adds the entries of a directory that a session must not read.
+	 *
+	 * @param directory a directory that contains an accessible path
+	 * @param accessible the absolute, normalized paths that the session reads or writes
+	 * @param denied the paths to deny, to which the entries are added
+	 * @throws IOException if the directory cannot be listed
+	 */
+	private static void addDeniedReads(Path directory, List<Path> accessible, List<Path> denied) throws IOException
+	{
+		try (Stream<Path> entries = Files.list(directory))
+		{
+			for (Path entry : entries.sorted().toList())
+			{
+				if (accessible.contains(entry))
+					continue;
+				boolean containsAccessible = false;
+				for (Path path : accessible)
+				{
+					if (path.startsWith(entry))
+					{
+						containsAccessible = true;
+						break;
+					}
+				}
+				if (containsAccessible && Files.isDirectory(entry, NOFOLLOW_LINKS))
+					addDeniedReads(entry, accessible, denied);
+				else
+					denied.add(entry);
+			}
+		}
 	}
 
 	/**

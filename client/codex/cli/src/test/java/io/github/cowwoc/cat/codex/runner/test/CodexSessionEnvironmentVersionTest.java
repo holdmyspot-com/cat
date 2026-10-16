@@ -4,11 +4,14 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.optimizer.CodexSessions;
 import io.github.cowwoc.cat.codex.runner.CodexConnectionConfiguration;
+import io.github.cowwoc.cat.codex.runner.CodexRunner;
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.port.contract.test.VersionRegistry;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
+import io.github.cowwoc.cat.common.runner.HarnessRun;
+import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -57,6 +60,11 @@ public final class CodexSessionEnvironmentVersionTest
 			Path npmCache = Files.createDirectories(root.resolve("npm-cache"));
 			Path evidence = Files.createDirectories(root.resolve("evidence"));
 			Path deniedFile = Files.writeString(root.resolve("campaign.json"), "{}");
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			HarnessRun run = manager.create("codex");
+			manager.snapshotProject(run);
+			Files.writeString(run.directory().resolve("home/auth.json"), "{}");
+			Files.createDirectories(root.resolve("runs/fixtures"));
 			Files.writeString(source, """
 				openai_base_url = "http://localhost:2455/backend-api/codex"
 				forced_login_method = "api"
@@ -81,11 +89,13 @@ public final class CodexSessionEnvironmentVersionTest
 			CodexConnectionConfiguration.copy(source, destination, npmCache, temporaryDirectory, 0,
 				Platform.LINUX_X64);
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
-				List.of(deniedFile));
+				CodexRunner.sessionDeniedReads(manager, run, List.of(evidence), List.of(deniedFile)));
 			CodexConnectionConfiguration.copyTrustedCatHooks(source, destination);
 
-			// Run directories differ per run, so the hash covers the configuration with their root replaced
-			String configuration = replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root);
+			// Run directories differ per run, so the hash covers the configuration with their root and the run's
+			// identifier replaced
+			String configuration = replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root).
+				replace(run.id(), "<run>");
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(root, root, List::of, "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			int version = new CodexSessions(sessionSettings).sessionEnvironmentVersion();

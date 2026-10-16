@@ -4,11 +4,14 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.claude.optimizer.ClaudeSessions;
 import io.github.cowwoc.cat.claude.runner.ClaudeConnectionSettings;
+import io.github.cowwoc.cat.claude.runner.ClaudeRunner;
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.port.contract.test.VersionRegistry;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
+import io.github.cowwoc.cat.common.runner.HarnessRun;
+import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 
@@ -59,6 +62,12 @@ public final class ClaudeSessionEnvironmentVersionTest
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
 			Path deniedFile = Files.writeString(root.resolve("campaign.json"), "{}");
 			Path deniedDirectory = Files.createDirectory(root.resolve("trials"));
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			HarnessRun run = manager.create("claude");
+			manager.snapshotProject(run);
+			Files.writeString(Files.createDirectories(run.directory().resolve("home/.claude")).
+				resolve(".credentials.json"), "{}");
+			Files.createDirectories(root.resolve("runs/fixtures"));
 			Files.writeString(source, """
 				{
 				  "env": {"ANTHROPIC_BASE_URL": "https://host.example"},
@@ -72,10 +81,13 @@ public final class ClaudeSessionEnvironmentVersionTest
 				""", UTF_8);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(deniedFile, deniedDirectory), Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), ClaudeRunner.sessionDeniedReads(manager, run, List.of(),
+					List.of(deniedFile, deniedDirectory)), Platform.LINUX_X64);
 
-			// Run directories differ per run, so the hash covers the settings with their root replaced
-			String settings = replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root);
+			// Run directories differ per run, so the hash covers the settings with their root and the run's identifier
+			// replaced
+			String settings = replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root).
+				replace(run.id(), "<run>");
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(root, root, List::of, "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			int version = new ClaudeSessions(sessionSettings).sessionEnvironmentVersion();
