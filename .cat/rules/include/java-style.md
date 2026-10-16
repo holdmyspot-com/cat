@@ -19,7 +19,25 @@ Let Checkstyle and PMD enforce mechanical formatting. Apply these conventions wh
 - Use smart tabs; one tab represents two spaces. Do not align code with spaces.
 - Use exactly one blank line between the last import and the following element.
 - Use Allman braces. Put `else`, `catch`, `finally`, and `do`/`while` continuations on a new line after the closing
-  brace. Do not align multiline parameters with spaces.
+  brace.
+- When the parameters of a method, constructor, or record do not fit on one line, put as many parameters on each line as
+  fit within the line length limit, and wrap only between parameters. Indent every continuation line one tab past the
+  declaration's first line. Do not align parameters with spaces under the opening parenthesis or an earlier parameter:
+
+  ```java
+  public record UsageReport(ProductId product, Harness harness, @JsonProperty("harness_version") String harnessVersion,
+  	String turn, @JsonProperty(value = "output_tokens", required = true) long outputTokens)
+  {
+  ```
+
+  rather than:
+
+  ```java
+  public record UsageReport(ProductId product, Harness harness,
+                            @JsonProperty("harness_version") String harnessVersion,
+  	String turn, @JsonProperty(value = "output_tokens", required = true) long outputTokens)
+  {
+  ```
 - In a try-with-resources header, put each resource declaration on its own line.
 - A structure whose body may be a single statement or a block (`if`, `else`, `for`, `while`, and `do`) has braces if
   and only if its condition or its body spans more than one visual line. A one-line statement under a one-line condition

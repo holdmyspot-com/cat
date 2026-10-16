@@ -69,11 +69,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  *                            the prompt author may not classify their failures as test defects
  */
 public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Contract contract,
-	List<Failure> developmentFailures,
-                          Map<String, String> evidenceSections, Map<String, CellCounts> developmentCounts,
-                          List<EndedAttempt> endedAttempts,
-                          Map<Path, Path> links, String campaignEdits, List<AuthorityWarning> answeredWarnings,
-                          List<EarlierManifest> earlierManifests, List<SoundTest> soundTests)
+	List<Failure> developmentFailures, Map<String, String> evidenceSections, Map<String, CellCounts> developmentCounts,
+	List<EndedAttempt> endedAttempts, Map<Path, Path> links, String campaignEdits,
+	List<AuthorityWarning> answeredWarnings, List<EarlierManifest> earlierManifests, List<SoundTest> soundTests)
 {
 	/**
 	 * Creates a brief.
@@ -339,9 +337,8 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 	 * @param belowControl   the assertions that the candidate passed less often than the control, in contract order
 	 * @param belowIncumbent the assertions that the candidate passed less often than the incumbent, in contract order
 	 */
-	public record EndedAttempt(int index, Outcome outcome, Map<String, CellCounts> counts,
-	                           List<FailureSummary> failures, List<BelowReference> belowControl,
-	                           List<BelowReference> belowIncumbent)
+	public record EndedAttempt(int index, Outcome outcome, Map<String, CellCounts> counts, List<FailureSummary> failures,
+		List<BelowReference> belowControl, List<BelowReference> belowIncumbent)
 	{
 		/**
 		 * Creates the outcomes of an ended attempt.
