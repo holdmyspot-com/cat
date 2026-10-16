@@ -28,8 +28,8 @@ placeholder such as `<project>`, write the command in PowerShell: read an enviro
 and the user's home directory as `$env:USERPROFILE`, and run a launcher by its path with the call operator, as in
 `& '<path>' <arguments>`; a launcher's path without an extension runs its `.bat` file. To send lines to a command's
 standard input, first run `$OutputEncoding = [Text.UTF8Encoding]::new()` so that the command receives UTF-8, then write
-each line in single quotes, doubling each `'` inside it, and pipe them, as in
-`'<line>', '<line>' | & '<path>' <arguments>`.
+each line in single quotes and pipe them, as in `'<line>', '<line>' | & '<path>' <arguments>`. Inside single quotes,
+write each `'` of a path or line as `''`.
 
 `CAT_TEMP` is `${CAT_PROJECT_ROOT}\.cat\work\temp`, and the directory exists. Wherever a rule or skill writes
 `${CAT_TEMP}`, write that directory in its place; never expand `${CAT_TEMP}` from the environment. Create a temporary

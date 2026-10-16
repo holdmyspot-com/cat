@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.codex;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.Platform;
+import io.github.cowwoc.cat.common.ShellQuoting;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -27,18 +28,10 @@ public enum CommandShell
 	 */
 	POSIX
 	{
-		/**
-		 * A word that the shell passes unchanged without quotes.
-		 */
-		private static final Pattern PLAIN_WORD = Pattern.compile("[A-Za-z0-9_@%+=:,./-]+");
-
 		@Override
 		public String quote(String word)
 		{
-			requireThat(word, "word").isNotNull();
-			if (PLAIN_WORD.matcher(word).matches())
-				return word;
-			return "'" + word.replace("'", "'\"'\"'") + "'";
+			return ShellQuoting.posix(word);
 		}
 
 		@Override
@@ -189,13 +182,9 @@ public enum CommandShell
 	POWERSHELL
 	{
 		/**
-		 * A word that PowerShell passes to a program unchanged without quotes.
-		 */
-		private static final Pattern PLAIN_WORD = Pattern.compile("[A-Za-z0-9_+=:./\\\\-]+");
-		/**
 		 * The characters that PowerShell reads as a single quote, each of which a single-quoted string doubles.
 		 */
-		private static final String SINGLE_QUOTES = "'\u2018\u2019\u201A\u201B";
+		private static final String SINGLE_QUOTES = ShellQuoting.POWERSHELL_SINGLE_QUOTES;
 		/**
 		 * The characters that PowerShell reads as a double quote.
 		 */
@@ -223,18 +212,7 @@ public enum CommandShell
 		@Override
 		public String quote(String word)
 		{
-			requireThat(word, "word").isNotNull();
-			if (PLAIN_WORD.matcher(word).matches())
-				return word;
-			StringBuilder quoted = new StringBuilder("'");
-			for (int i = 0; i < word.length(); ++i)
-			{
-				char c = word.charAt(i);
-				if (SINGLE_QUOTES.indexOf(c) >= 0)
-					quoted.append(c);
-				quoted.append(c);
-			}
-			return quoted.append('\'').toString();
+			return ShellQuoting.powerShell(word);
 		}
 
 		@Override
@@ -254,7 +232,7 @@ public enum CommandShell
 			arguments.add(words.getFirst());
 			for (String argument : words.subList(1, words.size()))
 			{
-				if (PLAIN_WORD.matcher(argument).matches())
+				if (ShellQuoting.isPlainPowerShellWord(argument))
 					arguments.add(argument);
 				else
 					arguments.add('"' + argument + '"');

@@ -27,7 +27,8 @@ Codex runs your shell commands in a POSIX shell. When a rule or skill describes 
 as a placeholder such as `<project>`, write the command in that shell: read an environment variable `NAME` as
 `"$NAME"` and the user's home directory as `"$HOME"`, and run a launcher by its path, as in `'<path>' <arguments>`. To
 send lines to a command's standard input, write each line in single quotes and pipe them from `printf`, as in
-`printf '%s\n' '<line>' '<line>' | '<path>' <arguments>`.
+`printf '%s\n' '<line>' '<line>' | '<path>' <arguments>`. Inside single quotes, write each `'` of a path or line as
+`'\''`.
 
 `CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/temp`, and the directory exists. Wherever a rule or skill writes
 `${CAT_TEMP}`, write that directory in its place; never expand `${CAT_TEMP}` from the environment. Create a temporary

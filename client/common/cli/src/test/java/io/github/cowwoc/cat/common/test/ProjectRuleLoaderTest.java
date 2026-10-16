@@ -267,6 +267,35 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies that a bundled rule's shell-specific directive becomes a path below the plugin root, quoted so that its
+	 * shell passes the path unchanged when the plugin root holds a {@code '}: a POSIX shell closes the quotes around an
+	 * escaped {@code '}, and PowerShell doubles it.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void quotesPluginPathsForShells() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-o'brien-plugin-")).toAbsolutePath().normalize();
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/harnessa/read-file.md", "posix: " + ProjectRuleLoader.POSIX_PLUGIN_PATH_DIRECTIVE +
+				"/bin/run-part\npowershell: " + ProjectRuleLoader.POWERSHELL_PLUGIN_PATH_DIRECTIVE +
+				"/bin/run-part.cmd\n");
+
+			String guidance = new ProjectRuleLoader(scope.yaml()).
+				loadSessionForMainAgent(plugin, null, project, "harnessa").readingGuidance();
+
+			String posix = plugin.resolve("bin").resolve("run-part").toString();
+			String powerShell = plugin.resolve("bin").resolve("run-part.cmd").toString();
+			requireThat(guidance, "guidance").
+				contains("posix: '" + posix.replace("'", "'\"'\"'") + "'\n").
+				endsWith("powershell: '" + powerShell.replace("'", "''") + "'");
+		}
+	}
+
+	/**
 	 * Verifies that on Windows, each bundled harness rule in the harness's {@code windows} folder replaces the
 	 * harness rule of the same name, and keeps its place among the rules.
 	 */

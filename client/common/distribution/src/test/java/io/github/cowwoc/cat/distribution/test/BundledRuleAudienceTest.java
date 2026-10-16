@@ -1,21 +1,15 @@
 package io.github.cowwoc.cat.distribution.test;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.that;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.io.IOException;
-import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URL;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Enumeration;
 import java.util.List;
-import java.util.stream.Stream;
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
+import io.github.cowwoc.cat.common.ShellQuoting;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.distribution.bundle.RuleArtifactRouter;
@@ -47,7 +41,7 @@ public final class BundledRuleAudienceTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
-			copyBundledRules(plugin.resolve("rules"));
+			BundledRules.copy(plugin.resolve("rules"));
 			RuleArtifactRouter.route(plugin, scope.yaml());
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 
@@ -83,7 +77,7 @@ public final class BundledRuleAudienceTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
-			copyBundledRules(plugin.resolve("rules"));
+			BundledRules.copy(plugin.resolve("rules"));
 			RuleArtifactRouter.route(plugin, scope.yaml());
 			String pluginRoot = "the CAT plugin's root directory, `" + plugin.toAbsolutePath().normalize() + "`.";
 
@@ -91,10 +85,11 @@ public final class BundledRuleAudienceTest
 			{
 				ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml(), platform);
 				String runPart;
+				Path bin = plugin.toAbsolutePath().normalize().resolve("bin");
 				if (platform.isWindows())
-					runPart = "& '${CAT_PLUGIN_ROOT}\\bin\\run-part.cmd'";
+					runPart = "& " + ShellQuoting.powerShell(bin.resolve("run-part.cmd").toString());
 				else
-					runPart = "${CAT_PLUGIN_ROOT}/bin/run-part <<'EOF'";
+					runPart = ShellQuoting.posix(bin.resolve("run-part").toString()) + " <<'EOF'";
 				for (String codex : List.of(loader.loadSessionForMainAgent(plugin, null, project, "codex").
 					readingGuidance(), loader.loadForSubagent(plugin, project, "codex", "cat:reviewer")))
 				{
@@ -128,57 +123,6 @@ public final class BundledRuleAudienceTest
 				"` whose path relative to it matches [**/rules/**/*.md].").doesNotContain("Bundled rule body");
 			requireThat(Files.readString(plugin.resolve("rules/include/common/path.md")), "lazyRule").
 				isEqualTo("Bundled rule body");
-		}
-	}
-
-	/**
-	 * Copies every bundled rule tree on the test class path into one plugin rule directory.
-	 *
-	 * @param target the plugin's {@code rules} directory
-	 * @throws IOException if a rule tree cannot be read or copied
-	 * @throws URISyntaxException if the class path returns a malformed resource location
-	 */
-	private static void copyBundledRules(Path target) throws IOException, URISyntaxException
-	{
-		assert that(target, "target").isNotNull().elseThrow();
-		Enumeration<URL> roots = BundledRuleAudienceTest.class.getClassLoader().getResources("rules");
-		requireThat(roots.hasMoreElements(), "hasBundledRules").isTrue();
-		while (roots.hasMoreElements())
-		{
-			URI root = roots.nextElement().toURI();
-			if (!root.getScheme().equals("jar"))
-			{
-				copyTree(Path.of(root), target);
-				continue;
-			}
-			String location = root.getSchemeSpecificPart();
-			Path jar = Path.of(new URI(location.substring(0, location.indexOf("!/"))));
-			try (FileSystem contents = FileSystems.newFileSystem(jar))
-			{
-				copyTree(contents.getPath("/rules"), target);
-			}
-		}
-	}
-
-	/**
-	 * Copies the regular files below one directory, preserving their relative paths.
-	 *
-	 * @param source the directory to copy from
-	 * @param target the directory to copy into
-	 * @throws IOException if a file cannot be read or written
-	 */
-	private static void copyTree(Path source, Path target) throws IOException
-	{
-		assert that(source, "source").isNotNull().elseThrow();
-		assert that(target, "target").isNotNull().elseThrow();
-		try (Stream<Path> files = Files.walk(source))
-		{
-			for (Path file : files.filter(Files::isRegularFile).toList())
-			{
-				Path destination = target.resolve(source.relativize(file).toString());
-				Files.createDirectories(destination.getParent());
-				Files.copy(file, destination);
-			}
 		}
 	}
 }

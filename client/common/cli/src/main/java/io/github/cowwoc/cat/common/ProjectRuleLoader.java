@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -30,8 +31,9 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  * Loads CAT project rules for a harness, placing each declared prerequisite before the rule that needs it.
  * <p>
  * In the context of a bundled rule, each {@link #PLUGIN_ROOT_DIRECTIVE} becomes the absolute, normalized CAT
- * installation directory that the caller supplied. The harness skill environment, which states that directory,
- * precedes every other rule.
+ * installation directory that the caller supplied, and each {@link #POSIX_PLUGIN_PATH_DIRECTIVE} or
+ * {@link #POWERSHELL_PLUGIN_PATH_DIRECTIVE} becomes a path below it, quoted for its shell. The harness skill
+ * environment, which states that directory, precedes every other rule.
  */
 public final class ProjectRuleLoader
 {
@@ -42,6 +44,18 @@ public final class ProjectRuleLoader
 	 * include. Project and user rules receive it unchanged.
 	 */
 	public static final String PLUGIN_ROOT_DIRECTIVE = "<!-- cat:plugin-root -->";
+	/**
+	 * The directive that a bundled rule writes where a POSIX shell command names a path below CAT's installation
+	 * directory, followed by the path's {@code /}-prefixed names. The loader replaces both with the path, quoted so that
+	 * the shell passes it unchanged whatever characters, such as a {@code '} or a space, the directory's path holds.
+	 */
+	public static final String POSIX_PLUGIN_PATH_DIRECTIVE = "<!-- cat:plugin-root posix -->";
+	/**
+	 * The directive that a bundled rule writes where a PowerShell command names a path below CAT's installation
+	 * directory, followed by the path's {@code /}-prefixed names. The loader replaces both with the path, quoted so that
+	 * PowerShell passes it unchanged whatever characters, such as a {@code '} or a space, the directory's path holds.
+	 */
+	public static final String POWERSHELL_PLUGIN_PATH_DIRECTIVE = "<!-- cat:plugin-root powershell -->";
 
 	/**
 	 * The notation that path-routing context writes for the project directory. The injected CAT environment rule
@@ -84,6 +98,10 @@ public final class ProjectRuleLoader
 	private static final String FOLLOWING_NAME = "[^/\\s`'\"<>()\\[\\]{},;:*?|]*[^/\\s`'\"<>()\\[\\]{},;:*?|.]";
 	private static final Pattern PLUGIN_ROOT_DIRECTIVE_PATH = Pattern.compile(Pattern.quote(PLUGIN_ROOT_DIRECTIVE) +
 		"((?:/" + FOLLOWING_NAME + ")*)");
+	private static final Pattern POSIX_PLUGIN_PATH_DIRECTIVE_PATH = Pattern.compile(
+		Pattern.quote(POSIX_PLUGIN_PATH_DIRECTIVE) + "((?:/" + FOLLOWING_NAME + ")*)");
+	private static final Pattern POWERSHELL_PLUGIN_PATH_DIRECTIVE_PATH = Pattern.compile(
+		Pattern.quote(POWERSHELL_PLUGIN_PATH_DIRECTIVE) + "((?:/" + FOLLOWING_NAME + ")*)");
 	private static final Pattern PLUGIN_ROOT_REFERENCE_PATH = Pattern.compile(Pattern.quote(PLUGIN_ROOT_REFERENCE) +
 		"((?:/" + FOLLOWING_NAME + ")*)");
 	private static final String RULES_DIRECTORY = ".cat/rules";
@@ -792,7 +810,13 @@ public final class ProjectRuleLoader
 		String injected = injectedBody(null, expandDirectIncludes(body, file, ruleRoot, root, new HashSet<>()),
 			file, ruleRoot, root);
 		if (root == RuleRoot.PLUGIN)
-			injected = replaceDirectory(injected, PLUGIN_ROOT_DIRECTIVE_PATH, ownerRoot.toAbsolutePath().normalize());
+		{
+			Path pluginRoot = ownerRoot.toAbsolutePath().normalize();
+			injected = replaceDirectory(injected, POSIX_PLUGIN_PATH_DIRECTIVE_PATH, pluginRoot, ShellQuoting::posix);
+			injected = replaceDirectory(injected, POWERSHELL_PLUGIN_PATH_DIRECTIVE_PATH, pluginRoot,
+				ShellQuoting::powerShell);
+			injected = replaceDirectory(injected, PLUGIN_ROOT_DIRECTIVE_PATH, pluginRoot);
+		}
 		return injected;
 	}
 
@@ -808,6 +832,21 @@ public final class ProjectRuleLoader
 	 */
 	private static String replaceDirectory(String text, Pattern standIn, Path directory)
 	{
+		return replaceDirectory(text, standIn, directory, UnaryOperator.identity());
+	}
+
+	/**
+	 * Replaces each stand-in for a directory, together with the slash-separated names that follow it, with the path
+	 * that they name in the platform's form, written the way that {@code format} writes it.
+	 *
+	 * @param text the rendered text
+	 * @param standIn matches the stand-in, capturing the {@code /}-prefixed names that follow it
+	 * @param directory the absolute directory that the stand-in names
+	 * @param format returns the text that replaces a path, such as the path quoted for a shell
+	 * @return the text with each stand-in replaced
+	 */
+	private static String replaceDirectory(String text, Pattern standIn, Path directory, UnaryOperator<String> format)
+	{
 		Matcher matcher = standIn.matcher(text);
 		StringBuilder result = new StringBuilder(text.length());
 		while (matcher.find())
@@ -818,7 +857,7 @@ public final class ProjectRuleLoader
 				if (!name.isEmpty())
 					path = path.resolve(name);
 			}
-			matcher.appendReplacement(result, Matcher.quoteReplacement(path.toString()));
+			matcher.appendReplacement(result, Matcher.quoteReplacement(format.apply(path.toString())));
 		}
 		matcher.appendTail(result);
 		return result.toString();

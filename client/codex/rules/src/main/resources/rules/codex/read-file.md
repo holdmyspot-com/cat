@@ -9,7 +9,7 @@ output, run any command that may print output through `${CAT_PLUGIN_ROOT}/bin/ru
 `EOF` line, exactly as you would write it without run-part:
 
 ```
-${CAT_PLUGIN_ROOT}/bin/run-part <<'EOF'
+<!-- cat:plugin-root posix -->/bin/run-part <<'EOF'
 <command>
 EOF
 ```

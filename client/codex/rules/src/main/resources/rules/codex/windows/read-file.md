@@ -12,7 +12,7 @@ line, exactly as you would write it without run-part, after the line that makes 
 $OutputEncoding = [Text.UTF8Encoding]::new()
 @'
 <command>
-'@ | & '${CAT_PLUGIN_ROOT}\bin\run-part.cmd'
+'@ | & <!-- cat:plugin-root powershell -->/bin/run-part.cmd
 ```
 
 run-part changes only how you run a command, not which command you run: choose the command you would choose without
