@@ -255,7 +255,8 @@ final class Session implements SessionHandle
 	{
 		IOException problem = null;
 		Path fixtures = null;
-		try
+		// Closing the sink releases the run's transcript
+		try (sink)
 		{
 			fixtures = writeFixtures();
 			sessions.bridge().serve(arguments(fixtures), feed, sink);

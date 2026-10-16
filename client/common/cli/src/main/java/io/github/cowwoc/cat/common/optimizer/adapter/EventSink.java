@@ -9,6 +9,7 @@ import io.github.cowwoc.cat.common.secrets.EventSinkAccess;
 import io.github.cowwoc.cat.common.secrets.EventSinkSecrets;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -64,7 +65,12 @@ public final class EventSink extends Writer
 	private final Map<String, Path> placeholders;
 	private final BlockingQueue<Message> messages;
 	private final StringBuilder pending = new StringBuilder();
-	private Path transcript;
+	/**
+	 * The open transcript of the current run, or {@code null} before a run starts and after the sink closes. It stays
+	 * open because a session writes thousands of events, and opening the file for each one takes about a millisecond
+	 * on Windows.
+	 */
+	private OutputStream transcript;
 	private PromptSources promptSources;
 
 	/**
@@ -134,9 +140,22 @@ public final class EventSink extends Writer
 	{
 	}
 
+	/**
+	 * Closes the transcript.
+	 *
+	 * @throws IOException if the transcript cannot be closed
+	 */
 	@Override
-	public void close()
+	public void close() throws IOException
 	{
+		synchronized (pending)
+		{
+			if (transcript != null)
+			{
+				transcript.close();
+				transcript = null;
+			}
+		}
 	}
 
 	/**
@@ -166,7 +185,7 @@ public final class EventSink extends Writer
 				if (promptSources != null)
 					promptSources.accept(event);
 				if (transcript != null)
-					Files.writeString(transcript, event + "\n", UTF_8, CREATE, APPEND);
+					transcript.write((event + "\n").getBytes(UTF_8));
 			}
 			case "turn_completed" ->
 			{
@@ -201,8 +220,9 @@ public final class EventSink extends Writer
 		Map<String, Path> directories = new HashMap<>(placeholders);
 		directories.put("run", runDirectory);
 		promptSources = newPromptSources.apply(directories);
-		transcript = runDirectory.resolve("artifacts").resolve(TRANSCRIPT);
-		Files.writeString(transcript, "", UTF_8, CREATE, APPEND);
+		if (transcript != null)
+			transcript.close();
+		transcript = Files.newOutputStream(runDirectory.resolve("artifacts").resolve(TRANSCRIPT), CREATE, APPEND);
 		messages.add(new Message.Started(runId));
 	}
 }
