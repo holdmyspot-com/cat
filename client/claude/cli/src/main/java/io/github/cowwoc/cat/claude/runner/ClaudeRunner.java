@@ -180,7 +180,7 @@ public final class ClaudeRunner
 			{
 				HarnessCredentials.copyAllowedFiles(hostConfiguration, isolatedConfiguration, Set.of(".credentials.json"));
 			}
-			isolatedEnvironment.put("HOME", isolatedProcessHome.toString());
+			HarnessEnvironment.setHomeDirectory(isolatedEnvironment, isolatedProcessHome);
 			isolatedEnvironment.put("CLAUDE_CONFIG_DIR", isolatedConfiguration.toString());
 			// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 			// copying the caller's settings so that no inherited value turns it off.

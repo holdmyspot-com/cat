@@ -65,6 +65,20 @@ public final class HarnessEnvironment
 	}
 
 	/**
+	 * Gives a child process a home directory.
+	 *
+	 * @param environment the mutable isolated environment
+	 *
+	 * @param home the child's home directory
+	 */
+	public static void setHomeDirectory(Map<String, String> environment, Path home)
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireThat(home, "home").isNotNull();
+		environment.put("HOME", home.toString());
+	}
+
+	/**
 	 * Stops Git commands in an owned project copy from discovering a repository in the host's parent directories.
 	 *
 	 * @param environment the mutable isolated environment
