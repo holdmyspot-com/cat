@@ -33,6 +33,14 @@ client/common/distribution/target/runtime/claude/install/install-claude.sh clien
 client/common/distribution/target/runtime/codex/install/install-codex.sh client/common/distribution/target/runtime/codex
 ```
 
+On Windows, run the Codex installer from PowerShell:
+
+```powershell
+& ([scriptblock]::Create([IO.File]::ReadAllText(
+  "$PWD\client\common\distribution\target\runtime\codex\install\install-codex.ps1"))) `
+  -Source client\common\distribution\target\runtime\codex
+```
+
 ### Test removal or an upgrade
 
 Use the matching [bootstrap uninstaller](installation.md#uninstall) when testing removal. Re-run the same local
