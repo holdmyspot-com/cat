@@ -78,7 +78,7 @@ final class PromptMeasurements
 	}
 
 	/**
-	 * Checks whether a staged path is within a participating source.
+	 * Indicates whether a staged path is within a participating source.
 	 *
 	 * @param relative the staged path
 	 * @param resolved the snapshot's resolved target

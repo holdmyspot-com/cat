@@ -989,7 +989,7 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Determines whether the recorded owner process still exists with the same start marker.
+	 * Indicates whether the recorded owner process still exists with the same start marker.
 	 *
 	 * @param manifest the validated run manifest
 	 * @return {@code true} if the original owner remains alive
@@ -1001,7 +1001,7 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Determines whether the recorded harness process remains alive.
+	 * Indicates whether the recorded harness process remains alive.
 	 *
 	 * @param manifest the validated run manifest
 	 * @return {@code true} if the harness process is recorded and remains alive
@@ -1222,7 +1222,7 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Determines whether lock acquisition failed because the run remains active.
+	 * Indicates whether lock acquisition failed because the run remains active.
 	 *
 	 * @param failure the lock-acquisition failure
 	 * @return true if the run remains active

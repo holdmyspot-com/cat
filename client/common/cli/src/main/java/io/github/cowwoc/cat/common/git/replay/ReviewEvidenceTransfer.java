@@ -52,7 +52,7 @@ public final class ReviewEvidenceTransfer
 	}
 
 	/**
-	 * Returns whether a source-scoped identifier belongs to an excluded prior source.
+	 * Indicates whether a source-scoped identifier belongs to an excluded prior source.
 	 *
 	 * @param identifier the source-scoped identifier
 	 * @param excludedSources prior source hashes excluded from reuse

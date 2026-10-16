@@ -4977,7 +4977,8 @@ public final class DriverTest
 	}
 
 	/**
-	 * Returns whether trial interrupts also fail, alongside the prompt author interrupt that always fails.
+	 * Returns the cases that choose whether trial interrupts also fail, alongside the prompt author interrupt that
+	 * always fails.
 	 *
 	 * @return the failure cases
 	 */

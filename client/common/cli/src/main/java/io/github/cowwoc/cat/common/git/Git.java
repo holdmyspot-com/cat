@@ -256,7 +256,7 @@ public final class Git
 	 * Holds the bounded in-memory portion of one completed process output stream.
 	 *
 	 * @param bytes the retained leading bytes
-	 * @param exceededLimit whether additional output was discarded
+	 * @param exceededLimit indicates whether additional output was discarded
 	 */
 	private record ProcessOutput(byte[] bytes, boolean exceededLimit)
 	{

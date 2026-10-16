@@ -23,8 +23,8 @@ import java.util.Map;
  * @param output the durable output file
  * @param runRoot the absolute owned-run root
  * @param executable the harness executable
- * @param keepRun whether to retain a successful run for investigation
- * @param installCat whether CAT is installed in the isolated harness home
+ * @param keepRun indicates whether to retain a successful run for investigation
+ * @param installCat indicates whether CAT is installed in the isolated harness home
  */
 public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile, String model, Path output,
 	Path runRoot, String executable, boolean keepRun, boolean installCat)

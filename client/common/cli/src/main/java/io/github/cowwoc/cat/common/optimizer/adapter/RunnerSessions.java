@@ -394,7 +394,7 @@ public abstract class RunnerSessions implements SessionPort
 	}
 
 	/**
-	 * Returns whether a plugin copy is CAT: whether its manifest name is the name in the CAT artifact's manifest.
+	 * Indicates whether a plugin copy is CAT: whether its manifest name is the name in the CAT artifact's manifest.
 	 *
 	 * @param copy the plugin copy
 	 * @return {@code true} if the copy is CAT
@@ -504,8 +504,8 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 	 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 	 * @param executable the harness executable, or blank for the harness's default command
-	 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
-	 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
+	 * @param installCat indicates whether the user's sessions of the harness load CAT from the artifact, so that the
+	 *   files that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
 	 * @param environment the host environment that the runner scrubs for the session
 	 * @param configurationDirectory the host's harness configuration directory, which holds the login
 	 * @param capacity the shared capacity from which every session takes one permit
@@ -559,8 +559,8 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 		 * @param executable the harness executable, or blank for the harness's default command
-		 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
-		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
+		 * @param installCat indicates whether the user's sessions of the harness load CAT from the artifact, so that
+		 *   the files that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
 		 * @param environment the host environment that the runner scrubs for the session
 		 * @param configurationDirectory the host's harness configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit

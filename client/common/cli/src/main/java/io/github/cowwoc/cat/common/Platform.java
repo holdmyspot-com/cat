@@ -107,7 +107,7 @@ public enum Platform
 	}
 
 	/**
-	 * Returns whether the platform is Windows.
+	 * Indicates whether the platform is Windows.
 	 *
 	 * @return {@code true} for Windows
 	 */

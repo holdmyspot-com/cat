@@ -18,8 +18,8 @@ import java.util.List;
  * @param snapshot the prompt author's original snapshot, equal to working when no edit was made
  * @param runs the original promotion runs, including working reference runs
  * @param changedLines the number of added and removed lines
- * @param accepted whether the promotion rule accepted this edited attempt
- * @param winner whether this attempt was selected for minimality and promotion
+ * @param accepted indicates whether the promotion rule accepted this edited attempt
+ * @param winner indicates whether this attempt was selected for minimality and promotion
  */
 public record AttemptResult(int round, Sha256 working, int number, String cell, Sha256 snapshot,
 	List<PromotionRun> runs, int changedLines, boolean accepted, boolean winner)

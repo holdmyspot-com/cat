@@ -59,7 +59,7 @@ public final class CodexProcess implements HarnessProcess
 	private String threadId;
 	private String effort = "";
 	/**
-	 * Whether a turn has been requested and has not yet ended; guarded by {@link #input}.
+	 * Indicates whether a turn has been requested and has not yet ended; guarded by {@link #input}.
 	 */
 	private boolean turnActive;
 	/**
@@ -68,7 +68,7 @@ public final class CodexProcess implements HarnessProcess
 	 */
 	private String turnId;
 	/**
-	 * Whether the caller asked to interrupt the active turn; guarded by {@link #input}.
+	 * Indicates whether the caller asked to interrupt the active turn; guarded by {@link #input}.
 	 */
 	private boolean interruptRequested;
 
@@ -411,7 +411,7 @@ public final class CodexProcess implements HarnessProcess
 	}
 
 	/**
-	 * Returns whether one harness event completes the thread that received the current request.
+	 * Indicates whether one harness event completes the thread that received the current request.
 	 *
 	 * @param event the raw harness event
 	 * @param targetThreadId the requested thread identifier
@@ -436,7 +436,7 @@ public final class CodexProcess implements HarnessProcess
 	}
 
 	/**
-	 * Returns whether the Codex app-server remains alive.
+	 * Indicates whether the Codex app-server remains alive.
 	 *
 	 * @return true if the process remains alive
 	 */

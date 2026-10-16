@@ -158,7 +158,7 @@ public final class SchemaValidator
 	}
 
 	/**
-	 * Tells whether a value has a JSON type.
+	 * Indicates whether a value has a JSON type.
 	 *
 	 * @param type the JSON type
 	 * @param value the value

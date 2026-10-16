@@ -52,7 +52,7 @@ final class ScenarioParser
 	private final String location;
 	private final List<String> lines;
 	/**
-	 * Whether each line is part of a fenced code block, including its fences.
+	 * Indicates whether each line is part of a fenced code block, including its fences.
 	 */
 	private final boolean[] fenced;
 

@@ -128,7 +128,7 @@ public final class ToolScope implements AutoCloseable
 	}
 
 	/**
-	 * Returns whether this scope is closed.
+	 * Indicates whether this scope is closed.
 	 *
 	 * @return true if this scope is closed
 	 */

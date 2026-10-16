@@ -26,8 +26,8 @@ import java.util.TreeMap;
  * @param snapshot the original prompt author snapshot, or {@code null} before the prompt author submits
  * @param passingRuns the attempt's own passing promotion runs, excluding working reference runs
  * @param totalRuns the attempt's own planned promotion runs, excluding working reference runs
- * @param accepted whether promotion accepted the attempt, or {@code null} while pending
- * @param winner whether this attempt was selected for minimality
+ * @param accepted indicates whether promotion accepted the attempt, or {@code null} while pending
+ * @param winner indicates whether this attempt was selected for minimality
  */
 public record AttemptProgress(int round, int number, Sha256 working, String cell, Sha256 snapshot,
 	long passingRuns, long totalRuns, Boolean accepted, boolean winner)

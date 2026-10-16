@@ -76,7 +76,7 @@ public record RuleSource(Path file, Kind kind, Optional<Path> referrer)
 		}
 
 		/**
-		 * Returns whether a file of this kind reaches the agent through another file.
+		 * Indicates whether a file of this kind reaches the agent through another file.
 		 *
 		 * @return {@code true} if a file of this kind has a referrer
 		 */

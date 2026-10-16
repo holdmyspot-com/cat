@@ -15,8 +15,8 @@ import java.util.Map;
  * @param values the value of each variable of the test case, by variable name, in declaration order: the text of a
  *   text value, and the call of a generated value
  * @param expectedOutcome the result that a compliant reply gives
- * @param assertions whether the trial passed each assertion that it decided, by assertion identifier. A failed
- *   built-in tool ends the trial without a judge, so the assertions that the judge decides are absent.
+ * @param assertions indicates whether the trial passed each assertion that it decided, by assertion identifier. A
+ *   failed built-in tool ends the trial without a judge, so the assertions that the judge decides are absent.
  * @param record the judge's rationale, or the record of the failed built-in tools
  */
 public record PilotTrial(Map<String, String> values, String expectedOutcome, Map<String, Boolean> assertions,

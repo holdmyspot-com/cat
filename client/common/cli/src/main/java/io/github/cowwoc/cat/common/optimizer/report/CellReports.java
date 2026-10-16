@@ -157,7 +157,7 @@ final class CellReports
 	}
 
 	/**
-	 * Returns whether a development cell meets the commit gate, and why not.
+	 * Compares a development cell with the commit gate, giving the reasons that it falls short.
 	 *
 	 * @param counts the cell's development counts
 	 * @param minimumPassRate the campaign's minimum pass rate {@code p_min}
@@ -358,7 +358,7 @@ final class CellReports
 	}
 
 	/**
-	 * Returns whether an attempt's candidate is proven better or worse than the incumbent in a cell.
+	 * Classifies an attempt's candidate as proven better, proven worse or undecided against the incumbent in a cell.
 	 *
 	 * @param boundaries the comparison boundaries that the attempt froze for the cell
 	 * @param counts the attempt's counts for the cell
@@ -426,7 +426,7 @@ final class CellReports
 	}
 
 	/**
-	 * Returns whether the incumbent is proven deficient in a cell.
+	 * Indicates whether the incumbent is proven deficient in a cell.
 	 *
 	 * @param baseline the baseline
 	 * @param counts the cell's counts

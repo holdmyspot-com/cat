@@ -243,7 +243,7 @@ public record PromptConfiguration(Map<String, List<ConfiguredPlugin>> harnesses)
 	}
 
 	/**
-	 * Returns whether a name has the form {@code <plugin>@<marketplace>}.
+	 * Indicates whether a name has the form {@code <plugin>@<marketplace>}.
 	 *
 	 * @param name a plugin name
 	 * @return {@code true} if the name has a plugin and a marketplace part

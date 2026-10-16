@@ -324,7 +324,7 @@ public final class SessionHistory
 	}
 
 	/**
-	 * Determines whether one parsed event falls within the requested summary boundaries.
+	 * Indicates whether one parsed event falls within the requested summary boundaries.
 	 *
 	 * @param type the event type from the record
 	 * @param timestamp the parsed event timestamp, if present

@@ -21,7 +21,7 @@ import java.util.Optional;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param attempts the received weak attempts or rejected sequential attempts per addressed cell, in contract order
- * @param weak whether the working candidate was weak when the round started
+ * @param weak indicates whether the working candidate was weak when the round started
  * @param reservations the attempt numbers and addressed cells, in launch order
  * @param validationAttempts the received attempts, in launch order; an unchanged snapshot denotes no edit
  */

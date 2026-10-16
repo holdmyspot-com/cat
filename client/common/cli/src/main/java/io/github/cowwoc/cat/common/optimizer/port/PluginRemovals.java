@@ -79,7 +79,7 @@ public final class PluginRemovals
 	}
 
 	/**
-	 * Returns whether there is nothing to remove.
+	 * Indicates whether there is nothing to remove.
 	 *
 	 * @return {@code true} if there are no dependents
 	 */

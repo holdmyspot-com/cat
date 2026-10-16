@@ -14,7 +14,7 @@ import java.util.List;
  *
  * @param standardError captured standard error
  *
- * @param completed whether the harness emitted the terminal event for the requested turn
+ * @param completed indicates whether the harness emitted the terminal event for the requested turn
  *
  * @param assistantResponse the harness-specific adapter's extracted final assistant response
  *
@@ -46,7 +46,7 @@ public record HarnessProcessResult(int exitCode, String standardOutput, String s
 	 *
 	 * @param standardError captured standard error or terminal diagnostic
 	 *
-	 * @param completed whether the harness emitted the terminal event for the requested turn
+	 * @param completed indicates whether the harness emitted the terminal event for the requested turn
 	 */
 	public HarnessProcessResult(int exitCode, String standardOutput, String standardError, boolean completed)
 	{

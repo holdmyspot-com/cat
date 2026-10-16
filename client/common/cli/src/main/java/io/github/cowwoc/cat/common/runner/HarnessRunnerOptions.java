@@ -17,10 +17,10 @@ import java.util.List;
  * @param model the optional selected model
  * @param effort the optional selected reasoning effort
  * @param output the optional durable bridge-transcript destination
- * @param keepRun whether successful runs are retained
+ * @param keepRun indicates whether successful runs are retained
  * @param receipt the optional retained-evidence receipt destination
- * @param installCat whether CAT is installed in the isolated harness home
- * @param includeUserRules whether CAT copies the parent's personal rules into the isolated harness home
+ * @param installCat indicates whether CAT is installed in the isolated harness home
+ * @param includeUserRules indicates whether CAT copies the parent's personal rules into the isolated harness home
  * @param maximumConcurrency the shared CAT harness capacity ceiling
  * @param deniedReads the files and directories that the harness sandbox denies the session reading
  * @param fixtures the optional directory whose files are copied into the project on top of {@code project}, refusing

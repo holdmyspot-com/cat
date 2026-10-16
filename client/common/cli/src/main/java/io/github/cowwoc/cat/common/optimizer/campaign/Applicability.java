@@ -7,7 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import java.util.List;
 
 /**
- * Whether a result still describes the current prompt system and conditions.
+ * Indicates whether a result still describes the current prompt system and conditions.
  * <p>
  * A result is current only while CAT knows of no material change. A known change makes it historical without
  * deleting or rewriting it. Conditions are compared campaign-wide and for the same cell, the prompt test
@@ -17,7 +17,7 @@ import java.util.List;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param status whether the result is current
+ * @param status indicates whether the result is current
  * @param promptContentChanged {@code true} if the prompt-system snapshot differs
  * @param changed the conditions with different recorded values campaign-wide or for the same cell
  * @param parameters the certification parameters whose recorded value does not imply their current value
@@ -28,7 +28,7 @@ public record Applicability(Status status, boolean promptContentChanged, List<Me
 	List<CertificationParameter> parameters, List<MeasurementCondition> unchecked)
 {
 	/**
-	 * Whether a result describes the current state.
+	 * Indicates whether a result describes the current state.
 	 */
 	public enum Status
 	{
@@ -68,7 +68,7 @@ public record Applicability(Status status, boolean promptContentChanged, List<Me
 	/**
 	 * Creates an applicability result that leaves no recorded condition unchecked.
 	 *
-	 * @param status whether the result is current
+	 * @param status indicates whether the result is current
 	 * @param promptContentChanged {@code true} if the prompt-system snapshot differs
 	 * @param changed the conditions with different recorded values campaign-wide or for the same cell
 	 * @param parameters the certification parameters whose recorded value does not imply their current value
@@ -84,7 +84,7 @@ public record Applicability(Status status, boolean promptContentChanged, List<Me
 	/**
 	 * Creates an applicability result of a result that records no certification parameters.
 	 *
-	 * @param status whether the result is current
+	 * @param status indicates whether the result is current
 	 * @param promptContentChanged {@code true} if the prompt-system snapshot differs
 	 * @param changed the conditions with different recorded values campaign-wide or for the same cell
 	 * @throws NullPointerException if {@code status} or {@code changed} are null, or {@code changed} contains null

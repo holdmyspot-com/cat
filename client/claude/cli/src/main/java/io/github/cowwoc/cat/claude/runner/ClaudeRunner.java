@@ -371,7 +371,7 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Determines whether the isolated home needs a copied credential file.
+	 * Indicates whether the isolated home needs a copied credential file.
 	 *
 	 * @param environment the parent process environment
 	 * @return {@code true} if no usable Claude authentication variable is present

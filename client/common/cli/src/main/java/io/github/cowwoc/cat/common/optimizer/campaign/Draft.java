@@ -161,7 +161,7 @@ final class Draft
 	 */
 	final List<PendingDecision> pendingDecisions;
 	/**
-	 * {@code true} if a contract revision is requested.
+	 * Indicates whether a contract revision is requested.
 	 */
 	boolean revisionRequested;
 	/**

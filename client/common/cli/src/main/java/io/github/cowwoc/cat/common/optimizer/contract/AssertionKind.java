@@ -1,8 +1,8 @@
 package io.github.cowwoc.cat.common.optimizer.contract;
 
 /**
- * Whether an assertion is one that the target prompt exists to make true, or one that protects an operation the
- * prompt must not harm.
+ * Indicates whether an assertion is one that the target prompt exists to make true, or one that protects an operation
+ * the prompt must not harm.
  */
 public enum AssertionKind
 {

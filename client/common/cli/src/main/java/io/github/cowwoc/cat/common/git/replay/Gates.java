@@ -66,7 +66,7 @@ public final class Gates
 	}
 
 	/**
-	 * Returns whether a gate name can safely form one manifest-relative log filename.
+	 * Indicates whether a gate name can safely form one manifest-relative log filename.
 	 *
 	 * @param gateName the candidate gate name
 	 * @return {@code true} if the name contains only lowercase letters, digits, and hyphens

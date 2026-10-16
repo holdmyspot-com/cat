@@ -10,7 +10,7 @@ package io.github.cowwoc.cat.common.git.replay;
  * @param rawDiffHandoff the immutable raw-diff handoff reference
  * @param candidateUniverseSha256 the immutable independent candidate-universe bytes
  * @param actionResultMatrixSha256 the immutable independent action-result matrix bytes
- * @param unprimed whether the reviewer lacked planner placement information
+ * @param unprimed indicates whether the reviewer lacked planner placement information
  */
 record IndependentReviewAttestation(String reviewer, String base, String tip, String workflowRevision,
 	String rawDiffHandoff, String candidateUniverseSha256, String actionResultMatrixSha256, boolean unprimed)

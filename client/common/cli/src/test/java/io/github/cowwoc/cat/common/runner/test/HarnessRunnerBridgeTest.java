@@ -849,7 +849,7 @@ public final class HarnessRunnerBridgeTest
 	private static final class FakeProcess implements HarnessProcess
 	{
 		/**
-		 * Whether the bridge closed this process.
+		 * Indicates whether the bridge closed this process.
 		 */
 		private boolean closed;
 		/**

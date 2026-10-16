@@ -114,7 +114,7 @@ public final class LinkReport
 	}
 
 	/**
-	 * Whether a link can be staged.
+	 * The reason that a link can or cannot be staged.
 	 */
 	public enum Status
 	{
@@ -139,7 +139,7 @@ public final class LinkReport
 	 *   directory
 	 * @param target the resolved target after every link on the path is followed, relative to the project directory
 	 *   or absolute for an external target, or empty if the links on the path form a cycle
-	 * @param status whether the link can be staged
+	 * @param status indicates whether the link can be staged
 	 * @param editLimit why the target's content cannot be edited, or empty if it may be edited
 	 */
 	public record Entry(Path link, Optional<Path> target, Status status, Optional<Limit> editLimit)

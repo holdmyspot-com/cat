@@ -14,7 +14,7 @@ import java.nio.file.Path;
  * @param root the canonical project root
  * @param target the canonical path of the prompt file or prompt system
  * @param harness the harness that started the campaign
- * @param lifecycle whether the campaign is active, cancelled, closed or finished
+ * @param lifecycle indicates whether the campaign is active, cancelled, closed or finished
  * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the user stated
  *   no goal
  */
@@ -51,7 +51,7 @@ public record Header(String id, Path root, Path target, Harness harness, Lifecyc
 	 * @param root the canonical project root
 	 * @param target the canonical path of the prompt file or prompt system
 	 * @param harness the harness that started the campaign
-	 * @param lifecycle whether the campaign is active, cancelled, closed or finished
+	 * @param lifecycle indicates whether the campaign is active, cancelled, closed or finished
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code id} is blank
 	 */

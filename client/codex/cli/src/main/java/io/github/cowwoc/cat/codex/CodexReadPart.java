@@ -464,7 +464,7 @@ public final class CodexReadPart
 	}
 
 	/**
-	 * Returns whether a character separates the names of a path: {@code /}, or the platform's own separator.
+	 * Indicates whether a character separates the names of a path: {@code /}, or the platform's own separator.
 	 *
 	 * @param character the character
 	 * @return {@code true} if the character separates names

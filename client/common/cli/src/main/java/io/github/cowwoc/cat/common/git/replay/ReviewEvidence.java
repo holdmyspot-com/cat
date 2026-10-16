@@ -854,7 +854,7 @@ public final class ReviewEvidence
 	}
 
 	/**
-	 * Returns whether discovery evidence identifies a source commit instead of a behavior.
+	 * Indicates whether discovery evidence identifies a source commit instead of a behavior.
 	 *
 	 * @param evidence reviewer-written discovery evidence
 	 * @param sourceHashes immutable source identifiers

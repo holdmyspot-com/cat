@@ -13,7 +13,7 @@ import java.util.List;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param verdict whether the trial passed every assertion that the judge decided
+ * @param verdict indicates whether the trial passed every assertion that the judge decided
  * @param rationale the evidence that decided each assertion, in the judge's words
  * @param failures each assertion that the trial failed, with its behavior; empty when the trial passed
  */

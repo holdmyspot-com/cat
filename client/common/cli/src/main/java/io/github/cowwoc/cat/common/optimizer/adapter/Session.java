@@ -238,7 +238,7 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Returns whether the provider neither rejected nor refused the session and the harness reported no error.
+	 * Indicates whether the provider neither rejected nor refused the session and the harness reported no error.
 	 *
 	 * @return {@code true} if the session is clean
 	 */

@@ -220,7 +220,7 @@ public final class Finalization
 	}
 
 	/**
-	 * Checks whether a decoded receipt binds the selected base and resolved replacement tip.
+	 * Indicates whether a decoded receipt binds the selected base and resolved replacement tip.
 	 *
 	 * @param receipt the decoded receipt
 	 * @param base the selected base
@@ -233,7 +233,7 @@ public final class Finalization
 	}
 
 	/**
-	 * Checks whether a decoded receipt retains the captured source and final-tree facts.
+	 * Indicates whether a decoded receipt retains the captured source and final-tree facts.
 	 *
 	 * @param receipt the decoded receipt
 	 * @param replay the captured replay facts
@@ -246,7 +246,7 @@ public final class Finalization
 	}
 
 	/**
-	 * Checks whether a receipt binds the ordered replacement transitions.
+	 * Indicates whether a receipt binds the ordered replacement transitions.
 	 *
 	 * @param receipt the decoded receipt
 	 * @param replay the sealed output decisions
@@ -536,7 +536,7 @@ public final class Finalization
 	 * One logical output and whether finalization retains it as a replacement commit.
 	 *
 	 * @param id the output identifier
-	 * @param retained whether the output remains in the final replacement chain
+	 * @param retained indicates whether the output remains in the final replacement chain
 	 */
 	public record Output(String id, boolean retained)
 	{

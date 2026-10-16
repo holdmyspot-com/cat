@@ -534,9 +534,9 @@ public final class HarnessRunnerBridge
 		private final Clock clock;
 		private final String runId;
 		/**
-		 * Whether a turn has been submitted and has not yet ended. Changed only while holding {@link #lock}, so
-		 * that no {@code waiting} response follows {@code turn_completed}, and read without it, so that a request does
-		 * not wait for a response that is being written.
+		 * Indicates whether a turn has been submitted and has not yet ended. Changed only while holding {@link #lock},
+		 * so that no {@code waiting} response follows {@code turn_completed}, and read without it, so that a request
+		 * does not wait for a response that is being written.
 		 */
 		private volatile boolean turnActive;
 		/**

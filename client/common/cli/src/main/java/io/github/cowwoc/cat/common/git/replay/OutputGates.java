@@ -154,7 +154,7 @@ public final class OutputGates
 	}
 
 	/**
-	 * Returns whether a command has no observable verification effect.
+	 * Indicates whether a command has no observable verification effect.
 	 *
 	 * @param command the candidate output-gate command
 	 * @return {@code true} if the command is a common no-op form

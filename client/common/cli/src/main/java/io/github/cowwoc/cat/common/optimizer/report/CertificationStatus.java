@@ -16,8 +16,8 @@ import java.util.List;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param record the target's certification record
- * @param applicability whether the certification applies to the current prompt files and to the conditions that
- *   CAT knows
+ * @param applicability indicates whether the certification applies to the current prompt files and to the conditions
+ *   that CAT knows
  */
 public record CertificationStatus(CertificationRecord record, Applicability applicability)
 {

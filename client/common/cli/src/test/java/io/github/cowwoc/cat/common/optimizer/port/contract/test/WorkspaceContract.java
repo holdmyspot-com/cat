@@ -42,7 +42,7 @@ public final class WorkspaceContract
 		FileInventory fork();
 
 		/**
-		 * Reports whether the candidate has a staged source.
+		 * Indicates whether the candidate has a staged source.
 		 *
 		 * @param candidate the staged candidate
 		 * @param directory the directory returned by staging
@@ -51,7 +51,7 @@ public final class WorkspaceContract
 		boolean stagedExists(Sha256 candidate, Path directory);
 
 		/**
-		 * Reports whether the authoring copy exists.
+		 * Indicates whether the authoring copy exists.
 		 *
 		 * @param copy an authoring copy
 		 * @return whether the copy exists

@@ -9,7 +9,8 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Whether two observations record equal measurement conditions, and which conditions prevent comparison.
+ * The comparison of two observations' measurement conditions: whether they are equal, and which conditions prevent
+ * comparison.
  * <p>
  * Compares campaign-wide values and values for the same cell, the prompt test under a runner profile.
  * A cell uses its recorded value when present, otherwise the campaign-wide value. Conditions absent from both
@@ -18,7 +19,7 @@ import java.util.TreeSet;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param status whether the observations are comparable
+ * @param status indicates whether the observations are comparable
  * @param differing the conditions with different recorded values campaign-wide or for the same cell
  * @param missing the conditions recorded by only one observation campaign-wide or for the same cell
  * @param reason a readable explanation of the conditions that prevent comparison, or {@code null}
@@ -27,7 +28,7 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 	String reason)
 {
 	/**
-	 * Whether two observations are comparable.
+	 * The comparability of two observations.
 	 */
 	public enum Status
 	{
@@ -66,7 +67,7 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 	/**
 	 * Creates a comparability result without observation values.
 	 *
-	 * @param status whether the observations are comparable
+	 * @param status indicates whether the observations are comparable
 	 * @param differing the conditions with different recorded values
 	 * @param missing the conditions recorded by only one observation
 	 * @throws NullPointerException if any argument is null or either list contains null

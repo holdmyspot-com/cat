@@ -301,7 +301,7 @@ public final class Promotion
 	}
 
 	/**
-	 * Returns whether a test case's triggering runs establish a fix or make one impossible.
+	 * Returns the verdict of a test case's triggering runs: whether they establish a fix or make one impossible.
 	 *
 	 * @param testCase the triggering test case, matched by content
 	 * @param runs the tested attempt's runs

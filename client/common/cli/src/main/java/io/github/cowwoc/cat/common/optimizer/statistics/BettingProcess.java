@@ -103,7 +103,7 @@ public final class BettingProcess
 	private final List<ExactTerm> exactTerms;
 	private final List<LogTerm> logTerms;
 	/**
-	 * {@code true} if every weight and factor converts to {@code double} exactly.
+	 * Indicates whether every weight and factor converts to {@code double} exactly.
 	 */
 	private final boolean shortcutEligible;
 	/**

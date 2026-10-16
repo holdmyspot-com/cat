@@ -58,7 +58,7 @@ public final class Backup
 	}
 
 	/**
-	 * Returns whether the manifest has any recorded backup inventory.
+	 * Indicates whether the manifest has any recorded backup inventory.
 	 *
 	 * @param manifestFile the replay manifest
 	 * @return whether a backup inventory is present
@@ -171,7 +171,7 @@ public final class Backup
 	}
 
 	/**
-	 * Returns whether a local branch with an exact name exists.
+	 * Indicates whether a local branch with an exact name exists.
 	 *
 	 * @param branch the local branch name
 	 * @return whether the branch exists
@@ -183,7 +183,7 @@ public final class Backup
 	}
 
 	/**
-	 * Returns whether a value is a full Git object hash.
+	 * Indicates whether a value is a full Git object hash.
 	 *
 	 * @param value the candidate hash
 	 * @return whether the value is a lowercase 40-digit hexadecimal hash

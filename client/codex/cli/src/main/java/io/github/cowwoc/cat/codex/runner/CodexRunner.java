@@ -509,7 +509,7 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Determines whether the isolated home needs a copied credential file.
+	 * Indicates whether the isolated home needs a copied credential file.
 	 *
 	 * @param environment the parent process environment
 	 * @return {@code true} if no usable Codex authentication variable is present

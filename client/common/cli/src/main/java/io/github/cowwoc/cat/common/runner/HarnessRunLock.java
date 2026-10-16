@@ -93,7 +93,7 @@ public final class HarnessRunLock implements AutoCloseable
 	}
 
 	/**
-	 * Returns whether this lease currently holds an exclusive file lock.
+	 * Indicates whether this lease currently holds an exclusive file lock.
 	 *
 	 * @return true if this lease holds an exclusive file lock
 	 */

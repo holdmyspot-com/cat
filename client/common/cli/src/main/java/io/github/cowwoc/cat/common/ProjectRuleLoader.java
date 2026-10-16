@@ -1224,7 +1224,7 @@ public final class ProjectRuleLoader
 	/**
 	 * Identifies the agent context that receives a rule.
 	 *
-	 * @param main whether the recipient is the primary session agent
+	 * @param main indicates whether the recipient is the primary session agent
 	 * @param agentType the host-provided subagent type, blank for the primary session agent
 	 */
 	private record RuleAudience(boolean main, String agentType)

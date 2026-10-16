@@ -95,7 +95,7 @@ public final class TopicOutputDeclaration
 	}
 
 	/**
-	 * Returns whether a commit subject states one supported change type and a non-blank summary.
+	 * Indicates whether a commit subject states one supported change type and a non-blank summary.
 	 *
 	 * @param subject the proposed commit subject
 	 * @return {@code true} if the subject uses the required {@code type: summary} format

@@ -11,7 +11,7 @@ import java.nio.file.Path;
 public final class ProgramFixture
 {
 	/**
-	 * Whether the default file system has POSIX modes.
+	 * Indicates whether the default file system has POSIX modes.
 	 */
 	private static final boolean HAS_MODES = PortableFiles.hasModes(Path.of(""));
 	/**

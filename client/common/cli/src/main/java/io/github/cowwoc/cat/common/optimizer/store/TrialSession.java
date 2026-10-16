@@ -20,7 +20,7 @@ import java.util.List;
  * @param concurrency the number of trial sessions running immediately after this one started
  * @param throttle the campaign's throttle state once the rate-limit windows that the session reported were applied
  * @param windows the rate-limit windows that the session reported, empty if it reported none
- * @param login whether the harness authenticates through a subscription login or an API key
+ * @param login indicates whether the harness authenticates through a subscription login or an API key
  * @param usage the token counts that the harness reported for the session, or {@code null} if it reported none
  */
 public record TrialSession(Instant startedAt, Instant endedAt, int concurrency, Throttle throttle,

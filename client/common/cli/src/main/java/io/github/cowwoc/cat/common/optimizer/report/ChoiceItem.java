@@ -58,7 +58,7 @@ public record ChoiceItem(Choice choice, int attempt, boolean historical, int rev
 	 *
 	 * @param choice the ordinary choice
 	 * @param attempt the keep-improvement attempt index, otherwise 0
-	 * @param historical whether that attempt has an earlier measurement identity
+	 * @param historical indicates whether that attempt has an earlier measurement identity
 	 * @param reviewPointAbove the outcomes a new review point must exceed, otherwise 0
 	 * @throws NullPointerException if {@code choice} is null or is a resolution choice requiring conflict data
 	 * @throws IllegalArgumentException if a count is negative

@@ -58,7 +58,7 @@ public final class ClaudeProcess implements HarnessProcess
 	 */
 	private final Object turnLock = new Object();
 	/**
-	 * Whether a turn has been sent and has not yet ended.
+	 * Indicates whether a turn has been sent and has not yet ended.
 	 */
 	private boolean turnActive;
 	/**
@@ -66,8 +66,8 @@ public final class ClaudeProcess implements HarnessProcess
 	 */
 	private long interruptsSent;
 	/**
-	 * Whether Claude has printed a {@code session_state_changed} line since the process started. Turns run one at a
-	 * time, but not always on the same thread.
+	 * Indicates whether Claude has printed a {@code session_state_changed} line since the process started. Turns run
+	 * one at a time, but not always on the same thread.
 	 */
 	private volatile boolean sessionStatePrinted;
 
@@ -371,7 +371,7 @@ public final class ClaudeProcess implements HarnessProcess
 	}
 
 	/**
-	 * Returns whether the Claude process remains alive.
+	 * Indicates whether the Claude process remains alive.
 	 *
 	 * @return true if the process remains alive
 	 */
@@ -452,15 +452,15 @@ public final class ClaudeProcess implements HarnessProcess
 		 */
 		private final JsonMapper json;
 		/**
-		 * Whether Claude has printed a {@code session_state_changed} line since the process started.
+		 * Indicates whether Claude has printed a {@code session_state_changed} line since the process started.
 		 */
 		private boolean sessionStatePrinted;
 		/**
-		 * Whether the latest {@code background_tasks_changed} line listed a task.
+		 * Indicates whether the latest {@code background_tasks_changed} line listed a task.
 		 */
 		private boolean backgroundTasksRunning;
 		/**
-		 * Whether the root session has printed a result line for a reply to a user message in this turn.
+		 * Indicates whether the root session has printed a result line for a reply to a user message in this turn.
 		 */
 		private boolean answered;
 		/**

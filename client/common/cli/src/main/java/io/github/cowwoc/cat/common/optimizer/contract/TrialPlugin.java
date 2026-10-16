@@ -61,7 +61,7 @@ public record TrialPlugin(String name, String baseDigest, BaseSource source, Lis
 	}
 
 	/**
-	 * Returns whether the project builds the plugin, so that trials install it with the staged source's mapped files
+	 * Indicates whether the project builds the plugin, so that trials install it with the staged source's mapped files
 	 * written over its base.
 	 *
 	 * @return {@code true} if the base is a build output of the project

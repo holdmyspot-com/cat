@@ -16,7 +16,7 @@ import java.util.List;
  * @param testCase the assigned test case, which every retry reuses
  * @param identity the measurement conditions that the trial belongs to
  * @param allocation the allocation decision that assigned the trial
- * @param state whether the trial is assigned, running or awaiting inclusion in evidence
+ * @param state indicates whether the trial is assigned, running or awaiting inclusion in evidence
  * @param verdict the judged outcome, or {@code null} if the trial is not judged
  * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
  *   built-in tools, or {@code null} if the trial is not judged

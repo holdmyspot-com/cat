@@ -9,7 +9,7 @@ import java.util.Set;
  * @param inventoryIds every captured changed artifact
  * @param sourceHashes the captured sources whose identities discovery evidence may not use as a boundary
  * @param exposedEntryPointIds every selectable entry point the universe must place
- * @param rootRange whether the replay starts at the repository root
+ * @param rootRange indicates whether the replay starts at the repository root
  */
 public record CandidateUniverseRequirements(Set<String> inventoryIds, List<String> sourceHashes,
 	Set<String> exposedEntryPointIds, boolean rootRange)

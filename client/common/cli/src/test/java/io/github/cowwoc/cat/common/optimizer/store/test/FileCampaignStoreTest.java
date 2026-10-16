@@ -524,7 +524,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * Returns whether a test lists campaigns or loads one.
+	 * Returns the cases that choose whether a test lists campaigns or loads one.
 	 *
 	 * @return {@code true} to list, {@code false} to load
 	 */

@@ -9,7 +9,7 @@ import java.time.Instant;
 public interface HarnessProcessLiveness
 {
 	/**
-	 * Determines whether a process with an exact start marker remains alive.
+	 * Indicates whether a process with an exact start marker remains alive.
 	 *
 	 * @param pid the positive process identifier
 	 *

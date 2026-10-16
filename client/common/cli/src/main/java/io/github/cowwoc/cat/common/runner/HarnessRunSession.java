@@ -131,7 +131,7 @@ public final class HarnessRunSession implements AutoCloseable
 	}
 
 	/**
-	 * Returns whether the owned harness process remains alive.
+	 * Indicates whether the owned harness process remains alive.
 	 *
 	 * @return true if the harness process remains alive
 	 */

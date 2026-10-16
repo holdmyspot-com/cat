@@ -506,7 +506,7 @@ public final class Commands
 	}
 
 	/**
-	 * Returns whether the arguments ask for the usage text.
+	 * Indicates whether the arguments ask for the usage text.
 	 *
 	 * @param args the arguments, starting with the command's name
 	 * @return {@code true} for {@code help} alone, or for {@code --help} or {@code -h} anywhere

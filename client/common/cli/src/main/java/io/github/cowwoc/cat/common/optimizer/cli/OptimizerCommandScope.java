@@ -268,7 +268,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	}
 
 	/**
-	 * Returns whether this scope is closed.
+	 * Indicates whether this scope is closed.
 	 *
 	 * @return {@code true} if this scope is closed
 	 */

@@ -130,7 +130,7 @@ public final class ExclusiveFileLock implements AutoCloseable
 	}
 
 	/**
-	 * Returns whether this lock is held.
+	 * Indicates whether this lock is held.
 	 *
 	 * @return {@code true} until the lock is closed or the operating system invalidates it
 	 */

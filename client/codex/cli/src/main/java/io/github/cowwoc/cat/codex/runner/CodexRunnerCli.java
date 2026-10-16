@@ -163,7 +163,7 @@ public final class CodexRunnerCli
 
 
 	/**
-	 * Determines whether the arguments select a one-shot run.
+	 * Indicates whether the arguments select a one-shot run.
 	 *
 	 * @param args command-line arguments
 	 * @return {@code true} if the first argument is {@code run}

@@ -66,7 +66,7 @@ public interface HarnessProcess extends AutoCloseable
 	}
 
 	/**
-	 * Returns whether the harness remains alive.
+	 * Indicates whether the harness remains alive.
 	 *
 	 * @return true if the process is alive
 	 */
