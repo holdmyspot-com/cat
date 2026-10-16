@@ -129,4 +129,19 @@ public final class SessionRequestTest
 			requireThat(e.getMessage(), "message").contains("JUDGE");
 		}
 	}
+
+	/**
+	 * Verifies that the contract author's workspace may receive files, the draft directory that it writes prompt tests
+	 * into.
+	 */
+	@Test
+	public void acceptsContractAuthorFiles()
+	{
+		WorkspaceFixtures files = new WorkspaceFixtures(Map.of("notes.md", new FixtureFile("notes.md", "notes")),
+			Map.of(), "outcome");
+		SessionRequest request = new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT,
+			Path.of("/staged").toAbsolutePath(), List.of("turn"), List.of(), Duration.ofMinutes(1),
+			TrialProfile.HARNESS_DEFAULT, files);
+		requireThat(request.files(), "files").isEqualTo(files);
+	}
 }

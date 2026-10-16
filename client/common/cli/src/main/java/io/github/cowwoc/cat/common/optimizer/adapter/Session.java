@@ -287,11 +287,12 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Writes the trial's fixtures to a new directory under the run root of the session's part, so that the fixtures
-	 * of a held-out test case stay in a held-out location.
+	 * Writes the files that the session's workspace receives, a trial's fixtures or the contract author's draft
+	 * directory, to a new directory under the run root of the session's part, so that the fixtures of a held-out test
+	 * case stay in a held-out location.
 	 *
-	 * @return the directory, or {@code null} if the session receives no fixtures
-	 * @throws IOException if the fixtures cannot be written
+	 * @return the directory, or {@code null} if the session receives no files
+	 * @throws IOException if the files cannot be written
 	 */
 	private Path writeFixtures() throws IOException
 	{

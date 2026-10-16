@@ -22,7 +22,7 @@ import java.util.Map;
  * @param expectedOutcome the test case's expected outcome, or an empty string if there are no fixtures
  */
 public record WorkspaceFixtures(Map<String, FixtureFile> fixtures, Map<String, TestValue> values,
-	String expectedOutcome)
+	String expectedOutcome) implements WorkspaceFiles
 {
 	/**
 	 * No fixtures.
@@ -68,25 +68,13 @@ public record WorkspaceFixtures(Map<String, FixtureFile> fixtures, Map<String, T
 		return new WorkspaceFixtures(targets, testCase.values(), testCase.expectedOutcome());
 	}
 
-	/**
-	 * Indicates whether the trial receives no fixtures.
-	 *
-	 * @return {@code true} if there are no fixtures
-	 */
+	@Override
 	public boolean isEmpty()
 	{
 		return fixtures.isEmpty();
 	}
 
-	/**
-	 * Writes every fixture below a directory, creating the directories that it needs. Nothing is replaced: a path that
-	 * exists already is refused.
-	 *
-	 * @param directory the directory that stands for the workspace root
-	 * @throws NullPointerException       if {@code directory} is null
-	 * @throws FileAlreadyExistsException if a fixture's path exists already
-	 * @throws IOException                if a file cannot be written
-	 */
+	@Override
 	public void write(Path directory) throws IOException
 	{
 		requireThat(directory, "directory").isNotNull();

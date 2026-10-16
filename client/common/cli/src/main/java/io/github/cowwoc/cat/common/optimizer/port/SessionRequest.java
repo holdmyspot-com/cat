@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.port;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 
@@ -27,18 +28,18 @@ import java.util.Optional;
  * @param profile the model and reasoning effort that the session starts under: a trial's cell profile, or the role
  *   profile for the contract author, judge and prompt author. An empty dimension starts the session without
  *   selecting it.
- * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn;
- *   {@link WorkspaceFixtures#NONE} for every other session
+ * @param files the files that the workspace receives on top of {@code source} before the first turn: a trial's
+ *   fixtures, or the contract author's draft directory; {@link WorkspaceFixtures#NONE} for every other session
  * @param plugins the plugin directories that a trial installs, and no other plugin; empty for every other session
  * @param followUp chooses at most one turn to send after the last of {@code turns}, from the replies so far; that
  *   turn gets a time limit of its own as long as {@code timeLimit}. Empty to end the session after {@code turns}.
  */
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
-	Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, List<Path> plugins,
+	Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
 	Optional<FollowUp> followUp)
 {
 	/**
-	 * Creates a request whose workspace receives no fixtures.
+	 * Creates a request whose workspace receives no files.
 	 *
 	 * @param role the kind of work that the session performs
 	 * @param part the part of the contract whose content the session may read
@@ -68,14 +69,15 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param readOnly paths that the session may read but never write, such as a judge's evidence
 	 * @param timeLimit how long the session may run before its remaining turns are abandoned
 	 * @param profile the model and reasoning effort that the session starts under
-	 * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn
+	 * @param files the files that the workspace receives on top of {@code source} before the first turn
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
-	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial receives fixtures
+	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial or the contract author
+	 *   receives files
 	 */
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
-		Duration timeLimit, TrialProfile profile, WorkspaceFixtures files)
+		Duration timeLimit, TrialProfile profile, WorkspaceFiles files)
 	{
 		this(role, part, source, turns, readOnly, timeLimit, profile, files, List.of());
 	}
@@ -90,15 +92,16 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param readOnly paths that the session may read but never write, such as a judge's evidence
 	 * @param timeLimit how long the session may run before its remaining turns are abandoned
 	 * @param profile the model and reasoning effort that the session starts under
-	 * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn
+	 * @param files the files that the workspace receives on top of {@code source} before the first turn
 	 * @param plugins the plugin directories that a trial installs, and no other plugin
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
-	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial receives fixtures or plugins
+	 *   author is not {@link Part#DEVELOPMENT}, if a session other than a trial or the contract author receives files,
+	 *   or if a session other than a trial installs plugins
 	 */
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
-		Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, List<Path> plugins)
+		Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins)
 	{
 		this(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, Optional.empty());
 	}
@@ -113,13 +116,14 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param readOnly paths that the session may read but never write, such as a judge's evidence
 	 * @param timeLimit how long the session may run before its remaining turns are abandoned
 	 * @param profile the model and reasoning effort that the session starts under
-	 * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn
+	 * @param files the files that the workspace receives on top of {@code source} before the first turn
 	 * @param plugins the plugin directories that a trial installs, and no other plugin
 	 * @param followUp chooses at most one turn to send after the last of {@code turns}
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
-	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial receives fixtures or plugins
+	 *   author is not {@link Part#DEVELOPMENT}, if a session other than a trial or the contract author receives files,
+	 *   or if a session other than a trial installs plugins
 	 */
 	public SessionRequest
 	{
@@ -142,8 +146,8 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		requireThat(files, "files").isNotNull();
 		requireThat(plugins, "plugins").isNotNull();
 		requireThat(followUp, "followUp").isNotNull();
-		if (role != SessionRole.TRIAL && !files.isEmpty())
-			throw new IllegalArgumentException("A " + role + " session receives no fixtures");
+		if (role != SessionRole.TRIAL && role != SessionRole.CONTRACT_AUTHOR && !files.isEmpty())
+			throw new IllegalArgumentException("A " + role + " session receives no files");
 		if (role != SessionRole.TRIAL && !plugins.isEmpty())
 			throw new IllegalArgumentException("A " + role + " session installs no plugin");
 		turns = List.copyOf(turns);
