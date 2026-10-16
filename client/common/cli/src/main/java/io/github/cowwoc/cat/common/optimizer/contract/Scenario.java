@@ -7,38 +7,44 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
 
 /**
- * A prompt test's {@code scenario.md}: the variables that its test cases give values, the user turns and the
- * assertions that a compliant trial satisfies.
+ * A prompt test's {@code scenario.md}: the variables that its test cases give values, the user turns, the expected
+ * behavior and the assertions that a compliant trial satisfies.
  * <p>
  * Turns, assertion statements and assertions' {@code tool} values may contain {@code {{name}}} placeholders for
  * declared variables and for {@value TestCase#EXPECTED_OUTCOME}. Text in double braces whose content is not lowercase
  * words joined by underscores, such as {@code ${{ github.token }}}, is not a placeholder.
  *
- * @param variables  the declared variables, in order
- * @param turns      the user turns, in order
- * @param assertions the assertions, in order
+ * @param variables        the declared variables, in order
+ * @param turns            the user turns, in order
+ * @param expectedBehavior the {@code ## Expected Behavior} section, or empty for a scenario recorded without it
+ * @param assertions       the assertions, in order
  */
-public record Scenario(List<VariableDeclaration> variables, List<String> turns, List<Assertion> assertions)
+public record Scenario(List<VariableDeclaration> variables, List<String> turns,
+	Optional<ExpectedBehavior> expectedBehavior, List<Assertion> assertions)
 {
 	/**
 	 * Creates a scenario.
 	 *
-	 * @param variables  the declared variables, in order
-	 * @param turns      the user turns, in order
-	 * @param assertions the assertions, in order
+	 * @param variables        the declared variables, in order
+	 * @param turns            the user turns, in order
+	 * @param expectedBehavior the {@code ## Expected Behavior} section, or empty for a scenario recorded without it
+	 * @param assertions       the assertions, in order
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if a list is empty, a turn is blank, two variables share a name, two assertions
-	 *                                  share an identifier, or a turn, assertion statement or assertion's {@code tool}
-	 *                                  has a placeholder for an undeclared variable
+	 *                                  share an identifier, or a turn, the expected behavior's description, an
+	 *                                  assertion statement or an assertion's {@code tool} has a placeholder for an
+	 *                                  undeclared variable
 	 */
 	public Scenario
 	{
 		requireThat(variables, "variables").isNotEmpty();
 		requireThat(turns, "turns").isNotEmpty();
+		requireThat(expectedBehavior, "expectedBehavior").isNotNull();
 		requireThat(assertions, "assertions").isNotEmpty();
 		variables = List.copyOf(variables);
 		turns = List.copyOf(turns);
@@ -61,12 +67,30 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns, 
 			requireThat(turn, "turn").isNotBlank();
 			requireDeclared(names, turn);
 		}
+		if (expectedBehavior.isPresent())
+			requireDeclared(names, expectedBehavior.get().description());
 		for (Assertion assertion : assertions)
 		{
 			requireDeclared(names, assertion.statement());
 			if (assertion.tool() != null)
 				requireDeclared(names, assertion.tool());
 		}
+	}
+
+	/**
+	 * Creates a scenario without an expected behavior.
+	 *
+	 * @param variables  the declared variables, in order
+	 * @param turns      the user turns, in order
+	 * @param assertions the assertions, in order
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if a list is empty, a turn is blank, two variables share a name, two assertions
+	 *                                  share an identifier, or a turn, assertion statement or assertion's {@code tool}
+	 *                                  has a placeholder for an undeclared variable
+	 */
+	public Scenario(List<VariableDeclaration> variables, List<String> turns, List<Assertion> assertions)
+	{
+		this(variables, turns, Optional.empty(), assertions);
 	}
 
 	/**
@@ -120,10 +144,11 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns, 
 	}
 
 	/**
-	 * Returns the {@code ## Variables}, {@code ## Scenario} and {@code ## Assertions} sections of a
-	 * {@code scenario.md} that {@link #parse(String)} reads back as this scenario. A single turn is written directly
-	 * under {@code ## Scenario}, and several turns as numbered {@code ### Turn <n>} subsections. A turn is written as
-	 * prose, or as a {@code description} pair if a line of it would read as a heading or a pair.
+	 * Returns the {@code ## Variables}, {@code ## Scenario}, {@code ## Expected Behavior} and {@code ## Assertions}
+	 * sections of a {@code scenario.md} that {@link #parse(String)} reads back as this scenario; the
+	 * {@code ## Expected Behavior} section is written only if the scenario has an expected behavior. A single turn is
+	 * written directly under {@code ## Scenario}, and several turns as numbered {@code ### Turn <n>} subsections. A
+	 * turn is written as prose, or as a {@code description} pair if a line of it would read as a heading or a pair.
 	 *
 	 * @return the sections, ending with a line break
 	 * @throws IllegalArgumentException if the text would read back differently, such as a description that ends with
@@ -170,6 +195,13 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns, 
 				text.append("### Turn ").append(i + 1).append("\n\n");
 				appendTurn(text, turns.get(i));
 			}
+		}
+
+		if (expectedBehavior.isPresent())
+		{
+			text.append("\n## Expected Behavior\n\n");
+			appendPair(text, "description", expectedBehavior.get().description());
+			appendPair(text, "time_limit_seconds", String.valueOf(expectedBehavior.get().timeLimit().toSeconds()));
 		}
 
 		text.append("\n## Assertions\n");

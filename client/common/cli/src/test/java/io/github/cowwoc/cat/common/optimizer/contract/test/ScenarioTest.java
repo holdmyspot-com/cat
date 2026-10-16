@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
+import io.github.cowwoc.cat.common.optimizer.contract.ExpectedBehavior;
 import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.Scenario;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
@@ -11,7 +12,9 @@ import io.github.cowwoc.cat.common.optimizer.contract.VariableDeclaration;
 
 import org.testng.annotations.Test;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -45,6 +48,15 @@ public final class ScenarioTest
 
 		- **kind**: effect
 		- **description**: The reply summarizes the notes.
+		""";
+	/**
+	 * An expected behavior with its description and time limit.
+	 */
+	private static final String EXPECTED_BEHAVIOR = """
+		## Expected Behavior
+
+		- **description**: The agent summarizes the notes.
+		- **time_limit_seconds**: 120
 		""";
 
 	/**
@@ -165,6 +177,37 @@ public final class ScenarioTest
 			- **description**: Summarize `docs/{{notes}}`.
 			""" + ASSERTIONS);
 		requireThat(pairs, "pairs").isEqualTo(prose);
+	}
+
+	/**
+	 * Verifies that the {@code ## Expected Behavior} section is read into the scenario's expected behavior and time
+	 * limit.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void parsesExpectedBehavior() throws ScenarioFormatException
+	{
+		// Requirement: R-C20
+		Scenario scenario = Scenario.parse(VARIABLES + TURN + EXPECTED_BEHAVIOR + ASSERTIONS);
+		requireThat(scenario.expectedBehavior(), "expectedBehavior").isEqualTo(Optional.of(
+			new ExpectedBehavior("The agent summarizes the notes.", Duration.ofSeconds(120))));
+		requireThat(scenario.turns(), "turns").isEqualTo(List.of("Summarize `docs/{{notes}}`."));
+	}
+
+	/**
+	 * Verifies that a scenario without a {@code ## Expected Behavior} section, as recorded before the section existed,
+	 * is still read, without an expected behavior.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void readsScenarioWithoutExpectedBehavior() throws ScenarioFormatException
+	{
+		// Requirement: R-C20
+		Scenario scenario = Scenario.parse(VARIABLES + TURN + ASSERTIONS);
+		requireThat(scenario.expectedBehavior(), "expectedBehavior").isEmpty();
+		requireThat(scenario, "scenario").isEqualTo(single());
 	}
 
 	/**
@@ -611,6 +654,38 @@ public final class ScenarioTest
 	}
 
 	/**
+	 * Verifies that an {@code ## Expected Behavior} section without its description or time limit, with prose, with a
+	 * key that the section does not define, with a time limit that is not a positive whole number of seconds, or with
+	 * a placeholder for an undeclared variable is refused at the line concerned.
+	 */
+	@Test
+	public void refusesMalformedExpectedBehavior()
+	{
+		// Requirement: R-C20
+		String heading = VARIABLES + TURN + "## Expected Behavior\n\n";
+		String description = "- **description**: The agent summarizes the notes.\n";
+		String limit = "- **time_limit_seconds**: 120\n";
+		requireThat(refusal(heading + description + ASSERTIONS), "noTimeLimit").startsWith("Line 7:").
+			contains("time_limit_seconds");
+		requireThat(refusal(heading + limit + ASSERTIONS), "noDescription").startsWith("Line 7:").
+			contains("description");
+		requireThat(refusal(heading + "The agent summarizes the notes.\n" + ASSERTIONS), "prose").
+			startsWith("Line 9:");
+		requireThat(refusal(heading + description + limit + "- **timeout**: 60\n" + ASSERTIONS), "unknownKey").
+			startsWith("Line 11:").contains("timeout");
+		requireThat(refusal(heading + description + "- **time_limit_seconds**: two minutes\n" + ASSERTIONS),
+			"notNumber").startsWith("Line 10:").contains("time_limit_seconds");
+		requireThat(refusal(heading + description + "- **time_limit_seconds**: 0\n" + ASSERTIONS), "zero").
+			startsWith("Line 10:");
+		requireThat(refusal(heading + description + "- **time_limit_seconds**: 1.5\n" + ASSERTIONS), "fraction").
+			startsWith("Line 10:");
+		requireThat(refusal(heading + "- **description**:\n" + limit + ASSERTIONS), "emptyDescription").
+			startsWith("Line 9:");
+		requireThat(refusal(heading + "- **description**: The agent reads {{file}}.\n" + limit + ASSERTIONS),
+			"undeclared").startsWith("Line 9:").contains("{{file}}");
+	}
+
+	/**
 	 * Verifies that an assertion identifier that is not snake_case, a repeated one and the reserved one are refused at
 	 * their headings.
 	 */
@@ -728,6 +803,24 @@ public final class ScenarioTest
 			  ## Notes
 
 			""" + ASSERTIONS);
+	}
+
+	/**
+	 * Verifies that a scenario with an expected behavior renders its {@code ## Expected Behavior} section between
+	 * {@code ## Scenario} and {@code ## Assertions}, and parses back.
+	 *
+	 * @throws ScenarioFormatException if the rendered scenario is refused
+	 */
+	@Test
+	public void rendersExpectedBehavior() throws ScenarioFormatException
+	{
+		// Requirement: R-C20
+		Scenario scenario = new Scenario(single().variables(), single().turns(), Optional.of(
+			new ExpectedBehavior("The agent summarizes the notes.", Duration.ofSeconds(120))), single().assertions());
+		String rendered = scenario.render();
+		requireThat(rendered, "rendered").isEqualTo(VARIABLES + "\n" + TURN + "\n" + EXPECTED_BEHAVIOR + "\n" +
+			ASSERTIONS);
+		requireThat(Scenario.parse(rendered), "parsed").isEqualTo(scenario);
 	}
 
 	/**

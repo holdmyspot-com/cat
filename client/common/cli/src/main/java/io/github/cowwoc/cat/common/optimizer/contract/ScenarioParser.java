@@ -2,11 +2,13 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import io.github.cowwoc.cat.common.Identifier;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,17 +25,24 @@ final class ScenarioParser
 	private static final String VARIABLES = "Variables";
 	private static final String FIXTURES = "Fixtures";
 	private static final String SCENARIO = "Scenario";
+	private static final String EXPECTED_BEHAVIOR = "Expected Behavior";
 	private static final String ASSERTIONS = "Assertions";
 	private static final String DESIGN_GOALS = "Design Goals";
 	/**
 	 * The level-2 sections that a scenario may have.
 	 */
-	private static final Set<String> SECTIONS = Set.of(DESIGN_GOALS, VARIABLES, FIXTURES, SCENARIO, ASSERTIONS);
+	private static final Set<String> SECTIONS = Set.of(DESIGN_GOALS, VARIABLES, FIXTURES, SCENARIO,
+		EXPECTED_BEHAVIOR, ASSERTIONS);
 	private static final String PATTERNS = "patterns";
 	private static final String KIND = "kind";
 	private static final String TOOL = "tool";
 	private static final String ON_TOOL_FAILURE = "on_tool_failure";
 	private static final String DESCRIPTION = "description";
+	private static final String TIME_LIMIT_SECONDS = "time_limit_seconds";
+	/**
+	 * Matches a positive whole number of seconds without leading zeros.
+	 */
+	private static final Pattern WHOLE_SECONDS = Pattern.compile("[1-9][0-9]{0,9}");
 	/**
 	 * Matches a key-value pair {@code - **key**: value}, capturing the key and the value's first line.
 	 */
@@ -153,12 +162,18 @@ final class ScenarioParser
 		for (VariableDeclaration variable : variables)
 			names.add(variable.name());
 		requireDeclared(sections.get(SCENARIO), names);
+		Section expectedSection = sections.get(EXPECTED_BEHAVIOR);
+		if (expectedSection != null)
+			requireDeclared(expectedSection, names);
 		requireDeclared(sections.get(ASSERTIONS), names);
 		List<String> turns = turns(sections.get(SCENARIO));
+		Optional<ExpectedBehavior> expectedBehavior = Optional.empty();
+		if (expectedSection != null)
+			expectedBehavior = Optional.of(expectedBehavior(expectedSection));
 		List<Assertion> assertions = assertions(sections.get(ASSERTIONS));
 		try
 		{
-			return new Scenario(variables, turns, assertions);
+			return new Scenario(variables, turns, expectedBehavior, assertions);
 		}
 		catch (IllegalArgumentException e)
 		{
@@ -261,7 +276,7 @@ final class ScenarioParser
 				if (!SECTIONS.contains(name))
 				{
 					throw error(i, "the section ## " + name + " is not part of the scenario format. Sections: ## Design " +
-						"Goals, ## Variables, ## Fixtures, ## Scenario and ## Assertions");
+						"Goals, ## Variables, ## Fixtures, ## Scenario, ## Expected Behavior and ## Assertions");
 				}
 				if (sections.containsKey(name) || name.equals(current))
 					throw error(i, "the section ## " + name + " appears twice");
@@ -584,6 +599,45 @@ final class ScenarioParser
 		if (description.value().isEmpty())
 			throw error(description.line(), "the key description has no value; write the turn after it");
 		return description.value();
+	}
+
+	/**
+	 * Parses the expected behavior.
+	 *
+	 * @param section the {@code ## Expected Behavior} section
+	 * @return the expected behavior
+	 * @throws ScenarioFormatException if the section holds prose or a key other than {@code description} and
+	 *                                 {@code time_limit_seconds}, lacks either of them, has an empty
+	 *                                 {@code description}, or has a time limit that is not a positive whole number of
+	 *                                 seconds
+	 */
+	private ExpectedBehavior expectedBehavior(Section section) throws ScenarioFormatException
+	{
+		List<Pair> pairs = pairs(section.heading() + 1, section.end(), "the ## Expected Behavior section holds only " +
+			"key-value pairs, such as - **description**: The agent answers with the release date");
+		requireKeys(pairs, Set.of(DESCRIPTION, TIME_LIMIT_SECONDS), "description and time_limit_seconds");
+
+		Pair description = find(pairs, DESCRIPTION);
+		if (description == null)
+		{
+			throw error(section.heading(), "the ## Expected Behavior section has no description; add " +
+				"- **description**: followed by what a compliant agent does");
+		}
+		if (description.value().isEmpty())
+			throw error(description.line(), "the key description has no value");
+
+		Pair timeLimit = find(pairs, TIME_LIMIT_SECONDS);
+		if (timeLimit == null)
+		{
+			throw error(section.heading(), "the ## Expected Behavior section has no time_limit_seconds; add " +
+				"- **time_limit_seconds**: followed by how long a compliant agent needs, with margin");
+		}
+		if (!WHOLE_SECONDS.matcher(timeLimit.value()).matches())
+		{
+			throw error(timeLimit.line(), "the time_limit_seconds " + timeLimit.value() + " must be a positive whole " +
+				"number of seconds, such as 120");
+		}
+		return new ExpectedBehavior(description.value(), Duration.ofSeconds(Long.parseLong(timeLimit.value())));
 	}
 
 	/**
