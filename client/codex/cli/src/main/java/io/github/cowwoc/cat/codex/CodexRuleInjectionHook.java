@@ -51,51 +51,53 @@ final class CodexRuleInjectionHook
 	 * @param environment the hook environment
 	 * @param workingDirectory the hook process directory
 	 */
-
 	static void run(String eventName, String[] args, InputStream input, OutputStream output, PrintStream error,
-	Map<String, String> environment, Path workingDirectory)
-{
-	try (HookScope scope = CodexHookScope.open(environment))
+		Map<String, String> environment, Path workingDirectory)
 	{
-		try
+		try (HookScope scope = CodexHookScope.open(environment))
 		{
-			JsonMapper json = scope.json();
-			if (args.length != 0)
-				throw new IllegalArgumentException(eventName + " accepts no arguments");
-			JsonNode event = scope.readEvent(eventName, input);
-			Path projectDir = scope.projectDir(event, workingDirectory);
-			Path catTemp = scope.createCatTemp(projectDir);
-			Path pluginRoot = scope.pluginRoot();
-			Path userRulesRoot = scope.userRulesRoot();
-			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
-			String context;
-			if (eventName.equals("SubagentStart"))
-				context = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID, scope.subagentType(event));
-			else
+			try
 			{
-				SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID);
-				if (session.readingGuidance().isEmpty())
-					context = session.rules();
+				JsonMapper json = scope.json();
+				if (args.length != 0)
+					throw new IllegalArgumentException(eventName + " accepts no arguments");
+				JsonNode event = scope.readEvent(eventName, input);
+				Path projectDir = scope.projectDir(event, workingDirectory);
+				Path catTemp = scope.createCatTemp(projectDir);
+				Path pluginRoot = scope.pluginRoot();
+				Path userRulesRoot = scope.userRulesRoot();
+				ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+				String context;
+				if (eventName.equals("SubagentStart"))
+				{
+					context = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID,
+						scope.subagentType(event));
+				}
 				else
 				{
-					Path rulesFile = CodexSessionContext.write(catTemp, event, session.rules());
-					context = session.readingGuidance() + "\n\n# CAT Rules\n\n" + RULES_FILE_POINTER.formatted(rulesFile);
+					SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID);
+					if (session.readingGuidance().isEmpty())
+						context = session.rules();
+					else
+					{
+						Path rulesFile = CodexSessionContext.write(catTemp, event, session.rules());
+						context = session.readingGuidance() + "\n\n# CAT Rules\n\n" + RULES_FILE_POINTER.formatted(rulesFile);
+					}
 				}
+				output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
+					"additionalContext", context))));
+				output.write('\n');
 			}
-			output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
-				"additionalContext", context))));
-			output.write('\n');
+			catch (IOException | IllegalArgumentException | JacksonException e)
+			{
+				writeFailure(scope.json(), eventName, output, error, e);
+			}
 		}
-		catch (IOException | IllegalArgumentException | JacksonException e)
+		catch (IOException e)
 		{
-			writeFailure(scope.json(), eventName, output, error, e);
+			writeScopeFailure(eventName, output, error, e);
 		}
 	}
-	catch (IOException e)
-	{
-		writeScopeFailure(eventName, output, error, e);
-	}
-}
 
 	/**
 	 * Reports a hook failure and writes the harness failure response through the invocation-owned mapper.
