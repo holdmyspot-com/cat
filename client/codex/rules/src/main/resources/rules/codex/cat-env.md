@@ -8,6 +8,8 @@
 - Let the agent name the project directory and CAT's project-owned temporary directory from what its session context
   states, because Codex tool shells define no variable that names them, and create, remove, and move temporary files
   there with standard commands.
+- Let a rule or skill describe a command once for every platform, by stating here how the shell that Codex runs
+  commands in reads environment variables, runs launchers, and passes lines to a command's standard input.
 - Keep every file the agent writes inside the project directory unless the user names another location, so its scratch
   files, probe inputs, and saved command output stay where the user expects them and can remove them.
 
@@ -20,6 +22,12 @@ environment.
 
 `CAT_PROJECT_ROOT` is the directory in the `<cwd>` element of your environment context. Wherever a rule or skill writes
 `${CAT_PROJECT_ROOT}`, write that directory in its place; never expand `${CAT_PROJECT_ROOT}` from the environment.
+
+Codex runs your shell commands in a POSIX shell. When a rule or skill describes a command in words, or writes an input
+as a placeholder such as `<project>`, write the command in that shell: read an environment variable `NAME` as
+`"$NAME"` and the user's home directory as `"$HOME"`, and run a launcher by its path, as in `'<path>' <arguments>`. To
+send lines to a command's standard input, write each line in single quotes and pipe them from `printf`, as in
+`printf '%s\n' '<line>' '<line>' | '<path>' <arguments>`.
 
 `CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/temp`, and the directory exists. Wherever a rule or skill writes
 `${CAT_TEMP}`, write that directory in its place; never expand `${CAT_TEMP}` from the environment. Create a temporary

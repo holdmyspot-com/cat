@@ -9,34 +9,37 @@
 
 Run only an installed, version-compatible Claude CAT artifact. Resolve it from the documented Claude installation root:
 
-```sh
-claude_config="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-marketplace_root="${CAT_CLAUDE_MARKETPLACE_ROOT:-$claude_config/plugins/cat-marketplace}"
-claude_artifact="$marketplace_root/plugins/cat"
-claude_runner="$claude_artifact/client/bin/claude-runner"
-```
+- The Claude configuration directory is the value of the `CLAUDE_CONFIG_DIR` environment variable or, when that is
+  unset or empty, `.claude` in the user's home directory.
+- The marketplace root is the value of `CAT_CLAUDE_MARKETPLACE_ROOT` or, when that is unset or empty,
+  `plugins/cat-marketplace` in the Claude configuration directory.
+- The artifact, `<claude-artifact>`, is `plugins/cat` in the marketplace root.
+- The runner, `<claude-runner>`, is the launcher `client/bin/claude-runner` in the artifact.
 
 Before a run, require all of these exact prerequisites:
 
 - `claude` is available on `PATH` and authenticated.
-- `$claude_artifact/.claude-plugin/plugin.json` is a regular file.
-- `$claude_runner` is executable and `--verify-artifact "$claude_artifact"` succeeds.
+- `.claude-plugin/plugin.json` in `<claude-artifact>` is a regular file.
+- `<claude-runner>` exists, and running it with the arguments `--verify-artifact <claude-artifact>` succeeds.
 - The requested profile is supported. CAT's initial Claude profile is `haiku` with `medium` effort.
 
 Do not search cache directories, download Claude or CAT, substitute another artifact version, or accept an arbitrary
 runner or artifact path. Report the missing prerequisite and do not start a run when validation fails.
 
-For an authorized task, invoke the runner with the validated artifact, a project directory, an owned run root, and JSON
-Lines input containing one or more `turn` records followed by `complete`. Preserve its transcript and receipt. For
-example, a one-turn invocation has this shape:
+For an authorized task, run `<claude-runner>` with the validated artifact, a project directory, an owned run root, and
+JSON Lines on its standard input: one or more `turn` records followed by `complete`. Preserve its transcript and
+receipt. For example, a one-turn invocation sends these lines:
 
-```sh
-printf '%s\n%s\n' \
-  '{"type":"turn","prompt":"<requested task>"}' \
-  '{"type":"complete"}' |
-  "$claude_runner" --artifact "$claude_artifact" --project "$project" --run-root "$run_root" \
-    --executable claude --model haiku --effort medium --install-cat --keep-run \
-    --output "$transcript" --receipt "$receipt"
+```text
+{"type":"turn","prompt":"<requested task>"}
+{"type":"complete"}
+```
+
+and this argument list, wrapped here to fit:
+
+```text
+--artifact <claude-artifact> --project <project> --run-root <run-root> --executable claude --model haiku
+--effort medium --install-cat --keep-run --output <transcript> --receipt <receipt>
 ```
 
 While a turn writes no other output record for 30 seconds, the runner writes a `waiting` record and repeats it every

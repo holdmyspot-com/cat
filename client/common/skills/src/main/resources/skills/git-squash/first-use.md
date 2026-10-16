@@ -46,8 +46,9 @@
 1. Verify each selected source appears once in its requested destination group.
 2. Verify no unselected semantic change was absorbed, split, moved, or dropped.
 3. Verify the rewritten tip tree matches the recorded tree unless an explicitly approved difference is recorded. When
-   comparing tree objects after a rewrite, use `git diff --exit-code "${CAPTURED_TIP}^{tree}" HEAD^{tree}`; do not use a
-   three-dot range, whose merge base may change during the rewrite.
+   comparing tree objects after a rewrite, use `git diff --exit-code '<captured-tip>^{tree}' 'HEAD^{tree}'`, where
+   `<captured-tip>` is the tip commit recorded before the rewrite; do not use a three-dot range, whose merge base may
+   change during the rewrite.
 4. Verify that no temporary aggregation commit, staging branch, or other intermediate rewrite artifact remains reachable
    from the subject branch.
 5. Verify changed comments and documentation still describe the final behavior, including every automatically reconciled
