@@ -31,6 +31,22 @@ SCRIPT
 	chmod +x "${FAKE_BIN}/${harness}"
 }
 
+# Creates a uname replacement that reports an operating system on a 64-bit x86 processor.
+#
+# Arguments:
+#   $1 - The operating system's name, as uname -s reports it.
+create_fake_uname()
+{
+	cat > "${FAKE_BIN}/uname" <<SCRIPT
+#!/usr/bin/env sh
+case "\$1" in
+	-s) printf '%s\\n' '$1' ;;
+	-m) printf '%s\\n' x86_64 ;;
+esac
+SCRIPT
+	chmod +x "${FAKE_BIN}/uname"
+}
+
 # Creates a bubblewrap replacement that executes the packaged launcher without sandboxing test-owned temporary paths.
 create_fake_bwrap()
 {

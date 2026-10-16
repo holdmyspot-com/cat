@@ -15,6 +15,20 @@ load bootstrap-helpers
 	[[ "${output}" == *"CAT installer library not found"* ]]
 }
 
+@test "Codex installer on Windows names the PowerShell installer before changing anything" {
+	create_fake_engine_command codex
+	create_fake_uname MINGW64_NT-10.0-26100
+	artifact="$(create_test_artifact codex)"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
+		sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
+
+	[ "${status}" -eq 1 ]
+	[[ "${output}" == *"bootstrap-codex.ps1"* ]]
+	[ ! -e "${CODEX_HOME}/plugins" ]
+	[ ! -s "${COMMAND_LOG}" ]
+}
+
 @test "generated Codex plugin-info launcher reports its harness, version, and platform" {
 	expected_platform="$(current_platform)"
 

@@ -13,6 +13,14 @@ MARKETPLACE_METADATA="${SCRIPT_DIRECTORY}/codex-marketplace.json"
 trap cat_delete_download_temp_directory EXIT HUP INT TERM
 
 [ "$#" -le 1 ] || cat_print_install_usage "$0"
+# The Codex archive for Windows holds only batch launchers, which Codex runs from PowerShell
+case "$(uname -s)" in
+	MINGW*|MSYS*)
+		echo "On Windows, install CAT for Codex from PowerShell with bootstrap-codex.ps1, as described in" \
+			"https://github.com/cowwoc/cat/blob/main/docs/installation.md" >&2
+		exit 1
+		;;
+esac
 cat_resolve_artifact_directory "codex" "${1:-${CAT_RELEASE_TAG}}"
 cat_validate_artifact "${CAT_ARTIFACT_DIRECTORY}" ".codex-plugin/plugin.json" "Codex"
 
