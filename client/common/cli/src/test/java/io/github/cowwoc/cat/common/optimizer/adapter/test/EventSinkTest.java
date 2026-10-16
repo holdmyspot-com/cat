@@ -103,6 +103,34 @@ public final class EventSinkTest
 	}
 
 	/**
+	 * Verifies that the bridge's report of a failed turn reaches the session driver with the bridge's reason.
+	 *
+	 * @throws IOException if the run directory cannot be created
+	 */
+	@Test
+	public void forwardsTurnFailure() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path harnessDirectory = cleanup.add(Files.createTempDirectory(
+				Files.createDirectories(Path.of(System.getProperty("cat.work.temp"))), "cat-event-sink-"));
+			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
+			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
+			try (EventSink sink = EventSinkSecrets.access().newEventSink(JSON, new TestSessions.Events(JSON),
+				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
+			{
+				sink.write("""
+					{"type":"started","run_id":"r"}
+					{"type":"turn_failed","run_id":"r","error":"the harness exited"}
+					""");
+			}
+
+			requireThat(messages.remove(), "started").isEqualTo(new Message.Started("r"));
+			requireThat(messages.remove(), "failed").isEqualTo(new Message.TurnFailed("the harness exited"));
+		}
+	}
+
+	/**
 	 * Returns invalid message lists that must not become completed reply evidence.
 	 *
 	 * @return the malformed JSON values

@@ -246,6 +246,66 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies that the bridge reports a turn that fails, whether the harness ends before completing it or rejects it,
+	 * as soon as the turn ends, without waiting for the client's next request. The client sends its next request only
+	 * after the bridge has reported the failure, so a bridge that waits for that request fails the test's time limit.
+	 *
+	 * @throws IOException if filesystem setup fails
+	 */
+	@Test(timeOut = 10_000)
+	public void reportsFailedTurnWhenItEnds() throws IOException
+	{
+		try (FailedProcess process = new FailedProcess())
+		{
+			requireTurnFailureReported(process, "exit status 143");
+		}
+		try (RejectingProcess process = new RejectingProcess())
+		{
+			requireTurnFailureReported(process, "the harness rejected the turn");
+		}
+	}
+
+	/**
+	 * Runs one turn that fails and verifies that the bridge reports the failure before the client's next request.
+	 *
+	 * @param process  the harness process, whose turn fails
+	 * @param expected text that the failure's description contains
+	 * @throws IOException if filesystem setup fails
+	 */
+	private static void requireTurnFailureReported(HarnessProcess process, String expected) throws IOException
+	{
+		CountDownLatch turnFailed = new CountDownLatch(1);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			Reader input = new GatedReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", turnFailed,
+				"{\"type\":\"complete\"}\n", new CountDownLatch(1), "");
+			Writer output = new SignalingWriter("\"type\":\"turn_failed\"", turnFailed, new CountDownLatch(0)))
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			try
+			{
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
+					output);
+				throw new AssertionError("Expected the turn's failure");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains(expected);
+			}
+			JsonNode failure = null;
+			JsonMapper json = JsonMapper.builder().build();
+			for (String line : output.toString().lines().toList())
+			{
+				JsonNode record = json.readTree(line);
+				if (record.path("type").asString().equals("turn_failed"))
+					failure = record;
+			}
+			requireThat(failure, "failure").withContext(output, "output").isNotNull();
+			requireThat(failure.path("run_id").asString(), "runId").isEqualTo("run-1");
+			requireThat(failure.path("error").asString(), "error").contains(expected);
+		}
+	}
+
+	/**
 	 * Verifies a clean harness exit without a terminal turn event is still recorded as a failed bridge turn.
 	 *
 	 * @throws IOException if filesystem setup fails
@@ -825,6 +885,33 @@ public final class HarnessRunnerBridgeTest
 		{
 			assert request != null;
 			return new HarnessProcessResult(143, "partial harness event\n", "terminated before completion");
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return !closed;
+		}
+
+		@Override
+		public void close()
+		{
+			closed = true;
+		}
+	}
+
+	/**
+	 * A harness process that rejects its turn.
+	 */
+	private static final class RejectingProcess implements HarnessProcess
+	{
+		private boolean closed;
+
+		@Override
+		public HarnessProcessResult sendTurn(String request) throws IOException
+		{
+			assert request != null;
+			throw new IOException("the harness rejected the turn");
 		}
 
 		@Override

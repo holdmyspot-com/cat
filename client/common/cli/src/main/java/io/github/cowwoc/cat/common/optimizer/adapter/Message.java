@@ -7,7 +7,8 @@ import java.io.IOException;
  * <p>
  * <b>Thread Safety:</b> Implementations are immutable and thread-safe.
  */
-public sealed interface Message permits Message.Started, TurnCompleted, Message.Ended, Message.Wake
+public sealed interface Message permits Message.Started, TurnCompleted, Message.TurnFailed, Message.Ended,
+	Message.Wake
 {
 	/**
 	 * The runner started its harness and is ready for turns.
@@ -15,6 +16,15 @@ public sealed interface Message permits Message.Started, TurnCompleted, Message.
 	 * @param runId the identifier of the run directory
 	 */
 	record Started(String runId) implements Message
+	{
+	}
+
+	/**
+	 * The runner reports that a turn ended without a terminal result.
+	 *
+	 * @param error why the turn failed
+	 */
+	record TurnFailed(String error) implements Message
 	{
 	}
 

@@ -157,6 +157,10 @@ public final class ScriptedHarness
 			 */
 			FAILS,
 			/**
+			 * The harness rejects the turn, so the turn fails without a result or an exit status.
+			 */
+			REJECTED,
+			/**
 			 * The turn does not end until it is interrupted. The interrupt then ends it with a terminal result whose
 			 * response is empty.
 			 */
@@ -202,6 +206,16 @@ public final class ScriptedHarness
 		public static Turn fails(String... events)
 		{
 			return new Turn(List.of(events), Kind.FAILS, "", null);
+		}
+
+		/**
+		 * Returns a turn that the harness rejects.
+		 *
+		 * @return the turn
+		 */
+		public static Turn rejected()
+		{
+			return new Turn(List.of(), Kind.REJECTED, "", null);
 		}
 
 		/**
@@ -280,6 +294,7 @@ public final class ScriptedHarness
 				case REPLIES -> new HarnessProcessResult(0, output.toString(), "", true, turn.response(),
 					List.of(turn.response()));
 				case FAILS -> new HarnessProcessResult(1, output.toString(), "scripted failure", false);
+				case REJECTED -> throw new IOException("The harness rejected the turn");
 				case BLOCKS_UNTIL_INTERRUPTED ->
 				{
 					await(interrupt);

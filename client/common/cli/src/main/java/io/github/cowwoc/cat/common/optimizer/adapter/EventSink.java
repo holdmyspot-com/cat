@@ -27,7 +27,7 @@ import tools.jackson.databind.json.JsonMapper;
  * The runner's response stream. It reads each response line as the runner writes it.
  * <p>
  * A {@code harness_event} response goes to the transcript, the event parser and the prompt-source observation. A
- * {@code started} or {@code turn_completed} response goes to the session driver.
+ * {@code started}, {@code turn_completed} or {@code turn_failed} response goes to the session driver.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -182,6 +182,7 @@ public final class EventSink extends Writer
 				}
 				messages.add(new TurnCompleted(assistantMessages));
 			}
+			case "turn_failed" -> messages.add(new Message.TurnFailed(response.path("error").asString("")));
 			default ->
 			{
 			}

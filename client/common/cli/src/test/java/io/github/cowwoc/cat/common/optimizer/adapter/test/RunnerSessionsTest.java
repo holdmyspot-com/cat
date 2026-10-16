@@ -655,7 +655,7 @@ public final class RunnerSessionsTest
 
 	/**
 	 * Verifies that CAT classifies a supplied nonzero turn exit without a terminal result as an infrastructure failure
-	 * and identifies the failed turn. It exercises the bridge manifest boundary that records that exit.
+	 * and identifies the failed turn.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -678,6 +678,33 @@ public final class RunnerSessionsTest
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Failed.class);
 			requireThat(((SessionResult.Failed) result).reason(), "reason").contains("Turn 2");
+		}
+	}
+
+	/**
+	 * Verifies that CAT classifies a turn that the harness rejects as an infrastructure failure as soon as the turn
+	 * fails, naming the turn and the harness's reason, rather than waiting for the session's time limit.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void classifiesRejectedTurnAsFailure()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+				new CopyOnWriteArrayList<>(), List.of(Turn.replies("first"), Turn.rejected()));
+
+			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
+
+			requireThat(result, "result").isEqualTo(new SessionResult.Failed(
+				"Turn 2 failed: The harness rejected the turn", List.of()));
 		}
 	}
 

@@ -31,8 +31,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -66,7 +64,7 @@ import tools.jackson.databind.json.JsonMapper;
 final class Session implements SessionHandle
 {
 	/**
-	 * How often the driver wakes to check the clock, the interrupt request and the run's manifest.
+	 * How often the driver wakes to check the clock and the interrupt request.
 	 */
 	private static final Duration POLL = Duration.ofMillis(250);
 	/**
@@ -95,7 +93,6 @@ final class Session implements SessionHandle
 	private boolean timedOutWithoutOutput;
 	private int timedOutTurn;
 	private boolean interruptSent;
-	private boolean failureSuspected;
 	private String failure;
 	private Instant startupDeadline;
 	private Instant limitDeadline;
@@ -377,6 +374,12 @@ final class Session implements SessionHandle
 				if (turn > 0)
 					return Outcome.TURN_COMPLETED;
 			}
+			if (message instanceof Message.TurnFailed turnFailed && turn > 0)
+			{
+				if (failure == null)
+					failure = "Turn " + turn + " failed: " + turnFailed.error();
+				return Outcome.TURN_FAILED;
+			}
 			if (message instanceof Message.Ended)
 			{
 				failure = describe(ended.failure(), "The runner ended before the session finished");
@@ -402,8 +405,6 @@ final class Session implements SessionHandle
 				failure = "The runner did not stop within " + GRACE.toSeconds() + " seconds of an interrupt";
 				return Outcome.STUCK;
 			}
-			if (turn > 0 && hasTurnFailed(turn))
-				return Outcome.TURN_FAILED;
 		}
 	}
 
@@ -454,46 +455,6 @@ final class Session implements SessionHandle
 	{
 		return interruptRequested.get() || timedOut || events.rejection().isPresent() || events.refused() ||
 			events.error() != null;
-	}
-
-	/**
-	 * Detects a turn that ended without a terminal result.
-	 * <p>
-	 * The bridge records a finished turn in the run's manifest before it reports success. A turn that the manifest
-	 * shows finished while the run is still working, and that stays so for a second polling interval, failed. The
-	 * bridge reports that failure only when it receives its next request.
-	 *
-	 * @param turn the turn in progress
-	 * @return {@code true} if the turn failed
-	 */
-	private boolean hasTurnFailed(int turn)
-	{
-		if (runId == null)
-			return false;
-		JsonNode manifest;
-		try
-		{
-			manifest = json.readTree(runDirectory().resolve("run.json"));
-		}
-		catch (JacksonException _)
-		{
-			failureSuspected = false;
-			return false;
-		}
-		boolean finishedWorking = manifest.path("turn_number").asInt(0) == turn &&
-			manifest.path("phase").asString("").equals("working");
-		if (!finishedWorking)
-		{
-			failureSuspected = false;
-			return false;
-		}
-		if (!failureSuspected)
-		{
-			failureSuspected = true;
-			return false;
-		}
-		failure = "Turn " + turn + " ended without a result (exit status " + manifest.path("exit_code").asString("?") + ")";
-		return true;
 	}
 
 	/**

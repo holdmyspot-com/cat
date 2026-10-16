@@ -34,7 +34,8 @@ public final class HarnessRunnerBridge
 	/**
 	 * Starts one session and serves turn and completion messages until completion. Harness events are written once as
 	 * {@code harness_event} responses; the terminal response records the status, error, final assistant response
-	 * and every assistant message in order.
+	 * and every assistant message in order. A turn that fails ends with a {@code turn_failed} response that records
+	 * why, and the bridge then fails at its next request.
 	 *
 	 * @param starter starts the isolated persistent session
 	 *
@@ -133,18 +134,27 @@ public final class HarnessRunnerBridge
 								try
 								{
 									turnStarted.countDown();
-									if (manager != null)
-										manager.markWorking(session.run());
-									HarnessProcessResult result = session.sendTurn(prompt, harnessEvent ->
+									HarnessProcessResult result;
+									try
 									{
 										if (manager != null)
-											manager.appendTurnEvent(session.run(), currentTurn, harnessEvent);
-										forwardHarnessEvent(session, client, harnessEvent);
-									});
-									if (manager != null)
-										manager.writeTurnOutput(session.run(), currentTurn, result);
-									if (!result.completed())
-										throw harnessTurnFailure(result);
+											manager.markWorking(session.run());
+										result = session.sendTurn(prompt, harnessEvent ->
+										{
+											if (manager != null)
+												manager.appendTurnEvent(session.run(), currentTurn, harnessEvent);
+											forwardHarnessEvent(session, client, harnessEvent);
+										});
+										if (manager != null)
+											manager.writeTurnOutput(session.run(), currentTurn, result);
+										if (!result.completed())
+											throw harnessTurnFailure(result);
+									}
+									catch (IOException | RuntimeException e)
+									{
+										reportTurnFailure(session, client, e);
+										throw e;
+									}
 									if (manager != null)
 										manager.markIdle(session.run());
 									ObjectNode response = event(session.scope(), "turn_completed");
@@ -155,7 +165,7 @@ public final class HarnessRunnerBridge
 									ArrayNode reply = response.putArray("assistant_messages");
 									for (String message : result.assistantMessages())
 										reply.add(message);
-									client.completeTurn(response);
+									client.endTurn(response);
 									return null;
 								}
 								finally
@@ -232,6 +242,31 @@ public final class HarnessRunnerBridge
 		finally
 		{
 			turnExecutor.shutdownNow();
+		}
+	}
+
+	/**
+	 * Tells the client that the active turn failed, so that it stops waiting for the turn's {@code turn_completed}
+	 * response. The bridge reports the same failure again when it receives its next request.
+	 *
+	 * @param session the live harness session
+	 * @param client  the bridge's output
+	 * @param failure why the turn failed
+	 */
+	private static void reportTurnFailure(HarnessRunSession session, ClientOutput client, Exception failure)
+	{
+		assert failure != null;
+		String error = failure.getMessage();
+		if (error == null || error.isBlank())
+			error = failure.getClass().getSimpleName();
+		try
+		{
+			client.endTurn(event(session.scope(), "turn_failed").put("run_id", session.run().id()).
+				put("error", error));
+		}
+		catch (IOException e)
+		{
+			failure.addSuppressed(e);
 		}
 	}
 
@@ -550,14 +585,14 @@ public final class HarnessRunnerBridge
 		}
 
 		/**
-		 * Ends the active turn and then writes its {@code turn_completed} response. A client may send an interrupt as
-		 * soon as it reads that response, before the turn's thread returns, so the turn ends first and the interrupt
-		 * finds no active turn.
+		 * Ends the active turn and then writes its {@code turn_completed} or {@code turn_failed} response. A client may
+		 * send an interrupt as soon as it reads that response, before the turn's thread returns, so the turn ends first
+		 * and the interrupt finds no active turn.
 		 *
-		 * @param event the {@code turn_completed} response
+		 * @param event the response
 		 * @throws IOException if output fails
 		 */
-		void completeTurn(ObjectNode event) throws IOException
+		void endTurn(ObjectNode event) throws IOException
 		{
 			assert event != null;
 			synchronized (lock)
