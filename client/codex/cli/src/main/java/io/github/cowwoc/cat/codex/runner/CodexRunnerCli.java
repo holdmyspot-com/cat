@@ -149,7 +149,7 @@ public final class CodexRunnerCli
 				HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(), options.project(),
 					options.fixtures(), options.plugin(), manager, options.executable(), environment, options.model(),
 					options.effort(), options.installCat(), agent, List.of(), options.deniedReads(), toolOutputTokenLimit),
-					manager, options.keepRun(), input, output);
+					manager, options, scope.json(), input, output);
 			}
 		}
 	}

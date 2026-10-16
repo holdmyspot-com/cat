@@ -24,8 +24,10 @@ import io.github.cowwoc.cat.common.runner.HarnessProcess;
 import io.github.cowwoc.cat.common.runner.HarnessProcessResult;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
+import io.github.cowwoc.cat.common.runner.HarnessRunReceipt;
 import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
+import io.github.cowwoc.cat.common.runner.HarnessRunnerOptions;
 import io.github.cowwoc.cat.common.runner.fakes.test.ManualTicker;
 import io.github.cowwoc.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import org.testng.annotations.Test;
@@ -179,6 +181,44 @@ public final class HarnessRunnerBridgeTest
 
 			requireThat(Files.readString(transcript), "transcript").contains("\"type\":\"started\"").
 				contains("\"type\":\"completed\"");
+		}
+	}
+
+	/**
+	 * Verifies that a bridge writes its transcript to the output file that the runner's options name, rather than to
+	 * the caller's stream, and a receipt that names the retained project and that transcript.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void writesRequestedTranscriptAndReceipt() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FakeProcess process = new FakeProcess();
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRun run = manager.create("harness");
+			Path project = Files.createDirectories(run.directory().resolve("project"));
+			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
+			Path transcript = evidence.resolve("transcript.jsonl");
+			Path receipt = evidence.resolve("receipt.json");
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
+				"", transcript, true, receipt, false, true, 1, List.of(), null, null);
+			StringWriter output = new StringWriter();
+			JsonMapper json = JsonMapper.builder().build();
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				options, json, input, output);
+
+			requireThat(output.toString(), "output").isEmpty();
+			requireThat(Files.readString(transcript), "transcript").contains("\"type\":\"started\"").
+				contains("\"type\":\"completed\"");
+			requireThat(HarnessRunReceipt.read(json, receipt).retainedProject(), "retainedProject").
+				isEqualTo(project);
+			requireThat(HarnessRunReceipt.read(json, receipt).rawResult(), "rawResult").isEqualTo(transcript);
 		}
 	}
 

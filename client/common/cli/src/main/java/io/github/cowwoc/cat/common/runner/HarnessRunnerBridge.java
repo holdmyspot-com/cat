@@ -20,6 +20,7 @@ import java.util.concurrent.Future;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -357,6 +358,47 @@ public final class HarnessRunnerBridge
 		{
 			return serve(starter, manager, keepRun, input, transcript);
 		}
+	}
+
+	/**
+	 * Starts one managed session and directs its JSONL transcript and receipt to the destinations that a runner's
+	 * options request.
+	 * <p>
+	 * When the options name an output file, the transcript goes there instead of to {@code output}. When they also name
+	 * a receipt, the bridge writes a receipt that names the run's retained project and that transcript, then prunes the
+	 * run's runtime files.
+	 *
+	 * @param starter starts the isolated persistent session
+	 *
+	 * @param manager the run manager
+	 *
+	 * @param options the runner's parsed options
+	 *
+	 * @param json the operation-owned JSON mapper that writes the receipt
+	 *
+	 * @param input the JSONL client input
+	 *
+	 * @param output the JSONL client output when the options name no output file
+	 *
+	 * @return the run that completed the protocol
+	 *
+	 * @throws IOException if the bridge protocol, harness, lifecycle, transcript or receipt I/O fails
+	 */
+	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, HarnessRunnerOptions options,
+		JsonMapper json, Reader input, Writer output) throws IOException
+	{
+		requireThat(manager, "manager").isNotNull();
+		requireThat(options, "options").isNotNull();
+		requireThat(json, "json").isNotNull();
+		if (options.output() == null)
+			return serve(starter, manager, options.keepRun(), input, output);
+		HarnessRun run = serve(starter, manager, options.keepRun(), input, options.output());
+		if (options.receipt() != null)
+		{
+			HarnessRunReceipt.write(json, options.receipt(), run, options.output());
+			manager.pruneRuntime(run);
+		}
+		return run;
 	}
 
 	/**

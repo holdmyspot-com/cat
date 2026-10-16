@@ -9,9 +9,7 @@ import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
-import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessArtifact;
-import io.github.cowwoc.cat.common.runner.HarnessRunReceipt;
 import io.github.cowwoc.cat.common.runner.HarnessRunStarter;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
@@ -156,16 +154,7 @@ public final class ClaudeRunnerCli
 				options.model(),
 				options.effort(), options.installCat(), options.includeUserRules(), agent, readOnlyEvidence,
 				options.deniedReads());
-				HarnessRun run;
-				if (options.output() == null)
-					run = HarnessRunnerBridge.serve(starter, manager, options.keepRun(), input, output);
-				else
-					run = HarnessRunnerBridge.serve(starter, manager, options.keepRun(), input, options.output());
-				if (options.receipt() != null)
-				{
-					HarnessRunReceipt.write(json, options.receipt(), run, options.output());
-					manager.pruneRuntime(run);
-				}
+			HarnessRunnerBridge.serve(starter, manager, options, json, input, output);
 		}
 	}
 
