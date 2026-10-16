@@ -8,6 +8,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
 import io.github.cowwoc.cat.claude.optimizer.ClaudeSessions;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
@@ -89,14 +90,15 @@ public final class ClaudeSessionsNativeTest
 	 * Returns the host's Claude configuration directory, as the claude executable locates it.
 	 *
 	 * @return the directory
+	 * @throws IOException if the environment does not name the user's home directory
 	 */
-	private static Path configurationDirectory()
+	private static Path configurationDirectory() throws IOException
 	{
 		Map<String, String> environment = environment();
 		String configured = environment.get("CLAUDE_CONFIG_DIR");
 		if (configured != null && !configured.isBlank())
 			return Path.of(configured);
-		return Path.of(environment.get("HOME")).resolve(".claude");
+		return Platform.current().homeDirectory(environment).resolve(".claude");
 	}
 
 	/**
