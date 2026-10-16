@@ -16,7 +16,6 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -78,12 +77,12 @@ public final class CodexRunnerTest
 	@Test
 	public void startsAppServerWithPrivateTmp()
 	{
-		requirePosixFileSystem();
 		List<String> command = CodexRunner.appServerCommand("codex", false);
+		Path bwrap = Path.of("/usr/bin/bwrap").toAbsolutePath();
 
-		requireThat(CodexRunner.withPrivateTmp(command, Path.of("/usr/bin/bwrap").toAbsolutePath(),
-			Path.of("/work/run").toAbsolutePath()), "command").isEqualTo(List.of("/usr/bin/bwrap", "--dev-bind", "/", "/",
-			"--tmpfs", "/tmp", "--die-with-parent", "--", "codex", "app-server", "--stdio", "--disable", "plugins"));
+		requireThat(CodexRunner.withPrivateTmp(command, bwrap, Path.of("/work/run").toAbsolutePath()), "command").
+			isEqualTo(List.of(bwrap.toString(), "--dev-bind", "/", "/", "--tmpfs", Path.of("/tmp").toString(),
+				"--die-with-parent", "--", "codex", "app-server", "--stdio", "--disable", "plugins"));
 	}
 
 	/**
@@ -92,35 +91,41 @@ public final class CodexRunnerTest
 	@Test
 	public void keepsRunDirectoryInPrivateTmp()
 	{
-		requirePosixFileSystem();
 		List<String> command = CodexRunner.appServerCommand("codex", true);
+		Path bwrap = Path.of("/usr/bin/bwrap").toAbsolutePath();
+		Path run = Path.of("/tmp/runs/run").toAbsolutePath();
 
-		requireThat(CodexRunner.withPrivateTmp(command, Path.of("/usr/bin/bwrap").toAbsolutePath(),
-			Path.of("/tmp/runs/run").toAbsolutePath()), "command").isEqualTo(List.of("/usr/bin/bwrap", "--dev-bind", "/", "/",
-			"--tmpfs", "/tmp", "--bind", "/tmp/runs/run", "/tmp/runs/run", "--die-with-parent", "--", "codex", "app-server",
-			"--stdio", "--enable", "hooks"));
+		requireThat(CodexRunner.withPrivateTmp(command, bwrap, run), "command").isEqualTo(List.of(bwrap.toString(),
+			"--dev-bind", "/", "/", "--tmpfs", Path.of("/tmp").toString(), "--bind", run.toString(), run.toString(),
+			"--die-with-parent", "--", "codex", "app-server", "--stdio", "--enable", "hooks"));
 	}
 
 	/**
-	 * Verifies bubblewrap is the first executable {@code bwrap} on the caller's {@code PATH}, skipping a file of that
-	 * name that is not executable, and that it is absent when no directory on the {@code PATH} has one.
+	 * Verifies bubblewrap is the first executable {@code bwrap} file on the caller's {@code PATH}, skipping a directory
+	 * of that name and, where the file system has permission bits, a file of that name that is not executable, and
+	 * that it is absent when no directory on the {@code PATH} has one.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
 	@Test
 	public void findsBubblewrapOnPath() throws IOException
 	{
-		requirePosixFileSystem();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path empty = cleanup.add(Files.createTempDirectory("cat-path-"));
-			Path unusable = cleanup.add(Files.createTempDirectory("cat-path-"));
-			Files.createFile(unusable.resolve("bwrap"), PosixFilePermissions.asFileAttribute(
-				PosixFilePermissions.fromString("rw-r--r--")));
+			Path notFile = cleanup.add(Files.createTempDirectory("cat-path-"));
+			Files.createDirectory(notFile.resolve("bwrap"));
+			Path notExecutable = cleanup.add(Files.createTempDirectory("cat-path-"));
 			Path usable = cleanup.add(Files.createTempDirectory("cat-path-"));
-			Path bwrap = Files.createFile(usable.resolve("bwrap"), PosixFilePermissions.asFileAttribute(
-				PosixFilePermissions.fromString("rwxr-xr-x")));
-			String path = empty + File.pathSeparator + unusable + File.pathSeparator + usable;
+			Path bwrap = Files.createFile(usable.resolve("bwrap"));
+			if (PortableFiles.hasModes(usable))
+			{
+				Files.createFile(notExecutable.resolve("bwrap"), PosixFilePermissions.asFileAttribute(
+					PosixFilePermissions.fromString("rw-r--r--")));
+				Files.setPosixFilePermissions(bwrap, PosixFilePermissions.fromString("rwxr-xr-x"));
+			}
+			String path = String.join(File.pathSeparator, empty.toString(), notFile.toString(), notExecutable.toString(),
+				usable.toString());
 
 			requireThat(CodexRunner.bubblewrap(Map.of("PATH", path)), "found").isEqualTo(Optional.of(bwrap));
 			requireThat(CodexRunner.bubblewrap(Map.of("PATH", empty.toString())), "absent").isEmpty();
@@ -154,16 +159,5 @@ public final class CodexRunnerTest
 				directory.resolve("run.json"), directory.resolve("initial-project"), directory.resolve("home/sessions")));
 			requireThat(Files.isDirectory(directory.resolve("home/sessions")), "sessionLogsExist").isTrue();
 		}
-	}
-
-	/**
-	 * Skips a test of bubblewrap, which runs only on Linux, where the file system has POSIX paths and permissions.
-	 *
-	 * @throws SkipException if the default file system has no POSIX permissions
-	 */
-	private static void requirePosixFileSystem()
-	{
-		if (!PortableFiles.hasModes(Path.of("")))
-			throw new SkipException("bubblewrap needs a file system with POSIX paths and permissions");
 	}
 }
