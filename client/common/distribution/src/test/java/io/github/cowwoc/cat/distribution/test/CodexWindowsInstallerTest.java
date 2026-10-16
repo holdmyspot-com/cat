@@ -214,72 +214,83 @@ public final class CodexWindowsInstallerTest
 	}
 
 	/**
-	 * Verifies that removing the plugin deletes CAT's agents and marketplace, and keeps CAT's data unless asked to
-	 * delete it.
+	 * Verifies that removing an installed plugin deletes CAT's agents and marketplace, and keeps CAT's data.
 	 *
 	 * @throws IOException          if the files cannot be written or the script cannot be run
 	 * @throws InterruptedException if the thread is interrupted while the script runs
 	 */
 	@Test
-	public void uninstallKeepsDataUnlessAsked() throws IOException, InterruptedException
+	public void uninstallKeepsData() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup);
-			Result installed = fixture.run(install("-Source " + literal(fixture.artifact())));
-			requireThat(installed.status(), "installed").withContext(installed.output(), "output").isEqualTo(0);
-			Path data = fixture.codexHome.resolve("plugins/data/cat-cat");
-			Path marketplace = fixture.codexHome.resolve("plugins/cat-marketplace");
+			Path data = fixture.installed();
 
-			Result kept = fixture.run(install("-Uninstall"));
+			Result result = fixture.run(install("-Uninstall"));
 
-			requireThat(kept.status(), "kept").withContext(kept.output(), "output").isEqualTo(0);
+			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(0);
 			requireThat(Files.exists(fixture.codexHome.resolve("agents/cat-reviewer.toml")), "agent").isFalse();
-			requireThat(Files.exists(marketplace), "marketplace").isFalse();
+			requireThat(Files.exists(fixture.codexHome.resolve("plugins/cat-marketplace")), "marketplace").isFalse();
 			requireThat(Files.isRegularFile(data.resolve("migration-version")), "data").isTrue();
 			requireThat(fixture.commands(), "commands").contains("codex plugin remove cat@cat");
+		}
+	}
 
-			Result deleted = fixture.run(install("-Uninstall -DeleteData"));
+	/**
+	 * Verifies that removing an installed plugin with {@code -DeleteData} also deletes CAT's data.
+	 *
+	 * @throws IOException          if the files cannot be written or the script cannot be run
+	 * @throws InterruptedException if the thread is interrupted while the script runs
+	 */
+	@Test
+	public void uninstallDeletesDataWhenAsked() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path data = fixture.installed();
 
-			requireThat(deleted.status(), "deleted").withContext(deleted.output(), "output").isEqualTo(0);
+			Result result = fixture.run(install("-Uninstall -DeleteData"));
+
+			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(0);
 			requireThat(Files.exists(data), "data").isFalse();
 		}
 	}
 
 	/**
-	 * Verifies that the bootstrap script installs the latest release with that release's installer.
+	 * Verifies that the bootstrap script runs the installer of the latest release, which it fetches from that
+	 * release's tag, and asks it to install that tag. A stand-in installer records the tag that it receives;
+	 * {@link #installsVerifiedRelease()} covers what the real installer does with a tag.
 	 *
 	 * @throws IOException          if the files cannot be written or the script cannot be run
 	 * @throws InterruptedException if the thread is interrupted while the script runs
 	 */
 	@Test
-	public void bootstrapInstallsLatestRelease() throws IOException, InterruptedException
+	public void bootstrapRunsLatestReleaseInstaller() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup);
-			fixture.release(fixture.artifact(), false);
 			String fakeRestMethod = """
 				function Invoke-RestMethod
 				{
 					param([string] $Uri, [switch] $UseBasicParsing)
 					Add-Content -LiteralPath $env:COMMAND_LOG -Value "fetch $Uri"
-					if ($Uri -like '*/releases/latest') { return [pscustomobject]@{ tag_name = 'v1.0' } }
-					return [IO.File]::ReadAllText(%s)
+					if ($Uri -like '*/releases/latest') { return [pscustomobject]@{ tag_name = 'v9.8' } }
+					return 'param([string] $Source) Add-Content -LiteralPath $env:COMMAND_LOG -Value "install $Source"'
 				}
-				""".formatted(literal(INSTALL.resolve("install-codex.ps1")));
+				""";
 
-			Result result = fixture.run(fixture.fakeDownloads() + fakeRestMethod +
-				"& ([scriptblock]::Create([IO.File]::ReadAllText(" + literal(INSTALL.resolve("bootstrap-codex.ps1")) +
-				")))\n");
+			Result result = fixture.run(fakeRestMethod + "& ([scriptblock]::Create([IO.File]::ReadAllText(" +
+				literal(INSTALL.resolve("bootstrap-codex.ps1")) + ")))\n");
 
 			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(0);
-			List<String> commands = fixture.commands();
-			requireThat(commands, "commands").
-				contains("fetch https://api.github.com/repos/cowwoc/cat/releases/latest").
-				contains("fetch https://raw.githubusercontent.com/cowwoc/cat/v1.0/client/codex/lifecycle/src/main/" +
-					"resources/install/install-codex.ps1").
-				contains("download " + RELEASE_NAME + ".tar.gz").contains("codex plugin add cat@cat");
+			requireThat(fixture.commands(), "commands").isEqualTo(List.of(
+				"fetch https://api.github.com/repos/cowwoc/cat/releases/latest",
+				"fetch https://raw.githubusercontent.com/cowwoc/cat/v9.8/client/codex/lifecycle/src/main/resources/" +
+					"install/install-codex.ps1",
+				"install v9.8"));
 		}
 	}
 
@@ -386,6 +397,26 @@ public final class CodexWindowsInstallerTest
 			Files.createDirectories(artifact.resolve("agents/codex"));
 			Files.writeString(artifact.resolve("agents/codex/reviewer.toml"), "name = \"cat-reviewer\"\n");
 			return artifact;
+		}
+
+		/**
+		 * Creates the files that installing an artifact leaves in the Codex home: CAT's marketplace, its custom agent
+		 * with the list of agents that CAT owns, and its data version, as
+		 * {@link CodexWindowsInstallerTest#installsExtractedArtifact()} shows.
+		 *
+		 * @return CAT's data folder
+		 * @throws IOException if the files cannot be written
+		 */
+		private Path installed() throws IOException
+		{
+			Path plugin = Files.createDirectories(codexHome.resolve("plugins/cat-marketplace/plugins/cat/.codex-plugin"));
+			Files.writeString(plugin.resolve("plugin.json"), "{}\n");
+			Path agents = Files.createDirectories(codexHome.resolve("agents"));
+			Files.writeString(agents.resolve("cat-reviewer.toml"), "name = \"cat-reviewer\"\n");
+			Path data = Files.createDirectories(codexHome.resolve("plugins/data/cat-cat"));
+			Files.writeString(data.resolve("codex-agent-files"), "cat-reviewer.toml\n");
+			Files.writeString(data.resolve("migration-version"), "1.0\n");
+			return data;
 		}
 
 		/**
