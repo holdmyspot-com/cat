@@ -20,6 +20,7 @@ import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -199,7 +200,7 @@ public final class CodexRunPartTest
 	 * can tell whether it writes straight into that file. The overrides are POSIX scripts without an extension, so a
 	 * command that runs in PowerShell finds the caller's {@code rg} instead: PowerShell resolves a command to a file
 	 * without an extension that comes first on the {@code PATH}, and hands a file that it cannot run to the program
-	 * that Windows associates with the file.
+	 * that Windows associates with the file. {@code run-part} limits a PowerShell search itself.
 	 *
 	 * @throws IOException if the temporary files cannot be written
 	 */
@@ -243,6 +244,46 @@ public final class CodexRunPartTest
 			requireThat(lastPart.find(), "lastPart").withContext(call.error(), "error").isTrue();
 			requireThat(call.output(), "output").isEqualTo(expected + "|" + lastPart.group("path") + EOL +
 				"[End of " + lastPart.group("path") + "]\n");
+		}
+	}
+
+	/**
+	 * Verifies that a PowerShell command that is one {@code rg} search runs with each line cut to its first 500 bytes,
+	 * keeps its output and exit status within the line limit, and is replaced by a request to narrow the search, with
+	 * exit status 2, above it.
+	 *
+	 * @throws IOException if the temporary files cannot be written
+	 */
+	@Test
+	public void powerShellSearchOutputIsLimited() throws IOException
+	{
+		if (SHELL != CommandShell.POWERSHELL)
+			throw new SkipException("A POSIX shell runs the plugin's rg override, which Bats tests");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-")).toAbsolutePath();
+			Path caller = Files.createDirectories(temporary.resolve("caller"));
+			Files.writeString(caller.resolve("rg.cmd"), "@echo %*\r\n@echo b\r\n@echo c\r\n@exit /b 1\r\n");
+			Map<String, String> environment = new HashMap<>(System.getenv());
+			String path = "";
+			for (String name : List.copyOf(environment.keySet()))
+			{
+				if (name.equalsIgnoreCase("PATH"))
+					path = environment.remove(name);
+			}
+			environment.put("PATH", caller + File.pathSeparator + path);
+			environment.put("TMPDIR", temporary.toString());
+
+			environment.put("CAT_RG_LINE_LIMIT", "3");
+			Call within = runPart("rg -n needle", false, OUTSIDE_PROJECT, environment);
+			requireThat(within.output(), "within").startsWith("--max-columns=500 --max-columns-preview -n needle" +
+				EOL + "b" + EOL + "c" + EOL);
+			requireThat(within.status(), "withinStatus").withContext(within.output(), "output").isEqualTo(1);
+
+			environment.put("CAT_RG_LINE_LIMIT", "2");
+			Call above = runPart("rg -n needle", false, OUTSIDE_PROJECT, environment);
+			requireThat(above.output(), "above").startsWith("rg: the search produced more than 2 lines");
+			requireThat(above.status(), "aboveStatus").withContext(above.output(), "output").isEqualTo(2);
 		}
 	}
 

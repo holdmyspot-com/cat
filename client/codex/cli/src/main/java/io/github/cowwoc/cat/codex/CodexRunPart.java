@@ -16,6 +16,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Saves the output of a command in a new file, then prints that file's first part the way {@code read-part} prints a
@@ -87,10 +88,13 @@ public final class CodexRunPart
 	 *   folder, {@code TMPDIR}, or else {@code TEMP}, names the folder of the saved output, which is the JVM's
 	 *   temporary folder ({@code java.io.tmpdir}) when both are unset; the command
 	 *   runs in this environment with the caller's locale restored, the overrides folder first on a set {@code PATH}
-	 *   when {@code shell} is {@code bash}, and {@code CAT_RUN_PART_OUTPUT} naming the saved output
+	 *   when {@code shell} is {@code bash}, and {@code CAT_RUN_PART_OUTPUT} naming the saved output; in PowerShell,
+	 *   {@code CAT_RG_LINE_LIMIT} sets the line limit of a command that is one {@code rg} search
+	 *   (see {@link RipgrepOutputLimit})
 	 * @param output receives the part
 	 * @param error receives diagnostics
-	 * @return the exit status of {@code read-part}, 1 if the command cannot be run, or 2 for a usage error
+	 * @return the exit status of {@code read-part}, 1 if the command cannot be run, or 2 for a usage error or a
+	 *   {@code CAT_RG_LINE_LIMIT} that is not a whole number
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static int run(String[] args, InputStream input, boolean terminal, Path workingDirectory, CommandShell shell,
@@ -114,6 +118,25 @@ public final class CodexRunPart
 				error.println(shell.runPartUsage());
 				return 2;
 			}
+			Optional<String> search = Optional.empty();
+			int lineLimit = 0;
+			if (shell == CommandShell.POWERSHELL)
+			{
+				search = RipgrepOutputLimit.limitedCommand(command);
+				if (search.isPresent())
+				{
+					try
+					{
+						lineLimit = RipgrepOutputLimit.lineLimit(environment);
+					}
+					catch (IllegalArgumentException e)
+					{
+						error.println("run-part: " + e.getMessage());
+						return 2;
+					}
+					command = search.get();
+				}
+			}
 			Path saved = Files.createTempDirectory(outputFolder(workingDirectory, environment), "run-part-").
 				resolve("output.txt");
 			ProcessBuilder builder = new ProcessBuilder(shell.processArguments(command, environment)).
@@ -134,6 +157,8 @@ public final class CodexRunPart
 				process.getOutputStream().close();
 				status = process.waitFor();
 			}
+			if (search.isPresent())
+				status = RipgrepOutputLimit.limitOutput(saved, status, lineLimit);
 			Files.writeString(Path.of(saved + ".exit-status"), status + "\n");
 			return CodexReadPart.run(new String[]{saved.toString()}, shell, readPart, environment, output, error);
 		}

@@ -4,7 +4,8 @@
 # agent reads, a search that matches long lines or too many lines would fill the agent's context, so this script cuts
 # each line to its first 500 bytes and, when the output passes the line limit, prints none of it and fails instead,
 # telling the agent to narrow the search. Output that goes anywhere else, such as a pipe or a file that the command
-# names, is ripgrep's own.
+# names, is ripgrep's own. PowerShell cannot run this script, so on Windows run-part limits a search itself, with the
+# same limits (RipgrepOutputLimit); keep them the same.
 set -u
 
 # The longest line, in bytes, that the agent receives whole; a longer line keeps its first 500 bytes

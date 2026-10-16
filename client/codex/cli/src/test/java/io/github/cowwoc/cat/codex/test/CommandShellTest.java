@@ -87,6 +87,26 @@ public final class CommandShellTest
 	}
 
 	/**
+	 * Verifies that a command that runs one program splits into its words, and that a command that does more, such as
+	 * one that pipes, redirects or runs a second line, has no such words.
+	 */
+	@Test
+	public void simpleCommandWordsCoverWholeCommand()
+	{
+		for (CommandShell shell : CommandShell.values())
+		{
+			requireThat(shell.simpleCommandWords("\n  rg -n 'a|b' src\n"), shell.name()).
+				isEqualTo(Optional.of(List.of("rg", "-n", "a|b", "src")));
+			for (String command : List.of("rg needle | sort", "rg needle > found.txt", "rg needle; ls",
+				"rg needle\nls", "rg 'needle"))
+			{
+				requireThat(shell.simpleCommandWords(command), shell.name()).withContext(command, "command").
+					isEqualTo(Optional.empty());
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a command whose quote is not closed has no words.
 	 */
 	@Test

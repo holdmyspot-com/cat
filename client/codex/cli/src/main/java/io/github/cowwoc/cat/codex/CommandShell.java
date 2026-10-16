@@ -69,10 +69,36 @@ public enum CommandShell
 			return "usage: run-part <<'EOF', then the command on the lines that follow, then EOF";
 		}
 
+		/**
+		 * The characters that end a command or start a redirection.
+		 */
+		private static final String COMMAND_ENDS = "();<>|&";
+
 		@Override
 		public Optional<List<String>> words(String command)
 		{
 			requireThat(command, "command").isNotNull();
+			return split(command, false);
+		}
+
+		@Override
+		public Optional<List<String>> simpleCommandWords(String command)
+		{
+			requireThat(command, "command").isNotNull();
+			return split(command.strip(), true);
+		}
+
+		/**
+		 * Splits the start of a command into words, without expanding variables.
+		 *
+		 * @param command the command
+		 * @param whole {@code true} if the words must make up the whole command
+		 * @return the words up to the first unquoted character that ends a command or starts a redirection, or empty
+		 *   if a quote is not closed, or if {@code whole} is {@code true} and the command holds such a character or an
+		 *   unquoted line break
+		 */
+		private static Optional<List<String>> split(String command, boolean whole)
+		{
 			List<String> words = new ArrayList<>();
 			StringBuilder word = new StringBuilder();
 			boolean inWord = false;
@@ -80,13 +106,16 @@ public enum CommandShell
 			while (i < command.length())
 			{
 				char c = command.charAt(i);
-				if (Character.isWhitespace(c) || "();<>|&".indexOf(c) >= 0)
+				boolean ends = COMMAND_ENDS.indexOf(c) >= 0;
+				if (whole && (ends || c == '\n'))
+					return Optional.empty();
+				if (Character.isWhitespace(c) || ends)
 				{
 					if (inWord)
 						words.add(word.toString());
 					word.setLength(0);
 					inWord = false;
-					if (!Character.isWhitespace(c))
+					if (ends)
 						return Optional.of(words);
 					++i;
 					continue;
@@ -182,6 +211,10 @@ public enum CommandShell
 		 * otherwise writes it as ASCII, replacing every other character with {@code ?}.
 		 */
 		private static final String UTF8_INPUT = "$OutputEncoding = [Text.UTF8Encoding]::new()";
+		/**
+		 * The characters that end a command or start a redirection.
+		 */
+		private static final String COMMAND_ENDS = "();<>|&{}";
 		/**
 		 * The file names of the programs that Windows runs with {@code cmd.exe}.
 		 */
@@ -360,6 +393,27 @@ public enum CommandShell
 		public Optional<List<String>> words(String command)
 		{
 			requireThat(command, "command").isNotNull();
+			return split(command, false);
+		}
+
+		@Override
+		public Optional<List<String>> simpleCommandWords(String command)
+		{
+			requireThat(command, "command").isNotNull();
+			return split(command.strip(), true);
+		}
+
+		/**
+		 * Splits the start of a command into words, without expanding variables.
+		 *
+		 * @param command the command
+		 * @param whole {@code true} if the words must make up the whole command
+		 * @return the words up to the first unquoted character that ends a command or starts a redirection, or empty
+		 *   if a quote is not closed, or if {@code whole} is {@code true} and the command holds such a character or an
+		 *   unquoted line break
+		 */
+		private static Optional<List<String>> split(String command, boolean whole)
+		{
 			List<String> words = new ArrayList<>();
 			StringBuilder word = new StringBuilder();
 			boolean inWord = false;
@@ -367,13 +421,16 @@ public enum CommandShell
 			while (i < command.length())
 			{
 				char c = command.charAt(i);
-				if (Character.isWhitespace(c) || "();<>|&{}".indexOf(c) >= 0)
+				boolean ends = COMMAND_ENDS.indexOf(c) >= 0;
+				if (whole && (ends || c == '\n'))
+					return Optional.empty();
+				if (Character.isWhitespace(c) || ends)
 				{
 					if (inWord)
 						words.add(word.toString());
 					word.setLength(0);
 					inWord = false;
-					if (!Character.isWhitespace(c))
+					if (ends)
 						return Optional.of(words);
 					++i;
 					continue;
@@ -553,6 +610,16 @@ public enum CommandShell
 	 * @throws NullPointerException if {@code command} is null
 	 */
 	public abstract Optional<List<String>> words(String command);
+
+	/**
+	 * Splits a command that runs one program into the words that the shell passes to it, without expanding variables.
+	 *
+	 * @param command the command
+	 * @return the words, or empty if a quote is not closed, or if the command does more than run one program: it holds
+	 *   an unquoted character that ends a command or starts a redirection, or an unquoted line break between words
+	 * @throws NullPointerException if {@code command} is null
+	 */
+	public abstract Optional<List<String>> simpleCommandWords(String command);
 
 	/**
 	 * Quotes each word and joins them with spaces.
