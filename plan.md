@@ -43,9 +43,9 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
     governs it: no Java test starts a runner, a harness process or a model (user ruling, 2026-10-01).
   - **End-to-end:** scripted runs of the installed `prompt-optimizer` skill in each harness against fixture prompt
     systems. These are the only checks that start nested sessions or a model, and they exercise every port operation
-    in each harness. Fixtures consumed by a runner live under the project's CAT_TEMP directory
-    (`.cat/work/temp`), not the system temp directory. Each run records a receipt: commands, versions, outcome, and
-    paths to retained evidence.
+    in each harness. Fixtures consumed by a runner live under the session's CAT_TEMP directory
+    (`.cat/work/temp` until WI-83, then `.cat/work/<session-id>/temp`), not the system temp directory. Each run
+    records a receipt: commands, versions, outcome, and paths to retained evidence.
 - **Build check:** `./mvnw verify` from `client/` is the unrestricted build. A work item is not done until it passes,
   along with the work item's focused tests.
 
@@ -167,6 +167,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-69 | `optimize-medium` | Mechanical conversion of recorded scenarios; an error changes what a scenario tests. |
 | WI-81 | `optimize-high` | Configuration parsing, a build step and install-record lookups whose refusals must leave nothing behind, a schema and campaign format change, and runner installation in both harnesses; an error installs a stale or unlisted plugin, or lets a candidate's edit miss the plugin that trials load. |
 | WI-82 | `optimize-xhigh` | Rewrites what the contract author writes and receives, the proposal format, two new commands and the held-out move; an error leaks held-out test cases through the draft directory or the tools, or leaves a session that times out with nothing. |
+| WI-83 | `optimize-high` | Moves where every session and CAT command writes, changes text that loads into every session, and adds a sweep that deletes directories; an error deletes the files of a live or resumable session, or tells an agent a `CAT_TEMP` that its own commands do not use. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -329,7 +330,7 @@ requirement names.
 | Prompt-test follow-ups 2 (user requests, 2026-10-10) | Implemented 2026-10-10, uncommitted (full build 2027 + 184 + 189 + 31 tests with 1 error, the same `ToolScopeTest.defaultsWorkToProjectDirectory`; the same with the temporary directory outside any Git repository; at load 9 to 11, 16 tests took at least 1 s in each build, a different set each time and none of them new: the most frequent were `TestabilityAuditTest` scans, `OptimizerCoreTest` delivery paths, `DeliveryTest.promptTestFaultResumesOnce` and `CleanupTest.otherEndingsKeepFiles`). `design.md` records why an assertion's kind is declared rather than derived: the guard pilot warns on a guard below `p_min`, which a kind derived from the pilot's own rates could never do, and the kinds decide the kind of `expected_outcome`; control trials and the control comparison cover every assertion whatever its kind. A prompt test inherits the files of every `fixtures/` directory from its test root (`.cat/tests` or a module's `src/test/resources`) down to its own, an inner file replacing an outer one at the same path; staging leaves out the inherited directories, and delivery does not copy an inherited fixture that the test leaves unchanged into the test's own directory (`FixturesTest.inheritsAncestorFixtures`, `RegressionScenariosTest.readsInheritedFixtures`, `DeliveryTest.inheritedFixtureStaysShared` and the `PromptTestLocationsTest` exclusions failed first). The `prompt-optimizer/first-use` launcher answer moved from `fixtures/` to `launcher/`, so it is not copied into every first-use trial. The read-file scenarios keep their own fixture copies until the user chooses how to share them. `completion_scope_accounting` now has its plan, `docs/implementation-plan.md`, with one terminal global-wave row and the readiness work packages as the variables `verified_packages` and `open_packages`. The unused rule test files were removed (`ee146e08e`). |
 | Key-value scenarios and fixture patterns (user request, 2026-10-10) | Implemented 2026-10-10 (full build 2034 + 184 + 189 + 31 tests, normal and with the temporary directory outside any Git repository; the only error in each was `ToolScopeTest.defaultsWorkToProjectDirectory`, which assumed the checkout root three levels up and failed once a nested `client/.cat` made `client` the nearest project; it is now `defaultsToWorkingDirectory`, which compares the default scope with an explicit one for the working directory, and both builds then ran 2034 + 184 + 189 + 31 tests with no failure; `ProposalSchemaTest.rejectsTestThatCannotBeWrittenAsScenario` now uses a turn that opens a code fence, because a turn with a `## Notes` line is now written as a `description` pair and reads back; at least 1 s: `DeliveryTest.promptTestFaultResumesOnce` 1.09 s, whose Javadoc now records why). `scenario.md` declares each variable as a `- **<name>**: <description>` pair and each assertion as `kind`, optional `tool` (one code span) and `description` pairs; a value continues on lines indented by two spaces; `## Scenario` and `### Turn <n>` hold prose or a `description` pair, and CAT refuses an undefined key, prose in a key-value section and a mixed section. The optional `## Fixtures` section lists `patterns` as code spans of the form `<directory>/fixtures/<glob>` (Java glob syntax), by default `fixtures/**`; a pattern must stay inside the test root, an explicit one must select a file, and a later pattern's file replaces an earlier one. The implicit inheritance of ancestor `fixtures/` directories is removed. Staging leaves out the shared directories that a cited scenario's patterns name; delivery keeps an unchanged shared file shared and writes a changed one into the test's own `fixtures/`, appending `fixtures/**` or an exact pattern. All 81 recorded scenarios were converted, with pair values wrapped at 120 characters, and the read-file scenarios read one pool, `client/codex/rules/src/test/resources/codex/read-file/fixtures/`, in place of their own copies; `general_knowledge_needs_no_command` declares `sign_off` and `search_needs_no_full_read` declares `change` for the pooled files' placeholders. The contract author prompt, the prompt author prompt and `failure-regression-promotion.md` describe the new format; the Markdown form of a key-value pair is a project rule (`.cat/rules/include/data.md`), not a plugin rule, so it does not govern end users' Markdown (user ruling, 2026-10-11). `design.md` §6.3 and D67 record the design. |
 | WI-70 | Scripts and hook done (`92e3ebda3`, `18904fad8`, `890aed453`, `58be665f0`). The rule step changed in `0615af40f`: Codex SessionStart writes the session rules to `.cat/work/temp/codex-context/<session_id>.md` and injects only the read-file guidance with a pointer to read that file whole through `run-part`, because Codex truncates long additional context; `read-file.md` names `run-part` and `read-part`, and `client/bin/read-file` with its bats suite, fixture and CI steps is retired. The certified-wording step still waits for WI-71. |
-| WI-71 | In progress. Prompt tests committed (`06d7f5075`); the general-knowledge test was removed (`a61c0120c`) because other bundled rules, such as Clear Writing, require reads before any reply, so a compliant agent failed it. Control trials omit the rule and its PostToolUse hook (`fcf108b5a`). The certification start of 2026-10-15 ended without a proposal: the contract author reached its 30-minute limit after re-typing the four recorded scenarios into the proposal and reading the distribution build to find each plugin file (`design.md` D77, D78). The next start waits for WI-82 (WI-81 is done). |
+| WI-71 | In progress. Prompt tests committed (`06d7f5075`); the general-knowledge test was removed (`a61c0120c`) because other bundled rules, such as Clear Writing, require reads before any reply, so a compliant agent failed it. Control trials omit the rule and its PostToolUse hook (`fcf108b5a`). The certification start of 2026-10-15 ended without a proposal: the contract author reached its 30-minute limit after re-typing the four recorded scenarios into the proposal and reading the distribution build to find each plugin file (`design.md` D77, D78). The next start waits for WI-82 and WI-83 (WI-81 is done). |
 | WI-72 | Done (`6470f0f78`). |
 | WI-73 | Done (`d95e8c71e`). WI-81 replaces the contract author's plugin under test with the prompt test configuration (`design.md` D78). |
 | WI-74 | Done (`088a4d0a6`). |
@@ -340,6 +341,7 @@ requirement names.
 | Current-tree build, 2026-10-16 | On `afa0b9e86`: the full build passed in 1:14 (2222 + 195 + 257 + 51 tests, 0 failures, 10 skipped); no test took 1 s or more. |
 | WI-81 | Done (commit `a8e01990c`); the full build passed on the integrated tree (2758 tests, 0 failures). Runners take `installPlugins` with a `SetupCommands` callback; a trial passes the CAT plugin as `--artifact` with `--install-cat` and every other listed plugin as `--plugin`; role sessions pass neither. A failed build keeps no plugins and the target stays startable; a source fix committed to the base after the fork reaches the optimization worktree only after the campaign is cancelled and started again. `ProposalSchemaTest` proves unknown keys are refused with `trial_plugins`, because the exit check forbids the old key's name anywhere in `client`. The proposal lists files that load in production but not in trials. Open: the live part of the exit check (CAT builds itself on the fork commit and the proposal names the Codex rules mapping) runs in WI-71's next start. |
 | WI-82 | Not started; WI-81 is done. |
+| WI-83 | Not started. Waits for the user to confirm the two choices that §5 WI-83 marks as recommended: the cleanup policy, and campaign storage staying project-level. WI-71's next certification start waits for WI-83. |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -515,6 +517,8 @@ Changes made to `design.md` and this plan during implementation, apart from this
   install come from a committed `prompt.json` in the target's test directory, and `start` builds each plugin the
   project builds on the fork commit (user rulings, 2026-10-15). WI-81 and WI-82 added with §1.1, §2, §6 and H-15, H-16;
   R-C26 and R-C27 added; R-W12, R-E20, R-W10 and R-C20 reworded; WI-71 needs both.
+- WI-83 added with §1, §1.1, §2, §6 and H-17; R-W13 added. WI-71 needs it, because the session rules that its
+  trials load state `CAT_TEMP` (user request, 2026-10-16).
 - WI-70's delivery step: the session rules reach Codex through a rules file that the agent reads with `run-part`,
   and `client/bin/read-file` is already retired (`0615af40f`). WI-71: the general-knowledge prompt test is removed
   (`a61c0120c`).
@@ -627,6 +631,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-W10 | Control source: the incumbent's staged source with the target prompt file emptied to zero bytes, each dependent that the contract author lists removed (a file deleted, a hook registration unregistered, or an exact span deleted), and every other prompt file unchanged, the same for every candidate; the proposal lists the target and each dependent with the instruction it serves, and CAT refuses an entry that names the target, a path outside the prompt system and the project-built trial plugins, or a span that does not occur exactly once. | §4.4, §6.1, D71, D72, D78 | WI-65, WI-75, WI-76, WI-81 | U: `StagedSourceTest`, `ProposalTest`, `OptimizerCoreTest` |
 | R-W11 | Delivery writes each confirmed prompt test's values file with every test case of the campaign, and the scenario and fixtures of each created or edited prompt test, on a certified delivery and when the user keeps the incumbent; staging excludes the confirmed prompt test directories; a stopped campaign writes none. | §4.4, §4.7, D60 | WI-67 | U: `DeliveryTest`, `StagedSourceTest`, `DeliveryPlanTest`, `DriverTest`, `CleanupTest`, `OptimizerCoreTest`, `ScenarioTest`, `DeliveredTestTest`, `ProposalSchemaTest` |
 | R-W12 | Trial plugins: `prompt.json` in the target's test directory lists, per harness, the plugins that trials install, each by name with an optional `build` (`command`, `output`); `start` refuses, before creating anything, a target without it or without a key for its harness, naming the file, and a listed plugin without `build` whose name matches a plugin manifest tracked in the project; `start` runs each build command in the optimization worktree and stops, with the exit status and the end of the output, on a failed command, a missing manifest or a different manifest name; a plugin the project does not build is copied from the user's single installed copy; each base is copied into campaign storage once; CAT maps prompt-system directories, or else single files, onto each project-built base by comparing files, lists a participating file that no mapping covers, warns on a mapped file that differs, and refuses a target that would not load in trials; each staged source, the control source included, has a copy of each project-built plugin with its mapped files written over the base; every trial installs exactly the listed plugins and reuses the user's approvals of their hooks; each plugin's name, base identity, build command and mappings are measurement conditions. | §3.1, §4.4, §5, §6.1, D69, D78 | WI-73, WI-81 | U: `PromptConfigurationTest`, `InstalledPluginsTest`, `PluginMappingTest`, `StagedSourceTest`, `ProposalTest`, `ProposalSchemaTest`, `MeasurementIdentityTest`, `OptimizerCoreTest`, `CodexRunnerTest`, `ClaudeRunnerTest`, `CodexSessionsTest`, `ClaudeSessionsTest`; E: WI-71's certification campaign |
+| R-W13 | Per-session work directories: each session writes only into `.cat/work/<session-id>/`, whose `temp/` is its `CAT_TEMP`; the session ID is the hook input's `session_id` or the tool shell's `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, in canonical UUID form, and the injected rules name the directory that the agent's own commands resolve; `run-part`, the runner commands and the Git replay editor write under it and create it when missing; SessionStart writes a marker and removes each other session directory whose marker is more than 24 hours old and whose transcript is gone (a Codex transcript in `archived_sessions/` counts as present), never one without a marker; campaign storage and the run roots stay project-level; CAT neither writes nor deletes `.cat/work/temp`. | — | WI-83 | U: `SessionWorkDirectoryTest`, `SessionSweepTest`, `ClaudeSessionStartHookTest`, `CodexSessionStartHookTest`, `CodexRunPartTest`, `HarnessRunnerOptionsTest`, `CodexRunnerCliTest`, `ToolScopeTest`; E: WI-83's exit check in both harnesses |
 
 ### 3.6 Measurement, contract and lifecycle
 
@@ -2308,6 +2313,73 @@ The riskiest pure code, built first.
 - **Exit:** unit tests pass; the full build passes; WI-71's certification start, given the user's goal, presents a
   proposal within the contract author's time limit.
 
+### WI-83 — Per-session work directories (user request, 2026-10-16)
+
+- **Problem:** every session of a project writes into one shared `.cat/work/temp`. The SessionStart hooks put each
+  session's rules in `claude-context/` or `codex-context/` there, agents create their temporary directories there, and
+  `run-part`, the runner commands and the Git replay editor write there. Nothing ties a directory to the session that
+  created it, so nothing can remove a session's files once the session is gone.
+- **Layout:** each session gets `.cat/work/<session-id>/` for the files CAT writes for it, and
+  `.cat/work/<session-id>/temp/`, which is the session's `CAT_TEMP`. The session's rules file moves to
+  `.cat/work/<session-id>/rules.md`, and each Claude subagent's to `.cat/work/<session-id>/subagents/<agent-id>.md`.
+  `<session-id>` is the harness's session ID in canonical UUID form; CAT refuses any other form, so a session directory
+  never takes the name `optimizer`, `optimizer-runs` or `temp`.
+- **Session ID:** hooks read the hook input's `session_id`. CAT's commands read the variable that the harness sets in
+  tool shells, `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, as the optimizer's interrupt signals already do. A command
+  that writes into `CAT_TEMP` (`run-part`, the runner commands, the Git replay editor) uses
+  `.cat/work/<session-id>/temp` of the nearest CAT project and creates it when it is missing. Without either variable,
+  `run-part` keeps its fallback to `TMPDIR`, `TEMP` or the JVM's temporary directory; a runner command needs
+  `--run-root`, and the Git replay editor refuses; each refusal names both variables.
+- **Premise check, first:** in each harness, record the `session_id` of the SessionStart and SubagentStart hook inputs,
+  the session variable in the tool shells of the main agent and of a subagent, the `session_id` after a resume, and
+  whether `transcript_path` exists when SessionStart runs. Claude subagents are expected to share the parent's session
+  ID, and so its directory. The check decides which directory a Codex subagent's injected rules name: the one that
+  the subagent's own commands resolve.
+- **Handoffs:** an agent hands a file to another session by its absolute path. The receiving session reads it in place,
+  or moves it into its own session directory to take over its cleanup.
+- **Rule text:** the injected `CAT_TEMP` statements (`cat-env.md` for Claude; `temporary-directory.md` for Codex on
+  POSIX and Windows) name the session's directory, with the session ID filled in by the hook. Update
+  `.cat/rules/include/workflow-temporary-resources.md`, the Codex hooks README, and the Javadoc of `HookScope`,
+  `ToolScope` and `CodexRunPart`. These texts load into every trial of the read-file target, so WI-83 lands before
+  WI-71's next certification start.
+- **Cleanup (recommended; awaits the user's confirmation):** neither harness reports when it deletes a session
+  (anthropics/claude-code#102878, openai/codex#54730), so a session directory lives as long as its session's
+  transcript. On every SessionStart source (startup, resume, clear, compact), the hook writes
+  `.cat/work/<session-id>/session.json` with the harness, the hook input's `transcript_path` and the time. It then
+  removes every other session directory whose marker is more than 24 hours old and whose transcript no longer exists.
+  A Codex transcript moved to `archived_sessions/` counts as present, because an archived session can be unarchived.
+  The 24 hours cover a Claude session whose transcript does not exist until its first turn. The sweep never removes a
+  directory without a marker. A failed removal is reported on standard error and does not fail the session start.
+  SessionEnd still deletes only the session's rules files; a resume writes them again. Limitation: a session without a
+  transcript, such as an ephemeral Codex run, loses its directory to another session's sweep after 24 hours. When a
+  harness adds a deletion hook, that hook replaces the sweep for that harness. Alternatives the user may choose instead:
+  - Delete at SessionEnd: loses the files of a session that is resumed later, because Claude fires SessionEnd on
+    `/clear` and when `/resume` switches sessions, and Codex fires it on idle unload.
+  - Delete by age alone: keeps a deleted session's files until the age passes, and deletes a resumable session's files
+    after it.
+- **Unchanged (recommended; awaits the user's confirmation):** campaign storage `.cat/work/optimizer/<campaign-id>/`
+  and the run roots `.cat/work/optimizer-runs/<harness>` and `<harness>-held-out` stay project-level (`design.md` D17;
+  R-W1; WI-37). A campaign outlives the session that starts it, other sessions resume and inspect it, and R-W9's cleanup
+  removes it. CAT stops writing `.cat/work/temp`, and neither reads nor deletes what it holds; the user removes it.
+- **Build:** `client/pom.xml`'s `cat.work.temp` becomes the `temp` directory of the session that runs the build, found
+  from the same variables. A build outside a session, such as CI, uses a directory inside the repository that is not
+  `.cat/work/temp` or a session directory and that `clean` removes; the implementer chooses it after confirming that
+  the native runner tests accept it.
+- **Closes:** R-W13.
+- **Tests:** `SessionWorkDirectoryTest` (the directory from each variable; a non-UUID ID refused; a missing directory
+  created; the refusals without a variable), `SessionSweepTest` (removes a directory whose transcript is gone and whose
+  marker is older than 24 hours; keeps one whose transcript exists, an archived Codex one, one with a newer marker, one
+  without a marker, `optimizer`, `optimizer-runs` and `temp`; a failed removal reported without failing the start),
+  `ClaudeSessionStartHookTest` and `CodexSessionStartHookTest` (the directory, the marker, the rules file's path, the
+  injected `CAT_TEMP`; a resume rewrites the marker), `CodexRunPartTest` (output in the session's `temp`; the fallback
+  without a variable), `HarnessRunnerOptionsTest` and `CodexRunnerCliTest` (the default run root under the session's
+  `temp`; `--run-root` required without a variable), `ToolScopeTest`.
+- **Exit:** unit tests pass; the full build passes in a session and with both variables unset; in each harness, a live
+  session's injected rules name `.cat/work/<session-id>/temp`, that directory exists, and `run-part` saves its output
+  there; a Codex subagent's `run-part` saves into the directory that its injected rules name; with one session's
+  transcript removed and its marker set back by more than 24 hours, the next SessionStart in the project removes that
+  session's directory and keeps every other one.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2421,7 +2493,7 @@ blocks only the part of a work item that it names.
 | WI-68 | WI-66, WI-67 |
 | WI-69 | WI-61 |
 | WI-70 | none for the scripts and hook; its rule step needs WI-71 |
-| WI-71 | WI-69, WI-70, WI-72, WI-73, WI-75, WI-76, WI-77, WI-78, WI-79, WI-80, WI-81, WI-82 |
+| WI-71 | WI-69, WI-70, WI-72, WI-73, WI-75, WI-76, WI-77, WI-78, WI-79, WI-80, WI-81, WI-82, WI-83 |
 | WI-72 | WI-63 |
 | WI-73 | WI-65 |
 | WI-74 | WI-28, WI-63 |
@@ -2433,6 +2505,7 @@ blocks only the part of a work item that it names.
 | WI-80 | WI-77 |
 | WI-81 | WI-73, WI-75, WI-76 |
 | WI-82 | WI-75, WI-81 |
+| WI-83 | WI-70's scripts and hook, and the user's confirmation of its recommended choices |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57 and WI-60 to WI-69. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
@@ -2460,6 +2533,7 @@ distinct from the harness-evidence IDs `Hn` of `design.md` §11.
 | H-14 Candidate overlay | WI-9 → WI-4 (`CandidateOverlays`) → WI-9, WI-11 | The overlay is saved before the event that records its snapshot | The snapshot, which is the overlay's identity. The campaign records only the snapshot. | Saving an overlay that is already saved does nothing. A recorded snapshot without a saved overlay, or an overlay file that is malformed, on another fork or for a different candidate, is a read failure that names the file; CAT never reconstructs an overlay. | `CandidateOverlaysContract` through `FileCandidateOverlaysTest` and `InMemoryOverlaysTest`, `DriverTest` |
 | H-15 Draft directory | WI-82 (contract author session) → WI-6 (proposal validation) → held-out store → WI-67 (delivery) | The contract author session ended and validation of the proposal file and the draft passed | The draft's prompt tests at their test paths, each scenario with its Expected Behavior; values files with the seeds and versions that validation wrote; the proposal file naming each prompt test's directory | A refused proposal returns its problems, each with its file and line or JSON path, once to the same session, which edits the same files. A session that reaches its time limit stores nothing and leaves its files in its run directory. | `DraftDirectoryTest`, `ProposalTest`, `ContractCheckTest`, `DeliveryTest`, `OptimizerCoreTest` |
 | H-16 Trial plugins | WI-81 (`start`) → WI-7 (staging) → WI-8 (runners) | Every listed plugin's base is copied into campaign storage and each project-built plugin's mappings are recorded, before the contract author starts | Each plugin's name and base digest, and each project-built one's build command and mappings; these are measurement conditions | A failed build, an output without the harness's manifest or with another plugin's name, or a listed plugin with no single installed copy stops `start`, showing what failed, and leaves the target startable again. | `PromptConfigurationTest`, `InstalledPluginsTest`, `PluginMappingTest`, `StagedSourceTest`, `CodexRunnerTest`, `ClaudeRunnerTest`, `MeasurementIdentityTest` |
+| H-17 Session work directory | WI-83 (SessionStart hook) → the agent (injected `CAT_TEMP`) and CAT's commands (`run-part`, runner commands, Git replay editor) | SessionStart created `.cat/work/<session-id>/temp` and wrote the session's marker | The harness's session ID: the hook input's `session_id` and the tool shell's `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID` name the same directory | A command that finds the directory missing creates it; without a session variable, `run-part` falls back to the system temporary directory, a runner command needs `--run-root` and the Git replay editor refuses. The sweep removes a session's directory only once its marker is more than 24 hours old and its transcript is gone. | `SessionWorkDirectoryTest`, `SessionSweepTest`, `ClaudeSessionStartHookTest`, `CodexSessionStartHookTest`, `CodexRunPartTest`, `CodexRunnerCliTest` |
 
 Use-case traces that `DriverTest` must cover, each as one test that starts from builder state:
 
