@@ -28,6 +28,7 @@ import io.github.cowwoc.cat.common.test.ProgramFixture;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.AclEntry;
 import java.nio.file.attribute.AclEntryPermission;
 import java.nio.file.attribute.AclEntryType;
@@ -865,11 +866,19 @@ public final class ForkTest
 		Path noExcludes = writeFile(root.resolve("no-excludes"), "", READ_WRITE);
 		Git git = new Git(base);
 		git.run("init", "--quiet");
-		git.run("config", "user.name", "Test");
-		git.run("config", "user.email", "test@example.com");
-		git.run("config", "commit.gpgsign", "false");
-		git.run("config", "core.excludesFile", noExcludes.toString());
-		git.run("config", "core.autocrlf", "false");
+		// Writing the settings directly saves a Git process for each, which takes tens of milliseconds on Windows.
+		// A quoted configuration value escapes each backslash and double quote.
+		String excludes = noExcludes.toString().replace("\\", "\\\\").replace("\"", "\\\"");
+		Files.writeString(base.resolve(".git/config"), """
+			[user]
+				name = Test
+				email = test@example.com
+			[commit]
+				gpgsign = false
+			[core]
+				excludesFile = "%s"
+				autocrlf = false
+			""".formatted(excludes), UTF_8, StandardOpenOption.APPEND);
 		writeFile(base.resolve(".gitignore"), "ignored.md\n", READ_WRITE);
 		writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
 		// Windows records a file as executable only by its name, and Linux only by the mode set here
