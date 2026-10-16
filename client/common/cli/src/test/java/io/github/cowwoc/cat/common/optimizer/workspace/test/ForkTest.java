@@ -58,13 +58,16 @@ public final class ForkTest
 	 * The directory that holds the repository that each test copies, and the empty global exclude file that the
 	 * repository's configuration names.
 	 */
-	private Path template;
+	private final Path template;
 
 	/**
-	 * Creates the test.
+	 * Creates the test and the empty directory that will hold the repository that each test copies.
+	 *
+	 * @throws IOException if the directory cannot be created
 	 */
-	public ForkTest()
+	public ForkTest() throws IOException
 	{
+		template = Files.createTempDirectory("cat-fork-template-");
 	}
 
 	/**
@@ -76,7 +79,6 @@ public final class ForkTest
 	@BeforeClass
 	public void createTemplate() throws IOException
 	{
-		template = Files.createTempDirectory("cat-fork-template-");
 		Path base = Files.createDirectories(template.resolve("repository"));
 		Path noExcludes = writeFile(template.resolve("no-excludes"), "", READ_WRITE);
 		Git git = new Git(base);
@@ -115,8 +117,7 @@ public final class ForkTest
 	@AfterClass(alwaysRun = true)
 	public void deleteTemplate() throws IOException
 	{
-		if (template != null)
-			TemporaryDirectories.deleteRecursively(template);
+		TemporaryDirectories.deleteRecursively(template);
 	}
 
 	/**
