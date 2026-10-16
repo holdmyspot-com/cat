@@ -10,8 +10,7 @@ depends-on:
 
 - Apply Java-specific Javadoc coverage, tags, placement, and syntax without duplicating the language-neutral
   documentation contract.
-- Make the contract of a boolean or other two-valued result or field immediately recognizable as a condition the
-  caller can test.
+- Make every documented condition immediately recognizable as one the caller can test.
 - Let a caller learn from a method's Javadoc every result it can receive, what each means and when it occurs, without
   reading the implementation.
 
@@ -32,11 +31,13 @@ Document every parameter with `@param` and every return value with `@return`. Pl
 a record declaration and repeat them on an explicit or compact canonical constructor. Put construction-contract tags
 such as `@throws` only on that constructor, not on the record declaration.
 
-For a method that returns a boolean, a getter that returns another type with exactly two values, such as a two-constant
-enum, and a field of either type, begin its summary description with “Indicates whether”, not “Returns whether”. For a
-boolean, name the observable condition that makes the value `true`; for another two-valued type, name the condition that
-selects each value. Do not describe a policy consequence that the method does not itself decide; document that
-consequence at the caller or in the separately named operation that makes the decision.
+When a field or method exists to report a condition, begin its summary description with “Indicates whether”, not
+“Returns whether” or a bare “Whether”. A condition is a value that answers one yes-or-no question or picks one of two
+alternatives, whatever its type. Name the observable state that makes the answer yes, or that selects each alternative.
+A method that performs an action and also returns whether it succeeded reports an outcome, not a condition: begin its
+summary with the action, and describe the outcome in `@return`. Do not describe a policy consequence that the method
+does not itself decide; document that consequence at the caller or in the separately named operation that makes the
+decision.
 
 An `@param` description must state its parameter's observable effect. When that effect selects a fixed caller-visible
 value, boundary, policy, or ordering, name the exact selected behavior rather than a generic feature or action.

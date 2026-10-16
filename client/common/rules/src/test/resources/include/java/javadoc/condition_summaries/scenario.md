@@ -1,9 +1,10 @@
-# Two-valued contracts
+# Condition summaries
 
 ## Design Goals
 
-- Prove that the Javadoc of a boolean field and getter, and of a field and getter whose enum type has two constants,
-  begins with “Indicates whether”, while the Javadoc of a getter with many possible values does not.
+- Prove that the Javadoc of a field or method that reports a condition, whether boolean or a two-constant enum,
+  begins with “Indicates whether”, while the Javadoc of a getter with many possible values, and of a method that
+  performs an action and returns whether it succeeded, does not.
 
 ## Variables
 
@@ -42,9 +43,12 @@ public final class Upload
 		return sent;
 	}
 
-	public void markSent()
+	public boolean markSent()
 	{
+		if (sent)
+			return false;
 		sent = true;
+		return true;
 	}
 }
 ```
@@ -58,7 +62,8 @@ bytes over an encrypted connection and `PLAIN` sends them unencrypted.
 
 - **kind**: effect
 - **description**: The summary description of the `sent` field and of `{{flag_getter}}()` each begins with “Indicates
-  whether” and names the condition that makes the value `true`; neither begins with “Returns whether”.
+  whether” and names the condition that makes the value `true`; neither begins with “Returns whether” or a bare
+  “Whether”.
 
 ### two_valued_indicates_whether
 
@@ -70,3 +75,9 @@ bytes over an encrypted connection and `PLAIN` sends them unencrypted.
 
 - **kind**: guard
 - **description**: The summary description of `getFileName()` does not begin with “Indicates whether”.
+
+### action_outcome_not_condition
+
+- **kind**: guard
+- **description**: The summary description of `markSent()` begins with the action it performs, such as marking the
+  upload as sent, not with “Indicates whether”, and its `@return` describes the outcome.
