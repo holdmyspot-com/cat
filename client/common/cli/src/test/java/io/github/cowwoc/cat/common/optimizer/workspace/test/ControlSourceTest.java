@@ -7,7 +7,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.workspace.ControlSource;
@@ -55,11 +55,11 @@ public final class ControlSourceTest
 		{
 			Project project = project(cleanup.add(Files.createTempDirectory("cat-control-")));
 			List<Dependent> dependents = List.of(
-				new Dependent(Dependent.Location.PROJECT, Path.of("repair.sh"), new Dependent.WholeFile(),
+				new Dependent(Path.of("repair.sh"), new Dependent.WholeFile(),
 					"Repairs the output that the prompt asks for."),
-				new Dependent(Dependent.Location.PROJECT, Path.of("AGENTS.md"),
+				new Dependent(Path.of("AGENTS.md"),
 					new Dependent.Span("Read prompt.md first.\n"), "Routes the agent to the prompt."),
-				new Dependent(Dependent.Location.PROJECT, Path.of("hooks.json"),
+				new Dependent(Path.of("hooks.json"),
 					new Dependent.HookRegistration("PostToolUse", "repair.sh"), "Runs the repair script."));
 
 			List<String> problems = ControlSource.problems(project.port(), project.tree().inventory(), TARGET,
@@ -92,10 +92,10 @@ public final class ControlSourceTest
 		{
 			Project project = project(cleanup.add(Files.createTempDirectory("cat-control-")));
 			List<Dependent> dependents = List.of(
-				new Dependent(Dependent.Location.PROJECT, TARGET, new Dependent.WholeFile(), "Is the prompt."),
-				new Dependent(Dependent.Location.PROJECT, Path.of("missing.sh"), new Dependent.WholeFile(),
+				new Dependent(TARGET, new Dependent.WholeFile(), "Is the prompt."),
+				new Dependent(Path.of("missing.sh"), new Dependent.WholeFile(),
 					"Was removed before the fork."),
-				new Dependent(Dependent.Location.PROJECT, Path.of("AGENTS.md"), new Dependent.Span("r"),
+				new Dependent(Path.of("AGENTS.md"), new Dependent.Span("r"),
 					"Matches more than one place."));
 
 			List<String> problems = ControlSource.problems(project.port(), project.tree().inventory(), TARGET,
@@ -133,19 +133,19 @@ public final class ControlSourceTest
 			Path base = cleanup.add(Files.createTempDirectory("cat-control-")).resolve("plugin");
 			writeFile(base.resolve("rules/codex/a.md"), "rule a\n", READ_WRITE);
 			writeFile(base.resolve("bin/read-part"), "#!/bin/sh\n", EXECUTABLE);
-			PluginUnderTest.Built plugin = new PluginUnderTest.Built(base,
-				InventoryScanner.scan(base, Set.of()).identity().hex(),
-				List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
-				"No prompt file invokes a CAT skill.");
+			TrialPlugin plugin = new TrialPlugin("cat", InventoryScanner.scan(base, Set.of()).identity().hex(),
+				new TrialPlugin.Build(List.of("build"), Path.of("out")),
+				List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))));
 			List<Dependent> removals = List.of(
-				new Dependent(Dependent.Location.PLUGIN, Path.of("rules/codex/a.md"), new Dependent.WholeFile(),
+				new Dependent(Dependent.Location.PLUGIN, "cat", Path.of("rules/codex/a.md"), new Dependent.WholeFile(),
 					"Is the prompt's copy."),
-				new Dependent(Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(),
+				new Dependent(Dependent.Location.PLUGIN, "cat", Path.of("bin/read-part"), new Dependent.WholeFile(),
 					"Reads the part that the rule names."),
-				new Dependent(Dependent.Location.PLUGIN, Path.of("bin/run-part"), new Dependent.WholeFile(),
+				new Dependent(Dependent.Location.PLUGIN, "cat", Path.of("bin/run-part"), new Dependent.WholeFile(),
 					"Runs the part that the rule names."));
 
-			List<String> problems = ControlSource.pluginProblems(plugin, Path.of("rules/a.md"), removals, JSON);
+			List<String> problems = ControlSource.pluginProblems(plugin, base, Path.of("rules/a.md"), removals,
+				JSON);
 
 			requireThat(problems, "problems").size().isEqualTo(2);
 			requireThat(problems.get(0), "copyProblem").contains("is the target prompt file's copy in the plugin");

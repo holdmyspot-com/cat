@@ -13,7 +13,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptConfiguration;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
+import io.github.cowwoc.cat.common.optimizer.contract.test.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
@@ -555,9 +558,9 @@ public final class StagedSourceTest
 	}
 
 	/**
-	 * Verifies that a built plugin's copy for a candidate holds the candidate's edit of a mapped file, that the copy for
-	 * the control source holds the emptied file, that both keep the base's other files, that the base is unchanged, and
-	 * that deleting the candidate deletes its copy.
+	 * Verifies that a project-built plugin's copy for a candidate holds the candidate's edit of a mapped file, that the
+	 * copy for the control source holds the emptied file, that both keep the base's other files, that the base is
+	 * unchanged, and that deleting the candidate deletes its copy.
 	 *
 	 * @throws IOException if the fixture cannot be created or staged
 	 */
@@ -570,11 +573,8 @@ public final class StagedSourceTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
 			LinkedProject project = ProjectFixtures.linkedProject(root);
 			Path base = pluginBase(root.resolve("plugin-base"));
-			PluginUnderTest.Built plugin = new PluginUnderTest.Built(base,
-				InventoryScanner.scan(base, Set.of()).identity().hex(),
-				List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
-				"No prompt file invokes a CAT skill.");
 			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			TrialPlugin plugin = builtPlugin("cat", port.copyPluginBase(base));
 			FileInventory fork = project.tree().inventory();
 			Overlay candidate = Overlay.of(fork).write(Path.of("rules/a.md"), content("candidate rule a"), READ_WRITE);
 			Overlay control = ControlSource.of(port, fork, Path.of("rules/a.md"), List.of(), JSON);
@@ -594,6 +594,8 @@ public final class StagedSourceTest
 			requireThat(controlFiles.get(Path.of("skills/plan.md")), "controlBaseFile").
 				isEqualTo(file("installed skill"));
 			requireThat(Files.readString(base.resolve("rules/codex/a.md")), "base").isEqualTo("installed rule a");
+			requireThat(Files.readString(port.pluginBase(plugin.baseDigest()).resolve("rules/codex/a.md")),
+				"baseCopy").isEqualTo("installed rule a");
 
 			port.deleteStaged(candidate.identity());
 			requireThat(Files.exists(candidateCopy), "deletedCopyExists").isFalse();
@@ -618,16 +620,13 @@ public final class StagedSourceTest
 			Path base = pluginBase(root.resolve("plugin-base"));
 			writeFile(base.resolve("bin/read-part"), "#!/bin/sh\n", EXECUTABLE);
 			writeFile(base.resolve("hooks/hooks.json"), HOOKS, READ_WRITE);
-			PluginUnderTest.Built plugin = new PluginUnderTest.Built(base,
-				InventoryScanner.scan(base, Set.of()).identity().hex(),
-				List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
-				"No prompt file invokes a CAT skill.");
 			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			TrialPlugin plugin = builtPlugin("cat", port.copyPluginBase(base));
 			Path source = port.stage(Overlay.of(project.tree().inventory()), Set.of());
 			PluginRemovals removals = PluginRemovals.of(List.of(
-				new Dependent(Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(),
+				new Dependent(Dependent.Location.PLUGIN, "cat", Path.of("bin/read-part"), new Dependent.WholeFile(),
 					"Reads the part that the rule names."),
-				new Dependent(Dependent.Location.PLUGIN, Path.of("hooks/hooks.json"),
+				new Dependent(Dependent.Location.PLUGIN, "cat", Path.of("hooks/hooks.json"),
 					new Dependent.HookRegistration("PostToolUse", "${PLUGIN_ROOT}/hooks/post-tool-use.sh"),
 					"Repairs the output of read-part.")), JSON);
 
@@ -662,64 +661,119 @@ public final class StagedSourceTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
 			LinkedProject project = ProjectFixtures.linkedProject(root);
 			Path base = pluginBase(root.resolve("plugin-base"));
-			PluginUnderTest.Built plugin = new PluginUnderTest.Built(base,
-				InventoryScanner.scan(base, Set.of()).identity().hex(),
-				List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
-				"No prompt file invokes a CAT skill.");
 			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			TrialPlugin plugin = builtPlugin("cat", port.copyPluginBase(base));
 			Path source = port.stage(Overlay.of(project.tree().inventory()), Set.of());
 
-			port.pluginCopy(plugin, source, PluginRemovals.of(List.of(new Dependent(Dependent.Location.PLUGIN,
+			port.pluginCopy(plugin, source, PluginRemovals.of(List.of(new Dependent(Dependent.Location.PLUGIN, "cat",
 				Path.of("bin/run-part"), new Dependent.WholeFile(), "Runs the part that the rule names.")), JSON));
 		}
 	}
 
 	/**
-	 * Verifies that a plugin root's copy is that directory of the staged source.
+	 * Verifies that each project-built plugin gets its own copy, holding the staged files that its own mappings cover,
+	 * and that a plugin that the project does not build is installed from its base's copy.
 	 *
 	 * @throws IOException if the fixture cannot be created or staged
 	 */
 	// Requirement: R-W12
 	@Test
-	public void pluginRootCopyIsStagedDirectory() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
-			Path staged = port.stage(Overlay.of(project.tree().inventory()), Set.of());
-
-			Path copy = port.pluginCopy(new PluginUnderTest.Root(Path.of("rules"), true,
-				"The rules invoke CAT's skills."), staged, PluginRemovals.NONE);
-
-			requireThat(copy, "copy").isEqualTo(staged.resolve("rules"));
-		}
-	}
-
-	/**
-	 * Verifies that a built plugin's base is not copied once its files differ from the identity that the proposal
-	 * froze, so trials never install a base that the user did not confirm.
-	 *
-	 * @throws IOException if the fixture cannot be created, or because the base changed
-	 */
-	// Requirement: R-W12
-	@Test(expectedExceptions = WorkspaceException.class, expectedExceptionsMessageRegExp = ".*plugin-base.*")
-	public void refusesChangedPluginBase() throws IOException
+	public void copyPerProjectBuiltPlugin() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
 			LinkedProject project = ProjectFixtures.linkedProject(root);
-			Path base = pluginBase(root.resolve("plugin-base"));
-			PluginUnderTest.Built plugin = new PluginUnderTest.Built(base,
-				InventoryScanner.scan(base, Set.of()).identity().hex(),
-				List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
-				"No prompt file invokes a CAT skill.");
-			Files.writeString(base.resolve("skills/plan.md"), "reinstalled skill");
 			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			TrialPlugin cat = builtPlugin("cat", port.copyPluginBase(pluginBase(root.resolve("cat-base"))));
+			Path docsBase = root.resolve("docs-base");
+			writeFile(docsBase.resolve(".codex-plugin/plugin.json"), "{\"name\": \"docs\"}", READ_WRITE);
+			writeFile(docsBase.resolve("prompt.md"), "installed prompt", READ_WRITE);
+			TrialPlugin docs = new TrialPlugin("docs", port.copyPluginBase(docsBase),
+				new TrialPlugin.Build(List.of("build"), Path.of("out")),
+				List.of(new TrialPlugin.Mapping(Path.of("prompt.md"), Path.of("prompt.md"))));
+			Path toolsBase = root.resolve("tools-base");
+			writeFile(toolsBase.resolve(".codex-plugin/plugin.json"), "{\"name\": \"tools\"}", READ_WRITE);
+			TrialPlugin tools = new TrialPlugin("tools@market", port.copyPluginBase(toolsBase),
+				new TrialPlugin.Installed(), List.of());
+			Overlay candidate = Overlay.of(project.tree().inventory()).
+				write(Path.of("rules/a.md"), content("candidate rule a"), READ_WRITE).
+				write(Path.of("prompt.md"), content("candidate prompt"), READ_WRITE);
+			Path source = port.stage(candidate, Set.of());
 
-			port.copyPluginBase(plugin);
+			Path catCopy = port.pluginCopy(cat, source, PluginRemovals.NONE);
+			Path docsCopy = port.pluginCopy(docs, source, PluginRemovals.NONE);
+			Path toolsCopy = port.pluginCopy(tools, source, PluginRemovals.NONE);
+
+			requireThat(catCopy, "catCopy").isNotEqualTo(docsCopy);
+			requireThat(Files.readString(catCopy.resolve("rules/codex/a.md")), "catEdit").isEqualTo("candidate rule a");
+			requireThat(Files.exists(catCopy.resolve("prompt.md")), "catHoldsDocs").isFalse();
+			requireThat(Files.readString(docsCopy.resolve("prompt.md")), "docsEdit").isEqualTo("candidate prompt");
+			requireThat(Files.exists(docsCopy.resolve("rules")), "docsHoldsCat").isFalse();
+			requireThat(toolsCopy, "toolsCopy").isEqualTo(port.pluginBase(tools.baseDigest()));
 		}
+	}
+
+	/**
+	 * Verifies that a staged source leaves out the target's prompt test configuration, which names the trial plugins,
+	 * along with the prompt tests.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	// Requirement: R-W12
+	@Test
+	public void leavesOutPromptConfiguration() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			Path target = Path.of("prompt.md");
+			Path configuration = PromptConfiguration.location(target);
+			Overlay overlay = Overlay.of(project.tree().inventory()).
+				write(configuration, content("{\"codex\": {\"plugins\": []}}"), READ_WRITE);
+
+			Path source = port.stage(overlay, PromptTestLocations.excluded(ContractFixtures.contract(), target,
+				project.base()));
+
+			requireThat(Files.exists(source.resolve(configuration)), "configuration").isFalse();
+			requireThat(source.resolve(target), "target").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that a trial plugin's copy is refused when campaign storage holds no copy of its base, so that trials
+	 * never install a base that {@code start} did not copy.
+	 *
+	 * @throws IOException if the fixture cannot be created, or because the base has no copy
+	 */
+	// Requirement: R-W12
+	@Test(expectedExceptions = WorkspaceException.class, expectedExceptionsMessageRegExp =
+		"Campaign storage holds no base of the trial plugin cat at .*\\. Run start so that CAT copies the plugin's " +
+			"base again\\.")
+	public void refusesUncopiedPluginBase() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			Path source = port.stage(Overlay.of(project.tree().inventory()), Set.of());
+
+			port.pluginCopy(builtPlugin("cat", "0".repeat(64)), source, PluginRemovals.NONE);
+		}
+	}
+
+	/**
+	 * Returns a trial plugin that the project builds, whose {@code rules} directory maps to {@code rules/codex}.
+	 *
+	 * @param name the plugin's name
+	 * @param digest the digest of its base's files
+	 * @return the plugin
+	 */
+	private static TrialPlugin builtPlugin(String name, String digest)
+	{
+		return new TrialPlugin(name, digest, new TrialPlugin.Build(List.of("build"), Path.of("out")),
+			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))));
 	}
 
 	/**

@@ -569,6 +569,12 @@ public final class CleanupTest
 		}
 
 		@Override
+		public Set<Path> tracked(Path base) throws IOException
+		{
+			return new GitForks().tracked(base);
+		}
+
+		@Override
 		public void remove(Path base, Path campaign) throws IOException
 		{
 			throw new AccessDeniedException(denied.toString(), null, "Permission denied");

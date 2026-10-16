@@ -12,20 +12,17 @@ import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
-import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.SplittableRandom;
 import org.testng.annotations.DataProvider;
@@ -902,86 +899,19 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Verifies that a plugin root survives parsing and writing, and that a contract without one has none.
-	 *
-	 * @throws InvalidProposalException if the proposal is rejected
+	 * Verifies that a proposal that names the plugin that trials install is rejected, because the prompt test
+	 * configuration lists the trial plugins and a contract author cannot change them.
 	 */
 	// Requirement: R-W12
 	@Test
-	public void parsesPluginRoot() throws InvalidProposalException
+	public void rejectsPluginInProposal()
 	{
-		String[] path = {"plugin_under_test"};
-		Contract contract = schema().parse(changed(path, json.readTree("""
-			{"root": "plugins/release-docs", "base": null, "mappings": [], "depends_on_cat": false,
-			 "cat_evidence": "Its manifest names no dependency and its skills invoke no CAT skill."}
+		InvalidProposalException e = rejection(changed(new String[]{"trial_plugins"}, json.readTree("""
+			[{"name": "cat", "mappings": []}]
 			""")));
-
-		requireThat(contract.plugin(), "plugin").isEqualTo(Optional.of(new PluginUnderTest.Root(
-			Path.of("plugins/release-docs"), false,
-			"Its manifest names no dependency and its skills invoke no CAT skill.")));
-		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
-		requireThat(schema().parse(ContractFixtures.resource("valid-proposal.json")).plugin(), "withoutPlugin").
-			isEmpty();
-	}
-
-	/**
-	 * Verifies that a built plugin survives parsing and writing with the base digest that CAT computes, and that the
-	 * plugin, its mappings, its base digest and whether trials install CAT each change the contract's identity.
-	 *
-	 * @throws InvalidProposalException if the proposal is rejected
-	 */
-	// Requirement: R-W12
-	@Test
-	public void builtPluginIsPartOfTheIdentity() throws InvalidProposalException
-	{
-		String[] path = {"plugin_under_test"};
-		String base = json.writeValueAsString(Path.of("/opt/cat/plugin").toAbsolutePath().toString());
-		Contract contract = schema().parse(changed(path, json.readTree("""
-			{"root": null, "base": %s, "depends_on_cat": true, "cat_evidence": "It is CAT.",
-			 "mappings": [{"source": "client/rules/codex", "target": "rules/codex"}]}
-			""".formatted(base))));
-		PluginUnderTest.Built built = (PluginUnderTest.Built) contract.plugin().orElseThrow();
-		requireThat(built.mappings(), "mappings").isEqualTo(List.of(new PluginUnderTest.Mapping(
-			Path.of("client/rules/codex"), Path.of("rules/codex"))));
-		Contract digested = with(contract, built.withBaseDigest("a".repeat(64)));
-
-		requireThat(schema().parse(schema().toJson(digested)), "reread").isEqualTo(digested);
-		ProposalSchema schema = schema();
-		Set<Sha256> identities = new HashSet<>();
-		identities.add(ContractIdentity.of(schema, with(contract, null)));
-		identities.add(ContractIdentity.of(schema, digested));
-		identities.add(ContractIdentity.of(schema, with(contract, built.withBaseDigest("b".repeat(64)))));
-		identities.add(ContractIdentity.of(schema, with(contract, new PluginUnderTest.Built(built.base(),
-			built.baseDigest(), List.of(new PluginUnderTest.Mapping(Path.of("client/rules"), Path.of("rules"))),
-			true, "It is CAT."))));
-		identities.add(ContractIdentity.of(schema, with(contract, new PluginUnderTest.Built(built.base(),
-			built.baseDigest(), built.mappings(), false, "It is CAT."))));
-		identities.add(ContractIdentity.of(schema, with(contract, new PluginUnderTest.Root(Path.of("plugin"), true,
-			"It is CAT."))));
-		requireThat(identities.size(), "identities.size()").isEqualTo(6);
-	}
-
-	/**
-	 * Verifies that a plugin under test with an unknown key, with both forms, or with neither form is rejected, and
-	 * that the contract author cannot supply the base digest.
-	 */
-	// Requirement: R-W12
-	@Test
-	public void rejectsInvalidPluginUnderTest()
-	{
-		String[] path = {"plugin_under_test"};
-		rejection(changed(path, json.readTree("""
-			{"root": "plugin", "base": null, "mappings": [], "depends_on_cat": false, "cat_evidence": "None.",
-			 "version": "1.0"}
-			""")));
-		rejection(changed(path, json.readTree("""
-			{"root": "plugin", "base": "/opt/plugin", "mappings": [], "depends_on_cat": false, "cat_evidence": "None."}
-			""")));
-		rejection(changed(path, json.readTree("""
-			{"root": null, "base": null, "mappings": [], "depends_on_cat": false, "cat_evidence": "None."}
-			""")));
-		JsonNode plugin = schema().derivationSchema().get("properties").get("plugin_under_test");
-		requireThat(plugin.get("properties").has("base_digest"), "derivationHasBaseDigest").isFalse();
+		requireThat(String.join(" | ", e.problems()), "problems").contains("trial_plugins");
+		requireThat(schema().derivationSchema().get("properties").has("trial_plugins"), "derivationHasPlugins").
+			isFalse();
 	}
 
 	/**
@@ -996,23 +926,28 @@ public final class ProposalSchemaTest
 	{
 		Contract contract = schema().parse(changed(new String[]{"dependents"}, json.readTree("""
 			[
-			  {"location": "project", "path": "repair.sh", "removes": "file", "text": null, "event": null,
-			   "command": null, "serves": "Repairs the output."},
-			  {"location": "project", "path": "AGENTS.md", "removes": "span", "text": "Read prompt.md first.\\n",
-			   "event": null, "command": null, "serves": "Routes the agent to the prompt."},
-			  {"location": "project", "path": ".codex/hooks.json", "removes": "hook_registration", "text": null,
-			   "event": "PostToolUse", "command": "repair.sh", "serves": "Runs the repair script."}
+			  {"location": "project", "plugin": null, "path": "repair.sh", "removes": "file", "text": null,
+			   "event": null, "command": null, "serves": "Repairs the output."},
+			  {"location": "project", "plugin": null, "path": "AGENTS.md", "removes": "span",
+			   "text": "Read prompt.md first.\\n", "event": null, "command": null,
+			   "serves": "Routes the agent to the prompt."},
+			  {"location": "project", "plugin": null, "path": ".codex/hooks.json", "removes": "hook_registration",
+			   "text": null, "event": "PostToolUse", "command": "repair.sh", "serves": "Runs the repair script."},
+			  {"location": "plugin", "plugin": "cat", "path": "bin/read-part", "removes": "file", "text": null,
+			   "event": null, "command": null, "serves": "Reads a part."}
 			]
 			""")));
 		Contract without = schema().parse(ContractFixtures.resource("valid-proposal.json"));
 
 		requireThat(contract.dependents(), "dependents").isEqualTo(List.of(
-			new Dependent(Dependent.Location.PROJECT, Path.of("repair.sh"), new Dependent.WholeFile(),
+			new Dependent(Path.of("repair.sh"), new Dependent.WholeFile(),
 				"Repairs the output."),
-			new Dependent(Dependent.Location.PROJECT, Path.of("AGENTS.md"), new Dependent.Span("Read prompt.md first.\n"),
+			new Dependent(Path.of("AGENTS.md"), new Dependent.Span("Read prompt.md first.\n"),
 				"Routes the agent to the prompt."),
-			new Dependent(Dependent.Location.PROJECT, Path.of(".codex/hooks.json"),
-				new Dependent.HookRegistration("PostToolUse", "repair.sh"), "Runs the repair script.")));
+			new Dependent(Path.of(".codex/hooks.json"),
+				new Dependent.HookRegistration("PostToolUse", "repair.sh"), "Runs the repair script."),
+			new Dependent(Dependent.Location.PLUGIN, "cat", Path.of("bin/read-part"), new Dependent.WholeFile(),
+				"Reads a part.")));
 		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
 		requireThat(json.readTree(schema().toJson(without)).has("dependents"), "withoutDependents").isFalse();
 		requireThat(ContractIdentity.of(schema(), contract), "identity").
@@ -1028,29 +963,15 @@ public final class ProposalSchemaTest
 	public void rejectsIncompleteDependents()
 	{
 		InvalidProposalException span = rejection(changed(new String[]{"dependents"}, json.readTree("""
-			[{"location": "project", "path": "AGENTS.md", "removes": "span", "text": null, "event": null,
-			  "command": null, "serves": "Routes the agent to the prompt."}]
+			[{"location": "project", "plugin": null, "path": "AGENTS.md", "removes": "span", "text": null,
+			  "event": null, "command": null, "serves": "Routes the agent to the prompt."}]
 			""")));
 		InvalidProposalException hook = rejection(changed(new String[]{"dependents"}, json.readTree("""
-			[{"location": "project", "path": "hooks.json", "removes": "hook_registration", "text": null,
-			  "event": "PostToolUse", "command": null, "serves": "Runs the repair script."}]
+			[{"location": "project", "plugin": null, "path": "hooks.json", "removes": "hook_registration",
+			  "text": null, "event": "PostToolUse", "command": null, "serves": "Runs the repair script."}]
 			""")));
 
 		requireThat(String.join(" | ", span.problems()), "spanProblems").contains("gives text");
 		requireThat(String.join(" | ", hook.problems()), "hookProblems").contains("gives command");
-	}
-
-	/**
-	 * Returns a contract with another plugin under test.
-	 *
-	 * @param contract the contract
-	 * @param plugin the plugin under test, or null for none
-	 * @return the contract
-	 */
-	private static Contract with(Contract contract, PluginUnderTest plugin)
-	{
-		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), contract.judge(),
-			contract.fixtures(), contract.limitations(), contract.minimumPassRate(), contract.salt(),
-			plugin);
 	}
 }

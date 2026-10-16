@@ -2,6 +2,9 @@ package io.github.cowwoc.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -11,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.TreeMap;
 import java.util.function.BiPredicate;
 
@@ -81,6 +85,59 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	public MeasurementIdentity(Map<MeasurementCondition, String> values)
 	{
 		this(values, Map.of());
+	}
+
+	/**
+	 * Returns the conditions that a campaign's trial plugins set.
+	 *
+	 * @param plugins the trial plugins, in configuration order
+	 * @return an identity that records {@link MeasurementCondition#TRIAL_PLUGINS},
+	 *   {@link MeasurementCondition#PLUGIN_BASES}, {@link MeasurementCondition#PLUGIN_BUILDS} and
+	 *   {@link MeasurementCondition#PLUGIN_MAPPINGS}, each {@code none} when the list is empty
+	 * @throws NullPointerException if {@code plugins} is null
+	 */
+	public static MeasurementIdentity ofPlugins(List<TrialPlugin> plugins)
+	{
+		requireThat(plugins, "plugins").isNotNull();
+		StringJoiner names = new StringJoiner("\n");
+		StringJoiner bases = new StringJoiner("\n");
+		StringJoiner builds = new StringJoiner("\n");
+		StringJoiner mappings = new StringJoiner("\n");
+		for (TrialPlugin plugin : plugins)
+		{
+			names.add(plugin.name());
+			bases.add(plugin.name() + " " + plugin.baseDigest());
+			String build = switch (plugin.source())
+			{
+				case TrialPlugin.Build b -> "output " + PortablePaths.text(b.output()) + ", command " + b.command();
+				case TrialPlugin.Installed _ -> "installed copy";
+			};
+			builds.add(plugin.name() + ": " + build);
+			for (TrialPlugin.Mapping mapping : plugin.mappings())
+			{
+				mappings.add(plugin.name() + ": " + PortablePaths.text(mapping.source()) + " -> " +
+					PortablePaths.text(mapping.target()));
+			}
+		}
+		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
+		values.put(MeasurementCondition.TRIAL_PLUGINS, orNone(names));
+		values.put(MeasurementCondition.PLUGIN_BASES, orNone(bases));
+		values.put(MeasurementCondition.PLUGIN_BUILDS, orNone(builds));
+		values.put(MeasurementCondition.PLUGIN_MAPPINGS, orNone(mappings));
+		return new MeasurementIdentity(values);
+	}
+
+	/**
+	 * Returns the joined lines of a condition's value.
+	 *
+	 * @param lines the lines
+	 * @return the lines, or {@code none} if there are none, because a recorded value is never blank
+	 */
+	private static String orNone(StringJoiner lines)
+	{
+		if (lines.length() == 0)
+			return "none";
+		return lines.toString();
 	}
 
 	/**

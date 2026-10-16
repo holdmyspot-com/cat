@@ -61,14 +61,14 @@ public final class ClaudeMarketplaceTest
 	}
 
 	/**
-	 * Verifies that a plugin under test gets a marketplace named after it, so it installs beside CAT without replacing
+	 * Verifies that a trial plugin gets a marketplace named after it, so it installs beside CAT without replacing
 	 * CAT's marketplace.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	// Requirement: R-W12
 	@Test
-	public void createsPluginUnderTestMarketplace() throws IOException
+	public void createsTrialPluginMarketplace() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{

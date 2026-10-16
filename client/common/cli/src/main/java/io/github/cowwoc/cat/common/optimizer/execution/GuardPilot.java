@@ -17,17 +17,16 @@ import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.UndecidableToolException;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
-import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
-import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 
 import java.io.IOException;
@@ -119,13 +118,12 @@ public final class GuardPilot
 
 	/**
 	 * Returns the identity of a prompt test's definition: the test and the requirements that it checks, which the
-	 * trials and the judge receive, the plugin under test that the trials install, and the dependents of the target
-	 * that control trials remove.
+	 * trials and the judge receive, and the dependents of the target that control trials remove.
 	 *
 	 * @param contract the proposed contract
 	 * @param test a prompt test of {@code contract}
 	 * @return the identity, which changes whenever the scenario, the test cases, the assertions, a checked
-	 *   requirement, the plugin under test or a dependent changes
+	 *   requirement or a dependent changes
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Sha256 definition(Contract contract, PromptTest test)
@@ -142,6 +140,7 @@ public final class GuardPilot
 	 * starts no further session and each unfinished test's result records why it stopped.
 	 *
 	 * @param contract the proposed contract
+	 * @param plugins the campaign's trial plugins, which every trial installs
 	 * @param control the control source: the incumbent with the target prompt file emptied and its dependents in the
 	 *   project removed
 	 * @param excluded the project-relative paths that the staged control source leaves out, so that a trial cannot
@@ -150,15 +149,16 @@ public final class GuardPilot
 	 * @param random draws the seed of each test's development stream
 	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if the contract's built plugin under test has no base digest
-	 * @throws IOException if the control source or its copy of the plugin under test cannot be staged
+	 * @throws IOException if the control source or its copies of the trial plugins cannot be staged
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session. Every running session
 	 *   is interrupted too.
 	 */
-	public Map<String, PilotResult> run(Contract contract, Overlay control, Set<Path> excluded,
-		Map<String, PilotResult> stored, RandomGenerator random) throws IOException, InterruptedException
+	public Map<String, PilotResult> run(Contract contract, List<TrialPlugin> plugins, Overlay control,
+		Set<Path> excluded, Map<String, PilotResult> stored, RandomGenerator random)
+		throws IOException, InterruptedException
 	{
 		requireThat(contract, "contract").isNotNull();
+		requireThat(plugins, "plugins").isNotNull();
 		requireThat(control, "control").isNotNull();
 		requireThat(excluded, "excluded").isNotNull();
 		requireThat(stored, "stored").isNotNull();
@@ -188,10 +188,8 @@ public final class GuardPilot
 		if (!pending.isEmpty())
 		{
 			Path source = workspace.stage(control, excluded);
-			PluginRemovals removals = PluginRemovals.of(contract.pluginRemovals(), json);
-			TrialPlugin plugin = TrialPlugins.of(contract.plugin().orElse(null), workspace, source, removals).
-				orElse(null);
-			new Run(contract, source, plugin, pending).run();
+			List<Path> directories = TrialPlugins.of(plugins, contract, workspace, source, true, json);
+			new Run(contract, source, directories, pending).run();
 		}
 		for (Pilot pilot : pending)
 			pilots.put(pilot.test.id(), pilot.result(files));
@@ -338,7 +336,7 @@ public final class GuardPilot
 	{
 		private final Contract contract;
 		private final Path source;
-		private final TrialPlugin plugin;
+		private final List<Path> plugins;
 		private final List<Pilot> pilots;
 		private final Deque<Job> queue = new ArrayDeque<>();
 		private final BlockingQueue<Ended> events = new LinkedBlockingQueue<>();
@@ -350,15 +348,14 @@ public final class GuardPilot
 		 *
 		 * @param contract the proposed contract
 		 * @param source the staged control source
-		 * @param plugin the copy of the plugin under test that belongs to {@code source}, or null if the target
-		 *   prompt files are not in a plugin
+		 * @param plugins the plugin directories that the trials of {@code source} install
 		 * @param pilots the pilots to run, in contract order
 		 */
-		Run(Contract contract, Path source, TrialPlugin plugin, List<Pilot> pilots)
+		Run(Contract contract, Path source, List<Path> plugins, List<Pilot> pilots)
 		{
 			this.contract = contract;
 			this.source = source;
-			this.plugin = plugin;
+			this.plugins = plugins;
 			this.pilots = pilots;
 		}
 
@@ -432,7 +429,7 @@ public final class GuardPilot
 				{
 					case TrialJob trial -> new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
 						trial.testCase().turns(), List.of(), trial.pilot().test.timeLimit(), trial.pilot().cell.profile(),
-						WorkspaceFixtures.of(trial.pilot().test, trial.testCase().testCase()), plugin);
+						WorkspaceFixtures.of(trial.pilot().test, trial.testCase().testCase()), plugins);
 					case JudgeJob judging -> judge.request(contract.judge(), judging.testCase(), judging.trial(),
 						judging.judged(), judging.results(), judging.section());
 				};

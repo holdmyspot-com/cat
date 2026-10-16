@@ -184,7 +184,7 @@ public final class PromptTestLocations
 	 * directory of each prompt test and each regression scenario that a prompt test cites inside the project, which is
 	 * the directory of a {@value PromptTestFiles#SCENARIO} or the file of a scenario in an earlier format, and each
 	 * {@value PromptTestFiles#FIXTURES} directory inside the test root that a cited {@value PromptTestFiles#SCENARIO}'s
-	 * fixture patterns name.
+	 * fixture patterns name, and the target's prompt test configuration, which names the trial plugins.
 	 *
 	 * @param contract the contract
 	 * @param target   the campaign target, relative to the project
@@ -200,6 +200,7 @@ public final class PromptTestLocations
 		Set<Path> excluded = new LinkedHashSet<>();
 		for (Location location : of(contract, target).values())
 			excluded.add(location.directory());
+		excluded.add(PromptConfiguration.location(target));
 		for (PromptTest test : contract.tests())
 		{
 			for (String citation : test.regressionScenarios())

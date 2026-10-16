@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -72,11 +73,11 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies a plugin under test installs from the marketplace that bears its name.
+	 * Verifies a trial plugin installs from the marketplace that bears its name.
 	 */
 	// Requirement: R-W12
 	@Test
-	public void installsPluginUnderTestByName()
+	public void installsTrialPluginByName()
 	{
 		List<List<String>> commands = ClaudeRunner.pluginSetupCommands("claude", Path.of("release-docs-marketplace"),
 			"release-docs");
@@ -87,17 +88,127 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies a run with a plugin under test grants Claude access to that plugin and to spilled hook context.
+	 * Verifies a run with a trial plugin grants Claude access to that plugin and to spilled hook context.
 	 */
 	// Requirement: R-W12
 	@Test
-	public void permitsPluginUnderTestDirectory()
+	public void permitsTrialPluginDirectory()
 	{
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "",
 			List.of(Path.of("release-docs-marketplace/plugins/release-docs")), Path.of("hook-results"), List.of());
 
 		requireThat(command, "command").contains(Path.of("release-docs-marketplace/plugins/release-docs").toString()).
 			contains("hook-results");
+	}
+
+	/**
+	 * Verifies that a trial installs exactly its listed plugin, from a marketplace of its own, and neither CAT nor any
+	 * other plugin.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	// Requirement: R-W12
+	@Test
+	public void installsExactlyListedPlugin() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-plugins-"));
+			Path configuration = root.resolve("home/.claude");
+			List<String> steps = new ArrayList<>();
+			List<List<String>> commands = new ArrayList<>();
+
+			List<Path> installed = ClaudeRunner.installPlugins("claude", plugin(root, "cat-artifact", "cat"), false,
+				List.of(plugin(root, "docs-source", "release-docs")), configuration, (command, step) ->
+				{
+					commands.add(command);
+					steps.add(step);
+				});
+
+			Path marketplace = configuration.resolve("plugins/release-docs-marketplace");
+			requireThat(installed, "installed").isEqualTo(List.of(marketplace.resolve("plugins/release-docs")));
+			requireThat(steps, "steps").isEqualTo(List.of("trial-plugin-release-docs-marketplace-add",
+				"trial-plugin-release-docs-install"));
+			requireThat(commands, "commands").isEqualTo(ClaudeRunner.pluginSetupCommands("claude", marketplace,
+				"release-docs"));
+			requireThat(Files.notExists(configuration.resolve("plugins/cat-marketplace")), "catMarketplace").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a trial with two plugins installs both, in their listed order, each from its own marketplace.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	// Requirement: R-W12
+	@Test
+	public void installsTwoPlugins() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-plugins-"));
+			Path configuration = root.resolve("home/.claude");
+			List<String> steps = new ArrayList<>();
+
+			List<Path> installed = ClaudeRunner.installPlugins("claude", plugin(root, "cat-artifact", "cat"), false,
+				List.of(plugin(root, "docs-source", "release-docs"), plugin(root, "tools-source", "tools")),
+				configuration, (_, step) -> steps.add(step));
+
+			requireThat(installed, "installed").isEqualTo(List.of(
+				configuration.resolve("plugins/release-docs-marketplace/plugins/release-docs"),
+				configuration.resolve("plugins/tools-marketplace/plugins/tools")));
+			requireThat(steps, "steps").isEqualTo(List.of("trial-plugin-release-docs-marketplace-add",
+				"trial-plugin-release-docs-install", "trial-plugin-tools-marketplace-add", "trial-plugin-tools-install"));
+			requireThat(Files.readString(installed.get(1).resolve("README.md")), "copy").isEqualTo("tools");
+		}
+	}
+
+	/**
+	 * Verifies that CAT is installed only when the trial lists it: a trial that lists no plugin installs nothing, and
+	 * one that lists CAT installs CAT from the artifact under its own name.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	// Requirement: R-W12
+	@Test
+	public void installsCatOnlyWhenListed() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-plugins-"));
+			Path artifact = plugin(root, "cat-artifact", "cat");
+			List<String> steps = new ArrayList<>();
+
+			Path withoutCat = root.resolve("without/.claude");
+			requireThat(ClaudeRunner.installPlugins("claude", artifact, false, List.of(), withoutCat,
+				(_, step) -> steps.add(step)), "withoutCat").isEmpty();
+			requireThat(steps, "withoutCatSteps").isEmpty();
+			requireThat(Files.notExists(withoutCat), "withoutCatConfiguration").isTrue();
+
+			Path withCat = root.resolve("with/.claude");
+			List<Path> installed = ClaudeRunner.installPlugins("claude", artifact, true, List.of(), withCat,
+				(_, step) -> steps.add(step));
+			requireThat(installed, "withCat").isEqualTo(List.of(withCat.resolve("plugins/cat-marketplace/plugins/cat")));
+			requireThat(steps, "withCatSteps").isEqualTo(List.of("marketplace-add", "plugin-install"));
+		}
+	}
+
+	/**
+	 * Creates a Claude Code plugin directory that holds a manifest and a readme.
+	 *
+	 * @param root the directory to create the plugin in
+	 * @param directory the plugin directory's name
+	 * @param name the manifest's plugin name, which the readme also holds
+	 * @return the plugin directory
+	 * @throws IOException if the plugin cannot be written
+	 */
+	private static Path plugin(Path root, String directory, String name) throws IOException
+	{
+		Path plugin = root.resolve(directory);
+		Files.createDirectories(plugin.resolve(".claude-plugin"));
+		Files.writeString(plugin.resolve(".claude-plugin/plugin.json"), "{\"name\": \"" + name + "\"}\n");
+		Files.writeString(plugin.resolve("README.md"), name);
+		return plugin;
 	}
 
 	/**

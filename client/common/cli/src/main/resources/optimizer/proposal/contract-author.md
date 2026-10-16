@@ -11,8 +11,6 @@
 - Check every requirement with assertions in prompt tests whose test cases vary the content that the agent works on
   and spread their expected outcomes over both parts of CAT's split, so that certification measures the prompts on
   test cases that prompt editing never saw.
-- Name the harness plugin that holds the target prompt file, how a build assembles it from the project and whether
-  it needs CAT, so that each trial installs that plugin with the trial's version of the prompt files.
 - Name every part of the prompt system that exists only to deliver the target prompt file or to carry out, enforce or
   repair what it instructs, with the target instruction that it serves, so that control trials remove it together with
   the target's text and the user can confirm each one. A part that also serves another purpose stays out of the list.
@@ -151,29 +149,6 @@ CAT refuses a proposal when no test cites one of these scenarios, naming every m
 
 {{regression_scenarios}}
 
-### Plugin under test
-
-`plugin_under_test` names the harness plugin that holds the target prompt file, or is `null` when it is not in a
-plugin. Each trial installs that plugin from a copy that holds the trial's version of the prompt files, and no other
-plugin of the user's harness.
-
-- Give `root` when the plugin runs from the project's files as they are: the project-relative directory that holds
-  `.codex-plugin/plugin.json` or `.claude-plugin/plugin.json` and the target prompt file. Set `base` to `null` and
-  `mappings` to an empty list.
-- Give `base` when a build assembles the plugin from the project's files, so that no project directory with a plugin
-  manifest holds the target prompt file: the absolute path of a built plugin directory, such as the plugin that the
-  harness installed. Set `root` to `null`. Find the build step that copies the prompt files into the plugin, and give
-  each project directory that it copies file for file as a `mappings` entry: its `source`, relative to the project, and
-  the `target` directory that receives its files, relative to the plugin directory. Cover the target prompt file and
-  every other project file that the prompt system loads. A trial's copy of the plugin is the base with each regular file
-  under a mapping's `source`, at any depth, written over the same relative path under its `target`; every other file
-  of the base stays as built. CAT refuses a mapping when a file of its source has no file at the mapped path in the
-  base, because the plugin's users never receive that file.
-- Set `depends_on_cat` to `true` when the plugin needs CAT installed beside it: its manifest names CAT as a dependency,
-  or its prompt files invoke CAT's skills, agents or commands or name CAT's plugin directory. Quote the manifest entry
-  or file passages that show it in `cat_evidence`, or say that none exist. A plugin that is CAT itself is installed
-  alone, from its copy.
-
 ### Dependents of the target
 
 `dependents` lists every part of the prompt system that exists only for the target prompt file: it delivers the target
@@ -187,13 +162,17 @@ registration are dependents.
 - List a part only when no other prompt file, hook or feature of the prompt system uses it. A file that has another
   purpose is not a dependent, even when it mentions the target; when one passage of it exists only for the target, such
   as a line that tells the agent to read the target, list that passage as a span.
-- Never list the target prompt file or its copy in the plugin under test; control trials already empty them.
-- Give a file that a `mappings` entry of the plugin under test copies from the project by its project path; control
-  trials remove it from the plugin's copy too. Give the `plugin` location only to a file that the plugin holds and no
-  project file supplies, or to a file of a plugin given by `root`.
+- Never list the target prompt file or its copy in a trial plugin; control trials already empty them.
+- Give a file that trials write over a trial plugin from the project by its project path; control trials remove it
+  from the plugin's copy too. Give the `plugin` location only to a file that a trial plugin below holds and no project
+  file supplies. The trial plugins that the project builds, with the project paths that trials write over each, are:
+
+{{trial_plugins}}
+
 - For each dependent, give:
   - `location`: `project` when `path` is relative to the project root; `plugin` when it is relative to the directory of
-    the plugin under test.
+    a trial plugin above.
+  - `plugin`: with the `plugin` location, the trial plugin's name as the list above gives it; otherwise `null`.
   - `path`: the file that holds the dependent.
   - `removes`: `file` to delete the whole file; `span` to delete `text`, which must occur in the file exactly once;
     `hook_registration` to unregister every hook of `event` whose command is `command`, spelled as the hook

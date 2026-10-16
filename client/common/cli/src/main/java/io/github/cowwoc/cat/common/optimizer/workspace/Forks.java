@@ -24,6 +24,15 @@ public interface Forks
 	ForkView create(Path base, Path campaign, Set<Path> participants) throws IOException;
 
 	/**
+	 * Lists the files that Git tracks in a project.
+	 *
+	 * @param base the base worktree
+	 * @return the files, relative to {@code base}
+	 * @throws IOException if Git fails
+	 */
+	Set<Path> tracked(Path base) throws IOException;
+
+	/**
 	 * Opens the fork that a campaign holds.
 	 *
 	 * @param base the base worktree

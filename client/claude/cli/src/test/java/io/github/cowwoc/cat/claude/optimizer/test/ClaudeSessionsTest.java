@@ -13,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -134,7 +135,9 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Verifies that a port configured to install CAT passes {@code --install-cat} only for trial sessions.
+	 * Verifies that a trial passes exactly its plugins to the runner, CAT as the artifact to install and every other
+	 * plugin on its own, that a trial without CAT does not install it, and that every other session installs no plugin
+	 * and runs from the port's artifact.
 	 *
 	 * @param role the session's role
 	 * @throws IOException if a fixture cannot be created or read
@@ -143,7 +146,7 @@ public final class ClaudeSessionsTest
 	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(dataProvider = "sessionRoles", timeOut = 120_000)
-	public void passesInstallCatOnlyForTrialSessions(SessionRole role)
+	public void passesPluginsOnlyForTrialSessions(SessionRole role)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E20
@@ -151,7 +154,7 @@ public final class ClaudeSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
-			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+			Path artifact = plugin(RoleRuleFixtures.write(root.resolve("artifact")), "cat");
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "", true,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
@@ -161,14 +164,51 @@ public final class ClaudeSessionsTest
 				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
 					List.of(Turn.replies("ok")), input, output);
 			});
+			Path cat = plugin(root.resolve("plugins/cat"), "cat");
+			Path tools = plugin(root.resolve("plugins/tools"), "tools");
+			List<Path> plugins = List.of();
+			if (role == SessionRole.TRIAL)
+				plugins = List.of(tools, cat);
 
 			SessionResult result = await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
-				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, WorkspaceFixtures.NONE, plugins)));
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
-			requireThat(arguments.get(0).contains("--install-cat"), "installCat").isEqualTo(role == SessionRole.TRIAL);
+			List<String> options = arguments.getFirst();
+			if (role == SessionRole.TRIAL)
+			{
+				requireThat(options, "options").contains("--install-cat");
+				requireThat(ScriptedHarness.optionValue(options, "--artifact"), "artifact").isEqualTo(cat.toString());
+				requireThat(options.subList(0, 2), "plugin").isEqualTo(List.of("--plugin", tools.toString()));
+				requireThat(options.lastIndexOf("--plugin"), "lastPlugin").isEqualTo(0);
+
+				requireThat(await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, WorkspaceFixtures.NONE, List.of(tools)))), "withoutCat").
+					isInstanceOf(SessionResult.Completed.class);
+				requireThat(arguments.getLast(), "withoutCatOptions").doesNotContain("--install-cat");
+				requireThat(ScriptedHarness.optionValue(arguments.getLast(), "--artifact"), "withoutCatArtifact").
+					isEqualTo(artifact.toString());
+				return;
+			}
+			requireThat(options, "options").doesNotContain("--install-cat").doesNotContain("--plugin");
+			requireThat(ScriptedHarness.optionValue(options, "--artifact"), "artifact").isEqualTo(artifact.toString());
 		}
+	}
+
+	/**
+	 * Writes a plugin manifest into a directory.
+	 *
+	 * @param directory the plugin directory
+	 * @param name the plugin's name
+	 * @return the directory
+	 * @throws IOException if the manifest cannot be written
+	 */
+	private static Path plugin(Path directory, String name) throws IOException
+	{
+		Files.createDirectories(directory.resolve(".claude-plugin"));
+		Files.writeString(directory.resolve(".claude-plugin/plugin.json"), "{\"name\": \"" + name + "\"}\n");
+		return directory;
 	}
 
 	/**
@@ -714,7 +754,7 @@ public final class ClaudeSessionsTest
 			{
 			});
 
-			requireThat(sessions.derivedSources(project, null).stream().map(DerivedSource::path).toList(),
+			requireThat(sessions.loadedSources(project, List.of()).trials().stream().map(DerivedSource::path).toList(),
 				"paths").isEqualTo(List.of("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md",
 				".claude/rules/java/testing.md", ".claude/rules/style.md"));
 		}

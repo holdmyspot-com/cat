@@ -71,7 +71,25 @@ public enum MeasurementCondition
 	/**
 	 * External or MCP source identities.
 	 */
-	EXTERNAL_SOURCES;
+	EXTERNAL_SOURCES,
+	/**
+	 * The names of the plugins that every trial installs, in configuration order.
+	 */
+	TRIAL_PLUGINS,
+	/**
+	 * The base digest of each trial plugin.
+	 */
+	PLUGIN_BASES,
+	/**
+	 * Where each trial plugin's base came from: the build command and output directory of a plugin that the project
+	 * builds, or the user's installed copy.
+	 */
+	PLUGIN_BUILDS,
+	/**
+	 * The project directories and files whose staged versions trials write over each project-built plugin's base,
+	 * with the paths that receive them.
+	 */
+	PLUGIN_MAPPINGS;
 
 	/**
 	 * Returns the condition's name in words for reports.
@@ -97,6 +115,10 @@ public enum MeasurementCondition
 			case PROMPT_SOURCES -> "prompt sources";
 			case HOST_TOOLS -> "host tools";
 			case EXTERNAL_SOURCES -> "external sources";
+			case TRIAL_PLUGINS -> "trial plugins";
+			case PLUGIN_BASES -> "trial plugin bases";
+			case PLUGIN_BUILDS -> "trial plugin builds";
+			case PLUGIN_MAPPINGS -> "trial plugin mappings";
 		};
 	}
 
@@ -119,15 +141,16 @@ public enum MeasurementCondition
 	 * Indicates whether the condition's value depends on the harness that runs the sessions, so that another
 	 * harness cannot observe the value that a result records.
 	 *
-	 * @return {@code true} for the provider, the harness and session environment versions, the judge version and the
-	 *   trial model, reasoning and tool-output token limit
+	 * @return {@code true} for the provider, the harness and session environment versions, the judge version, the
+	 *   trial model, reasoning and tool-output token limit, and the trial plugins, which the prompt test configuration
+	 *   lists for each harness
 	 */
 	public boolean isHarnessSpecific()
 	{
 		return switch (this)
 		{
 			case PROVIDER, HARNESS_VERSION, SESSION_ENVIRONMENT_VERSION, JUDGE, MODEL, REASONING,
-				TOOL_OUTPUT_LIMIT -> true;
+				TOOL_OUTPUT_LIMIT, TRIAL_PLUGINS, PLUGIN_BASES, PLUGIN_BUILDS, PLUGIN_MAPPINGS -> true;
 			default -> false;
 		};
 	}

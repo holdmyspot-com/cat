@@ -43,6 +43,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.test.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -62,6 +63,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -121,6 +123,10 @@ public final class Builder
 	private final Set<Outcome> unavailable = EnumSet.noneOf(Outcome.class);
 	private AddedTestCases added = AddedTestCases.NONE;
 	private SlowStart slowStart = SlowStart.INITIAL;
+	/**
+	 * The trial plugins that every trial installs.
+	 */
+	private List<TrialPlugin> plugins = List.of();
 	private Throttle throttle = Throttle.NONE;
 	private final List<PendingDecision> pendingDecisions = new ArrayList<>();
 	private boolean revisionRequested;
@@ -612,6 +618,18 @@ public final class Builder
 	}
 
 	/**
+	 * Sets the trial plugins that every trial installs.
+	 *
+	 * @param value the plugins, in configuration order
+	 * @return this builder
+	 */
+	public Builder plugins(List<TrialPlugin> value)
+	{
+		this.plugins = List.copyOf(value);
+		return this;
+	}
+
+	/**
 	 * Sets the slow-start state.
 	 *
 	 * @param value the state
@@ -792,7 +810,7 @@ public final class Builder
 		return new Campaign(header, ceiling, lineages, identity, new Candidate(0, INCUMBENT), candidates,
 			promptAuthorAttempts, state, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart,
 			throttle, pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings,
-			testRevisions);
+			testRevisions, Optional.of(plugins));
 	}
 
 	/**

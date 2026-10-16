@@ -242,41 +242,16 @@
 			"description": "The random value that CAT draws for the proposal and confirmation freezes. It decides which expected outcomes of each test belong to the development part and which to the held-out part.",
 			"type": "integer"
 		},
-		"plugin_under_test": {
-			"description": "The harness plugin that holds the target prompt files, or null if they are not in a plugin. Give either root or base. Each trial installs a copy of the plugin that carries the candidate's prompt files, and CAT installs itself beside it only if depends_on_cat is true; a plugin that is CAT itself is installed alone, from its copy.",
-			"type": ["object", "null"],
-			"additionalProperties": false,
-			"required": ["root", "base", "mappings", "depends_on_cat", "cat_evidence"],
-			"properties": {
-				"root": {"description": "The project-relative directory that holds .codex-plugin/plugin.json or .claude-plugin/plugin.json and the target prompt files, if the plugin runs from the project's files as they are; otherwise null.", "type": ["string", "null"], "pattern": "\\S"},
-				"base": {"description": "The absolute path of the built plugin directory that a build assembles from the project's files, such as the installed plugin, if the plugin does not run from the project's files as they are; otherwise null.", "type": ["string", "null"], "pattern": "\\S"},
-				"base_digest": {"description": "The digest of the base's files, which CAT computes.", "type": "string", "pattern": "^[0-9a-f]{64}$"},
-				"mappings": {
-					"description": "With base: each project source directory whose files the build copies one-to-one into a plugin directory, covering every target prompt file. Every file of a source must exist at its path in the base. Empty with root.",
-					"type": "array",
-					"items": {
-						"type": "object",
-						"additionalProperties": false,
-						"required": ["source", "target"],
-						"properties": {
-							"source": {"description": "The source directory, relative to the project root.", "type": "string", "pattern": "\\S"},
-							"target": {"description": "The directory that receives its files, relative to the plugin directory.", "type": "string", "pattern": "\\S"}
-						}
-					}
-				},
-				"depends_on_cat": {"description": "true if the plugin needs CAT installed: its manifest names CAT as a dependency, or its prompt files invoke CAT's skills, agents or commands or name CAT's plugin directory.", "type": "boolean"},
-				"cat_evidence": {"description": "The manifest entry or file passages that show whether the plugin depends on CAT.", "type": "string", "pattern": "\\S"}
-			}
-		},
 		"dependents": {
 			"description": "Each part of the prompt system that exists only to deliver the target prompt file or to carry out, enforce or repair what it instructs, such as a hook that repairs output the target's instructions produce or a script that only the target tells the agent to run. Control trials empty the target and remove each dependent, and nothing else. Omit or leave empty if the target has none.",
 			"type": "array",
 			"items": {
 				"type": "object",
 				"additionalProperties": false,
-				"required": ["location", "path", "removes", "text", "event", "command", "serves"],
+				"required": ["location", "plugin", "path", "removes", "text", "event", "command", "serves"],
 				"properties": {
-					"location": {"description": "project if path is relative to the project root; plugin if it is relative to the plugin directory of the plugin under test.", "type": "string", "pattern": "^(project|plugin)$"},
+					"location": {"description": "project if path is relative to the project root; plugin if it is relative to the directory of a trial plugin that the project builds.", "type": "string", "pattern": "^(project|plugin)$"},
+					"plugin": {"description": "With location plugin: the name of the trial plugin, as the request lists it. Otherwise null.", "type": ["string", "null"], "pattern": "\\S"},
 					"path": {"description": "The file that holds the dependent, relative to its location.", "type": "string", "pattern": "\\S"},
 					"removes": {"description": "file to delete the whole file; span to delete text, which must occur in the file exactly once; hook_registration to unregister every hook of event with command from a hook configuration, whose hooks object maps each event to groups of hooks.", "type": "string", "pattern": "^(file|span|hook_registration)$"},
 					"text": {"description": "With span: the exact text to delete. Otherwise null.", "type": ["string", "null"], "pattern": "\\S"},

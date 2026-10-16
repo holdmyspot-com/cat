@@ -48,7 +48,7 @@ final class ProposalFile
 	 * ranking, the salt, the judge prompt's placeholders and the assertions of each prompt test, including what a
 	 * failure of each assertion's built-in tool means, and the derived prompt sources that CAT listed.
 	 */
-	private static final int FORMAT_VERSION = 17;
+	private static final int FORMAT_VERSION = 18;
 	private final Path file;
 	private final JsonMapper json;
 

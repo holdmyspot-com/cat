@@ -206,7 +206,7 @@ public final class HarnessRunnerBridgeTest
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, false, true, 1, List.of(), null, null);
+				"", transcript, true, receipt, false, true, 1, List.of(), null, List.of());
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
 

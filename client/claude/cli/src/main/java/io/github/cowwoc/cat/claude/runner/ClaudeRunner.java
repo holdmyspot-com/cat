@@ -22,6 +22,7 @@ import io.github.cowwoc.cat.common.runner.HarnessRunSession;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.MainHarnessRunnerScope;
 import io.github.cowwoc.cat.common.runner.PluginManifest;
+import io.github.cowwoc.cat.common.runner.SetupCommands;
 import io.github.cowwoc.cat.common.runner.UserRuleTree;
 
 import java.io.IOException;
@@ -103,8 +104,8 @@ public final class ClaudeRunner
 	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
-		return start(artifact, project, null, null, manager, executable, environment, model, "", null, installCat, true,
-			List.of(), List.of());
+		return start(artifact, project, null, List.of(), manager, executable, environment, model, "", null, installCat,
+			true, List.of(), List.of());
 	}
 
 	/**
@@ -113,8 +114,8 @@ public final class ClaudeRunner
 	 * @param artifact the complete Claude artifact
 	 * @param project the validator project
 	 * @param fixtures the optional directory whose files are copied into the project on top of {@code project}
-	 * @param plugin the optional plugin under test, which is installed into the isolated home from the marketplace
-	 *   that bears its manifest's name, beside CAT when {@code installCat} is set
+	 * @param trialPlugins the trial plugins, each installed into the isolated home from the marketplace that bears its
+	 *   manifest's name, beside CAT when {@code installCat} is set
 	 * @param manager the run manager
 	 * @param executable the Claude executable
 	 * @param environment the isolated environment
@@ -128,13 +129,14 @@ public final class ClaudeRunner
 	 * @return the live run session
 	 * @throws IOException if startup fails
 	 */
-	HarnessRunSession start(Path artifact, Path project, Path fixtures, Path plugin, HarnessRunManager manager,
-		String executable, Map<String, String> environment, String model, String effort, ClaudeAgentDefinition agent,
-		boolean installCat, boolean includeUserRules, List<Path> readOnlyEvidence, List<Path> deniedReads)
-		throws IOException
+	HarnessRunSession start(Path artifact, Path project, Path fixtures, List<Path> trialPlugins,
+		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
+		ClaudeAgentDefinition agent, boolean installCat, boolean includeUserRules, List<Path> readOnlyEvidence,
+		List<Path> deniedReads) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
+		requireThat(trialPlugins, "trialPlugins").isNotNull();
 		requireThat(manager, "manager").isNotNull();
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(environment, "environment").isNotNull();
@@ -190,27 +192,8 @@ public final class ClaudeRunner
 			// The copied project already has its owned baseline. A second initial commit
 			// would be empty, so Git would reject it before Claude can start.
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
-			List<Path> plugins = new ArrayList<>();
-			if (installCat)
-			{
-				Path marketplace = ClaudeMarketplace.create(artifact, isolatedConfiguration);
-				List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace, "cat");
-				HarnessCommand.execute(pluginCommands.get(0), worktree, isolatedEnvironment, manager, run,
-					"marketplace-add");
-				HarnessCommand.execute(pluginCommands.get(1), worktree, isolatedEnvironment, manager, run, "plugin-install");
-				plugins.add(marketplace.resolve("plugins/cat"));
-			}
-			if (plugin != null)
-			{
-				String name = PluginManifest.name(plugin, MANIFEST);
-				Path marketplace = ClaudeMarketplace.create(plugin, name, name, isolatedConfiguration);
-				List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace, name);
-				HarnessCommand.execute(pluginCommands.get(0), worktree, isolatedEnvironment, manager, run,
-					"plugin-under-test-marketplace-add");
-				HarnessCommand.execute(pluginCommands.get(1), worktree, isolatedEnvironment, manager, run,
-					"plugin-under-test-install");
-				plugins.add(marketplace.resolve("plugins/" + name));
-			}
+			List<Path> plugins = installPlugins(executable, artifact, installCat, trialPlugins, isolatedConfiguration,
+				(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, manager, run, step));
 			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run);
 			String selectedModel = model;
 			String selectedEffort = effort;
@@ -476,6 +459,52 @@ public final class ClaudeRunner
 		return List.of(
 			List.of(executable, "plugin", "marketplace", "add", marketplace.toString()),
 			List.of(executable, "plugin", "install", name + "@" + name));
+	}
+
+	/**
+	 * Installs CAT, when requested, and each trial plugin into an isolated Claude configuration, each from a
+	 * marketplace of its own. Claude Code runs an installed plugin's hooks without asking for approval, so no approval
+	 * is copied.
+	 *
+	 * @param executable the Claude executable
+	 * @param artifact the complete Claude artifact, which is installed as CAT
+	 * @param installCat {@code true} to install CAT
+	 * @param trialPlugins the trial plugins, each installed under its manifest's name
+	 * @param isolatedConfiguration the isolated Claude configuration directory
+	 * @param commands runs the commands that add each marketplace and install each plugin
+	 * @return the directory of each installed plugin, CAT first
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code executable} is blank
+	 * @throws IOException if a plugin's manifest cannot be read, a marketplace cannot be created or a command fails
+	 */
+	public static List<Path> installPlugins(String executable, Path artifact, boolean installCat,
+		List<Path> trialPlugins, Path isolatedConfiguration, SetupCommands commands) throws IOException
+	{
+		requireThat(executable, "executable").isNotBlank();
+		requireThat(artifact, "artifact").isNotNull();
+		requireThat(trialPlugins, "trialPlugins").isNotNull();
+		requireThat(isolatedConfiguration, "isolatedConfiguration").isNotNull();
+		requireThat(commands, "commands").isNotNull();
+		List<Path> plugins = new ArrayList<>();
+		if (installCat)
+		{
+			Path marketplace = ClaudeMarketplace.create(artifact, isolatedConfiguration);
+			List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace, "cat");
+			commands.execute(pluginCommands.get(0), "marketplace-add");
+			commands.execute(pluginCommands.get(1), "plugin-install");
+			plugins.add(marketplace.resolve("plugins/cat"));
+		}
+		for (Path trialPlugin : trialPlugins)
+		{
+			String name = PluginManifest.name(trialPlugin, MANIFEST);
+			Path marketplace = ClaudeMarketplace.create(trialPlugin, name, name, isolatedConfiguration);
+			List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace, name);
+			// Each plugin's steps are named after it, so that the run's log tells the plugins apart
+			commands.execute(pluginCommands.get(0), "trial-plugin-" + name + "-marketplace-add");
+			commands.execute(pluginCommands.get(1), "trial-plugin-" + name + "-install");
+			plugins.add(marketplace.resolve("plugins/" + name));
+		}
+		return plugins;
 	}
 
 	/**

@@ -2,10 +2,10 @@ package io.github.cowwoc.cat.common.optimizer.port.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
+import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -112,7 +112,13 @@ public final class FakeSessionPort implements SessionPort
 	}
 
 	@Override
-	public List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin)
+	public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
+	{
+		return new LoadedSources(List.of(), List.of(), List.of());
+	}
+
+	@Override
+	public List<Path> installedPlugins(String name)
 	{
 		return List.of();
 	}

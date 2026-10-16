@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -93,15 +93,27 @@ public final class Workspace implements WorkspacePort
 	}
 
 	@Override
-	public Path pluginCopy(PluginUnderTest plugin, Path source, PluginRemovals removals) throws IOException
+	public Path pluginCopy(TrialPlugin plugin, Path source, PluginRemovals removals) throws IOException
 	{
 		return pluginCopies.copy(plugin, source, removals);
 	}
 
 	@Override
-	public void copyPluginBase(PluginUnderTest.Built plugin) throws IOException
+	public String copyPluginBase(Path directory) throws IOException
 	{
-		pluginCopies.copyBase(plugin);
+		return pluginCopies.copyBase(directory);
+	}
+
+	@Override
+	public Path pluginBase(String digest)
+	{
+		return pluginCopies.base(digest);
+	}
+
+	@Override
+	public Path worktree()
+	{
+		return worktree;
 	}
 
 	@Override

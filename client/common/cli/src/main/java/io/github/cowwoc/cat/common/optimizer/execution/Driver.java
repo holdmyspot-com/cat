@@ -72,14 +72,12 @@ import io.github.cowwoc.cat.common.optimizer.inventory.InventoryDiff;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
-import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
-import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.ReportStatus;
 import io.github.cowwoc.cat.common.optimizer.report.Status;
@@ -1685,7 +1683,7 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Stages a started trial's candidate and its copy of the plugin under test, then starts its session. A failure to
+	 * Stages a started trial's candidate and its copies of the trial plugins, then starts its session. A failure to
 	 * start is an infrastructure failure.
 	 *
 	 * @param trial the trial, whose start is persisted
@@ -1704,14 +1702,11 @@ public final class Driver implements AutoCloseable
 			staged.put(key.snapshot(), candidate.identity());
 			TrialProfile profile = campaign.contract().findCell(trial.testCase().cellId()).orElseThrow().profile();
 			PromptTest test = campaign.contract().findTest(trial.testCase().testId()).orElseThrow();
-			PluginRemovals removals = PluginRemovals.NONE;
-			if (key.purpose() == Purpose.CONTROL)
-				removals = PluginRemovals.of(campaign.contract().pluginRemovals(), context.json());
-			TrialPlugin plugin = TrialPlugins.of(campaign.contract().plugin().orElse(null), context.workspace(), source,
-				removals).orElse(null);
+			List<Path> plugins = TrialPlugins.of(campaign.plugins().orElse(List.of()), campaign.contract(),
+				context.workspace(), source, key.purpose() == Purpose.CONTROL, context.json());
 			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
 				trial.testCase().turns(), List.of(), test.timeLimit(), profile,
-				WorkspaceFixtures.of(test, trial.testCase().testCase()), plugin));
+				WorkspaceFixtures.of(test, trial.testCase().testCase()), plugins));
 		}
 		catch (IOException e)
 		{

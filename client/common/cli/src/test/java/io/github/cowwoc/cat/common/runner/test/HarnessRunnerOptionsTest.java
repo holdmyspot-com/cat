@@ -94,20 +94,22 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that {@code --plugin} names the plugin under test that the isolated home receives, and that it is absent
-	 * unless given.
+	 * Verifies that each {@code --plugin} option adds one trial plugin that the isolated home receives, in order, and
+	 * that there is none unless given.
 	 */
 	@Test
-	public void parsesPluginUnderTest()
+	public void parsesTrialPlugins()
 	{
 		// Requirement: R-W12
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--plugin", absolute("campaign/plugins/candidate")}, "harness", path("caller-temp"));
+			"--plugin", absolute("campaign/plugins/cat"), "--plugin", absolute("campaign/plugins/tools")}, "harness",
+			path("caller-temp"));
 		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
 			"harness", path("caller-temp"));
 
-		requireThat(result.plugin(), "plugin").isEqualTo(path("campaign/plugins/candidate"));
-		requireThat(without.plugin(), "without").isNull();
+		requireThat(result.plugins(), "plugins").isEqualTo(List.of(path("campaign/plugins/cat"),
+			path("campaign/plugins/tools")));
+		requireThat(without.plugins(), "without").isEmpty();
 	}
 
 	/**

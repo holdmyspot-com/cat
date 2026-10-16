@@ -5,6 +5,7 @@ import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.held
 import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.lockFile;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.BoundedInput;
 import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
@@ -25,12 +26,15 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptConfiguration;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptConfigurationException;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.delivery.Delivery;
 import io.github.cowwoc.cat.common.optimizer.evidence.EvidenceSection;
@@ -56,8 +60,11 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
+import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
+import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
@@ -68,6 +75,7 @@ import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.proposal.RegressionScenarios;
 import io.github.cowwoc.cat.common.optimizer.proposal.PluginCheck;
+import io.github.cowwoc.cat.common.optimizer.proposal.PluginMapping;
 import io.github.cowwoc.cat.common.optimizer.proposal.Proposal;
 import io.github.cowwoc.cat.common.optimizer.proposal.TestRevisionProtocol;
 import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
@@ -76,9 +84,11 @@ import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
+import io.github.cowwoc.cat.common.runner.PluginManifest;
 import io.github.cowwoc.cat.common.optimizer.workspace.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
+import io.github.cowwoc.cat.common.optimizer.workspace.PluginBuild;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
 
 import java.io.IOException;
@@ -93,6 +103,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -125,6 +136,10 @@ public final class OptimizerCore implements Core
 	private static final DateTimeFormatter ID_TIME = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").
 		withZone(ZoneOffset.UTC);
 	private static final int RANDOM_ID_DIGITS = 6;
+	/**
+	 * The largest prompt test configuration that CAT reads.
+	 */
+	private static final int MAXIMUM_CONFIGURATION_BYTES = 1_048_576;
 	private final OptimizerCommandScope scope;
 	private final ProposalSchema schema;
 	/**
@@ -142,10 +157,11 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Returns a contract author protocol for a campaign, with the target's current recorded scenarios, the
-	 * harness's role profile and the files that load in production.
+	 * harness's role profile, the files that load in production and the campaign's trial plugins.
 	 *
 	 * @param root the original project root, where scenarios are recorded
-	 * @param campaign the campaign, whose header holds the target and the user's goal
+	 * @param campaign the campaign, whose header holds the target and the user's goal, and whose trial plugins are
+	 *   recorded
 	 * @return the protocol
 	 * @throws IOException if recorded scenarios, the installed role profile or a file that loads in production cannot
 	 *   be read
@@ -156,7 +172,7 @@ public final class OptimizerCore implements Core
 		return new ContractAuthorProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
 			scope.profiles().roleProfile()), RegressionScenarios.read(scope.json(), root, scope.home()),
 			header.target(), header.goal(), scope.sessions().reportsExitStatus(),
-			scope.sessions().derivedSources(root, null));
+			scope.sessions().loadedSources(root, List.of()).production(), campaign.plugins().orElseThrow());
 	}
 
 	/**
@@ -360,9 +376,10 @@ public final class OptimizerCore implements Core
 	 * @param store the store
 	 * @param header the campaign's header
 	 * @return the result
-	 * @throws CommandRefusedException if the campaign cannot be shown
+	 * @throws CommandRefusedException if the campaign cannot be shown, or its trial plugins are unrecorded and cannot
+	 *   be built, copied or mapped
 	 * @throws IOException if the store or the workspace fails
-	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session or a build
 	 */
 	private CommandResult resume(Path root, CampaignStore store, Header header)
 		throws CommandRefusedException, IOException, InterruptedException
@@ -371,6 +388,12 @@ public final class OptimizerCore implements Core
 		if (campaign.isConfirmed() && !campaign.revisionRequested())
 			return report(root, campaign, null, null);
 		ForkView fork = openFork(root, campaign);
+		// A build that failed left the trial plugins unrecorded, so start builds them again
+		if (campaign.plugins().isEmpty())
+		{
+			campaign = withTrialPlugins(root, store, campaign, fork,
+				configuredPlugins(root, relativeTarget(root, campaign)));
+		}
 		Optional<DerivedProposal> stored = stored(root, campaign);
 		if (stored.isPresent())
 			return present(root, store, campaign, fork, stored.get());
@@ -386,9 +409,10 @@ public final class OptimizerCore implements Core
 	 * @param ceiling the maximum simultaneous nested sessions of the new campaign
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 * @return the result
-	 * @throws CommandRefusedException if the base worktree has uncommitted changes
+	 * @throws CommandRefusedException if the prompt test configuration is missing or invalid, the base worktree has
+	 *   uncommitted changes, or the trial plugins cannot be built, copied or mapped
 	 * @throws IOException if the store, the workspace or a session fails
-	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session or a build
 	 */
 	private CommandResult create(Path root, CampaignStore store, Path target, int ceiling, String goal)
 		throws CommandRefusedException, IOException, InterruptedException
@@ -397,6 +421,8 @@ public final class OptimizerCore implements Core
 			HexFormat.of().toHexDigits(scope.random().nextInt()).substring(Integer.BYTES * 2 - RANDOM_ID_DIGITS);
 		Path directory = directory(root, id);
 		Path relative = root.relativize(target);
+		// The configuration is checked before anything is created, so a refusal leaves nothing behind
+		List<PromptConfiguration.ConfiguredPlugin> configured = configuredPlugins(root, relative);
 		ForkView fork;
 		try
 		{
@@ -412,6 +438,7 @@ public final class OptimizerCore implements Core
 		Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal);
 		Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory::entry));
 		store.replaceSnapshot(campaign);
+		campaign = withTrialPlugins(root, store, campaign, fork, configured);
 		CommandResult result = derive(root, store, campaign, fork, null, null);
 		if (!fork.excludeAdded())
 			return result;
@@ -419,6 +446,315 @@ public final class OptimizerCore implements Core
 		if (result.message() != null)
 			message += "\n" + result.message();
 		return new CommandResult(result.status(), result.harness(), result.proposal(), result.delivery(), message);
+	}
+
+	/**
+	 * Reads the trial plugins that a target's prompt test configuration lists for the harness.
+	 *
+	 * @param root the project root
+	 * @param target the target, relative to the project
+	 * @return the plugins, in configuration order
+	 * @throws CommandRefusedException if the configuration does not exist, is invalid, has no key for the harness, or
+	 *   lists without a build a plugin whose name a manifest that Git tracks in the project holds
+	 * @throws IOException if the configuration, a tracked manifest or Git cannot be read
+	 */
+	private List<PromptConfiguration.ConfiguredPlugin> configuredPlugins(Path root, Path target)
+		throws CommandRefusedException, IOException
+	{
+		Path file = PromptConfiguration.location(target);
+		Path absolute = root.resolve(file);
+		String harness = scope.harness().commandName();
+		String retry = " Run `start` again once it does.";
+		if (!Files.isRegularFile(absolute))
+		{
+			throw new CommandRefusedException("The prompt test configuration " + PortablePaths.text(file) + " does " +
+				"not exist. It lists the plugins that trials install, such as {\"" + harness + "\": {\"plugins\": " +
+				"[]}} for trials that install none." + retry);
+		}
+		PromptConfiguration configuration;
+		try
+		{
+			configuration = PromptConfiguration.parse(scope.json(), BoundedInput.readUtf8(absolute,
+				MAXIMUM_CONFIGURATION_BYTES, "Prompt test configuration"));
+		}
+		catch (PromptConfigurationException e)
+		{
+			throw new CommandRefusedException("The prompt test configuration " + PortablePaths.text(file) + " is " +
+				"invalid: " + String.join("; ", e.problems()) + ". Correct it and run `start` again.", e);
+		}
+		Optional<List<PromptConfiguration.ConfiguredPlugin>> plugins = configuration.plugins(harness);
+		if (plugins.isEmpty())
+		{
+			throw new CommandRefusedException("The prompt test configuration " + PortablePaths.text(file) + " has " +
+				"no \"" + harness + "\" key, so it does not say which plugins trials in " + harness + " install. Add " +
+				"the key, with an empty plugin list if trials install none." + retry);
+		}
+		requireBuiltWhenTracked(root, file, plugins.get());
+		return plugins.get();
+	}
+
+	/**
+	 * Refuses a configured plugin without a build whose name the manifest of a plugin that the project tracks holds,
+	 * because trials would install the user's installed copy instead of the project's plugin.
+	 *
+	 * @param root the project root
+	 * @param file the configuration, relative to the project
+	 * @param plugins the configured plugins
+	 * @throws CommandRefusedException if such a plugin exists
+	 * @throws IOException if Git cannot list the tracked files
+	 */
+	private void requireBuiltWhenTracked(Path root, Path file, List<PromptConfiguration.ConfiguredPlugin> plugins)
+		throws CommandRefusedException, IOException
+	{
+		Map<String, String> unbuilt = new HashMap<>();
+		for (PromptConfiguration.ConfiguredPlugin plugin : plugins)
+		{
+			if (plugin.build().isEmpty())
+				unbuilt.put(plugin.name().substring(0, plugin.name().indexOf('@')), plugin.name());
+		}
+		if (unbuilt.isEmpty())
+			return;
+		Path manifest = scope.harness().pluginManifest();
+		for (Path tracked : new TreeSet<>(scope.forks().tracked(root)))
+		{
+			if (!tracked.endsWith(manifest))
+				continue;
+			Path directory = root;
+			if (tracked.getNameCount() > manifest.getNameCount())
+				directory = root.resolve(tracked.subpath(0, tracked.getNameCount() - manifest.getNameCount()));
+			String name;
+			try
+			{
+				name = PluginManifest.name(directory, manifest);
+			}
+			catch (IOException _)
+			{
+				// A manifest without a valid name cannot be installed under the configured plugin's name
+				continue;
+			}
+			String configured = unbuilt.get(name);
+			if (configured != null)
+			{
+				throw new CommandRefusedException("The prompt test configuration " + PortablePaths.text(file) +
+					" lists the plugin " + configured + " without a build, but the project tracks the manifest " +
+					PortablePaths.text(tracked) + " of a plugin with that name, so trials would install the user's " +
+					"installed copy instead of the project's plugin. Give the plugin a build that builds it from the " +
+					"project, and run `start` again.");
+			}
+		}
+	}
+
+	/**
+	 * Builds the trial plugins that the project builds in the campaign's optimization worktree, copies the base of
+	 * each trial plugin once, maps the prompt files onto each project-built plugin and records the plugins in the
+	 * campaign. The worktree returns to the fork's files afterwards, so the build output never takes part in trials.
+	 * A failure leaves the plugins unrecorded, so that {@code start} builds them again.
+	 *
+	 * @param root the project root
+	 * @param store the store
+	 * @param campaign the campaign, which has no recorded trial plugins
+	 * @param fork the campaign's fork
+	 * @param configured the plugins that the prompt test configuration lists for the harness
+	 * @return the campaign with its trial plugins recorded
+	 * @throws CommandRefusedException if a build fails or produces no plugin of its name, an installed plugin does not
+	 *   have exactly one installed copy, or the target would not load in trials
+	 * @throws IOException if a plugin cannot be copied, the worktree cannot be restored or the campaign cannot be
+	 *   stored
+	 * @throws InterruptedException if the thread is interrupted while it waits for a build
+	 */
+	private Campaign withTrialPlugins(Path root, CampaignStore store, Campaign campaign, ForkView fork,
+		List<PromptConfiguration.ConfiguredPlugin> configured)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		WorkspacePort workspace = fork.workspace();
+		List<TrialPlugin> copied = new ArrayList<>();
+		try
+		{
+			for (PromptConfiguration.ConfiguredPlugin plugin : configured)
+			{
+				if (plugin.build().isPresent())
+					copied.add(builtPlugin(workspace, plugin.name(), plugin.build().get()));
+				else
+					copied.add(installedPlugin(workspace, plugin.name()));
+			}
+		}
+		finally
+		{
+			// The build output is not one of the fork's files, so it must not reach the trials' staged sources
+			workspace.materialize(Overlay.of(fork.inventory()));
+		}
+
+		FileInventory inventory = fork.inventory();
+		Path target = relativeTarget(root, campaign);
+		SortedSet<Path> promptFiles = authority(root, campaign, inventory).promptFiles(inventory);
+		Set<Path> fromProject = loadsFromProject(root, bases(copied, workspace), promptFiles);
+		List<TrialPlugin> mapped = new ArrayList<>();
+		Map<String, FileInventory> baseFiles = new HashMap<>();
+		for (TrialPlugin plugin : copied)
+		{
+			if (!plugin.isProjectBuilt())
+			{
+				mapped.add(plugin);
+				continue;
+			}
+			FileInventory base = InventoryScanner.scan(workspace.pluginBase(plugin.baseDigest()), Set.of());
+			baseFiles.put(plugin.name(), base);
+			mapped.add(new TrialPlugin(plugin.name(), plugin.baseDigest(), plugin.source(),
+				PluginMapping.map(inventory, promptFiles, fromProject, base)));
+		}
+		PluginMapping.Coverage coverage = PluginMapping.check(inventory, promptFiles, fromProject, mapped, baseFiles);
+		Optional<String> refusal = coverage.targetRefusal(target);
+		if (refusal.isPresent())
+			throw new CommandRefusedException(refusal.get());
+		Campaign built = campaign.withPlugins(mapped);
+		store.replaceSnapshot(built);
+		return built;
+	}
+
+	/**
+	 * Builds a trial plugin that the project builds and copies its base.
+	 *
+	 * @param workspace the campaign's workspace, whose optimization worktree the build runs in
+	 * @param name the plugin's name
+	 * @param build the plugin's build
+	 * @return the plugin, without mappings
+	 * @throws CommandRefusedException if the build cannot start, exits with a status other than zero, or its output
+	 *   holds no harness manifest or one of another name
+	 * @throws IOException if the base cannot be copied
+	 * @throws InterruptedException if the thread is interrupted while it waits for the build
+	 */
+	private TrialPlugin builtPlugin(WorkspacePort workspace, String name, TrialPlugin.Build build)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		String command = "`" + String.join(" ", build.command()) + "`";
+		String outcome = " Correct the build and run `start` again.";
+		// A build without a command names a directory that the fork commit holds as it is
+		if (!build.command().isEmpty())
+		{
+			PluginBuild.Result result;
+			try
+			{
+				result = PluginBuild.run(workspace.worktree(), build);
+			}
+			catch (IOException e)
+			{
+				throw new CommandRefusedException("The build " + command + " of the trial plugin " + name + " did " +
+					"not start: " + e.getMessage() + ". Correct the build in the prompt test configuration and run " +
+					"`start` again.", e);
+			}
+			outcome = " The build exited with status " + result.exitStatus() + ", and its output ended with:\n" +
+				result.tail() + "\n" + outcome.strip();
+			if (result.exitStatus() != 0)
+			{
+				throw new CommandRefusedException("The build " + command + " of the trial plugin " + name +
+					" failed." + outcome);
+			}
+		}
+		Path manifest = scope.harness().pluginManifest();
+		Path output = workspace.worktree().resolve(build.output());
+		String built;
+		try
+		{
+			built = PluginManifest.name(output, manifest);
+		}
+		catch (IOException e)
+		{
+			String reason = e.getMessage();
+			if (!reason.endsWith("."))
+				reason += ".";
+			throw new CommandRefusedException("The build " + command + " of the trial plugin " + name + " left no " +
+				"valid manifest " + PortablePaths.text(manifest) + " in its output " + PortablePaths.text(build.output()) +
+				": " + reason + outcome, e);
+		}
+		if (!built.equals(name))
+		{
+			throw new CommandRefusedException("The build " + command + " of the trial plugin " + name + " produced " +
+				"the plugin " + built + " in " + PortablePaths.text(build.output()) + ". Name the plugin as its " +
+				"manifest does in the prompt test configuration." + outcome);
+		}
+		return new TrialPlugin(name, workspace.copyPluginBase(output), build, List.of());
+	}
+
+	/**
+	 * Copies the base of a trial plugin that the project does not build from the user's installed copy.
+	 *
+	 * @param workspace the campaign's workspace
+	 * @param name the plugin's name, {@code <plugin>@<marketplace>}
+	 * @return the plugin
+	 * @throws CommandRefusedException if the harness's install records do not name exactly one installed copy
+	 * @throws IOException if the install records cannot be read or the copy cannot be copied
+	 */
+	private TrialPlugin installedPlugin(WorkspacePort workspace, String name)
+		throws CommandRefusedException, IOException
+	{
+		String harness = scope.harness().commandName();
+		List<Path> copies = scope.sessions().installedPlugins(name);
+		if (copies.isEmpty())
+		{
+			throw new CommandRefusedException("The trial plugin " + name + " is not installed in " + harness + ": its " +
+				"install records name no copy that holds the plugin's manifest. Install the plugin, or give it a build " +
+				"in the prompt test configuration, and run `start` again.");
+		}
+		if (copies.size() > 1)
+		{
+			throw new CommandRefusedException("The install records of " + harness + " name " + copies.size() +
+				" copies of the trial plugin " + name + ": " + copies.stream().map(Path::toString).
+				collect(Collectors.joining(", ")) + ". Trials install one, so keep one installed copy and run " +
+				"`start` again.");
+		}
+		return new TrialPlugin(name, workspace.copyPluginBase(copies.getFirst()), new TrialPlugin.Installed(),
+			List.of());
+	}
+
+	/**
+	 * Returns the base copy of each trial plugin.
+	 *
+	 * @param plugins the trial plugins
+	 * @param workspace the campaign's workspace, which holds the base copies
+	 * @return each plugin with its base copy, in plugin order
+	 */
+	private static List<PluginBase> bases(List<TrialPlugin> plugins, WorkspacePort workspace)
+	{
+		List<PluginBase> bases = new ArrayList<>();
+		for (TrialPlugin plugin : plugins)
+			bases.add(new PluginBase(plugin, workspace.pluginBase(plugin.baseDigest())));
+		return bases;
+	}
+
+	/**
+	 * Returns the prompt files that trials load from the staged project itself rather than from a trial plugin.
+	 *
+	 * @param root the project root
+	 * @param bases the trial plugins with their base copies
+	 * @param promptFiles the in-project prompt files, relative to the project
+	 * @return the prompt files that the harness reads from the project, and the project files that the trial plugins'
+	 *   rules give the agent from the project, relative to the project
+	 * @throws IOException if a file that loads cannot be read
+	 */
+	private Set<Path> loadsFromProject(Path root, List<PluginBase> bases, Set<Path> promptFiles) throws IOException
+	{
+		// Without mappings, a file that loads from a plugin's base is named by its absolute path, never as a project
+		// file
+		List<PluginBase> unmapped = new ArrayList<>();
+		for (PluginBase base : bases)
+		{
+			TrialPlugin plugin = base.plugin();
+			unmapped.add(new PluginBase(new TrialPlugin(plugin.name(), plugin.baseDigest(), plugin.source(), List.of()),
+				base.directory()));
+		}
+		Set<Path> paths = new HashSet<>();
+		for (DerivedSource source : scope.sessions().loadedSources(root, unmapped).trials())
+		{
+			Path path = Path.of(source.path());
+			if (!path.isAbsolute())
+				paths.add(path);
+		}
+		for (Path promptFile : promptFiles)
+		{
+			if (scope.harness().readsFromProject(promptFile))
+				paths.add(promptFile);
+		}
+		return paths;
 	}
 
 	@Override
@@ -560,7 +896,7 @@ public final class OptimizerCore implements Core
 		Participants participants = participants(root, revised);
 		if (!unheld(fork, participants).isEmpty())
 			fork = fork.extend(root, participants.existing());
-		PluginCheck plugin = pluginCheck(root, campaign, fork.inventory(), revised);
+		PluginCheck plugin = pluginCheck(root, campaign, fork);
 		Map<String, PilotResult> pilots = pilot(root, campaign, fork, revised, plugin);
 		// The proposal previews its confirmation, which needs the campaign that awaits the revised contract
 		CampaignEvent.ReviseTests revise = new CampaignEvent.ReviseTests(revisions);
@@ -569,8 +905,6 @@ public final class OptimizerCore implements Core
 		if (!proposal.isConfirmable(certificationScope))
 			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
 		requireParticipantsHeld(root, fork, revised);
-		if (proposal.contract().plugin().orElse(null) instanceof PluginUnderTest.Built built)
-			fork.workspace().copyPluginBase(built);
 		// The stored proposal changes only once nothing blocks confirming it, so it stays the confirmed contract's
 		new ProposalFile(heldOutDirectory(root, campaign.header().id()), scope.json()).write(revised,
 			stored.profiles());
@@ -742,12 +1076,10 @@ public final class OptimizerCore implements Core
 			if (loaded.isConfirmed())
 				fork = fork.including(participants(root, derived).existing());
 			Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(root, loaded).read(),
-				pluginCheck(root, loaded, fork.inventory(), derived));
+				pluginCheck(root, loaded, fork));
 			if (!proposal.isConfirmable(certificationScope))
 				throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
 			requireParticipantsHeld(root, fork, derived);
-			if (proposal.contract().plugin().orElse(null) instanceof PluginUnderTest.Built built)
-				fork.workspace().copyPluginBase(built);
 			List<CampaignEvent> events = new ArrayList<>(moveOnto(root, loaded, fork));
 			events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
 			return apply(root, loaded, events);
@@ -1216,16 +1548,16 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, "The contract author's proposal is invalid: " +
 				String.join("; ", e.problems()) + ". " + invalidRetry);
 		}
-		derived = derived.withDerivedSources(scope.sessions().derivedSources(root,
-			derived.contract().plugin().orElse(null)));
+		derived = derived.withDerivedSources(scope.sessions().loadedSources(root,
+			bases(campaign.plugins().orElseThrow(), fork.workspace())).trials());
 		new ProposalFile(heldOutDirectory(root, campaign.header().id()), scope.json()).write(derived, profiles);
 		return present(root, store, campaign, fork, derived);
 	}
 
 	/**
 	 * Runs the guard pilot of a proposal, reusing the stored pilot of each prompt test that it still describes, then
-	 * presents the proposal with the pilot's results. The pilot's control trials install the plugin under test as the
-	 * plugin check records it; a proposal whose plugin under test the check refuses runs no pilot. The fork first
+	 * presents the proposal with the pilot's results. The pilot's control trials install the campaign's trial
+	 * plugins. The fork first
 	 * records the proposal's trial fixtures and derived prompt sources, so the pilot's trials see the files that formal
 	 * trials will see. Before confirmation, the fork also leaves out those that an earlier proposal needed and this one
 	 * does not. After confirmation, nothing leaves the fork, and the campaign stays on its current fork until the user
@@ -1260,7 +1592,7 @@ public final class OptimizerCore implements Core
 			fork = selected;
 		}
 
-		PluginCheck plugin = pluginCheck(root, campaign, fork.inventory(), derived);
+		PluginCheck plugin = pluginCheck(root, campaign, fork);
 		Map<String, PilotResult> pilots = pilot(root, campaign, fork, derived, plugin);
 		Proposal proposal = proposal(root, campaign, fork, derived, pilots, plugin);
 		return report(root, campaign, proposal.render(), null);
@@ -1268,23 +1600,22 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Runs the guard pilot of a proposal, reusing the stored pilot of each prompt test that it still describes, and
-	 * stores the result. The pilot's control trials install the plugin under test as the plugin check records it.
+	 * stores the result. The pilot's control trials install the campaign's trial plugins.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
 	 * @param fork the fork that holds the proposal's trial fixtures and derived prompt sources
 	 * @param derived the proposal
-	 * @param plugin the check of the proposal's plugin under test
-	 * @return the pilot of each prompt test, by prompt test, or none if the check refuses the plugin under test
+	 * @param plugin the check of the campaign's trial plugins
+	 * @return the pilot of each prompt test, by prompt test, or none if control trials cannot remove the dependents
 	 * @throws IOException if the stored pilot or the workspace cannot be read, or the pilot cannot be stored
 	 * @throws InterruptedException if the thread is interrupted while it waits for a pilot session
 	 */
 	private Map<String, PilotResult> pilot(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
 		PluginCheck plugin) throws IOException, InterruptedException
 	{
-		// Control trials cannot install a plugin under test that the check refuses, or run without dependents that
-		// they cannot remove
-		if (!plugin.refusals().isEmpty() || !controlRefusals(root, campaign, fork, derived, plugin).isEmpty())
+		// Control trials cannot run without dependents that they cannot remove
+		if (!controlRefusals(root, campaign, fork, derived, plugin).isEmpty())
 			return Map.of();
 		FileInventory inventory = fork.inventory();
 		PilotFile file = pilotFile(root, campaign);
@@ -1293,9 +1624,8 @@ public final class OptimizerCore implements Core
 		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(root, campaign), schema,
 			scope.json(), campaign.ceiling());
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
-		// The control trials install the plugin as the check recorded its base, as formal trials will
-		Contract checked = derived.contract().withPlugin(plugin.plugin().orElse(null));
-		Map<String, PilotResult> pilots = pilot.run(checked, control, excluded, file.read(), scope.random());
+		Map<String, PilotResult> pilots = pilot.run(derived.contract(), plugin.plugins(), control, excluded,
+			file.read(), scope.random());
 		file.write(pilots);
 		return pilots;
 	}
@@ -1341,7 +1671,7 @@ public final class OptimizerCore implements Core
 	 * @param fork the campaign's fork
 	 * @param derived the proposal
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
-	 * @param plugin the check of the proposal's plugin under test
+	 * @param plugin the check of the campaign's trial plugins
 	 * @return the proposal
 	 * @throws IOException if the host's login or the target's certification record cannot be read
 	 */
@@ -1372,13 +1702,13 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Checks that control trials can remove the dependents of the target that a proposal lists: from the fork's files,
-	 * and from the base of a built plugin under test that the check does not refuse.
+	 * and from the base of each trial plugin that the project builds.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
 	 * @param fork the campaign's fork
 	 * @param derived the proposal
-	 * @param plugin the check of the proposal's plugin under test
+	 * @param plugin the check of the campaign's trial plugins
 	 * @return the reasons that block confirmation; empty if control trials can remove every dependent
 	 * @throws IOException if a file of the fork or of the plugin's base cannot be read
 	 */
@@ -1391,10 +1721,24 @@ public final class OptimizerCore implements Core
 		Path target = relativeTarget(root, campaign);
 		List<String> problems = new ArrayList<>(ControlSource.problems(fork.workspace(), fork.inventory(), target,
 			contract.projectRemovals(), scope.json()));
-		if (plugin.refusals().isEmpty() && plugin.plugin().orElse(null) instanceof PluginUnderTest.Built built)
+		Set<String> projectBuilt = new HashSet<>();
+		for (TrialPlugin trialPlugin : plugin.plugins())
 		{
-			problems.addAll(ControlSource.pluginProblems(built, target, contract.withPlugin(built).pluginRemovals(),
+			if (!trialPlugin.isProjectBuilt())
+				continue;
+			projectBuilt.add(trialPlugin.name());
+			problems.addAll(ControlSource.pluginProblems(trialPlugin,
+				fork.workspace().pluginBase(trialPlugin.baseDigest()), target, contract.pluginRemovals(trialPlugin),
 				scope.json()));
+		}
+		for (Dependent dependent : contract.dependents())
+		{
+			// Trials install the user's copy of any other plugin as it is, so they cannot remove a part of it
+			if (dependent.location() == Dependent.Location.PLUGIN && !projectBuilt.contains(dependent.plugin()))
+			{
+				problems.add("the dependent " + PortablePaths.text(dependent.path()) + " lies in the plugin " +
+					dependent.plugin() + ", which is not a trial plugin that the project builds");
+			}
 		}
 		if (problems.isEmpty())
 			return List.of();
@@ -1403,31 +1747,37 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Checks the plugin under test of a proposal against the fork's files and the plugin's base, and lists the
-	 * plugin's hooks that trials do not run because the user has not approved them in the harness.
+	 * Checks a campaign's trial plugins against the fork's files and the plugins' bases: the prompt files that no
+	 * mapping covers, the mapped files that differ from the base's, the files that load in production but not in
+	 * trials, and the plugins' hooks that trials do not run because the user has not approved them in the harness.
 	 *
 	 * @param root the project root
-	 * @param campaign the campaign
-	 * @param inventory the fork's files
-	 * @param derived the proposal
+	 * @param campaign the campaign, whose trial plugins are recorded
+	 * @param fork the campaign's fork
 	 * @return the check
-	 * @throws IOException if the plugin's base or manifest cannot be read
+	 * @throws IOException if a plugin's base, a hook declaration, the stored proposal or a file that loads cannot be
+	 *   read
 	 */
-	private PluginCheck pluginCheck(Path root, Campaign campaign, FileInventory inventory, DerivedProposal derived)
-		throws IOException
+	private PluginCheck pluginCheck(Path root, Campaign campaign, ForkView fork) throws IOException
 	{
+		FileInventory inventory = fork.inventory();
+		List<TrialPlugin> plugins = campaign.plugins().orElseThrow();
 		SortedSet<Path> promptFiles = authority(root, campaign, inventory).promptFiles(inventory);
-		PluginCheck check = PluginCheck.of(derived.contract().plugin().orElse(null), inventory, promptFiles);
-		if (check.plugin().isPresent() && check.refusals().isEmpty())
+		List<PluginBase> bases = bases(plugins, fork.workspace());
+		LoadedSources loaded = scope.sessions().loadedSources(root, bases);
+		Map<String, FileInventory> baseFiles = new HashMap<>();
+		List<String> hooks = new ArrayList<>();
+		for (PluginBase base : bases)
 		{
-			Path directory = switch (check.plugin().get())
-			{
-				case PluginUnderTest.Root plugin -> root.resolve(plugin.directory());
-				case PluginUnderTest.Built plugin -> plugin.base();
-			};
-			return check.withUnapprovedHooks(scope.sessions().unapprovedHooks(directory));
+			String name = base.plugin().name();
+			if (base.plugin().isProjectBuilt())
+				baseFiles.put(name, InventoryScanner.scan(base.directory(), Set.of()));
+			for (String hook : scope.sessions().unapprovedHooks(base.directory()))
+				hooks.add(name + " " + hook);
 		}
-		return check;
+		PluginMapping.Coverage coverage = PluginMapping.check(inventory, promptFiles,
+			loadsFromProject(root, bases, promptFiles), plugins, baseFiles);
+		return new PluginCheck(plugins, coverage.uncovered(), coverage.differing(), loaded.productionOnly(), hooks);
 	}
 
 	/**

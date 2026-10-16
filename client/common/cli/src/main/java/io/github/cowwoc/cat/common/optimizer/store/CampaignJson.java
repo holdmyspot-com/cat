@@ -90,6 +90,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValueJson;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -118,6 +119,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -149,7 +151,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 41;
+	private static final int FORMAT_VERSION = 42;
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_ASSERTIONS = "failed_assertions";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -231,6 +233,14 @@ final class CampaignJson
 		for (AuthorityWarning warning : campaign.answeredWarnings())
 			writeWarning(answered.addObject(), warning);
 		root.set("test_revisions", writeTestRevisions(campaign.testRevisions()));
+		if (campaign.plugins().isEmpty())
+			root.putNull("plugins");
+		else
+		{
+			ArrayNode plugins = root.putArray("plugins");
+			for (TrialPlugin plugin : campaign.plugins().get())
+				writePlugin(plugins.addObject(), plugin);
+		}
 		putConstant(root, "outcome", campaign.outcome());
 		DeliveryRequest delivery = campaign.delivery();
 		if (delivery == null)
@@ -298,6 +308,14 @@ final class CampaignJson
 		int ceiling = Campaign.DEFAULT_CEILING;
 		if (root.has("ceiling"))
 			ceiling = integer(root, "ceiling");
+		Optional<List<TrialPlugin>> plugins = Optional.empty();
+		if (nullable(root, "plugins") != null)
+		{
+			List<TrialPlugin> recorded = new ArrayList<>();
+			for (JsonNode node : elements(root, "plugins"))
+				recorded.add(readPlugin(node));
+			plugins = Optional.of(recorded);
+		}
 		return new Campaign(readHeader(field(root, "header")), ceiling, lineages,
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
 			integer(root, "candidates"), integer(root, "prompt_author_attempts"),
@@ -305,7 +323,64 @@ final class CampaignJson
 			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
 			readThrottle(field(root, "throttle")), pending, bool(root, "revision_requested"),
 			nullableConstant(root, "outcome", Outcome.class), delivery, readOptimization(field(root, "optimization")),
-			answered, readTestRevisions(field(root, "test_revisions")));
+			answered, readTestRevisions(field(root, "test_revisions")), plugins);
+	}
+
+	/**
+	 * Writes a trial plugin. Paths are written relative to the project root, or to the plugin directory for a mapping's
+	 * target, with {@code /} between names.
+	 *
+	 * @param node the object to write to
+	 * @param plugin the trial plugin
+	 */
+	private static void writePlugin(ObjectNode node, TrialPlugin plugin)
+	{
+		node.put("name", plugin.name());
+		node.put("base_digest", plugin.baseDigest());
+		ObjectNode source = node.putObject("source");
+		switch (plugin.source())
+		{
+			case TrialPlugin.Build build ->
+			{
+				source.put("type", "build");
+				ArrayNode command = source.putArray("command");
+				for (String argument : build.command())
+					command.add(argument);
+				source.put("output", PortablePaths.text(build.output()));
+			}
+			case TrialPlugin.Installed _ -> source.put("type", "installed");
+		}
+		ArrayNode mappings = node.putArray("mappings");
+		for (TrialPlugin.Mapping mapping : plugin.mappings())
+		{
+			ObjectNode element = mappings.addObject();
+			element.put("source", PortablePaths.text(mapping.source()));
+			element.put("target", PortablePaths.text(mapping.target()));
+		}
+	}
+
+	/**
+	 * Reads a trial plugin.
+	 *
+	 * @param node the plugin's document
+	 * @return the trial plugin
+	 * @throws IllegalArgumentException if the document does not describe a valid trial plugin
+	 */
+	private static TrialPlugin readPlugin(JsonNode node)
+	{
+		JsonNode sourceNode = field(node, "source");
+		String type = text(sourceNode, "type");
+		TrialPlugin.BaseSource source = switch (type)
+		{
+			case "build" -> new TrialPlugin.Build(readStrings(sourceNode, "command"),
+				Path.of(text(sourceNode, "output")));
+			case "installed" -> new TrialPlugin.Installed();
+			default -> throw new IllegalArgumentException("plugins.source.type: unknown type " + type);
+		};
+		List<TrialPlugin.Mapping> mappings = new ArrayList<>();
+		for (JsonNode element : elements(node, "mappings"))
+			mappings.add(new TrialPlugin.Mapping(Path.of(text(element, "source")), Path.of(text(element, "target"))));
+		return new TrialPlugin(text(node, "name"), text(node, "base_digest"), source, mappings);
 	}
 
 	/**

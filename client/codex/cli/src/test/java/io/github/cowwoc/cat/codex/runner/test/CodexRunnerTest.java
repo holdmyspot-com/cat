@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,16 +48,194 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies a plugin under test is installed from its own run-local marketplace, which bears its name.
+	 * Verifies a trial plugin is installed from its own run-local marketplace, which bears its name.
 	 */
 	@Test
-	public void installsPluginUnderTestByName()
+	public void installsTrialPluginByName()
 	{
 		// Requirement: R-W12
 		requireThat(CodexRunner.pluginSetupCommands("codex", Path.of("marketplace"), "release-docs"), "commands").
 			isEqualTo(List.of(
 				List.of("codex", "plugin", "marketplace", "add", "marketplace"),
 				List.of("codex", "plugin", "add", "release-docs@release-docs")));
+	}
+
+	/**
+	 * Verifies that a trial installs exactly its listed plugin, from a marketplace of its own, and neither CAT nor any
+	 * other plugin.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void installsExactlyListedPlugin() throws IOException
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-plugins-"));
+			Path home = root.resolve("isolated");
+			List<String> steps = new ArrayList<>();
+			List<List<String>> commands = new ArrayList<>();
+
+			CodexRunner.installPlugins("codex", artifact(root), false, List.of(plugin(root, "release-docs")),
+				root.resolve("host"), home, Map.of(), (command, step) ->
+				{
+					commands.add(command);
+					steps.add(step);
+				});
+
+			Path marketplace = home.resolve("plugins/release-docs-marketplace");
+			requireThat(steps, "steps").isEqualTo(List.of("trial-plugin-release-docs-marketplace-add",
+				"trial-plugin-release-docs-add"));
+			requireThat(commands, "commands").isEqualTo(CodexRunner.pluginSetupCommands("codex", marketplace,
+				"release-docs"));
+			requireThat(Files.readString(marketplace.resolve("plugins/release-docs/README.md")), "copy").
+				isEqualTo("release-docs");
+			requireThat(Files.notExists(home.resolve("agents")), "catAgents").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a trial with two plugins installs both, in their listed order, each from its own marketplace.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void installsTwoPlugins() throws IOException
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-plugins-"));
+			Path home = root.resolve("isolated");
+			List<String> steps = new ArrayList<>();
+
+			CodexRunner.installPlugins("codex", artifact(root), false, List.of(plugin(root, "release-docs"),
+				plugin(root, "tools")), root.resolve("host"), home, Map.of(), (_, step) -> steps.add(step));
+
+			requireThat(steps, "steps").isEqualTo(List.of("trial-plugin-release-docs-marketplace-add",
+				"trial-plugin-release-docs-add", "trial-plugin-tools-marketplace-add", "trial-plugin-tools-add"));
+			requireThat(Files.readString(home.resolve("plugins/tools-marketplace/plugins/tools/README.md")), "copy").
+				isEqualTo("tools");
+		}
+	}
+
+	/**
+	 * Verifies that CAT is installed only when the trial lists it: a trial that lists no plugin installs nothing, and
+	 * one that lists CAT installs CAT and its agents from the artifact.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void installsCatOnlyWhenListed() throws IOException
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-plugins-"));
+			Path artifact = artifact(root);
+			List<String> steps = new ArrayList<>();
+
+			Path withoutCat = root.resolve("without");
+			CodexRunner.installPlugins("codex", artifact, false, List.of(), root.resolve("host"), withoutCat, Map.of(),
+				(_, step) -> steps.add(step));
+			requireThat(steps, "withoutCatSteps").isEmpty();
+			requireThat(Files.notExists(withoutCat), "withoutCatHome").isTrue();
+
+			Path withCat = root.resolve("with");
+			CodexRunner.installPlugins("codex", artifact, true, List.of(), root.resolve("host"), withCat, Map.of(),
+				(_, step) -> steps.add(step));
+			requireThat(steps, "withCatSteps").isEqualTo(List.of("marketplace-add", "plugin-add"));
+			requireThat(withCat.resolve("agents/cat-worker.toml"), "agent").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that the user's approvals of each installed plugin's hooks are copied into the isolated configuration,
+	 * under the run-local marketplace of each trial plugin, and that no approval of an unlisted plugin is.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void reusesHookApprovals() throws IOException
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-plugins-"));
+			Path host = Files.createDirectories(root.resolve("host"));
+			Files.writeString(host.resolve("config.toml"), """
+				[hooks.state."release-docs@acme:hooks/hooks.json:session_start:0:0"]
+				trusted_hash = "sha256:%1$s"
+
+				[hooks.state."tools@acme:hooks/hooks.json:session_start:0:0"]
+				trusted_hash = "sha256:%2$s"
+
+				[hooks.state."other@acme:hooks/hooks.json:session_start:0:0"]
+				trusted_hash = "sha256:%3$s"
+
+				[hooks.state."cat@cat:hooks/hooks.json:session_start:0:0"]
+				trusted_hash = "sha256:%4$s"
+				""".formatted("a".repeat(64), "b".repeat(64), "c".repeat(64), "d".repeat(64)));
+			Path home = root.resolve("isolated");
+
+			CodexRunner.installPlugins("codex", artifact(root), true, List.of(plugin(root, "release-docs"),
+				plugin(root, "tools")), host, home, Map.of(), (_, _) ->
+				{
+				});
+
+			String configuration = Files.readString(home.resolve("config.toml"));
+			requireThat(configuration, "configuration").
+				contains(approval("release-docs@release-docs", "a")).
+				contains(approval("tools@tools", "b")).
+				contains(approval("cat@cat", "d")).
+				doesNotContain("other@").doesNotContain("c".repeat(64));
+		}
+	}
+
+	/**
+	 * Returns an approval of a plugin's session-start hook as the isolated configuration holds it.
+	 *
+	 * @param plugin the plugin and marketplace, {@code <plugin>@<marketplace>}
+	 * @param digit the hexadecimal digit that the approved hash repeats
+	 * @return the approval's table
+	 */
+	private static String approval(String plugin, String digit)
+	{
+		return "[hooks.state.\"" + plugin + ":hooks/hooks.json:session_start:0:0\"]" + System.lineSeparator() +
+			"trusted_hash = \"sha256:" + digit.repeat(64) + "\"";
+	}
+
+	/**
+	 * Creates a CAT artifact that holds the Codex manifest and one custom agent.
+	 *
+	 * @param root the directory to create the artifact in
+	 * @return the artifact directory
+	 * @throws IOException if the artifact cannot be written
+	 */
+	private static Path artifact(Path root) throws IOException
+	{
+		Path artifact = plugin(root, "cat");
+		Files.createDirectories(artifact.resolve("agents/codex"));
+		Files.writeString(artifact.resolve("agents/codex/worker.toml"), "name = \"worker\"\n");
+		return artifact;
+	}
+
+	/**
+	 * Creates a Codex plugin directory, named after the plugin, that holds a manifest and a readme.
+	 *
+	 * @param root the directory to create the plugin in
+	 * @param name the manifest's plugin name, which the readme also holds
+	 * @return the plugin directory
+	 * @throws IOException if the plugin cannot be written
+	 */
+	private static Path plugin(Path root, String name) throws IOException
+	{
+		Path plugin = root.resolve("sources").resolve(name);
+		Files.createDirectories(plugin.resolve(".codex-plugin"));
+		Files.writeString(plugin.resolve(".codex-plugin/plugin.json"), "{\"name\": \"" + name + "\"}\n");
+		Files.writeString(plugin.resolve("README.md"), name);
+		return plugin;
 	}
 
 	/**

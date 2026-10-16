@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
@@ -66,10 +66,11 @@ public final class ControlSource
 	}
 
 	/**
-	 * Lists the reasons why control trials cannot remove the dependents of the target from their copy of a built
-	 * plugin, without copying it.
+	 * Lists the reasons why control trials cannot remove the dependents of the target from their copy of a
+	 * project-built trial plugin, without copying it.
 	 *
-	 * @param plugin the built plugin under test
+	 * @param plugin the project-built trial plugin
+	 * @param base the directory of the plugin's base copy
 	 * @param target the target prompt file, relative to the project directory
 	 * @param removals the dependents that control trials remove from their copy of the plugin, each relative to the
 	 *   plugin directory
@@ -79,19 +80,17 @@ public final class ControlSource
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if a file of the base cannot be read
 	 */
-	public static List<String> pluginProblems(PluginUnderTest.Built plugin, Path target, List<Dependent> removals,
+	public static List<String> pluginProblems(TrialPlugin plugin, Path base, Path target, List<Dependent> removals,
 		JsonMapper json) throws IOException
 	{
 		requireThat(plugin, "plugin").isNotNull();
+		requireThat(base, "base").isNotNull();
 		requireThat(target, "target").isNotNull();
 		requireThat(removals, "removals").isNotNull();
 		requireThat(json, "json").isNotNull();
 		Set<Path> targetCopies = new HashSet<>();
-		for (PluginUnderTest.Mapping mapping : plugin.mappings())
-		{
-			if (target.startsWith(mapping.source()))
-				targetCopies.add(mapping.target().resolve(mapping.source().relativize(target)));
-		}
+		for (TrialPlugin.Mapping mapping : plugin.mappings())
+			mapping.mappedPath(target).ifPresent(targetCopies::add);
 		List<String> problems = new ArrayList<>();
 		List<Dependent> held = new ArrayList<>();
 		for (Dependent removal : removals)
@@ -104,7 +103,7 @@ public final class ControlSource
 			else
 				held.add(removal);
 		}
-		problems.addAll(DependentRemoval.problems(held, plugin.base(), json));
+		problems.addAll(DependentRemoval.problems(held, base, json));
 		return problems;
 	}
 

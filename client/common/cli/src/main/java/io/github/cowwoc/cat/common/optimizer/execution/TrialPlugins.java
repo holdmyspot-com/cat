@@ -2,17 +2,19 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
-import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Finds the plugin under test that the trials of a staged source install.
+ * Finds the plugin directories that the trials of a staged source install.
  * <p>
  * <b>Thread Safety:</b> This class is stateless and thread-safe.
  */
@@ -26,27 +28,35 @@ final class TrialPlugins
 	}
 
 	/**
-	 * Returns the plugin under test as the trials of a staged source install it.
+	 * Returns the campaign's trial plugins as the trials of a staged source install them.
 	 *
-	 * @param plugin the contract's plugin under test, or null if its target prompt file is not in a plugin; a
-	 *   built plugin's base digest must be set
-	 * @param workspace the workspace that builds the staged source's copy of the plugin
+	 * @param plugins the campaign's trial plugins
+	 * @param contract the contract, whose dependents the copies of a control source leave out
+	 * @param workspace the workspace that builds the staged source's copies of the plugins
 	 * @param source the staged source
-	 * @param removals the dependents that a built plugin's copy leaves out
-	 * @return the copy of the plugin that belongs to {@code source}, or empty if {@code plugin} is null
-	 * @throws NullPointerException if any argument other than {@code plugin} is null
-	 * @throws IllegalArgumentException if a built plugin's base digest is empty
-	 * @throws IOException if the copy cannot be built, if the staged source has no plugin root, if the files of a
-	 *   built plugin's base no longer have the identity of its base digest, or if the copy does not hold a dependent
+	 * @param control {@code true} if {@code source} is a control source
+	 * @param json the JSON mapper that edits a dependent hook registration
+	 * @return the plugin directory of each trial plugin, in campaign order
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if a copy cannot be built, if a plugin's base has no copy, or if a copy does not hold a
+	 *   dependent
 	 */
-	static Optional<TrialPlugin> of(PluginUnderTest plugin, WorkspacePort workspace, Path source,
-		PluginRemovals removals) throws IOException
+	static List<Path> of(List<TrialPlugin> plugins, Contract contract, WorkspacePort workspace, Path source,
+		boolean control, JsonMapper json) throws IOException
 	{
+		requireThat(plugins, "plugins").isNotNull();
+		requireThat(contract, "contract").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
 		requireThat(source, "source").isNotNull();
-		requireThat(removals, "removals").isNotNull();
-		if (plugin == null)
-			return Optional.empty();
-		return Optional.of(new TrialPlugin(workspace.pluginCopy(plugin, source, removals), plugin.dependsOnCat()));
+		requireThat(json, "json").isNotNull();
+		List<Path> directories = new ArrayList<>(plugins.size());
+		for (TrialPlugin plugin : plugins)
+		{
+			PluginRemovals removals = PluginRemovals.NONE;
+			if (control)
+				removals = PluginRemovals.of(contract.pluginRemovals(plugin), json);
+			directories.add(workspace.pluginCopy(plugin, source, removals));
+		}
+		return directories;
 	}
 }

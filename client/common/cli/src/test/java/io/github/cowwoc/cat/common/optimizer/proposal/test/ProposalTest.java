@@ -17,7 +17,6 @@ import io.github.cowwoc.cat.common.optimizer.campaign.test.Builder;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
@@ -33,6 +32,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Scenario;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.ValueGenerator;
 import io.github.cowwoc.cat.common.optimizer.contract.ValueGenerators;
@@ -57,6 +57,7 @@ import io.github.cowwoc.cat.common.optimizer.proposal.JsonResponse;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
 import io.github.cowwoc.cat.common.optimizer.proposal.OutputFile;
 import io.github.cowwoc.cat.common.optimizer.proposal.PluginCheck;
+import io.github.cowwoc.cat.common.optimizer.proposal.PluginMapping;
 import io.github.cowwoc.cat.common.optimizer.proposal.ProfileEvidence;
 import io.github.cowwoc.cat.common.optimizer.proposal.PromptTemplate;
 import io.github.cowwoc.cat.common.optimizer.proposal.Proposal;
@@ -119,10 +120,6 @@ public final class ProposalTest
 	 */
 	private static final Path CONTROL_FILE = Path.of("prompts/main.md");
 	/**
-	 * The contract author's evidence that a plugin under test does not depend on CAT.
-	 */
-	private static final String NO_CAT_EVIDENCE = "No prompt file invokes a CAT skill, agent or command.";
-	/**
 	 * Stands for the contract author session's project directory in an output that a test writes.
 	 */
 	private static final String STAGED = "/runs/contract-author/project";
@@ -134,7 +131,7 @@ public final class ProposalTest
 	private final ProposalSchema schema = new ProposalSchema(json);
 	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
 	private final ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
-		new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of());
+		new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(), List.of());
 
 	/**
 	 * Creates the test fixture.
@@ -1151,12 +1148,13 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(changedDerivation(output ->
 			output.set("dependents", json.readTree("""
 				[
-				  {"location": "project", "path": "repair.sh", "removes": "file", "text": null, "event": null,
-				   "command": null, "serves": "Repairs the output."},
-				  {"location": "project", "path": "AGENTS.md", "removes": "span", "text": "Read prompts/main.md.\\n",
-				   "event": null, "command": null, "serves": "Routes the agent to the prompt."},
-				  {"location": "project", "path": ".codex/hooks.json", "removes": "hook_registration", "text": null,
-				   "event": "PostToolUse", "command": "repair.sh", "serves": "Runs the repair script."}
+				  {"location": "project", "plugin": null, "path": "repair.sh", "removes": "file", "text": null,
+				   "event": null, "command": null, "serves": "Repairs the output."},
+				  {"location": "project", "plugin": null, "path": "AGENTS.md", "removes": "span",
+				   "text": "Read prompts/main.md.\\n", "event": null, "command": null,
+				   "serves": "Routes the agent to the prompt."},
+				  {"location": "project", "plugin": null, "path": ".codex/hooks.json", "removes": "hook_registration",
+				   "text": null, "event": "PostToolUse", "command": "repair.sh", "serves": "Runs the repair script."}
 				]
 				""")))), PROFILES, SALT);
 		String refusal = "Control trials cannot remove the dependents of the target that the proposal lists: " +
@@ -1301,202 +1299,115 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that confirmation is refused when a built plugin maps a project file to a path that the plugin's base
-	 * does not hold, because a trial's plugin would then hold a file that the plugin's users never receive.
+	 * Verifies that the proposal lists each trial plugin with the source of its base, the project paths that trials
+	 * write over a project-built plugin, each mapped file whose content differs from the base's, each prompt file that
+	 * no mapping covers and each file that loads in production but not in trials, and that a campaign without trial
+	 * plugins says that trials install none.
 	 *
-	 * @throws IOException if the base cannot be written or read
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
 	// Requirement: R-W12
 	@Test
-	public void refusesMappingMissingFromBase() throws IOException, InvalidProposalException
+	public void listsTrialPlugins() throws InvalidProposalException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path base = cleanup.add(Files.createTempDirectory("plugin-base-"));
-			Files.createDirectories(base.resolve("rules/codex"));
-			Files.writeString(base.resolve("rules/codex/read-file.md"), "Read the whole file.");
-			FileInventory project = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
-				Path.of("source/rules/read-file.md"), regularFile("Read the whole file."),
-				Path.of("source/rules/search.md"), regularFile("Search before reading.")));
+		PluginCheck check = new PluginCheck(List.of(builtPlugin(), installedPlugin()),
+			List.of(Path.of("docs/extra.md")), List.of(new PluginMapping.Difference("cat",
+				Path.of("source/rules/read-file.md"), Path.of("rules/codex/read-file.md"))),
+			List.of("/home/user/.codex/AGENTS.md"), List.of());
 
-			Proposal proposal = pluginProposal(builtPlugin(base), project,
-				Set.of(Path.of("source/rules/read-file.md")));
+		String text = pluginProposal(check).render();
+		String none = pluginProposal(PluginCheck.NONE).render();
 
-			requireThat(proposal.confirmationRefusal(CertificationScope.WEAKEST_CELL), "refusal").
-				contains("`" + Path.of("source/rules/search.md") + "`").
-				contains("`" + Path.of("rules/codex/search.md") + "`");
-		}
+		requireThat(text, "text").contains("\n## Trial plugins\n").
+			contains("- `cat`: built by `./build-plugin --release` into `out/plugin`, with these staged project paths " +
+				"written over it:\n  - `source/rules` → `rules/codex`\n").
+			contains("- `tools@market`: the user's installed copy\n").
+			contains("Warning: the content of these mapped files differs from the base's").
+			contains("- `source/rules/read-file.md` → `cat` `rules/codex/read-file.md`\n").
+			contains("never reaches trials:\n\n- `docs/extra.md`\n").
+			contains("but not in trials:\n\n- `/home/user/.codex/AGENTS.md`\n");
+		requireThat(none, "none").contains("\n## Trial plugins\n\nTrials install no plugin.\n");
 	}
 
 	/**
-	 * Verifies that confirmation is refused when the in-project prompt files lie in two plugins, since a trial installs
-	 * one plugin under test, and allowed when they lie in one.
-	 *
-	 * @throws IOException if a base cannot be read
-	 * @throws InvalidProposalException if the fixture is rejected
+	 * Verifies that the contract author's request lists each trial plugin that the project builds, with the project
+	 * paths that trials write over it, and no plugin that the project does not build.
 	 */
-	// Requirement: R-W12
+	// Requirement: R-W10
 	@Test
-	public void refusesTargetsInTwoPlugins() throws IOException, InvalidProposalException
+	public void requestListsBuiltTrialPlugins()
 	{
-		FileInventory project = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
-			Path.of("plugins/docs/.codex-plugin/plugin.json"), regularFile("{\"name\": \"docs\"}"),
-			Path.of("plugins/docs/rules.md"), regularFile("Cite every source."),
-			Path.of("plugins/style/.claude-plugin/plugin.json"), regularFile("{\"name\": \"style\"}"),
-			Path.of("plugins/style/rules.md"), regularFile("Use plain words.")));
-		ObjectNode root = json.createObjectNode();
-		root.put("root", "plugins/docs");
-		root.putNull("base");
-		root.putArray("mappings");
-		root.put("depends_on_cat", false);
-		root.put("cat_evidence", "No prompt file invokes a CAT skill, agent or command.");
+		ContractAuthorProtocol withPlugins = new ContractAuthorProtocol(json, schema, judge,
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(),
+			List.of(builtPlugin(), installedPlugin()));
 
-		Proposal both = pluginProposal(root, project, Set.of(Path.of("plugins/docs/rules.md"),
-			Path.of("plugins/style/rules.md")));
-		Proposal one = pluginProposal(root, project, Set.of(Path.of("plugins/docs/rules.md")));
+		String listed = withPlugins.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+		String none = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 
-		requireThat(both.confirmationRefusal(CertificationScope.WEAKEST_CELL), "refusal").
-			contains("`" + Path.of("plugins/docs") + "`").contains("`" + Path.of("plugins/style") + "`");
-		requireThat(one.isConfirmable(CertificationScope.WEAKEST_CELL), "oneConfirmable").isTrue();
+		requireThat(listed, "listed").
+			contains("\n- `cat`, with these project paths written over it: `source/rules` → `rules/codex`\n").
+			doesNotContain("tools@market");
+		requireThat(none, "none").contains("write over each, are:\n\nnone\n\n");
 	}
 
 	/**
-	 * Verifies that the proposal lists a built plugin, warns of each mapped file whose content differs from the base's,
-	 * states whether trials install CAT with the contract author's evidence, and freezes the identity of the base's
-	 * files into the contract.
-	 *
-	 * @throws IOException if the base cannot be written or read
-	 * @throws InvalidProposalException if the fixture is rejected
-	 */
-	// Requirement: R-W12
-	@Test
-	public void listsPluginUnderTest() throws IOException, InvalidProposalException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path base = cleanup.add(Files.createTempDirectory("plugin-base-"));
-			Files.createDirectories(base.resolve("rules/codex"));
-			Files.writeString(base.resolve("rules/codex/read-file.md"), "Read the whole file.");
-			FileInventory project = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
-				Path.of("source/rules/read-file.md"), regularFile("Read every line of the file.")));
-
-			Proposal proposal = pluginProposal(builtPlugin(base), project,
-				Set.of(Path.of("source/rules/read-file.md")));
-
-			requireThat(proposal.isConfirmable(CertificationScope.WEAKEST_CELL), "confirmable").isTrue();
-			requireThat(proposal.render(), "text").contains("\n## Plugin under test\n").
-				contains("`" + base + "`").
-				contains("- `" + Path.of("source/rules") + "` → `" + Path.of("rules/codex") + "`\n").
-				contains("Warning: the content of these mapped files differs from the base's").
-				contains(":\n\n- `" + Path.of("source/rules/read-file.md") + "`\n").
-				contains("Trials do not install CAT: " + NO_CAT_EVIDENCE);
-			PluginUnderTest.Built frozen = (PluginUnderTest.Built) proposal.contract().plugin().orElseThrow();
-			requireThat(frozen.baseDigest(), "baseDigest").matches("[0-9a-f]{64}");
-		}
-	}
-
-	/**
-	 * Verifies that the proposal names each hook of the plugin under test that trials do not run, and records no hook
+	 * Verifies that the proposal names each hook of the trial plugins that trials do not run, and records no hook
 	 * limitation when trials run every hook.
 	 *
-	 * @throws IOException if the base cannot be written or read
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
 	// Requirement: R-W12
 	@Test
-	public void listsUnapprovedPluginHooks() throws IOException, InvalidProposalException
+	public void listsUnapprovedPluginHooks() throws InvalidProposalException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path base = cleanup.add(Files.createTempDirectory("plugin-base-"));
-			Files.createDirectories(base.resolve("rules/codex"));
-			Files.writeString(base.resolve("rules/codex/read-file.md"), "Read the whole file.");
-			FileInventory project = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
-				Path.of("source/rules/read-file.md"), regularFile("Read the whole file.")));
-			Set<Path> promptFiles = Set.of(Path.of("source/rules/read-file.md"));
+		Proposal unapproved = pluginProposal(new PluginCheck(List.of(builtPlugin()), List.of(), List.of(), List.of(),
+			List.of("cat SessionStart `./log.sh`", "cat PostToolUse `./check.sh`")));
+		Proposal approved = pluginProposal(new PluginCheck(List.of(builtPlugin()), List.of(), List.of(), List.of(),
+			List.of()));
 
-			Proposal unapproved = pluginProposal(builtPlugin(base), project, promptFiles,
-				List.of("SessionStart `./log.sh`", "PostToolUse `./check.sh`"));
-			Proposal approved = pluginProposal(builtPlugin(base), project, promptFiles, List.of());
-
-			requireThat(unapproved.contract().limitations(), "unapproved").contains(
-				"Trials do not run these hooks of the plugin under test, because the user has not approved them in " +
-				"the harness: SessionStart `./log.sh`; PostToolUse `./check.sh`. A hook also does not run if its " +
-				"declaration changed after the user approved it. Approve the hooks in the harness and run revise, " +
-				"or accept that trials can behave differently from sessions in which those hooks run.");
-			requireThat(approved.contract().limitations().stream().
-				filter(limitation -> limitation.contains("hooks of the plugin under test")).toList(), "approved").
-				isEmpty();
-		}
+		requireThat(unapproved.contract().limitations(), "unapproved").contains(
+			"Trials do not run these hooks of the trial plugins, because the user has not approved them in " +
+			"the harness: cat SessionStart `./log.sh`; cat PostToolUse `./check.sh`. A hook also does not run if its " +
+			"declaration changed after the user approved it. Approve the hooks in the harness and run revise, " +
+			"or accept that trials can behave differently from sessions in which those hooks run.");
+		requireThat(approved.contract().limitations().stream().
+			filter(limitation -> limitation.contains("hooks of the trial plugins")).toList(), "approved").isEmpty();
 	}
 
 	/**
-	 * Returns a built plugin under test whose base is a directory and whose one mapping writes the project's
-	 * {@code source/rules} over the base's {@code rules/codex}.
+	 * Returns a trial plugin that the project builds, whose one mapping writes the project's {@code source/rules} over
+	 * the build output's {@code rules/codex}.
 	 *
-	 * @param base the base directory
-	 * @return the contract author's {@code plugin_under_test} object
+	 * @return the plugin
 	 */
-	private ObjectNode builtPlugin(Path base)
+	private static TrialPlugin builtPlugin()
 	{
-		ObjectNode plugin = json.createObjectNode();
-		plugin.putNull("root");
-		plugin.put("base", base.toString());
-		plugin.putArray("mappings").addObject().put("source", "source/rules").put("target", "rules/codex");
-		plugin.put("depends_on_cat", false);
-		plugin.put("cat_evidence", NO_CAT_EVIDENCE);
-		return plugin;
+		return new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("./build-plugin", "--release"),
+			Path.of("out/plugin")), List.of(new TrialPlugin.Mapping(Path.of("source/rules"), Path.of("rules/codex"))));
 	}
 
 	/**
-	 * Returns the proposal of the valid contract author output with a plugin under test, checked against a project.
+	 * Returns a trial plugin that trials install from the user's installed copy.
 	 *
-	 * @param plugin the contract author's {@code plugin_under_test} object
-	 * @param project the project's files
-	 * @param promptFiles the in-project prompt files, relative to the project directory
+	 * @return the plugin
+	 */
+	private static TrialPlugin installedPlugin()
+	{
+		return new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of());
+	}
+
+	/**
+	 * Returns the proposal of the valid contract author output with a check of the trial plugins.
+	 *
+	 * @param check the check of the trial plugins
 	 * @return the proposal
-	 * @throws IOException if the plugin's base cannot be read
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
-	private Proposal pluginProposal(ObjectNode plugin, FileInventory project, Set<Path> promptFiles)
-		throws IOException, InvalidProposalException
+	private Proposal pluginProposal(PluginCheck check) throws InvalidProposalException
 	{
-		return pluginProposal(plugin, project, promptFiles, List.of());
-	}
-
-	/**
-	 * Returns the proposal of the valid contract author output with a plugin under test, checked against a project.
-	 *
-	 * @param plugin the contract author's {@code plugin_under_test} object
-	 * @param project the project's files
-	 * @param promptFiles the in-project prompt files, relative to the project directory
-	 * @param unapprovedHooks the plugin's hooks that trials do not run
-	 * @return the proposal
-	 * @throws IOException if the plugin's base cannot be read
-	 * @throws InvalidProposalException if the fixture is rejected
-	 */
-	private Proposal pluginProposal(ObjectNode plugin, FileInventory project, Set<Path> promptFiles,
-		List<String> unapprovedHooks) throws IOException, InvalidProposalException
-	{
-		DerivedProposal derived = contractAuthor.proposal(session(changedDerivation(output ->
-			output.set("plugin_under_test", plugin))), PROFILES, SALT);
-		PluginCheck check = PluginCheck.of(derived.contract().plugin().orElse(null), project, promptFiles).
-			withUnapprovedHooks(unapprovedHooks);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
 		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), check);
-	}
-
-	/**
-	 * Returns a project file entry.
-	 *
-	 * @param content the file's content
-	 * @return the entry
-	 */
-	private static FileEntry.RegularFile regularFile(String content)
-	{
-		return new FileEntry.RegularFile(Sha256.of(content.getBytes(UTF_8)),
-			PosixFilePermissions.fromString("rw-r--r--"));
 	}
 
 	/**
@@ -1906,7 +1817,7 @@ public final class ProposalTest
 		ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of(new RegressionScenarios.Scenario(
 				PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, recorded.render(),
-				new RegressionScenarios.Current(files, List.of())))), TARGET, null, true, List.of());
+				new RegressionScenarios.Current(files, List.of())))), TARGET, null, true, List.of(), List.of());
 
 		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 		Contract contract = contractAuthor.proposal(session(output), PROFILES, SALT).contract();
@@ -1961,7 +1872,7 @@ public final class ProposalTest
 		ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of(new RegressionScenarios.Scenario(
 				PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, recorded.render(),
-				new RegressionScenarios.Current(files, List.of(notes))))), TARGET, null, true, List.of());
+				new RegressionScenarios.Current(files, List.of(notes))))), TARGET, null, true, List.of(), List.of());
 
 		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
@@ -1989,7 +1900,7 @@ public final class ProposalTest
 	{
 		return new ContractAuthorProtocol(json, schema, judge, new RegressionScenarios(PROMPT_SYSTEM, List.of(
 			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, content, EARLIER))), TARGET,
-			null, true, List.of());
+			null, true, List.of(), List.of());
 	}
 
 	/**
@@ -2008,7 +1919,7 @@ public final class ProposalTest
 			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("CLAUDE.md"), "unrelated.md", "Unrelated case",
 				EARLIER)));
 		return new ContractAuthorProtocol(json, schema, judge, scenarios, PROMPT_SYSTEM.resolve("rules"), null, true,
-			List.of());
+			List.of(), List.of());
 	}
 
 	/**
@@ -2072,7 +1983,7 @@ public final class ProposalTest
 		String goal = "Summaries must stay safe for a general audience.";
 		ContractAuthorProtocol withGoal = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), PROMPT_SYSTEM.resolve("rules/safety.md"), goal, true,
-			List.of());
+			List.of(), List.of());
 		String prompt = withGoal.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 		requireThat(prompt, "prompt").contains("`rules/safety.md`").contains(goal);
 	}
@@ -2087,7 +1998,7 @@ public final class ProposalTest
 		ContractAuthorProtocol withLoaded = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(
 				new DerivedSource("AGENTS.md", "Codex reads the project's instruction file."),
-				new DerivedSource("/plugins/cat/rules/codex/read-file.md", "CAT's rule loader injects the rule.")));
+				new DerivedSource("/plugins/cat/rules/codex/read-file.md", "CAT's rule loader injects the rule.")), List.of());
 		String prompt = withLoaded.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
 		requireThat(prompt, "prompt").
 			contains("- `AGENTS.md`: Codex reads the project's instruction file.\n").
@@ -2240,7 +2151,7 @@ public final class ProposalTest
 		contractAuthor.proposal(session(output), PROFILES, SALT);
 
 		ContractAuthorProtocol unreported = new ContractAuthorProtocol(json, schema, judge,
-			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, false, List.of());
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, false, List.of(), List.of());
 		try
 		{
 			unreported.proposal(session(output), PROFILES, SALT);

@@ -182,7 +182,7 @@ public final class TestRevisionProtocol
 		FollowUp correct = result -> correction(result, examined, file);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn,
 			outputTurn.fill(Map.of("output_file", file))), List.of(), TIME_LIMIT, contractAuthor.role(),
-			WorkspaceFixtures.NONE, Optional.empty(), Optional.of(correct));
+			WorkspaceFixtures.NONE, List.of(), Optional.of(correct));
 	}
 
 	/**

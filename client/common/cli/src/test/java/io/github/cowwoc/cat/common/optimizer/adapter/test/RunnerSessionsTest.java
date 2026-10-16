@@ -9,15 +9,16 @@ import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
 import io.github.cowwoc.cat.common.optimizer.port.FollowUp;
+import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
+import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
-import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
@@ -254,9 +255,9 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that a trial installs its plugin under test from the trial's copy: CAT itself from the copy alone,
-	 * another plugin with the CAT artifact only when it depends on CAT; and that a trial without one installs CAT as
-	 * the settings say.
+	 * Verifies that a trial installs exactly its trial plugins: the first one that is CAT as CAT, and each other one as
+	 * a plugin; that a trial without trial plugins installs none, not even CAT, whatever the settings say; and that a
+	 * session in another role installs none.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -265,7 +266,7 @@ public final class RunnerSessionsTest
 	 */
 	// Requirement: R-W12
 	@Test(timeOut = 120_000)
-	public void installsPluginUnderTest()
+	public void installsTrialPlugins()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -285,43 +286,40 @@ public final class RunnerSessionsTest
 					List.of(Turn.replies("ok")), input, output);
 			});
 
-			for (TrialPlugin plugin : List.of(new TrialPlugin(catCopy, false), new TrialPlugin(otherCopy, true),
-				new TrialPlugin(otherCopy, false)))
+			for (List<Path> plugins : List.of(List.of(otherCopy, catCopy), List.of(otherCopy), List.<Path>of()))
 			{
 				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, WorkspaceFixtures.NONE, plugin)));
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, WorkspaceFixtures.NONE, plugins)));
 			}
-			await(sessions.start(request(source, List.of(), "go")));
+			await(sessions.start(request(SessionRole.JUDGE, TrialProfile.HARNESS_DEFAULT, source, List.of(), "go")));
 
-			List<String> cat = arguments.get(0);
-			requireThat(ScriptedHarness.optionValue(cat, "--artifact"), "catArtifact").isEqualTo(catCopy.toString());
-			requireThat(cat, "cat").contains("--install-cat").doesNotContain("--plugin");
-			List<String> withCat = arguments.get(1);
+			List<String> withCat = arguments.get(0);
 			requireThat(ScriptedHarness.optionValue(withCat, "--artifact"), "withCatArtifact").
-				isEqualTo(artifact.toString());
+				isEqualTo(catCopy.toString());
 			requireThat(ScriptedHarness.optionValue(withCat, "--plugin"), "withCatPlugin").
 				isEqualTo(otherCopy.toString());
 			requireThat(withCat, "withCat").contains("--install-cat");
-			List<String> alone = arguments.get(2);
+			List<String> alone = arguments.get(1);
 			requireThat(ScriptedHarness.optionValue(alone, "--plugin"), "alonePlugin").isEqualTo(otherCopy.toString());
 			requireThat(alone, "alone").doesNotContain("--install-cat");
-			List<String> withoutPlugin = arguments.get(3);
-			requireThat(ScriptedHarness.optionValue(withoutPlugin, "--artifact"), "withoutPluginArtifact").
-				isEqualTo(artifact.toString());
-			requireThat(withoutPlugin, "withoutPlugin").contains("--install-cat").doesNotContain("--plugin");
+			for (int index = 2; index < 4; ++index)
+			{
+				List<String> none = arguments.get(index);
+				requireThat(none, "none").doesNotContain("--install-cat").doesNotContain("--plugin");
+			}
 		}
 	}
 
 	/**
-	 * Verifies that the derived sources of a trial whose plugin under test is CAT, built from the project, are the
-	 * harness's instruction file and every file that CAT's rules give the trial's agent from the plugin, the user's
-	 * rules and the project's rules. A plugin file that a mapping copies from the project is named as the project's
-	 * file, and other files outside the project by their absolute paths.
+	 * Verifies that the files that trials load from a CAT trial plugin built from the project are the harness's
+	 * instruction file and every file that CAT's rules give the trial's agent from the plugin's base, the user's rules
+	 * and the project's rules. A base file that a mapping copies from the project is named as the project's file, and
+	 * other files outside the project by their absolute paths.
 	 *
 	 * @throws IOException if the files cannot be written or read
 	 */
 	@Test
-	public void derivesSourcesOfBuiltCat() throws IOException
+	public void loadsSourcesOfBuiltCat() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -337,16 +335,16 @@ public final class RunnerSessionsTest
 			write(project.resolve(TestSessions.INSTRUCTIONS), "Project instructions");
 			write(project.resolve(".cat/rules/common/project.md"), "Project rule");
 			write(home.resolve(".cat/rules/common/personal.md"), "Personal rule");
-			PluginUnderTest plugin = new PluginUnderTest.Built(base, "",
-				List.of(new PluginUnderTest.Mapping(Path.of("rules/include"), Path.of("rules/include"))), false,
-				"The plugin is CAT.");
+			TrialPlugin plugin = new TrialPlugin("cat", "0".repeat(64), new TrialPlugin.Build(List.of("build"),
+				Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("rules/include"), Path.of("rules/include"))));
 			TestSessions sessions = new TestSessions(new RunnerSessions.Settings(artifact, root.resolve("runs"),
 				List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 				Optional.of(home.resolve(".cat/rules"))), (_, _, _) ->
 			{
 			});
 
-			List<DerivedSource> sources = sessions.derivedSources(project, plugin);
+			List<DerivedSource> sources = sessions.loadedSources(project, List.of(new PluginBase(plugin, base))).
+				trials();
 
 			String defaultRule = base.resolve("rules/common/default.md").toString();
 			requireThat(sources, "sources").isEqualTo(List.of(
@@ -361,14 +359,14 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that a trial's derived sources include CAT's rules from the installed artifact exactly when the trial
-	 * installs it: beside a plugin under test that depends on CAT, or without a plugin under test when the runner
-	 * installs CAT.
+	 * Verifies that CAT's rules from the installed artifact load in production exactly when the settings install CAT,
+	 * that they never load in trials without a CAT trial plugin, and that they are then listed as loading in
+	 * production only.
 	 *
 	 * @throws IOException if the files cannot be written or read
 	 */
 	@Test
-	public void derivesSourcesOfInstalledCat() throws IOException
+	public void loadsInstalledCatInProductionOnly() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -376,10 +374,12 @@ public final class RunnerSessionsTest
 				toRealPath();
 			Path artifact = manifest(root.resolve("artifact"), "cat");
 			Path project = Files.createDirectories(root.resolve("project"));
-			manifest(project.resolve("plugins/docs"), "docs");
+			Path docs = manifest(root.resolve("docs"), "docs");
 			Path rule = artifact.resolve("rules/common/default.md");
 			write(rule, "Artifact rule");
 			DerivedSource artifactRule = new DerivedSource(rule.toString(), "CAT injects this rule into every session");
+			TrialPlugin plugin = new TrialPlugin("docs@market", "0".repeat(64), new TrialPlugin.Installed(),
+				List.of());
 
 			for (boolean installCat : List.of(true, false))
 			{
@@ -388,19 +388,18 @@ public final class RunnerSessionsTest
 					(_, _, _) ->
 				{
 				});
-				for (boolean dependsOnCat : List.of(true, false))
-				{
-					PluginUnderTest plugin = new PluginUnderTest.Root(Path.of("plugins/docs"), dependsOnCat,
-						"The manifest names CAT.");
-					List<DerivedSource> expected = List.of();
-					if (dependsOnCat)
-						expected = List.of(artifactRule);
-					requireThat(sessions.derivedSources(project, plugin), "sources").isEqualTo(expected);
-				}
-				List<DerivedSource> expected = List.of();
+				LoadedSources loaded = sessions.loadedSources(project, List.of(new PluginBase(plugin, docs)));
+
+				List<DerivedSource> production = List.of();
+				List<String> productionOnly = List.of();
 				if (installCat)
-					expected = List.of(artifactRule);
-				requireThat(sessions.derivedSources(project, null), "sources").isEqualTo(expected);
+				{
+					production = List.of(artifactRule);
+					productionOnly = List.of(rule.toString());
+				}
+				requireThat(loaded.production(), "production").isEqualTo(production);
+				requireThat(loaded.trials(), "trials").isEmpty();
+				requireThat(loaded.productionOnly(), "productionOnly").isEqualTo(productionOnly);
 			}
 		}
 	}
@@ -511,7 +510,7 @@ public final class RunnerSessionsTest
 			SessionRequest listed = request(root, List.of(), "one", "two");
 			FollowUp followUp = completed -> Optional.of("after " + completed.responses().getLast().getLast());
 			SessionRequest request = new SessionRequest(listed.role(), listed.part(), listed.source(), listed.turns(),
-				listed.readOnly(), listed.timeLimit(), listed.profile(), listed.files(), listed.plugin(),
+				listed.readOnly(), listed.timeLimit(), listed.profile(), listed.files(), listed.plugins(),
 				Optional.of(followUp));
 
 			SessionResult result = await(sessions.start(request));

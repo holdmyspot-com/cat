@@ -12,9 +12,11 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Purpose;
 import io.github.cowwoc.cat.common.optimizer.campaign.Transitions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
 import io.github.cowwoc.cat.common.optimizer.statistics.ErrorBudget;
 
+import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -231,5 +233,40 @@ public final class MeasurementIdentityTest
 		MeasurementIdentity otherInCell = cell("formatting", "model-b", "high");
 		requireThat(campaignWide.differences(otherInCell), "differences").
 			containsExactly(List.of(MeasurementCondition.MODEL));
+	}
+
+	/**
+	 * Verifies that each trial plugin condition is material and records its own part of the plugins: their names,
+	 * each base's identity, each project-built plugin's build and its mappings.
+	 */
+	@Test
+	public void eachPluginConditionIsMaterial()
+	{
+		// Requirement: R-M2
+		TrialPlugin.Mapping rules = new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"));
+		TrialPlugin.Build build = new TrialPlugin.Build(List.of("./build"), Path.of("out"));
+		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of());
+		MeasurementIdentity recorded = MeasurementIdentity.ofPlugins(List.of(
+			new TrialPlugin("cat", "a".repeat(64), build, List.of(rules)), installed));
+
+		Map<MeasurementCondition, List<TrialPlugin>> changed = new EnumMap<>(MeasurementCondition.class);
+		changed.put(MeasurementCondition.PLUGIN_BASES, List.of(
+			new TrialPlugin("cat", "c".repeat(64), build, List.of(rules)), installed));
+		changed.put(MeasurementCondition.PLUGIN_BUILDS, List.of(new TrialPlugin("cat", "a".repeat(64),
+			new TrialPlugin.Build(List.of("./build", "--release"), Path.of("out")), List.of(rules)), installed));
+		changed.put(MeasurementCondition.PLUGIN_MAPPINGS, List.of(new TrialPlugin("cat", "a".repeat(64), build,
+			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/claude")))), installed));
+		for (Map.Entry<MeasurementCondition, List<TrialPlugin>> entry : changed.entrySet())
+		{
+			requireThat(entry.getKey().isMaterial(), "isMaterial").withContext(entry.getKey(), "condition").isTrue();
+			requireThat(recorded.differences(MeasurementIdentity.ofPlugins(entry.getValue())), "differences").
+				containsExactly(List.of(entry.getKey()));
+		}
+		requireThat(MeasurementCondition.TRIAL_PLUGINS.isMaterial(), "trialPlugins").isTrue();
+		requireThat(recorded.differences(MeasurementIdentity.ofPlugins(List.of(installed))), "withoutCat").
+			containsExactly(List.of(MeasurementCondition.TRIAL_PLUGINS, MeasurementCondition.PLUGIN_BASES,
+				MeasurementCondition.PLUGIN_BUILDS, MeasurementCondition.PLUGIN_MAPPINGS));
+		requireThat(MeasurementIdentity.ofPlugins(List.of()).values().get(MeasurementCondition.TRIAL_PLUGINS),
+			"none").isEqualTo("none");
 	}
 }

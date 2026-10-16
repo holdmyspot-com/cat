@@ -238,8 +238,7 @@ public final class ContractFixtures
 	public static Contract withDependents(Contract contract, List<Dependent> dependents)
 	{
 		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), contract.judge(),
-			contract.fixtures(), contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.plugin(),
-			dependents);
+			contract.fixtures(), contract.limitations(), contract.minimumPassRate(), contract.salt(), dependents);
 	}
 
 	/**

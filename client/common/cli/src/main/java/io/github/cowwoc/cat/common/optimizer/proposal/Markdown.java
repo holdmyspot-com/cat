@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CellTier;
@@ -19,13 +20,13 @@ import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.Split;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.VariableDeclaration;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveredTest;
 import io.github.cowwoc.cat.common.optimizer.execution.PilotResult;
@@ -91,7 +92,7 @@ public final class Markdown
 	 * @param incumbent the delivered certification of the target, or {@code null} if the target has none
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @param delivered each prompt test as delivery would write it, by prompt test
-	 * @param plugin the check of the plugin under test
+	 * @param plugin the check of the trial plugins
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
 	Markdown(DerivedProposal derived, Contract contract, LinkReport links, Path controlFile,
@@ -144,7 +145,7 @@ public final class Markdown
 		trialProfiles();
 		judge();
 		controlSource();
-		pluginUnderTest();
+		trialPlugins();
 		guardPilot();
 		fixtures();
 		procedure();
@@ -619,7 +620,7 @@ public final class Markdown
 			switch (dependent.location())
 			{
 				case PROJECT -> text.append("The project file `");
-				case PLUGIN -> text.append("The plugin file `");
+				case PLUGIN -> text.append("The file of the trial plugin `").append(dependent.plugin()).append("` `");
 			}
 			text.append(dependent.path()).append("`: ");
 			switch (dependent.removal())
@@ -645,57 +646,71 @@ public final class Markdown
 	}
 
 	/**
-	 * Shows the plugin under test, if the contract has one: the plugin that each trial installs, each mapped file
-	 * whose content differs from the base's, and whether trials install CAT, with the contract author's evidence.
+	 * Shows the trial plugins that each trial installs and where each comes from, each project directory or file that
+	 * trials write over a project-built plugin, each mapped file whose content differs from the base's, each prompt
+	 * file that no mapping covers and each file that loads in production but not in trials.
 	 */
-	private void pluginUnderTest()
+	private void trialPlugins()
 	{
-		if (plugin.plugin().isEmpty())
-			return;
-		heading("Plugin under test");
-		PluginUnderTest underTest = plugin.plugin().get();
-		switch (underTest)
+		heading("Trial plugins");
+		if (plugin.plugins().isEmpty())
+			text.append("Trials install no plugin.\n");
+		for (TrialPlugin trialPlugin : plugin.plugins())
 		{
-			case PluginUnderTest.Root root -> text.append("Each trial installs the plugin root `").
-				append(root.directory()).append("` of its staged source.\n");
-			case PluginUnderTest.Built built ->
+			text.append("- `").append(trialPlugin.name()).append("`: ");
+			switch (trialPlugin.source())
 			{
-				text.append("Each trial installs a copy of the built plugin `").append(built.base()).
-					append("` with these directories of its staged source written over it:\n\n");
-				for (PluginUnderTest.Mapping mapping : built.mappings())
+				case TrialPlugin.Build build ->
 				{
-					text.append("- `").append(mapping.source()).append("` → `").append(mapping.target()).
-						append("`\n");
+					text.append("built by `").append(String.join(" ", build.command())).append("` into `").
+						append(PortablePaths.text(build.output())).append('`');
+					if (trialPlugin.mappings().isEmpty())
+						text.append(", with no project file written over it");
+					else
+						text.append(", with these staged project paths written over it:");
+					text.append('\n');
+					for (TrialPlugin.Mapping mapping : trialPlugin.mappings())
+					{
+						text.append("  - `").append(PortablePaths.text(mapping.source())).append("` → `").
+							append(PortablePaths.text(mapping.target())).append("`\n");
+					}
 				}
+				case TrialPlugin.Installed _ -> text.append("the user's installed copy\n");
 			}
 		}
 		if (!plugin.differing().isEmpty())
 		{
 			text.append("\nWarning: the content of these mapped files differs from the base's, because the base " +
 				"predates them or the build changes them. Trials load the project's content:\n\n");
-			for (Path path : plugin.differing())
+			for (PluginMapping.Difference difference : plugin.differing())
+			{
+				text.append("- `").append(PortablePaths.text(difference.file())).append("` → `").
+					append(difference.plugin()).append("` `").append(PortablePaths.text(difference.mapped())).
+					append("`\n");
+			}
+		}
+		if (!plugin.uncovered().isEmpty())
+		{
+			text.append("\nThese prompt files do not load from the project, and no trial plugin that the project " +
+				"builds holds a copy of them, so a candidate's edit to them never reaches trials:\n\n");
+			for (Path path : plugin.uncovered())
+				text.append("- `").append(PortablePaths.text(path)).append("`\n");
+		}
+		if (!plugin.productionOnly().isEmpty())
+		{
+			text.append("\nThese files load in the user's sessions of the harness but not in trials:\n\n");
+			for (String path : plugin.productionOnly())
 				text.append("- `").append(path).append("`\n");
 		}
-		if (underTest.dependsOnCat())
-			text.append("\nTrials install CAT: ");
-		else
-			text.append("\nTrials do not install CAT: ");
-		text.append(underTest.catEvidence()).append('\n');
 	}
 
 	/**
-	 * Shows how often each assertion passed in the guard pilot's control trials, or why none ran.
+	 * Shows how often each assertion passed in the guard pilot's control trials.
 	 */
 	private void guardPilot()
 	{
 		heading("Guard pilot");
-		if (plugin.refusals().isEmpty())
-			text.append(PilotReport.render(contract, pilots));
-		else
-		{
-			text.append("CAT ran no control trials, because trials cannot install a plugin under test that " +
-				"confirmation refuses. Once a revision corrects the plugin under test, CAT runs them.\n");
-		}
+		text.append(PilotReport.render(contract, pilots));
 	}
 
 	/**

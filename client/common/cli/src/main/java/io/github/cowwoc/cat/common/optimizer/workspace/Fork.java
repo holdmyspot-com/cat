@@ -92,10 +92,9 @@ public final class Fork implements ForkView
 		boolean excludeAdded = ensureWorkDirectoryIgnored(git, exclude);
 
 		Set<Path> paths = new HashSet<>(participants);
-		for (String tracked : new String(git.bytes("ls-files", "-z"), UTF_8).split("\0"))
+		for (Path path : tracked(git))
 		{
-			Path path = Path.of(tracked);
-			if (!tracked.isEmpty() && !InventoryScanner.isOmitted(path))
+			if (!InventoryScanner.isOmitted(path))
 				paths.add(path);
 		}
 		ForkTree tree = ForkTree.record(normalizedBase, normalizedCampaign, paths);
@@ -115,6 +114,38 @@ public final class Fork implements ForkView
 			undo(git, tree, worktree, worktreeAdded, e);
 			throw e;
 		}
+	}
+
+	/**
+	 * Lists the files that Git tracks in a worktree.
+	 *
+	 * @param base the worktree, which is the top-level directory of its repository
+	 * @return the files, relative to {@code base}
+	 * @throws NullPointerException if {@code base} is null
+	 * @throws IOException if Git fails
+	 */
+	public static Set<Path> tracked(Path base) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		return tracked(new Git(base.toAbsolutePath().normalize()));
+	}
+
+	/**
+	 * Lists the files that Git tracks in a worktree.
+	 *
+	 * @param git the worktree's Git
+	 * @return the files, relative to the worktree
+	 * @throws IOException if Git fails
+	 */
+	private static Set<Path> tracked(Git git) throws IOException
+	{
+		Set<Path> paths = new HashSet<>();
+		for (String tracked : new String(git.bytes("ls-files", "-z"), UTF_8).split("\0"))
+		{
+			if (!tracked.isEmpty())
+				paths.add(Path.of(tracked));
+		}
+		return paths;
 	}
 
 	/**

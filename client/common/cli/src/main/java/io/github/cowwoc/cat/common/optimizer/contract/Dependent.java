@@ -10,26 +10,56 @@ import java.nio.file.Path;
  * target's content, and nothing else.
  *
  * @param location where {@code path} lies
+ * @param plugin the name of the project-built trial plugin that holds {@code path}, or an empty string for a
+ *   dependent in the project
  * @param path the file that holds the dependent, relative to the project root or to the plugin directory
  * @param removal the part of the file that control trials remove
  * @param serves the target instruction that the dependent serves
  */
-public record Dependent(Location location, Path path, Removal removal, String serves)
+public record Dependent(Location location, String plugin, Path path, Removal removal, String serves)
 {
 	/**
-	 * Creates a dependent.
+	 * Creates a dependent in the project.
 	 *
-	 * @param location where {@code path} lies
-	 * @param path the file that holds the dependent, relative to the project root or to the plugin directory
+	 * @param path the file that holds the dependent, relative to the project root
 	 * @param removal the part of the file that control trials remove
 	 * @param serves the target instruction that the dependent serves
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code path} is absolute, empty, not normalized or leaves its root, or if
 	 *   {@code serves} is blank
 	 */
+	public Dependent(Path path, Removal removal, String serves)
+	{
+		this(Location.PROJECT, "", path, removal, serves);
+	}
+
+	/**
+	 * Creates a dependent.
+	 *
+	 * @param location where {@code path} lies
+	 * @param plugin the name of the project-built trial plugin that holds {@code path}, or an empty string for a
+	 *   dependent in the project
+	 * @param path the file that holds the dependent, relative to the project root or to the plugin directory
+	 * @param removal the part of the file that control trials remove
+	 * @param serves the target instruction that the dependent serves
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code path} is absolute, empty, not normalized or leaves its root, if
+	 *   {@code serves} is blank, or if {@code plugin} is blank for a dependent in a plugin or not empty for one in the
+	 *   project
+	 */
 	public Dependent
 	{
 		requireThat(location, "location").isNotNull();
+		requireThat(plugin, "plugin").isNotNull();
+		switch (location)
+		{
+			case PROJECT ->
+			{
+				if (!plugin.isEmpty())
+					throw new IllegalArgumentException("A dependent in the project names the plugin " + plugin);
+			}
+			case PLUGIN -> requireThat(plugin, "plugin").isNotBlank();
+		}
 		requireThat(path, "path").isNotNull();
 		String text = path.toString();
 		if (path.isAbsolute() || text.isEmpty() || !path.normalize().equals(path) || path.startsWith(".."))
@@ -42,17 +72,18 @@ public record Dependent(Location location, Path path, Removal removal, String se
 	}
 
 	/**
-	 * Returns this dependent at another location.
+	 * Returns this dependent at a path of a trial plugin.
 	 *
-	 * @param location where {@code path} lies
-	 * @param path the file that holds the dependent, relative to {@code location}
+	 * @param name the name of the project-built trial plugin
+	 * @param path the file that holds the dependent, relative to the plugin directory
 	 * @return the dependent
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code path} is absolute, empty, not normalized or leaves its root
+	 * @throws IllegalArgumentException if {@code name} is blank, or if {@code path} is absolute, empty, not
+	 *   normalized or leaves its root
 	 */
-	public Dependent at(Location location, Path path)
+	public Dependent inPlugin(String name, Path path)
 	{
-		return new Dependent(location, path, removal, serves);
+		return new Dependent(Location.PLUGIN, name, path, removal, serves);
 	}
 
 	/**
@@ -65,7 +96,7 @@ public record Dependent(Location location, Path path, Removal removal, String se
 		 */
 		PROJECT,
 		/**
-		 * In the plugin under test, relative to the plugin directory.
+		 * In a project-built trial plugin, relative to the plugin directory.
 		 */
 		PLUGIN
 	}

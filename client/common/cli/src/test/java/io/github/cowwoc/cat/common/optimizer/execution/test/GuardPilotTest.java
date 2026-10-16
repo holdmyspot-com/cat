@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailedAssertion;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
@@ -18,10 +17,10 @@ import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.test.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.test.TierFixtures;
@@ -37,13 +36,14 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
+import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
-import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeWorkspacePort;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity.Hold;
 import org.testng.annotations.Test;
@@ -107,8 +107,8 @@ public final class GuardPilotTest
 			Overlay control = control();
 
 			Set<Path> excluded = Set.of(Path.of(".cat/tests/main"));
-			Map<String, PilotResult> pilots = pilot(sessions, workspace, 4).run(contract, control, excluded, Map.of(),
-				new SplittableRandom(1));
+			Map<String, PilotResult> pilots = pilot(sessions, workspace, 4).run(contract, List.of(), control, excluded,
+				Map.of(), new SplittableRandom(1));
 
 			requireThat(workspace.excluded(control.identity()), "excluded").isEqualTo(excluded);
 			Path source = workspace.stage(control, excluded);
@@ -164,8 +164,8 @@ public final class GuardPilotTest
 				return "fail:asks_before_deleting";
 			});
 
-			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, control(), Set.of(), Map.of(),
-				new SplittableRandom(2)).get("safety");
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
+				Map.of(), new SplittableRandom(2)).get("safety");
 
 			requireThat(safety.decided("asks_before_deleting"), "decided").isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.passes("asks_before_deleting"), "passes").isEqualTo(15);
@@ -198,8 +198,8 @@ public final class GuardPilotTest
 				return "pass";
 			});
 
-			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, control(), Set.of(), Map.of(),
-				new SplittableRandom(3)).get("safety");
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
+				Map.of(), new SplittableRandom(3)).get("safety");
 
 			requireThat(sessions.requests(SessionRole.JUDGE).stream().
 				filter(request -> request.turns().getFirst().equals(BROKEN)).count(), "safetyJudges").isEqualTo(0L);
@@ -238,8 +238,8 @@ public final class GuardPilotTest
 				return "pass";
 			});
 
-			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, control(), Set.of(), Map.of(),
-				new SplittableRandom(3)).get("safety");
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
+				Map.of(), new SplittableRandom(3)).get("safety");
 
 			requireThat(sessions.requests(SessionRole.JUDGE).stream().
 				filter(request -> request.turns().getFirst().equals(BROKEN)).count(), "safetyJudges").
@@ -272,8 +272,8 @@ public final class GuardPilotTest
 				return "pass";
 			});
 
-			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, control(), Set.of(), Map.of(),
-				new SplittableRandom(4)).get("safety");
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
+				Map.of(), new SplittableRandom(4)).get("safety");
 
 			requireThat(safety.trials(), "trials").isEmpty();
 			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
@@ -305,8 +305,8 @@ public final class GuardPilotTest
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-undecidable"));
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 
-			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, control(), Set.of(), Map.of(),
-				new SplittableRandom(5)).get("safety");
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
+				Map.of(), new SplittableRandom(5)).get("safety");
 
 			requireThat(safety.trials(), "trials").isEmpty();
 			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
@@ -329,11 +329,11 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-reuse"));
 			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
-				run(contract, control(), Set.of(), Map.of(), new SplittableRandom(5));
+				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(5));
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 
 			Map<String, PilotResult> second = pilot(sessions, workspace(directory), 4).
-				run(contract, control(), Set.of(), first, new SplittableRandom(6));
+				run(contract, List.of(), control(), Set.of(), first, new SplittableRandom(6));
 
 			requireThat(sessions.requests(SessionRole.TRIAL), "trials").isEmpty();
 			requireThat(second, "second").isEqualTo(first);
@@ -355,12 +355,12 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-revise"));
 			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
-				run(contract, control(), Set.of(), Map.of(), new SplittableRandom(7));
+				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(7));
 			Contract revised = withSafetyStatement(contract, "The assistant confirms before deleting {{target}}.");
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 
 			Map<String, PilotResult> second = pilot(sessions, workspace(directory), 4).
-				run(revised, control(), Set.of(), first, new SplittableRandom(8));
+				run(revised, List.of(), control(), Set.of(), first, new SplittableRandom(8));
 
 			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
 			requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS);
@@ -371,37 +371,43 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * Each control trial installs the copy of the plugin under test that belongs to the staged control source.
+	 * Each control trial installs the copy of every trial plugin that belongs to the staged control source, in
+	 * configuration order.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
 	 */
 	@Test
-	public void controlTrialsInstallPlugin() throws IOException, InterruptedException
+	public void controlTrialsInstallPlugins() throws IOException, InterruptedException
 	{
 		// Requirement: R-W12
-		PluginUnderTest plugin = builtPlugin("a");
-		Contract contract = TierFixtures.tieredContract().withPlugin(plugin);
+		TrialPlugin built = builtPlugin();
+		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(),
+			List.of());
+		List<TrialPlugin> plugins = List.of(built, installed);
+		Contract contract = TierFixtures.tieredContract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-plugin"));
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 			FakeWorkspacePort workspace = workspace(directory);
 
-			pilot(sessions, workspace, 4).run(contract, control(), Set.of(), Map.of(), new SplittableRandom(9));
+			pilot(sessions, workspace, 4).run(contract, plugins, control(), Set.of(), Map.of(),
+				new SplittableRandom(9));
 
 			Path source = workspace.stage(control(), Set.of());
-			TrialPlugin expected = new TrialPlugin(workspace.pluginCopy(plugin, source, PluginRemovals.NONE), true);
+			List<Path> expected = List.of(workspace.pluginCopy(built, source, PluginRemovals.NONE),
+				workspace.pluginCopy(installed, source, PluginRemovals.NONE));
 			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
 			requireThat(trials, "trials").isNotEmpty();
 			for (SessionRequest trial : trials)
-				requireThat(trial.plugin(), "plugin").isEqualTo(Optional.of(expected));
+				requireThat(trial.plugins(), "plugins").isEqualTo(expected);
 		}
 	}
 
 	/**
-	 * Each control trial installs the copy of the plugin under test without the dependents of the target that the
-	 * contract lists, and a stored pilot no longer applies once those dependents change.
+	 * Each control trial installs the copy of a trial plugin without the dependents of the target that the contract
+	 * lists in that plugin, and a stored pilot no longer applies once those dependents change.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
@@ -410,10 +416,10 @@ public final class GuardPilotTest
 	public void controlTrialsRemovePluginDependents() throws IOException, InterruptedException
 	{
 		// Requirement: R-W10
-		PluginUnderTest plugin = builtPlugin("a");
-		Contract withPlugin = TierFixtures.tieredContract().withPlugin(plugin);
-		Contract contract = ContractFixtures.withDependents(withPlugin, List.of(new Dependent(
-			Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(), "Reads a part.")));
+		TrialPlugin plugin = builtPlugin();
+		Contract withoutDependents = TierFixtures.tieredContract();
+		Contract contract = ContractFixtures.withDependents(withoutDependents, List.of(new Dependent(
+			Dependent.Location.PLUGIN, "cat", Path.of("bin/read-part"), new Dependent.WholeFile(), "Reads a part.")));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-plugin"));
@@ -421,50 +427,30 @@ public final class GuardPilotTest
 			FakeWorkspacePort workspace = workspace(directory);
 			GuardPilot pilot = pilot(sessions, workspace, 4);
 
-			pilot.run(contract, control(), Set.of(), Map.of(), new SplittableRandom(9));
+			pilot.run(contract, List.of(plugin), control(), Set.of(), Map.of(), new SplittableRandom(9));
 
 			Path source = workspace.stage(control(), Set.of());
-			TrialPlugin expected = new TrialPlugin(workspace.pluginCopy(plugin, source,
-				PluginRemovals.of(contract.pluginRemovals(), json)), true);
+			Path expected = workspace.pluginCopy(plugin, source, PluginRemovals.of(contract.pluginRemovals(plugin),
+				json));
 			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
 			requireThat(trials, "trials").isNotEmpty();
 			for (SessionRequest trial : trials)
-				requireThat(trial.plugin(), "plugin").isEqualTo(Optional.of(expected));
+				requireThat(trial.plugins(), "plugins").isEqualTo(List.of(expected));
 			PromptTest test = contract.tests().getFirst();
 			requireThat(pilot.definition(contract, test), "definition").
-				isNotEqualTo(pilot.definition(withPlugin, test));
+				isNotEqualTo(pilot.definition(withoutDependents, test));
 		}
 	}
 
 	/**
-	 * A stored pilot no longer applies once the files of the plugin's base change, because its control trials
-	 * installed the old files.
-	 */
-	@Test
-	public void pluginBaseChangesDefinition()
-	{
-		// Requirement: R-W12
-		Contract contract = TierFixtures.tieredContract();
-		PromptTest test = contract.tests().getFirst();
-		GuardPilot pilot = pilot(new ScriptedPort(Path.of("unused"), _ -> "pass"), workspace(Path.of("unused")), 4);
-
-		Sha256 before = pilot.definition(contract.withPlugin(builtPlugin("a")), test);
-		Sha256 after = pilot.definition(contract.withPlugin(builtPlugin("b")), test);
-
-		requireThat(after, "after").isNotEqualTo(before);
-	}
-
-	/**
-	 * Returns a built plugin under test that depends on CAT.
+	 * Returns a trial plugin that the project builds.
 	 *
-	 * @param digit the hexadecimal digit that every position of the base digest holds
 	 * @return the plugin
 	 */
-	private static PluginUnderTest builtPlugin(String digit)
+	private static TrialPlugin builtPlugin()
 	{
-		return new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath(), digit.repeat(64),
-			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), true,
-			"The prompt files invoke CAT skills.");
+		return new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"), Path.of("out")),
+			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))));
 	}
 
 	/**
@@ -487,7 +473,7 @@ public final class GuardPilotTest
 			Overlay control = control();
 
 			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 1).
-				run(contract, control, Set.of(), Map.of(), new SplittableRandom(9));
+				run(contract, List.of(), control, Set.of(), Map.of(), new SplittableRandom(9));
 
 			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trials").isEqualTo(1);
 			for (PromptTest test : contract.tests())
@@ -769,7 +755,13 @@ public final class GuardPilotTest
 		}
 
 		@Override
-		public List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin)
+		public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
+		{
+			return new LoadedSources(List.of(), List.of(), List.of());
+		}
+
+		@Override
+		public List<Path> installedPlugins(String name)
 		{
 			return List.of();
 		}

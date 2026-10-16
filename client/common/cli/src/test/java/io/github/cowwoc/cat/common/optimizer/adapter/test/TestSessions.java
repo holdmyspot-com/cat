@@ -96,6 +96,12 @@ final class TestSessions extends RunnerSessions
 	}
 
 	@Override
+	public List<Path> installedPlugins(String name)
+	{
+		return List.of();
+	}
+
+	@Override
 	protected List<DerivedSource> instructionFiles(Path project)
 	{
 		if (Files.isRegularFile(project.resolve(INSTRUCTIONS)))

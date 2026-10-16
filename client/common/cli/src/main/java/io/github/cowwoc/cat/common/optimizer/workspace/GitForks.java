@@ -26,6 +26,12 @@ public final class GitForks implements Forks
 	}
 
 	@Override
+	public Set<Path> tracked(Path base) throws IOException
+	{
+		return Fork.tracked(base);
+	}
+
+	@Override
 	public ForkView open(Path base, Path campaign) throws IOException
 	{
 		return Fork.open(base, campaign);

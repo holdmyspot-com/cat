@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.port;
 
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
@@ -59,34 +59,48 @@ public interface WorkspacePort
 	void deleteStaged(Sha256 candidate) throws IOException;
 
 	/**
-	 * Returns the plugin under test as the trials of a staged source install it, building it if it does not exist. A
-	 * plugin root is that directory of the staged source. A built plugin is a copy of its base with each file of the
-	 * staged source inside a mapping's source directory written over its mapped path, and then the removals applied.
-	 * Deleting the staged source's candidate deletes the copy.
+	 * Returns a trial plugin as the trials of a staged source install it, building it if it does not exist. A plugin
+	 * that the project builds is a copy of its base with each file of the staged source that a mapping covers written
+	 * over its mapped path, and then the removals applied; deleting the staged source's candidate deletes the copy.
+	 * Any other plugin is its base copy.
 	 *
-	 * @param plugin the plugin under test; a built plugin's base digest must be set
+	 * @param plugin the trial plugin
 	 * @param source the staged source
-	 * @param removals the dependents that a built plugin's copy leaves out, which a plugin root ignores because its
-	 *   staged source already leaves them out
+	 * @param removals the dependents that the copy of a project-built plugin leaves out
 	 * @return the plugin directory that each trial of {@code source} installs
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if a built plugin's base digest is empty
-	 * @throws IOException if the copy cannot be built, if the staged source has no plugin root, if the files of a
-	 *   built plugin's base no longer have the identity of its base digest, or if the copy does not hold a dependent
+	 * @throws IOException if the copy cannot be built, if the plugin's base copy no longer has the identity of its
+	 *   base digest, or if the copy does not hold a dependent
 	 */
-	Path pluginCopy(PluginUnderTest plugin, Path source, PluginRemovals removals) throws IOException;
+	Path pluginCopy(TrialPlugin plugin, Path source, PluginRemovals removals) throws IOException;
 
 	/**
-	 * Copies the base of a built plugin into campaign storage, unless it has a copy there already, so that later
-	 * changes to the base do not reach trials.
+	 * Copies a plugin directory into campaign storage as a trial plugin's base, unless storage holds a base with the
+	 * same files already, so that later changes to the directory do not reach trials.
 	 *
-	 * @param plugin the built plugin; its base digest must be set
-	 * @throws NullPointerException if {@code plugin} is null
-	 * @throws IllegalArgumentException if the plugin's base digest is empty
-	 * @throws IOException if the base cannot be copied, or if its files no longer have the identity of its base
-	 *   digest
+	 * @param directory the plugin directory: a build output in the optimization worktree, or the user's installed copy
+	 * @return the digest of the base's files
+	 * @throws NullPointerException if {@code directory} is null
+	 * @throws IOException if the directory cannot be read or copied
 	 */
-	void copyPluginBase(PluginUnderTest.Built plugin) throws IOException;
+	String copyPluginBase(Path directory) throws IOException;
+
+	/**
+	 * Returns where campaign storage holds a trial plugin's base.
+	 *
+	 * @param digest the digest of the base's files
+	 * @return the absolute directory, which exists once {@link #copyPluginBase(Path)} has copied the base
+	 * @throws NullPointerException if {@code digest} is null
+	 */
+	Path pluginBase(String digest);
+
+	/**
+	 * Returns the optimization worktree's directory, where CAT runs the build commands of the trial plugins that the
+	 * project builds.
+	 *
+	 * @return the absolute directory
+	 */
+	Path worktree();
 
 	/**
 	 * Prepares a copy of the working candidate for a prompt author session.

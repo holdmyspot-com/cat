@@ -3,8 +3,6 @@ package io.github.cowwoc.cat.common.optimizer.execution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
-import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
 import io.github.cowwoc.cat.common.optimizer.campaign.TrialKey;
@@ -22,6 +20,8 @@ import io.github.cowwoc.cat.common.optimizer.execution.SliceRunner;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
 import io.github.cowwoc.cat.common.optimizer.execution.Step;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
+import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -389,9 +389,15 @@ public final class SliceTest
 		}
 
 		@Override
-		public List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin) throws IOException
+		public LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException
 		{
-			return delegate.derivedSources(project, plugin);
+			return delegate.loadedSources(project, plugins);
+		}
+
+		@Override
+		public List<Path> installedPlugins(String name) throws IOException
+		{
+			return delegate.installedPlugins(name);
 		}
 
 		@Override

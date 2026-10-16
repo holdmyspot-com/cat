@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
@@ -47,6 +48,8 @@ import java.util.Set;
  *   use an authorized source, each once, in the order they were answered; a later warning equal to one of them raises
  *   no decision
  * @param testRevisions the pending test revision requests, the applied test revisions and the tests reported sound
+ * @param plugins the trial plugins that every trial installs, in configuration order; empty until {@code start} has
+ *   built them and copied their bases
  */
 public record Campaign(Header header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
 	Candidate incumbent, int candidates, int promptAuthorAttempts, Development development,
@@ -54,7 +57,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	Map<SequenceGroup, Long> sequences, long evidenceRevision, SlowStart slowStart, Throttle throttle,
 	List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
 	DeliveryRequest delivery, OptimizationEvidence optimization, List<AuthorityWarning> answeredWarnings,
-	TestRevisions testRevisions)
+	TestRevisions testRevisions, Optional<List<TrialPlugin>> plugins)
 {
 	/**
 	 * The default maximum number of concurrent nested sessions.
@@ -98,6 +101,8 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 *   to use an authorized source, each once, in the order they were answered
 	 * @param testRevisions the pending test revision requests, the applied test revisions and the tests reported
 	 *   sound
+	 * @param plugins the trial plugins that every trial installs, in configuration order; empty until {@code start}
+	 *   has built them and copied their bases
 	 * @throws NullPointerException if a component other than {@code baseline}, {@code outcome} or
 	 *   {@code delivery} is null, {@code baseline} is null after a confirmation, or {@code answeredWarnings} contains
 	 *   null
@@ -151,6 +156,8 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		pendingDecisions = List.copyOf(pendingDecisions);
 		answeredWarnings = List.copyOf(answeredWarnings);
 		requireThat(testRevisions, "testRevisions").isNotNull();
+		requireThat(plugins, "plugins").isNotNull();
+		plugins = plugins.map(List::copyOf);
 	}
 
 	/**
@@ -172,7 +179,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		Candidate candidate = new Candidate(0, incumbent);
 		return new Campaign(header, ceiling, List.of(), identity, candidate, 0, 0, Development.start(candidate, 0),
 			null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, List.of(), false, null, null,
-			OptimizationEvidence.EMPTY, List.of(), TestRevisions.NONE);
+			OptimizationEvidence.EMPTY, List.of(), TestRevisions.NONE, Optional.empty());
 	}
 
 	/**
@@ -194,7 +201,25 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		Candidate candidate = new Candidate(0, snapshot);
 		return new Campaign(header, ceiling, lineages, identity, candidate, candidates, promptAuthorAttempts,
 			Development.start(candidate, 0), baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
-			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions);
+			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions,
+			plugins);
+	}
+
+	/**
+	 * Returns this campaign with its trial plugins recorded, and the conditions that they set added to its
+	 * measurement identity.
+	 *
+	 * @param value the trial plugins that every trial installs, in configuration order
+	 * @return the campaign
+	 * @throws NullPointerException if {@code value} is null
+	 */
+	public Campaign withPlugins(List<TrialPlugin> value)
+	{
+		requireThat(value, "value").isNotNull();
+		return new Campaign(header, ceiling, lineages, identity.replaceWith(MeasurementIdentity.ofPlugins(value)),
+			incumbent, candidates, promptAuthorAttempts, development, baseline, attempts, trials, sequences,
+			evidenceRevision, slowStart, throttle, pendingDecisions, revisionRequested, outcome, delivery, optimization,
+			answeredWarnings, testRevisions, Optional.of(value));
 	}
 
 	/**

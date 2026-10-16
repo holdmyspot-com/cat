@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
@@ -17,6 +18,7 @@ import io.github.cowwoc.cat.common.optimizer.cli.Commands;
 import io.github.cowwoc.cat.common.optimizer.cli.Core;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptConfiguration;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.DeliveryReport;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
@@ -695,6 +697,29 @@ public final class CommandsTest
 		JsonNode json = JSON.readTree(output.toString());
 		requireThat(json.get("status").asString(), "status").isEqualTo("refused");
 		requireThat(json.get("message").asString(), "message").contains("codex");
+	}
+
+	/**
+	 * Verifies that {@code start} prints the core's refusal of a target without a prompt test configuration, naming
+	 * the file to write, with a nonzero exit code.
+	 */
+	@Test
+	public void printsStartRefusalNamingConfiguration()
+	{
+		// Requirement: R-W12
+		FakeCore core = new FakeCore();
+		Path file = PromptConfiguration.location(Path.of("CLAUDE.md"));
+		core.failure = new CommandRefusedException("The prompt test configuration " + PortablePaths.text(file) +
+			" does not exist.");
+		StringBuilder output = new StringBuilder();
+
+		int exit = run(core, List.of("start", "CLAUDE.md"), output);
+
+		requireThat(exit, "exit").isEqualTo(1);
+		requireThat(core.calls, "calls").isEqualTo(List.of("start CLAUDE.md"));
+		JsonNode json = JSON.readTree(output.toString());
+		requireThat(json.get("status").asString(), "status").isEqualTo("refused");
+		requireThat(json.get("message").asString(), "message").contains(PortablePaths.text(file));
 	}
 
 	/**

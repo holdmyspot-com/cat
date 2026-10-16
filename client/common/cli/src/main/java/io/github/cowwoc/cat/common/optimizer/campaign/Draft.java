@@ -5,6 +5,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 
 import java.util.ArrayList;
@@ -179,6 +180,10 @@ final class Draft
 	 * The pending test revision requests, the applied test revisions and the tests reported sound.
 	 */
 	TestRevisions testRevisions;
+	/**
+	 * The trial plugins that every trial installs, or empty until {@code start} has built them.
+	 */
+	final Optional<List<TrialPlugin>> plugins;
 
 	/**
 	 * Copies a campaign.
@@ -228,6 +233,7 @@ final class Draft
 		delivery = campaign.delivery();
 		answeredWarnings = new ArrayList<>(campaign.answeredWarnings());
 		testRevisions = campaign.testRevisions();
+		plugins = campaign.plugins();
 	}
 
 	/**
@@ -592,6 +598,7 @@ final class Draft
 			diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes, predecessor, reverts);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, promptAuthorAttempts,
 			development, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
-			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions);
+			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions,
+			plugins);
 	}
 }

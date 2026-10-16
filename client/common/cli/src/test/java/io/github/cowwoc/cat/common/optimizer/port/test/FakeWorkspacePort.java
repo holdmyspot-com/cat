@@ -3,9 +3,10 @@ package io.github.cowwoc.cat.common.optimizer.port.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
+import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
  * A {@link WorkspacePort} that keeps every directory and inventory in memory.
@@ -57,7 +59,10 @@ public final class FakeWorkspacePort implements WorkspacePort
 	private final Map<Path, FileContent> contents = new HashMap<>();
 	private final Map<Path, FileInventory> promptAuthorEffects = new HashMap<>();
 	private final List<Overlay> materialized = new ArrayList<>();
-	private final List<PluginUnderTest.Built> copiedBases = new ArrayList<>();
+	/**
+	 * The plugin directories whose files were copied as bases, in request order.
+	 */
+	private final List<Path> copiedBases = new ArrayList<>();
 	private FileInventory worktree;
 	private int copiesPrepared;
 
@@ -182,39 +187,75 @@ public final class FakeWorkspacePort implements WorkspacePort
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The fake names the copy after the staged source under {@code plugins}, with the suffix
+	 * The fake names the copy after the staged source and the plugin under {@code plugins}, with the suffix
 	 * {@code -without-dependents} when there are removals, and creates nothing.
 	 */
 	@Override
-	public Path pluginCopy(PluginUnderTest plugin, Path source, PluginRemovals removals)
+	public Path pluginCopy(TrialPlugin plugin, Path source, PluginRemovals removals)
 	{
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(source, "source").isNotNull();
 		requireThat(removals, "removals").isNotNull();
-		if (plugin instanceof PluginUnderTest.Built built)
-			requireThat(built.baseDigest(), "plugin.baseDigest()").isNotEmpty();
-		String name = source.getFileName().toString();
+		String name = plugin.name();
 		if (!removals.isEmpty())
 			name += "-without-dependents";
-		return root.resolve("plugins").resolve(name);
-	}
-
-	@Override
-	public void copyPluginBase(PluginUnderTest.Built plugin)
-	{
-		synchronized (lock)
-		{
-			requireThat(plugin, "plugin").isNotNull();
-			copiedBases.add(plugin);
-		}
+		return root.resolve("plugins").resolve(source.getFileName().toString()).resolve(name);
 	}
 
 	/**
-	 * Returns the built plugins whose bases were copied, in request order.
-	 *
-	 * @return the plugins
+	 * {@inheritDoc}
+	 * <p>
+	 * The fake copies the directory's files under {@code plugin-bases} in its root.
 	 */
-	public List<PluginUnderTest.Built> copiedBases()
+	@Override
+	public String copyPluginBase(Path directory) throws IOException
+	{
+		requireThat(directory, "directory").isNotNull();
+		String digest = InventoryScanner.scan(directory, Set.of()).identity().hex();
+		Path base = pluginBase(digest);
+		synchronized (lock)
+		{
+			copiedBases.add(directory);
+			if (Files.isDirectory(base))
+				return digest;
+			try (Stream<Path> files = Files.walk(directory))
+			{
+				for (Path file : files.filter(Files::isRegularFile).toList())
+				{
+					Path target = base.resolve(directory.relativize(file).toString());
+					Files.createDirectories(target.getParent());
+					Files.copy(file, target);
+				}
+			}
+			Files.createDirectories(base);
+		}
+		return digest;
+	}
+
+	@Override
+	public Path pluginBase(String digest)
+	{
+		requireThat(digest, "digest").isNotNull();
+		return root.toAbsolutePath().resolve("plugin-bases").resolve(digest);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The fake's worktree is {@code worktree} in its root, which the test fills.
+	 */
+	@Override
+	public Path worktree()
+	{
+		return root.toAbsolutePath().resolve("worktree");
+	}
+
+	/**
+	 * Returns the plugin directories whose files were copied as bases, in request order.
+	 *
+	 * @return the directories
+	 */
+	public List<Path> copiedBases()
 	{
 		synchronized (lock)
 		{

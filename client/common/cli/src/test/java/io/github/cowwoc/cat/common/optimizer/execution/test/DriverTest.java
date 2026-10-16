@@ -61,7 +61,6 @@ import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
-import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
@@ -73,11 +72,11 @@ import io.github.cowwoc.cat.common.optimizer.contract.JudgedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.OnToolFailure;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.test.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.test.TierFixtures;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveredTest;
@@ -110,6 +109,8 @@ import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
+import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -118,7 +119,6 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
-import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import io.github.cowwoc.cat.common.optimizer.report.CellReport;
 import io.github.cowwoc.cat.common.optimizer.report.OptimizationReport.InputComparison;
@@ -1896,10 +1896,10 @@ public final class DriverTest
 			  "SessionStart": [{"hooks": [{"type": "command", "command": "start.sh"}]}]}}
 			""";
 		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract(), List.of(
-			new Dependent(Dependent.Location.PROJECT, script, new Dependent.WholeFile(), "Repairs read output."),
-			new Dependent(Dependent.Location.PROJECT, hooks,
+			new Dependent(script, new Dependent.WholeFile(), "Repairs read output."),
+			new Dependent(hooks,
 				new Dependent.HookRegistration("PostToolUse", "bin/repair.sh"), "Runs the repair script."),
-			new Dependent(Dependent.Location.PROJECT, agents, new Dependent.Span("Read CLAUDE.md first.\n"),
+			new Dependent(agents, new Dependent.Span("Read CLAUDE.md first.\n"),
 				"Routes the agent to the target.")));
 		Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
 		Map<Path, String> files = Map.of(DriverHarness.PROMPT, "fork", script, "#!/bin/sh\n", hooks, hooksText,
@@ -3399,23 +3399,23 @@ public final class DriverTest
 	}
 
 	/**
-	 * Each trial installs the copy of the plugin under test that belongs to its staged source, so that the trial loads
-	 * its candidate's prompt files through the plugin.
+	 * Each trial installs the copy of every trial plugin that belongs to its staged source, so that the trial loads
+	 * its candidate's prompt files through the plugins.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void trialsInstallPluginUnderTest() throws IOException
+	public void trialsInstallTrialPlugins() throws IOException
 	{
 		// Requirement: R-W12
-		PluginUnderTest plugin = new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath(), "a".repeat(64),
-			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
-			"No prompt file invokes a CAT skill, agent or command.");
-		Contract contract = ContractFixtures.contract().withPlugin(plugin);
+		TrialPlugin plugin = builtPlugin();
+		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(),
+			List.of());
+		Contract contract = ContractFixtures.contract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("plugin-trials")),
-				new Builder().confirmed(contract, 1).working(1).build());
+				new Builder().confirmed(contract, 1).working(1).plugins(List.of(plugin, installed)).build());
 			List<SessionRequest> trials = new CopyOnWriteArrayList<>();
 			harness.trials(request ->
 			{
@@ -3429,15 +3429,15 @@ public final class DriverTest
 			requireThat(trials, "trials").isNotEmpty();
 			for (SessionRequest trial : trials)
 			{
-				TrialPlugin expected = new TrialPlugin(harness.workspace().pluginCopy(plugin, trial.source(),
-					PluginRemovals.NONE), false);
-				requireThat(trial.plugin(), "plugin").isEqualTo(Optional.of(expected));
+				List<Path> expected = List.of(harness.workspace().pluginCopy(plugin, trial.source(), PluginRemovals.NONE),
+					harness.workspace().pluginCopy(installed, trial.source(), PluginRemovals.NONE));
+				requireThat(trial.plugins(), "plugins").isEqualTo(expected);
 			}
 		}
 	}
 
 	/**
-	 * Control trials install a copy of the built plugin under test without the target's dependents in the plugin, and
+	 * Control trials install a copy of a project-built trial plugin without the target's dependents in the plugin, and
 	 * every other trial installs the copy with them. Each cell starts one control pair short of passing.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -3446,13 +3446,11 @@ public final class DriverTest
 	public void controlTrialsRemovePluginDependents() throws IOException
 	{
 		// Requirement: R-W10
-		PluginUnderTest plugin = new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath(), "a".repeat(64),
-			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
-			"No prompt file invokes a CAT skill, agent or command.");
-		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(plugin),
-			List.of(new Dependent(Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(),
+		TrialPlugin plugin = builtPlugin();
+		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract(),
+			List.of(new Dependent(Dependent.Location.PLUGIN, "cat", Path.of("bin/read-part"), new Dependent.WholeFile(),
 				"Reads the part that the target tells the agent to read.")));
-		Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
+		Builder start = new Builder().confirmed(contract, 1).working(1).plugins(List.of(plugin)).readyBaseline();
 		for (String cell : contract.cellIds())
 			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
 		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size(),
@@ -3474,7 +3472,7 @@ public final class DriverTest
 				harness.runSlice(driver);
 			}
 			Sha256 control = harness.campaign().attempt(1).control();
-			PluginRemovals removals = PluginRemovals.of(contract.pluginRemovals(), JsonMapper.builder().build());
+			PluginRemovals removals = PluginRemovals.of(contract.pluginRemovals(plugin), JsonMapper.builder().build());
 			int controlTrials = 0;
 			for (SessionRequest trial : trials)
 			{
@@ -3484,11 +3482,22 @@ public final class DriverTest
 					expected = removals;
 					++controlTrials;
 				}
-				requireThat(trial.plugin(), "plugin").isEqualTo(Optional.of(new TrialPlugin(
-					harness.workspace().pluginCopy(plugin, trial.source(), expected), false)));
+				requireThat(trial.plugins(), "plugins").isEqualTo(List.of(
+					harness.workspace().pluginCopy(plugin, trial.source(), expected)));
 			}
 			requireThat(controlTrials, "controlTrials").isPositive();
 		}
+	}
+
+	/**
+	 * Returns a trial plugin that the project builds.
+	 *
+	 * @return the plugin
+	 */
+	private static TrialPlugin builtPlugin()
+	{
+		return new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"), Path.of("out")),
+			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))));
 	}
 
 	/**
@@ -5111,9 +5120,15 @@ public final class DriverTest
 			}
 
 			@Override
-			public List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin) throws IOException
+			public LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException
 			{
-				return delegate.derivedSources(project, plugin);
+				return delegate.loadedSources(project, plugins);
+			}
+
+			@Override
+			public List<Path> installedPlugins(String name) throws IOException
+			{
+				return delegate.installedPlugins(name);
 			}
 		};
 	}

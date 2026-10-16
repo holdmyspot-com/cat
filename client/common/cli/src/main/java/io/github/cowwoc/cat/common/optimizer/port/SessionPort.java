@@ -1,7 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.port;
 
-import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 
 import java.io.IOException;
@@ -103,19 +101,32 @@ public interface SessionPort
 	Optional<String> findHeldOutExposure(Path project) throws IOException;
 
 	/**
-	 * Lists the prompt files that a trial of this harness loads although no harness event reports them: each
-	 * instruction file that the harness reads at the project root by convention, and, when the trial installs CAT,
-	 * each file that CAT's rules give the trial's primary agent. A file inside the project is named relative to it,
-	 * and a file that the plugin under test's build copies from the project is named as the project's file; other
-	 * files are named by their absolute paths.
+	 * Lists the prompt files that load although no harness event reports them, in production and in trials: each
+	 * instruction file that the harness reads at the project root by convention, and, when CAT is installed, each
+	 * file that CAT's rules give the primary agent. In production, CAT is the user's installation; in trials, it is
+	 * the trial plugin that is CAT, if the campaign lists one. A file inside the project is named relative to it, a
+	 * file that a project-built trial plugin's mapping copies from the project is named as the project's file, and
+	 * other files are named by their absolute paths.
 	 *
 	 * @param project the project's root directory
-	 * @param plugin  the plugin under test, or null if trials install none
-	 * @return the files, once each, with the rule that loads each one
-	 * @throws NullPointerException if {@code project} is null
+	 * @param plugins the campaign's trial plugins with their base copies
+	 * @return the files, once each per list, with the rule that loads each one
+	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if a file cannot be read or a rule is invalid
 	 */
-	List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin) throws IOException;
+	LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException;
+
+	/**
+	 * Finds the user's installed copies of a plugin that the project does not build, through the harness's install
+	 * records.
+	 *
+	 * @param name the plugin's name, {@code <plugin>@<marketplace>}
+	 * @return the absolute directory of each installed copy that the records name and that holds the harness's plugin
+	 *   manifest; empty if none does
+	 * @throws NullPointerException if {@code name} is null
+	 * @throws IOException          if the install records exist but cannot be read
+	 */
+	List<Path> installedPlugins(String name) throws IOException;
 
 	/**
 	 * Lists the directories that hold the runs of every session that this port starts, for the run of every campaign

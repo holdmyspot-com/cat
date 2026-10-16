@@ -7,7 +7,9 @@ import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.RuleSource;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
+import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
+import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -23,9 +25,12 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -144,86 +149,129 @@ public abstract class RunnerSessions implements SessionPort
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The sources are the harness's instruction files at the project root followed, when the trial installs CAT, by
-	 * every file that CAT's rules give the trial's agent from CAT's installation, the user's rules that the settings
-	 * name and the project's rules. A built plugin's rules are read from its base with each mapped project
-	 * directory written over its mapped path, as the trial installs them.
+	 * Each list holds the harness's instruction files at the project root followed, when CAT is installed, by every
+	 * file that CAT's rules give the primary agent from CAT's installation, the user's rules that the settings name and
+	 * the project's rules. In production, CAT is installed when the settings say so, from the CAT artifact; in trials,
+	 * CAT is the first trial plugin whose manifest name is CAT's, and its rules are read from its base with each mapped
+	 * project file written over its mapped path, as trials install them. A file of CAT's installation is compared
+	 * across the two lists by its path relative to the installation.
 	 */
 	@Override
-	public final List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin) throws IOException
+	public final LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException
 	{
 		requireThat(project, "project").isNotNull();
+		requireThat(plugins, "plugins").isNotNull();
 		Path root = project.toAbsolutePath().normalize();
-		List<DerivedSource> sources = new ArrayList<>(instructionFiles(root));
-		if (plugin instanceof PluginUnderTest.Built built &&
-			isCat(built.base().toAbsolutePath().normalize()))
+		List<DerivedSource> instructions = instructionFiles(root);
+
+		List<DerivedSource> production = new ArrayList<>(instructions);
+		// The name of each production file, by the key that matches it in trials
+		Map<String, String> productionNames = new LinkedHashMap<>();
+		for (DerivedSource source : instructions)
+			productionNames.putIfAbsent(source.path(), source.path());
+		if (settings.installCat())
 		{
+			Path artifact = settings.artifact().toAbsolutePath().normalize();
+			for (Loaded loaded : ruleSources(artifact, root, file -> name(root, file), file -> key(root, artifact, file)))
+			{
+				production.add(loaded.source());
+				productionNames.putIfAbsent(loaded.key(), loaded.source().path());
+			}
+		}
+
+		List<DerivedSource> trials = new ArrayList<>(instructions);
+		Set<String> trialKeys = new LinkedHashSet<>();
+		for (DerivedSource source : instructions)
+			trialKeys.add(source.path());
+		// The harness loads one copy of CAT's rules
+		PluginBase cat = null;
+		for (PluginBase base : plugins)
+		{
+			if (isCat(base.directory().toAbsolutePath().normalize()))
+			{
+				cat = base;
+				break;
+			}
+		}
+		if (cat != null)
+		{
+			PluginBase base = cat;
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path overlay = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
-				overlayRules(root, built, overlay);
-				sources.addAll(ruleSources(overlay, root, file -> builtName(root, built, overlay, file)));
+				overlayRules(root, base, overlay);
+				for (Loaded loaded : ruleSources(overlay, root,
+					file -> pluginName(root, base, overlay, file), file -> key(root, overlay, file)))
+				{
+					trials.add(loaded.source());
+					trialKeys.add(loaded.key());
+				}
 			}
-			return sources;
 		}
-		Optional<Path> catRoot = catRoot(root, plugin);
-		if (catRoot.isPresent())
-			sources.addAll(ruleSources(catRoot.get(), root, file -> name(root, file)));
-		return sources;
+
+		List<String> productionOnly = new ArrayList<>();
+		for (Map.Entry<String, String> entry : productionNames.entrySet())
+		{
+			if (!trialKeys.contains(entry.getKey()))
+				productionOnly.add(entry.getValue());
+		}
+		return new LoadedSources(production, trials, productionOnly);
 	}
 
 	/**
-	 * Returns the CAT installation that a trial loads, unless the trial is a built CAT plugin: a plugin root that is
-	 * CAT, the CAT artifact beside a plugin under test that depends on CAT, or the CAT artifact when a trial without
-	 * a plugin under test installs CAT.
+	 * A file that CAT's rules give the primary agent, with the key that matches it across installations.
 	 *
-	 * @param project the absolute, normalized project directory
-	 * @param plugin the trial's plugin under test, or null if it has none
-	 * @return the installation directory, or empty if the trial does not install CAT
-	 * @throws IOException if a manifest cannot be read
+	 * @param source the file and the rule that loads it
+	 * @param key the file's path relative to the project if it is inside it, or else its path relative to CAT's
+	 *   installation
 	 */
-	private Optional<Path> catRoot(Path project, PluginUnderTest plugin) throws IOException
+	private record Loaded(DerivedSource source, String key)
 	{
-		if (plugin == null)
-		{
-			if (settings.installCat())
-				return Optional.of(settings.artifact().toAbsolutePath().normalize());
-			return Optional.empty();
-		}
-		if (plugin instanceof PluginUnderTest.Root pluginRoot)
-		{
-			Path directory = project.resolve(pluginRoot.directory()).normalize();
-			if (isCat(directory))
-				return Optional.of(directory);
-		}
-		if (plugin.dependsOnCat())
-			return Optional.of(settings.artifact().toAbsolutePath().normalize());
-		return Optional.empty();
 	}
 
 	/**
-	 * Lists the files that CAT's rules give a trial's agent.
+	 * Lists the files that CAT's rules give the primary agent.
 	 *
 	 * @param catRoot the absolute CAT installation directory
 	 * @param project the absolute, normalized project directory
 	 * @param naming names each file as the derived sources list it
-	 * @return the derived sources
+	 * @param keying returns the key that matches each file across installations
+	 * @return the files, in the order that the rules load them
 	 * @throws IOException if a rule cannot be read
 	 */
-	private List<DerivedSource> ruleSources(Path catRoot, Path project, Function<Path, String> naming)
-		throws IOException
+	private List<Loaded> ruleSources(Path catRoot, Path project, Function<Path, String> naming,
+		Function<Path, String> keying) throws IOException
 	{
 		Path userRules = settings.userRules().map(path -> path.toAbsolutePath().normalize()).orElse(null);
 		ProjectRuleLoader loader = new ProjectRuleLoader(YAMLMapper.builder().build());
-		List<DerivedSource> sources = new ArrayList<>();
+		List<Loaded> sources = new ArrayList<>();
 		for (RuleSource source : loader.sourcesForMainAgent(catRoot, userRules, project, harness))
 		{
 			String referrer = "";
 			if (source.referrer().isPresent())
 				referrer = naming.apply(source.referrer().get());
-			sources.add(new DerivedSource(naming.apply(source.file()), describe(source.kind(), referrer)));
+			sources.add(new Loaded(new DerivedSource(naming.apply(source.file()), describe(source.kind(), referrer)),
+				keying.apply(source.file())));
 		}
 		return sources;
+	}
+
+	/**
+	 * Returns the key that matches a loaded file across CAT installations.
+	 *
+	 * @param project the absolute, normalized project directory
+	 * @param installation the absolute, normalized directory of the CAT installation that loads the file
+	 * @param file the absolute, normalized file
+	 * @return the file's path relative to the project if it is inside it, its path relative to the installation if it
+	 *   is inside that, and its absolute path otherwise
+	 */
+	private static String key(Path project, Path installation, Path file)
+	{
+		if (file.startsWith(project))
+			return PortablePaths.text(project.relativize(file));
+		if (file.startsWith(installation))
+			return "<cat>/" + PortablePaths.text(installation.relativize(file));
+		return file.toString();
 	}
 
 	/**
@@ -261,52 +309,61 @@ public abstract class RunnerSessions implements SessionPort
 	}
 
 	/**
-	 * Names a file of a built plugin's rule overlay: as the project file that a mapping copies to it, or else by its
-	 * absolute path in the plugin's base.
+	 * Names a file of a trial plugin's rule overlay: as the project file that a mapping copies to it, or else by its
+	 * absolute path in the plugin's base copy.
 	 *
 	 * @param project the absolute, normalized project directory
-	 * @param plugin the built plugin
+	 * @param base the trial plugin and its base copy
 	 * @param overlay the directory that holds the overlaid rules
 	 * @param file the absolute, normalized file below {@code overlay}, or a file outside it
 	 * @return the name
 	 */
-	private static String builtName(Path project, PluginUnderTest.Built plugin, Path overlay, Path file)
+	private static String pluginName(Path project, PluginBase base, Path overlay, Path file)
 	{
 		if (!file.startsWith(overlay))
 			return name(project, file);
 		Path relative = overlay.relativize(file);
-		List<PluginUnderTest.Mapping> mappings = plugin.mappings();
+		List<TrialPlugin.Mapping> mappings = base.plugin().mappings();
 		for (int i = mappings.size() - 1; i >= 0; --i)
 		{
-			PluginUnderTest.Mapping mapping = mappings.get(i);
+			TrialPlugin.Mapping mapping = mappings.get(i);
 			if (!relative.startsWith(mapping.target()) && !mapping.target().toString().isEmpty())
 				continue;
 			Path source = mapping.source().resolve(mapping.target().relativize(relative));
 			if (Files.isRegularFile(project.resolve(source)))
 				return PortablePaths.text(source);
 		}
-		return plugin.base().toAbsolutePath().normalize().resolve(relative).toString();
+		return base.directory().toAbsolutePath().normalize().resolve(relative).toString();
 	}
 
 	/**
-	 * Copies a built plugin's rules as the trial installs them: the base's {@code rules} directory with each mapped
-	 * project directory written over its mapped path.
+	 * Copies a trial plugin's rules as trials install them: the base's {@code rules} directory with each mapped
+	 * project directory or file written over its mapped path.
 	 *
 	 * @param project the absolute, normalized project directory
-	 * @param plugin the built plugin
+	 * @param base the trial plugin and its base copy
 	 * @param overlay the empty directory that receives the rules
 	 * @throws IOException if the rules cannot be copied
 	 */
-	private static void overlayRules(Path project, PluginUnderTest.Built plugin, Path overlay) throws IOException
+	private static void overlayRules(Path project, PluginBase base, Path overlay) throws IOException
 	{
 		Path rules = Path.of(RULES);
-		copyTree(plugin.base().resolve(rules), overlay.resolve(rules));
-		for (PluginUnderTest.Mapping mapping : plugin.mappings())
+		copyTree(base.directory().resolve(rules), overlay.resolve(rules));
+		for (TrialPlugin.Mapping mapping : base.plugin().mappings())
 		{
 			Path source = project.resolve(mapping.source());
 			Path target = mapping.target();
 			if (target.startsWith(rules))
-				copyTree(source, overlay.resolve(target));
+			{
+				if (Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS))
+				{
+					Path copy = overlay.resolve(target);
+					Files.createDirectories(copy.getParent());
+					Files.copy(source, copy, StandardCopyOption.REPLACE_EXISTING);
+				}
+				else
+					copyTree(source, overlay.resolve(target));
+			}
 			else if (target.toString().isEmpty() || rules.startsWith(target))
 				copyTree(source.resolve(target.relativize(rules)), overlay.resolve(rules));
 		}
@@ -447,7 +504,8 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 	 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 	 * @param executable the harness executable, or blank for the harness's default command
-	 * @param installCat whether the runner installs CAT into trial sessions' isolated homes
+	 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
+	 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
 	 * @param environment the host environment that the runner scrubs for the session
 	 * @param configurationDirectory the host's harness configuration directory, which holds the login
 	 * @param capacity the shared capacity from which every session takes one permit
@@ -466,7 +524,8 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 		 * @param executable the harness executable, or blank for the harness's default command
-		 * @param installCat whether the runner installs CAT into trial sessions' isolated homes
+		 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
+		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
 		 * @param environment the host environment that the runner scrubs for the session
 		 * @param configurationDirectory the host's harness configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit
@@ -500,7 +559,8 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 		 * @param executable the harness executable, or blank for the harness's default command
-		 * @param installCat whether the runner installs CAT into trial sessions' isolated homes
+		 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
+		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
 		 * @param environment the host environment that the runner scrubs for the session
 		 * @param configurationDirectory the host's harness configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit

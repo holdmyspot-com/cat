@@ -152,7 +152,7 @@ public final class DependentRemovalTest
 	 */
 	private static Dependent dependent(Dependent.Removal removal)
 	{
-		return new Dependent(Dependent.Location.PROJECT, Path.of("hooks/hooks.json"), removal,
+		return new Dependent(Path.of("hooks/hooks.json"), removal,
 			"Repairs the output of read-part.");
 	}
 }

@@ -14,6 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.BuiltInTool;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ValueGenerators;
@@ -105,6 +106,11 @@ public final class ContractAuthorProtocol
 	 * The files that load in production, each with the rule that loads it, as a Markdown list.
 	 */
 	private final String loadedFiles;
+	/**
+	 * The trial plugins that the project builds, with the project paths that trials write over each, as a Markdown
+	 * list.
+	 */
+	private final String trialPlugins;
 
 	/**
 	 * Creates the contract author request builder and response validator.
@@ -119,13 +125,14 @@ public final class ContractAuthorProtocol
 	 * @param reportsExitStatus {@code true} if the harness reports the exit status of commands, so that a built-in
 	 *   check that needs it can be decided
 	 * @param loadedFiles the files that load in production, each with the rule that loads it
+	 * @param trialPlugins the trial plugins that every trial of the campaign installs, in configuration order
 	 * @throws NullPointerException if any of the arguments other than {@code goal} are null
 	 * @throws IllegalArgumentException if {@code target} is relative or {@code goal} is blank
 	 * @throws UncheckedIOException if a packaged prompt or schema cannot be read
 	 */
 	public ContractAuthorProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge,
 		RegressionScenarios scenarios, Path target, String goal, boolean reportsExitStatus,
-		List<DerivedSource> loadedFiles)
+		List<DerivedSource> loadedFiles, List<TrialPlugin> trialPlugins)
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(schema, "schema").isNotNull();
@@ -136,6 +143,7 @@ public final class ContractAuthorProtocol
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
 		requireThat(loadedFiles, "loadedFiles").isNotNull();
+		requireThat(trialPlugins, "trialPlugins").isNotNull();
 		this.json = json;
 		this.schema = schema;
 		this.judge = judge;
@@ -144,6 +152,7 @@ public final class ContractAuthorProtocol
 		this.goal = goal;
 		this.reportsExitStatus = reportsExitStatus;
 		this.loadedFiles = loadedFiles(loadedFiles);
+		this.trialPlugins = trialPlugins(trialPlugins);
 		this.outputFile = new OutputFile(json);
 		this.prompt = withPromptTests(PROMPT_RESOURCE);
 		this.outputSchema = outputSchema(json, schema);
@@ -262,15 +271,17 @@ public final class ContractAuthorProtocol
 			else
 				lines.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
 		}
-		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "profile_inventory",
-			lines.toString(), "capability_ranking", profiles.ranking().describe(), "output_schema", outputSchema,
-			"regression_scenarios", scenarios.prompt(), "generators", ValueGenerators.describeAll(), "target_prompt_file",
-			targetPromptFile(), "goal", goal(), "loaded_files", loadedFiles));
+		String turn = prompt.fill(Map.ofEntries(Map.entry("previous_proposal", previous),
+			Map.entry("feedback", feedback), Map.entry("profile_inventory", lines.toString()),
+			Map.entry("capability_ranking", profiles.ranking().describe()), Map.entry("output_schema", outputSchema),
+			Map.entry("regression_scenarios", scenarios.prompt()), Map.entry("generators", ValueGenerators.describeAll()),
+			Map.entry("target_prompt_file", targetPromptFile()), Map.entry("goal", goal()),
+			Map.entry("loaded_files", loadedFiles), Map.entry("trial_plugins", trialPlugins)));
 		String file = OutputFile.name(promptSystem);
 		FollowUp correct = result -> correction(result, profiles, salt, file);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn,
 			outputTurn.fill(Map.of("output_file", file))), List.of(), TIME_LIMIT, role(), WorkspaceFixtures.NONE,
-			Optional.empty(), Optional.of(correct));
+			List.of(), Optional.of(correct));
 	}
 
 	/**
@@ -286,6 +297,35 @@ public final class ContractAuthorProtocol
 		StringJoiner list = new StringJoiner("\n");
 		for (DerivedSource file : files)
 			list.add("- `" + file.path() + "`: " + file.rule());
+		return list.toString();
+	}
+
+	/**
+	 * Returns the trial plugins that the project builds as a Markdown list.
+	 *
+	 * @param plugins the trial plugins
+	 * @return a list item for each project-built plugin with the project paths that trials write over it, or
+	 *   {@code none} if there are none
+	 */
+	private static String trialPlugins(List<TrialPlugin> plugins)
+	{
+		StringJoiner list = new StringJoiner("\n");
+		for (TrialPlugin plugin : plugins)
+		{
+			if (!plugin.isProjectBuilt())
+				continue;
+			StringJoiner mappings = new StringJoiner(", ");
+			for (TrialPlugin.Mapping mapping : plugin.mappings())
+			{
+				mappings.add("`" + PortablePaths.text(mapping.source()) + "` → `" +
+					PortablePaths.text(mapping.target()) + "`");
+			}
+			if (mappings.length() == 0)
+				mappings.add("none");
+			list.add("- `" + plugin.name() + "`, with these project paths written over it: " + mappings);
+		}
+		if (list.length() == 0)
+			return "none";
 		return list.toString();
 	}
 

@@ -1,6 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.cli.test;
 
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
@@ -18,6 +17,7 @@ import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -101,13 +101,13 @@ final class InMemoryForks implements Forks
 	}
 
 	/**
-	 * Returns the built plugins whose bases the workspaces of every fork copied.
+	 * Returns the plugin directories whose files the workspaces of every fork copied as trial plugin bases.
 	 *
-	 * @return the plugins, in fork creation order and then request order
+	 * @return the directories, in fork creation order and then request order
 	 */
-	List<PluginUnderTest.Built> copiedBases()
+	List<Path> copiedBases()
 	{
-		List<PluginUnderTest.Built> copied = new ArrayList<>();
+		List<Path> copied = new ArrayList<>();
 		for (FakeWorkspacePort workspace : workspaces)
 			copied.addAll(workspace.copiedBases());
 		return copied;
@@ -132,9 +132,31 @@ final class InMemoryForks implements Forks
 		Set<Path> paths = new LinkedHashSet<>(tracked);
 		paths.addAll(participants);
 		FileInventory inventory = scan(Map.of(), paths);
+		// The optimization worktree holds the fork's project files apart from the base worktree, as a Git worktree does
+		Path worktree = campaign.toAbsolutePath().resolve("worktree");
+		for (Path path : paths)
+		{
+			if (path.isAbsolute())
+				continue;
+			Path copy = worktree.resolve(path);
+			Files.createDirectories(copy.getParent());
+			Files.copy(root.resolve(path), copy, StandardCopyOption.COPY_ATTRIBUTES,
+				StandardCopyOption.REPLACE_EXISTING);
+		}
 		recorded.put(campaign, new LinkedHashMap<>(inventory.entries()));
 		created.put(campaign, Set.copyOf(paths));
 		return new InMemoryFork(campaign, inventory, excludeAdded, true);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The files are the ones that the test names as tracked.
+	 */
+	@Override
+	public Set<Path> tracked(Path base)
+	{
+		return tracked;
 	}
 
 	@Override

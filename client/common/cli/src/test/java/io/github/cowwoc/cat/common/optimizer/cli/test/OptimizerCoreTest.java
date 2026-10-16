@@ -2,6 +2,8 @@ package io.github.cowwoc.cat.common.optimizer.cli.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.Platform;
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.fakes.test.ManualClock;
 import io.github.cowwoc.cat.common.git.Git;
@@ -35,14 +37,16 @@ import io.github.cowwoc.cat.common.optimizer.cli.Commands;
 import io.github.cowwoc.cat.common.optimizer.cli.OptimizerCore;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
-import io.github.cowwoc.cat.common.optimizer.contract.PluginUnderTest;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptConfiguration;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.optimizer.execution.GuardPilot;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorConflict;
+import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
 import tools.jackson.databind.JsonNode;
@@ -60,7 +64,8 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
-import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
+import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
+import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeSessionPort;
 import io.github.cowwoc.cat.common.optimizer.proposal.OutputFile;
@@ -110,6 +115,10 @@ import java.util.stream.Stream;
 public final class OptimizerCoreTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
+	/**
+	 * A prompt test configuration whose Claude trials install no plugin.
+	 */
+	private static final String NO_PLUGINS = "{\"claude\": {\"plugins\": []}}";
 	/**
 	 * Matches the identifier of each assertion that a judge request lists, which its turn holds as a JSON array of
 	 * objects indented by two spaces.
@@ -396,6 +405,7 @@ public final class OptimizerCoreTest
 			repository.sessions().addDerivedSources(List.of(new DerivedSource("read-file.md",
 				"CLAUDE.md lazy loads the read rule.")));
 			Files.writeString(repository.root().resolve("read-file.md"), "Read files whole.\n");
+			configure(repository.root(), Path.of("read-file.md"), NO_PLUGINS);
 			repository.core().start(Path.of("read-file.md"));
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
 			requireThat(trials, "trials").isNotEmpty();
@@ -457,11 +467,11 @@ public final class OptimizerCoreTest
 		private final Function<SessionRequest, SessionResult> script;
 		private final Map<SessionRole, List<TokenUsage>> usage = new java.util.EnumMap<>(SessionRole.class);
 		/**
-		 * The hooks that {@link #unapprovedHooks(Path)} returns for each plugin directory.
+		 * The hooks that {@link #unapprovedHooks(Path)} returns for each plugin directory, by the directory's name.
 		 */
-		private final Map<Path, List<String>> unapprovedHooks = new HashMap<>();
+		private final Map<String, List<String>> unapprovedHooks = new HashMap<>();
 		/**
-		 * The prompt files that {@link #derivedSources(Path, PluginUnderTest)} returns.
+		 * The prompt files that {@link #loadedSources(Path, List)} returns as loading both in production and in trials.
 		 */
 		private volatile List<DerivedSource> derivedSources = List.of(new DerivedSource("CLAUDE.md",
 			"The harness reads the project instruction file in the project root at startup."));
@@ -508,14 +518,42 @@ public final class OptimizerCoreTest
 			return List.of();
 		}
 
+		/**
+		 * The installed copies that {@link #installedPlugins(String)} returns for each plugin name.
+		 */
+		private final Map<String, List<Path>> installed = new HashMap<>();
+
 		@Override
-		public List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin)
+		public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
 		{
-			return derivedSources;
+			return new LoadedSources(derivedSources, derivedSources, List.of());
+		}
+
+		@Override
+		public List<Path> installedPlugins(String name)
+		{
+			synchronized (installed)
+			{
+				return installed.getOrDefault(name, List.of());
+			}
 		}
 
 		/**
-		 * Adds prompt files to those that {@link #derivedSources(Path, PluginUnderTest)} returns.
+		 * Sets the user's installed copies of a plugin.
+		 *
+		 * @param name the plugin's name, {@code <plugin>@<marketplace>}
+		 * @param copies the directories of the copies
+		 */
+		void install(String name, List<Path> copies)
+		{
+			synchronized (installed)
+			{
+				installed.put(name, List.copyOf(copies));
+			}
+		}
+
+		/**
+		 * Adds prompt files to those that {@link #loadedSources(Path, List)} returns.
 		 *
 		 * @param sources the files
 		 */
@@ -535,7 +573,7 @@ public final class OptimizerCoreTest
 		@Override
 		public List<String> unapprovedHooks(Path plugin)
 		{
-			return unapprovedHooks.getOrDefault(plugin, List.of());
+			return unapprovedHooks.getOrDefault(plugin.getFileName().toString(), List.of());
 		}
 
 		@Override
@@ -616,7 +654,7 @@ public final class OptimizerCoreTest
 		 * @param plugin the plugin directory
 		 * @param hooks the hooks, each as its event and command
 		 */
-		void unapprovedHooks(Path plugin, List<String> hooks)
+		void unapprovedHooks(String plugin, List<String> hooks)
 		{
 			unapprovedHooks.put(plugin, hooks);
 		}
@@ -767,6 +805,7 @@ public final class OptimizerCoreTest
 		Files.writeString(root.resolve("CLAUDE.md"), "Be brief.\n");
 		Files.writeString(root.resolve(".env.example"), "TOKEN=fixture\n");
 		Files.writeString(root.resolve("extra.local.md"), "Local rules.\n");
+		configure(root, NO_PLUGINS);
 		// The core only reads a session's files, so every session shares one empty set instead of creating its own
 		Path transcript = Files.createFile(scratch.resolve("transcript.jsonl"));
 		Path effects = Files.createDirectory(scratch.resolve("effects"));
@@ -1384,7 +1423,7 @@ public final class OptimizerCoreTest
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
 			requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC).execute(arguments, out), "exitCode").
-				isEqualTo(0);
+				withContext(bytes.toString(StandardCharsets.UTF_8), "output").isEqualTo(0);
 		}
 		return (ObjectNode) JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
 	}
@@ -1666,7 +1705,7 @@ public final class OptimizerCoreTest
 			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(),
 			c.throttle(), List.of(new PendingDecision.ConflictFound(reportedConflicts(), List.of())),
 			c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(), c.answeredWarnings(),
-			c.testRevisions()));
+			c.testRevisions(), c.plugins()));
 	}
 
 	/**
@@ -1887,39 +1926,216 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that the guard pilot's control trials install the plugin under test, and that confirmation copies the
-	 * plugin's base as the contract records it, so that later trials never read the base live.
+	 * Verifies that {@code start} refuses a target without a prompt test configuration, naming the file, before it
+	 * creates anything.
 	 */
 	@Test
-	public void confirmCopiesPluginBase() throws Exception
+	public void startRefusesMissingConfiguration() throws Exception
 	{
 		// Requirement: R-W12
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
-			Path base = scope.add(Files.createTempDirectory("plugin-base")).toRealPath();
-			Files.createDirectory(base.resolve(".codex-plugin"));
-			Files.writeString(base.resolve(".codex-plugin/plugin.json"), "{\"name\": \"style\"}\n");
-			Repository repository = repository(scope, _ -> derivation(output ->
-				output.set("plugin_under_test", builtPlugin(base))));
-			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
-			requireThat(trials, "trials").isNotEmpty();
-			for (SessionRequest trial : trials)
+			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
-				requireThat(trial.plugin().map(TrialPlugin::dependsOnCat), "dependsOnCat").
-					isEqualTo(Optional.of(false));
-			}
+			}));
+			Path file = PromptConfiguration.location(Path.of("CLAUDE.md"));
+			Files.delete(repository.root().resolve(file));
+			Map<String, String> before = contents(repository.root());
 
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			String message = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
 
-			Optional<PluginUnderTest> confirmed = repository.load(id).contract().plugin();
-			requireThat(repository.forks().copiedBases(), "copiedBases").isEqualTo(List.of(confirmed.orElseThrow()));
+			requireThat(message, "message").contains(PortablePaths.text(file)).contains("does not exist");
+			requireThat(contents(repository.root()), "contents").isEqualTo(before);
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR), "sessions").isEmpty();
 		}
 	}
 
 	/**
-	 * Verifies that the proposal names the hooks of the plugin under test that the harness reports the user has not
-	 * approved, by the plugin's base.
+	 * Verifies that {@code start} refuses a prompt test configuration without a key for the harness, naming the file
+	 * and the key, before it creates anything.
+	 */
+	@Test
+	public void startRefusesMissingHarnessKey() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			configure(repository.root(), "{\"codex\": {\"plugins\": []}}");
+			Map<String, String> before = contents(repository.root());
+
+			String message = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+
+			requireThat(message, "message").
+				contains(PortablePaths.text(PromptConfiguration.location(Path.of("CLAUDE.md")))).
+				contains("no \"claude\" key");
+			requireThat(contents(repository.root()), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} refuses a plugin listed without a build whose name a manifest that Git tracks in the
+	 * project holds, because trials would install the user's copy instead of the project's plugin.
+	 */
+	@Test
+	public void startRefusesUnbuiltTrackedPlugin() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path manifest = Path.of("plugins/cat/.claude-plugin/plugin.json");
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), manifest));
+			Files.createDirectories(repository.root().resolve(manifest).getParent());
+			Files.writeString(repository.root().resolve(manifest), "{\"name\": \"cat\"}\n");
+			configure(repository.root(), "{\"claude\": {\"plugins\": [{\"name\": \"cat@cat\"}]}}");
+			Map<String, String> before = contents(repository.root());
+
+			String message = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+
+			requireThat(message, "message").contains("cat@cat").contains(PortablePaths.text(manifest));
+			requireThat(contents(repository.root()), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} builds a project-built plugin in the optimization worktree and copies its output as
+	 * the plugin's base, leaving the user's own build output in the base worktree unread and unchanged, and that a
+	 * revision neither rebuilds nor recopies.
+	 */
+	@Test
+	public void buildsInOptimizationWorktree() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), buildProgram()));
+			Path root = repository.root();
+			writeBuildProgram(root);
+			configure(root, buildConfiguration("cat", 0, "out"));
+			Path stale = root.resolve("out/stale.md");
+			Files.createDirectories(stale.getParent());
+			Files.writeString(stale, "The user's own build output.\n");
+
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().revise(id, "cover the formal tone");
+
+			Path worktree = repository.directory(id).toAbsolutePath().resolve("worktree");
+			requireThat(repository.forks().copiedBases(), "copiedBases").isEqualTo(List.of(worktree.resolve("out")));
+			requireThat(Files.readAllLines(repository.directory(id).resolve("builds.log")), "builds").size().
+				isEqualTo(1);
+			requireThat(Files.readString(stale), "stale").isEqualTo("The user's own build output.\n");
+			requireThat(Files.exists(root.resolve("out/.claude-plugin")), "baseManifest").isFalse();
+			List<TrialPlugin> plugins = repository.load(id).plugins().orElseThrow();
+			requireThat(plugins.stream().map(TrialPlugin::name).toList(), "plugins").isEqualTo(List.of("cat"));
+			requireThat(plugins.getFirst().source(), "source").
+				isEqualTo(new TrialPlugin.Build(List.of("./build-plugin", "cat", "0"), Path.of("out")));
+		}
+	}
+
+	/**
+	 * Verifies that a build that fails stops {@code start} with its exit status and the end of its output, and that
+	 * the target is startable again: once the configuration names a build that succeeds, {@code start} builds the
+	 * plugin and records it.
+	 */
+	@Test
+	public void failedBuildLeavesTargetStartable() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), buildProgram()));
+			writeBuildProgram(repository.root());
+			configure(repository.root(), buildConfiguration("cat", 3, "out"));
+
+			String message = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+
+			requireThat(message, "message").contains("exited with status 3").contains("building cat");
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR), "sessions").isEmpty();
+
+			configure(repository.root(), buildConfiguration("cat", 0, "out"));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			requireThat(repository.load(id).plugins().orElseThrow().stream().map(TrialPlugin::name).toList(),
+				"plugins").isEqualTo(List.of("cat"));
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR), "sessions").isNotEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} refuses a build whose output holds no plugin manifest, or a manifest that names
+	 * another plugin than the configuration, showing the exit status and the end of the output.
+	 */
+	@Test
+	public void startRefusesWrongBuildOutput() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), buildProgram()));
+			writeBuildProgram(repository.root());
+			Path manifest = Path.of(".claude-plugin", "plugin.json");
+			configure(repository.root(), buildConfiguration("cat", 0, "missing"));
+			String missing = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+			configure(repository.root(), buildConfiguration("other", 0, "out"));
+			String other = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+
+			requireThat(missing, "missing").contains("left no valid manifest " + PortablePaths.text(manifest)).
+				contains("exited with status 0").contains("building cat");
+			requireThat(other, "other").contains("produced the plugin other").contains("exited with status 0").
+				contains("building other");
+			requireThat(repository.forks().copiedBases(), "copiedBases").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} refuses a plugin that the project does not build unless the harness's install
+	 * records name exactly one installed copy, and that it copies that one copy as the plugin's base.
+	 */
+	@Test
+	public void installedPluginNeedsOneCopy() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			configure(repository.root(), "{\"claude\": {\"plugins\": [{\"name\": \"tools@market\"}]}}");
+			Path installed = scope.add(Files.createTempDirectory("installed-plugin")).toRealPath();
+			Files.createDirectories(installed.resolve(".claude-plugin"));
+			Files.writeString(installed.resolve(".claude-plugin/plugin.json"), "{\"name\": \"tools\"}\n");
+
+			String none = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+			repository.sessions().install("tools@market", List.of(installed, installed.resolve("copy")));
+			String two = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+			repository.sessions().install("tools@market", List.of(installed));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			requireThat(none, "none").contains("tools@market").contains("not installed");
+			requireThat(two, "two").contains("2 copies");
+			requireThat(repository.load(id).plugins().orElseThrow().getFirst().isProjectBuilt(), "isProjectBuilt").
+				isFalse();
+			requireThat(repository.forks().copiedBases(), "copiedBases").isEqualTo(List.of(installed));
+			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
+			requireThat(trials, "trials").isNotEmpty();
+			for (SessionRequest trial : trials)
+				requireThat(trial.plugins().size(), "plugins").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that the proposal names the hooks of a trial plugin that the harness reports the user has not
+	 * approved, by the plugin's name.
 	 */
 	@Test
 	public void proposalNamesUnapprovedHooks() throws Exception
@@ -1927,68 +2143,117 @@ public final class OptimizerCoreTest
 		// Requirement: R-W12
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
-			Path base = scope.add(Files.createTempDirectory("plugin-base")).toRealPath();
-			Files.createDirectory(base.resolve(".codex-plugin"));
-			Files.writeString(base.resolve(".codex-plugin/plugin.json"), "{\"name\": \"style\"}\n");
-			Repository repository = repository(scope, _ -> derivation(output ->
-				output.set("plugin_under_test", builtPlugin(base))));
-			repository.sessions().unapprovedHooks(base, List.of("SessionStart `./start.sh`"));
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			configure(repository.root(), "{\"claude\": {\"plugins\": [{\"name\": \"tools@market\"}]}}");
+			Path installed = scope.add(Files.createTempDirectory("installed-plugin")).toRealPath();
+			Files.createDirectories(installed.resolve(".claude-plugin"));
+			Files.writeString(installed.resolve(".claude-plugin/plugin.json"), "{\"name\": \"tools\"}\n");
+			repository.sessions().install("tools@market", List.of(installed));
+			// The base copy is named by its digest in the fake workspace
+			repository.sessions().unapprovedHooks(InventoryScanner.scan(installed, Set.of()).identity().hex(),
+				List.of("tools@market SessionStart `./start.sh`"));
 
 			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
 
-			requireThat(started.proposal(), "proposal").contains("the user has not approved them in the harness: " +
-				"SessionStart `./start.sh`.");
+			requireThat(started.proposal(), "proposal").contains("tools@market SessionStart `./start.sh`");
 		}
 	}
 
 	/**
-	 * Verifies that a proposal whose plugin under test is refused runs no guard pilot, because its trials could not
-	 * install the plugin, and that confirmation names the refusal.
-	 */
-	@Test
-	public void refusedPluginRunsNoPilot() throws Exception
-	{
-		// Requirement: R-W12
-		try (TemporaryDirectories scope = new TemporaryDirectories())
-		{
-			Path base = scope.add(Files.createTempDirectory("plugin-base")).toRealPath().resolve("missing");
-			Repository repository = repository(scope, _ -> derivation(output ->
-				output.set("plugin_under_test", builtPlugin(base))));
-			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
-			String id = started.status().campaignId();
-			requireThat(repository.sessions().requests(SessionRole.TRIAL), "trials").isEmpty();
-			requireThat(started.proposal(), "proposal").contains("CAT ran no control trials");
-
-			CommandRefusedException refusal = null;
-			try
-			{
-				repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
-			}
-			catch (CommandRefusedException e)
-			{
-				refusal = e;
-			}
-			requireThat(refusal, "refusal").isNotNull();
-			requireThat(refusal.getMessage(), "message").contains("`" + base + "`").contains("is not a directory");
-		}
-	}
-
-	/**
-	 * Returns a built plugin under test that does not depend on CAT and whose one mapping writes the project's
-	 * {@code rules} directory over the base's {@code rules/codex}.
+	 * Writes the prompt test configuration of the target {@code CLAUDE.md}.
 	 *
-	 * @param base the base directory
-	 * @return the contract author's {@code plugin_under_test} object
+	 * @param root the project root
+	 * @param json the configuration
+	 * @throws IOException if the file cannot be written
 	 */
-	private static ObjectNode builtPlugin(Path base)
+	private static void configure(Path root, String json) throws IOException
 	{
+		configure(root, Path.of("CLAUDE.md"), json);
+	}
+
+	/**
+	 * Writes a target's prompt test configuration.
+	 *
+	 * @param root the project root
+	 * @param target the target, relative to the project root
+	 * @param json the configuration
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void configure(Path root, Path target, String json) throws IOException
+	{
+		Path file = root.resolve(PromptConfiguration.location(target));
+		Files.createDirectories(file.getParent());
+		Files.writeString(file, json);
+	}
+
+	/**
+	 * Returns a prompt test configuration that lists the plugin {@code cat}, built by the program that
+	 * {@link #buildProgram(TemporaryDirectories)} names.
+	 *
+	 * @param name the name that the build writes into its manifest
+	 * @param exitStatus the build's exit status
+	 * @param output the build's output directory, relative to the project
+	 * @return the configuration
+	 */
+	private static String buildConfiguration(String name, int exitStatus, String output)
+	{
+		ObjectNode build = JSON.createObjectNode();
+		build.putArray("command").add("./build-plugin").add(name).add(String.valueOf(exitStatus));
+		build.put("output", output);
 		ObjectNode plugin = JSON.createObjectNode();
-		plugin.putNull("root");
-		plugin.put("base", base.toString());
-		plugin.putArray("mappings").addObject().put("source", "rules").put("target", "rules/codex");
-		plugin.put("depends_on_cat", false);
-		plugin.put("cat_evidence", "No prompt file invokes a CAT skill, agent or command.");
-		return plugin;
+		plugin.put("name", "cat");
+		plugin.set("build", build);
+		ObjectNode configuration = JSON.createObjectNode();
+		configuration.putObject("claude").putArray("plugins").add(plugin);
+		return JSON.writeValueAsString(configuration);
+	}
+
+	/**
+	 * Returns the build program that {@link #writeBuildProgram(Path)} writes.
+	 *
+	 * @return the program's path relative to the project: a batch file on Windows, otherwise a shell script
+	 */
+	private static Path buildProgram()
+	{
+		if (Platform.current().isWindows())
+			return Path.of("build-plugin.cmd");
+		return Path.of("build-plugin");
+	}
+
+	/**
+	 * Writes the build program {@link #buildProgram()} into a project. The program takes a plugin name and an exit
+	 * status as its arguments: it prints {@code building <name>}, appends a line to {@code builds.log} in the parent
+	 * of the directory that it runs in, writes a plugin directory {@code out} whose manifest holds the name, and exits
+	 * with the status.
+	 *
+	 * @param root the project root
+	 * @throws IOException if the program cannot be written
+	 */
+	private static void writeBuildProgram(Path root) throws IOException
+	{
+		if (Platform.current().isWindows())
+		{
+			Files.writeString(root.resolve(buildProgram()), """
+				@echo off\r
+				echo building %1\r
+				echo build>> ..\\builds.log\r
+				if not exist out\\.claude-plugin mkdir out\\.claude-plugin\r
+				echo {"name": "%1"}> out\\.claude-plugin\\plugin.json\r
+				exit /b %2\r
+				""");
+			return;
+		}
+		Path script = Files.writeString(root.resolve(buildProgram()), """
+			#!/bin/sh
+			echo "building $1"
+			echo build >> ../builds.log
+			mkdir -p out/.claude-plugin
+			printf '{"name": "%s"}\\n' "$1" > out/.claude-plugin/plugin.json
+			exit "$2"
+			""");
+		requireThat(script.toFile().setExecutable(true, false), "executable").isTrue();
 	}
 
 	/**
@@ -2411,7 +2676,7 @@ public final class OptimizerCoreTest
 			c.ceiling(), c.lineages(), c.identity(), c.incumbent(), c.candidates(), c.promptAuthorAttempts(),
 			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(),
 			c.throttle(), c.pendingDecisions(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(),
-			c.answeredWarnings(), requested));
+			c.answeredWarnings(), requested, c.plugins()));
 	}
 
 	/**
@@ -2890,10 +3155,14 @@ public final class OptimizerCoreTest
 		// Requirement: R-W9
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
+			// Claude Code reads the rule from the project, so trials load it without a trial plugin
+			Path rule = Path.of(".claude/rules/kind.md");
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
-			}), Set.of(Path.of("CLAUDE.md"), Path.of("AGENTS.md")));
-			Files.writeString(repository.root().resolve("AGENTS.md"), "Be kind.\n");
+			}), Set.of(Path.of("CLAUDE.md"), rule));
+			Files.createDirectories(repository.root().resolve(rule).getParent());
+			Files.writeString(repository.root().resolve(rule), "Be kind.\n");
+			configure(repository.root(), rule, NO_PLUGINS);
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			FileCampaignStore.recordRemoval(repository.root(), id);
 			Path worktree = repository.directory(id).resolve("worktree");
@@ -2901,7 +3170,7 @@ public final class OptimizerCoreTest
 			String warning = "Could not remove the files of campaign " + id + ": " + worktree +
 				": Permission denied. The next command retries the removal.";
 
-			ObjectNode started = output(repository, List.of("start", "AGENTS.md"));
+			ObjectNode started = output(repository, List.of("start", PortablePaths.text(rule)));
 
 			requireThat(started.get("proposal").isNull(), "proposalIsNull").isFalse();
 			requireThat(started.get("summary").asString(), "summary").endsWith("\n" + warning);
@@ -2939,7 +3208,7 @@ public final class OptimizerCoreTest
 				built.attempts(), built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(),
 				built.throttle(), List.of(new PendingDecision.RegressionTradeOff(1)),
 				built.revisionRequested(), built.outcome(), built.delivery(), built.optimization(),
-				built.answeredWarnings(), built.testRevisions());
+				built.answeredWarnings(), built.testRevisions(), built.plugins());
 			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(tradeOff);
 
 			ObjectNode chosen = output(repository, List.of("choose", id, "retain_incumbent"));
@@ -3010,7 +3279,7 @@ public final class OptimizerCoreTest
 				c.candidates(), c.promptAuthorAttempts(), c.development(), c.baseline(), c.attempts(),
 				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
 				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(),
-				c.answeredWarnings(), c.testRevisions());
+				c.answeredWarnings(), c.testRevisions(), c.plugins());
 			Campaign warned = Transitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
 			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(warned);
 			requireThat(warned.choices(), "choices").isEqualTo(List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP));
@@ -3049,7 +3318,7 @@ public final class OptimizerCoreTest
 				c.candidates(), c.promptAuthorAttempts(), c.development(), c.baseline(), c.attempts(),
 				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
 				List.of(new PendingDecision.RegressionTradeOff(1)), c.revisionRequested(), Outcome.CERTIFIED,
-				c.delivery(), c.optimization(), c.answeredWarnings(), c.testRevisions());
+				c.delivery(), c.optimization(), c.answeredWarnings(), c.testRevisions(), c.plugins());
 			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(waiting);
 			requireThat(waiting.choices(), "choices").contains(Choice.RETAIN_INCUMBENT);
 

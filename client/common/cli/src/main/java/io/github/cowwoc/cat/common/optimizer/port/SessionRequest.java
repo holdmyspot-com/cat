@@ -29,13 +29,12 @@ import java.util.Optional;
  *   selecting it.
  * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn;
  *   {@link WorkspaceFixtures#NONE} for every other session
- * @param plugin the plugin under test that a trial installs in place of the harness default; empty for a trial
- *   whose prompt files are not in a plugin, and for every other session
+ * @param plugins the plugin directories that a trial installs, and no other plugin; empty for every other session
  * @param followUp chooses at most one turn to send after the last of {@code turns}, from the replies so far; that
  *   turn gets a time limit of its own as long as {@code timeLimit}. Empty to end the session after {@code turns}.
  */
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
-	Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, Optional<TrialPlugin> plugin,
+	Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, List<Path> plugins,
 	Optional<FollowUp> followUp)
 {
 	/**
@@ -60,7 +59,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	}
 
 	/**
-	 * Creates a request without a plugin under test.
+	 * Creates a request that installs no plugin.
 	 *
 	 * @param role the kind of work that the session performs
 	 * @param part the part of the contract whose content the session may read
@@ -78,7 +77,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 		Duration timeLimit, TrialProfile profile, WorkspaceFixtures files)
 	{
-		this(role, part, source, turns, readOnly, timeLimit, profile, files, null);
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, List.of());
 	}
 
 	/**
@@ -92,18 +91,16 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param timeLimit how long the session may run before its remaining turns are abandoned
 	 * @param profile the model and reasoning effort that the session starts under
 	 * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn
-	 * @param plugin the plugin under test that a trial installs in place of the harness default, or null if there is
-	 *   none
-	 * @throws NullPointerException if any argument other than {@code plugin} is null
+	 * @param plugins the plugin directories that a trial installs, and no other plugin
+	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
-	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial receives fixtures or a plugin
+	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial receives fixtures or plugins
 	 */
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
-		Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, TrialPlugin plugin)
+		Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, List<Path> plugins)
 	{
-		this(role, part, source, turns, readOnly, timeLimit, profile, files, Optional.ofNullable(plugin),
-			Optional.empty());
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, Optional.empty());
 	}
 
 	/**
@@ -117,12 +114,12 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param timeLimit how long the session may run before its remaining turns are abandoned
 	 * @param profile the model and reasoning effort that the session starts under
 	 * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn
-	 * @param plugin the plugin under test that a trial installs in place of the harness default
+	 * @param plugins the plugin directories that a trial installs, and no other plugin
 	 * @param followUp chooses at most one turn to send after the last of {@code turns}
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
-	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial receives fixtures or a plugin
+	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial receives fixtures or plugins
 	 */
 	public SessionRequest
 	{
@@ -143,13 +140,14 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		requireThat(timeLimit.isPositive(), "timeLimit.isPositive").isTrue();
 		requireThat(profile, "profile").isNotNull();
 		requireThat(files, "files").isNotNull();
-		requireThat(plugin, "plugin").isNotNull();
+		requireThat(plugins, "plugins").isNotNull();
 		requireThat(followUp, "followUp").isNotNull();
 		if (role != SessionRole.TRIAL && !files.isEmpty())
 			throw new IllegalArgumentException("A " + role + " session receives no fixtures");
-		if (role != SessionRole.TRIAL && plugin.isPresent())
-			throw new IllegalArgumentException("A " + role + " session installs no plugin under test");
+		if (role != SessionRole.TRIAL && !plugins.isEmpty())
+			throw new IllegalArgumentException("A " + role + " session installs no plugin");
 		turns = List.copyOf(turns);
+		plugins = List.copyOf(plugins);
 		readOnly = List.copyOf(readOnly);
 	}
 }

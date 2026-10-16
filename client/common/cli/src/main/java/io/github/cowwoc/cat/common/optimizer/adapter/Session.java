@@ -8,7 +8,6 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
-import io.github.cowwoc.cat.common.optimizer.port.TrialPlugin;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 
@@ -532,9 +531,8 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Builds the runner's command-line options. A trial whose plugin under test is CAT installs CAT from the plugin's
-	 * copy; a trial with another plugin under test installs the plugin's copy, with the CAT artifact as the request
-	 * says; a trial without one installs CAT as the settings say; other sessions install no plugin.
+	 * Builds the runner's command-line options. A trial installs exactly the request's plugins: the first one whose
+	 * manifest name is CAT's is installed as CAT, and each other one as a plugin. Other sessions install no plugin.
 	 *
 	 * @param fixtures the directory that holds the trial's fixtures, or {@code null} if there are none
 	 * @return the options
@@ -544,20 +542,16 @@ final class Session implements SessionHandle
 	{
 		List<String> arguments = new ArrayList<>();
 		Path artifact = settings.artifact();
-		boolean installCat = settings.installCat() && request.role() == SessionRole.TRIAL;
-		if (request.plugin().isPresent())
+		boolean installCat = false;
+		for (Path plugin : request.plugins())
 		{
-			TrialPlugin plugin = request.plugin().get();
-			if (sessions.isCat(plugin.copy()))
+			if (!installCat && sessions.isCat(plugin))
 			{
-				artifact = plugin.copy();
+				artifact = plugin;
 				installCat = true;
 			}
 			else
-			{
-				arguments.addAll(List.of("--plugin", plugin.copy().toString()));
-				installCat = plugin.dependsOnCat();
-			}
+				arguments.addAll(List.of("--plugin", plugin.toString()));
 		}
 		arguments.addAll(List.of("--artifact", artifact.toString(), "--project", request.source().toString(),
 			"--run-root", runRoot().toString(), "--keep-run"));

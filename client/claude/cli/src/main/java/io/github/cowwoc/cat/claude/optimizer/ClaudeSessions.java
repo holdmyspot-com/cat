@@ -239,6 +239,12 @@ public final class ClaudeSessions extends RunnerSessions
 	}
 
 	@Override
+	public List<Path> installedPlugins(String name) throws IOException
+	{
+		return InstalledPlugins.of(settings().configurationDirectory(), name, JsonMapper.builder().build());
+	}
+
+	@Override
 	protected HarnessEvents newEvents(JsonMapper json)
 	{
 		return new StreamJsonEvents(json);

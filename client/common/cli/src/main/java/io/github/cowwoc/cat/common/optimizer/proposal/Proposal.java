@@ -101,7 +101,7 @@ public final class Proposal
 	 * @param incumbent the delivered certification of the target, or {@code null} if the target has none
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @param delivered each prompt test as delivery would write it, by prompt test
-	 * @param plugin the check of the plugin under test
+	 * @param plugin the check of the trial plugins
 	 * @param controlRefusals the reasons why the control source cannot be built, which block confirmation
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
@@ -200,7 +200,7 @@ public final class Proposal
 
 	/**
 	 * Completes a contract author's proposal for presentation, showing the target's delivered certification, the
-	 * guard pilot of each prompt test and the plugin under test.
+	 * guard pilot of each prompt test and the trial plugins.
 	 *
 	 * @param derived the contract author's proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
@@ -213,10 +213,9 @@ public final class Proposal
 	 * @param incumbent the target's delivered certification and whether it applies to what CAT knows when it
 	 *   proposes, or null if the target has none
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
-	 * @param plugin the check of the contract author's plugin under test, whose plugin the contract holds
+	 * @param plugin the check of the campaign's trial plugins
 	 * @return the proposal
 	 * @throws NullPointerException if any argument other than {@code incumbent} is null
-	 * @throws IllegalArgumentException if exactly one of {@code derived} and {@code plugin} has a plugin under test
 	 * @throws IllegalStateException if the campaign cannot accept a confirmation
 	 */
 	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
@@ -229,7 +228,7 @@ public final class Proposal
 
 	/**
 	 * Completes a contract author's proposal for presentation, showing the target's delivered certification, the
-	 * guard pilot of each prompt test, the plugin under test and why the control source cannot be built.
+	 * guard pilot of each prompt test, the trial plugins and why the control source cannot be built.
 	 *
 	 * @param derived the contract author's proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
@@ -242,12 +241,11 @@ public final class Proposal
 	 * @param incumbent the target's delivered certification and whether it applies to what CAT knows when it
 	 *   proposes, or null if the target has none
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
-	 * @param plugin the check of the contract author's plugin under test, whose plugin the contract holds
+	 * @param plugin the check of the campaign's trial plugins
 	 * @param controlRefusals the reasons why the control source cannot remove the contract's dependents, which block
 	 *   confirmation; empty if it can
 	 * @return the proposal
 	 * @throws NullPointerException if any argument other than {@code incumbent} is null
-	 * @throws IllegalArgumentException if exactly one of {@code derived} and {@code plugin} has a plugin under test
 	 * @throws IllegalStateException if the campaign cannot accept a confirmation
 	 */
 	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
@@ -266,8 +264,6 @@ public final class Proposal
 		requireThat(schema, "schema").isNotNull();
 
 		Contract proposed = derived.contract();
-		requireThat(plugin.plugin().isPresent(), "plugin.plugin().isPresent()").
-			isEqualTo(proposed.plugin().isPresent(), "derived.contract().plugin().isPresent()");
 		List<String> limitations = new ArrayList<>(proposed.limitations());
 		limitations.add(DERIVED_LOADING_LIMIT);
 		limitations.add(CONTROL_SOURCE_LIMIT);
@@ -277,7 +273,7 @@ public final class Proposal
 			limitations.add(pluginHooksLimit(plugin.unapprovedHooks()));
 		Contract contract = new Contract(proposed.requirements(), proposed.tests(), proposed.profiles(),
 			proposed.judge(), proposed.fixtures(), limitations, proposed.minimumPassRate(), proposed.salt(),
-			plugin.plugin(), proposed.dependents());
+			proposed.dependents());
 		Map<CertificationScope, Campaign> previews = new LinkedHashMap<>();
 		if (contract.profiles().unranked().isEmpty())
 		{
@@ -315,14 +311,14 @@ public final class Proposal
 	}
 
 	/**
-	 * Returns the limitation that a contract records when trials do not run some hooks of the plugin under test.
+	 * Returns the limitation that a contract records when trials do not run some hooks of the trial plugins.
 	 *
-	 * @param unapprovedHooks the plugin's hooks that trials do not run, each as its event and command
+	 * @param unapprovedHooks the trial plugins' hooks that trials do not run, each as its plugin, event and command
 	 * @return the limitation
 	 */
 	private static String pluginHooksLimit(List<String> unapprovedHooks)
 	{
-		return "Trials do not run these hooks of the plugin under test, because the user has not approved them in " +
+		return "Trials do not run these hooks of the trial plugins, because the user has not approved them in " +
 			"the harness: " + String.join("; ", unapprovedHooks) + ". A hook also does not run if its declaration " +
 			"changed after the user approved it. Approve the hooks in the harness and run revise, or accept that " +
 			"trials can behave differently from sessions in which those hooks run.";
@@ -372,7 +368,7 @@ public final class Proposal
 
 	/**
 	 * Returns the reason confirmation with a certification scope is refused, listing blocking links, conflicting
-	 * requirements, an invalid plugin under test, dependents that the control source cannot remove, tests with too few
+	 * requirements, dependents that the control source cannot remove, tests with too few
 	 * distinct expected outcomes in a part, unranked models and a described scope without described cells, in that
 	 * order.
 	 *
@@ -387,7 +383,6 @@ public final class Proposal
 		String links = linksAndConflictsRefusal();
 		if (!links.isEmpty())
 			reasons.add(links);
-		reasons.addAll(plugin.refusals());
 		reasons.addAll(controlRefusals);
 		reasons.addAll(splitRefusals());
 		TrialProfiles profiles = contract.profiles();

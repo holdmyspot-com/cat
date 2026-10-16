@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -64,15 +63,6 @@ public final class ProposalSchema
 	 */
 	private static final String SALT = "salt";
 	/**
-	 * The property that holds the plugin under test.
-	 */
-	private static final String PLUGIN_UNDER_TEST = "plugin_under_test";
-	/**
-	 * The property of the plugin under test that holds the digest of its base, which CAT computes rather than the
-	 * contract author.
-	 */
-	private static final String BASE_DIGEST = "base_digest";
-	/**
 	 * The property that holds the dependents of the target prompt file.
 	 */
 	private static final String DEPENDENTS = "dependents";
@@ -110,7 +100,7 @@ public final class ProposalSchema
 
 	/**
 	 * Returns the proposal schema without the parts that CAT computes: the salt, the trial profiles, each test's
-	 * committed test cases and recorded fixtures, and the base digest of the plugin under test.
+	 * committed test cases and recorded fixtures.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param schemaText the proposal schema
@@ -124,8 +114,6 @@ public final class ProposalSchema
 		ObjectNode test = (ObjectNode) root.get("properties").get("tests").get("items");
 		removeProperty(json, test, COMMITTED_TEST_CASES);
 		removeProperty(json, test, RECORDED_FIXTURES);
-		ObjectNode plugin = (ObjectNode) root.get("properties").get(PLUGIN_UNDER_TEST);
-		removeProperty(json, plugin, BASE_DIGEST);
 		return root;
 	}
 
@@ -287,15 +275,13 @@ public final class ProposalSchema
 		contract.limitations().forEach(limitations::add);
 		root.put("minimum_pass_rate", contract.minimumPassRate());
 		root.put(SALT, contract.salt());
-		// A contract without a plugin under test keeps the identity that it had before the property existed
-		contract.plugin().ifPresent(plugin -> write(plugin, root.putObject(PLUGIN_UNDER_TEST)));
 		writeDependents(contract, root);
 		return json.writeValueAsString(root);
 	}
 
 	/**
-	 * Writes one prompt test of a contract with the requirements that it checks, the plugin under test and the
-	 * dependents of the target prompt file: everything
+	 * Writes one prompt test of a contract with the requirements that it checks and the dependents of the target
+	 * prompt file: everything
 	 * that decides how its trials run and how they are decided, apart from the judge fields that CAT supplies to every
 	 * contract.
 	 *
@@ -303,7 +289,6 @@ public final class ProposalSchema
 	 * @param test a prompt test of {@code contract}
 	 * @return the JSON text: an object whose {@code test} holds the prompt test as the proposal schema writes it,
 	 *   whose {@code requirements} holds, in contract order, each requirement that the test checks, and whose
-	 *   {@code plugin_under_test}, present only when the contract has a plugin under test, holds that plugin, and whose
 	 *   {@code dependents}, present only when the contract lists dependents, holds them
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -319,8 +304,6 @@ public final class ProposalSchema
 			if (test.requirementIds().contains(requirement.id()))
 				write(requirement, requirements.addObject());
 		}
-		// A test of a contract without a plugin under test keeps the identity that it had before the property existed
-		contract.plugin().ifPresent(plugin -> write(plugin, root.putObject(PLUGIN_UNDER_TEST)));
 		writeDependents(contract, root);
 		return json.writeValueAsString(root);
 	}
@@ -341,6 +324,10 @@ public final class ProposalSchema
 		{
 			ObjectNode node = dependents.addObject();
 			node.put("location", EnumNames.lowerCase(dependent.location()));
+			if (dependent.plugin().isEmpty())
+				node.putNull("plugin");
+			else
+				node.put("plugin", dependent.plugin());
 			node.put("path", PortablePaths.text(dependent.path()));
 			node.putNull("text");
 			node.putNull("event");
@@ -362,42 +349,6 @@ public final class ProposalSchema
 			}
 			node.put("serves", dependent.serves());
 		}
-	}
-
-	/**
-	 * Writes the plugin under test.
-	 *
-	 * @param plugin the plugin under test
-	 * @param node the object that receives its properties
-	 */
-	private static void write(PluginUnderTest plugin, ObjectNode node)
-	{
-		List<PluginUnderTest.Mapping> mappings = List.of();
-		switch (plugin)
-		{
-			case PluginUnderTest.Root root ->
-			{
-				node.put("root", PortablePaths.text(root.directory()));
-				node.putNull("base");
-			}
-			case PluginUnderTest.Built built ->
-			{
-				node.putNull("root");
-				node.put("base", built.base().toString());
-				if (!built.baseDigest().isEmpty())
-					node.put(BASE_DIGEST, built.baseDigest());
-				mappings = built.mappings();
-			}
-		}
-		ArrayNode mappingNodes = node.putArray("mappings");
-		for (PluginUnderTest.Mapping mapping : mappings)
-		{
-			ObjectNode mappingNode = mappingNodes.addObject();
-			mappingNode.put("source", PortablePaths.text(mapping.source()));
-			mappingNode.put("target", PortablePaths.text(mapping.target()));
-		}
-		node.put("depends_on_cat", plugin.dependsOnCat());
-		node.put("cat_evidence", plugin.catEvidence());
 	}
 
 	/**
@@ -618,10 +569,6 @@ public final class ProposalSchema
 				judgeNode.get("result_schema").toString()));
 			TrialFixtures fixtures = attempt("$.fixtures", () -> new TrialFixtures(
 				strings(root.get("fixtures").get("ignored_paths"))));
-			Optional<PluginUnderTest> plugin = Optional.empty();
-			JsonNode pluginNode = root.get(PLUGIN_UNDER_TEST);
-			if (pluginNode != null && !pluginNode.isNull())
-				plugin = Optional.ofNullable(attempt("$." + PLUGIN_UNDER_TEST, () -> plugin(pluginNode)));
 			List<Dependent> dependents = List.of();
 			JsonNode dependentsNode = root.get(DEPENDENTS);
 			if (dependentsNode != null && !dependentsNode.isNull())
@@ -643,11 +590,10 @@ public final class ProposalSchema
 				contractSalt = root.get(SALT).asLong();
 			else
 				contractSalt = salt;
-			Optional<PluginUnderTest> contractPlugin = plugin;
 			List<Dependent> contractDependents = dependents;
 			return attempt("$", () -> new Contract(requirements, tests, profiles, judge, fixtures,
 				strings(root.get("limitations")), root.get("minimum_pass_rate").decimalValue(), contractSalt,
-				contractPlugin, contractDependents));
+				contractDependents));
 		}
 
 		/**
@@ -671,7 +617,10 @@ public final class ProposalSchema
 				default -> throw new IllegalArgumentException("removes must be file, span or hook_registration: " +
 					removes);
 			};
-			return new Dependent(location, Path.of(text(node, "path")), removal, text(node, "serves"));
+			String plugin = optionalText(node, "plugin");
+			if (plugin == null)
+				plugin = "";
+			return new Dependent(location, plugin, Path.of(text(node, "path")), removal, text(node, "serves"));
 		}
 
 		/**
@@ -689,38 +638,6 @@ public final class ProposalSchema
 			if (value == null)
 				throw new IllegalArgumentException("A dependent that removes a " + removes + " gives " + name);
 			return value;
-		}
-
-		/**
-		 * Builds the plugin under test.
-		 *
-		 * @param node the {@value #PLUGIN_UNDER_TEST} object
-		 * @return the plugin under test
-		 * @throws IllegalArgumentException if the object gives both {@code root} and {@code base} or neither, gives
-		 *   mappings with {@code root}, or a model constructor rejects a value
-		 */
-		private static PluginUnderTest plugin(JsonNode node)
-		{
-			String rootDirectory = optionalText(node, "root");
-			String base = optionalText(node, "base");
-			if ((rootDirectory == null) == (base == null))
-				throw new IllegalArgumentException("A plugin under test gives either root or base");
-			List<PluginUnderTest.Mapping> mappings = node.get("mappings").valueStream().map(mapping ->
-				new PluginUnderTest.Mapping(Path.of(text(mapping, "source")), Path.of(text(mapping, "target")))).
-				toList();
-			boolean dependsOnCat = node.get("depends_on_cat").asBoolean();
-			String catEvidence = text(node, "cat_evidence");
-			if (rootDirectory != null)
-			{
-				if (!mappings.isEmpty())
-					throw new IllegalArgumentException("A plugin root has no mappings; give base with mappings instead");
-				return new PluginUnderTest.Root(Path.of(rootDirectory), dependsOnCat, catEvidence);
-			}
-			String baseDigest = "";
-			JsonNode digest = node.get(BASE_DIGEST);
-			if (digest != null)
-				baseDigest = digest.asString();
-			return new PluginUnderTest.Built(Path.of(base), baseDigest, mappings, dependsOnCat, catEvidence);
 		}
 
 		/**
