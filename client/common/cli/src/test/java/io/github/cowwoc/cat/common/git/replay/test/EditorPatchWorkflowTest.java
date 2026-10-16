@@ -1,6 +1,8 @@
 package io.github.cowwoc.cat.common.git.replay.test;
 
 import static io.github.cowwoc.cat.common.git.replay.test.TopicReplayRepository.commit;
+import static io.github.cowwoc.cat.common.git.replay.test.TopicReplayRepository.commitVersions;
+import static io.github.cowwoc.cat.common.git.replay.test.TopicReplayRepository.fastImport;
 import static io.github.cowwoc.cat.common.git.replay.test.TopicReplayRepository.initializeRepository;
 import static io.github.cowwoc.cat.common.git.replay.test.TopicReplayRepository.invocationDirectory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -45,7 +47,7 @@ public final class EditorPatchWorkflowTest
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			String base = git.run("rev-parse", "HEAD").trim();
-			String target = commit(git, repository, "Plugin.java", """
+			List<String> commits = commitVersions(git, repository, "Plugin.java", List.of("""
 				final class Plugin
 				{
 					void buildsPlugin()
@@ -53,8 +55,7 @@ public final class EditorPatchWorkflowTest
 						build();
 					}
 				}
-				""", "distribution");
-			commit(git, repository, "Plugin.java", """
+				""", """
 				final class Plugin
 				{
 					void buildsPlugin()
@@ -67,8 +68,7 @@ public final class EditorPatchWorkflowTest
 						preserve();
 					}
 				}
-				""", "claude");
-			String source = commit(git, repository, "Plugin.java", """
+				""", """
 				final class Plugin
 				{
 					void buildsPlugin()
@@ -81,7 +81,9 @@ public final class EditorPatchWorkflowTest
 						preserve();
 					}
 				}
-				""", "cleanup");
+				"""));
+			String target = commits.getFirst();
+			String source = commits.getLast();
 			Path replay = invocationDirectory(repository, "replay");
 			Path manifest = replay.resolve("manifest.json");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
@@ -122,7 +124,18 @@ public final class EditorPatchWorkflowTest
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
-			String base = commit(git, repository, "Plugin.java", """
+			// The target commit shares the baseline parent with the source commit, and the branch ends at the source
+			// commit; "reset refs/target" without "from" keeps the target commit but creates no reference to it
+			List<String> commits = fastImport(repository, """
+				commit %1$s
+				mark :1
+				committer CAT Test <cat-test@example.invalid> 0 +0000
+				data <<END
+				test: baseline
+				END
+				from %1$s^0
+				M 100644 inline Plugin.java
+				data <<END
 				final class Plugin
 				{
 					void buildsPlugin()
@@ -130,8 +143,37 @@ public final class EditorPatchWorkflowTest
 						build();
 					}
 				}
-				""", "baseline");
-			String source = commit(git, repository, "Plugin.java", """
+				END
+
+				commit refs/target
+				mark :2
+				committer CAT Test <cat-test@example.invalid> 0 +0000
+				data <<END
+				test: cleanup
+				END
+				from :1
+				M 100644 inline Plugin.java
+				data <<END
+				final class Plugin
+				{
+					void buildsPlugin()
+					{
+						buildWithCleanup();
+					}
+				}
+				END
+
+				reset refs/target
+
+				commit %1$s
+				mark :3
+				committer CAT Test <cat-test@example.invalid> 0 +0000
+				data <<END
+				test: feature
+				END
+				from :1
+				M 100644 inline Plugin.java
+				data <<END
 				final class Plugin
 				{
 					void buildsPlugin()
@@ -144,19 +186,15 @@ public final class EditorPatchWorkflowTest
 						preserve();
 					}
 				}
-				""", "feature");
-			Files.writeString(repository.resolve("Plugin.java"), """
-				final class Plugin
-				{
-					void buildsPlugin()
-					{
-						buildWithCleanup();
-					}
-				}
-				""");
-			git.run("add", "Plugin.java");
-			String target = git.run("commit-tree", git.run("write-tree").trim(), "-p", base, "-m", "cleanup").trim();
-			git.run("reset", "--hard", "--quiet", source);
+				END
+
+				get-mark :1
+				get-mark :2
+				get-mark :3
+				""".formatted(git.lines("symbolic-ref", "HEAD").getFirst()));
+			String base = commits.getFirst();
+			String target = commits.get(1);
+			String source = commits.getLast();
 			Path replay = invocationDirectory(repository, "replay");
 			Path manifest = replay.resolve("manifest.json");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
@@ -214,8 +252,8 @@ public final class EditorPatchWorkflowTest
 	 */
 	private void writeSourceManifest(Git git, Path manifestFile, String base, String source) throws IOException
 	{
-		SourceSnapshot snapshot = new SourceSnapshot(source, git.run("rev-parse", source + "^^{tree}").trim(),
-			git.run("rev-parse", source + "^{tree}").trim());
+		List<String> trees = git.lines("rev-parse", source + "^^{tree}", source + "^{tree}");
+		SourceSnapshot snapshot = new SourceSnapshot(source, trees.getFirst(), trees.getLast());
 		BatchManifest manifest = new BatchManifest(ManifestStore.BATCH_MANIFEST_VERSION, base, snapshot.tree(),
 			List.of(snapshot),
 			List.of(new Output("output_1", source, "test: selected source")), List.of(), List.of(), List.of(), List.of(),
