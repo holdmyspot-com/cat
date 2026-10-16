@@ -87,9 +87,9 @@ public final class Fork implements ForkView
 		Path normalizedBase = base.toAbsolutePath().normalize();
 		Path normalizedCampaign = campaign.toAbsolutePath().normalize();
 		Git git = new Git(normalizedBase);
-		requireTopLevel(git, normalizedBase);
+		Path exclude = requireTopLevel(git, normalizedBase);
 		requireClean(git, normalizedBase);
-		boolean excludeAdded = ensureWorkDirectoryIgnored(git, normalizedBase);
+		boolean excludeAdded = ensureWorkDirectoryIgnored(git, exclude);
 
 		Set<Path> paths = new HashSet<>(participants);
 		for (String tracked : new String(git.bytes("ls-files", "-z"), UTF_8).split("\0"))
@@ -228,16 +228,20 @@ public final class Fork implements ForkView
 
 	/**
 	 * Requires that the base is the top-level directory of its repository, which the local exclude pattern assumes.
+	 * One Git process answers both this check and the exclude's location.
 	 *
 	 * @param git the base's Git
 	 * @param base the base worktree
+	 * @return the repository's local exclude file
 	 * @throws IOException if Git fails
 	 */
-	private static void requireTopLevel(Git git, Path base) throws IOException
+	private static Path requireTopLevel(Git git, Path base) throws IOException
 	{
-		List<String> prefix = git.lines("rev-parse", "--show-cdup");
-		if (!prefix.stream().allMatch(String::isEmpty))
+		// The first line is the path from the base to the top-level directory, which is empty at the top level
+		List<String> lines = git.lines("rev-parse", "--show-cdup", "--git-path", "info/exclude");
+		if (lines.size() != 2 || !lines.getFirst().isEmpty())
 			throw new IllegalArgumentException(base + " is not the top-level directory of its repository.");
+		return base.resolve(lines.getLast());
 	}
 
 	/**
@@ -263,13 +267,12 @@ public final class Fork implements ForkView
 	 * Appends CAT's work directory to the repository's local exclude if Git does not already ignore it.
 	 *
 	 * @param git the base's Git
-	 * @param base the base worktree
+	 * @param exclude the repository's local exclude file
 	 * @return {@code true} if this method appended the line
 	 * @throws IOException if Git fails or the exclude cannot be written
 	 */
-	private static boolean ensureWorkDirectoryIgnored(Git git, Path base) throws IOException
+	private static boolean ensureWorkDirectoryIgnored(Git git, Path exclude) throws IOException
 	{
-		Path exclude = base.resolve(git.lines("rev-parse", "--git-path", "info/exclude").getFirst());
 		int status = git.status(CHECK_IGNORE);
 		if (status == 0)
 			return false;
