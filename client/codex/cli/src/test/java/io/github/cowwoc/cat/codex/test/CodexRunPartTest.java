@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
@@ -193,28 +194,55 @@ public final class CodexRunPartTest
 	}
 
 	/**
-	 * Verifies that the command finds the plugin's {@code run-part} overrides before the caller's {@code PATH} and is
-	 * told which file saves its output, so that an override can tell whether it writes straight into that file.
+	 * Verifies that a command that runs in a POSIX shell finds {@code rg} among the plugin's {@code run-part} overrides
+	 * before the caller's {@code PATH}, and that the command is told which file saves its output, so that the override
+	 * can tell whether it writes straight into that file. The overrides are POSIX scripts without an extension, so a
+	 * command that runs in PowerShell finds the caller's {@code rg} instead: PowerShell resolves a command to a file
+	 * without an extension that comes first on the {@code PATH}, and hands a file that it cannot run to the program
+	 * that Windows associates with the file.
 	 *
-	 * @throws IOException if the temporary folder cannot be created
+	 * @throws IOException if the temporary files cannot be written
 	 */
 	@Test
-	public void commandFindsOverridesFirst() throws IOException
+	public void findsRipgrepOverrideOnlyInPosixShell() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
-			String path = Path.of("/usr/bin").toAbsolutePath() + File.pathSeparator + Path.of("/bin").toAbsolutePath();
-			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "PATH", path);
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-")).toAbsolutePath();
+			Path bin = Files.createDirectories(temporary.resolve("plugin").resolve("bin"));
+			Path override = Files.createDirectories(bin.resolve("run-part-overrides")).resolve("rg");
+			writeExecutable(override, "#!/bin/sh\n");
+			Path caller = Files.createDirectories(temporary.resolve("caller"));
+			Path callerRipgrep;
+			Path expected;
+			if (SHELL == CommandShell.POWERSHELL)
+			{
+				callerRipgrep = caller.resolve("rg.cmd");
+				Files.writeString(callerRipgrep, "@exit /b 0\r\n");
+				expected = callerRipgrep;
+			}
+			else
+			{
+				callerRipgrep = caller.resolve("rg");
+				writeExecutable(callerRipgrep, "#!/bin/sh\n");
+				expected = override;
+			}
+			String path = caller + File.pathSeparator + Path.of("/usr/bin").toAbsolutePath() + File.pathSeparator +
+				Path.of("/bin").toAbsolutePath();
+			Map<String, String> environment = new HashMap<>(Map.of("TMPDIR", temporary.toString(), "PATH", path));
+			// PowerShell finds a program by its name without an extension only with an extension that PATHEXT lists
+			String extensions = System.getenv("PATHEXT");
+			if (extensions != null)
+				environment.put("PATHEXT", extensions);
 
-			Call call = runPart(script("printf '%s|%s\\n' \"$PATH\" \"${CAT_RUN_PART_OUTPUT-unset}\"",
-				variables("PATH", "CAT_RUN_PART_OUTPUT")), false, OUTSIDE_PROJECT, environment);
+			Call call = runPart(script("printf '%s|%s\\n' \"$(command -v rg)\" \"${CAT_RUN_PART_OUTPUT-unset}\"",
+				"Write-Output \"$((Get-Command -Name rg).Source)|$env:CAT_RUN_PART_OUTPUT\""), false, OUTSIDE_PROJECT,
+				bin.resolve(SHELL.launcher("read-part")), environment);
 
 			Matcher lastPart = LAST_PART.matcher(call.output());
-			requireThat(lastPart.find(), "lastPart").isTrue();
-			requireThat(call.output(), "output").isEqualTo(READ_PART.resolveSibling("run-part-overrides") +
-				File.pathSeparator + path + "|" + lastPart.group("path") + EOL + "[End of " + lastPart.group("path") +
-				"]\n");
+			requireThat(lastPart.find(), "lastPart").withContext(call.error(), "error").isTrue();
+			requireThat(call.output(), "output").isEqualTo(expected + "|" + lastPart.group("path") + EOL +
+				"[End of " + lastPart.group("path") + "]\n");
 		}
 	}
 
@@ -284,11 +312,40 @@ public final class CodexRunPartTest
 	private static Call runPart(String command, boolean terminal, Path workingDirectory,
 		Map<String, String> environment)
 	{
+		return runPart(command, terminal, workingDirectory, READ_PART, environment);
+	}
+
+	/**
+	 * Runs {@code run-part} from a plugin's {@code bin} folder.
+	 *
+	 * @param command the command on standard input
+	 * @param terminal {@code true} if standard input is a terminal
+	 * @param workingDirectory the folder that the command runs in
+	 * @param readPart the path of the plugin's {@code read-part} launcher
+	 * @param environment the environment
+	 * @return the call's streams and exit status
+	 */
+	private static Call runPart(String command, boolean terminal, Path workingDirectory, Path readPart,
+		Map<String, String> environment)
+	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		int status = CodexRunPart.run(new String[0], new ByteArrayInputStream(command.getBytes(UTF_8)), terminal,
-			workingDirectory, SHELL, READ_PART, environment, output, new PrintStream(error, true, UTF_8));
+			workingDirectory, SHELL, readPart, environment, output, new PrintStream(error, true, UTF_8));
 		return new Call(output.toString(UTF_8), error.toString(UTF_8), status);
+	}
+
+	/**
+	 * Writes a POSIX script that every user may run.
+	 *
+	 * @param path    the script's path
+	 * @param content the script
+	 * @throws IOException if the script cannot be written
+	 */
+	private static void writeExecutable(Path path, String content) throws IOException
+	{
+		Files.writeString(path, content);
+		requireThat(path.toFile().setExecutable(true, false), "executable").isTrue();
 	}
 
 	/**

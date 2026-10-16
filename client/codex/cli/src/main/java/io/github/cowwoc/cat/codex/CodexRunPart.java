@@ -29,9 +29,12 @@ import java.util.Map;
  * The output stays inside the project: it is saved in the CAT temporary folder, {@code .cat/work/temp}, of the nearest
  * folder that holds one, starting from the folder that the command runs in.
  * <p>
- * The command finds the plugin's {@code bin/run-part-overrides} folder first on its {@code PATH} and receives the saved
- * output's path in {@code CAT_RUN_PART_OUTPUT}. A program in that folder, such as {@code rg}, keeps output that it
- * writes straight into that file small enough for the agent that reads it, and leaves other output unchanged.
+ * The command receives the saved output's path in {@code CAT_RUN_PART_OUTPUT} and, in {@code bash}, finds the
+ * plugin's {@code bin/run-part-overrides} folder first on its {@code PATH}. A program in that folder, such as
+ * {@code rg}, keeps output that it writes straight into that file small enough for the agent that reads it, and leaves
+ * other output unchanged. The programs there are POSIX scripts without an extension, so a PowerShell command does not
+ * find the folder: PowerShell resolves a command to such a file when it comes first on the {@code PATH}, and hands a
+ * file that it cannot run to the program that Windows associates with the file.
  */
 public final class CodexRunPart
 {
@@ -81,8 +84,8 @@ public final class CodexRunPart
 	 * @param environment the environment: when no folder from {@code workingDirectory} upward holds a CAT temporary
 	 *   folder, {@code TMPDIR}, or else {@code TEMP}, names the folder of the saved output, which is the JVM's
 	 *   temporary folder ({@code java.io.tmpdir}) when both are unset; the command
-	 *   runs in this environment with the caller's locale restored, the overrides folder first on a set {@code PATH},
-	 *   and {@code CAT_RUN_PART_OUTPUT} naming the saved output
+	 *   runs in this environment with the caller's locale restored, the overrides folder first on a set {@code PATH}
+	 *   when {@code shell} is {@code bash}, and {@code CAT_RUN_PART_OUTPUT} naming the saved output
 	 * @param output receives the part
 	 * @param error receives diagnostics
 	 * @return the exit status of {@code read-part}, 1 if the command cannot be run, or 2 for a usage error
@@ -120,7 +123,7 @@ public final class CodexRunPart
 			childEnvironment.putAll(callerEnvironment(environment));
 			childEnvironment.put("CAT_RUN_PART_OUTPUT", saved.toString());
 			String path = childEnvironment.get("PATH");
-			if (path != null)
+			if (path != null && shell == CommandShell.POSIX)
 				childEnvironment.put("PATH", readPart.resolveSibling(OVERRIDES) + File.pathSeparator + path);
 			int status;
 			try (Process process = builder.start())
