@@ -129,9 +129,10 @@ public final class CodexRunPartTest
 
 	/**
 	 * Verifies that in a Codex thread, output too long for one part ends with the {@code read-part} command that prints
-	 * the next part, and that the first part exits with status 0 whatever the command's status.
+	 * the next part, and that the first part exits with status 0 whatever the command's status. Codex's
+	 * {@code config.toml} sets a small output budget so that a short command fills more than one part.
 	 *
-	 * @throws IOException if the temporary folder cannot be created
+	 * @throws IOException if the temporary folder cannot be created or the configuration cannot be written
 	 */
 	@Test
 	public void longOutputNamesNextPart() throws IOException
@@ -141,8 +142,9 @@ public final class CodexRunPartTest
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "CODEX_THREAD_ID", "thread",
 				"CODEX_HOME", temporary.toString());
+			Files.writeString(temporary.resolve("config.toml"), "tool_output_token_limit = 200\n");
 
-			Call call = runPart(script("seq 1 20000; exit 4", "1..20000; exit 4"), false, OUTSIDE_PROJECT, environment);
+			Call call = runPart(script("seq 1 200; exit 4", "1..200; exit 4"), false, OUTSIDE_PROJECT, environment);
 
 			requireThat(call.output(), "output").startsWith("1" + EOL + "2" + EOL + "3" + EOL).
 				matches("(?s).*\\[More output follows\\. Before any other command or answer, run: " +
