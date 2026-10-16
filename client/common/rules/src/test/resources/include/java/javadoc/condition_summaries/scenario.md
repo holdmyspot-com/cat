@@ -3,8 +3,9 @@
 ## Design Goals
 
 - Prove that the Javadoc of a field or method that reports a condition, whether boolean or a two-constant enum,
-  begins with “Indicates whether”, while the Javadoc of a getter with many possible values, and of a method that
-  performs an action and returns whether it succeeded, does not.
+  begins with “Indicates whether”, and that of a record component that reports one with “indicates whether” or
+  “{@code true} if”, while the Javadoc of a getter with many possible values, and of a method that performs an action
+  and returns whether it succeeded, does not.
 
 ## Variables
 
@@ -13,7 +14,8 @@
 
 ## Scenario
 
-Add Javadoc to every field and method of this class, which has none yet. Show the whole class.
+Add Javadoc to this class and record, and to every field, method and record component, since none has any yet. Show
+both in full.
 
 ```java
 public final class Upload
@@ -51,7 +53,14 @@ public final class Upload
 		return true;
 	}
 }
+
+public record UploadReceipt(String fileName, boolean checksumMatched)
+{
+}
 ```
+
+The server returns an `UploadReceipt` for each finished upload; `checksumMatched` is `true` when the checksum that the
+server computed equals the one the client sent.
 
 `Channel` is declared elsewhere in the project as `enum Channel { ENCRYPTED, PLAIN }`: `ENCRYPTED` sends the upload's
 bytes over an encrypted connection and `PLAIN` sends them unencrypted.
@@ -81,3 +90,9 @@ bytes over an encrypted connection and `PLAIN` sends them unencrypted.
 - **kind**: guard
 - **description**: The summary description of `markSent()` begins with the action it performs, such as marking the
   upload as sent, not with “Indicates whether”, and its `@return` describes the outcome.
+
+### record_component_condition
+
+- **kind**: effect
+- **description**: The `@param checksumMatched` description of `UploadReceipt` begins with “indicates whether” or
+  “{@code true} if”, in any letter case, not with a bare “whether”, and names the checksum comparison.

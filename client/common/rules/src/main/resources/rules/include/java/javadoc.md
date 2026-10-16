@@ -31,13 +31,14 @@ Document every parameter with `@param` and every return value with `@return`. Pl
 a record declaration and repeat them on an explicit or compact canonical constructor. Put construction-contract tags
 such as `@throws` only on that constructor, not on the record declaration.
 
-When a field or method exists to report a condition, begin its summary description with “Indicates whether”, not
-“Returns whether” or a bare “Whether”. A condition is a value that answers one yes-or-no question or picks one of two
-alternatives, whatever its type. Name the observable state that makes the answer yes, or that selects each alternative.
-A method that performs an action and also returns whether it succeeded reports an outcome, not a condition: begin its
-summary with the action, and describe the outcome in `@return`. Do not describe a policy consequence that the method
-does not itself decide; document that consequence at the caller or in the separately named operation that makes the
-decision.
+When a field, method, record or enum exists to report a condition, begin its summary description with “Indicates
+whether”, not “Returns whether” or a bare “Whether”. Begin the `@param` description of a record component that reports a
+condition with “indicates whether” or “{@code true} if”, not a bare “whether”. A condition is a value that answers one
+yes-or-no question or picks one of two alternatives, whatever its type. Name the observable state that makes the answer
+yes, or that selects each alternative. A method that performs an action and also returns whether it succeeded reports an
+outcome, not a condition: begin its summary with the action, and describe the outcome in `@return`. Do not describe a
+policy consequence that the method does not itself decide; document that consequence at the caller or in the separately
+named operation that makes the decision.
 
 An `@param` description must state its parameter's observable effect. When that effect selects a fixed caller-visible
 value, boundary, policy, or ordering, name the exact selected behavior rather than a generic feature or action.
