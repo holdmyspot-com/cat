@@ -13,7 +13,6 @@ import io.github.cowwoc.cat.distribution.bundle.ModuleDescriptorPatcher;
 import io.github.cowwoc.cat.distribution.bundle.PluginArtifactBuilder;
 import io.github.cowwoc.cat.distribution.bundle.ReleasePackager;
 import io.github.cowwoc.cat.distribution.bundle.RuleArtifactRouter;
-import io.github.cowwoc.cat.distribution.bundle.SkillPlatformVariants;
 import io.github.cowwoc.cat.distribution.license.LegalMaterialsBuilder;
 import io.github.cowwoc.cat.distribution.license.ThirdPartyComponent;
 import io.github.cowwoc.cat.distribution.secrets.DistributionMainAccess;
@@ -232,9 +231,6 @@ public final class DistributionMain
 				"skills/git-commit-per-topic/SKILL.md", "skills/help/SKILL.md")),
 			codexPluginLayer(codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexImage,
 			legalMaterials, List.of(commonInstallers, codexInstallers), runtimeDirectory.resolve("codex"));
-		// Codex runs commands in PowerShell on Windows, so its skills there need commands worded for PowerShell. Claude
-		// Code runs commands in Git Bash, so the Claude artifact's skills keep their bash commands on every platform.
-		SkillPlatformVariants.select(codexRoot, platform);
 		try (ToolScope scope = new ToolScope())
 		{
 			validateRuleDependencies(claudeRoot, codexRoot, projectRoot, scope.yaml());
