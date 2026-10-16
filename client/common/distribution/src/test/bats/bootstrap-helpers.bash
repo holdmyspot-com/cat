@@ -83,6 +83,20 @@ add_test_migration()
 	printf '%s\n' "${script_body}" > "${artifact}/install/migrations/${script_name}"
 }
 
+# Writes a path as a JSON string's content in the form that harnesses give hooks: a Windows path under Git Bash, whose
+# own form names a folder that Windows programs cannot find, and the path unchanged elsewhere.
+#
+# Arguments:
+#   $1 - The path.
+json_path()
+{
+	if command -v cygpath >/dev/null 2>&1; then
+		cygpath -w "$1" | sed 's/\\/\\\\/g'
+	else
+		printf '%s\n' "$1"
+	fi
+}
+
 # Writes the CAT platform identifier of the current operating system and architecture.
 current_platform()
 {
@@ -91,6 +105,7 @@ current_platform()
 		Linux:aarch64|Linux:arm64) printf '%s\n' linux-arm64 ;;
 		Darwin:x86_64|Darwin:amd64) printf '%s\n' macos-x64 ;;
 		Darwin:aarch64|Darwin:arm64) printf '%s\n' macos-arm64 ;;
+		MINGW64_NT*:x86_64|MINGW64_NT*:amd64|MSYS_NT*:x86_64|MSYS_NT*:amd64) printf '%s\n' windows-x64 ;;
 		*) return 1 ;;
 	esac
 }

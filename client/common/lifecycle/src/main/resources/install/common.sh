@@ -182,6 +182,7 @@ cat_detect_platform()
 		Linux:aarch64|Linux:arm64) echo "linux-arm64" ;;
 		Darwin:x86_64|Darwin:amd64) echo "macos-x64" ;;
 		Darwin:aarch64|Darwin:arm64) echo "macos-arm64" ;;
+		MINGW64_NT*:x86_64|MINGW64_NT*:amd64|MSYS_NT*:x86_64|MSYS_NT*:amd64) echo "windows-x64" ;;
 		*) echo "Unsupported platform: ${cat_os} ${cat_architecture}" >&2; return 1 ;;
 	esac
 }

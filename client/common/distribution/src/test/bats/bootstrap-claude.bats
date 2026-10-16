@@ -127,7 +127,7 @@ platform=${expected_platform}" ]
 	create_fake_bwrap
 
 	run env PATH="${FAKE_BIN}:${PATH}" CLAUDE_PLUGIN_ROOT="${runtime}" sh -c 'printf "%s\\n" "$1" | "$2"' sh \
-		"{\"cwd\":\"${project}\",\"session_id\":\"123e4567-e89b-12d3-a456-426614174000\"}" "${runtime}/hooks/session-start.sh"
+		"{\"cwd\":\"$(json_path "${project}")\",\"session_id\":\"123e4567-e89b-12d3-a456-426614174000\"}" "${runtime}/hooks/session-start.sh"
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *'"hookEventName":"SessionStart"'* ]]
@@ -146,7 +146,7 @@ platform=${expected_platform}" ]
 	create_fake_bwrap
 
 	run env PATH="${FAKE_BIN}:${PATH}" CLAUDE_PLUGIN_ROOT="${runtime}" sh -c 'printf "%s\\n" "$1" | "$2"' sh \
-		"{\"cwd\":\"${project}\",\"agent_type\":\"cat:reviewer\",\"session_id\":\"123e4567-e89b-12d3-a456-426614174001\",\"agent_id\":\"reviewer-test\"}" "${runtime}/hooks/subagent-start.sh"
+		"{\"cwd\":\"$(json_path "${project}")\",\"agent_type\":\"cat:reviewer\",\"session_id\":\"123e4567-e89b-12d3-a456-426614174001\",\"agent_id\":\"reviewer-test\"}" "${runtime}/hooks/subagent-start.sh"
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *'"hookEventName":"SubagentStart"'* ]]
