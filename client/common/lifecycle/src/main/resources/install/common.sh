@@ -235,7 +235,8 @@ cat_resolve_artifact_directory()
 	else
 		printf '%s\n' "${cat_checksum_line}" | (cd "${CAT_DOWNLOAD_TEMP_DIRECTORY}" && sha256sum -c -)
 	fi
-	tar -xzf "${CAT_DOWNLOAD_TEMP_DIRECTORY}/${cat_archive_name}" -C "${CAT_DOWNLOAD_TEMP_DIRECTORY}"
+	# GNU tar reads an archive path that starts with a Windows drive, such as C:, as a remote host's name
+	(cd "${CAT_DOWNLOAD_TEMP_DIRECTORY}" && tar -xzf "${cat_archive_name}")
 	CAT_ARTIFACT_DIRECTORY="${CAT_DOWNLOAD_TEMP_DIRECTORY}/${cat_expected_directory}"
 	[ -d "${CAT_ARTIFACT_DIRECTORY}" ] || {
 		echo "Archive did not contain the expected directory: ${cat_expected_directory}" >&2

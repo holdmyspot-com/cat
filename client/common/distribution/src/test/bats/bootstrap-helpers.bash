@@ -127,8 +127,8 @@ create_fake_release()
 	archive_directory="cat-${harness}-v1.0-$(current_platform)"
 	mkdir -p "${FAKE_RELEASE_DIRECTORY}/staging"
 	cp -R "$(create_test_artifact "${harness}")" "${FAKE_RELEASE_DIRECTORY}/staging/${archive_directory}"
-	tar -czf "${FAKE_RELEASE_DIRECTORY}/${archive_directory}.tar.gz" -C "${FAKE_RELEASE_DIRECTORY}/staging" \
-		"${archive_directory}"
+	# GNU tar reads an archive path that starts with a Windows drive, such as C:, as a remote host's name
+	(cd "${FAKE_RELEASE_DIRECTORY}" && tar -czf "${archive_directory}.tar.gz" -C staging "${archive_directory}")
 	if command -v sha256sum >/dev/null 2>&1; then
 		(cd "${FAKE_RELEASE_DIRECTORY}" && sha256sum "${archive_directory}.tar.gz") > \
 			"${FAKE_RELEASE_DIRECTORY}/SHA256SUMS.txt"
