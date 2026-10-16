@@ -1,9 +1,9 @@
 package io.github.cowwoc.cat.common.git.replay;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -109,7 +109,7 @@ public final class ManifestStore<T extends ManifestStore.Manifest>
 			json.writerWithDefaultPrettyPrinter().writeValue(temporary.toFile(), manifest);
 			try
 			{
-				Files.move(temporary, target, ATOMIC_MOVE, REPLACE_EXISTING);
+				PortableFiles.replace(temporary, target);
 			}
 			catch (AtomicMoveNotSupportedException _)
 			{

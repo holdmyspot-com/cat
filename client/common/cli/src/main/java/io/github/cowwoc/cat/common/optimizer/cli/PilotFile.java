@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.optimizer.execution.PilotResult;
 import io.github.cowwoc.cat.common.optimizer.execution.PilotTrial;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -14,7 +15,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -99,7 +99,7 @@ final class PilotFile
 		Path temporary = file.resolveSibling(NAME + ".tmp");
 		Files.writeString(temporary, json.writerWithDefaultPrettyPrinter().writeValueAsString(root),
 			StandardCharsets.UTF_8);
-		Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+		PortableFiles.replace(temporary, file);
 	}
 
 	/**

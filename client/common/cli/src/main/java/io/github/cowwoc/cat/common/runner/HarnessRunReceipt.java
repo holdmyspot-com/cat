@@ -2,13 +2,13 @@ package io.github.cowwoc.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -44,7 +44,7 @@ public final class HarnessRunReceipt
 		try
 		{
 			json.writeValue(temporary.toFile(), receipt);
-			Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+			PortableFiles.replace(temporary, destination);
 		}
 		catch (IOException e)
 		{

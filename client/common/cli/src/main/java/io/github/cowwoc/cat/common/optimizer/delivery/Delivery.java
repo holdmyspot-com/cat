@@ -50,7 +50,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
@@ -590,7 +589,7 @@ public final class Delivery
 			StandardOpenOption.WRITE);
 		force(temporary);
 		PortableFiles.setMode(temporary, permissions);
-		Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+		PortableFiles.replace(temporary, file);
 		PortableFiles.forceDirectory(file.getParent());
 	}
 

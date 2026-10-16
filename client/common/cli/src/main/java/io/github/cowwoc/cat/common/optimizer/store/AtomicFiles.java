@@ -1,7 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.store;
 
-import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
-import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 import static java.nio.file.StandardOpenOption.WRITE;
@@ -56,7 +54,7 @@ final class AtomicFiles
 				channel.force(true);
 				afterStep.accept(WriteStep.SYNC_TEMPORARY);
 			}
-			Files.move(temporary, target, ATOMIC_MOVE, REPLACE_EXISTING);
+			PortableFiles.replace(temporary, target);
 		}
 		catch (IOException e)
 		{

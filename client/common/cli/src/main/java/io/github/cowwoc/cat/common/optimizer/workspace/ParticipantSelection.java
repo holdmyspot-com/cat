@@ -3,9 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
-import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
-import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
@@ -170,7 +169,7 @@ record ParticipantSelection(Set<Path> added, Set<Path> selected)
 		}
 		Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
 		Files.writeString(temporary, text, UTF_8);
-		Files.move(temporary, file, REPLACE_EXISTING, ATOMIC_MOVE);
+		PortableFiles.replace(temporary, file);
 	}
 
 	/**

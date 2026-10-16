@@ -2,12 +2,16 @@ package io.github.cowwoc.cat.common;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.util.Locale;
 import java.util.Set;
 
@@ -19,7 +23,8 @@ import java.util.Set;
  * {@code rwxr-xr-x} and every other regular file reads as {@code rw-r--r--}. Setting a mode does nothing, and forcing
  * a directory does nothing because NTFS journals its directory entries. Files keep the access that they inherit from
  * their folder. A file mode that CAT compares is always read on the same machine as the mode it is compared with, so
- * a mode derived from the file's name never reports a change.
+ * a mode derived from the file's name never reports a change. Windows also refuses to replace a file that a process has
+ * open.
  */
 public final class PortableFiles
 {
@@ -31,6 +36,14 @@ public final class PortableFiles
 	 */
 	private static final Set<String> PROGRAM_EXTENSIONS = Set.of("com", "exe", "bat", "cmd", "vbs", "vbe", "js",
 		"jse", "wsf", "wsh", "msc");
+	/**
+	 * How long {@link #replace(Path, Path)} keeps trying on Windows while another process has the target open.
+	 */
+	private static final Duration REPLACE_RETRY_LIMIT = Duration.ofSeconds(5);
+	/**
+	 * How long {@link #replace(Path, Path)} waits between attempts on Windows.
+	 */
+	private static final Duration REPLACE_RETRY_INTERVAL = Duration.ofMillis(10);
 
 	/**
 	 * Indicates whether a file's file system records POSIX permissions.
@@ -109,6 +122,47 @@ public final class PortableFiles
 		try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ))
 		{
 			channel.force(true);
+		}
+	}
+
+	/**
+	 * Atomically replaces a file with another file in the same directory.
+	 * <p>
+	 * Windows refuses to replace a file while any process has it open, so a reader that polls the file, such as a
+	 * session that watches a run's manifest, can make a replacement fail. There, this method tries again until
+	 * {@link #REPLACE_RETRY_LIMIT} passes; a reader holds the file only while it reads it.
+	 *
+	 * @param source the file that takes the target's place
+	 * @param target the file to replace
+	 * @throws java.nio.file.AtomicMoveNotSupportedException if the file system cannot replace the file atomically
+	 * @throws IOException if the file cannot be replaced, or the thread is interrupted while it waits to try again
+	 */
+	public static void replace(Path source, Path target) throws IOException
+	{
+		long deadline = System.nanoTime() + REPLACE_RETRY_LIMIT.toNanos();
+		while (true)
+		{
+			try
+			{
+				Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+				return;
+			}
+			catch (AccessDeniedException e)
+			{
+				if (!Platform.current().isWindows() || System.nanoTime() - deadline >= 0)
+					throw e;
+				try
+				{
+					Thread.sleep(REPLACE_RETRY_INTERVAL);
+				}
+				catch (InterruptedException interrupted)
+				{
+					Thread.currentThread().interrupt();
+					IOException failure = new IOException("Interrupted while waiting to replace " + target, interrupted);
+					failure.addSuppressed(e);
+					throw failure;
+				}
+			}
 		}
 	}
 

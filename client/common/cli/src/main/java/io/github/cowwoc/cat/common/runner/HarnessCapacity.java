@@ -6,6 +6,7 @@ import static java.nio.file.StandardOpenOption.WRITE;
 
 import io.github.cowwoc.cat.common.ExclusiveFileLock;
 import io.github.cowwoc.cat.common.LockFileOpener;
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.secrets.HarnessCapacityAccess;
 import io.github.cowwoc.cat.common.secrets.HarnessCapacitySecrets;
 import tools.jackson.core.JacksonException;
@@ -19,7 +20,6 @@ import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -422,7 +422,7 @@ public final class HarnessCapacity
 		try
 		{
 			Files.write(temporary, JSON.writeValueAsBytes(root));
-			Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+			PortableFiles.replace(temporary, file);
 		}
 		catch (IOException e)
 		{

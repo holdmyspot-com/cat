@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.FileVisitResult.CONTINUE;
 import static java.nio.file.FileVisitResult.SKIP_SUBTREE;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
-import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.COPY_ATTRIBUTES;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static java.nio.file.StandardOpenOption.APPEND;
@@ -14,6 +13,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
 import io.github.cowwoc.cat.common.PluginInfo;
+import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.secrets.HarnessRunManagerAccess;
 import io.github.cowwoc.cat.common.secrets.HarnessRunManagerSecrets;
 
@@ -1057,7 +1057,7 @@ public final class HarnessRunManager
 			Files.writeString(temporary, content);
 			try
 			{
-				Files.move(temporary, output, ATOMIC_MOVE, REPLACE_EXISTING);
+				PortableFiles.replace(temporary, output);
 			}
 			catch (AtomicMoveNotSupportedException _)
 			{
