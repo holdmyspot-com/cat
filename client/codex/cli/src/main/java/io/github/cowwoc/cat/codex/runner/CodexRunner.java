@@ -369,7 +369,7 @@ public final class CodexRunner
 		List<String> wrapped = new ArrayList<>(List.of(bubblewrap.toString(), "--dev-bind", "/", "/", "--tmpfs",
 			TMP.toString()));
 		Path absoluteRun = runDirectory.toAbsolutePath().normalize();
-		if (absoluteRun.startsWith(TMP))
+		if (absoluteRun.startsWith(TMP.toAbsolutePath()))
 			wrapped.addAll(List.of("--bind", absoluteRun.toString(), absoluteRun.toString()));
 		// Codex dies when bubblewrap does, so stopping the recorded harness process also stops Codex
 		wrapped.addAll(List.of("--die-with-parent", "--"));
