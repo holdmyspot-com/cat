@@ -151,6 +151,30 @@ public final class JlinkImageBuilder
 	}
 
 	/**
+	 * Removes the POSIX launchers of an image built on Windows, keeping its batch launchers. PowerShell runs a command
+	 * that a path without an extension names from the file of exactly that name, in preference to the file that adds an
+	 * extension from {@code PATHEXT}, and hands that file, which it cannot run, to the program that Windows associates
+	 * with it. Once the POSIX launcher is gone, the same command runs the batch launcher.
+	 *
+	 * @param output the runtime-image directory
+	 * @param launchers the launchers whose POSIX form to remove
+	 * @throws NullPointerException if {@code output} or {@code launchers} are null
+	 * @throws IOException if a launcher has no batch form or cannot be removed
+	 */
+	public static void removePosixLaunchers(Path output, List<Launcher> launchers) throws IOException
+	{
+		requireThat(output, "output").isNotNull();
+		requireThat(launchers, "launchers").isNotNull();
+		for (Launcher launcher : launchers)
+		{
+			Path script = output.resolve("bin").resolve(launcher.name());
+			if (Files.notExists(script.resolveSibling(launcher.name() + ".bat")))
+				throw new IOException("The launcher has no batch form: " + script);
+			Files.delete(script);
+		}
+	}
+
+	/**
 	 * Makes jlink launchers work from installation paths containing whitespace and in every locale, and gives each
 	 * launcher's JVM a private performance-data directory when Bubblewrap is available.
 	 * <p>

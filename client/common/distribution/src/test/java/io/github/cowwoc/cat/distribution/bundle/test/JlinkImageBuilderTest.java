@@ -128,6 +128,32 @@ public final class JlinkImageBuilderTest
 	}
 
 	/**
+	 * Verifies that removing the POSIX launchers fails when a launcher has no batch form to run instead.
+	 */
+	@Test
+	public void removePosixLaunchersRequiresBatchForm() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path output = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Files.delete(output);
+			JlinkImageBuilder.Launcher launcher = new JlinkImageBuilder.Launcher("read-part", "app", "example.Main");
+			JlinkImageBuilderSecrets.access().create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),
+				Set.of("app"), List.of(launcher), output);
+			Files.delete(output.resolve("bin/read-part.bat"));
+			try
+			{
+				JlinkImageBuilder.removePosixLaunchers(output, List.of(launcher));
+				throw new AssertionError("Expected a failure for the missing batch launcher");
+			}
+			catch (IOException failure)
+			{
+				requireThat(failure.getMessage(), "failureMessage").contains("no batch form");
+			}
+		}
+	}
+
+	/**
 	 * Verifies jlink diagnostics are included in failures.
 	 */
 	@Test

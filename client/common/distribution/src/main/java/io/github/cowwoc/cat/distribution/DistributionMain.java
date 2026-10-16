@@ -395,7 +395,9 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Builds the Codex image.
+	 * Builds the Codex image. On Windows, the image holds only the batch launchers: Codex runs commands there in
+	 * PowerShell, and CAT's skills name each launcher by its path without an extension, which PowerShell resolves to
+	 * the POSIX launcher whenever it exists. The Claude image keeps both, because Claude Code runs commands in Git Bash.
 	 *
 	 * @param builder  the image builder
 	 * @param modules  the module-path entries of the image
@@ -407,8 +409,11 @@ public final class DistributionMain
 	static Path codexImage(JlinkImageBuilder builder, List<Path> modules, Path output, Platform platform)
 		throws IOException
 	{
-		return builder.build(modules, Set.of("io.github.cowwoc.cat.codex.cli", "org.slf4j.nop"), codexLaunchers(),
+		Path image = builder.build(modules, Set.of("io.github.cowwoc.cat.codex.cli", "org.slf4j.nop"), codexLaunchers(),
 			output);
+		if (platform.isWindows())
+			JlinkImageBuilder.removePosixLaunchers(image, codexLaunchers());
+		return image;
 	}
 
 	/**
