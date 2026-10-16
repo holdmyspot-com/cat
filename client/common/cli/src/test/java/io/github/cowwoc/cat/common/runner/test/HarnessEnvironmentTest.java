@@ -77,6 +77,36 @@ public final class HarnessEnvironmentTest
 	}
 
 	/**
+	 * Verifies that a program finds the home directory that the harness gives it in the variable that the platform's
+	 * programs read, {@code USERPROFILE} on Windows and {@code HOME} elsewhere, rather than the user's home directory.
+	 *
+	 * @throws IOException          if the program cannot be started
+	 * @throws InterruptedException if the thread is interrupted while the program runs
+	 */
+	@Test
+	public void givesChildItsHomeDirectory() throws IOException, InterruptedException
+	{
+		Path home = Path.of("run", "home").toAbsolutePath();
+		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(System.getenv()));
+		HarnessEnvironment.setHomeDirectory(environment, home);
+		List<String> command;
+		if (Platform.current().isWindows())
+			command = List.of("cmd.exe", "/D", "/C", "echo %USERPROFILE%");
+		else
+			command = List.of("sh", "-c", "printf '%s\\n' \"$HOME\"");
+		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+		builder.environment().clear();
+		builder.environment().putAll(environment);
+		try (Process process = builder.start())
+		{
+			process.getOutputStream().close();
+			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+			requireThat(process.waitFor(), "status").withContext(output, "output").isEqualTo(0);
+			requireThat(output.strip(), "home").isEqualTo(home.toString());
+		}
+	}
+
+	/**
 	 * Verifies only explicitly approved authentication variables are inherited after scrubbing.
 	 */
 	@Test

@@ -65,7 +65,8 @@ public final class HarnessEnvironment
 	}
 
 	/**
-	 * Gives a child process a home directory.
+	 * Gives a child process a home directory. The environment names it in {@code HOME} and, on Windows, also in
+	 * {@code USERPROFILE}, which Windows programs read instead of {@code HOME}.
 	 *
 	 * @param environment the mutable isolated environment
 	 *
@@ -76,6 +77,7 @@ public final class HarnessEnvironment
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		environment.put("HOME", home.toString());
+		environment.put(Platform.current().homeVariable(), home.toString());
 	}
 
 	/**
