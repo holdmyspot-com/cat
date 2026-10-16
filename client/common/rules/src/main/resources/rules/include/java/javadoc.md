@@ -10,7 +10,8 @@ depends-on:
 
 - Apply Java-specific Javadoc coverage, tags, placement, and syntax without duplicating the language-neutral
   documentation contract.
-- Make boolean return contracts immediately recognizable as a condition the caller can test.
+- Make the contract of a boolean or other two-valued result or field immediately recognizable as a condition the
+  caller can test.
 - Let a caller learn from a method's Javadoc every result it can receive, what each means and when it occurs, without
   reading the implementation.
 
@@ -31,9 +32,11 @@ Document every parameter with `@param` and every return value with `@return`. Pl
 a record declaration and repeat them on an explicit or compact canonical constructor. Put construction-contract tags
 such as `@throws` only on that constructor, not on the record declaration.
 
-For a method that returns a boolean, begin its summary description with “Indicates whether” and name the observable
-condition that makes the result `true`. Do not describe a policy consequence that the method does not itself decide;
-document that consequence at the caller or in the separately named operation that makes the decision.
+For a method that returns a boolean, a getter that returns another type with exactly two values, such as a two-constant
+enum, and a field of either type, begin its summary description with “Indicates whether”, not “Returns whether”. For a
+boolean, name the observable condition that makes the value `true`; for another two-valued type, name the condition that
+selects each value. Do not describe a policy consequence that the method does not itself decide; document that
+consequence at the caller or in the separately named operation that makes the decision.
 
 An `@param` description must state its parameter's observable effect. When that effect selects a fixed caller-visible
 value, boundary, policy, or ordering, name the exact selected behavior rather than a generic feature or action.
