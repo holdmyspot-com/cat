@@ -54,6 +54,13 @@ public final class DistributionMain
 			}
 
 			@Override
+			public Path codexImage(JlinkImageBuilder builder, List<Path> modules, Path output, Platform platform)
+				throws IOException
+			{
+				return DistributionMain.codexImage(builder, modules, output, platform);
+			}
+
+			@Override
 			public String dependencyCoordinates(String groupId, String artifactId, Path path)
 			{
 				return new DependencyJar(groupId, artifactId, path).coordinates();
@@ -159,9 +166,7 @@ public final class DistributionMain
 			Set.of("io.github.cowwoc.cat.claude.cli", "org.slf4j.nop"),
 			claudeLaunchers(), jlinkDirectory.resolve("claude"));
 		List<Path> codexModules = append(append(sharedRuntimeModules, packagedCodexCli), jsonRuntimeModules);
-		Path codexImage = imageBuilder.build(codexModules,
-			Set.of("io.github.cowwoc.cat.codex.cli", "org.slf4j.nop"),
-			codexLaunchers(), jlinkDirectory.resolve("codex"));
+		Path codexImage = codexImage(imageBuilder, codexModules, jlinkDirectory.resolve("codex"), platform);
 
 		PluginArtifactBuilder artifactBuilder = new PluginArtifactBuilder(PluginInfo.CAT_VERSION);
 		LegalMaterialsBuilder legalMaterialsBuilder = new LegalMaterialsBuilder(PluginInfo.CAT_VERSION);
@@ -387,6 +392,23 @@ public final class DistributionMain
 	{
 		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("bin/read-part", "bin/run-part",
 			"bin/run-part-overrides/rg", "hooks/post-tool-use.sh"));
+	}
+
+	/**
+	 * Builds the Codex image.
+	 *
+	 * @param builder  the image builder
+	 * @param modules  the module-path entries of the image
+	 * @param output   the image's directory
+	 * @param platform the platform that the image runs on
+	 * @return the image's directory
+	 * @throws IOException if the image cannot be built
+	 */
+	static Path codexImage(JlinkImageBuilder builder, List<Path> modules, Path output, Platform platform)
+		throws IOException
+	{
+		return builder.build(modules, Set.of("io.github.cowwoc.cat.codex.cli", "org.slf4j.nop"), codexLaunchers(),
+			output);
 	}
 
 	/**

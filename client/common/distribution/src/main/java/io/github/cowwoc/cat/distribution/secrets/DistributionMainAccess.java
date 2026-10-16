@@ -1,9 +1,11 @@
 package io.github.cowwoc.cat.distribution.secrets;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.distribution.DistributionMain;
 import io.github.cowwoc.cat.distribution.bundle.ArtifactLayer;
 import io.github.cowwoc.cat.distribution.bundle.JlinkImageBuilder;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -33,6 +35,18 @@ public interface DistributionMainAccess
 	 * @return the layer
 	 */
 	ArtifactLayer codexPluginLayer(Path jar);
+
+	/**
+	 * Builds the Codex image.
+	 *
+	 * @param builder  the image builder
+	 * @param modules  the module-path entries of the image
+	 * @param output   the image's directory
+	 * @param platform the platform that the image runs on
+	 * @return the image's directory
+	 * @throws IOException if the image cannot be built
+	 */
+	Path codexImage(JlinkImageBuilder builder, List<Path> modules, Path output, Platform platform) throws IOException;
 
 	/**
 	 * Returns the Maven coordinates of a third-party dependency JAR that a distribution ships.
