@@ -974,4 +974,63 @@ public final class ProposalSchemaTest
 		requireThat(String.join(" | ", span.problems()), "spanProblems").contains("gives text");
 		requireThat(String.join(" | ", hook.problems()), "hookProblems").contains("gives command");
 	}
+
+	/**
+	 * Verifies that a proposal file that holds only the requirements, each prompt test's directory with the fields that
+	 * belong to the contract, and the contract's other fields satisfies the proposal file's schema.
+	 */
+	// Requirement: R-C26
+	@Test
+	public void acceptsNarrowedProposalFile()
+	{
+		requireThat(schema().proposalFileViolations(proposalFile()), "violations").isEmpty();
+	}
+
+	/**
+	 * Verifies that a proposal file that restates a prompt test's scenario, such as its turns or test cases, is refused
+	 * at each restated key, because the prompt test lives in its directory in the draft.
+	 */
+	// Requirement: R-C26
+	@Test
+	public void refusesRestatedPromptTest()
+	{
+		ObjectNode file = proposalFile();
+		ObjectNode test = (ObjectNode) file.get("tests").get(0);
+		test.putArray("turns").add("Summarize the notes.");
+		test.putArray("test_cases");
+
+		requireThat(schema().proposalFileViolations(file), "violations").
+			containsAll(List.of("$.tests[0].turns: unexpected property", "$.tests[0].test_cases: unexpected property"));
+	}
+
+	/**
+	 * Returns a valid proposal file: the valid proposal without the fields that CAT computes, with each prompt test
+	 * narrowed to its directory and the fields that belong to the contract.
+	 *
+	 * @return the proposal file
+	 */
+	private ObjectNode proposalFile()
+	{
+		ObjectNode root = (ObjectNode) json.readTree(ContractFixtures.resource("valid-proposal.json"));
+		root.remove(List.of("trial_profiles", "salt"));
+		ArrayNode tests = json.createArrayNode();
+		for (JsonNode full : root.get("tests"))
+		{
+			ObjectNode test = tests.addObject();
+			test.put("directory", ".cat/tests/summary/" + full.get("id").asString());
+			for (String name : List.of("risk_rank", "requirement_ids", "absent_triggers", "applicability",
+				"uncovered_interactions"))
+			{
+				test.set(name, full.get(name));
+			}
+			ArrayNode assertions = test.putArray("assertions");
+			for (JsonNode assertion : full.get("assertions"))
+			{
+				assertions.addObject().put("id", assertion.get("id").asString()).
+					put("requirement_id", assertion.get("requirement_id").asString());
+			}
+		}
+		root.set("tests", tests);
+		return root;
+	}
 }

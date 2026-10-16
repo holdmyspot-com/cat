@@ -1,0 +1,23 @@
+{
+	"description": "A prompt test of the proposal: its directory in the draft directory and what the contract says about it. The scenario, fixtures and test cases live in the directory's files, not here.",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["directory", "risk_rank", "requirement_ids", "absent_triggers", "applicability", "assertions", "uncovered_interactions"],
+	"properties": {
+		"directory": {"description": "The prompt test's directory relative to the draft directory, with / separators, such as .cat/tests/rules/notes/long_document. It holds scenario.md, optional fixtures/ and values.json. Its last name is the prompt test's identifier, in snake_case. A recorded prompt test keeps its directory; a new one lies directly in the target's test directory.", "type": "string", "pattern": "\\S"},
+		"assertions": {
+			"description": "The requirement that each assertion of the scenario's ## Assertions section checks, one item per assertion. Each requirement that the test proves has at least one assertion.",
+			"type": "array",
+			"minItems": 1,
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["id", "requirement_id"],
+				"properties": {
+					"id": {"description": "The assertion's id, the ### heading of its subsection in scenario.md.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
+					"requirement_id": {"description": "The requirement whose compliance the assertion shows. The test must prove it.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"}
+				}
+			}
+		}
+	}
+}

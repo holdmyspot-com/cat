@@ -40,6 +40,11 @@ public final class ProposalSchema
 {
 	private static final String SCHEMA_RESOURCE = "/optimizer/contract/proposal.schema.json";
 	/**
+	 * The schema of one prompt test of a proposal file, whose properties that the full prompt test also has are
+	 * copied from the proposal schema.
+	 */
+	private static final String PROPOSAL_FILE_TEST_RESOURCE = "/optimizer/contract/proposal-file-test.schema.json";
+	/**
 	 * The property that holds the trial profiles, which CAT computes rather than the contract author.
 	 */
 	public static final String TRIAL_PROFILES = "trial_profiles";
@@ -71,6 +76,8 @@ public final class ProposalSchema
 	private final SchemaValidator validator;
 	private final ObjectNode derivationSchema;
 	private final SchemaValidator derivation;
+	private final ObjectNode proposalFileSchema;
+	private final SchemaValidator proposalFileValidator;
 
 	/**
 	 * Creates a schema reader.
@@ -83,19 +90,62 @@ public final class ProposalSchema
 	{
 		requireThat(json, "json").isNotNull();
 		this.json = json;
-		try (InputStream in = ProposalSchema.class.getResourceAsStream(SCHEMA_RESOURCE))
+		schemaText = readResource(SCHEMA_RESOURCE);
+		validator = new SchemaValidator(json.readTree(schemaText));
+		derivationSchema = derivationSchema(json, schemaText);
+		derivation = new SchemaValidator(derivationSchema);
+		proposalFileSchema = proposalFileSchema(json, derivationSchema);
+		proposalFileValidator = new SchemaValidator(proposalFileSchema);
+	}
+
+	/**
+	 * Returns the schema of a proposal file: the derivation schema whose prompt tests each hold only their directory in
+	 * the draft directory, the requirement of each assertion and the fields that belong to the contract rather than to
+	 * the prompt test.
+	 *
+	 * @param json the operation-owned JSON mapper
+	 * @param derivationSchema the schema of a proposal that CAT has not completed yet
+	 * @return the schema
+	 * @throws UncheckedIOException if the packaged schema of a proposal file's prompt test cannot be read
+	 */
+	private static ObjectNode proposalFileSchema(JsonMapper json, ObjectNode derivationSchema)
+	{
+		ObjectNode root = derivationSchema.deepCopy();
+		ObjectNode tests = (ObjectNode) root.get("properties").get("tests");
+		JsonNode fullProperties = tests.get("items").get("properties");
+		ObjectNode test = (ObjectNode) json.readTree(readResource(PROPOSAL_FILE_TEST_RESOURCE));
+		ObjectNode properties = (ObjectNode) test.get("properties");
+		// The fields that the full prompt test shares keep their one definition
+		for (JsonNode name : test.get("required"))
+		{
+			if (!properties.has(name.asString()))
+				properties.set(name.asString(), fullProperties.get(name.asString()).deepCopy());
+		}
+		tests.set("items", test);
+		tests.put("description", "Every prompt test, each by its directory in the draft directory. Each has its own " +
+			"claim in each of its cells.");
+		return root;
+	}
+
+	/**
+	 * Reads a packaged resource as UTF-8 text.
+	 *
+	 * @param resource the resource's absolute name
+	 * @return the text
+	 * @throws UncheckedIOException if the resource is missing or cannot be read
+	 */
+	private static String readResource(String resource)
+	{
+		try (InputStream in = ProposalSchema.class.getResourceAsStream(resource))
 		{
 			if (in == null)
-				throw new IOException("The packaged resource " + SCHEMA_RESOURCE + " is missing");
-			schemaText = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+				throw new IOException("The packaged resource " + resource + " is missing");
+			return new String(in.readAllBytes(), StandardCharsets.UTF_8);
 		}
 		catch (IOException e)
 		{
 			throw new UncheckedIOException(e);
 		}
-		validator = new SchemaValidator(json.readTree(schemaText));
-		derivationSchema = derivationSchema(json, schemaText);
-		derivation = new SchemaValidator(derivationSchema);
 	}
 
 	/**
@@ -155,6 +205,31 @@ public final class ProposalSchema
 	public ObjectNode derivationSchema()
 	{
 		return derivationSchema.deepCopy();
+	}
+
+	/**
+	 * Returns the JSON schema of a proposal file, which a contract author writes beside its draft directory: the
+	 * proposal schema without the parts that CAT computes, whose prompt tests each hold only their directory in the
+	 * draft directory and what the contract says about them.
+	 *
+	 * @return a copy of the schema, which the caller may change
+	 */
+	public ObjectNode proposalFileSchema()
+	{
+		return proposalFileSchema.deepCopy();
+	}
+
+	/**
+	 * Returns the problems of a proposal file that its schema finds.
+	 *
+	 * @param proposalFile the proposal file, completed with the judge fields that CAT supplies
+	 * @return each problem with its JSON path, empty if the file satisfies the schema
+	 * @throws NullPointerException if {@code proposalFile} is null
+	 */
+	public List<String> proposalFileViolations(JsonNode proposalFile)
+	{
+		requireThat(proposalFile, "proposalFile").isNotNull();
+		return proposalFileValidator.violations(proposalFile);
 	}
 
 	/**
