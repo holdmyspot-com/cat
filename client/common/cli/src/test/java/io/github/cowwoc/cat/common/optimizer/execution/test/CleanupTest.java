@@ -151,7 +151,8 @@ public final class CleanupTest
 	/**
 	 * A fault before any removal step leaves the removal recorded, and the next command's {@link Cleanup#resume()}
 	 * completes it without touching the other campaign. Resuming again changes nothing. The steps share one fixture,
-	 * whose campaign is stored again for each step after the previous step's removal.
+	 * whose campaign is stored again for each step after the previous step's removal. A fault after the worktree step
+	 * finds the optimization worktree removed, so only the fault before that step needs a campaign that has one.
 	 *
 	 * @throws IOException if the fixture or cleanup fails
 	 */
@@ -164,7 +165,8 @@ public final class CleanupTest
 			Fixture fixture = Fixture.create(cleanup);
 			for (Cleanup.Step failing : Cleanup.Step.values())
 			{
-				Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
+				Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)),
+					failing == Cleanup.Step.WORKTREE);
 				Consumer<Cleanup.Step> crashing = step ->
 				{
 					if (step == failing)
@@ -187,9 +189,10 @@ public final class CleanupTest
 				fixture.cleanup(NO_HOOK).resume();
 
 				fixture.requireRemoved();
-				fixture.cleanup(NO_HOOK).resume();
-				fixture.requireRemoved();
 			}
+			// Every step ends in the same state, which another resume leaves unchanged
+			fixture.cleanup(NO_HOOK).resume();
+			fixture.requireRemoved();
 		}
 	}
 
@@ -371,10 +374,25 @@ public final class CleanupTest
 		 */
 		Campaign store(Builder builder) throws IOException
 		{
+			return store(builder, true);
+		}
+
+		/**
+		 * Stores a campaign and adds one of its runs to each run root.
+		 *
+		 * @param builder the campaign's builder, whose identifier becomes {@link #CAMPAIGN} unless it is {@link #OTHER}
+		 * @param forked {@code true} to fork the base for the campaign, or {@code false} for a campaign whose
+		 *               optimization worktree a removal already deleted
+		 * @return the stored campaign
+		 * @throws IOException if the campaign cannot be stored
+		 */
+		Campaign store(Builder builder, boolean forked) throws IOException
+		{
 			Campaign built = snapshot(builder);
 			String id = built.header().id();
 			Path directory = directory(id);
-			new GitForks().create(base, directory, Set.of());
+			if (forked)
+				new GitForks().create(base, directory, Set.of());
 			for (Path runRoot : runRoots)
 			{
 				Path run = Files.createDirectories(runRoot.resolve("claude/run-" + id));
@@ -476,7 +494,7 @@ public final class CleanupTest
 				requireThat(entries.map(path -> path.getFileName().toString()).toList(), "campaigns").
 					isEqualTo(List.of(OTHER));
 			}
-			requireOtherKept("removed");
+			requireOtherKept("removed", worktrees);
 		}
 
 		/**
@@ -496,22 +514,22 @@ public final class CleanupTest
 				requireThat(runRoot.resolve("claude/run-" + CAMPAIGN + "/run.json"), "run").
 					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
 			}
-			requireOtherKept(context);
+			requireOtherKept(context, worktrees());
 		}
 
 		/**
 		 * Requires every file of {@link #OTHER} and the malformed runs to remain.
 		 *
 		 * @param context the case that the check belongs to
-		 * @throws IOException if Git fails
+		 * @param worktrees the directories of the base repository's worktrees, as Git lists them
+		 * @throws IOException if a file's type cannot be read
 		 */
-		void requireOtherKept(String context) throws IOException
+		void requireOtherKept(String context, List<Path> worktrees) throws IOException
 		{
 			requireThat(directory(OTHER).resolve("held_out/campaign.json"), "otherSnapshot").
 				withContext(context, "context").isRegularFile();
 			requireThat(directory(OTHER).resolve("worktree/CLAUDE.md"), "otherWorktree").
 				withContext(context, "context").isRegularFile();
-			List<Path> worktrees = worktrees();
 			requireThat(worktrees.stream().anyMatch(worktree -> worktree.startsWith(directory(OTHER))),
 				"otherWorktreeIsListed").withContext(context, "context").withContext(worktrees, "worktrees").isTrue();
 			for (Path runRoot : runRoots)
