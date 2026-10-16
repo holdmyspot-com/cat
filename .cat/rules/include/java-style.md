@@ -107,8 +107,8 @@ no established order; never use it alone to reorder an established group.
 - Separate distinct method phases with blank lines: validation, normalization/setup, primary branching, and final
   failure/return handling. Do not add blank lines within one cohesive phase.
 - Use `switch` when selecting among a closed set of values; use `if` when conditions are not simple alternatives.
-- In addition to what the bundled Java Optional rule permits, a `final` field that a getter returns as-is may be declared
-  `Optional`.
+- In addition to what the bundled Java Optional rule permits, a record component, or a `final` field that a getter
+  returns as-is, may be declared `Optional`.
 - Use `StringBuilder.isEmpty()` rather than `length() == 0`.
 - Use `StringJoiner` for delimiter-separated output instead of manually injecting delimiters.
 - Use `equals()` for case-sensitive string comparisons and `equalsIgnoreCase()` only when the domain is intentionally
