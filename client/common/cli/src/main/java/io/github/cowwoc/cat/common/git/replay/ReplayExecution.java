@@ -72,13 +72,19 @@ public final class ReplayExecution
 		try
 		{
 			Files.deleteIfExists(index);
-			git.lines(index, "read-tree", history.baseTree(manifest.base()));
+			// Each batch verifies the index's tree, so the index holds the last verified tree between batches
+			String tree = history.baseTree(manifest.base());
+			git.lines(index, "read-tree", tree);
 			String rewrittenTip = null;
 			if (!manifest.base().equals(History.ROOT_BASE))
 				rewrittenTip = manifest.base();
 			for (Output output : retainedOutputs(manifest))
-				rewrittenTip = applyOutput(manifestFile, manifest, index, output, rewrittenTip);
-			if (!git.lines(index, "write-tree").getFirst().equals(manifest.tipTree()))
+			{
+				OutputWitness witness = outputWitness(manifest, output.id());
+				rewrittenTip = applyOutput(manifestFile, manifest, index, output, witness, tree, rewrittenTip);
+				tree = witness.afterTree();
+			}
+			if (!tree.equals(manifest.tipTree()))
 				throw new IOException("Topic replay did not produce the manifest's required final tree");
 			return rewrittenTip;
 		}
@@ -107,23 +113,23 @@ public final class ReplayExecution
 	 * @param manifest the sealed replay state
 	 * @param index the isolated Git index
 	 * @param output the retained output
+	 * @param witness the output's recorded tree transition
+	 * @param beforeTree the tree that the index holds before the output's batches apply
 	 * @param parent the preceding replacement commit, or {@code null} for a root replay
 	 * @return the replacement commit created for the output
 	 * @throws IOException if a batch or output differs from its recorded witness
 	 */
-	private String applyOutput(Path manifestFile, BatchManifest manifest, Path index, Output output, String parent)
-		throws IOException
+	private String applyOutput(Path manifestFile, BatchManifest manifest, Path index, Output output,
+		OutputWitness witness, String beforeTree, String parent) throws IOException
 	{
-		OutputWitness witness = outputWitness(manifest, output.id());
-		String beforeTree = git.lines(index, "write-tree").getFirst();
 		if (!beforeTree.equals(witness.beforeTree()))
 		{
 			throw new IOException("Topic-replay output " + output.id() + " requires tree " + witness.beforeTree() +
 				" but the preceding output produced " + beforeTree);
 		}
+		String outputTree = beforeTree;
 		for (Batch batch : outputBatches(manifest, output.id()))
-			applyBatch(manifestFile, index, batch);
-		String outputTree = git.lines(index, "write-tree").getFirst();
+			outputTree = applyBatch(manifestFile, index, batch);
 		if (!outputTree.equals(witness.afterTree()))
 		{
 			throw new IOException("Topic-replay output " + output.id() + " produced tree " + outputTree +
@@ -164,9 +170,10 @@ public final class ReplayExecution
 	 * @param manifestFile the manifest that owns the batch patch
 	 * @param index the isolated Git index
 	 * @param batch the sealed batch
+	 * @return the index's tree after the batch
 	 * @throws IOException if the patch digest or tree witness differs
 	 */
-	private void applyBatch(Path manifestFile, Path index, Batch batch) throws IOException
+	private String applyBatch(Path manifestFile, Path index, Batch batch) throws IOException
 	{
 		Path patchFile = patches.resolve(manifestFile, batch.patch());
 		if (!batch.patch().sha256().equals(patches.sha256(patchFile)))
@@ -180,6 +187,7 @@ public final class ReplayExecution
 			throw new IOException("Topic-replay batch " + batch.id() + " produced tree " + afterBatch +
 				" instead of declared tree " + batch.destinationWitness().afterTree());
 		}
+		return afterBatch;
 	}
 
 	/**

@@ -116,11 +116,12 @@ public final class Finalization
 		requireThat(replay, "replay").isNotNull();
 		requireThat(rebaseBase, "rebaseBase").isNotBlank();
 		requireThat(rewrittenTip, "rewrittenTip").isNotBlank();
-		String expectedRewrittenTip = git.lines("rev-parse", rewrittenTip).getFirst();
+		List<String> resolved = git.lines("rev-parse", rewrittenTip, "HEAD");
+		String expectedRewrittenTip = resolved.getFirst();
+		String head = resolved.get(1);
 		Path receiptFile = requireReceipt(manifestFile);
 		FinalizationReceipt receipt = json.readValue(receiptFile.toFile(), FinalizationReceipt.class);
-		if (!matchesSelection(receipt, rebaseBase, expectedRewrittenTip) ||
-			!git.lines("rev-parse", "HEAD").getFirst().equals(expectedRewrittenTip))
+		if (!matchesSelection(receipt, rebaseBase, expectedRewrittenTip) || !head.equals(expectedRewrittenTip))
 		{
 			throw new IOException("Topic-replay finalization receipt does not bind the requested base and HEAD; " +
 				"prepare a fresh whole-range replay");
