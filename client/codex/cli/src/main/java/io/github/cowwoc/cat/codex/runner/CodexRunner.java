@@ -209,7 +209,7 @@ public final class CodexRunner
 			Path isolatedConfiguration = isolatedHome.resolve("config.toml");
 			Path npmCache = HarnessDependencyCache.verifyNpm(environment);
 			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache,
-				temporaryDirectory, toolOutputTokenLimit);
+				temporaryDirectory, toolOutputTokenLimit, Platform.current());
 			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
 				readOnlyEvidence, sessionDeniedReads(manager, run, deniedReads));
 			String pluginName = "";

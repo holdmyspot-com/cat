@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.codex.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.codex.runner.CodexConnectionConfiguration;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -76,25 +77,47 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies that an isolated Codex configuration prefers the Windows sandbox that can deny reads without an
+	 * Verifies that a Windows session prefers Codex's MXC sandbox, which enforces a profile that denies reads without an
 	 * administrator's setup.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void prefersMxcSandbox() throws IOException
+	public void windowsPrefersMxcSandbox() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-mxc-"));
 			Path destination = root.resolve("isolated/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, null, root.resolve("tmp"), 0,
+				Platform.WINDOWS_X64);
 
 			List<String> lines = Files.readAllLines(destination);
 			int features = lines.indexOf("[features]");
 			requireThat(features, "features").isNotNegative();
 			requireThat(lines.get(features + 1), "featureLine").isEqualTo("prefer_mxc = true");
+		}
+	}
+
+	/**
+	 * Verifies that a session on another platform, whose sandbox ignores the MXC preference, gets a configuration
+	 * without it, so that adding the preference leaves that platform's sessions unchanged.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void otherPlatformsOmitMxcPreference() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-mxc-"));
+			Path destination = root.resolve("isolated/config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, null, root.resolve("tmp"), 0,
+				Platform.LINUX_X64);
+
+			requireThat(Files.readString(destination), "configuration").doesNotContain("prefer_mxc");
 		}
 	}
 
@@ -195,8 +218,10 @@ public final class CodexConnectionConfigurationTest
 			Path limited = root.resolve("limited/config.toml");
 			Path unlimited = root.resolve("unlimited/config.toml");
 
-			CodexConnectionConfiguration.copy(source, limited, null, root.resolve("limited/tmp"), 5000);
-			CodexConnectionConfiguration.copy(source, unlimited, null, root.resolve("unlimited/tmp"), 0);
+			CodexConnectionConfiguration.copy(source, limited, null, root.resolve("limited/tmp"), 5000,
+				Platform.current());
+			CodexConnectionConfiguration.copy(source, unlimited, null, root.resolve("unlimited/tmp"), 0,
+				Platform.current());
 
 			List<String> lines = Files.readAllLines(limited);
 			int setting = lines.indexOf("tool_output_token_limit = 5000");

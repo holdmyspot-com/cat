@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.optimizer.CodexSessions;
 import io.github.cowwoc.cat.codex.runner.CodexConnectionConfiguration;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.port.contract.test.VersionRegistry;
@@ -75,7 +76,10 @@ public final class CodexSessionEnvironmentVersionTest
 				trusted_hash = "sha256:0000000000000000000000000000000000000000000000000000000000000001"
 				""", UTF_8);
 
-			CodexConnectionConfiguration.copy(source, destination, npmCache, temporaryDirectory);
+			// Windows adds only the choice of sandbox backend that enforces the same profile, so the hash covers the
+			// configuration that other platforms receive
+			CodexConnectionConfiguration.copy(source, destination, npmCache, temporaryDirectory, 0,
+				Platform.LINUX_X64);
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
 				List.of(deniedFile));
 			CodexConnectionConfiguration.copyTrustedCatHooks(source, destination);

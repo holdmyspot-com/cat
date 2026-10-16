@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.codex.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.BoundedInput;
+import io.github.cowwoc.cat.common.Platform;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -64,7 +65,7 @@ public final class CodexConnectionConfiguration
 	 */
 	public static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory) throws IOException
 	{
-		copy(source, destination, npmCache, temporaryDirectory, 0);
+		copy(source, destination, npmCache, temporaryDirectory, 0, Platform.current());
 	}
 
 	/**
@@ -78,12 +79,14 @@ public final class CodexConnectionConfiguration
 	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
 	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
 	 *   Codex's default
+	 * @param platform the platform that the session runs on
 	 * @throws IOException if configuration I/O fails
 	 */
 	public static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory,
-		int toolOutputTokenLimit) throws IOException
+		int toolOutputTokenLimit, Platform platform) throws IOException
 	{
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
 		StringBuilder copied = new StringBuilder(256).append(STARTUP_UPDATE_CHECK).append(System.lineSeparator()).
 			append("default_permissions = \"").append(RUNNER_PERMISSION_PROFILE).append('"').
@@ -105,7 +108,7 @@ public final class CodexConnectionConfiguration
 					continue;
 				String name = trimmed.substring(0, equals).strip();
 				if (CONNECTION_SETTINGS.contains(name))
-				copied.append(line).append(System.lineSeparator());
+					copied.append(line).append(System.lineSeparator());
 			}
 
 			networkAccess = workspaceWriteNetworkAccess(configuration);
@@ -125,11 +128,14 @@ public final class CodexConnectionConfiguration
 		}
 		else
 			copied.append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
-		// Without an administrator's setup, Windows offers only Codex's unelevated sandbox, which refuses a profile that
-		// denies reads, and MXC, which enforces it. Other platforms ignore prefer_mxc.
-		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator()).
-			append(System.lineSeparator()).append("[features]").append(System.lineSeparator()).
-			append("prefer_mxc = true").append(System.lineSeparator());
+		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator());
+		if (platform.isWindows())
+		{
+			// Without an administrator's setup, Windows offers only Codex's unelevated sandbox, which refuses a profile
+			// that denies reads, and MXC, which enforces it
+			copied.append(System.lineSeparator()).append("[features]").append(System.lineSeparator()).
+				append("prefer_mxc = true").append(System.lineSeparator());
+		}
 		appendRunnerProfile(copied, destination.getParent(), npmCache, temporaryDirectory, networkAccess);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
