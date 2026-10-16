@@ -78,6 +78,10 @@ terms may denote one shared concept.
 When defining, changing, or reviewing parameter validation for a caller-facing operation, lazy load
 `../include/common/parameter-validation.md`.
 
+When defining a function, method, constructor, or command, or changing its parameters, while an overload or another
+operation of the same API takes some of the same inputs, even in another type or representation, lazy load
+`../include/common/consistent-parameters.md`.
+
 When writing or editing maintained documentation, including product, legal, API, function, method, command,
 configuration, or user-facing workflow documentation, lazy load `../include/documentation/general.md`.
 
