@@ -48,8 +48,9 @@ public final class HarnessEnvironmentTest
 	/**
 	 * Verifies that a program started with the scrubbed environment of this process can create a temporary file and
 	 * finds the user's home directory in the platform's home variable. On Windows, a program without {@code TEMP} and
-	 * {@code TMP} uses the Windows directory for temporary files, which a user cannot write, and a program without
-	 * {@code USERPROFILE} finds no home directory.
+	 * {@code TMP} uses the Windows directory for temporary files, which a user cannot write, a program without
+	 * {@code USERPROFILE} finds no home directory, and Codex's MXC sandbox does not start without {@code SystemDrive}
+	 * and {@code LOCALAPPDATA}.
 	 *
 	 * @throws IOException          if the program cannot be started
 	 * @throws InterruptedException if the thread is interrupted while the program runs
@@ -64,13 +65,15 @@ public final class HarnessEnvironmentTest
 			command = List.of("powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
 				"$ErrorActionPreference = 'Stop'; $file = [System.IO.Path]::GetTempFileName(); " +
 				"Remove-Item -LiteralPath $file; " +
-				"if (-not $env:USERPROFILE) { exit 2 }");
+				"if (-not $env:USERPROFILE) { exit 2 }; " +
+				"if (-not $env:SystemDrive) { exit 3 }; " +
+				"if (-not $env:LOCALAPPDATA) { exit 4 }");
 		}
 		else
 			command = List.of("sh", "-c", "file=$(mktemp) && rm -- \"$file\" && [ -n \"$HOME\" ]");
 		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
 		builder.environment().clear();
-		builder.environment().putAll(HarnessEnvironment.scrub(System.getenv()));
+		builder.environment().putAll(HarnessEnvironment.scrub(Platform.current().environment(System.getenv())));
 		try (Process process = builder.start())
 		{
 			process.getOutputStream().close();
@@ -129,6 +132,8 @@ public final class HarnessEnvironmentTest
 	/**
 	 * Verifies that a program finds the home directory that the harness gives it in the variable that the platform's
 	 * programs read, {@code USERPROFILE} on Windows and {@code HOME} elsewhere, rather than the user's home directory.
+	 * On Windows, the program also finds its local application data in that home, in {@code LOCALAPPDATA}, which
+	 * Codex's MXC sandbox needs to start.
 	 *
 	 * @throws IOException          if the program cannot be started
 	 * @throws InterruptedException if the thread is interrupted while the program runs
@@ -137,13 +142,21 @@ public final class HarnessEnvironmentTest
 	public void givesChildItsHomeDirectory() throws IOException, InterruptedException
 	{
 		Path home = Path.of("run", "home").toAbsolutePath();
-		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(System.getenv()));
+		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(
+			Platform.current().environment(System.getenv())));
 		HarnessEnvironment.setHomeDirectory(environment, home);
 		List<String> command;
+		String expected;
 		if (Platform.current().isWindows())
-			command = List.of("cmd.exe", "/D", "/C", "echo %USERPROFILE%");
+		{
+			command = List.of("cmd.exe", "/D", "/C", "echo %USERPROFILE%^|%LOCALAPPDATA%");
+			expected = home + "|" + home.resolve("AppData").resolve("Local");
+		}
 		else
+		{
 			command = List.of("sh", "-c", "printf '%s\\n' \"$HOME\"");
+			expected = home.toString();
+		}
 		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
 		builder.environment().clear();
 		builder.environment().putAll(environment);
@@ -152,7 +165,7 @@ public final class HarnessEnvironmentTest
 			process.getOutputStream().close();
 			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 			requireThat(process.waitFor(), "status").withContext(output, "output").isEqualTo(0);
-			requireThat(output.strip(), "home").isEqualTo(home.toString());
+			requireThat(output.strip(), "home").isEqualTo(expected);
 		}
 	}
 

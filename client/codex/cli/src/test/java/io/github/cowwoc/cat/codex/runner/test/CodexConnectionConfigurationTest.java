@@ -76,6 +76,29 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
+	 * Verifies that an isolated Codex configuration prefers the Windows sandbox that can deny reads without an
+	 * administrator's setup.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void prefersMxcSandbox() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-mxc-"));
+			Path destination = root.resolve("isolated/config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination);
+
+			List<String> lines = Files.readAllLines(destination);
+			int features = lines.indexOf("[features]");
+			requireThat(features, "features").isNotNegative();
+			requireThat(lines.get(features + 1), "featureLine").isEqualTo("prefer_mxc = true");
+		}
+	}
+
+	/**
 	 * Verifies the isolated workspace-write sandbox retains the parent's explicit network-access policy.
 	 *
 	 * @throws IOException if fixture I/O fails

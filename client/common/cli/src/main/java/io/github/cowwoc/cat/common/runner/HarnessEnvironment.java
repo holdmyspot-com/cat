@@ -17,10 +17,13 @@ public final class HarnessEnvironment
 	/**
 	 * Copies only generic operating-system variables and removes CAT/harness home state.
 	 * <p>
-	 * On Windows, the copy also holds {@code USERPROFILE}, {@code TEMP}, {@code TMP} and {@code PATHEXT}. Windows
-	 * programs read the user's home directory from {@code USERPROFILE}; a program without {@code TEMP} and {@code TMP}
-	 * puts its temporary files in the Windows directory, which a user cannot write; and PowerShell finds a program by
-	 * its name without an extension only with an extension that {@code PATHEXT} lists.
+	 * On Windows, the copy also holds {@code USERPROFILE}, {@code LOCALAPPDATA}, {@code TEMP}, {@code TMP},
+	 * {@code PATHEXT} and {@code SystemDrive}. Windows programs read the user's home directory from
+	 * {@code USERPROFILE} and its local data folder from {@code LOCALAPPDATA}; a program without {@code TEMP} and
+	 * {@code TMP} puts its temporary files in the Windows directory, which a user cannot write; PowerShell finds a
+	 * program by its name without an extension only with an extension that {@code PATHEXT} lists; and Codex's MXC
+	 * sandbox, the only Windows sandbox that denies reads without an administrator's setup, does not start without
+	 * {@code SystemDrive} and {@code LOCALAPPDATA}.
 	 *
 	 * @param source the host environment
 	 *
@@ -38,9 +41,11 @@ public final class HarnessEnvironment
 		if (Platform.current().isWindows())
 		{
 			copy(source, result, "USERPROFILE");
+			copy(source, result, "LOCALAPPDATA");
 			copy(source, result, "TEMP");
 			copy(source, result, "TMP");
 			copy(source, result, "PATHEXT");
+			copy(source, result, "SystemDrive");
 		}
 		return Map.copyOf(result);
 	}
@@ -68,7 +73,9 @@ public final class HarnessEnvironment
 
 	/**
 	 * Gives a child process a home directory. The environment names it in {@code HOME} and, on Windows, also in
-	 * {@code USERPROFILE}, which Windows programs read instead of {@code HOME}.
+	 * {@code USERPROFILE}, which Windows programs read instead of {@code HOME}. On Windows, the environment also names
+	 * the home's {@code AppData\Local} in {@code LOCALAPPDATA}, where Windows programs keep a user's local data and
+	 * without which Codex's MXC sandbox does not start; the folder need not exist.
 	 *
 	 * @param environment the mutable isolated environment
 	 *
@@ -79,7 +86,10 @@ public final class HarnessEnvironment
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		environment.put("HOME", home.toString());
-		environment.put(Platform.current().homeVariable(), home.toString());
+		Platform platform = Platform.current();
+		environment.put(platform.homeVariable(), home.toString());
+		if (platform.isWindows())
+			environment.put("LOCALAPPDATA", home.resolve("AppData").resolve("Local").toString());
 	}
 
 	/**

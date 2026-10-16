@@ -69,7 +69,8 @@ public final class CodexConnectionConfiguration
 
 	/**
 	 * Copies supported connection settings, makes one verified npm cache available to nested shell commands and
-	 * limits the tokens that the session keeps of each tool output.
+	 * limits the tokens that the session keeps of each tool output. On Windows, the configuration prefers Codex's MXC
+	 * sandbox where the system offers it.
 	 *
 	 * @param source the host configuration file
 	 * @param destination the isolated configuration file
@@ -124,7 +125,11 @@ public final class CodexConnectionConfiguration
 		}
 		else
 			copied.append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
-		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator());
+		// Without an administrator's setup, Windows offers only Codex's unelevated sandbox, which refuses a profile that
+		// denies reads, and MXC, which enforces it. Other platforms ignore prefer_mxc.
+		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator()).
+			append(System.lineSeparator()).append("[features]").append(System.lineSeparator()).
+			append("prefer_mxc = true").append(System.lineSeparator());
 		appendRunnerProfile(copied, destination.getParent(), npmCache, temporaryDirectory, networkAccess);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
