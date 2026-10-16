@@ -29,6 +29,9 @@ can differ between operating systems, lazy load `../include/java/portability.md`
 When writing or reviewing a Java declaration whose type is `Optional`, or a call that passes `Optional` to a method or
 constructor, lazy load `../include/java/optional.md`.
 
+When declaring a Java field, record component, parameter, return type, local variable or collection element that holds
+a filesystem path, or changing its type, lazy load `../include/java/paths.md`.
+
 When a Java test needs direct access to non-public production behavior to avoid unrelated caller work, lazy load
 `../include/java/test-access.md`.
 
