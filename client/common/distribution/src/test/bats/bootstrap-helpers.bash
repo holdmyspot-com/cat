@@ -68,14 +68,13 @@ create_test_artifact()
 	artifact="${TEST_ROOT}/${harness} artifact"
 	mkdir -p "${artifact}/.${harness}-plugin" "${artifact}/client/bin" "${artifact}/install/migrations"
 	if [ "${harness}" = codex ]; then
-		mkdir -p "${artifact}/agents/codex" "${artifact}/agents/common"
+		mkdir -p "${artifact}/agents/codex"
 		cat > "${artifact}/agents/codex/reviewer.toml" <<'SCRIPT'
 name = "cat-reviewer"
 developer_instructions = '''
-<!-- cat:include ../common/reviewer.md -->
+Review evidence without editing.
 '''
 SCRIPT
-		printf 'Review evidence without editing.\n' > "${artifact}/agents/common/reviewer.md"
 	fi
 	printf '{}\n' > "${artifact}/.${harness}-plugin/plugin.json"
 	printf '1.0\n' > "${artifact}/client/VERSION"

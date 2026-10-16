@@ -314,7 +314,6 @@ cat_install_codex_agents()
 	cat_codex_home="$2"
 	cat_data_directory="$3"
 	cat_agent_source_directory="${cat_artifact_directory}/agents/codex"
-	cat_common_agent_directory="${cat_artifact_directory}/agents/common"
 	cat_agent_directory="${cat_codex_home}/agents"
 	cat_agent_manifest="${cat_data_directory}/codex-agent-files"
 	[ -d "${cat_agent_source_directory}" ] || {
@@ -332,39 +331,13 @@ cat_install_codex_agents()
 		}
 		cat_agent_basename="$(basename "${cat_agent_source}")"
 		cat_agent_filename="cat-${cat_agent_basename}"
-		cat_common_agent="$(sed -n 's|^<!-- cat:include ../common/\([A-Za-z0-9_.-]*\) -->$|\1|p' "${cat_agent_source}")"
-		case "${cat_common_agent}" in
-			*'
-'*)
-				echo "CAT custom agent must contain exactly one common-agent include: ${cat_agent_source}" >&2
-				rm -f "${cat_new_manifest}"
-				exit 1
-				;;
-		esac
 		if [ -e "${cat_agent_directory}/${cat_agent_filename}" ] && \
 			{ [ ! -f "${cat_agent_manifest}" ] || ! grep -Fxq "${cat_agent_filename}" "${cat_agent_manifest}"; }; then
 			echo "Refusing to overwrite an unowned Codex agent: ${cat_agent_directory}/${cat_agent_filename}" >&2
 			rm -f "${cat_new_manifest}"
 			exit 1
 		fi
-		if [ -z "${cat_common_agent}" ]; then
-			cp "${cat_agent_source}" "${cat_agent_directory}/${cat_agent_filename}.new"
-		else
-			cat_common_agent_source="${cat_common_agent_directory}/${cat_common_agent}"
-			[ -f "${cat_common_agent_source}" ] || {
-				echo "CAT custom agent references a missing common agent: ${cat_common_agent_source}" >&2
-				rm -f "${cat_new_manifest}"
-				exit 1
-			}
-			awk -v agent_include="${cat_common_agent}" -v common="${cat_common_agent_source}" '
-				$0 == "<!-- cat:include ../common/" agent_include " -->" {
-					while ((getline line < common) > 0) print line
-					close(common)
-					next
-				}
-				{ print }
-			' "${cat_agent_source}" > "${cat_agent_directory}/${cat_agent_filename}.new"
-		fi
+		cp "${cat_agent_source}" "${cat_agent_directory}/${cat_agent_filename}.new"
 		printf '%s\n' "${cat_agent_filename}" >> "${cat_new_manifest}"
 	done
 	cat_remove_codex_agents "${cat_codex_home}" "${cat_data_directory}"

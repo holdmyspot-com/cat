@@ -61,24 +61,6 @@ platform=${expected_platform}" ]
 	[ "$(cat "${CODEX_HOME}/plugins/data/cat-cat/migration-version")" = "1.0" ]
 }
 
-@test "Codex installs self-contained custom agents from an assembled artifact" {
-	create_fake_engine_command codex
-	artifact="$(create_test_artifact codex)"
-	cat > "${artifact}/agents/codex/reviewer.toml" <<'SCRIPT'
-name = "cat-reviewer"
-developer_instructions = '''
-Review evidence without editing.
-'''
-SCRIPT
-	rm -rf "${artifact}/agents/common"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
-		sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
-
-	[ "${status}" -eq 0 ]
-	grep -F "Review evidence without editing." "${CODEX_HOME}/agents/cat-reviewer.toml"
-}
-
 @test "Codex installation runs each pending data migration before replacing the marketplace" {
 	create_fake_engine_command codex
 	artifact="$(create_test_artifact codex)"
