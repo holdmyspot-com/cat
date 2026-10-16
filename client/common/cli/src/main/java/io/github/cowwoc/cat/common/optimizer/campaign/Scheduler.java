@@ -297,7 +297,7 @@ public final class Scheduler
 			{
 				if (slots <= 0)
 					break;
-				Admission admission = nextPairedAdmission(campaign, attempt, id, needed.get(id), inFlight,
+				Admission admission = nextPairedAdmission(campaign, attempt, inFlight, id, needed.get(id),
 					referencesInFlight, allocations);
 				if (admission == null)
 					continue;
@@ -342,16 +342,16 @@ public final class Scheduler
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the running attempt
+	 * @param inFlight the unadopted candidate formal trials per cell
 	 * @param cell the identifier of a cell whose paired comparisons are undecided
 	 * @param needed the pairs that the cell's slowest undecided comparison with each kind of reference trial still
 	 *   needs
-	 * @param inFlight the unadopted candidate formal trials per cell
 	 * @param referencesInFlight the unadopted control and incumbent trials per cell
 	 * @param allocations the allocation decisions of this plan
 	 * @return the admission, or {@code null} if the cell needs no further trial now
 	 */
-	private static Admission nextPairedAdmission(Campaign campaign, CertificationAttempt attempt, String cell,
-		Map<Reference, Integer> needed, Map<String, Integer> inFlight,
+	private static Admission nextPairedAdmission(Campaign campaign, CertificationAttempt attempt,
+		Map<String, Integer> inFlight, String cell, Map<Reference, Integer> needed,
 		Map<Reference, Map<String, Integer>> referencesInFlight, Allocations allocations)
 	{
 		Reference next = null;

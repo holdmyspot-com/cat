@@ -869,11 +869,11 @@ public final class HarnessRunnerBridgeTest
 		/**
 		 * Creates a fake process with its terminal assistant responses.
 		 *
-		 * @param assistantResponses responses returned in request order
+		 * @param assistantMessages responses returned in request order
 		 */
-		private FakeProcess(String... assistantResponses)
+		private FakeProcess(String... assistantMessages)
 		{
-			this.assistantResponses = List.of(assistantResponses);
+			this.assistantResponses = List.of(assistantMessages);
 		}
 
 		/**

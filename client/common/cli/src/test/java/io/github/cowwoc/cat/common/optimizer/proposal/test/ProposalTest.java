@@ -954,7 +954,7 @@ public final class ProposalTest
 				" trials");
 		requireThat(text.indexOf("### `weakest_cell`"), "order").isLessThan(text.indexOf("### `latest_versions`"));
 
-		CampaignEvent confirm = proposal.confirmation(7, CertificationScope.WEAKEST_CELL).getFirst();
+		CampaignEvent confirm = proposal.confirmation(CertificationScope.WEAKEST_CELL, 7).getFirst();
 		Contract scoped = proposal.contract().withScope(CertificationScope.WEAKEST_CELL);
 		requireThat(confirm, "confirm").isEqualTo(new CampaignEvent.Confirm(scoped,
 			ContractIdentity.of(schema, scoped), 7));
@@ -1541,7 +1541,7 @@ public final class ProposalTest
 		requireThat(proposal.isConfirmable(CertificationScope.LATEST_VERSIONS), "isConfirmable").isFalse();
 		requireThat(proposal.render(), "render").contains("- `loop-a.md`: the links form a cycle; this blocks " +
 			"confirmation");
-		proposal.confirmation(7, CertificationScope.LATEST_VERSIONS);
+		proposal.confirmation(CertificationScope.LATEST_VERSIONS, 7);
 	}
 
 	/**
@@ -1559,7 +1559,7 @@ public final class ProposalTest
 		requireThat(proposal.render(), "render").contains("- " + Outcome.UNSUPPORTED_OUTPUT.label() +
 			" (requirements r1): CLAUDE.md asks for a diagram image with every summary.");
 
-		List<CampaignEvent> events = proposal.confirmation(7, CertificationScope.LATEST_VERSIONS);
+		List<CampaignEvent> events = proposal.confirmation(CertificationScope.LATEST_VERSIONS, 7);
 
 		Contract contract = proposal.contract().withScope(CertificationScope.LATEST_VERSIONS);
 		requireThat(events, "events").isEqualTo(List.of(
@@ -2545,7 +2545,7 @@ public final class ProposalTest
 		});
 		Proposal.of(contractAuthor.proposal(session(output), PROFILES, SALT), new Builder().build(), noLinks(),
 			CONTROL_FILE, HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).
-			confirmation(7, CertificationScope.LATEST_VERSIONS);
+			confirmation(CertificationScope.LATEST_VERSIONS, 7);
 	}
 
 	/**
@@ -2821,8 +2821,8 @@ public final class ProposalTest
 			contains("- Distinct expected outcomes: 2 in the development part, 2 in the held-out part\n").
 			contains("; expected outcome \"asks before deleting the dist directory\"; held-out part\n").
 			contains("- Distinct expected outcomes: 4 in the development part, 4 in the held-out part\n");
-		CampaignEvent.Confirm confirm = (CampaignEvent.Confirm) proposal.confirmation(7,
-			CertificationScope.LATEST_VERSIONS).getFirst();
+		CampaignEvent.Confirm confirm = (CampaignEvent.Confirm) proposal.confirmation(
+			CertificationScope.LATEST_VERSIONS, 7).getFirst();
 		requireThat(confirm.contract().salt(), "salt").isEqualTo(SALT);
 	}
 

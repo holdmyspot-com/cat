@@ -578,7 +578,7 @@ public final class OptimizerCore implements Core
 		List<CampaignEvent> events = new ArrayList<>();
 		events.add(revise);
 		events.addAll(moveOnto(root, campaign, fork));
-		events.addAll(proposal.confirmation(scope.random().nextLong(), certificationScope));
+		events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
 		return events;
 	}
 
@@ -749,7 +749,7 @@ public final class OptimizerCore implements Core
 			if (proposal.contract().plugin().orElse(null) instanceof PluginUnderTest.Built built)
 				fork.workspace().copyPluginBase(built);
 			List<CampaignEvent> events = new ArrayList<>(moveOnto(root, loaded, fork));
-			events.addAll(proposal.confirmation(scope.random().nextLong(), certificationScope));
+			events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
 			return apply(root, loaded, events);
 		});
 	}

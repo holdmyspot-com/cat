@@ -462,21 +462,21 @@ public final class Finalization
 	/**
 	 * Computes a file's SHA-256 digest without loading its complete content into memory.
 	 *
-	 * @param file the artifact to hash
+	 * @param input the file to hash
 	 * @return the lowercase hexadecimal digest
 	 * @throws IOException if the artifact cannot be read or SHA-256 is unavailable
 	 */
-	public String sha256(Path file) throws IOException
+	public String sha256(Path input) throws IOException
 	{
 		try
 		{
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
-			try (InputStream input = new DigestInputStream(Files.newInputStream(file), digest))
+			try (InputStream stream = new DigestInputStream(Files.newInputStream(input), digest))
 			{
 				byte[] buffer = new byte[8192];
-				int read = input.read(buffer);
+				int read = stream.read(buffer);
 				while (read != -1)
-					read = input.read(buffer);
+					read = stream.read(buffer);
 			}
 			return HexFormat.of().formatHex(digest.digest());
 		}
@@ -489,15 +489,15 @@ public final class Finalization
 	/**
 	 * Computes an in-memory value's SHA-256 digest.
 	 *
-	 * @param bytes the value to hash
+	 * @param input the value to hash
 	 * @return the lowercase hexadecimal digest
 	 * @throws IOException if SHA-256 is unavailable
 	 */
-	private String sha256(byte[] bytes) throws IOException
+	private String sha256(byte[] input) throws IOException
 	{
 		try
 		{
-			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(input));
 		}
 		catch (NoSuchAlgorithmException e)
 		{

@@ -375,7 +375,7 @@ public final class DeliveryPlan
 			if (entry.getValue() instanceof OverlayEntry.Delete)
 			{
 				Path target = entry.getKey();
-				changes.add(new Delete(changes.size(), target, recordedFile(fork, target)));
+				changes.add(new Delete(changes.size(), target, recordedFile(target, fork)));
 			}
 		}
 		for (Entry<Path, OverlayEntry> entry : overlay.entrySet())
@@ -385,7 +385,7 @@ public final class DeliveryPlan
 				Path target = entry.getKey();
 				if (fork.entry(target).isPresent())
 				{
-					changes.add(new Edit(changes.size(), target, recordedFile(fork, target), write.content(),
+					changes.add(new Edit(changes.size(), target, recordedFile(target, fork), write.content(),
 						write.permissions()));
 				}
 				else
@@ -398,11 +398,11 @@ public final class DeliveryPlan
 	/**
 	 * Returns the regular file that the fork records at an overlay target.
 	 *
-	 * @param fork the files recorded at the fork
 	 * @param target an overlay target that edits or deletes a recorded file
+	 * @param fork the files recorded at the fork
 	 * @return the recorded file
 	 */
-	private static RegularFile recordedFile(FileInventory fork, Path target)
+	private static RegularFile recordedFile(Path target, FileInventory fork)
 	{
 		// Overlay accepts edits and deletes only of recorded regular files
 		return (RegularFile) fork.entry(target).orElseThrow();

@@ -103,7 +103,7 @@ public final class ClaudeRunner
 	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
-		return start(artifact, project, null, null, manager, executable, environment, model, "", installCat, true, null,
+		return start(artifact, project, null, null, manager, executable, environment, model, "", null, installCat, true,
 			List.of(), List.of());
 	}
 
@@ -120,17 +120,17 @@ public final class ClaudeRunner
 	 * @param environment the isolated environment
 	 * @param model the requested model
 	 * @param effort the requested reasoning effort
+	 * @param agent the optional CAT agent selected for the session
 	 * @param installCat whether CAT is installed
 	 * @param includeUserRules whether CAT copies the parent user's rules into the isolated home
-	 * @param agent the optional CAT agent selected for the session
 	 * @param readOnlyEvidence executor evidence exposed through added directories
 	 * @param deniedReads the files and directories that the session must not read
 	 * @return the live run session
 	 * @throws IOException if startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path fixtures, Path plugin, HarnessRunManager manager,
-		String executable, Map<String, String> environment, String model, String effort, boolean installCat,
-		boolean includeUserRules, ClaudeAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads)
+		String executable, Map<String, String> environment, String model, String effort, ClaudeAgentDefinition agent,
+		boolean installCat, boolean includeUserRules, List<Path> readOnlyEvidence, List<Path> deniedReads)
 		throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();

@@ -540,13 +540,13 @@ public final class ProposalSchema
 	 * Writes test cases.
 	 *
 	 * @param testCases the test cases
-	 * @param array the array that receives them
+	 * @param node the array that receives them
 	 */
-	private static void write(List<TestCase> testCases, ArrayNode array)
+	private static void write(List<TestCase> testCases, ArrayNode node)
 	{
 		for (TestCase testCase : testCases)
 		{
-			ObjectNode testCaseNode = array.addObject();
+			ObjectNode testCaseNode = node.addObject();
 			TestValueJson.write(testCase.values(), testCaseNode.putArray("values"));
 			testCaseNode.put(TestCase.EXPECTED_OUTCOME, testCase.expectedOutcome());
 		}

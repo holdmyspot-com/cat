@@ -161,8 +161,8 @@ public abstract class RunnerSessions implements SessionPort
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path overlay = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
-				overlayRules(built, root, overlay);
-				sources.addAll(ruleSources(overlay, root, file -> builtName(built, root, overlay, file)));
+				overlayRules(root, built, overlay);
+				sources.addAll(ruleSources(overlay, root, file -> builtName(root, built, overlay, file)));
 			}
 			return sources;
 		}
@@ -264,13 +264,13 @@ public abstract class RunnerSessions implements SessionPort
 	 * Names a file of a built plugin's rule overlay: as the project file that a mapping copies to it, or else by its
 	 * absolute path in the plugin's base.
 	 *
-	 * @param plugin the built plugin
 	 * @param project the absolute, normalized project directory
+	 * @param plugin the built plugin
 	 * @param overlay the directory that holds the overlaid rules
 	 * @param file the absolute, normalized file below {@code overlay}, or a file outside it
 	 * @return the name
 	 */
-	private static String builtName(PluginUnderTest.Built plugin, Path project, Path overlay, Path file)
+	private static String builtName(Path project, PluginUnderTest.Built plugin, Path overlay, Path file)
 	{
 		if (!file.startsWith(overlay))
 			return name(project, file);
@@ -292,12 +292,12 @@ public abstract class RunnerSessions implements SessionPort
 	 * Copies a built plugin's rules as the trial installs them: the base's {@code rules} directory with each mapped
 	 * project directory written over its mapped path.
 	 *
-	 * @param plugin the built plugin
 	 * @param project the absolute, normalized project directory
+	 * @param plugin the built plugin
 	 * @param overlay the empty directory that receives the rules
 	 * @throws IOException if the rules cannot be copied
 	 */
-	private static void overlayRules(PluginUnderTest.Built plugin, Path project, Path overlay) throws IOException
+	private static void overlayRules(Path project, PluginUnderTest.Built plugin, Path overlay) throws IOException
 	{
 		Path rules = Path.of(RULES);
 		copyTree(plugin.base().resolve(rules), overlay.resolve(rules));

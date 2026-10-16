@@ -19,20 +19,20 @@ public final class PatchArtifacts
 	 * Resolves a reviewer-declared patch path without permitting the manifest to escape its own directory.
 	 *
 	 * @param manifestFile the manifest containing the patch declaration
-	 * @param patchPath the manifest-relative patch path
+	 * @param patch the manifest-relative path of the patch
 	 * @return the resolved regular patch file
 	 * @throws IOException if the patch declaration is unsafe or cannot be used
 	 */
-	public Path resolve(Path manifestFile, String patchPath) throws IOException
+	public Path resolve(Path manifestFile, String patch) throws IOException
 	{
-		if (patchPath == null || patchPath.isBlank())
+		if (patch == null || patch.isBlank())
 			throw new IOException("Topic-replay output batch patch must name a manifest-relative regular file");
 		Path directory = manifestFile.toAbsolutePath().normalize().getParent();
-		Path patchFile = directory.resolve(patchPath).normalize();
+		Path patchFile = directory.resolve(patch).normalize();
 		if (!patchFile.startsWith(directory) || !Files.isRegularFile(patchFile))
 		{
 			throw new IOException("Topic-replay output batch patch must be a regular file below the manifest directory: " +
-				patchPath);
+				patch);
 		}
 		return patchFile;
 	}

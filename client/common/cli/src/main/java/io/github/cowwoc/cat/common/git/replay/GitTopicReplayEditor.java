@@ -252,20 +252,20 @@ public final class GitTopicReplayEditor
 		if (args.length == 3 && args[0].equals("prepare"))
 		{
 			Path manifest = invocationManifest.create();
-			prepare(args[1], args[2], manifest);
+			prepare(manifest, args[1], args[2]);
 			InvocationManifest.print(manifest);
 			return;
 		}
 		if (args.length == 4 && args[0].equals("prepare-fixed-prefix"))
 		{
 			Path manifest = invocationManifest.create();
-			prepareFixedPrefix(args[1], args[2], args[3], manifest);
+			prepareFixedPrefix(manifest, args[1], args[2], args[3]);
 			InvocationManifest.print(manifest);
 			return;
 		}
 		if (args.length == 4 && args[0].equals("initialize"))
 		{
-			initialize(args[1], args[2], Path.of(args[3]));
+			initialize(Path.of(args[3]), args[1], args[2]);
 			return;
 		}
 		if (args.length == 3 && args[0].equals("declare-topic-outputs"))
@@ -1027,17 +1027,17 @@ public final class GitTopicReplayEditor
 	/**
 	 * Creates a mechanical topic-replay manifest template for an existing linear commit range.
 	 *
+	 * @param manifestFile the new manifest file
 	 * @param rebaseBase the commit immediately before the range, or {@value #ROOT_BASE} for an orphan-root range
 	 * @param tip the range's final commit
-	 * @param manifestFile the new manifest file
 	 * @throws IOException if Git cannot read the range or the manifest cannot be written
 	 */
-	public void initialize(String rebaseBase, String tip, Path manifestFile) throws IOException
+	public void initialize(Path manifestFile, String rebaseBase, String tip) throws IOException
 	{
 		requireThat(rebaseBase, "rebaseBase").isNotBlank();
 		requireThat(tip, "tip").isNotBlank();
 		requireThat(manifestFile, "manifestFile").isNotNull();
-		replayManifestInitialization.initialize(rebaseBase, tip, manifestFile);
+		replayManifestInitialization.initialize(manifestFile, rebaseBase, tip);
 	}
 
 	/**
@@ -1058,36 +1058,36 @@ public final class GitTopicReplayEditor
 	/**
 	 * Captures one rewrite range for later review and replay.
 	 *
+	 * @param manifestFile the new replay manifest
 	 * @param rebaseBase the commit immediately before the range, or {@value #ROOT_BASE} for an orphan-root range
 	 * @param tip the range's final commit
-	 * @param manifestFile the new replay manifest
 	 * @throws IOException if Git state is unsafe or the manifest cannot be created
 	 */
-	public void prepare(String rebaseBase, String tip, Path manifestFile) throws IOException
+	public void prepare(Path manifestFile, String rebaseBase, String tip) throws IOException
 	{
 		requireThat(rebaseBase, "rebaseBase").isNotBlank();
 		requireThat(tip, "tip").isNotBlank();
 		requireThat(manifestFile, "manifestFile").isNotNull();
-		initialize(rebaseBase, tip, manifestFile);
+		initialize(manifestFile, rebaseBase, tip);
 	}
 
 	/**
 	 * Captures a range whose earlier, known-complete outputs remain fixed while later sources are reviewed.
 	 *
+	 * @param manifestFile the new replay manifest
 	 * @param rebaseBase the commit immediately before the complete prefix
 	 * @param fixedTip the final unchanged commit of the complete prefix
 	 * @param tip the final commit of the extended range
-	 * @param manifestFile the new replay manifest
 	 * @throws IOException if the fixed prefix is not an unchanged prefix of the requested range
 	 */
-	public void prepareFixedPrefix(String rebaseBase, String fixedTip, String tip, Path manifestFile)
+	public void prepareFixedPrefix(Path manifestFile, String rebaseBase, String fixedTip, String tip)
 		throws IOException
 	{
 		requireThat(rebaseBase, "rebaseBase").isNotBlank();
 		requireThat(fixedTip, "fixedTip").isNotBlank();
 		requireThat(tip, "tip").isNotBlank();
 		requireThat(manifestFile, "manifestFile").isNotNull();
-		replayManifestInitialization.initializeFixedPrefix(rebaseBase, fixedTip, tip, manifestFile);
+		replayManifestInitialization.initializeFixedPrefix(manifestFile, rebaseBase, fixedTip, tip);
 	}
 
 	/**

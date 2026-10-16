@@ -22,13 +22,13 @@ public final class ManualClock extends Clock
 	/**
 	 * Creates a clock.
 	 *
-	 * @param start the initial time
-	 * @throws NullPointerException if {@code start} is null
+	 * @param now the initial time
+	 * @throws NullPointerException if {@code now} is null
 	 */
-	public ManualClock(Instant start)
+	public ManualClock(Instant now)
 	{
-		requireThat(start, "start").isNotNull();
-		this.now = new AtomicReference<>(start);
+		requireThat(now, "now").isNotNull();
+		this.now = new AtomicReference<>(now);
 		zone = ZoneOffset.UTC;
 	}
 

@@ -34,12 +34,12 @@ public final class ReplayManifestInitialization
 	/**
 	 * Creates an initial manifest for one existing linear commit range.
 	 *
+	 * @param manifestFile the new manifest file
 	 * @param rebaseBase the commit immediately before the range, or {@link History#ROOT_BASE} for an orphan-root range
 	 * @param tip the range's final commit
-	 * @param manifestFile the new manifest file
 	 * @throws IOException if the range is invalid, empty, or cannot be captured
 	 */
-	void initialize(String rebaseBase, String tip, Path manifestFile) throws IOException
+	void initialize(Path manifestFile, String rebaseBase, String tip) throws IOException
 	{
 		if (Files.exists(manifestFile))
 			throw new IOException("Topic-replay manifest already exists: " + manifestFile);
@@ -85,15 +85,15 @@ public final class ReplayManifestInitialization
 	/**
 	 * Creates an initial manifest whose leading source prefix is already complete and immutable.
 	 *
+	 * @param manifestFile the new replay manifest
 	 * @param rebaseBase the commit immediately before the complete prefix
 	 * @param fixedTip the final unchanged commit of the complete prefix
 	 * @param tip the final commit of the extended range
-	 * @param manifestFile the new replay manifest
 	 * @throws IOException if the fixed prefix is not a strict ancestor prefix of the requested range
 	 */
-	void initializeFixedPrefix(String rebaseBase, String fixedTip, String tip, Path manifestFile) throws IOException
+	void initializeFixedPrefix(Path manifestFile, String rebaseBase, String fixedTip, String tip) throws IOException
 	{
-		initialize(rebaseBase, tip, manifestFile);
+		initialize(manifestFile, rebaseBase, tip);
 		BatchManifest manifest = manifests.readUnfinalized(manifestFile);
 		String resolvedFixedTip = git.lines("rev-parse", fixedTip).getFirst();
 		String resolvedTip = git.lines("rev-parse", tip).getFirst();

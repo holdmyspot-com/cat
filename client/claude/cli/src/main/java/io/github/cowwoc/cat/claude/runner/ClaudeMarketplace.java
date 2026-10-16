@@ -21,17 +21,17 @@ public final class ClaudeMarketplace
 	}
 
 	/**
-	 * Copies an artifact and replaces Claude marketplace metadata when it already exists.
+	 * Copies a plugin and replaces Claude marketplace metadata when it already exists.
 	 *
-	 * @param artifact the validated Claude artifact
+	 * @param plugin the validated Claude plugin
 	 * @param home the isolated Claude configuration directory
 	 * @return the local marketplace root
-	 * @throws NullPointerException if {@code artifact} or {@code home} are null
+	 * @throws NullPointerException if {@code plugin} or {@code home} are null
 	 * @throws IOException if the marketplace cannot be created
 	 */
-	public static Path create(Path artifact, Path home) throws IOException
+	public static Path create(Path plugin, Path home) throws IOException
 	{
-		return create(artifact, "cat", "An agentic workflow with a focus on reliability and developer experience", home);
+		return create(plugin, "cat", "An agentic workflow with a focus on reliability and developer experience", home);
 	}
 
 	/**

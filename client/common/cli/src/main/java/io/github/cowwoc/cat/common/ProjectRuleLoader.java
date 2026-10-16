@@ -193,7 +193,7 @@ public final class ProjectRuleLoader
 			throw new IOException("CAT rule leaves its installed rule directory: " + file);
 		String content = readRule(absoluteRoot, file, RuleRoot.PLUGIN);
 		Frontmatter frontmatter = frontmatter(content, file.toString());
-		return replaceDirectory(renderBody(absoluteRoot, file, ruleRoot, RuleRoot.PLUGIN, frontmatter, content),
+		return replaceDirectory(renderBody(absoluteRoot, frontmatter, content, file, ruleRoot, RuleRoot.PLUGIN),
 			PLUGIN_ROOT_REFERENCE_PATH, absoluteRoot);
 	}
 
@@ -577,7 +577,7 @@ public final class ProjectRuleLoader
 		{
 			for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".md")).sorted().toList())
 			{
-				String path = rulePath(ownerRoot, ruleRoot, root, file);
+				String path = rulePath(ownerRoot, file, ruleRoot, root);
 				Frontmatter frontmatter = frontmatter(Files.readString(file, UTF_8), path);
 				if (!matches(frontmatter, path, audience))
 					continue;
@@ -587,13 +587,13 @@ public final class ProjectRuleLoader
 				{
 					Path resolved = file.getParent().resolve(dependency).normalize();
 					if (!Files.isRegularFile(resolved, NOFOLLOW_LINKS))
-						throw new IOException("Lazy rule dependency is not available: " + displayPath(ownerRoot, root,
-							file) + " depends on " + dependency);
+						throw new IOException("Lazy rule dependency is not available: " +
+							displayPath(ownerRoot, file, root) + " depends on " + dependency);
 					if (resolved.startsWith(include))
-						lazy.add(displayPath(ownerRoot, root, resolved));
+						lazy.add(displayPath(ownerRoot, resolved, root));
 				}
 				if (!lazy.isEmpty())
-					routes.add("When lazy loading `" + displayPath(ownerRoot, root, file) +
+					routes.add("When lazy loading `" + displayPath(ownerRoot, file, root) +
 						"`, first lazy load `" + String.join("` and `", lazy) + "`.");
 			}
 		}
@@ -642,12 +642,12 @@ public final class ProjectRuleLoader
 			return List.of();
 		if (Files.isSymbolicLink(directory))
 		{
-			throw new IOException("CAT rule directory is a symbolic link: " + displayPath(ownerRoot, root, directory) +
+			throw new IOException("CAT rule directory is a symbolic link: " + displayPath(ownerRoot, directory, root) +
 				". Replace the symbolic link with a real directory inside the rule root.");
 		}
 		if (!Files.isDirectory(directory, NOFOLLOW_LINKS))
 		{
-			throw new IOException("CAT rule directory is not a directory: " + displayPath(ownerRoot, root, directory) +
+			throw new IOException("CAT rule directory is not a directory: " + displayPath(ownerRoot, directory, root) +
 				". Replace it with a directory containing CAT rule files inside the rule root.");
 		}
 		try (Stream<Path> entries = Files.list(directory))
@@ -697,7 +697,7 @@ public final class ProjectRuleLoader
 		throws IOException
 	{
 		String content = readRule(ownerRoot, file, root);
-		String path = rulePath(ownerRoot, ruleRoot, root, file);
+		String path = rulePath(ownerRoot, file, ruleRoot, root);
 		Frontmatter frontmatter = frontmatter(content, path);
 		if (!matches(frontmatter, path, audience))
 			return null;
@@ -706,8 +706,8 @@ public final class ProjectRuleLoader
 			paths = frontmatter.metadata().get("paths");
 		if (paths == null)
 		{
-			String injected = renderBody(ownerRoot, file, ruleRoot, root, frontmatter, content);
-			return new Rule(root, path, displayPath(ownerRoot, root, file), file, true, dependencies(frontmatter, path),
+			String injected = renderBody(ownerRoot, frontmatter, content, file, ruleRoot, root);
+			return new Rule(path, displayPath(ownerRoot, file, root), file, root, true, dependencies(frontmatter, path),
 				injected);
 		}
 		if (!paths.isArray())
@@ -721,7 +721,7 @@ public final class ProjectRuleLoader
 				throw new IOException("Invalid paths frontmatter: " + path);
 			globs.add(glob.asString());
 		}
-		return new Rule(root, path, displayPath(ownerRoot, root, file), file, false, List.of(), pathScopedInstruction(
+		return new Rule(path, displayPath(ownerRoot, file, root), file, root, false, List.of(), pathScopedInstruction(
 			file.toAbsolutePath().normalize().toString(), globs));
 	}
 
@@ -738,17 +738,17 @@ public final class ProjectRuleLoader
 	{
 		if (Files.isSymbolicLink(file))
 		{
-			throw new IOException("CAT rule must be a regular file, not a symbolic link: " + displayPath(ownerRoot, root,
-				file) +
+			throw new IOException("CAT rule must be a regular file, not a symbolic link: " +
+				displayPath(ownerRoot, file, root) +
 				". Replace the symbolic link with a regular Markdown rule file inside the rule root.");
 		}
 		if (!Files.isRegularFile(file, NOFOLLOW_LINKS))
 		{
-			throw new IOException("CAT rule must be a regular file: " + displayPath(ownerRoot, root, file) +
+			throw new IOException("CAT rule must be a regular file: " + displayPath(ownerRoot, file, root) +
 				". Replace it with a regular Markdown rule file inside the rule root.");
 		}
 		if (Files.size(file) > MAXIMUM_RULE_BYTES)
-			throw new IOException("CAT rule is too large: " + displayPath(ownerRoot, root, file));
+			throw new IOException("CAT rule is too large: " + displayPath(ownerRoot, file, root));
 		return Files.readString(file, UTF_8);
 	}
 
@@ -756,16 +756,16 @@ public final class ProjectRuleLoader
 	 * Renders a rule's body using the same includes and references as injected session context.
 	 *
 	 * @param ownerRoot the rule-source owner directory
+	 * @param frontmatter the optional parsed metadata
+	 * @param content the complete source text
 	 * @param file the rule file
 	 * @param ruleRoot the source root that bounds included rules
 	 * @param root the source kind
-	 * @param frontmatter the optional parsed metadata
-	 * @param content the complete source text
 	 * @return the rendered rule body
 	 * @throws IOException if direct includes cannot be expanded
 	 */
-	private String renderBody(Path ownerRoot, Path file, Path ruleRoot, RuleRoot root, Frontmatter frontmatter,
-		String content) throws IOException
+	private String renderBody(Path ownerRoot, Frontmatter frontmatter, String content, Path file, Path ruleRoot,
+		RuleRoot root) throws IOException
 	{
 		String body = content;
 		if (frontmatter != null)
@@ -1183,12 +1183,12 @@ public final class ProjectRuleLoader
 	 * Returns the internal source-root-relative identity of a rule.
 	 *
 	 * @param ownerRoot the directory that owns this rule source
+	 * @param file the rule file
 	 * @param ruleRoot the root that bounds this source's rule tree
 	 * @param root the source kind
-	 * @param file the rule file
 	 * @return a source-unique rule identity
 	 */
-	private static String rulePath(Path ownerRoot, Path ruleRoot, RuleRoot root, Path file)
+	private static String rulePath(Path ownerRoot, Path file, Path ruleRoot, RuleRoot root)
 	{
 		assert ownerRoot != null;
 		assert ruleRoot != null;
@@ -1203,11 +1203,11 @@ public final class ProjectRuleLoader
 	 * Returns the path a recipient can use to read a rule.
 	 *
 	 * @param ownerRoot the directory that owns this rule source
-	 * @param root the source kind
 	 * @param file the rule file
+	 * @param root the source kind
 	 * @return a reader-visible path
 	 */
-	private static String displayPath(Path ownerRoot, RuleRoot root, Path file)
+	private static String displayPath(Path ownerRoot, Path file, RuleRoot root)
 	{
 		assert ownerRoot != null;
 		assert root != null;
@@ -1280,7 +1280,7 @@ public final class ProjectRuleLoader
 		}
 	}
 
-	private record Rule(RuleRoot root, String path, String displayPath, Path file, boolean direct,
+	private record Rule(String path, String displayPath, Path file, RuleRoot root, boolean direct,
 		List<String> dependencies, String context)
 	{
 	}

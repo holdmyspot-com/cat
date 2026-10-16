@@ -28,15 +28,15 @@ final class CodexMarketplace
 	/**
 	 * Copies CAT's artifact into its marketplace and replaces Codex marketplace metadata when it already exists.
 	 *
-	 * @param artifact the validated Codex artifact
+	 * @param plugin the validated Codex plugin
 	 * @param home the isolated Codex home directory
 	 * @return the local marketplace root
-	 * @throws NullPointerException if {@code artifact} or {@code home} are null
+	 * @throws NullPointerException if {@code plugin} or {@code home} are null
 	 * @throws IOException if the marketplace cannot be created
 	 */
-	static Path create(Path artifact, Path home) throws IOException
+	static Path create(Path plugin, Path home) throws IOException
 	{
-		return create(artifact, CAT, "CAT", home);
+		return create(plugin, CAT, "CAT", home);
 	}
 
 	/**

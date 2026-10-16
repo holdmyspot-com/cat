@@ -145,8 +145,8 @@ public final class JlinkImageBuilder
 				details = ": " + diagnostics;
 			throw new IOException("jlink failed with exit code " + exitCode + details);
 		}
-		rewriteLaunchersForWhitespacePaths(output, launchers);
-		rewriteBatchLaunchers(output, launchers);
+		rewriteLaunchersForWhitespacePaths(launchers, output);
+		rewriteBatchLaunchers(launchers, output);
 		return output;
 	}
 
@@ -156,12 +156,12 @@ public final class JlinkImageBuilder
 	 * extension from {@code PATHEXT}, and hands that file, which it cannot run, to the program that Windows associates
 	 * with it. Once the POSIX launcher is gone, the same command runs the batch launcher.
 	 *
-	 * @param output the runtime-image directory
 	 * @param launchers the launchers whose POSIX form to remove
+	 * @param output the runtime-image directory
 	 * @throws NullPointerException if {@code output} or {@code launchers} are null
 	 * @throws IOException if a launcher has no batch form or cannot be removed
 	 */
-	public static void removePosixLaunchers(Path output, List<Launcher> launchers) throws IOException
+	public static void removePosixLaunchers(List<Launcher> launchers, Path output) throws IOException
 	{
 		requireThat(output, "output").isNotNull();
 		requireThat(launchers, "launchers").isNotNull();
@@ -192,11 +192,11 @@ public final class JlinkImageBuilder
 	 * it is unset, so that a program can run a command in the caller's locale. A caller whose locale is already UTF-8
 	 * keeps it, so that the programs that Java starts inherit it unchanged.
 	 *
-	 * @param output the runtime-image directory
 	 * @param launchers the launchers to rewrite
+	 * @param output the runtime-image directory
 	 * @throws IOException if a launcher cannot be read or written
 	 */
-	private void rewriteLaunchersForWhitespacePaths(Path output, List<Launcher> launchers) throws IOException
+	private void rewriteLaunchersForWhitespacePaths(List<Launcher> launchers, Path output) throws IOException
 	{
 		String unconfiguredVmOptions = "JLINK_VM_OPTIONS=\n";
 		String configuredVmOptions = "JLINK_VM_OPTIONS='" + VM_OPTIONS + "'\n";
@@ -244,11 +244,11 @@ public final class JlinkImageBuilder
 	 * assignment of the launcher's folder, whose name may hold a character, such as {@code &}, that {@code cmd.exe}
 	 * reads as a command separator. Other platforms have no batch launchers.
 	 *
-	 * @param output the runtime-image directory
 	 * @param launchers the launchers to rewrite
+	 * @param output the runtime-image directory
 	 * @throws IOException if a launcher cannot be read or written
 	 */
-	private void rewriteBatchLaunchers(Path output, List<Launcher> launchers) throws IOException
+	private void rewriteBatchLaunchers(List<Launcher> launchers, Path output) throws IOException
 	{
 		String unconfiguredVmOptions = "set JLINK_VM_OPTIONS=\r\n";
 		String unquotedDirectory = "set DIR=%~dp0\r\n";

@@ -431,7 +431,7 @@ record JavaSource(String code, List<Literal> literals, List<Field> fields)
 		int offset = start;
 		while (Character.isWhitespace(declaration.charAt(offset - start)))
 			++offset;
-		fields.add(new Field(offset, head.strip().replaceAll("\\s+", " "), isTopLevel, STATIC.matcher(head).find(),
+		fields.add(new Field(head.strip().replaceAll("\\s+", " "), offset, isTopLevel, STATIC.matcher(head).find(),
 			FINAL.matcher(head).find()));
 	}
 
@@ -448,13 +448,13 @@ record JavaSource(String code, List<Literal> literals, List<Field> fields)
 	/**
 	 * A field declaration in a class, enum or record body.
 	 *
-	 * @param offset      the offset where the declaration starts
 	 * @param declaration the declaration's modifiers, type and names, without annotations or initializer
+	 * @param offset      the offset where the declaration starts
 	 * @param isTopLevel  {@code true} if the field belongs to a top-level type rather than a nested or local one
 	 * @param isStatic    {@code true} if the field is static
 	 * @param isFinal     {@code true} if the field is final
 	 */
-	record Field(int offset, String declaration, boolean isTopLevel, boolean isStatic, boolean isFinal)
+	record Field(String declaration, int offset, boolean isTopLevel, boolean isStatic, boolean isFinal)
 	{
 	}
 

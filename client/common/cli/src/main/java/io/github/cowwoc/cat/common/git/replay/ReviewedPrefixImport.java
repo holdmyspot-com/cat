@@ -106,8 +106,8 @@ final class ReviewedPrefixImport
 		List<SourceReconstruction> reconstructions = copyReconstructions(previous, newManifestFile, sources,
 			sealedSources, copiedPatches, importedBatchIds, sourcePatches);
 		addAppendedSourceReconstructions(previous, replacement, newManifestFile, sourcePatches, reconstructions);
-		writeUnsealedOutputBatches(previous, newManifestFile, outputs, sources, sealedPrefixLength,
-			sealedSources, sourcePatches);
+		writeUnsealedOutputBatches(previous, newManifestFile, outputs, sources, sealedSources,
+			sealedPrefixLength, sourcePatches);
 		List<SourceReview> reviews = copySourceReviews(previous, sources, sealedSources, sealedPrefixLength);
 		BatchManifest imported = new BatchManifest(ManifestStore.BATCH_MANIFEST_VERSION, replacement.base(),
 			replacement.tipTree(), replacement.sources(), outputs, replacement.inventory(), batches, reconstructions,
@@ -230,16 +230,16 @@ final class ReviewedPrefixImport
 	 * Writes default batches for retained unsealed outputs whose source patch was recreated.
 	 *
 	 * @param previous the manifest supplying unsealed outputs
-	 * @param manifestFile the replacement manifest file
+	 * @param newManifestFile the replacement manifest file
 	 * @param outputs rewritten replacement outputs
 	 * @param sources the old-to-new source mapping
-	 * @param sealedPrefixLength number of sealed output positions
 	 * @param sealedSources sources whose every placement is sealed
+	 * @param sealedPrefixLength number of sealed output positions
 	 * @param sourcePatches recreated whole-source patches
 	 * @throws IOException if an output batch cannot be written
 	 */
-	private void writeUnsealedOutputBatches(BatchManifest previous, Path manifestFile,
-		List<Output> outputs, Map<String, String> sources, int sealedPrefixLength, Set<String> sealedSources,
+	private void writeUnsealedOutputBatches(BatchManifest previous, Path newManifestFile,
+		List<Output> outputs, Map<String, String> sources, Set<String> sealedSources, int sealedPrefixLength,
 		Map<String, PatchArtifact> sourcePatches) throws IOException
 	{
 		for (int index = sealedPrefixLength; index < previous.outputs().size(); ++index)
@@ -250,7 +250,7 @@ final class ReviewedPrefixImport
 			String source = sources.get(previousSource);
 			PatchArtifact sourcePatch = sourcePatches.get(source);
 			if (sourcePatch != null)
-				writePreservedOutputBatch(manifestFile, outputs.get(index), sourcePatch);
+				writePreservedOutputBatch(newManifestFile, outputs.get(index), sourcePatch);
 		}
 	}
 

@@ -90,10 +90,10 @@ public final class Proposal
 	 *
 	 * @param derived the contract author's proposal
 	 * @param contract the contract that confirmation freezes once the user chooses its certification scope
-	 * @param schema the proposal schema, which identifies the contract
 	 * @param links the symbolic links
 	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
+	 * @param schema the proposal schema, which identifies the contract
 	 * @param ceiling the campaign's concurrency ceiling
 	 * @param previews the campaign as it would be after confirmation with each certification scope that the user
 	 *   may choose, in choice order; empty while an inventory model is unranked
@@ -105,8 +105,8 @@ public final class Proposal
 	 * @param controlRefusals the reasons why the control source cannot be built, which block confirmation
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
-	private Proposal(DerivedProposal derived, Contract contract, ProposalSchema schema, LinkReport links,
-		Path controlFile, HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews,
+	private Proposal(DerivedProposal derived, Contract contract, LinkReport links, Path controlFile,
+		HostLogin login, ProposalSchema schema, int ceiling, Map<CertificationScope, Campaign> previews,
 		List<String> caps, CertificationStatus incumbent, Map<String, PilotResult> pilots,
 		Map<String, DeliveredTest> delivered, PluginCheck plugin, List<String> controlRefusals, String goal)
 	{
@@ -310,7 +310,7 @@ public final class Proposal
 		Map<String, DeliveredTest> delivered = new LinkedHashMap<>();
 		for (DeliveredTest test : DeliveredTest.of(contract, AddedTestCases.NONE, target))
 			delivered.put(test.id(), test);
-		return new Proposal(derived, contract, schema, links, controlFile, login, campaign.ceiling(), previews,
+		return new Proposal(derived, contract, links, controlFile, login, schema, campaign.ceiling(), previews,
 			caps, incumbent, pilots, delivered, plugin, controlRefusals, campaign.header().goal());
 	}
 
@@ -486,13 +486,13 @@ public final class Proposal
 	 * Returns the events that confirm the proposal with a certification scope: the confirmation, then one report for
 	 * each condition that makes certification unavailable.
 	 *
-	 * @param seed the seed of the contract's draw streams
 	 * @param scope the certification scope that the user chose
+	 * @param seed the seed of the contract's draw streams
 	 * @return the events, in the order to apply them
 	 * @throws NullPointerException if {@code scope} is null
 	 * @throws IllegalStateException if anything blocks confirmation with {@code scope}
 	 */
-	public List<CampaignEvent> confirmation(long seed, CertificationScope scope)
+	public List<CampaignEvent> confirmation(CertificationScope scope, long seed)
 	{
 		if (!isConfirmable(scope))
 			throw new IllegalStateException(confirmationRefusal(scope));

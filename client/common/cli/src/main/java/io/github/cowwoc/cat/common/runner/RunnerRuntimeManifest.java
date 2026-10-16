@@ -301,17 +301,17 @@ public final class RunnerRuntimeManifest
 	/**
 	 * Hashes one binary or text file.
 	 *
-	 * @param file the file to hash
+	 * @param input the file to hash
 	 *
 	 * @return its SHA-256 value
 	 *
 	 * @throws IOException if SHA-256 is unavailable or the file cannot be read
 	 */
-	private static String sha256(Path file) throws IOException
+	private static String sha256(Path input) throws IOException
 	{
 		try
 		{
-			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(input)));
 		}
 		catch (NoSuchAlgorithmException e)
 		{
@@ -322,17 +322,17 @@ public final class RunnerRuntimeManifest
 	/**
 	 * Hashes one symbolic-link target.
 	 *
-	 * @param value the link target
+	 * @param input the link target
 	 *
 	 * @return its SHA-256 value
 	 *
 	 * @throws IOException if SHA-256 is unavailable
 	 */
-	private static String sha256(String value) throws IOException
+	private static String sha256(String input) throws IOException
 	{
 		try
 		{
-			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(UTF_8)));
+			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(input.getBytes(UTF_8)));
 		}
 		catch (NoSuchAlgorithmException e)
 		{

@@ -152,7 +152,7 @@ public final class ClaudeRunnerCli
 				options.artifact(), options.project(), options.fixtures(), options.plugin(), manager, options.executable(),
 				environment,
 				options.model(),
-				options.effort(), options.installCat(), options.includeUserRules(), agent, readOnlyEvidence,
+				options.effort(), agent, options.installCat(), options.includeUserRules(), readOnlyEvidence,
 				options.deniedReads());
 			HarnessRunnerBridge.serve(starter, manager, options, json, input, output);
 		}

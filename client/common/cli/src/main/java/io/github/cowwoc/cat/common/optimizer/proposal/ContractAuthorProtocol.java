@@ -243,31 +243,31 @@ public final class ContractAuthorProtocol
 	 * Returns a contract author session request.
 	 *
 	 * @param promptSystem the directory that holds the prompt system
-	 * @param evidence the harness's profile inventory and its capability ranking
+	 * @param profiles the harness's profile inventory and its capability ranking
 	 * @param previous the previous proposal, or {@code none}
 	 * @param feedback the user's feedback, or {@code none}
 	 * @param salt the salt that CAT drew for the proposal
 	 * @return the request, which returns the problems of a refused proposal to the session once
 	 */
-	private SessionRequest request(Path promptSystem, ProfileEvidence evidence, String previous, String feedback,
+	private SessionRequest request(Path promptSystem, ProfileEvidence profiles, String previous, String feedback,
 		long salt)
 	{
-		ProfileCatalog inventory = evidence.inventory();
-		StringJoiner profiles = new StringJoiner("\n");
-		profiles.add("Source: " + inventory.source());
+		ProfileCatalog inventory = profiles.inventory();
+		StringJoiner lines = new StringJoiner("\n");
+		lines.add("Source: " + inventory.source());
 		for (TrialProfile profile : inventory.profiles())
 		{
 			if (profile.effort().isEmpty())
-				profiles.add("- model `" + profile.model() + "`, no effort dimension");
+				lines.add("- model `" + profile.model() + "`, no effort dimension");
 			else
-				profiles.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
+				lines.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
 		}
 		String turn = prompt.fill(Map.of("previous_proposal", previous, "feedback", feedback, "profile_inventory",
-			profiles.toString(), "capability_ranking", evidence.ranking().describe(), "output_schema", outputSchema,
+			lines.toString(), "capability_ranking", profiles.ranking().describe(), "output_schema", outputSchema,
 			"regression_scenarios", scenarios.prompt(), "generators", ValueGenerators.describeAll(), "target_prompt_file",
 			targetPromptFile(), "goal", goal(), "loaded_files", loadedFiles));
 		String file = OutputFile.name(promptSystem);
-		FollowUp correct = result -> correction(result, evidence, salt, file);
+		FollowUp correct = result -> correction(result, profiles, salt, file);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn,
 			outputTurn.fill(Map.of("output_file", file))), List.of(), TIME_LIMIT, role(), WorkspaceFixtures.NONE,
 			Optional.empty(), Optional.of(correct));
@@ -382,23 +382,23 @@ public final class ContractAuthorProtocol
 	 * Validates a stored contract author output whose text already names the user's project, and computes its trial
 	 * profiles.
 	 *
-	 * @param derivation the stored output
+	 * @param output the stored output
 	 * @param observedSources the prompt sources that the harness reported loading in the contract author session
 	 * @param profiles the profile inventory, its shipped capability ranking and the bindings that CAT read when the
 	 *   contract author ran
 	 * @param salt the salt that CAT drew for the proposal
 	 * @return the proposal, without derived sources, which the caller restores from the stored proposal
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws InvalidProposalException if {@code derivation} is not exactly one JSON object or breaks a rule that
+	 * @throws InvalidProposalException if {@code output} is not exactly one JSON object or breaks a rule that
 	 *   {@link #proposal(SessionResult.Completed, ProfileEvidence, long)} lists
 	 */
-	public DerivedProposal proposal(String derivation, String observedSources, ProfileEvidence profiles, long salt)
+	public DerivedProposal proposal(String output, String observedSources, ProfileEvidence profiles, long salt)
 		throws InvalidProposalException
 	{
-		requireThat(derivation, "derivation").isNotNull();
+		requireThat(output, "output").isNotNull();
 		requireThat(observedSources, "observedSources").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
-		return proposal(outputFile.parse(derivation, STORED), observedSources, profiles, salt);
+		return proposal(outputFile.parse(output, STORED), observedSources, profiles, salt);
 	}
 
 	/**
@@ -578,32 +578,32 @@ public final class ContractAuthorProtocol
 	 * Replaces staged project references in every string value of the contract author's output. Paths to the session's
 	 * artifacts outside its project directory remain unchanged.
 	 *
-	 * @param node the output value whose text is rewritten in place
-	 * @param staged the absolute root of the session's project copy
+	 * @param output the output value whose text is rewritten in place
+	 * @param effects the absolute root of the session's project copy
 	 * @param project the absolute root of the user's project
 	 */
-	private void rewriteProjectPaths(JsonNode node, String staged, String project)
+	private void rewriteProjectPaths(JsonNode output, String effects, String project)
 	{
-		if (node instanceof ObjectNode object)
+		if (output instanceof ObjectNode object)
 		{
 			for (String name : object.propertyNames())
 			{
 				JsonNode value = object.get(name);
 				if (value.isString())
-					object.put(name, value.asString().replace(staged, project));
+					object.put(name, value.asString().replace(effects, project));
 				else
-					rewriteProjectPaths(value, staged, project);
+					rewriteProjectPaths(value, effects, project);
 			}
 		}
-		else if (node instanceof ArrayNode array)
+		else if (output instanceof ArrayNode array)
 		{
 			for (int i = 0; i < array.size(); ++i)
 			{
 				JsonNode value = array.get(i);
 				if (value.isString())
-					array.set(i, json.getNodeFactory().stringNode(value.asString().replace(staged, project)));
+					array.set(i, json.getNodeFactory().stringNode(value.asString().replace(effects, project)));
 				else
-					rewriteProjectPaths(value, staged, project);
+					rewriteProjectPaths(value, effects, project);
 			}
 		}
 	}

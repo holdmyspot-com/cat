@@ -373,13 +373,13 @@ public final class Builder
 	 *
 	 * @param cell the cell identifier
 	 * @param passes the passes
-	 * @param batchFailures the failures of each started batch
+	 * @param failures the failures of each started batch
 	 * @return this builder
 	 */
-	public Builder development(String cell, int passes, List<Integer> batchFailures)
+	public Builder development(String cell, int passes, List<Integer> failures)
 	{
-		int failureCount = batchFailures.stream().mapToInt(Integer::intValue).sum();
-		development.put(cell, new CellCounts(passes, failureCount, batchFailures));
+		int failureCount = failures.stream().mapToInt(Integer::intValue).sum();
+		development.put(cell, new CellCounts(passes, failureCount, failures));
 		return this;
 	}
 

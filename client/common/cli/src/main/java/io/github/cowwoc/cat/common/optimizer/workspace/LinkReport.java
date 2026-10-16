@@ -64,7 +64,7 @@ public final class LinkReport
 			Path link = entry.getKey();
 			Status status = problems.getOrDefault(link, Status.RESOLVED);
 			Optional<Path> target = inventory.resolve(link);
-			entries.add(new Entry(link, target, status, limitOf(authority, status, target.orElse(null))));
+			entries.add(new Entry(link, target, status, limitOf(authority, target.orElse(null), status)));
 		}
 		return new LinkReport(entries);
 	}
@@ -73,11 +73,11 @@ public final class LinkReport
 	 * Returns the edit limit of a link's target.
 	 *
 	 * @param authority the edit authority
-	 * @param status whether the link can be staged
 	 * @param target the resolved target, or null if the links on the path form a cycle
+	 * @param status whether the link can be staged
 	 * @return the limit, or empty if the target's content may be edited
 	 */
-	private static Optional<Limit> limitOf(Authority authority, Status status, Path target)
+	private static Optional<Limit> limitOf(Authority authority, Path target, Status status)
 	{
 		if (target == null || status == Status.CYCLE)
 			return Optional.of(Limit.LINK_CYCLE);

@@ -325,12 +325,12 @@ public final class DistributionMain
 	 *
 	 * @param <T> the value type
 	 * @param values the existing values
-	 * @param value the value to append
+	 * @param added the value to append
 	 * @return the combined list
 	 */
-	private static <T> List<T> append(List<T> values, T value)
+	private static <T> List<T> append(List<T> values, T added)
 	{
-		return Stream.concat(values.stream(), Stream.of(value)).toList();
+		return Stream.concat(values.stream(), Stream.of(added)).toList();
 	}
 
 	/**
@@ -338,12 +338,12 @@ public final class DistributionMain
 	 *
 	 * @param <T> the value type
 	 * @param values the existing values
-	 * @param additionalValues the values to append
+	 * @param added the values to append
 	 * @return the combined list
 	 */
-	private static <T> List<T> append(List<T> values, List<T> additionalValues)
+	private static <T> List<T> append(List<T> values, List<T> added)
 	{
-		return Stream.concat(values.stream(), additionalValues.stream()).toList();
+		return Stream.concat(values.stream(), added.stream()).toList();
 	}
 
 	/**
@@ -413,7 +413,7 @@ public final class DistributionMain
 		Path image = builder.build(modules, Set.of("io.github.cowwoc.cat.codex.cli", "org.slf4j.nop"), codexLaunchers(),
 			output);
 		if (platform.isWindows())
-			JlinkImageBuilder.removePosixLaunchers(image, codexLaunchers());
+			JlinkImageBuilder.removePosixLaunchers(codexLaunchers(), image);
 		return image;
 	}
 

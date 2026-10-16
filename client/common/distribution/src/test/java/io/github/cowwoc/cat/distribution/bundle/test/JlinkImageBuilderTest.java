@@ -143,7 +143,7 @@ public final class JlinkImageBuilderTest
 			Files.delete(output.resolve("bin/read-part.bat"));
 			try
 			{
-				JlinkImageBuilder.removePosixLaunchers(output, List.of(launcher));
+				JlinkImageBuilder.removePosixLaunchers(List.of(launcher), output);
 				throw new AssertionError("Expected a failure for the missing batch launcher");
 			}
 			catch (IOException failure)

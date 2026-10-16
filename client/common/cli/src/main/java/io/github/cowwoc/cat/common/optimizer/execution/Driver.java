@@ -337,21 +337,21 @@ public final class Driver implements AutoCloseable
 		if (context.interrupts().isInterruptedAfter(sliceStart))
 		{
 			interrupted = true;
-			cancel(now, "The host interrupted the run");
+			cancel("The host interrupted the run", now);
 			return stop();
 		}
 		if (!now.isBefore(graceEnd))
 		{
-			cancel(now, "The slice's grace period ended before the session did");
+			cancel("The slice's grace period ended before the session did", now);
 			return stop();
 		}
 		if (infrastructureFailure != null)
 		{
-			cancel(now, infrastructureFailure);
+			cancel(infrastructureFailure, now);
 			return stop();
 		}
 		if (!isDrained() && isPending(PendingDecision.MeasurementChanged.class))
-			cancel(now, "The measurement conditions changed");
+			cancel("The measurement conditions changed", now);
 
 		boolean started = startTriages(now);
 		started |= startJudges(now);
@@ -406,7 +406,7 @@ public final class Driver implements AutoCloseable
 		try (lock)
 		{
 			if (!isDrained())
-				cancel(context.clock().instant(), "The driver closed before the session ended");
+				cancel("The driver closed before the session ended", context.clock().instant());
 		}
 	}
 
@@ -1808,11 +1808,11 @@ public final class Driver implements AutoCloseable
 	 * Interrupts every session that still runs and returns its trial to the queue, to rerun later as the same
 	 * logical trial. Prompt author copies are deleted. Every session is interrupted even if interrupting one fails.
 	 *
-	 * @param now the current time
 	 * @param reason why the sessions are cancelled
+	 * @param now the current time
 	 * @throws IOException if a session cannot be interrupted, or the store or the workspace cannot be written
 	 */
-	private void cancel(Instant now, String reason) throws IOException
+	private void cancel(String reason, Instant now) throws IOException
 	{
 		IOException failure = null;
 		List<TrialKey> abandoned = new ArrayList<>();
