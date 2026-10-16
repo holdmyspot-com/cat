@@ -11,6 +11,8 @@ depends-on:
 - Apply Java-specific Javadoc coverage, tags, placement, and syntax without duplicating the language-neutral
   documentation contract.
 - Make boolean return contracts immediately recognizable as a condition the caller can test.
+- Let a caller learn from a method's Javadoc every result it can receive, what each means and when it occurs, without
+  reading the implementation.
 
 ## Guidance
 
@@ -35,6 +37,11 @@ document that consequence at the caller or in the separately named operation tha
 
 An `@param` description must state its parameter's observable effect. When that effect selects a fixed caller-visible
 value, boundary, policy, or ordering, name the exact selected behavior rather than a generic feature or action.
+
+In `@return`, state each result a caller can receive that has a different meaning, such as an empty, null, sentinel or
+boundary value besides the ordinary result, with the condition that produces it. For a boolean, the condition that makes
+it `true` is enough. When those results do not fit in a short `@return`, summarize them there and describe each result
+and its condition in the method's main description.
 
 Use `<p>` alone on its own Javadoc line immediately after the preceding paragraph; do not insert a blank Javadoc line
 before or after it, and do not use a closing `</p>` tag.
