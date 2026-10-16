@@ -231,8 +231,9 @@ public final class ReplayExecutionTest
 		requireThat(routing[1], "routingParent").isEqualTo(feature[0]);
 		requireThat(routing[2], "routingSubject").isEqualTo(ROUTING_SUBJECT);
 		requireThat(routing[0], "lastReplacement").isEqualTo(rewrittenTip);
-		requireThat(git.lines("rev-parse", "HEAD").getFirst(), "branchTip").isEqualTo(rewrittenTip);
-		requireThat(git.lines("rev-parse", "refs/tags/" + branch).getFirst(), "tagTip").isEqualTo(sourceTip);
+		List<String> tips = git.lines("rev-parse", "HEAD", "refs/tags/" + branch);
+		requireThat(tips.getFirst(), "branchTip").isEqualTo(rewrittenTip);
+		requireThat(tips.getLast(), "tagTip").isEqualTo(sourceTip);
 		List<String> authors = git.lines("show", "-s", "--format=%an%x09%ae%x09%aI", feature[0], routing[0],
 			sources.getFirst().hash(), sources.get(1).hash());
 		requireThat(authors.get(2), "featureSourceAuthor").

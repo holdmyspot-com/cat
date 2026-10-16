@@ -204,7 +204,8 @@ public final class FinalizationTest
 	}
 
 	/**
-	 * Verifies an actual Git chain publishes and reuses one receipt and accepts symbolic or resolved tips.
+	 * Verifies an actual Git chain publishes and reuses one receipt, accepts symbolic or resolved tips, and passes the
+	 * identity check for the identity that made its commits.
 	 *
 	 * @throws IOException if Git or receipt publication fails
 	 * @throws NoSuchAlgorithmException if the JDK lacks SHA-256
@@ -217,12 +218,12 @@ public final class FinalizationTest
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-git-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
-			String base = git.lines("rev-parse", "HEAD").getFirst();
 			git.lines("commit", "--allow-empty", "--quiet", "-m", "feat: first");
-			String first = git.lines("rev-parse", "HEAD").getFirst();
 			git.lines("commit", "--allow-empty", "--quiet", "-m", "feat: second");
-			String tip = git.lines("rev-parse", "HEAD").getFirst();
-			String tree = git.lines("rev-parse", "HEAD^{tree}").getFirst();
+			List<String> resolved = git.lines("rev-parse", "HEAD~2", "HEAD~1", "HEAD", "HEAD^{tree}");
+			String base = resolved.getFirst();
+			String tip = resolved.get(2);
+			String tree = resolved.get(3);
 			Path manifest = invocationDirectory(repository, "receipt").resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReceiptFixtures.writeGates(manifest);
@@ -237,6 +238,7 @@ public final class FinalizationTest
 			String published = Files.readString(receiptFile);
 			Finalization.FinalizationReceipt receipt = ReplayJson.newMapper().readValue(receiptFile.toFile(),
 				Finalization.FinalizationReceipt.class);
+			String first = resolved.get(1);
 			requireThat(receipt.outputs().stream().map(Finalization.FinalizedOutput::commit).toList(), "replacementCommits").
 				isEqualTo(List.of(first, tip));
 			requireThat(receipt.outputs().stream().map(Finalization.FinalizedOutput::parent).toList(), "replacementParents").

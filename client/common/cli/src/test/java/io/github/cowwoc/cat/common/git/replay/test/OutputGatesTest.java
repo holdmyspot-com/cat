@@ -1,12 +1,8 @@
 package io.github.cowwoc.cat.common.git.replay.test;
 
 import io.github.cowwoc.cat.common.git.Git;
-import io.github.cowwoc.cat.common.git.replay.DeclaredOutputAcceptance;
 import io.github.cowwoc.cat.common.git.replay.DraftOutputAcceptance;
-import io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor;
-import io.github.cowwoc.cat.common.git.replay.History;
 import io.github.cowwoc.cat.common.git.replay.OutputGates;
-import io.github.cowwoc.cat.common.git.replay.OutputWitness;
 import io.github.cowwoc.cat.common.git.replay.SemanticCandidate;
 
 import static io.github.cowwoc.cat.common.git.replay.test.TopicReplayRepository.initializeRepository;
@@ -92,7 +88,8 @@ public final class OutputGatesTest
 		}
 	}
 	/**
-	 * Verifies selected and complete retained gates materialize each exact tree, retain logs, and remove worktrees.
+	 * Verifies a retained gate runs its command in each witnessed output's exact tree, retains each output's log, and
+	 * removes the worktrees. {@link GateSelectionTest} checks which outputs a gate selects.
 	 *
 	 * @throws IOException if the isolated repository or output gates cannot run
 	 */
@@ -109,30 +106,14 @@ public final class OutputGatesTest
 			Path manifest = invocationDirectory(repository, "replay").resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			OutputGates gates = gates(git, cleanup);
-			List<OutputWitness> witnesses = List.of(new OutputWitness("first", History.EMPTY_TREE, first),
-				new OutputWitness("second", first, second));
 			List<String> command = GateCommandFixture.command(GateCommandFixture.Mode.CHECK_FEATURE);
 
-			gates.run(manifest, "per-output-build", GitTopicReplayEditor.selectOutputTargets(witnesses, "first", command));
-			requireThat(Files.readString(manifest.resolveSibling("gates/per-output-build-first.log")), "selectedLog").
-				isEqualTo("first\n");
-			requireThat(Files.exists(manifest.resolveSibling("gates/per-output-build-second.log")), "unselectedLog").
-				isFalse();
-			gates.run(manifest, "per-output-build", GitTopicReplayEditor.selectOutputTargets(witnesses, null, command));
-			requireThat(Files.readString(manifest.resolveSibling("gates/per-output-build-second.log")), "secondLog").
-				isEqualTo("second\n");
+			gates.run(manifest, "per-output-build", List.of(new OutputGates.Target("first", first, command),
+				new OutputGates.Target("second", second, command)));
 
-			Map<String, OutputWitness> byOutput = Map.of("first", witnesses.getFirst(), "second", witnesses.getLast());
-			for (SemanticCandidate candidate : DeclaredOutputAcceptance.selectCandidates(
-				List.of(candidate("first"), candidate("second")), null))
-			{
-				gates.run(manifest, "per-output-acceptance", List.of(DeclaredOutputAcceptance.target(candidate, byOutput)));
-			}
-			requireThat(Files.readString(manifest.resolveSibling("gates/per-output-acceptance-first.log")),
-				"firstAcceptance").
+			requireThat(Files.readString(manifest.resolveSibling("gates/per-output-build-first.log")), "firstLog").
 				isEqualTo("first\n");
-			requireThat(Files.readString(manifest.resolveSibling("gates/per-output-acceptance-second.log")),
-				"secondAcceptance").
+			requireThat(Files.readString(manifest.resolveSibling("gates/per-output-build-second.log")), "secondLog").
 				isEqualTo("second\n");
 			requireThat(git.lines("worktree", "list", "--porcelain").stream().filter(line -> line.startsWith("worktree ")).
 				count(), "remainingWorktrees").isEqualTo(1L);

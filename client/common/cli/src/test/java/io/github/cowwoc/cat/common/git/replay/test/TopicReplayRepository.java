@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 /**
  * Creates isolated Git repositories and CAT-work invocation paths for topic-replay tests.
@@ -78,9 +79,15 @@ final class TopicReplayRepository
 	{
 		Git git = new Git(repository);
 		git.run("init", "--quiet");
-		git.run("config", "core.autocrlf", "false");
-		git.run("config", "user.name", "CAT Test");
-		git.run("config", "user.email", "cat-test@example.invalid");
+		// Git merges a repeated section with the one that "git init" wrote, so appending sets the values without
+		// starting Git once per value
+		Files.writeString(repository.resolve(".git/config"), """
+			[core]
+				autocrlf = false
+			[user]
+				name = CAT Test
+				email = cat-test@example.invalid
+			""", StandardOpenOption.APPEND);
 		git.run("commit", "--allow-empty", "--quiet", "--message", "base");
 	}
 }
