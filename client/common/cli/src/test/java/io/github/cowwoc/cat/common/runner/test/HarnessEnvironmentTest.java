@@ -87,7 +87,7 @@ public final class HarnessEnvironmentTest
 	 * the program's name. On Windows, PowerShell, which Codex runs commands in, finds a program by its name without an
 	 * extension only with an extension that {@code PATHEXT} lists.
 	 *
-	 * @throws IOException          if the program cannot be written or started
+	 * @throws IOException          if the program cannot be created or started
 	 * @throws InterruptedException if the thread is interrupted while the program runs
 	 */
 	@Test
@@ -104,10 +104,11 @@ public final class HarnessEnvironmentTest
 			}
 			else
 			{
-				Path tool = folder.resolve("cat-tool");
-				Files.writeString(tool, "#!/bin/sh\necho found\n");
-				requireThat(tool.toFile().setExecutable(true, false), "executable").isTrue();
-				command = List.of("sh", "-c", "cat-tool");
+				// A child process that another test starts while this one writes a program inherits the open file, so
+				// the shell's attempt to run the program fails with "Text file busy". A link to an existing program needs
+				// no write.
+				Files.createSymbolicLink(folder.resolve("cat-tool"), Path.of("/bin/echo"));
+				command = List.of("sh", "-c", "cat-tool found");
 			}
 			Map<String, String> source = new HashMap<>();
 			for (Map.Entry<String, String> entry : System.getenv().entrySet())
