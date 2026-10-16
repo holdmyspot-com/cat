@@ -157,4 +157,55 @@ public final class ValuesFileTest
 		for (String content : malformed)
 			requireThat(refusal(content), "refusal(" + malformed.indexOf(content) + ")").startsWith("tests/case/values.json");
 	}
+
+	/**
+	 * Verifies that a draft's values file keeps a generator call without its version and seed, a call with both, and
+	 * the line of each test case, and still refuses a call that states only one of them.
+	 *
+	 * @throws IOException             if the content cannot be read
+	 * @throws ScenarioFormatException if the content is refused
+	 */
+	@Test
+	public void readsDraftCallsWithoutSeeds() throws IOException, ScenarioFormatException
+	{
+		String content = """
+			{
+			  "format_version": 1,
+			  "test_cases": [
+			    {"values": {"notes": "a.md"}, "expected_outcome": "one"},
+			    {
+			      "values": {"before": {"generator": "log_lines", "count": 3}},
+			      "expected_outcome": "two"
+			    },
+			    {"values": {"before": {"generator": "log_lines", "version": 1, "seed": 9, "count": 3}},
+			      "expected_outcome": "three"}
+			  ]
+			}
+			""";
+		List<ValuesFile.DraftTestCase> read = ValuesFile.readDraft(json, new StringReader(content),
+			"tests/case/values.json");
+
+		requireThat(read.stream().map(ValuesFile.DraftTestCase::line).toList(), "lines").
+			isEqualTo(List.of(4, 5, 9));
+		requireThat(read.get(0).testCase().toString(), "first").isEqualTo(
+			"{\"values\":[{\"variable\":\"notes\",\"text\":\"a.md\"}],\"expected_outcome\":\"one\"}");
+		requireThat(read.get(1).testCase().toString(), "second").isEqualTo("{\"values\":[{\"variable\":\"before\"," +
+			"\"call\":{\"generator\":\"log_lines\",\"count\":3}}],\"expected_outcome\":\"two\"}");
+		requireThat(read.get(2).testCase().toString(), "third").isEqualTo("{\"values\":[{\"variable\":\"before\"," +
+			"\"call\":{\"generator\":\"log_lines\",\"version\":1,\"seed\":9,\"count\":3}}]," +
+			"\"expected_outcome\":\"three\"}");
+
+		try
+		{
+			ValuesFile.readDraft(json, new StringReader("""
+				{"format_version": 1, "test_cases": [
+				{"values": {"a": {"generator": "log_lines", "seed": 3, "count": 5}}, "expected_outcome": "y"}]}"""),
+				"tests/case/values.json");
+			throw new AssertionError("A call with only a seed was accepted");
+		}
+		catch (ScenarioFormatException e)
+		{
+			requireThat(e.getMessage(), "message").startsWith("tests/case/values.json:2:");
+		}
+	}
 }

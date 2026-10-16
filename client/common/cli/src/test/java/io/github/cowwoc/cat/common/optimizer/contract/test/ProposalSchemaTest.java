@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SplittableRandom;
 import org.testng.annotations.DataProvider;
@@ -1001,6 +1002,27 @@ public final class ProposalSchemaTest
 
 		requireThat(schema().proposalFileViolations(file), "violations").
 			containsAll(List.of("$.tests[0].turns: unexpected property", "$.tests[0].test_cases: unexpected property"));
+	}
+
+	/**
+	 * Verifies that the {@code scenario.md} that a prompt test's draft directory holds survives the stored contract,
+	 * and that a prompt test without one writes none, so that a contract stored before draft directories keeps its
+	 * identity.
+	 *
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	@Test
+	public void scenarioFileRoundTrips() throws InvalidProposalException
+	{
+		String scenarioFile = "# Formatting\n\nThe draft's scenario.\n";
+		Contract contract = schema().parse(changed(new String[]{"tests", "0", "scenario_file"},
+			json.getNodeFactory().stringNode(scenarioFile)));
+		Contract without = schema().parse(ContractFixtures.resource("valid-proposal.json"));
+
+		requireThat(contract.tests().getFirst().scenarioFile(), "scenarioFile").isEqualTo(Optional.of(scenarioFile));
+		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
+		requireThat(json.readTree(schema().toJson(without)).get("tests").get(0).has("scenario_file"),
+			"withoutScenarioFile").isFalse();
 	}
 
 	/**

@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
+import io.github.cowwoc.cat.common.optimizer.contract.ExpectedBehavior;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
@@ -26,6 +27,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.Test;
 
@@ -644,5 +646,18 @@ public final class ContractTest
 			isEqualTo(List.of(Path.of("rules/codex/repair.md"), Path.of("bin/read-part")));
 		requireThat(contract.projectRemovals().stream().map(Dependent::path).toList(), "projectRemovals").
 			isEqualTo(List.of(Path.of("rules/repair.md"), Path.of("rules/route.md"), Path.of("repair.sh")));
+	}
+
+	/**
+	 * Verifies that a prompt test's scenario holds its expected behavior and time limit, which its
+	 * {@code ## Expected Behavior} section states.
+	 */
+	@Test
+	public void scenarioHoldsExpectedBehavior()
+	{
+		PromptTest test = ContractFixtures.contract().tests().getFirst();
+
+		requireThat(test.scenario().expectedBehavior(), "expectedBehavior").
+			isEqualTo(Optional.of(new ExpectedBehavior(test.expectedBehaviour(), test.timeLimit())));
 	}
 }

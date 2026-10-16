@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -53,6 +54,11 @@ public final class ProposalSchema
 	 * The proposal field holding the paths of recorded scenarios covered by a test.
 	 */
 	private static final String REGRESSION_SCENARIOS = "regression_scenarios";
+	/**
+	 * The property of a test that holds the {@code scenario.md} of its directory in the draft directory, which CAT
+	 * copies from the draft rather than the contract author writes.
+	 */
+	public static final String SCENARIO_FILE = "scenario_file";
 	/**
 	 * The property of a test that holds the test cases that an earlier campaign committed, which CAT reads rather than
 	 * the contract author writes.
@@ -264,8 +270,9 @@ public final class ProposalSchema
 	 * @return the contract that the proposal describes
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws InvalidProposalException if {@code proposal} is not valid JSON, violates the schema, holds a salt or
-	 *   trial profiles, states a generator call's seed or version, writes a fixture at the path of a fixture that
-	 *   {@code recorded} gives its test, breaks a rule that the schema cannot express, or {@code profiles} rejects it
+	 *   trial profiles, states only one of a generator call's seed and version, writes a fixture at the path of a
+	 *   fixture that {@code recorded} gives its test, breaks a rule that the schema cannot express, or
+	 *   {@code profiles} rejects it
 	 */
 	public Contract parse(String proposal, ProfileRule profiles, long salt, RandomGenerator seeds,
 		Map<String, List<TestCase>> committed, Map<String, List<FixtureFile>> recorded) throws InvalidProposalException
@@ -520,6 +527,8 @@ public final class ProposalSchema
 		test.uncoveredInteractions().forEach(uncovered::add);
 		ArrayNode scenarios = node.putArray(REGRESSION_SCENARIOS);
 		test.regressionScenarios().forEach(scenarios::add);
+		// A test without a draft's scenario.md keeps the identity that it had before the property existed
+		test.scenarioFile().ifPresent(scenarioFile -> node.put(SCENARIO_FILE, scenarioFile));
 		ArrayNode fixtures = node.putArray("fixtures");
 		ArrayNode recorded = null;
 		for (FixtureFile fixture : test.fixtures())
@@ -633,6 +642,8 @@ public final class ProposalSchema
 		 */
 		Contract contract(JsonNode root, ProfileRule rule, Long salt)
 		{
+			if (seeds != null)
+				takeStatedSeeds(root);
 			int problemsBefore = problems.size();
 			List<Requirement> requirements = list(root.get("requirements"), "$.requirements", (node, location) ->
 				attempt(location, () -> new Requirement(text(node, "id"), text(node, "description"),
@@ -669,6 +680,28 @@ public final class ProposalSchema
 			return attempt("$", () -> new Contract(requirements, tests, profiles, judge, fixtures,
 				strings(root.get("limitations")), root.get("minimum_pass_rate").decimalValue(), contractSalt,
 				contractDependents));
+		}
+
+		/**
+		 * Adds to the taken seeds each seed that a generator call of the proposal states, so that no call that
+		 * receives a new seed receives one of them.
+		 *
+		 * @param root the proposal
+		 */
+		private void takeStatedSeeds(JsonNode root)
+		{
+			for (JsonNode test : root.get("tests"))
+			{
+				for (JsonNode testCase : test.get("test_cases"))
+				{
+					for (JsonNode value : testCase.get("values"))
+					{
+						JsonNode seed = value.path("call").path("seed");
+						if (seed.isIntegralNumber() && seed.canConvertToLong())
+							taken.add(seed.asLong());
+					}
+				}
+			}
 		}
 
 		/**
@@ -787,12 +820,13 @@ public final class ProposalSchema
 			if (problems.size() > problemsBefore)
 				return null;
 			List<TestCase> committed = committedTestCases;
+			Optional<String> scenarioFile = Optional.ofNullable(node.get(SCENARIO_FILE)).map(JsonNode::asString);
 			PromptTest test = attempt(location, () -> new PromptTest(text(node, "id"),
 				new RiskRank(node.get("risk_rank").asInt()), strings(node.get("requirement_ids")),
 				strings(node.get("absent_triggers")), text(node, "applicability"), strings(node.get("turns")),
 				Duration.ofSeconds(node.get("time_limit_seconds").asLong()), text(node, "expected_behavior"),
 				strings(node.get("uncovered_interactions")), variables, committed, testCases, assertions,
-				strings(node.get(REGRESSION_SCENARIOS)), fixtures));
+				strings(node.get(REGRESSION_SCENARIOS)), fixtures, scenarioFile));
 			if (test == null)
 				return null;
 			// Delivery writes every prompt test as a scenario.md

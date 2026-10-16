@@ -104,4 +104,21 @@ public final class TestValueJsonTest
 			}
 		}
 	}
+
+	/**
+	 * Verifies that a call that states both its version and its seed, as CAT writes them into a draft's values file,
+	 * keeps them, and that its seed becomes taken.
+	 */
+	@Test
+	public void modelCallKeepsStatedVersionAndSeed()
+	{
+		JsonNode array = json.readTree("""
+			[{"variable": "before", "call": {"generator": "log_lines", "version": 1, "seed": 9, "count": 3}}]""");
+		Set<Long> taken = new HashSet<>();
+
+		TestValue value = TestValueJson.readCalls(array, new SplittableRandom(5), taken).get("before");
+
+		requireThat(value, "value").isEqualTo(new TestValue.Generated("log_lines", 1, 9, Map.of("count", 3L)));
+		requireThat(taken, "taken").isEqualTo(Set.of(9L));
+	}
 }

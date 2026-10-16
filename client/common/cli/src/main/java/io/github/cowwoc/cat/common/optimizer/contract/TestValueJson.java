@@ -15,7 +15,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Writes and reads a test case's values as a JSON array with one object per variable: {@code {"variable": name,
  * "text": text}} for a text value, and {@code {"variable": name, "call": {"generator": name, "version": n,
  * "seed": s, ...parameters}}} for a generated value. A call that a model writes leaves out {@code version} and
- * {@code seed}, which CAT adds.
+ * {@code seed}, which CAT adds, unless CAT already wrote them into the values file that the call comes from.
  */
 public final class TestValueJson
 {
@@ -97,15 +97,17 @@ public final class TestValueJson
 	}
 
 	/**
-	 * Reads values that a model wrote, adding the generator's current version and a new seed to each call.
+	 * Reads values that a model wrote, adding the generator's current version and a new seed to each call that states
+	 * neither. A call that states both keeps them.
 	 *
 	 * @param array  one object per variable
 	 * @param random the source of seeds
-	 * @param taken  the seeds of the campaign's other generated values; receives each new seed
+	 * @param taken  the seeds of the campaign's other generated values; receives each seed that a call receives or
+	 *               states
 	 * @return the value of each variable, by name, in the array's order
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if an object is malformed, a call states a version or seed, a generator refuses
-	 *                                  its call, or two objects name the same variable
+	 * @throws IllegalArgumentException if an object is malformed, a call states only one of its version and seed, a
+	 *                                  generator refuses its call, or two objects name the same variable
 	 */
 	public static Map<String, TestValue> readCalls(JsonNode array, RandomGenerator random, Set<Long> taken)
 	{
@@ -194,13 +196,8 @@ public final class TestValueJson
 			}
 		}
 		String generator = generatorNode.asString();
-		if (random != null)
+		if (random != null && version == null && seed == null)
 		{
-			if (version != null || seed != null)
-			{
-				throw new IllegalArgumentException("The call of " + variable + " states a " + VERSION + " or " + SEED +
-					", but CAT adds them. Write only the generator and its parameters.");
-			}
 			try
 			{
 				return ValueGenerators.create(generator, parameters, random, taken);
@@ -210,6 +207,11 @@ public final class TestValueJson
 				throw new IllegalArgumentException("The call of " + variable + " is refused: " + e.getMessage(), e);
 			}
 		}
+		if (random != null && (version == null || seed == null))
+		{
+			throw new IllegalArgumentException("The call of " + variable + " states only one of its " + VERSION +
+				" and " + SEED + ". Write only the generator and its parameters, and CAT adds both.");
+		}
 		if (version == null || seed == null)
 		{
 			throw new IllegalArgumentException("The call of " + variable + " must have its " + VERSION + " and " +
@@ -217,6 +219,9 @@ public final class TestValueJson
 		}
 		if (version < 1 || version > Integer.MAX_VALUE)
 			throw new IllegalArgumentException("The call of " + variable + " has the invalid version " + version);
-		return new TestValue.Generated(generator, version.intValue(), seed, parameters);
+		TestValue.Generated generated = new TestValue.Generated(generator, version.intValue(), seed, parameters);
+		if (taken != null)
+			taken.add(seed);
+		return generated;
 	}
 }

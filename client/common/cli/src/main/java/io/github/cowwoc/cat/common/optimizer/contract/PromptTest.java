@@ -39,12 +39,14 @@ import java.util.Set;
  * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
  * @param fixtures the files that each trial's workspace receives, with placeholders replaced in their paths and
  *   contents
+ * @param scenarioFile the {@value PromptTestFiles#SCENARIO} that the contract author wrote for this test in its draft
+ *   directory, which delivery writes; empty for a test that the contract author wrote into the proposal itself
  */
 public record PromptTest(String id, RiskRank riskRank, List<String> requirementIds, List<String> absentTriggers,
 	String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
-	List<String> uncoveredInteractions,
-	List<VariableDeclaration> variables, List<TestCase> committedTestCases, List<TestCase> testCases,
-	List<MappedAssertion> assertions, List<String> regressionScenarios, List<FixtureFile> fixtures)
+	List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
+	List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
+	List<FixtureFile> fixtures, Optional<String> scenarioFile)
 {
 	/**
 	 * The behavior through which a reply fails the assertion {@value TestCase#EXPECTED_OUTCOME}.
@@ -73,6 +75,9 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
 	 * @param fixtures the files that each trial's workspace receives, with placeholders replaced in their paths and
 	 *   contents
+	 * @param scenarioFile the {@value PromptTestFiles#SCENARIO} that the contract author wrote for this test in its
+	 *   draft directory, which delivery writes; empty for a test that the contract author wrote into the proposal
+	 *   itself
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code id}, a requirement identifier or an absent trigger is not lowercase
 	 *   words joined by underscores, a text is blank, a list that must not be empty is empty, {@code timeLimit} is not
@@ -104,6 +109,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		requireThat(assertions, "assertions").isNotNull();
 		requireThat(regressionScenarios, "regressionScenarios").isNotNull();
 		requireThat(fixtures, "fixtures").isNotNull();
+		requireThat(scenarioFile, "scenarioFile").isNotNull();
 		requirementIds = List.copyOf(requirementIds);
 		absentTriggers = List.copyOf(absentTriggers);
 		turns = List.copyOf(turns);
@@ -200,6 +206,39 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 					"', but none of its assertions checks it");
 			}
 		}
+	}
+
+	/**
+	 * Creates a prompt test that the contract author wrote into the proposal itself, without a draft directory.
+	 *
+	 * @param id the identifier that is unique within the contract
+	 * @param riskRank the rank that breaks allocation ties
+	 * @param requirementIds the identifiers of the requirements that this test checks
+	 * @param absentTriggers the identifiers of the requirements whose trigger this test leaves absent
+	 * @param applicability the conditions under which the checked requirements apply to a trial
+	 * @param turns the complete prewritten user turns, which may contain {@code {{variable}}} placeholders
+	 * @param timeLimit the positive whole-second duration a trial may run before it is judged on the behaviour it has
+	 *   shown
+	 * @param expectedBehaviour what a compliant response does
+	 * @param uncoveredInteractions the material interactions that this test cannot cover
+	 * @param variables the variables that every test case gives a value
+	 * @param committedTestCases the test cases that an earlier campaign committed with the prompt
+	 * @param testCases the test cases that the contract author wrote for this campaign
+	 * @param assertions the assertions that the contract author declared, each with the requirement that it checks
+	 * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
+	 * @param fixtures the files that each trial's workspace receives
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the canonical constructor rejects the arguments
+	 */
+	public PromptTest(String id, RiskRank riskRank, List<String> requirementIds, List<String> absentTriggers,
+		String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
+		List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
+		List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
+		List<FixtureFile> fixtures)
+	{
+		this(id, riskRank, requirementIds, absentTriggers, applicability, turns, timeLimit, expectedBehaviour,
+			uncoveredInteractions, variables, committedTestCases, testCases, assertions, regressionScenarios, fixtures,
+			Optional.empty());
 	}
 
 	/**
@@ -363,18 +402,21 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
-	 * Returns this test as a {@value PromptTestFiles#SCENARIO} describes it: its variables, its turns and the
-	 * assertions that the contract author declared, without the one that CAT adds.
+	 * Returns this test as a {@value PromptTestFiles#SCENARIO} describes it: its variables, its turns, its expected
+	 * behavior with its time limit, and the assertions that the contract author declared, without the one that CAT
+	 * adds.
 	 *
 	 * @return the scenario
-	 * @throws IllegalArgumentException if the test declares no variable, which a scenario requires
+	 * @throws IllegalArgumentException if the test declares no variable, which a scenario requires, or its expected
+	 *   behavior names a placeholder that no variable defines
 	 */
 	public Scenario scenario()
 	{
 		List<Assertion> declared = new ArrayList<>(assertions.size());
 		for (MappedAssertion mapped : assertions)
 			declared.add(mapped.assertion());
-		return new Scenario(variables, turns, declared);
+		return new Scenario(variables, turns, Optional.of(new ExpectedBehavior(expectedBehaviour, timeLimit)),
+			declared);
 	}
 
 	/**
