@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import io.github.cowwoc.cat.common.BoundedInput;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.PluginInfo;
 
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
@@ -21,7 +22,8 @@ public final class HarnessArtifact
 	private static final int MAXIMUM_VERSION_BYTES = 1_048_576;
 
 	/**
-	 * Validates a complete unpacked plugin directory for a caller-supplied plugin manifest.
+	 * Validates a complete unpacked plugin directory, built for the platform that this JVM runs on, for a caller-supplied
+	 * plugin manifest.
 	 *
 	 * @param root the unpacked plugin directory
 	 *
@@ -33,8 +35,31 @@ public final class HarnessArtifact
 	 */
 	public static Path validate(Path root, Path manifestPath) throws IOException
 	{
+		return validate(root, manifestPath, Platform.current());
+	}
+
+	/**
+	 * Validates a complete unpacked plugin directory, built for a platform, for a caller-supplied plugin manifest. On
+	 * Windows, the required launchers are the batch launchers {@code client/bin/<name>.bat}, which {@code cmd.exe} and
+	 * PowerShell run, because the Codex image there holds no POSIX launchers. Elsewhere, they are the executable POSIX
+	 * launchers {@code client/bin/<name>}.
+	 *
+	 * @param root the unpacked plugin directory
+	 *
+	 * @param manifestPath the plugin manifest path relative to {@code root}
+	 *
+	 * @param platform the platform that the artifact was built for and runs on
+	 *
+	 * @return the normalized unpacked plugin directory
+	 *
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if the artifact is incomplete or does not satisfy the required filesystem layout
+	 */
+	public static Path validate(Path root, Path manifestPath, Platform platform) throws IOException
+	{
 		requireThat(root, "root").isNotNull();
 		requireThat(manifestPath, "manifestPath").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		if (manifestPath.isAbsolute() || manifestPath.normalize().startsWith(".."))
 		{
 			throw new IOException(
@@ -60,8 +85,13 @@ public final class HarnessArtifact
 			throw new IOException("Artifact manifest path resolves outside the artifact directory: " + manifestPath +
 				". Use a relative path below the artifact directory.");
 		}
-		Path pluginInfo = normalized.resolve("client/bin/plugin-info");
-		Path sessionStart = normalized.resolve("client/bin/session-start");
+		String launcherExtension;
+		if (platform.isWindows())
+			launcherExtension = ".bat";
+		else
+			launcherExtension = "";
+		Path pluginInfo = normalized.resolve("client/bin/plugin-info" + launcherExtension);
+		Path sessionStart = normalized.resolve("client/bin/session-start" + launcherExtension);
 		if (!Files.isRegularFile(version, NOFOLLOW_LINKS) ||
 			!Files.isRegularFile(manifest, NOFOLLOW_LINKS) ||
 			!Files.isRegularFile(pluginInfo, NOFOLLOW_LINKS) ||
