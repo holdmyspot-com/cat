@@ -1,8 +1,12 @@
 package io.github.cowwoc.cat.common.runner.test;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.runner.HarnessEnvironment;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -36,6 +40,40 @@ public final class HarnessEnvironmentTest
 		requireThat(result.containsKey("HARNESS_HOME"), "hasHarnessHome").isFalse();
 		requireThat(result.containsKey("OTHER_ENGINE_CONFIG"), "hasOtherHarnessConfig").isFalse();
 		requireThat(result.containsKey("CAT_INSTALL_DIR"), "hasCatInstallDirectory").isFalse();
+	}
+
+	/**
+	 * Verifies that a program started with the scrubbed environment of this process can create a temporary file and
+	 * finds the user's home directory in the platform's home variable. On Windows, a program without {@code TEMP} and
+	 * {@code TMP} uses the Windows directory for temporary files, which a user cannot write, and a program without
+	 * {@code USERPROFILE} finds no home directory.
+	 *
+	 * @throws IOException          if the program cannot be started
+	 * @throws InterruptedException if the thread is interrupted while the program runs
+	 */
+	@Test
+	public void keepsTemporaryDirectoryAndHome() throws IOException, InterruptedException
+	{
+		Platform platform = Platform.current();
+		List<String> command;
+		if (platform.isWindows())
+		{
+			command = List.of("powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+				"$ErrorActionPreference = 'Stop'; $file = [System.IO.Path]::GetTempFileName(); " +
+				"Remove-Item -LiteralPath $file; " +
+				"if (-not $env:USERPROFILE) { exit 2 }");
+		}
+		else
+			command = List.of("sh", "-c", "file=$(mktemp) && rm -- \"$file\" && [ -n \"$HOME\" ]");
+		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+		builder.environment().clear();
+		builder.environment().putAll(HarnessEnvironment.scrub(System.getenv()));
+		try (Process process = builder.start())
+		{
+			process.getOutputStream().close();
+			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+			requireThat(process.waitFor(), "status").withContext(output, "output").isEqualTo(0);
+		}
 	}
 
 	/**

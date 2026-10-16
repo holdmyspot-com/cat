@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.runner;
 
+import io.github.cowwoc.cat.common.Platform;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,6 +16,10 @@ public final class HarnessEnvironment
 {
 	/**
 	 * Copies only generic operating-system variables and removes CAT/harness home state.
+	 * <p>
+	 * On Windows, the copy also holds {@code USERPROFILE}, {@code TEMP} and {@code TMP}. Windows programs read the
+	 * user's home directory from {@code USERPROFILE}, and a program without {@code TEMP} and {@code TMP} puts its
+	 * temporary files in the Windows directory, which a user cannot write.
 	 *
 	 * @param source the host environment
 	 *
@@ -29,6 +34,12 @@ public final class HarnessEnvironment
 		copy(source, result, "LANG");
 		copy(source, result, "LC_ALL");
 		copy(source, result, "TERM");
+		if (Platform.current().isWindows())
+		{
+			copy(source, result, "USERPROFILE");
+			copy(source, result, "TEMP");
+			copy(source, result, "TMP");
+		}
 		return Map.copyOf(result);
 	}
 
