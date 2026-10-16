@@ -32,7 +32,7 @@ import java.util.Optional;
  * folder that holds one, starting from the folder that the command runs in.
  * <p>
  * The command receives the saved output's path in {@code CAT_RUN_PART_OUTPUT} and, in {@code bash}, finds the
- * plugin's {@code bin/run-part-overrides} folder first on its {@code PATH}. A program in that folder, such as
+ * plugin's {@code client/run-part-overrides} folder first on its {@code PATH}. A program in that folder, such as
  * {@code rg}, keeps output that it writes straight into that file small enough for the agent that reads it, and leaves
  * other output unchanged. The programs there are POSIX scripts without an extension, so a PowerShell command does not
  * find the folder: PowerShell resolves a command to such a file when it comes first on the {@code PATH}, and hands a
@@ -49,8 +49,7 @@ public final class CodexRunPart
 	 */
 	private static final Path CAT_TEMP = Path.of(".cat/work/temp");
 	/**
-	 * The folder, next to the {@code read-part} launcher, of the programs that the command finds before the caller's
-	 * {@code PATH}.
+	 * The folder, in the runtime image, of the programs that the command finds before the caller's {@code PATH}.
 	 */
 	private static final String OVERRIDES = "run-part-overrides";
 
@@ -67,8 +66,8 @@ public final class CodexRunPart
 		boolean terminal = console != null && console.isTerminal();
 		CommandShell shell = CommandShell.current();
 		int status = run(args, System.in, terminal, Path.of("").toAbsolutePath(), shell,
-			CodexReadPart.launcher(shell.launcher("read-part")), Platform.current().environment(System.getenv()),
-			System.out, System.err);
+			CodexReadPart.launcher(shell.launcher("read-part")), Path.of(System.getProperty("java.home"), OVERRIDES),
+			Platform.current().environment(System.getenv()), System.out, System.err);
 		System.out.flush();
 		System.exit(status);
 	}
@@ -82,8 +81,9 @@ public final class CodexRunPart
 	 * @param workingDirectory the folder that the command runs in; the output is saved in the CAT temporary folder of
 	 *   the nearest folder that holds one, starting from this folder
 	 * @param shell the shell that runs the command, and that runs the commands that this program prints
-	 * @param readPart the {@code read-part} launcher that the line that ends a part names; its folder holds the
-	 *   {@code run-part-overrides} folder
+	 * @param readPart the {@code read-part} launcher that the line that ends a part names
+	 * @param overrides the folder of the programs that the command finds before the caller's {@code PATH} when
+	 *   {@code shell} is {@code bash}
 	 * @param environment the environment: when no folder from {@code workingDirectory} upward holds a CAT temporary
 	 *   folder, {@code TMPDIR}, or else {@code TEMP}, names the folder of the saved output, which is the JVM's
 	 *   temporary folder ({@code java.io.tmpdir}) when both are unset; the command
@@ -98,13 +98,14 @@ public final class CodexRunPart
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static int run(String[] args, InputStream input, boolean terminal, Path workingDirectory, CommandShell shell,
-		Path readPart, Map<String, String> environment, OutputStream output, PrintStream error)
+		Path readPart, Path overrides, Map<String, String> environment, OutputStream output, PrintStream error)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(shell, "shell").isNotNull();
 		requireThat(readPart, "readPart").isNotNull();
+		requireThat(overrides, "overrides").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(error, "error").isNotNull();
@@ -149,7 +150,7 @@ public final class CodexRunPart
 			childEnvironment.put("CAT_RUN_PART_OUTPUT", saved.toString());
 			String path = childEnvironment.get("PATH");
 			if (path != null && shell == CommandShell.POSIX)
-				childEnvironment.put("PATH", readPart.resolveSibling(OVERRIDES) + File.pathSeparator + path);
+				childEnvironment.put("PATH", overrides + File.pathSeparator + path);
 			int status;
 			try (Process process = builder.start())
 			{

@@ -16,12 +16,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Set;
 import java.util.spi.ToolProvider;
 import org.testng.annotations.Test;
 
 /**
  * Tests that the launchers of the Codex image run from the shell that Codex runs commands in, by the absolute path
- * without an extension that CAT's skills name, such as {@code <plugin>/client/bin/plugin-info}.
+ * without an extension that CAT's skills name, such as {@code <plugin>/bin/plugin-info}, including the launchers that
+ * the plugin moves from the image's {@code bin} folder to its own.
  */
 public final class CodexImageLaunchersTest
 {
@@ -46,12 +48,22 @@ public final class CodexImageLaunchersTest
 			Path directory = cleanup.add(Files.createTempDirectory(Path.of("target"), "codex-image-")).toAbsolutePath();
 			JlinkImageBuilder builder = JlinkImageBuilderSecrets.access().create(new FakeJlink(platform));
 			Path image = DistributionMainSecrets.access().codexImage(builder, List.of(Path.of("codex.jar")),
-				directory.resolve("image"), platform);
+				directory.resolve("client"), platform);
+			Set<String> agentLaunchers = DistributionMainSecrets.access().codexAgentLaunchers();
+			Path agentBin = directory.resolve("bin");
+			JlinkImageBuilder.moveLaunchers(agentLaunchers, image, agentBin);
 
 			List<JlinkImageBuilder.Launcher> launchers = DistributionMainSecrets.access().codexLaunchers();
 			List<String> paths = new ArrayList<>();
 			for (JlinkImageBuilder.Launcher launcher : launchers)
-				paths.add(image.resolve("bin").resolve(launcher.name()).toString());
+			{
+				Path bin;
+				if (agentLaunchers.contains(launcher.name()))
+					bin = agentBin;
+				else
+					bin = image.resolve("bin");
+				paths.add(bin.resolve(launcher.name()).toString());
+			}
 			String output;
 			if (platform.isWindows())
 				output = runInPowerShell(paths);
@@ -71,8 +83,8 @@ public final class CodexImageLaunchersTest
 
 	/**
 	 * Runs each launcher from PowerShell, as Codex runs a command on Windows. A launcher that PowerShell does not resolve
-	 * to a batch launcher is reported instead of run, because PowerShell hands a file that it cannot run to the program
-	 * that Windows associates with the file, which can open a window.
+	 * to a batch launcher, {@code .bat} or {@code .cmd}, is reported instead of run, because PowerShell hands a file that
+	 * it cannot run to the program that Windows associates with the file, which can open a window.
 	 *
 	 * @param launchers the launchers' paths
 	 * @return PowerShell's output
@@ -85,7 +97,7 @@ public final class CodexImageLaunchersTest
 		for (String launcher : launchers)
 		{
 			String literal = "'" + launcher.replace("'", "''") + "'";
-			script.append("if ((Get-Command -Name ").append(literal).append(").Extension -eq '.bat') { & ").
+			script.append("if ((Get-Command -Name ").append(literal).append(").Extension -in '.bat', '.cmd') { & ").
 				append(literal).append(" } else { 'resolved ' + (Get-Command -Name ").append(literal).
 				append(").Source }\n");
 		}

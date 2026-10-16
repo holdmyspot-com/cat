@@ -42,7 +42,7 @@ public final class HarnessArtifactTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path artifact = createArtifact(cleanup, "");
+			Path artifact = createArtifact(cleanup, false);
 
 			requireThat(HarnessArtifact.validate(artifact, Path.of(".harness/plugin.json"), Platform.LINUX_X64),
 				"artifact").isEqualTo(artifact);
@@ -59,7 +59,7 @@ public final class HarnessArtifactTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path artifact = createArtifact(cleanup, ".bat");
+			Path artifact = createArtifact(cleanup, true);
 
 			requireThat(HarnessArtifact.validate(artifact, Path.of(".harness/plugin.json"), Platform.WINDOWS_X64),
 				"artifact").isEqualTo(artifact);
@@ -76,7 +76,7 @@ public final class HarnessArtifactTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path artifact = createArtifact(cleanup, "");
+			Path artifact = createArtifact(cleanup, false);
 
 			HarnessArtifact.validate(artifact, Path.of(".harness/plugin.json"), Platform.WINDOWS_X64);
 		}
@@ -92,8 +92,8 @@ public final class HarnessArtifactTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path artifact = createArtifact(cleanup, "");
-			Files.delete(artifact.resolve("client/bin/plugin-info"));
+			Path artifact = createArtifact(cleanup, false);
+			Files.delete(artifact.resolve("bin/plugin-info"));
 
 			HarnessArtifact.validate(artifact, Path.of(".harness/plugin.json"), Platform.LINUX_X64);
 		}
@@ -103,22 +103,34 @@ public final class HarnessArtifactTest
 	 * Creates a complete minimal harness artifact.
 	 *
 	 * @param cleanup   the temporary-directory cleanup scope
-	 * @param extension the launchers' file extension, such as {@code ".bat"}, or {@code ""} for POSIX launchers
+	 * @param batch     {@code true} for the batch launchers that an artifact built for Windows holds, {@code false}
+	 *                  for POSIX launchers
 	 *
 	 * @return the unpacked plugin directory
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
-	private static Path createArtifact(TemporaryDirectories cleanup, String extension) throws IOException
+	private static Path createArtifact(TemporaryDirectories cleanup, boolean batch) throws IOException
 	{
 		Path artifact = cleanup.add(Files.createTempDirectory("cat-artifact-"));
+		Files.createDirectories(artifact.resolve("bin"));
 		Files.createDirectories(artifact.resolve("client/bin"));
 		Files.createDirectories(artifact.resolve(".harness"));
 		Files.writeString(artifact.resolve("client/VERSION"), PluginInfo.CAT_VERSION);
 		Files.writeString(artifact.resolve(".harness/plugin.json"), "{}");
 		Set<PosixFilePermission> permissions = Set.of(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE);
-		Path pluginInfo = artifact.resolve("client/bin/plugin-info" + extension);
-		Path sessionStart = artifact.resolve("client/bin/session-start" + extension);
+		Path pluginInfo;
+		Path sessionStart;
+		if (batch)
+		{
+			pluginInfo = artifact.resolve("bin/plugin-info.cmd");
+			sessionStart = artifact.resolve("client/bin/session-start.bat");
+		}
+		else
+		{
+			pluginInfo = artifact.resolve("bin/plugin-info");
+			sessionStart = artifact.resolve("client/bin/session-start");
+		}
 		Files.writeString(pluginInfo, "#!/bin/sh\n");
 		Files.writeString(sessionStart, "#!/bin/sh\n");
 		PortableFiles.setMode(pluginInfo, permissions);

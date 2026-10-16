@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class CodexPostToolUseHookTest
 {
-	private static final String BIN = "/plugin/client/bin/";
+	private static final String BIN = "/plugin/bin/";
 	private static final String INSTRUCTION = "[The output was cut off because you set max_output_tokens. Before " +
 		"doing anything else, run the following command (without setting max_output_tokens) in order to get the " +
 		"correct output: ";

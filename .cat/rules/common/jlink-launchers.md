@@ -32,6 +32,16 @@ add a Bats test for a launcher or a harness merely to show that its launcher sta
 spaces, or works in another locale; extend that test instead when the template changes. Test a program's own behavior,
 such as its arguments, output and exit status, with Java tests that call it directly.
 
+## Launchers That Agents Run
+
+A plugin's top-level `bin/` folder holds only the launchers that agents run, such as `plugin-info`, `get-history` and
+`run-part`; hook launchers, `java` and `keytool` stay in the runtime image's `client/bin/`. `PluginArtifactBuilder`
+moves each launcher that `DistributionMain` lists as agent-run out of the image with `JlinkImageBuilder.moveLaunchers`,
+which rewrites its path to `java` relative to `bin/`, so `bin/<name>` starts `client/bin/java` directly. Do not put a
+symbolic link or a forwarding script in `bin/` instead: Codex drops symbolic links when it installs a plugin, and a
+forwarding script adds a second launcher to keep in step. A moved batch launcher takes the extension `.cmd`, the name
+under which CAT's Windows rules tell agents to run it.
+
 ## Windows Launchers
 
 On Windows, jlink writes the batch launcher `bin/<name>.bat` beside the POSIX launcher `bin/<name>`. `cmd.exe` and

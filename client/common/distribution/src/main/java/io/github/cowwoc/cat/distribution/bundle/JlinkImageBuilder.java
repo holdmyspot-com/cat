@@ -175,6 +175,65 @@ public final class JlinkImageBuilder
 	}
 
 	/**
+	 * Moves launchers out of a runtime image's {@code bin} folder into another folder, and makes each one start the
+	 * image's Java runtime from its new folder. A launcher that jlink writes starts the {@code java} beside it, which
+	 * the new folder lacks. A batch launcher takes the extension {@code .cmd} in its new folder, the name under which
+	 * CAT's Windows rules tell agents to run it; {@code cmd.exe} runs both extensions alike.
+	 *
+	 * @param names       the names of the launchers to move; each launcher's POSIX form, batch form, or both move
+	 * @param image       the runtime-image directory whose {@code bin} folder holds the launchers and {@code java}
+	 * @param destination the folder that receives the launchers
+	 * @throws NullPointerException if {@code names}, {@code image} or {@code destination} are null
+	 * @throws IOException if a launcher has neither form, has an unexpected format, already exists in
+	 *                     {@code destination}, or cannot be moved
+	 */
+	public static void moveLaunchers(Set<String> names, Path image, Path destination) throws IOException
+	{
+		requireThat(names, "names").isNotNull();
+		requireThat(image, "image").isNotNull();
+		requireThat(destination, "destination").isNotNull();
+		Path bin = image.resolve("bin");
+		String runtime = destination.toAbsolutePath().normalize().relativize(bin.toAbsolutePath().normalize()).
+			toString();
+		String posixRuntime = runtime.replace('\\', '/');
+		String batchRuntime = runtime.replace('/', '\\');
+		Files.createDirectories(destination);
+		for (String name : names.stream().sorted().toList())
+		{
+			boolean moved = moveLauncher(bin.resolve(name), destination.resolve(name), "\"$DIR/java\"",
+				"\"$DIR/" + posixRuntime + "/java\"");
+			moved |= moveLauncher(bin.resolve(name + ".bat"), destination.resolve(name + ".cmd"), "\"%DIR%\\java\"",
+				"\"%DIR%\\" + batchRuntime + "\\java\"");
+			if (!moved)
+				throw new IOException("The runtime image has no launcher named " + name + ": " + bin);
+		}
+	}
+
+	/**
+	 * Moves one launcher and replaces its path to {@code java}.
+	 *
+	 * @param launcher    the launcher in the runtime image
+	 * @param destination the launcher's new path
+	 * @param java        the launcher's text that names the {@code java} beside it
+	 * @param replacement the text that names the image's {@code java} from the folder of {@code destination}
+	 * @return {@code false} if the image has no such launcher
+	 * @throws IOException if the launcher does not name {@code java}, {@code destination} already exists, or the
+	 *                     launcher cannot be moved
+	 */
+	private static boolean moveLauncher(Path launcher, Path destination, String java, String replacement)
+		throws IOException
+	{
+		if (Files.notExists(launcher))
+			return false;
+		String content = BoundedInput.readUtf8(launcher, MAXIMUM_LAUNCHER_BYTES, "jlink launcher");
+		if (!content.contains(java))
+			throw new IOException("Unexpected jlink launcher format: " + launcher);
+		Files.move(launcher, destination);
+		Files.writeString(destination, content.replace(java, replacement), UTF_8);
+		return true;
+	}
+
+	/**
 	 * Makes jlink launchers work from installation paths containing whitespace and in every locale, and gives each
 	 * launcher's JVM a private performance-data directory when Bubblewrap is available.
 	 * <p>

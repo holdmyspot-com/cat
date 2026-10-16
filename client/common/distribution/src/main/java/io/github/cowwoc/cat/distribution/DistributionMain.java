@@ -48,6 +48,12 @@ public final class DistributionMain
 			}
 
 			@Override
+			public Set<String> codexAgentLaunchers()
+			{
+				return DistributionMain.codexAgentLaunchers();
+			}
+
+			@Override
 			public ArtifactLayer codexPluginLayer(Path jar)
 			{
 				return DistributionMain.codexPluginLayer(jar);
@@ -218,7 +224,7 @@ public final class DistributionMain
 			new ArtifactLayer("common-rules", commonRules),
 			new ArtifactLayer("claude-plugin", claudePlugin, Set.of(), Set.of("hooks/session-end.sh")),
 			new ArtifactLayer("claude-rules", claudeRules)),
-			claudeImage, legalMaterials, List.of(commonInstallers, claudeInstallers),
+			claudeImage, claudeAgentLaunchers(), legalMaterials, List.of(commonInstallers, claudeInstallers),
 			runtimeDirectory.resolve("claude"));
 		Path codexRoot = artifactBuilder.build(List.of(new ArtifactLayer("common-agents", commonAgents),
 			new ArtifactLayer("common-plugin", commonPlugin, Set.of(), Set.of("hooks/session-start.sh",
@@ -230,7 +236,8 @@ public final class DistributionMain
 				"skills/git-rebase/SKILL.md", "skills/git-rewrite-history/SKILL.md", "skills/git-squash/SKILL.md",
 				"skills/git-commit-per-topic/SKILL.md", "skills/help/SKILL.md")),
 			codexPluginLayer(codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexImage,
-			legalMaterials, List.of(commonInstallers, codexInstallers), runtimeDirectory.resolve("codex"));
+			codexAgentLaunchers(), legalMaterials, List.of(commonInstallers, codexInstallers),
+			runtimeDirectory.resolve("codex"));
 		try (ToolScope scope = new ToolScope())
 		{
 			validateRuleDependencies(claudeRoot, codexRoot, projectRoot, scope.yaml());
@@ -382,17 +389,16 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Returns the layer of the Codex plugin's own resources, including the launchers that the Codex read-file rule tells
-	 * agents to run, the programs that commands run by {@code run-part} find first, and the launcher of the PostToolUse
-	 * hook.
+	 * Returns the layer of the Codex plugin's own resources, including the programs that commands run by
+	 * {@code run-part} find first and the launcher of the PostToolUse hook.
 	 *
 	 * @param jar the Codex plugin resource JAR
 	 * @return the layer
 	 */
 	static ArtifactLayer codexPluginLayer(Path jar)
 	{
-		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("bin/read-part", "bin/run-part",
-			"bin/run-part-overrides/rg", "hooks/post-tool-use.sh"));
+		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("client/run-part-overrides/rg",
+			"hooks/post-tool-use.sh"));
 	}
 
 	/**
@@ -442,6 +448,17 @@ public final class DistributionMain
 	}
 
 	/**
+	 * Returns the launchers of the Claude image that agents run, which the plugin holds in {@code bin/}. They include
+	 * {@code claude-runner}, which the Codex plugin's {@code claude-runner} skill runs from the Claude plugin.
+	 *
+	 * @return the launchers' names
+	 */
+	static Set<String> claudeAgentLaunchers()
+	{
+		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "claude-runner");
+	}
+
+	/**
 	 * Returns the launchers of the Codex image.
 	 *
 	 * @return the launchers
@@ -467,6 +484,16 @@ public final class DistributionMain
 				"io.github.cowwoc.cat.codex.CodexReadPart"),
 			new JlinkImageBuilder.Launcher("prompt-optimizer", "io.github.cowwoc.cat.codex.cli",
 				"io.github.cowwoc.cat.codex.optimizer.CodexPromptOptimizer")));
+	}
+
+	/**
+	 * Returns the launchers of the Codex image that agents run, which the plugin holds in {@code bin/}.
+	 *
+	 * @return the launchers' names
+	 */
+	static Set<String> codexAgentLaunchers()
+	{
+		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "run-part", "read-part");
 	}
 
 	/**

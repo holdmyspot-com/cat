@@ -386,9 +386,10 @@ public final class CodexWindowsInstallerTest
 			Path artifact = root.resolve(RELEASE_NAME);
 			Files.createDirectories(artifact.resolve(".codex-plugin"));
 			Files.writeString(artifact.resolve(".codex-plugin/plugin.json"), "{}\n");
-			Files.createDirectories(artifact.resolve("client/bin"));
+			Files.createDirectories(artifact.resolve("bin"));
+			Files.createDirectories(artifact.resolve("client"));
 			Files.writeString(artifact.resolve("client/VERSION"), "1.0\n");
-			Files.writeString(artifact.resolve("client/bin/plugin-info.bat"),
+			Files.writeString(artifact.resolve("bin/plugin-info.cmd"),
 				"@echo plugin-info>>\"%COMMAND_LOG%\"\r\n");
 			Files.createDirectories(artifact.resolve("install/migrations"));
 			Files.writeString(artifact.resolve("install/migrations/registry.tsv"),

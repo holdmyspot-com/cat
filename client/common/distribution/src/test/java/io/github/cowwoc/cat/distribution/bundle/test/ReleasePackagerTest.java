@@ -37,7 +37,7 @@ public final class ReleasePackagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-release-"));
-			Path plugin = Files.createDirectories(temporary.resolve("plugin/client/bin"));
+			Path plugin = Files.createDirectories(temporary.resolve("plugin/bin"));
 			Files.writeString(plugin.resolve("plugin-info"), "launcher").toFile().setExecutable(true, false);
 			Files.writeString(temporary.resolve("plugin/LICENSE.txt"), "license");
 			Files.writeString(temporary.resolve("plugin/NOTICE.txt"), "notice");
@@ -51,7 +51,7 @@ public final class ReleasePackagerTest
 				"entryNames").isTrue();
 			requireThat(entries.stream().allMatch(entry -> entry.getModTime().toInstant().toEpochMilli() == 0),
 				"entryTimestamps").isTrue();
-			requireThat(entries.stream().filter(entry -> entry.getName().endsWith("client/bin/plugin-info")).findFirst().
+			requireThat(entries.stream().filter(entry -> entry.getName().endsWith("/bin/plugin-info")).findFirst().
 				orElseThrow().getMode(), "pluginInfoMode").isEqualTo(0755);
 			requireThat(entries.stream().anyMatch(entry -> entry.getName().endsWith("LICENSE.txt")), "licenseFile").isTrue();
 			requireThat(entries.stream().anyMatch(entry -> entry.getName().endsWith("NOTICE.txt")), "noticeFile").isTrue();

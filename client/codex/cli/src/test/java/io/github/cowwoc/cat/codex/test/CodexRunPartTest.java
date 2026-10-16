@@ -35,6 +35,11 @@ public final class CodexRunPartTest
 	private static final CommandShell SHELL = CommandShell.current();
 	private static final Path READ_PART = Path.of("/plugin/bin").toAbsolutePath().resolve(SHELL.launcher("read-part"));
 	/**
+	 * The folder of the programs that a command finds before the caller's {@code PATH}, in a plugin that the tests do not
+	 * create.
+	 */
+	private static final Path OVERRIDES = Path.of("/plugin/client/run-part-overrides").toAbsolutePath();
+	/**
 	 * The line separator that the shell's commands end their lines with.
 	 */
 	private static final String EOL = System.lineSeparator();
@@ -212,8 +217,9 @@ public final class CodexRunPartTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-")).toAbsolutePath();
-			Path bin = Files.createDirectories(temporary.resolve("plugin").resolve("bin"));
-			Path override = Files.createDirectories(bin.resolve("run-part-overrides")).resolve("rg");
+			Path plugin = temporary.resolve("plugin");
+			Path overrides = Files.createDirectories(plugin.resolve("client/run-part-overrides"));
+			Path override = overrides.resolve("rg");
 			writeExecutable(override, "#!/bin/sh\n");
 			Path caller = Files.createDirectories(temporary.resolve("caller"));
 			Path callerRipgrep;
@@ -240,7 +246,7 @@ public final class CodexRunPartTest
 
 			Call call = runPart(script("printf '%s|%s\\n' \"$(command -v rg)\" \"${CAT_RUN_PART_OUTPUT-unset}\"",
 				"Write-Output \"$((Get-Command -Name rg).Source)|$env:CAT_RUN_PART_OUTPUT\""), false, OUTSIDE_PROJECT,
-				bin.resolve(SHELL.launcher("read-part")), environment);
+				plugin.resolve("bin").resolve(SHELL.launcher("read-part")), overrides, environment);
 
 			Matcher lastPart = LAST_PART.matcher(call.output());
 			requireThat(lastPart.find(), "lastPart").withContext(call.error(), "error").isTrue();
@@ -355,7 +361,7 @@ public final class CodexRunPartTest
 	private static Call runPart(String command, boolean terminal, Path workingDirectory,
 		Map<String, String> environment)
 	{
-		return runPart(command, terminal, workingDirectory, READ_PART, environment);
+		return runPart(command, terminal, workingDirectory, READ_PART, OVERRIDES, environment);
 	}
 
 	/**
@@ -365,16 +371,17 @@ public final class CodexRunPartTest
 	 * @param terminal {@code true} if standard input is a terminal
 	 * @param workingDirectory the folder that the command runs in
 	 * @param readPart the path of the plugin's {@code read-part} launcher
+	 * @param overrides the folder of the programs that the command finds before the caller's {@code PATH}
 	 * @param environment the environment
 	 * @return the call's streams and exit status
 	 */
 	private static Call runPart(String command, boolean terminal, Path workingDirectory, Path readPart,
-		Map<String, String> environment)
+		Path overrides, Map<String, String> environment)
 	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		int status = CodexRunPart.run(new String[0], new ByteArrayInputStream(command.getBytes(UTF_8)), terminal,
-			workingDirectory, SHELL, readPart, environment, output, new PrintStream(error, true, UTF_8));
+			workingDirectory, SHELL, readPart, overrides, environment, output, new PrintStream(error, true, UTF_8));
 		return new Call(output.toString(UTF_8), error.toString(UTF_8), status);
 	}
 

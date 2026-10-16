@@ -47,7 +47,8 @@ public final class PluginArtifactBuilderTest
 			Path common = jar(temporary.resolve("common.jar"), "common.txt", "common");
 			Path harness = jar(temporary.resolve("harness.jar"), "skills/help/SKILL.md", "harness");
 			Path runtime = Files.createDirectories(temporary.resolve("runtime/bin")).getParent();
-			Files.writeString(runtime.resolve("bin/plugin-info"), "launcher");
+			Files.writeString(runtime.resolve("bin/plugin-info"), "exec \"$DIR/java\" -m app/example.Main \"$@\"\n");
+			Files.writeString(runtime.resolve("bin/session-start"), "hook launcher");
 			Path legal = legalMaterials(temporary);
 			Path installers = Files.createDirectories(temporary.resolve("installers"));
 			Files.writeString(installers.resolve("install-claude.sh"), "claude installer");
@@ -58,15 +59,18 @@ public final class PluginArtifactBuilderTest
 
 			Path output = new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(
 				List.of(new ArtifactLayer("common", common),
-					new ArtifactLayer("harness", harness, Set.of("skills/help/SKILL.md"))), runtime, legal,
-				List.of(installers),
+					new ArtifactLayer("harness", harness, Set.of("skills/help/SKILL.md"))), runtime,
+				Set.of("plugin-info"), legal, List.of(installers),
 				temporary.resolve("output"));
 
 			requireThat(Files.readString(output.resolve("skills/help/SKILL.md")), "harnessSkill").isEqualTo("harness");
 			requireThat(Files.readString(output.resolve("client/VERSION")), "versionFile").isEqualTo(
 				PluginInfo.CAT_VERSION + "\n");
-			requireThat(Files.readString(output.resolve("client/bin/plugin-info")), "pluginInfoLauncher").isEqualTo(
-				"launcher");
+			requireThat(Files.readString(output.resolve("bin/plugin-info")), "pluginInfoLauncher").isEqualTo(
+				"exec \"$DIR/../client/bin/java\" -m app/example.Main \"$@\"\n");
+			requireThat(Files.exists(output.resolve("client/bin/plugin-info")), "runtimePluginInfoLauncher").isFalse();
+			requireThat(Files.readString(output.resolve("client/bin/session-start")), "hookLauncher").isEqualTo(
+				"hook launcher");
 			requireThat(Files.readString(output.resolve("LICENSE.txt")), "license").isEqualTo("license");
 			requireThat(Files.readString(output.resolve("NOTICE.txt")), "notice").isEqualTo("notice");
 			requireThat(Files.exists(output.resolve("LICENSE.md")), "repositoryLicense").isFalse();
@@ -381,8 +385,8 @@ public final class PluginArtifactBuilderTest
 		Path runtime = Files.createDirectories(temporary.resolve("runtime"));
 		Path legal = legalMaterials(temporary);
 		Path installers = Files.createDirectories(temporary.resolve("installers"));
-		return new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(layers, runtime, legal, List.of(installers),
-			temporary.resolve("output"));
+		return new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(layers, runtime, Set.of(), legal,
+			List.of(installers), temporary.resolve("output"));
 	}
 
 	/**

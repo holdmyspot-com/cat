@@ -66,7 +66,7 @@ create_test_artifact()
 {
 	harness="$1"
 	artifact="${TEST_ROOT}/${harness} artifact"
-	mkdir -p "${artifact}/.${harness}-plugin" "${artifact}/client/bin" "${artifact}/install/migrations"
+	mkdir -p "${artifact}/.${harness}-plugin" "${artifact}/bin" "${artifact}/client" "${artifact}/install/migrations"
 	if [ "${harness}" = codex ]; then
 		mkdir -p "${artifact}/agents/codex"
 		cat > "${artifact}/agents/codex/reviewer.toml" <<'SCRIPT'
@@ -79,11 +79,11 @@ SCRIPT
 	printf '{}\n' > "${artifact}/.${harness}-plugin/plugin.json"
 	printf '1.0\n' > "${artifact}/client/VERSION"
 	printf '# target-version<TAB>script-relative-to-this-directory\n' > "${artifact}/install/migrations/registry.tsv"
-	cat > "${artifact}/client/bin/plugin-info" <<'SCRIPT'
+	cat > "${artifact}/bin/plugin-info" <<'SCRIPT'
 #!/usr/bin/env sh
 printf 'plugin-info\n' >> "${COMMAND_LOG}"
 SCRIPT
-	chmod +x "${artifact}/client/bin/plugin-info"
+	chmod +x "${artifact}/bin/plugin-info"
 	printf '%s\n' "${artifact}"
 }
 

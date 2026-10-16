@@ -48,9 +48,7 @@ public final class CodexPluginExecutablesTest
 	{
 		return new Object[][]
 		{
-			{"bin/read-part"},
-			{"bin/run-part"},
-			{"bin/run-part-overrides/rg"},
+			{"client/run-part-overrides/rg"},
 			{"hooks/post-tool-use.sh"}
 		};
 	}
@@ -107,7 +105,7 @@ public final class CodexPluginExecutablesTest
 			Path legal = Files.createDirectories(temporary.resolve("legal"));
 			ArtifactLayer layer = DistributionMainSecrets.access().codexPluginLayer(jar);
 			Path artifact = new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(
-				List.of(layer), Files.createDirectories(temporary.resolve("runtime")),
+				List.of(layer), Files.createDirectories(temporary.resolve("runtime")), Set.of(),
 				legal, List.of(Files.createDirectories(temporary.resolve("installers"))), temporary.resolve("output"));
 
 			Path installed = artifact.resolve(path);

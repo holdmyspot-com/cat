@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.distribution.bundle.JlinkImageBuilder;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Exposes the inputs that {@link DistributionMain} assembles a release from.
@@ -27,6 +28,13 @@ public interface DistributionMainAccess
 	 * @return the launchers
 	 */
 	List<JlinkImageBuilder.Launcher> codexLaunchers();
+
+	/**
+	 * Returns the launchers of the Codex image that agents run, which the plugin holds in {@code bin/}.
+	 *
+	 * @return the launchers' names
+	 */
+	Set<String> codexAgentLaunchers();
 
 	/**
 	 * Returns the layer of the Codex plugin's own resources.

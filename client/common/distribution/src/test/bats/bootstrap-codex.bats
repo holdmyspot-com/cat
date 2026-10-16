@@ -32,7 +32,7 @@ load bootstrap-helpers
 @test "generated Codex plugin-info launcher reports its harness, version, and platform" {
 	expected_platform="$(current_platform)"
 
-	run "${GENERATED_RUNTIME_DIRECTORY}/codex/client/bin/plugin-info"
+	run "${GENERATED_RUNTIME_DIRECTORY}/codex/bin/plugin-info"
 
 	[ "${status}" -eq 0 ]
 	[ "${output}" = "harness=codex

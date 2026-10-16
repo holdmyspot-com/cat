@@ -158,9 +158,9 @@ function Assert-CatArtifact([string] $Artifact)
 	{
 		throw "CAT artifact version must be $CatVersion"
 	}
-	if (-not (Test-Path -LiteralPath (Join-Path $Artifact 'client\bin\plugin-info.bat') -PathType Leaf))
+	if (-not (Test-Path -LiteralPath (Join-Path $Artifact 'bin\plugin-info.cmd') -PathType Leaf))
 	{
-		throw 'CAT artifact is missing the plugin-info.bat launcher; install the windows-x64 release'
+		throw 'CAT artifact is missing the plugin-info.cmd launcher; install the windows-x64 release'
 	}
 }
 
@@ -357,7 +357,7 @@ try
 
 	Invoke-CatProgram 'codex' @('plugin', 'marketplace', 'add', $marketplaceRoot)
 	Invoke-CatProgram 'codex' @('plugin', 'add', 'cat@cat')
-	Invoke-CatProgram (Join-Path $plugin 'client\bin\plugin-info.bat') @()
+	Invoke-CatProgram (Join-Path $plugin 'bin\plugin-info.cmd') @()
 }
 finally
 {

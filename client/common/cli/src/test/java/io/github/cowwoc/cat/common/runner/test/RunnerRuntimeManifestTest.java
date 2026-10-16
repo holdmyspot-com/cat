@@ -68,6 +68,27 @@ public final class RunnerRuntimeManifestTest
 	}
 
 	/**
+	 * Rejects a package whose launcher in {@code bin/}, which agents run, changed after its manifest was written.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*does not match.*")
+	public void rejectsChangedAgentLauncher() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("runner-runtime-manifest"));
+			write(artifact, "client/bin/runner", "runtime v1\n");
+			Path launcher = write(artifact, "bin/plugin-info", "launcher v1\n");
+			write(artifact, ".codex-plugin/plugin.json", "{}\n");
+			RunnerRuntimeManifest.write(artifact);
+
+			Files.writeString(launcher, "launcher v2\n");
+			RunnerRuntimeManifest.fingerprint(artifact);
+		}
+	}
+
+	/**
 	 * Verifies jlink-generated runtime bytes are verified within each package without splitting equivalent builds into
 	 * different evaluation identities.
 	 *

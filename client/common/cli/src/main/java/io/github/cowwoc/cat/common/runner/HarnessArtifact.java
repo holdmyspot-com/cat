@@ -39,10 +39,11 @@ public final class HarnessArtifact
 	}
 
 	/**
-	 * Validates a complete unpacked plugin directory, built for a platform, for a caller-supplied plugin manifest. On
-	 * Windows, the required launchers are the batch launchers {@code client/bin/<name>.bat}, which {@code cmd.exe} and
-	 * PowerShell run, because the Codex image there holds no POSIX launchers. Elsewhere, they are the executable POSIX
-	 * launchers {@code client/bin/<name>}.
+	 * Validates a complete unpacked plugin directory, built for a platform, for a caller-supplied plugin manifest. The
+	 * required launchers are {@code bin/plugin-info}, which agents run, and the hook launcher
+	 * {@code client/bin/session-start}. On Windows, they are the batch launchers {@code bin/plugin-info.cmd} and
+	 * {@code client/bin/session-start.bat}, which {@code cmd.exe} and PowerShell run, because the Codex image there holds
+	 * no POSIX launchers. Elsewhere, they are the executable POSIX launchers.
 	 *
 	 * @param root the unpacked plugin directory
 	 *
@@ -85,13 +86,18 @@ public final class HarnessArtifact
 			throw new IOException("Artifact manifest path resolves outside the artifact directory: " + manifestPath +
 				". Use a relative path below the artifact directory.");
 		}
-		String launcherExtension;
+		Path pluginInfo;
+		Path sessionStart;
 		if (platform.isWindows())
-			launcherExtension = ".bat";
+		{
+			pluginInfo = normalized.resolve("bin/plugin-info.cmd");
+			sessionStart = normalized.resolve("client/bin/session-start.bat");
+		}
 		else
-			launcherExtension = "";
-		Path pluginInfo = normalized.resolve("client/bin/plugin-info" + launcherExtension);
-		Path sessionStart = normalized.resolve("client/bin/session-start" + launcherExtension);
+		{
+			pluginInfo = normalized.resolve("bin/plugin-info");
+			sessionStart = normalized.resolve("client/bin/session-start");
+		}
 		if (!Files.isRegularFile(version, NOFOLLOW_LINKS) ||
 			!Files.isRegularFile(manifest, NOFOLLOW_LINKS) ||
 			!Files.isRegularFile(pluginInfo, NOFOLLOW_LINKS) ||

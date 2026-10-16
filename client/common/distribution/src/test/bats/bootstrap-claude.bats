@@ -18,7 +18,7 @@ load bootstrap-helpers
 @test "generated Claude plugin-info launcher reports its harness, version, and platform" {
 	expected_platform="$(current_platform)"
 
-	run "${GENERATED_RUNTIME_DIRECTORY}/claude/client/bin/plugin-info"
+	run "${GENERATED_RUNTIME_DIRECTORY}/claude/bin/plugin-info"
 
 	[ "${status}" -eq 0 ]
 	[ "${output}" = "harness=claude

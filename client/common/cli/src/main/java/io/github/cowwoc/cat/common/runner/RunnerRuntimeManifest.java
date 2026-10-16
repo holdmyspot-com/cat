@@ -32,7 +32,7 @@ public final class RunnerRuntimeManifest
 	 */
 	public static final Path PATH = Path.of("client/runner-runtime.manifest");
 	private static final String HEADER = "CAT runner runtime manifest v2";
-	private static final Set<Path> DIRECTORY_ROOTS = Set.of(Path.of("client"), Path.of("hooks"));
+	private static final Set<Path> DIRECTORY_ROOTS = Set.of(Path.of("bin"), Path.of("client"), Path.of("hooks"));
 	private static final Set<Path> FILE_ROOTS = Set.of(Path.of(".claude-plugin/plugin.json"),
 		Path.of(".codex-plugin/plugin.json"));
 

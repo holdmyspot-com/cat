@@ -2,6 +2,7 @@
 
 # Tests the template that every generated jlink launcher shares: a launcher runs its program from a runtime path that
 # contains spaces, through Bubblewrap or directly, and Java can name a file that is not ASCII in the caller's C locale.
+# The launchers that it runs are in the plugin's bin folder, so they also start the Java runtime in its client folder.
 
 load bootstrap-helpers
 
@@ -12,12 +13,12 @@ load bootstrap-helpers
 	file="${TEST_ROOT}/café.txt"
 	printf 'first\n' > "${file}"
 
-	run env PATH="${FAKE_BIN}:${PATH}" LC_ALL=C LANG=C "${runtime}/client/bin/plugin-info"
+	run env PATH="${FAKE_BIN}:${PATH}" LC_ALL=C LANG=C "${runtime}/bin/plugin-info"
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == "harness=codex"$'\n'* ]]
 
-	run env -u CODEX_THREAD_ID LC_ALL=C LANG=C "${runtime}/client/bin/read-part" "${file}"
+	run env -u CODEX_THREAD_ID LC_ALL=C LANG=C "${runtime}/bin/read-part" "${file}"
 
 	[ "${status}" -eq 0 ]
 	[ "${output}" = "$(printf 'first\n[End of %s]' "${file}")" ]

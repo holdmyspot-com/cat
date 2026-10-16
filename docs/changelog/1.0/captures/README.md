@@ -35,6 +35,6 @@ client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml verify
   --output <events> --model gpt-5.6-sol --keep-run --install-cat
 ```
 
-Use the analogous `claude-runner`, `claude` artifact, and `sonnet` model for Claude. Keep each successful run with
-`--keep-run`, verify the Base plugin inventory is empty before accepting the capture, and copy only the safe files in
-this directory into version control.
+For Claude, run the `claude` artifact's `bin/claude-runner` analogously, with the `sonnet` model. Keep each successful
+run with `--keep-run`, verify the Base plugin inventory is empty before accepting the capture, and copy only the safe
+files in this directory into version control.

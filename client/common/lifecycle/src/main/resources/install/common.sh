@@ -266,7 +266,7 @@ cat_validate_artifact()
 		echo "CAT artifact version must be ${CAT_VERSION}" >&2
 		exit 1
 	}
-	[ -x "${cat_artifact_directory}/client/bin/plugin-info" ] || {
+	[ -x "${cat_artifact_directory}/bin/plugin-info" ] || {
 		echo "CAT artifact is missing the executable plugin-info launcher" >&2
 		exit 1
 	}

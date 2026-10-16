@@ -55,7 +55,11 @@ capture_one()
 	filename="$4"
 	mode="$5"
 	staging_directory="$6"
-	runner="${runtime}/${harness}/client/bin/${harness}-runner"
+	# Agents run claude-runner, so the Claude plugin holds it in bin/; codex-runner stays with the runtime in client/bin/
+	runner="${runtime}/codex/client/bin/codex-runner"
+	if [ "${harness}" = claude ]; then
+		runner="${runtime}/claude/bin/claude-runner"
+	fi
 	run_temporary_root="${temporary_root}"
 	if [ "${harness}" = claude ]; then
 		# Claude's Bubblewrap masks ancestor Git hooks; a checkout-local run can make a missing mask target abort Bash.

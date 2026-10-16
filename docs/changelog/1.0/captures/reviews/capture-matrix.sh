@@ -25,7 +25,11 @@ capture_one()
 	harness="$1"
 	mode="$2"
 	concern="$3"
-	runner="${runtime}/${harness}/client/bin/${harness}-runner"
+	# Agents run claude-runner, so the Claude plugin holds it in bin/; codex-runner stays with the runtime in client/bin/
+	runner="${runtime}/codex/client/bin/codex-runner"
+	if [ "${harness}" = claude ]; then
+		runner="${runtime}/claude/bin/claude-runner"
+	fi
 	output="${capture_root}/outputs/${harness}-${mode}-${concern}.events.jsonl"
 	run_root="${capture_root}/runs/${harness}-${mode}-${concern}"
 	project="${run_root}/project"

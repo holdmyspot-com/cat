@@ -1,7 +1,0 @@
-#!/usr/bin/env sh
-# Starts CAT's client/bin/read-part from the installed plugin that contains this launcher. Agents run read-part from the
-# plugin's bin folder, and the Java runtime that runs it lives in the plugin's client folder.
-set -eu
-
-plugin_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-exec "${plugin_dir}/client/bin/read-part" "$@"

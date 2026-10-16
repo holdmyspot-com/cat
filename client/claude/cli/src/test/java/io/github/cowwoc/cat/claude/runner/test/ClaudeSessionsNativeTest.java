@@ -136,12 +136,13 @@ public final class ClaudeSessionsNativeTest
 	private static Path createArtifact(Path artifact) throws IOException
 	{
 		Files.createDirectories(artifact.resolve(".claude-plugin"));
+		Files.createDirectories(artifact.resolve("bin"));
 		Files.createDirectories(artifact.resolve("client/bin"));
 		Files.writeString(artifact.resolve(".claude-plugin/plugin.json"), "{}\n", UTF_8);
 		Files.writeString(artifact.resolve("client/VERSION"), PluginInfo.CAT_VERSION + "\n", UTF_8);
-		for (String launcher : List.of("plugin-info", "session-start"))
+		for (String launcher : List.of("bin/plugin-info", "client/bin/session-start"))
 		{
-			Path file = artifact.resolve("client/bin").resolve(launcher);
+			Path file = artifact.resolve(launcher);
 			Files.writeString(file, "#!/bin/sh\nexit 0\n", UTF_8);
 			Files.setPosixFilePermissions(file, Set.of(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE));
 		}

@@ -57,6 +57,9 @@ public final class PluginArtifactBuilder
 	 * @param resourceLayers resource JARs extracted into the artifact in list order; a later JAR can replace an earlier
 	 *        resource only when its {@link ArtifactLayer#overrides()} declares the path
 	 * @param runtimeDirectory the jlink-generated Java runtime directory copied to {@code client/}
+	 * @param agentLaunchers the names of the runtime's launchers that agents run, which move from {@code client/bin/}
+	 *        to {@code bin/}; the other launchers, such as the harness's hooks, stay in {@code client/bin/} with
+	 *        {@code java}
 	 * @param legalMaterialsDirectory the directory containing generated {@code LICENSE.txt}, {@code NOTICE.txt}, and
 	 *        {@code licenses/} copied to the top level of the assembled plugin directory
 	 * @param installerDirectories ordered directories of common and harness-specific installer resources copied to
@@ -64,16 +67,17 @@ public final class PluginArtifactBuilder
 	 * @param artifactDirectory the new directory that receives the assembled artifact; unlike
 	 *        {@code installerDirectories}, it is an output rather than an input
 	 * @return {@code artifactDirectory}
-	 * @throws NullPointerException if {@code resourceLayers}, {@code runtimeDirectory}, {@code legalMaterialsDirectory},
-	 *         {@code installerDirectories}, or {@code artifactDirectory} are null
-	 * @throws IOException if the artifact cannot be assembled
+	 * @throws NullPointerException if {@code resourceLayers}, {@code runtimeDirectory}, {@code agentLaunchers},
+	 *         {@code legalMaterialsDirectory}, {@code installerDirectories}, or {@code artifactDirectory} are null
+	 * @throws IOException if the artifact cannot be assembled, or the runtime lacks one of {@code agentLaunchers}
 	 */
-	public Path build(List<ArtifactLayer> resourceLayers, Path runtimeDirectory, Path legalMaterialsDirectory,
-		List<Path> installerDirectories, Path artifactDirectory)
+	public Path build(List<ArtifactLayer> resourceLayers, Path runtimeDirectory, Set<String> agentLaunchers,
+		Path legalMaterialsDirectory, List<Path> installerDirectories, Path artifactDirectory)
 		throws IOException
 	{
 		requireThat(resourceLayers, "resourceLayers").isNotNull();
 		requireThat(runtimeDirectory, "runtimeDirectory").isNotNull();
+		requireThat(agentLaunchers, "agentLaunchers").isNotNull();
 		requireThat(legalMaterialsDirectory, "legalMaterialsDirectory").isNotNull();
 		requireThat(installerDirectories, "installerDirectories").isNotNull();
 		requireThat(artifactDirectory, "artifactDirectory").isNotNull();
@@ -86,8 +90,10 @@ public final class PluginArtifactBuilder
 			extractLayer(layer, artifactDirectory, owners);
 		resolveSkillIncludes(artifactDirectory);
 		resolveAgentIncludes(artifactDirectory);
-		copyTree(runtimeDirectory, artifactDirectory.resolve("client"));
-		Files.writeString(artifactDirectory.resolve("client/VERSION"), version + "\n");
+		Path client = artifactDirectory.resolve("client");
+		copyTree(runtimeDirectory, client);
+		JlinkImageBuilder.moveLaunchers(agentLaunchers, client, artifactDirectory.resolve("bin"));
+		Files.writeString(client.resolve("VERSION"), version + "\n");
 		copyTree(legalMaterialsDirectory, artifactDirectory);
 		Path installDirectory = artifactDirectory.resolve("install");
 		for (Path installerDirectory : installerDirectories)

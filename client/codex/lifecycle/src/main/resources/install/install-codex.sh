@@ -39,4 +39,4 @@ cp "${MARKETPLACE_METADATA}" "${MARKETPLACE_ROOT}/.agents/plugins/marketplace.js
 
 codex plugin marketplace add "${MARKETPLACE_ROOT}"
 codex plugin add cat@cat
-"${MARKETPLACE_ROOT}/plugins/cat/client/bin/plugin-info"
+"${MARKETPLACE_ROOT}/plugins/cat/bin/plugin-info"

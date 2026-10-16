@@ -154,6 +154,57 @@ public final class JlinkImageBuilderTest
 	}
 
 	/**
+	 * Verifies that a moved launcher, in both forms, starts the image's Java from its new folder, that its batch form
+	 * takes the extension {@code .cmd}, and that the launchers that do not move stay in the image.
+	 */
+	@Test
+	public void movedLaunchersStartImageJava() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path image = plugin.resolve("client");
+			JlinkImageBuilderSecrets.access().create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),
+				Set.of("app"), List.of(new JlinkImageBuilder.Launcher("read-part", "app", "example.Main"),
+					new JlinkImageBuilder.Launcher("session-start", "app", "example.Hook")), image);
+
+			JlinkImageBuilder.moveLaunchers(Set.of("read-part"), image, plugin.resolve("bin"));
+
+			requireThat(Files.readString(plugin.resolve("bin/read-part")), "posixLauncher").
+				contains("\nexec \"$DIR/../client/bin/java\" ").doesNotContain("\"$DIR/java\"");
+			requireThat(Files.readString(plugin.resolve("bin/read-part.cmd")), "batchLauncher").
+				contains("\"%DIR%\\..\\client\\bin\\java\" %JLINK_VM_OPTIONS% -m app/example.Main %*\r\n");
+			requireThat(Files.exists(image.resolve("bin/read-part")), "imagePosixLauncher").isFalse();
+			requireThat(Files.exists(image.resolve("bin/read-part.bat")), "imageBatchLauncher").isFalse();
+			requireThat(image.resolve("bin/session-start"), "keptLauncher").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that moving a launcher that the image lacks fails.
+	 */
+	@Test
+	public void moveLaunchersRequiresLauncher() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path image = plugin.resolve("client");
+			JlinkImageBuilderSecrets.access().create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),
+				Set.of("app"), List.of(new JlinkImageBuilder.Launcher("read-part", "app", "example.Main")), image);
+			try
+			{
+				JlinkImageBuilder.moveLaunchers(Set.of("run-part"), image, plugin.resolve("bin"));
+				throw new AssertionError("Expected a failure for the missing launcher");
+			}
+			catch (IOException failure)
+			{
+				requireThat(failure.getMessage(), "failureMessage").contains("no launcher named run-part");
+			}
+		}
+	}
+
+	/**
 	 * Verifies jlink diagnostics are included in failures.
 	 */
 	@Test

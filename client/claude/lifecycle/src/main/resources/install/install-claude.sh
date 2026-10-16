@@ -30,4 +30,4 @@ cp "${MARKETPLACE_METADATA}" "${MARKETPLACE_ROOT}/.claude-plugin/marketplace.jso
 
 claude plugin marketplace add "${MARKETPLACE_ROOT}"
 claude plugin install cat@cat
-"${MARKETPLACE_ROOT}/plugins/cat/client/bin/plugin-info"
+"${MARKETPLACE_ROOT}/plugins/cat/bin/plugin-info"

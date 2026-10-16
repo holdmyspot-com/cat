@@ -14,7 +14,7 @@ Run only an installed, version-compatible Claude CAT artifact. Resolve it from t
 - The marketplace root is the value of `CAT_CLAUDE_MARKETPLACE_ROOT` or, when that is unset or empty,
   `plugins/cat-marketplace` in the Claude configuration directory.
 - The artifact, `<claude-artifact>`, is `plugins/cat` in the marketplace root.
-- The runner, `<claude-runner>`, is the launcher `client/bin/claude-runner` in the artifact.
+- The runner, `<claude-runner>`, is the launcher `bin/claude-runner` in the artifact.
 
 Before a run, require all of these exact prerequisites:
 

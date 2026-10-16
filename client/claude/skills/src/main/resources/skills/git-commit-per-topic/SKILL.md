@@ -3,7 +3,7 @@ description: Use when the user asks to rewrite history so each commit introduces
 allowed-tools: [Bash]
 ---
 
-Use `client/bin/git-topic-replay` in CAT's installed plugin directory, two levels above this skill's directory, by its
+Use `bin/git-topic-replay` in CAT's installed plugin directory, two levels above this skill's directory, by its
 absolute path.
 
 <!-- cat:include ../shared-lazy-body.md -->
