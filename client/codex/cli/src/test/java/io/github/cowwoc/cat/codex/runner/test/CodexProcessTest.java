@@ -259,6 +259,22 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * Verifies that when the app-server ends before it answers {@code initialize}, the failure reports what it printed
+	 * on its standard error, which names the cause, such as a launcher that cannot find {@code node}.
+	 *
+	 * @throws IOException if the app-server's process cannot be closed
+	 */
+	@Test(timeOut = 10_000, expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Codex app-server ended before responding to request 1: " +
+			"'node' is not recognized as an internal or external command\\.")
+	public void reportsStandardErrorWhenStartupEnds() throws IOException
+	{
+		AppServer server = new AppServer(NO_ANSWER, NO_ANSWER).
+			endingAtStartup("'node' is not recognized as an internal or external command.\r\n");
+		server.start().close();
+	}
+
+	/**
 	 * Verifies that notifications Codex prints during start-up, such as {@code thread/started}, reach the first
 	 * turn's listener ahead of that turn's own lines, that the first turn's archived events are those same lines,
 	 * and that a later turn's listener does not receive the start-up notifications again.
@@ -537,6 +553,7 @@ public final class CodexProcessTest
 		private volatile boolean closesOutputAfterTurnStart;
 		private volatile boolean notifiesThreadStarted;
 		private volatile String threadStartError = "";
+		private volatile boolean endsAtStartup;
 
 		/**
 		 * Creates an app-server that has not started.
@@ -585,6 +602,19 @@ public final class CodexProcessTest
 		private AppServer refusingThreadStart(String message)
 		{
 			threadStartError = message;
+			return this;
+		}
+
+		/**
+		 * Makes the app-server print text on its standard error and end without answering {@code initialize}.
+		 *
+		 * @param error the text
+		 * @return this app-server
+		 */
+		private AppServer endingAtStartup(String error)
+		{
+			process.printError(error);
+			endsAtStartup = true;
 			return this;
 		}
 
@@ -694,8 +724,16 @@ public final class CodexProcessTest
 			long id = request.path("id").asLong(0);
 			switch (request.path("method").asString(""))
 			{
-				case "initialize" -> process.emit("{\"id\":" + id + ",\"result\":{\"userAgent\":\"codex/0.147.0\"," +
-					"\"codexHome\":\"/codex-home\",\"platformFamily\":\"unix\",\"platformOs\":\"linux\"}}");
+				case "initialize" ->
+				{
+					if (endsAtStartup)
+					{
+						process.exit();
+						return;
+					}
+					process.emit("{\"id\":" + id + ",\"result\":{\"userAgent\":\"codex/0.147.0\"," +
+						"\"codexHome\":\"/codex-home\",\"platformFamily\":\"unix\",\"platformOs\":\"linux\"}}");
+				}
 				case "thread/start" ->
 				{
 					if (threadStartError.isEmpty())

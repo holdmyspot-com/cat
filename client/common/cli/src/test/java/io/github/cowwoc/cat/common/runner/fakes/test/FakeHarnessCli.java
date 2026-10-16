@@ -56,6 +56,7 @@ public final class FakeHarnessCli extends Process
 	private final Consumer<String> requestHandler;
 	private final CountDownLatch exited = new CountDownLatch(1);
 	private volatile boolean exitsWhenAwaited;
+	private volatile byte[] standardError = new byte[0];
 	private final OutputStream standardInput = new ChildInput();
 	private final InputStream outputStream = new ChildOutput();
 
@@ -79,6 +80,17 @@ public final class FakeHarnessCli extends Process
 	{
 		for (String line : lines)
 			standardOutput.add((line + "\n").getBytes(UTF_8));
+	}
+
+	/**
+	 * Sets the text that the child prints on its standard error, which a caller reads from the stream that
+	 * {@link #getErrorStream()} returns after this call.
+	 *
+	 * @param text the text
+	 */
+	public void printError(String text)
+	{
+		standardError = text.getBytes(UTF_8);
 	}
 
 	/**
@@ -130,7 +142,7 @@ public final class FakeHarnessCli extends Process
 	@Override
 	public InputStream getErrorStream()
 	{
-		return new ByteArrayInputStream(new byte[0]);
+		return new ByteArrayInputStream(standardError);
 	}
 
 	@Override

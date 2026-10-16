@@ -586,7 +586,11 @@ public final class CodexProcess implements HarnessProcess
 			startupEvents.append(line).append('\n');
 			line = output.readLine();
 		}
-		throw new IOException("Codex app-server ended before responding to request " + requestId);
+		String diagnostic = "Codex app-server ended before responding to request " + requestId;
+		String error = standardError.await().strip();
+		if (!error.isEmpty())
+			diagnostic += ": " + error;
+		throw new IOException(diagnostic);
 	}
 
 	/**
