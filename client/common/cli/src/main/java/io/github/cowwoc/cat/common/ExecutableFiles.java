@@ -10,9 +10,11 @@ import java.util.Objects;
 /**
  * Runs local executable files when a caller must execute generated or recently replaced content.
  * <p>
- * A concurrent process launch can inherit the writer's descriptor and make the executable briefly unavailable with
- * {@code ETXTBSY}. This boundary retries only that transient start failure with exponential backoff totaling at most
- * 875 milliseconds; it does not own file writing.
+ * While a JVM writes an executable file, a child process that another thread starts inherits the open file until the
+ * child closes its inherited descriptors. Until then, Linux refuses to run the file and reports {@code ETXTBSY}
+ * ("Text file busy"), whether the JVM or another process, such as a shell, tries to run it. This boundary retries only
+ * that transient start failure, with exponential backoff totaling at most 875 milliseconds, when it starts the file
+ * itself; it does not own file writing. A file that a separate process writes cannot be inherited this way.
  *
  * @see <a href="https://bugs.openjdk.org/browse/JDK-8068370">JDK-8068370</a>.
  */

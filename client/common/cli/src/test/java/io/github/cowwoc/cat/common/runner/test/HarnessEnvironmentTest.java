@@ -104,11 +104,18 @@ public final class HarnessEnvironmentTest
 			}
 			else
 			{
-				// A child process that another test starts while this one writes a program inherits the open file, so
-				// the shell's attempt to run the program fails with "Text file busy". A link to an existing program needs
-				// no write.
-				Files.createSymbolicLink(folder.resolve("cat-tool"), Path.of("/bin/echo"));
-				command = List.of("sh", "-c", "cat-tool found");
+				// A separate process writes the program, so that another test's launch cannot make it busy; see
+				// ExecutableFiles
+				ProcessBuilder writing = new ProcessBuilder("sh", "-c",
+					"printf '#!/bin/sh\\necho found\\n' > \"$1\" && chmod +x \"$1\"", "sh",
+					folder.resolve("cat-tool").toString()).redirectErrorStream(true);
+				try (Process writer = writing.start())
+				{
+					writer.getOutputStream().close();
+					String written = new String(writer.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+					requireThat(writer.waitFor(), "writerStatus").withContext(written, "output").isEqualTo(0);
+				}
+				command = List.of("sh", "-c", "cat-tool");
 			}
 			Map<String, String> source = new HashMap<>();
 			for (Map.Entry<String, String> entry : System.getenv().entrySet())
