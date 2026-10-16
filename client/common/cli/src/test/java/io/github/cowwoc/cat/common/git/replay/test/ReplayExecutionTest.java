@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
@@ -75,7 +76,7 @@ public final class ReplayExecutionTest
 			String rewrittenTip = new ReplayExecution(git, new History(repository, git), manifests, patches).
 				execute(manifestFile, manifest);
 
-			assertCommittedOutputs(git, base, sources.getLast().hash(), rewrittenTip, branch);
+			assertCommittedOutputs(git, base, sources, rewrittenTip, branch);
 		}
 	}
 
@@ -92,13 +93,16 @@ public final class ReplayExecutionTest
 	{
 		Files.writeString(repository.resolve(FEATURE_PATH), "original\n");
 		Files.writeString(repository.resolve(INVALID_TEST_PATH), "claims runtime behavior but reads a manifest\n");
-		SourceSnapshot feature = commitSource(git, base, History.EMPTY_TREE, "test: feature");
+		SourceSnapshot feature = commitSource(git, base, History.EMPTY_TREE, "test: feature", "Feature Author",
+			"2001-02-03T04:05:06+07:00");
 		Files.writeString(repository.resolve(FEATURE_PATH), "corrected\n");
 		Files.delete(repository.resolve(INVALID_TEST_PATH));
 		Files.writeString(repository.resolve(ROUTING_PATH), ROUTING_CONTENT);
-		SourceSnapshot correction = commitSource(git, feature.hash(), feature.tree(), "test: correction and routing");
+		SourceSnapshot correction = commitSource(git, feature.hash(), feature.tree(), "test: correction and routing",
+			"Correction Author", "2002-03-04T05:06:07-08:00");
 		Files.writeString(repository.resolve(FEATURE_PATH), DOCUMENTED_FEATURE);
-		SourceSnapshot documentation = commitSource(git, correction.hash(), correction.tree(), "test: documentation");
+		SourceSnapshot documentation = commitSource(git, correction.hash(), correction.tree(), "test: documentation",
+			"Documentation Author", "2003-04-05T06:07:08+09:30");
 		git.lines("update-ref", "HEAD", documentation.hash());
 		return List.of(feature, correction, documentation);
 	}
@@ -110,14 +114,19 @@ public final class ReplayExecutionTest
 	 * @param parent the preceding source commit
 	 * @param beforeTree the preceding source tree
 	 * @param subject the source commit subject
+	 * @param author the name of the source commit's author, which also names the author's email address
+	 * @param date when the author wrote the source commit, in ISO 8601 format
 	 * @return the created source snapshot without an additional history read
 	 * @throws IOException if Git cannot capture the files or create the commit
 	 */
-	private SourceSnapshot commitSource(Git git, String parent, String beforeTree, String subject) throws IOException
+	private SourceSnapshot commitSource(Git git, String parent, String beforeTree, String subject, String author,
+		String date) throws IOException
 	{
 		git.lines("add", "--all");
 		String tree = git.lines("write-tree").getFirst();
-		String source = git.lines("commit-tree", tree, "-p", parent, "-m", subject).getFirst();
+		Map<String, String> identity = Map.of("GIT_AUTHOR_NAME", author,
+			"GIT_AUTHOR_EMAIL", author.replace(' ', '.') + "@example.invalid", "GIT_AUTHOR_DATE", date);
+		String source = git.lines(identity, "commit-tree", tree, "-p", parent, "-m", subject).getFirst();
 		return new SourceSnapshot(source, beforeTree, tree);
 	}
 
@@ -199,18 +208,20 @@ public final class ReplayExecutionTest
 	}
 
 	/**
-	 * Verifies the actual created commits, their file bytes, the advanced branch, and the unchanged same-name tag.
+	 * Verifies the actual created commits, their authors, their file bytes, the advanced branch, and the unchanged
+	 * same-name tag.
 	 *
 	 * @param git Git access for the replayed repository
 	 * @param base the unchanged parent of the first replacement commit
-	 * @param sourceTip the tag's original source commit
+	 * @param sources the three source snapshots, in chronological order
 	 * @param rewrittenTip the final replacement commit returned by replay
 	 * @param branch the current branch name shared by the tag
 	 * @throws IOException if Git cannot read the resulting commits or references
 	 */
-	private void assertCommittedOutputs(Git git, String base, String sourceTip, String rewrittenTip, String branch)
-		throws IOException
+	private void assertCommittedOutputs(Git git, String base, List<SourceSnapshot> sources, String rewrittenTip,
+		String branch) throws IOException
 	{
+		String sourceTip = sources.getLast().hash();
 		List<String> commits = git.lines("log", "--reverse", "--format=%H%x09%P%x09%s", base + "..HEAD");
 		requireThat(commits.size(), "replacementCount").isEqualTo(2);
 		String[] feature = commits.getFirst().split("\t", 3);
@@ -222,6 +233,12 @@ public final class ReplayExecutionTest
 		requireThat(routing[0], "lastReplacement").isEqualTo(rewrittenTip);
 		requireThat(git.lines("rev-parse", "HEAD").getFirst(), "branchTip").isEqualTo(rewrittenTip);
 		requireThat(git.lines("rev-parse", "refs/tags/" + branch).getFirst(), "tagTip").isEqualTo(sourceTip);
+		List<String> authors = git.lines("show", "-s", "--format=%an%x09%ae%x09%aI", feature[0], routing[0],
+			sources.getFirst().hash(), sources.get(1).hash());
+		requireThat(authors.get(2), "featureSourceAuthor").
+			isEqualTo("Feature Author\tFeature.Author@example.invalid\t2001-02-03T04:05:06+07:00");
+		requireThat(authors.getFirst(), "featureAuthor").isEqualTo(authors.get(2));
+		requireThat(authors.get(1), "routingAuthor").isEqualTo(authors.get(3));
 
 		requireThat(new String(git.bytes("show", feature[0] + ":" + FEATURE_PATH), UTF_8), "featureOutputBytes").
 			isEqualTo(DOCUMENTED_FEATURE);
