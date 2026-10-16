@@ -17,9 +17,10 @@ public final class HarnessEnvironment
 	/**
 	 * Copies only generic operating-system variables and removes CAT/harness home state.
 	 * <p>
-	 * On Windows, the copy also holds {@code USERPROFILE}, {@code TEMP} and {@code TMP}. Windows programs read the
-	 * user's home directory from {@code USERPROFILE}, and a program without {@code TEMP} and {@code TMP} puts its
-	 * temporary files in the Windows directory, which a user cannot write.
+	 * On Windows, the copy also holds {@code USERPROFILE}, {@code TEMP}, {@code TMP} and {@code PATHEXT}. Windows
+	 * programs read the user's home directory from {@code USERPROFILE}; a program without {@code TEMP} and {@code TMP}
+	 * puts its temporary files in the Windows directory, which a user cannot write; and PowerShell finds a program by
+	 * its name without an extension only with an extension that {@code PATHEXT} lists.
 	 *
 	 * @param source the host environment
 	 *
@@ -39,6 +40,7 @@ public final class HarnessEnvironment
 			copy(source, result, "USERPROFILE");
 			copy(source, result, "TEMP");
 			copy(source, result, "TMP");
+			copy(source, result, "PATHEXT");
 		}
 		return Map.copyOf(result);
 	}

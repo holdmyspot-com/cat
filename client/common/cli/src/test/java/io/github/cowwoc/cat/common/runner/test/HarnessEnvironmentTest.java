@@ -1,9 +1,12 @@
 package io.github.cowwoc.cat.common.runner.test;
 
 import io.github.cowwoc.cat.common.Platform;
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.HarnessEnvironment;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -73,6 +76,53 @@ public final class HarnessEnvironmentTest
 			process.getOutputStream().close();
 			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 			requireThat(process.waitFor(), "status").withContext(output, "output").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Verifies that a shell started with the scrubbed environment runs a program that it finds on the {@code PATH} by
+	 * the program's name. On Windows, PowerShell, which Codex runs commands in, finds a program by its name without an
+	 * extension only with an extension that {@code PATHEXT} lists.
+	 *
+	 * @throws IOException          if the program cannot be written or started
+	 * @throws InterruptedException if the thread is interrupted while the program runs
+	 */
+	@Test
+	public void findsProgramByName() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path folder = cleanup.add(Files.createTempDirectory("harness-environment-")).toAbsolutePath();
+			List<String> command;
+			if (Platform.current().isWindows())
+			{
+				Files.writeString(folder.resolve("cat-tool.cmd"), "@echo found\r\n");
+				command = List.of("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "cat-tool");
+			}
+			else
+			{
+				Path tool = folder.resolve("cat-tool");
+				Files.writeString(tool, "#!/bin/sh\necho found\n");
+				requireThat(tool.toFile().setExecutable(true, false), "executable").isTrue();
+				command = List.of("sh", "-c", "cat-tool");
+			}
+			Map<String, String> source = new HashMap<>();
+			for (Map.Entry<String, String> entry : System.getenv().entrySet())
+			{
+				if (!entry.getKey().equalsIgnoreCase("PATH"))
+					source.put(entry.getKey(), entry.getValue());
+			}
+			source.put("PATH", folder + File.pathSeparator + System.getenv("PATH"));
+			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+			builder.environment().clear();
+			builder.environment().putAll(HarnessEnvironment.scrub(source));
+			try (Process process = builder.start())
+			{
+				process.getOutputStream().close();
+				String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+				requireThat(process.waitFor(), "status").withContext(output, "output").isEqualTo(0);
+				requireThat(output.strip(), "output").isEqualTo("found");
+			}
 		}
 	}
 
