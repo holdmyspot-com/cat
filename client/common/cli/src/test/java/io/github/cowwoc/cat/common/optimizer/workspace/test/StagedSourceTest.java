@@ -2,7 +2,10 @@ package io.github.cowwoc.cat.common.optimizer.workspace.test;
 
 import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.EXECUTABLE;
 import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.READ_WRITE;
+import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.allowListing;
 import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.content;
+import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.createLinks;
+import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.denyListing;
 import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.file;
 import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.writeFile;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -31,6 +34,7 @@ import io.github.cowwoc.cat.common.test.ProgramFixture;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -389,6 +393,117 @@ public final class StagedSourceTest
 			{
 				requireThat(e.getMessage(), "message").contains("gone.md").contains("nowhere.md").
 					contains("missing target");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a recorded link to an existing file outside the project and a recorded link to an existing
+	 * directory outside the project are staged with their targets' content, without the targets being named as
+	 * paths to record.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	@Test
+	public void stagesLinksToExternalTargets() throws IOException
+	{
+		// Requirement: R-W2, R-W5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			Path rules = writeFile(root.resolve("outside/reply-rules.md"), "reply rules", READ_WRITE);
+			Path kit = root.resolve("outside/kit");
+			writeFile(kit.resolve("guide.md"), "guide", READ_WRITE);
+			Set<Path> links = createLinks(base, Map.of("docs/reply-rules.md", rules, "kit", kit));
+			ForkTree tree = ForkTree.record(base, root.resolve("campaign"), links);
+			StagedSources sources = new StagedSources(tree, root.resolve("campaign/staged"));
+
+			Path staged = sources.stage(Overlay.of(tree.inventory()), Set.of());
+
+			requireThat(Files.readString(staged.resolve("docs/reply-rules.md"), UTF_8), "fileLink").
+				isEqualTo("reply rules");
+			requireThat(Files.readString(staged.resolve("kit/guide.md"), UTF_8), "directoryLink").isEqualTo("guide");
+			requireThat(tree.inventory().entries().get(rules), "recordedFile").isEqualTo(file("reply rules"));
+		}
+	}
+
+	/**
+	 * Verifies that recording follows links that leave the project through recorded external targets: an external
+	 * file that is itself an absolute link, and an external directory holding a relative link that leaves it.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	@Test
+	public void stagesExternalTargetsReachedTransitively() throws IOException
+	{
+		// Requirement: R-W2, R-W5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			Path outside = root.resolve("outside");
+			Path kit = outside.resolve("kit");
+			writeFile(kit.resolve("guide.md"), "guide", READ_WRITE);
+			writeFile(outside.resolve("common/shared.md"), "shared", READ_WRITE);
+			Files.createSymbolicLink(kit.resolve("shared.md"), Path.of("../common/shared.md"));
+			Path last = writeFile(outside.resolve("final.md"), "final", READ_WRITE);
+			Path alias = Files.createSymbolicLink(outside.resolve("alias.md"), last);
+			Set<Path> links = createLinks(base, Map.of("kit", kit, "chain.md", alias));
+			ForkTree tree = ForkTree.record(base, root.resolve("campaign"), links);
+			StagedSources sources = new StagedSources(tree, root.resolve("campaign/staged"));
+
+			Path staged = sources.stage(Overlay.of(tree.inventory()), Set.of());
+
+			requireThat(Files.readString(staged.resolve("kit/shared.md"), UTF_8), "relativeLinkLeavingTarget").
+				isEqualTo("shared");
+			requireThat(Files.readString(staged.resolve("chain.md"), UTF_8), "externalLinkChain").isEqualTo("final");
+		}
+	}
+
+	/**
+	 * Verifies that links whose targets cannot be recorded still block staging as missing targets: a link to a file
+	 * that does not exist, a link to a directory that contains the project, and a link to an external directory that
+	 * cannot be read. The unreadable directory is empty so that the link is unstageable whether or not the process
+	 * can read it.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void unrecordableExternalTargetsStillBlock() throws IOException
+	{
+		// Requirement: R-W5
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
+			Path missing = root.resolve("outside/missing.md");
+			Path sealed = Files.createDirectories(root.resolve("outside/sealed"));
+			Set<Path> paths = new HashSet<>(createLinks(base, Map.of("missing.md", missing, "up", root,
+				"sealed", sealed)));
+			paths.add(Path.of("prompt.md"));
+			denyListing(sealed);
+			try
+			{
+				ForkTree tree = ForkTree.record(base, root.resolve("campaign"), paths);
+				StagedSources sources = new StagedSources(tree, root.resolve("campaign/staged"));
+				try
+				{
+					sources.stage(Overlay.of(tree.inventory()), Set.of());
+					throw new AssertionError("Links to unrecordable targets must block staging");
+				}
+				catch (WorkspaceException e)
+				{
+					requireThat(e.getMessage(), "message").
+						contains("missing.md -> " + missing + ": missing target").
+						contains("up -> " + root + ": missing target").
+						contains("sealed -> " + sealed + ": missing target");
+				}
+			}
+			finally
+			{
+				allowListing(sealed);
 			}
 		}
 	}

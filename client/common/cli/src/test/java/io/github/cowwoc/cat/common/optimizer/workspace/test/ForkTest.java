@@ -7,21 +7,15 @@ import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtur
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import io.github.cowwoc.cat.common.PortableFiles;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
-import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
-import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
-import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.workspace.Fork;
+import io.github.cowwoc.cat.common.optimizer.workspace.ForkTree;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
 import io.github.cowwoc.cat.common.optimizer.workspace.GitForks;
-import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport.Entry;
-import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport.Status;
-import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
 import io.github.cowwoc.cat.common.test.FileTrees;
 import io.github.cowwoc.cat.common.test.ProgramFixture;
@@ -30,15 +24,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.AclEntry;
-import java.nio.file.attribute.AclEntryPermission;
-import java.nio.file.attribute.AclEntryType;
-import java.nio.file.attribute.AclFileAttributeView;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.nio.file.attribute.UserPrincipal;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -48,8 +34,9 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Verifies the fork against a real Git repository that each test owns: the clean-base refusal, the local exclude, the
- * recorded participants and the detached optimization worktree at {@code HEAD}.
+ * Verifies the fork. Creating one runs against a real Git repository that each test owns: the clean-base refusal, the
+ * local exclude, the recorded participants and the detached optimization worktree at {@code HEAD}. Changing a fork's
+ * participants reads and writes only campaign storage, so those tests store a fork without Git.
  */
 public final class ForkTest
 {
@@ -187,7 +174,6 @@ public final class ForkTest
 			}
 			requireThat(Files.exists(campaign), "campaignExists").isFalse();
 			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
-			requireThat(git.lines("worktree", "list"), "worktrees").size().isEqualTo(1);
 		}
 	}
 
@@ -238,7 +224,8 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that the exclude is left alone when the repository already ignores the work directory.
+	 * Verifies that the exclude is left alone when Git already ignores the work directory through a pattern other than
+	 * the line that CAT appends.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -250,10 +237,7 @@ public final class ForkTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
-			Git git = new Git(base);
-			writeFile(base.resolve(".gitignore"), "ignored.md\n.cat/work/\n", READ_WRITE);
-			git.run("add", ".gitignore");
-			git.run("commit", "--quiet", "-m", "ignore work directory");
+			Files.writeString(excludeFile(base), ".cat/work\n", UTF_8, StandardOpenOption.APPEND);
 			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
 
 			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
@@ -308,17 +292,20 @@ public final class ForkTest
 			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of(Path.of("ignored.md"), external));
 
 			Path worktreeDirectory = base.resolve(".cat/work/optimizer/c1/worktree");
-			Git worktree = new Git(worktreeDirectory);
-			String head = git.lines("rev-parse", "HEAD").getFirst();
-			requireThat(worktree.lines("rev-parse", "HEAD").getFirst(), "worktreeHead").isEqualTo(head);
-			requireThat(worktree.lines("rev-parse", "--abbrev-ref", "HEAD").getFirst(), "branch").isEqualTo("HEAD");
+			// The base is listed first, with its commit on the line that starts with "HEAD "
+			List<String> worktrees = git.lines("worktree", "list", "--porcelain");
+			requireThat(worktrees.stream().filter(line -> line.startsWith("worktree ")).count(), "worktrees").
+				isEqualTo(2L);
+			String head = worktrees.stream().filter(line -> line.startsWith("HEAD ")).findFirst().orElseThrow().
+				substring("HEAD ".length());
+			// The branch header names the checked-out commit and the branch, and no line follows for a clean checkout
+			requireThat(new Git(worktreeDirectory).lines("status", "--porcelain=v2", "--branch"), "worktreeStatus").
+				isEqualTo(List.of("# branch.oid " + head, "# branch.head (detached)"));
 			requireThat(Files.readString(worktreeDirectory.resolve("prompt.md"), UTF_8), "trackedFile").
 				isEqualTo("prompt");
 			requireThat(Files.isSymbolicLink(worktreeDirectory.resolve("alias.md")), "trackedLink").isTrue();
 			requireThat(Files.readString(worktreeDirectory.resolve("ignored.md"), UTF_8), "ignoredParticipant").
 				isEqualTo("ignored");
-			requireThat(worktree.lines("status", "--porcelain"), "worktreeStatus").isEmpty();
-			requireThat(git.lines("worktree", "list"), "worktrees").size().isEqualTo(2);
 			requireThat(fork.workspace().scanWorktree().entries(), "worktreeEntries").
 				isEqualTo(fork.inventory().entries());
 		}
@@ -338,11 +325,11 @@ public final class ForkTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
-			Path campaign = base.resolve(".cat/work/optimizer/c1");
+			Path base = project(root);
+			Path campaign = root.resolve("campaign");
+			storeFork(base, campaign);
 			Forks forks = new GitForks();
-			ForkView fork = forks.create(base, campaign, Set.of()).
-				selectParticipants(base, Set.of(Path.of("ignored.md")));
+			ForkView fork = forks.open(base, campaign).selectParticipants(base, Set.of(Path.of("ignored.md")));
 
 			ForkView narrowed = fork.selectParticipants(base, Set.of());
 
@@ -372,17 +359,17 @@ public final class ForkTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
+			Path base = project(root);
 			Path shared = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
 			Path only = writeFile(root.resolve("external/only.md"), "only", READ_WRITE);
 			Path alias = Files.createSymbolicLink(Files.createDirectories(root.resolve("elsewhere")).
 				resolve("alias.md"), shared);
 			Files.delete(base.resolve("ignored.md"));
 			Files.createSymbolicLink(base.resolve("ignored.md"), only);
-			Path campaign = base.resolve(".cat/work/optimizer/c1");
+			Path campaign = root.resolve("campaign");
+			storeFork(base, campaign);
 			Forks forks = new GitForks();
-			ForkView fork = forks.create(base, campaign, Set.of()).
-				selectParticipants(base, Set.of(Path.of("ignored.md"), alias));
+			ForkView fork = forks.open(base, campaign).selectParticipants(base, Set.of(Path.of("ignored.md"), alias));
 			requireThat(fork.inventory().entries().keySet(), "selected").contains(only).contains(shared);
 
 			ForkView narrowed = fork.selectParticipants(base, Set.of(alias));
@@ -410,10 +397,11 @@ public final class ForkTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
-			Path campaign = base.resolve(".cat/work/optimizer/c1");
+			Path base = project(root);
+			Path campaign = root.resolve("campaign");
+			storeFork(base, campaign);
 			Forks forks = new GitForks();
-			FileInventory earlier = forks.create(base, campaign, Set.of()).inventory();
+			FileInventory earlier = forks.open(base, campaign).inventory();
 
 			ForkView extended = forks.open(base, campaign).extend(base, Set.of(Path.of("ignored.md")));
 
@@ -447,11 +435,12 @@ public final class ForkTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
+			Path base = project(root);
 			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
-			Path campaign = base.resolve(".cat/work/optimizer/c1");
+			Path campaign = root.resolve("campaign");
+			storeFork(base, campaign);
 			Forks forks = new GitForks();
-			ForkView fork = forks.create(base, campaign, Set.of());
+			ForkView fork = forks.open(base, campaign);
 
 			ForkView extended = fork.selectParticipants(base, Set.of(Path.of("ignored.md"), Path.of("prompt.md"),
 				external));
@@ -538,7 +527,6 @@ public final class ForkTest
 			}
 			requireThat(Files.exists(campaign.resolve("worktree")), "worktreeExists").isFalse();
 			requireThat(Files.exists(campaign.resolve("fork")), "forkExists").isFalse();
-			requireThat(new Git(base).lines("worktree", "list"), "worktrees").size().isEqualTo(1);
 		}
 	}
 
@@ -629,7 +617,7 @@ public final class ForkTest
 	/**
 	 * Verifies that a Git failure while checking whether the work directory is ignored propagates, instead of being
 	 * taken for "not ignored", and that nothing is created or appended. Git cannot check a path beyond a symbolic
-	 * link, so a tracked link at {@code .cat} makes the check fail with exit status 128, which the failure names.
+	 * link, so an ignored link at {@code .cat} makes the check fail with exit status 128, which the failure names.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -641,10 +629,9 @@ public final class ForkTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
-			Git git = new Git(base);
 			Files.createSymbolicLink(base.resolve(".cat"), Path.of("elsewhere"));
-			git.run("add", ".cat");
-			git.run("commit", "--quiet", "-m", "link the CAT directory");
+			// Ignoring the link keeps the base clean, so the fork reaches the ignore check
+			Files.writeString(excludeFile(base), "/.cat\n", UTF_8, StandardOpenOption.APPEND);
 			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
 			Path campaign = root.resolve("campaign");
 
@@ -663,243 +650,33 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that a tracked link to an existing file outside the project and a tracked link to an existing directory
-	 * outside the project are staged with their targets' content after the fork is created, without the targets being
-	 * named as participants.
+	 * Creates a project directory that holds {@code prompt.md} and {@code ignored.md}, without Git.
 	 *
-	 * @throws IOException if the fixture cannot be created or staged
+	 * @param root the directory that owns the fixture
+	 * @return the project directory
+	 * @throws IOException if the project cannot be created
 	 */
-	@Test
-	public void stagesTrackedLinksToExternalTargets() throws IOException
+	private static Path project(Path root) throws IOException
 	{
-		// Requirement: R-W2, R-W5
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
-			Path rules = writeFile(root.resolve("outside/reply-rules.md"), "reply rules", READ_WRITE);
-			Path kit = root.resolve("outside/kit");
-			writeFile(kit.resolve("guide.md"), "guide", READ_WRITE);
-			commitLinks(base, Map.of("docs/reply-rules.md", rules, "kit", kit));
-
-			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
-			Path staged = fork.workspace().stage(Overlay.of(fork.inventory()), Set.of());
-
-			requireThat(Files.readString(staged.resolve("docs/reply-rules.md"), UTF_8), "fileLink").
-				isEqualTo("reply rules");
-			requireThat(Files.readString(staged.resolve("kit/guide.md"), UTF_8), "directoryLink").isEqualTo("guide");
-			requireThat(fork.inventory().entries().get(rules), "recordedFile").isEqualTo(file("reply rules"));
-		}
+		Path base = Files.createDirectories(root.resolve("project"));
+		writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
+		writeFile(base.resolve("ignored.md"), "ignored", READ_WRITE);
+		return base;
 	}
 
 	/**
-	 * Verifies that the fork follows links that leave the project through recorded external targets: an external
-	 * file that is itself an absolute link, and an external directory holding a relative link that leaves it.
+	 * Stores in campaign storage what creating a fork of a clean base leaves there: the recorded files, here only
+	 * {@code prompt.md}, and the optimization worktree. Changing a fork's participants reads and writes only that
+	 * storage, so the fork needs no Git repository.
 	 *
-	 * @throws IOException if the fixture cannot be created or staged
+	 * @param base the project directory
+	 * @param campaign the campaign storage directory
+	 * @throws IOException if the storage cannot be written
 	 */
-	@Test
-	public void stagesExternalTargetsReachedTransitively() throws IOException
+	private static void storeFork(Path base, Path campaign) throws IOException
 	{
-		// Requirement: R-W2, R-W5
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
-			Path outside = root.resolve("outside");
-			Path kit = outside.resolve("kit");
-			writeFile(kit.resolve("guide.md"), "guide", READ_WRITE);
-			writeFile(outside.resolve("common/shared.md"), "shared", READ_WRITE);
-			Files.createSymbolicLink(kit.resolve("shared.md"), Path.of("../common/shared.md"));
-			Path last = writeFile(outside.resolve("final.md"), "final", READ_WRITE);
-			Path alias = Files.createSymbolicLink(outside.resolve("alias.md"), last);
-			commitLinks(base, Map.of("kit", kit, "chain.md", alias));
-
-			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
-			Path staged = fork.workspace().stage(Overlay.of(fork.inventory()), Set.of());
-
-			requireThat(Files.readString(staged.resolve("kit/shared.md"), UTF_8), "relativeLinkLeavingTarget").
-				isEqualTo("shared");
-			requireThat(Files.readString(staged.resolve("chain.md"), UTF_8), "externalLinkChain").isEqualTo("final");
-		}
-	}
-
-	/**
-	 * Verifies that the link report of a newly created fork lists a tracked link to an external file with its
-	 * target, outside the project, resolved and read-only.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void reportsExternalLinkOfNewFork() throws IOException
-	{
-		// Requirement: R-W6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
-			Path rules = writeFile(root.resolve("outside/reply-rules.md"), "reply rules", READ_WRITE);
-			commitLinks(base, Map.of("docs/reply-rules.md", rules));
-
-			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
-			LinkReport report = LinkReport.of(fork.inventory(),
-				new Authority(Set.of(Path.of("prompt.md")), Set.of(), fork.inventory()));
-
-			requireThat(report.entries(), "entries").contains(new Entry(Path.of("docs/reply-rules.md"),
-				Optional.of(rules), Status.RESOLVED, Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY)));
-			requireThat(report.blocking(), "blocking").isEmpty();
-		}
-	}
-
-	/**
-	 * Verifies that links the fork cannot record still block staging as missing targets: a link to a file that does
-	 * not exist, a link to a directory that contains the project, and a link to an external directory that cannot be
-	 * read. The unreadable directory is empty so that the link is unstageable whether or not the process can read it.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void unrecordableExternalTargetsStillBlock() throws IOException
-	{
-		// Requirement: R-W5
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
-			Path missing = root.resolve("outside/missing.md");
-			Path sealed = Files.createDirectories(root.resolve("outside/sealed"));
-			commitLinks(base, Map.of("missing.md", missing, "up", root, "sealed", sealed));
-			denyListing(sealed);
-			try
-			{
-				Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
-				try
-				{
-					fork.workspace().stage(Overlay.of(fork.inventory()), Set.of());
-					throw new AssertionError("Links to unrecordable targets must block staging");
-				}
-				catch (WorkspaceException e)
-				{
-					requireThat(e.getMessage(), "message").
-						contains("missing.md -> " + missing + ": missing target").
-						contains("up -> " + root + ": missing target").
-						contains("sealed -> " + sealed + ": missing target");
-				}
-			}
-			finally
-			{
-				allowListing(sealed);
-			}
-		}
-	}
-
-	/**
-	 * Verifies that a link to an external directory that cannot be listed leaves an external participant below that
-	 * directory recorded. Without the permission to list it, the directory's own copy fails, while the participant is
-	 * still reachable by name.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void unreadableTargetKeepsParticipantBelowIt() throws IOException
-	{
-		// Requirement: R-W2
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
-			Path hidden = root.resolve("outside/hidden");
-			Path participant = writeFile(hidden.resolve("shared.md"), "shared", READ_WRITE);
-			commitLinks(base, Map.of("hidden", hidden));
-			denyListing(hidden);
-			try
-			{
-				Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of(participant));
-
-				requireThat(fork.inventory().entries().get(participant), "participant").isEqualTo(file("shared"));
-			}
-			finally
-			{
-				allowListing(hidden);
-			}
-		}
-	}
-
-	/**
-	 * Takes away the permission to list a directory while leaving its entries reachable by name. A file system without
-	 * POSIX permissions gets an access-control entry that denies the current user the listing instead.
-	 *
-	 * @param directory a directory
-	 * @throws IOException if the directory's permissions cannot be changed
-	 */
-	private static void denyListing(Path directory) throws IOException
-	{
-		if (PortableFiles.hasModes(directory))
-		{
-			Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("--x--x--x"));
-			return;
-		}
-		AclFileAttributeView view = Files.getFileAttributeView(directory, AclFileAttributeView.class);
-		List<AclEntry> entries = new ArrayList<>(view.getAcl());
-		entries.addFirst(listingDenial(directory));
-		view.setAcl(entries);
-	}
-
-	/**
-	 * Gives back the permission that {@link #denyListing(Path)} took away, so that the directory can be deleted.
-	 *
-	 * @param directory a directory
-	 * @throws IOException if the directory's permissions cannot be changed
-	 */
-	private static void allowListing(Path directory) throws IOException
-	{
-		if (PortableFiles.hasModes(directory))
-		{
-			Files.setPosixFilePermissions(directory, EXECUTABLE);
-			return;
-		}
-		AclFileAttributeView view = Files.getFileAttributeView(directory, AclFileAttributeView.class);
-		List<AclEntry> entries = new ArrayList<>(view.getAcl());
-		entries.remove(listingDenial(directory));
-		view.setAcl(entries);
-	}
-
-	/**
-	 * Returns the access-control entry that denies the current user the listing of a directory.
-	 *
-	 * @param directory a directory
-	 * @return the entry
-	 * @throws IOException if the current user cannot be looked up
-	 */
-	private static AclEntry listingDenial(Path directory) throws IOException
-	{
-		UserPrincipal user = directory.getFileSystem().getUserPrincipalLookupService().
-			lookupPrincipalByName(System.getProperty("user.name"));
-		return AclEntry.newBuilder().
-			setType(AclEntryType.DENY).
-			setPrincipal(user).
-			setPermissions(AclEntryPermission.LIST_DIRECTORY).
-			build();
-	}
-
-	/**
-	 * Commits absolute links in a repository.
-	 *
-	 * @param base the repository directory
-	 * @param links each link's path relative to {@code base}, and its absolute destination
-	 * @throws IOException if a link cannot be created or committed
-	 */
-	private static void commitLinks(Path base, Map<String, Path> links) throws IOException
-	{
-		for (Map.Entry<String, Path> link : links.entrySet())
-		{
-			Path location = base.resolve(link.getKey());
-			Files.createDirectories(location.getParent());
-			Files.createSymbolicLink(location, link.getValue());
-		}
-		Git git = new Git(base);
-		git.run("add", "--all");
-		git.run("commit", "--quiet", "-m", "link outside the project");
+		ForkTree.record(base, campaign, Set.of(Path.of("prompt.md")));
+		Files.createDirectories(campaign.resolve("worktree"));
 	}
 
 	/**

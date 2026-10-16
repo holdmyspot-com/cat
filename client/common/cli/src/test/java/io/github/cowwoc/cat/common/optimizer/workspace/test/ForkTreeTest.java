@@ -2,6 +2,9 @@ package io.github.cowwoc.cat.common.optimizer.workspace.test;
 
 import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.EXECUTABLE;
 import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.READ_WRITE;
+import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.allowListing;
+import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.createLinks;
+import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.denyListing;
 import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.file;
 import static io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.writeFile;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -20,6 +23,7 @@ import io.github.cowwoc.cat.common.test.ProgramFixture;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -145,6 +149,39 @@ public final class ForkTreeTest
 				requireThat(e.getMessage(), "message").contains("missing.md");
 			}
 			requireThat(campaign.resolve("fork").toFile().exists(), "forkStorageExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a link to an external directory that cannot be listed leaves an external participant below that
+	 * directory recorded. Without the permission to list it, the directory's own copy fails, while the participant is
+	 * still reachable by name.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void unreadableTargetKeepsParticipantBelowIt() throws IOException
+	{
+		// Requirement: R-W2
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-tree-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			Path hidden = root.resolve("outside/hidden");
+			Path participant = writeFile(hidden.resolve("shared.md"), "shared", READ_WRITE);
+			Set<Path> paths = new HashSet<>(createLinks(base, Map.of("hidden", hidden)));
+			paths.add(participant);
+			denyListing(hidden);
+			try
+			{
+				ForkTree tree = ForkTree.record(base, root.resolve("campaign"), paths);
+
+				requireThat(tree.inventory().entries().get(participant), "participant").isEqualTo(file("shared"));
+			}
+			finally
+			{
+				allowListing(hidden);
+			}
 		}
 	}
 

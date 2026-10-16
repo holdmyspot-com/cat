@@ -11,9 +11,17 @@ import io.github.cowwoc.cat.common.test.ProgramFixture;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.attribute.UserPrincipal;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -100,6 +108,84 @@ final class ProjectFixtures
 		return new FileContent(text.getBytes(UTF_8));
 	}
 
+
+	/**
+	 * Creates absolute links in a project.
+	 *
+	 * @param base the project directory
+	 * @param links each link's path relative to {@code base}, and its absolute destination
+	 * @return the links' paths relative to {@code base}
+	 * @throws IOException if a link cannot be created
+	 */
+	static Set<Path> createLinks(Path base, Map<String, Path> links) throws IOException
+	{
+		Set<Path> paths = new HashSet<>();
+		for (Map.Entry<String, Path> link : links.entrySet())
+		{
+			Path location = base.resolve(link.getKey());
+			Files.createDirectories(location.getParent());
+			Files.createSymbolicLink(location, link.getValue());
+			paths.add(Path.of(link.getKey()));
+		}
+		return paths;
+	}
+
+	/**
+	 * Takes away the permission to list a directory while leaving its entries reachable by name. A file system without
+	 * POSIX permissions gets an access-control entry that denies the current user the listing instead.
+	 *
+	 * @param directory a directory
+	 * @throws IOException if the directory's permissions cannot be changed
+	 */
+	static void denyListing(Path directory) throws IOException
+	{
+		if (PortableFiles.hasModes(directory))
+		{
+			Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("--x--x--x"));
+			return;
+		}
+		AclFileAttributeView view = Files.getFileAttributeView(directory, AclFileAttributeView.class);
+		List<AclEntry> entries = new ArrayList<>(view.getAcl());
+		entries.addFirst(listingDenial(directory));
+		view.setAcl(entries);
+	}
+
+	/**
+	 * Gives back the permission that {@link #denyListing(Path)} took away, so that the directory can be deleted.
+	 *
+	 * @param directory a directory
+	 * @throws IOException if the directory's permissions cannot be changed
+	 */
+	static void allowListing(Path directory) throws IOException
+	{
+		if (PortableFiles.hasModes(directory))
+		{
+			Files.setPosixFilePermissions(directory, EXECUTABLE);
+			return;
+		}
+		AclFileAttributeView view = Files.getFileAttributeView(directory, AclFileAttributeView.class);
+		List<AclEntry> entries = new ArrayList<>(view.getAcl());
+		entries.remove(listingDenial(directory));
+		view.setAcl(entries);
+	}
+
+	/**
+	 * Returns the access-control entry that denies the current user the listing of a directory.
+	 *
+	 * @param directory a directory
+	 * @return the entry
+	 * @throws IOException if the current user cannot be looked up
+	 */
+	private static AclEntry listingDenial(Path directory) throws IOException
+	{
+		UserPrincipal user = directory.getFileSystem().getUserPrincipalLookupService().
+			lookupPrincipalByName(System.getProperty("user.name"));
+		return AclEntry.newBuilder().
+			setType(AclEntryType.DENY).
+			setPrincipal(user).
+			setPermissions(AclEntryPermission.LIST_DIRECTORY).
+			build();
+	}
 	/**
 	 * Creates a project that holds ordinary files, a fixture directory, files and a directory that links reach, an
 	 * in-project file link, an in-project directory link, an external file link and an external directory link, plus
