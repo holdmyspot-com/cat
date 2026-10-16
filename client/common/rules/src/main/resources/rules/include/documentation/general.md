@@ -6,6 +6,7 @@
   constraints, rights, obligations, and consequences clearly enough for its intended reader to act correctly.
 - Keep replaceable implementation choices outside the documented interface unless they change a decision the intended
   reader must make, so an internal choice does not become a contract that later implementations must preserve.
+- Let a caller find the failures that its own invalid input causes before the failures that valid input can still meet.
 
 ## Contract Boundary
 
@@ -42,6 +43,10 @@ State only the applicable responsibility; each input's semantic role, required f
 result; consequential state changes; failure conditions and their observable result; and the next action or decision
 when it is not obvious. Describe values by their domain meaning rather than their position, variable name, container
 type, or implementation role. Keep method-level behavior separate from one input's description.
+
+When documentation lists the exceptions or errors that a callable raises, list every entry for invalid input from the
+caller, such as a missing, malformed, or out-of-range argument, before every entry for a failure that valid input can
+still meet, such as a closed resource or a failed read.
 
 When local code represents an external actor, resource, or boundary, document both the represented role and its local
 representation where that relationship affects the callable's behavior. At a material lifecycle transition, name the

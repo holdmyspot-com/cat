@@ -3,8 +3,6 @@
 ## Design Goals
 
 - Apply CAT-specific Javadoc checks and companion-type conventions in addition to the portable plugin guidance.
-- List a method's argument-validation exceptions first, so a caller finds what it must pass before what can fail
-  afterwards.
 
 ## Guidance
 
@@ -25,24 +23,6 @@ Do not put the opening delimiter, documentation text, and closing delimiter on o
 When a companion type exists specifically to expose, adapt, configure, test, or otherwise support one target type, its
 class description must link to that target type. This includes `<Target>Access` interfaces and `<Target>Secrets`
 façades. Link only relationships needed to understand the companion's purpose, not incidental collaborators.
-
-### Exception Order
-
-List the `@throws` tags for invalid arguments, such as `NullPointerException` and `IllegalArgumentException`, before
-every other exception type, such as `IllegalStateException` or `IOException`.
-
-```java
-/**
- * Reads a campaign.
- *
- * @param path the campaign file
- * @return the campaign
- * @throws NullPointerException     if {@code path} is null
- * @throws IllegalArgumentException if {@code path} is not absolute
- * @throws IllegalStateException    if the store is closed
- * @throws IOException              if the file cannot be read
- */
-```
 
 ### Requirements.java Assertions
 
