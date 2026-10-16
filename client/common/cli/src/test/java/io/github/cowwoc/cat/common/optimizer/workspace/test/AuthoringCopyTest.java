@@ -22,15 +22,13 @@ import io.github.cowwoc.cat.common.optimizer.workspace.ForkTree;
 import io.github.cowwoc.cat.common.optimizer.workspace.Workspace;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
 import io.github.cowwoc.cat.common.optimizer.workspace.test.ProjectFixtures.LinkedProject;
+import io.github.cowwoc.cat.common.test.FileTrees;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
 
@@ -133,7 +131,7 @@ public final class AuthoringCopyTest
 			FileInventory before = port.scanAuthoringCopy(copy);
 			// The session's runner copies the project source into a run directory, whose state is the effects
 			Path effects = project.campaign().resolve("runs/run-1/project");
-			copyTree(copy, effects);
+			FileTrees.copy(copy, effects);
 
 			Files.writeString(effects.resolve("prompt.md"), "prompt author edit", UTF_8);
 			writeFile(effects.resolve("rules/c.md"), "created", READ_WRITE);
@@ -166,28 +164,6 @@ public final class AuthoringCopyTest
 			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
 
 			port.scanPromptAuthorEffects(project.base(), project.base());
-		}
-	}
-
-	/**
-	 * Copies a directory tree, with each file's permissions, as a session's runner copies its project source.
-	 *
-	 * @param source the directory to copy
-	 * @param target the directory to create
-	 * @throws IOException if the tree cannot be copied
-	 */
-	private static void copyTree(Path source, Path target) throws IOException
-	{
-		try (Stream<Path> paths = Files.walk(source))
-		{
-			for (Path path : paths.toList())
-			{
-				Path destination = target.resolve(source.relativize(path).toString());
-				if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
-					Files.createDirectories(destination);
-				else
-					Files.copy(path, destination, StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS);
-			}
 		}
 	}
 

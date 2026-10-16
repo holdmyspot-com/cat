@@ -23,6 +23,7 @@ import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport.Entry;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport.Status;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
+import io.github.cowwoc.cat.common.test.FileTrees;
 import io.github.cowwoc.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
@@ -41,6 +42,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -51,12 +54,69 @@ import org.testng.annotations.Test;
 public final class ForkTest
 {
 	private static final String EXCLUDE_LINE = "/.cat/work/";
+	/**
+	 * The directory that holds the repository that each test copies, and the empty global exclude file that the
+	 * repository's configuration names.
+	 */
+	private Path template;
 
 	/**
 	 * Creates the test.
 	 */
 	public ForkTest()
 	{
+	}
+
+	/**
+	 * Creates the repository that each test copies. Copying it starts no Git process, and each Git process takes tens
+	 * of milliseconds on Windows.
+	 *
+	 * @throws IOException if the repository cannot be created
+	 */
+	@BeforeClass
+	public void createTemplate() throws IOException
+	{
+		template = Files.createTempDirectory("cat-fork-template-");
+		Path base = Files.createDirectories(template.resolve("repository"));
+		Path noExcludes = writeFile(template.resolve("no-excludes"), "", READ_WRITE);
+		Git git = new Git(base);
+		git.run("init", "--quiet");
+		// The sample hooks are disabled, so leaving them out only saves copying them
+		TemporaryDirectories.deleteRecursively(base.resolve(".git/hooks"));
+		// A quoted configuration value escapes each backslash and double quote
+		String excludes = noExcludes.toString().replace("\\", "\\\\").replace("\"", "\\\"");
+		Files.writeString(base.resolve(".git/config"), """
+			[user]
+				name = Test
+				email = test@example.com
+			[commit]
+				gpgsign = false
+			[core]
+				excludesFile = "%s"
+				autocrlf = false
+			""".formatted(excludes), UTF_8, StandardOpenOption.APPEND);
+		writeFile(base.resolve(".gitignore"), "ignored.md\n", READ_WRITE);
+		writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
+		// Windows records a file as executable only by its name, and Linux only by the mode set here
+		writeFile(base.resolve(ProgramFixture.name("run")), ProgramFixture.TEXT, EXECUTABLE);
+		Files.createSymbolicLink(base.resolve("alias.md"), Path.of("prompt.md"));
+		git.run("add", "--all");
+		git.run("commit", "--quiet", "-m", "initial");
+		writeFile(base.resolve("ignored.md"), "ignored", READ_WRITE);
+		List<String> status = git.lines("status", "--porcelain");
+		requireThat(status, "status").isEmpty();
+	}
+
+	/**
+	 * Deletes the repository that each test copies.
+	 *
+	 * @throws IOException if the repository cannot be deleted
+	 */
+	@AfterClass(alwaysRun = true)
+	public void deleteTemplate() throws IOException
+	{
+		if (template != null)
+			TemporaryDirectories.deleteRecursively(template);
 	}
 
 	/**
@@ -853,42 +913,18 @@ public final class ForkTest
 	}
 
 	/**
-	 * Creates a repository with one commit that holds ordinary files, an executable and a link, and an ignored file.
-	 * Its configuration owns every setting that a global configuration could change.
+	 * Copies the repository that {@link #createTemplate()} created: one commit that holds ordinary files, an
+	 * executable and a link, and an ignored file. Its configuration owns every setting that a global configuration
+	 * could change.
 	 *
 	 * @param root the directory that owns the fixture
 	 * @return the repository directory
-	 * @throws IOException if the repository cannot be created
+	 * @throws IOException if the repository cannot be copied
 	 */
-	private static Path repository(Path root) throws IOException
+	private Path repository(Path root) throws IOException
 	{
-		Path base = Files.createDirectories(root.resolve("repository"));
-		Path noExcludes = writeFile(root.resolve("no-excludes"), "", READ_WRITE);
-		Git git = new Git(base);
-		git.run("init", "--quiet");
-		// Writing the settings directly saves a Git process for each, which takes tens of milliseconds on Windows.
-		// A quoted configuration value escapes each backslash and double quote.
-		String excludes = noExcludes.toString().replace("\\", "\\\\").replace("\"", "\\\"");
-		Files.writeString(base.resolve(".git/config"), """
-			[user]
-				name = Test
-				email = test@example.com
-			[commit]
-				gpgsign = false
-			[core]
-				excludesFile = "%s"
-				autocrlf = false
-			""".formatted(excludes), UTF_8, StandardOpenOption.APPEND);
-		writeFile(base.resolve(".gitignore"), "ignored.md\n", READ_WRITE);
-		writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
-		// Windows records a file as executable only by its name, and Linux only by the mode set here
-		writeFile(base.resolve(ProgramFixture.name("run")), ProgramFixture.TEXT, EXECUTABLE);
-		Files.createSymbolicLink(base.resolve("alias.md"), Path.of("prompt.md"));
-		git.run("add", "--all");
-		git.run("commit", "--quiet", "-m", "initial");
-		writeFile(base.resolve("ignored.md"), "ignored", READ_WRITE);
-		List<String> status = git.lines("status", "--porcelain");
-		requireThat(status, "status").isEmpty();
+		Path base = root.resolve("repository");
+		FileTrees.copy(template.resolve("repository"), base);
 		return base;
 	}
 }

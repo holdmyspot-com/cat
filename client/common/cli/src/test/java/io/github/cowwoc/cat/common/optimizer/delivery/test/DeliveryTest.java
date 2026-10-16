@@ -52,13 +52,12 @@ import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.test.InMemoryCampaignStore;
+import io.github.cowwoc.cat.common.test.FileTrees;
 
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
@@ -68,7 +67,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -1247,17 +1245,7 @@ public final class DeliveryTest
 		Fixture copy(TemporaryDirectories cleanup) throws IOException
 		{
 			Path copy = cleanup.add(Files.createTempDirectory("cat-delivery-"));
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.toList())
-				{
-					Path destination = copy.resolve(root.relativize(path).toString());
-					if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
-						Files.createDirectories(destination);
-					else
-						Files.copy(path, destination, StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS);
-				}
-			}
+			FileTrees.copy(root, copy);
 			Path copiedBase = copy.resolve(root.relativize(base).toString());
 			Path copiedExternal = copy.resolve(root.relativize(external).toString());
 			return new Fixture(copy, copiedBase, copiedExternal, InventoryScanner.scan(copiedBase, Set.of(copiedExternal)));
