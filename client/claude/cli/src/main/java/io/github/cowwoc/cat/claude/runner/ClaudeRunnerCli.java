@@ -66,7 +66,7 @@ public final class ClaudeRunnerCli
 			executeMaintenance(args);
 			return;
 		}
-		Map<String, String> environment = System.getenv();
+		Map<String, String> environment = Platform.current().environment(System.getenv());
 		Path home = Platform.current().homeDirectory(environment);
 		serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
 			new OutputStreamWriter(System.out, UTF_8), environment,
@@ -84,7 +84,8 @@ public final class ClaudeRunnerCli
 		requireThat(args, "args").isNotNull();
 		try (ToolScope scope = new ToolScope())
 		{
-			HarnessRunnerMaintenance.execute(args, HARNESS_ID, scope.temporaryWorkRoot(), System.getenv(), System.out);
+			HarnessRunnerMaintenance.execute(args, HARNESS_ID, scope.temporaryWorkRoot(),
+				Platform.current().environment(System.getenv()), System.out);
 		}
 	}
 

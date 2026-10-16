@@ -3,10 +3,12 @@ package io.github.cowwoc.cat.common.runner;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import io.github.cowwoc.cat.common.ExecutableFiles;
+import io.github.cowwoc.cat.common.Platform;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -17,7 +19,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessProcessStarter
 {
 	/**
-	 * Starts a harness process without inheriting arbitrary harness-specific state.
+	 * Starts a harness process without inheriting arbitrary harness-specific state. A harness named without a path
+	 * starts from the folders of {@code environment}'s {@code PATH}, as {@link Platform#findProgram} finds it.
 	 *
 	 * @param command the non-empty command and arguments
 	 *
@@ -35,7 +38,9 @@ public final class HarnessProcessStarter
 		requireThat(command, "command").isNotEmpty();
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		ProcessBuilder builder = new ProcessBuilder(command);
+		List<String> resolved = new ArrayList<>(command);
+		resolved.set(0, Platform.current().findProgram(command.getFirst(), environment));
+		ProcessBuilder builder = new ProcessBuilder(resolved);
 		builder.directory(workingDirectory.toFile());
 		Map<String, String> childEnvironment = builder.environment();
 		childEnvironment.clear();

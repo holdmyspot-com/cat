@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.claude;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.HookScope;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,7 +27,8 @@ public final class ClaudeSessionEndHook
 	public static void main(String[] args)
 	{
 		requireThat(args, "args").isNotNull();
-		run(args, System.in, System.err, System.getenv(), Path.of(System.getProperty("user.dir")));
+		run(args, System.in, System.err, Platform.current().environment(System.getenv()),
+			Path.of(System.getProperty("user.dir")));
 	}
 
 	/**

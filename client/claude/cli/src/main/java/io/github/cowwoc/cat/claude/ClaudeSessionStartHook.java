@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.claude;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import io.github.cowwoc.cat.common.Platform;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -28,7 +29,8 @@ public final class ClaudeSessionStartHook
 	public static void main(String[] args)
 	{
 		requireThat(args, "args").isNotNull();
-		run(args, System.in, System.out, System.err, System.getenv(), Path.of(System.getProperty("user.dir")));
+		run(args, System.in, System.out, System.err, Platform.current().environment(System.getenv()),
+			Path.of(System.getProperty("user.dir")));
 	}
 
 	/**

@@ -104,7 +104,8 @@ public final class CodexReadPart
 	{
 		args = CommandLineArguments.recover(args);
 		CommandShell shell = CommandShell.current();
-		int status = run(args, shell, launcher(shell.launcher("read-part")), System.getenv(), System.out, System.err);
+		int status = run(args, shell, launcher(shell.launcher("read-part")),
+			Platform.current().environment(System.getenv()), System.out, System.err);
 		System.out.flush();
 		System.exit(status);
 	}

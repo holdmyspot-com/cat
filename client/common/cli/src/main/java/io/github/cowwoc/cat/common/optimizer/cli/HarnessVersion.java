@@ -2,8 +2,10 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.Platform;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -43,7 +45,8 @@ public final class HarnessVersion
 	}
 
 	/**
-	 * Returns the launcher that starts a real process and waits 30 seconds for it to end.
+	 * Returns the launcher that starts a real process and waits 30 seconds for it to end. The launcher finds the
+	 * executable as {@link Platform#findProgram} does.
 	 *
 	 * @return the launcher
 	 */
@@ -51,7 +54,10 @@ public final class HarnessVersion
 	{
 		return command ->
 		{
-			Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+			List<String> resolved = new ArrayList<>(command);
+			resolved.set(0, Platform.current().findProgram(command.getFirst(), builder.environment()));
+			Process process = builder.command(resolved).start();
 			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 			if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS))
 			{

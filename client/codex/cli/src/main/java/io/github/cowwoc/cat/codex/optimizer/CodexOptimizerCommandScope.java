@@ -67,7 +67,8 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 */
 	CodexOptimizerCommandScope() throws IOException
 	{
-		this(System.getenv(), home(System.getenv()), Path.of("").toAbsolutePath(),
+		this(Platform.current().environment(System.getenv()), home(Platform.current().environment(System.getenv())),
+			Path.of("").toAbsolutePath(),
 			Path.of(System.getProperty("java.home")).toAbsolutePath().getParent());
 	}
 

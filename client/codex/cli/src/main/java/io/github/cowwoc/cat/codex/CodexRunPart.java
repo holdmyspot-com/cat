@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.CommandLineArguments;
+import io.github.cowwoc.cat.common.Platform;
 import java.io.Console;
 import java.io.File;
 import java.io.IOException;
@@ -65,7 +66,8 @@ public final class CodexRunPart
 		boolean terminal = console != null && console.isTerminal();
 		CommandShell shell = CommandShell.current();
 		int status = run(args, System.in, terminal, Path.of("").toAbsolutePath(), shell,
-			CodexReadPart.launcher(shell.launcher("read-part")), System.getenv(), System.out, System.err);
+			CodexReadPart.launcher(shell.launcher("read-part")), Platform.current().environment(System.getenv()),
+			System.out, System.err);
 		System.out.flush();
 		System.exit(status);
 	}

@@ -43,7 +43,7 @@ public final class CodexGetHistory
 		args = CommandLineArguments.recover(args);
 		try
 		{
-			System.out.print(execute(System.getenv(), args));
+			System.out.print(execute(Platform.current().environment(System.getenv()), args));
 		}
 		catch (IllegalArgumentException | IOException e)
 		{
