@@ -206,9 +206,11 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * A crash after any change's file is written, but before the journal records it, is followed by a restart that
+	 * A crash after a change's file is written, but before the journal records it, is followed by a restart that
 	 * resumes the same delivery: every change, including the certification record's, is written exactly once across
-	 * both runs, and the delivery completes. Each crash point runs its two deliveries in its own copy of one fixture.
+	 * both runs, and the delivery completes. The restart decides whether a change was written from its kind, so the
+	 * crash follows each kind once: the certification record's creation, an edit and a deletion. Each crash point runs
+	 * its two deliveries in its own copy of one fixture.
 	 *
 	 * @throws IOException if the fixture or delivery fails
 	 */
@@ -216,11 +218,10 @@ public final class DeliveryTest
 	public void faultBetweenWritesResumesOnce() throws IOException
 	{
 		// Requirement: R-W8
-		int changeCount = 4;
 		try (TemporaryDirectories templateCleanup = new TemporaryDirectories())
 		{
 			Fixture template = Fixture.create(templateCleanup);
-			for (int crashAfter = 1; crashAfter <= changeCount; ++crashAfter)
+			for (Path crashAfter : List.of(RECORD_FILE, Path.of("rules/main.md"), Path.of("rules/old.md")))
 			{
 				try (TemporaryDirectories cleanup = new TemporaryDirectories())
 				{
@@ -228,11 +229,10 @@ public final class DeliveryTest
 					Overlay candidate = fixture.candidate();
 					DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 					List<Integer> written = new ArrayList<>();
-					int limit = crashAfter;
 					Consumer<DeliveryChange> crashing = change ->
 					{
 						written.add(change.sequence());
-						if (written.size() == limit)
+						if (change.target().equals(crashAfter))
 							throw new SimulatedCrash(change);
 					};
 					boolean crashed = false;
@@ -940,12 +940,11 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * A crash after any file of a delivery that writes a prompt test, before the journal records it, is followed by a
-	 * restart that resumes the same delivery: every change, including the prompt test's files, is written exactly once
-	 * across both runs, and the delivery completes.
-	 * <p>
-	 * Each of the 7 crash points needs an untouched project, so each runs its two deliveries in its own copy of one
-	 * fixture.
+	 * A crash after a prompt test's file is written, before the journal records it, is followed by a restart that
+	 * resumes the same delivery: every change, including the prompt test's files, is written exactly once across both
+	 * runs, and the delivery completes. The crash follows the first of the prompt test's three files, so the restart
+	 * must skip that file and still write the other two. {@link #faultBetweenWritesResumesOnce()} covers a crash after
+	 * each kind of change.
 	 *
 	 * @throws IOException             if the fixture or delivery fails
 	 * @throws ScenarioFormatException if a written file cannot be read back
@@ -954,52 +953,40 @@ public final class DeliveryTest
 	public void promptTestFaultResumesOnce() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-W11
-		int changeCount = 7;
 		DeliveredTest created = promptTest("created_summary", true);
-		try (TemporaryDirectories templateCleanup = new TemporaryDirectories())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture template = Fixture.create(templateCleanup);
-			for (int crashAfter = 1; crashAfter <= changeCount; ++crashAfter)
+			Fixture fixture = Fixture.create(cleanup);
+			Overlay candidate = fixture.candidate();
+			DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
+			List<Integer> written = new ArrayList<>();
+			Consumer<DeliveryChange> crashing = change ->
 			{
-				try (TemporaryDirectories cleanup = new TemporaryDirectories())
-				{
-					Fixture fixture = template.copy(cleanup);
-					Overlay candidate = fixture.candidate();
-					DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
-					List<Integer> written = new ArrayList<>();
-					int limit = crashAfter;
-					Consumer<DeliveryChange> crashing = change ->
-					{
-						written.add(change.sequence());
-						if (written.size() == limit)
-							throw new SimulatedCrash(change);
-					};
-					boolean crashed = false;
-					try
-					{
-						fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate, crashing).
-							deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD,
-								List.of(created));
-					}
-					catch (SimulatedCrash _)
-					{
-						crashed = true;
-					}
-					requireThat(crashed, "crashed").withContext(crashAfter, "crashAfter").isTrue();
-
-					// The restarted process opens a new store and executor over the same base worktree
-					DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate,
-						change -> written.add(change.sequence())).
-						deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD,
-							List.of(created));
-
-					requireDelivered(result);
-					requireThat(written, "written").withContext(crashAfter, "crashAfter").
-						isEqualTo(List.of(0, 1, 2, 3, 4, 5, 6));
-					requireCandidateDelivered(fixture);
-					requirePromptTestDelivered(fixture, created);
-				}
+				written.add(change.sequence());
+				if (change.target().startsWith(created.location().directory()))
+					throw new SimulatedCrash(change);
+			};
+			boolean crashed = false;
+			try
+			{
+				fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate, crashing).
+					deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of(created));
 			}
+			catch (SimulatedCrash _)
+			{
+				crashed = true;
+			}
+			requireThat(crashed, "crashed").isTrue();
+
+			// The restarted process opens a new store and executor over the same base worktree
+			DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate,
+				change -> written.add(change.sequence())).
+				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of(created));
+
+			requireDelivered(result);
+			requireThat(written, "written").isEqualTo(List.of(0, 1, 2, 3, 4, 5, 6));
+			requireCandidateDelivered(fixture);
+			requirePromptTestDelivered(fixture, created);
 		}
 	}
 
