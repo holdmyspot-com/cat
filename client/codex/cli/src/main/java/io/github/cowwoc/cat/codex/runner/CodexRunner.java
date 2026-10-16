@@ -4,6 +4,7 @@ import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.runner.HarnessArtifact;
 import io.github.cowwoc.cat.common.runner.HarnessCommand;
 import io.github.cowwoc.cat.common.runner.HarnessCredentials;
@@ -441,7 +442,7 @@ public final class CodexRunner
 		String configured = environment.get("CODEX_HOME");
 		if (configured != null && !configured.isBlank())
 			return Path.of(configured);
-		String home = environment.get("HOME");
+		String home = environment.get(Platform.current().homeVariable());
 		if (home == null || home.isBlank())
 			return Path.of(".codex").toAbsolutePath();
 		return Path.of(home).resolve(".codex");

@@ -3,7 +3,10 @@ package io.github.cowwoc.cat.common;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.that;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * A supported operating-system and CPU-architecture combination for CAT release archives.
@@ -109,6 +112,24 @@ public enum Platform
 		if (isWindows())
 			return "USERPROFILE";
 		return "HOME";
+	}
+
+	/**
+	 * Returns the current user's home directory, which a process environment names in {@link #homeVariable()}.
+	 *
+	 * @param environment the process environment
+	 * @return the home directory
+	 * @throws NullPointerException if {@code environment} is null
+	 * @throws IOException if the environment does not set the home variable
+	 */
+	public Path homeDirectory(Map<String, String> environment) throws IOException
+	{
+		requireThat(environment, "environment").isNotNull();
+		String variable = homeVariable();
+		String home = environment.get(variable);
+		if (home == null || home.isBlank())
+			throw new IOException(variable + " is not set");
+		return Path.of(home);
 	}
 
 	/**

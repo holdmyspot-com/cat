@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.runner;
 
+import io.github.cowwoc.cat.common.Platform;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,10 +43,7 @@ public final class HarnessDependencyCache
 	public static Path verifyNpm(Map<String, String> parentEnvironment) throws IOException
 	{
 		requireThat(parentEnvironment, "parentEnvironment").isNotNull();
-		String home = parentEnvironment.get("HOME");
-		if (home == null || home.isBlank())
-			throw new IOException("Shared npm cache requires the parent HOME");
-		Path cache = Path.of(home).resolve(".npm").toAbsolutePath().normalize();
+		Path cache = Platform.current().homeDirectory(parentEnvironment).resolve(".npm").toAbsolutePath().normalize();
 		Files.createDirectories(cache);
 		if (!Files.isDirectory(cache) || !Files.isWritable(cache))
 			throw new IOException("Shared npm cache is not writable: " + cache);

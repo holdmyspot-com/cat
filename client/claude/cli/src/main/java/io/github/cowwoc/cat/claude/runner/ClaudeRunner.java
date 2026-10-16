@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.claude.ClaudeConfiguration;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.runner.HarnessArtifact;
 import io.github.cowwoc.cat.common.runner.HarnessCommand;
@@ -307,7 +308,7 @@ public final class ClaudeRunner
 	private static Path claudeConfigDirectory(Map<String, String> environment)
 	{
 		assert environment != null;
-		String home = environment.get("HOME");
+		String home = environment.get(Platform.current().homeVariable());
 		Path homeDirectory;
 		// Retain the runner's working-directory fallback for optional host settings.
 		if (home == null || home.isBlank())
@@ -326,10 +327,7 @@ public final class ClaudeRunner
 	 */
 	private static Path userRulesRoot(Map<String, String> environment) throws IOException
 	{
-		String home = environment.get("HOME");
-		if (home == null || home.isBlank())
-			throw new IOException("Claude user rules require the parent HOME");
-		Path userHome = Path.of(home.strip()).toAbsolutePath().normalize();
+		Path userHome = Platform.current().homeDirectory(environment).toAbsolutePath().normalize();
 		return ProjectRuleLoader.rulesDirectory(userHome);
 	}
 

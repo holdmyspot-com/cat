@@ -4,6 +4,7 @@ import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
 import io.github.cowwoc.cat.common.optimizer.adapter.DeferredInterruptSignal;
@@ -62,7 +63,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * Creates the scope of the running process: its environment, its home directory, its working directory and the
 	 * Codex artifact that holds its runtime.
 	 *
-	 * @throws IOException if {@code HOME} is not set
+	 * @throws IOException if the environment does not set the platform's home variable
 	 */
 	CodexOptimizerCommandScope() throws IOException
 	{
@@ -99,14 +100,11 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 *
 	 * @param environment the process environment
 	 * @return the home directory
-	 * @throws IOException if {@code HOME} is not set
+	 * @throws IOException if the environment does not set the platform's home variable
 	 */
 	private static Path home(Map<String, String> environment) throws IOException
 	{
-		String home = environment.get("HOME");
-		if (home == null || home.isBlank())
-			throw new IOException("HOME is not set.");
-		return Path.of(home);
+		return Platform.current().homeDirectory(environment);
 	}
 
 	@Override

@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.HarnessDependencyCache;
 import org.testng.annotations.Test;
@@ -26,7 +27,8 @@ public final class HarnessDependencyCacheTest
 	}
 
 	/**
-	 * Verifies isolated homes reuse the parent cache rather than creating a per-run npm cache.
+	 * Verifies isolated homes reuse the parent cache rather than creating a per-run npm cache, under the home directory
+	 * that the parent's platform names.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -36,13 +38,14 @@ public final class HarnessDependencyCacheTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-parent-home-"));
+			Map<String, String> parent = Map.of(Platform.current().homeVariable(), home.toString());
 			Map<String, String> isolated = new HashMap<>();
 
-			HarnessDependencyCache.configureNpm(Map.of("HOME", home.toString()), isolated);
+			HarnessDependencyCache.configureNpm(parent, isolated);
 
 			requireThat(isolated.get("NPM_CONFIG_CACHE"), "npmCache").isEqualTo(home.resolve(".npm").toString());
 			requireThat(Files.isDirectory(home.resolve(".npm")), "cacheDirectory").isTrue();
-			requireThat(HarnessDependencyCache.verifyNpm(Map.of("HOME", home.toString())), "verifiedCache").
+			requireThat(HarnessDependencyCache.verifyNpm(parent), "verifiedCache").
 				isEqualTo(home.resolve(".npm"));
 		}
 	}

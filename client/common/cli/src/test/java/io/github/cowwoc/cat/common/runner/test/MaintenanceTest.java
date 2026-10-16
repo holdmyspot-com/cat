@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
@@ -153,7 +154,7 @@ public final class MaintenanceTest
 			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 			{
 				HarnessRunnerMaintenance.execute(new String[]{"--verify-dependency-cache"}, "harnessa", home,
-					Map.of("HOME", home.toString()), out);
+					Map.of(Platform.current().homeVariable(), home.toString()), out);
 			}
 
 			requireThat(home.resolve(".npm"), "cache").isDirectory();

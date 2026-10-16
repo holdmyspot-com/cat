@@ -6,6 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.CommandLineArguments;
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
@@ -54,17 +55,15 @@ public final class CodexRunnerCli
 			return;
 		}
 		Map<String, String> environment = System.getenv();
-		String home = environment.get("HOME");
-		if (home == null || home.isBlank())
-			throw new IOException("HOME is not set");
+		Path home = Platform.current().homeDirectory(environment);
 		if (isOneShotCommand(args))
 		{
-			run(args, environment, HarnessCapacity.forHome(Path.of(home), HARNESS_ID, HarnessCapacity.MAXIMUM_CONCURRENCY));
+			run(args, environment, HarnessCapacity.forHome(home, HARNESS_ID, HarnessCapacity.MAXIMUM_CONCURRENCY));
 			return;
 		}
 		serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
 			new OutputStreamWriter(System.out, UTF_8), environment,
-			maximum -> HarnessCapacity.forHome(Path.of(home), HARNESS_ID, maximum));
+			maximum -> HarnessCapacity.forHome(home, HARNESS_ID, maximum));
 	}
 
 	/**

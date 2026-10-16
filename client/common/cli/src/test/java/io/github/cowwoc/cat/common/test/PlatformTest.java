@@ -3,6 +3,9 @@ package io.github.cowwoc.cat.common.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.Platform;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
@@ -64,6 +67,38 @@ public final class PlatformTest
 			else
 				expected = "HOME";
 			requireThat(platform.homeVariable(), platform.id()).isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Verifies that each platform reads the user's home directory from its own home variable, and rejects an
+	 * environment that sets only the other platforms' variable with a message that names the missing one.
+	 *
+	 * @throws IOException if the home directory cannot be read
+	 */
+	@Test
+	public void readsHomeDirectory() throws IOException
+	{
+		for (Platform platform : Platform.values())
+		{
+			String variable = platform.homeVariable();
+			String other;
+			if (platform.isWindows())
+				other = "HOME";
+			else
+				other = "USERPROFILE";
+			Path home = Path.of("user-home");
+			requireThat(platform.homeDirectory(Map.of(variable, home.toString(), other, "elsewhere")), platform.id()).
+				isEqualTo(home);
+			try
+			{
+				platform.homeDirectory(Map.of(other, "elsewhere"));
+				throw new AssertionError("Expected a failure for the missing " + variable + " on " + platform.id());
+			}
+			catch (IOException failure)
+			{
+				requireThat(failure.getMessage(), platform.id()).isEqualTo(variable + " is not set");
+			}
 		}
 	}
 
