@@ -55,10 +55,10 @@ public final class ProposalSchema
 	 */
 	private static final String REGRESSION_SCENARIOS = "regression_scenarios";
 	/**
-	 * The property of a test that holds the {@code scenario.md} of its directory in the draft directory, which CAT
-	 * copies from the draft rather than the contract author writes.
+	 * The property of a test that holds its directory in the draft directory and the {@code scenario.md} that it holds,
+	 * which CAT copies from the draft rather than the contract author writes.
 	 */
-	public static final String SCENARIO_FILE = "scenario_file";
+	private static final String DRAFT = "draft";
 	/**
 	 * The property of a test that holds the test cases that an earlier campaign committed, which CAT reads rather than
 	 * the contract author writes.
@@ -527,8 +527,13 @@ public final class ProposalSchema
 		test.uncoveredInteractions().forEach(uncovered::add);
 		ArrayNode scenarios = node.putArray(REGRESSION_SCENARIOS);
 		test.regressionScenarios().forEach(scenarios::add);
-		// A test without a draft's scenario.md keeps the identity that it had before the property existed
-		test.scenarioFile().ifPresent(scenarioFile -> node.put(SCENARIO_FILE, scenarioFile));
+		// A test without a draft directory keeps the identity that it had before the property existed
+		test.draft().ifPresent(draft ->
+		{
+			ObjectNode draftNode = node.putObject(DRAFT);
+			draftNode.put("directory", PortablePaths.text(draft.directory()));
+			draftNode.put("scenario", draft.scenario());
+		});
 		ArrayNode fixtures = node.putArray("fixtures");
 		ArrayNode recorded = null;
 		for (FixtureFile fixture : test.fixtures())
@@ -820,13 +825,14 @@ public final class ProposalSchema
 			if (problems.size() > problemsBefore)
 				return null;
 			List<TestCase> committed = committedTestCases;
-			Optional<String> scenarioFile = Optional.ofNullable(node.get(SCENARIO_FILE)).map(JsonNode::asString);
+			Optional<PromptTest.Draft> draft = Optional.ofNullable(node.get(DRAFT)).map(draftNode ->
+				new PromptTest.Draft(Path.of(text(draftNode, "directory")), text(draftNode, "scenario")));
 			PromptTest test = attempt(location, () -> new PromptTest(text(node, "id"),
 				new RiskRank(node.get("risk_rank").asInt()), strings(node.get("requirement_ids")),
 				strings(node.get("absent_triggers")), text(node, "applicability"), strings(node.get("turns")),
 				Duration.ofSeconds(node.get("time_limit_seconds").asLong()), text(node, "expected_behavior"),
 				strings(node.get("uncovered_interactions")), variables, committed, testCases, assertions,
-				strings(node.get(REGRESSION_SCENARIOS)), fixtures, scenarioFile));
+				strings(node.get(REGRESSION_SCENARIOS)), fixtures, draft));
 			if (test == null)
 				return null;
 			// Delivery writes every prompt test as a scenario.md

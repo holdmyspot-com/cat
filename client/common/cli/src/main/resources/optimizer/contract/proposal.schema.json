@@ -92,7 +92,16 @@
 					"expected_behavior": {"description": "What a compliant response does.", "type": "string", "pattern": "\\S"},
 					"uncovered_interactions": {"description": "Material interactions that this test cannot cover. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}},
 					"regression_scenarios": {"description": "Recorded regression scenario paths covered by this test, exactly as CAT presents them. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}},
-					"scenario_file": {"description": "The scenario.md of the test's directory in the draft directory, which delivery writes. CAT copies it from the draft.", "type": "string"},
+					"draft": {
+						"description": "The test's directory in the draft directory and the scenario.md that it holds, which delivery writes. CAT copies them from the draft.",
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["directory", "scenario"],
+						"properties": {
+							"directory": {"description": "The directory relative to the draft directory, which is also its path relative to the project, using / as the separator.", "type": "string", "pattern": "\\S"},
+							"scenario": {"type": "string", "pattern": "\\S"}
+						}
+					},
 					"variables": {
 						"description": "Every variable that a {{name}} placeholder names. Each test case gives every variable a value.",
 						"type": "array",

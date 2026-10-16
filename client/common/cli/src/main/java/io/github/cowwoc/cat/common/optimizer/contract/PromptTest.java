@@ -5,6 +5,7 @@ import io.github.cowwoc.cat.common.Identifier;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -39,19 +40,48 @@ import java.util.Set;
  * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
  * @param fixtures the files that each trial's workspace receives, with placeholders replaced in their paths and
  *   contents
- * @param scenarioFile the {@value PromptTestFiles#SCENARIO} that the contract author wrote for this test in its draft
- *   directory, which delivery writes; empty for a test that the contract author wrote into the proposal itself
+ * @param draft the test's directory in the contract author's draft directory and the {@value PromptTestFiles#SCENARIO}
+ *   that it holds, which delivery writes; empty for a test that the contract author wrote into the proposal itself
  */
 public record PromptTest(String id, RiskRank riskRank, List<String> requirementIds, List<String> absentTriggers,
 	String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
 	List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
 	List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
-	List<FixtureFile> fixtures, Optional<String> scenarioFile)
+	List<FixtureFile> fixtures, Optional<PromptTest.Draft> draft)
 {
 	/**
 	 * The behavior through which a reply fails the assertion {@value TestCase#EXPECTED_OUTCOME}.
 	 */
 	public static final String UNEXPECTED_OUTCOME = "unexpected_outcome";
+
+	/**
+	 * A prompt test's directory in the contract author's draft directory.
+	 *
+	 * @param directory the directory, relative to the draft directory, which is also its path relative to the project
+	 * @param scenario  the content of the {@value PromptTestFiles#SCENARIO} that it holds
+	 */
+	public record Draft(Path directory, String scenario)
+	{
+		/**
+		 * Creates a draft directory of a prompt test.
+		 *
+		 * @param directory the directory, relative to the draft directory, which is also its path relative to the
+		 *                  project
+		 * @param scenario  the content of the {@value PromptTestFiles#SCENARIO} that it holds
+		 * @throws NullPointerException     if any of the arguments are null
+		 * @throws IllegalArgumentException if {@code directory} is absolute, empty or not normalized or
+		 *                                  leaves the draft directory, or {@code scenario} is blank
+		 */
+		public Draft
+		{
+			requireThat(directory, "directory").isNotNull();
+			requireThat(directory.isAbsolute(), "directory.isAbsolute()").isFalse();
+			requireThat(directory.toString(), "directory").isNotEmpty();
+			requireThat(directory.normalize(), "directory.normalize()").isEqualTo(directory, "directory");
+			requireThat(directory.startsWith(".."), "directory.startsWith(\"..\")").isFalse();
+			requireThat(scenario, "scenario").isNotBlank();
+		}
+	}
 
 	/**
 	 * Creates a prompt test.
@@ -75,9 +105,9 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
 	 * @param fixtures the files that each trial's workspace receives, with placeholders replaced in their paths and
 	 *   contents
-	 * @param scenarioFile the {@value PromptTestFiles#SCENARIO} that the contract author wrote for this test in its
-	 *   draft directory, which delivery writes; empty for a test that the contract author wrote into the proposal
-	 *   itself
+	 * @param draft the test's directory in the contract author's draft directory and the
+	 *   {@value PromptTestFiles#SCENARIO} that it holds, which delivery writes; empty for a test that the contract
+	 *   author wrote into the proposal itself
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code id}, a requirement identifier or an absent trigger is not lowercase
 	 *   words joined by underscores, a text is blank, a list that must not be empty is empty, {@code timeLimit} is not
@@ -109,7 +139,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		requireThat(assertions, "assertions").isNotNull();
 		requireThat(regressionScenarios, "regressionScenarios").isNotNull();
 		requireThat(fixtures, "fixtures").isNotNull();
-		requireThat(scenarioFile, "scenarioFile").isNotNull();
+		requireThat(draft, "draft").isNotNull();
 		requirementIds = List.copyOf(requirementIds);
 		absentTriggers = List.copyOf(absentTriggers);
 		turns = List.copyOf(turns);
