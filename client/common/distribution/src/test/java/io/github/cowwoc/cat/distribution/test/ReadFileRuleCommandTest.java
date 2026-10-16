@@ -62,6 +62,7 @@ public final class ReadFileRuleCommandTest
 			BundledRules.copy(plugin.resolve("rules"));
 			RuleArtifactRouter.route(plugin, scope.yaml());
 			Path bin = Files.createDirectories(plugin.resolve("bin"));
+			Path errors = project.resolve("errors.txt");
 
 			String guidance = new ProjectRuleLoader(scope.yaml(), platform).
 				loadSessionForMainAgent(plugin, null, project, "codex").readingGuidance();
@@ -76,36 +77,39 @@ public final class ReadFileRuleCommandTest
 				Files.writeString(bin.resolve("run-part.cmd"), "@findstr \"^\"\r\n");
 				String encoded = Base64.getEncoder().encodeToString(command.getBytes(UTF_16LE));
 				output = run(new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand",
-					encoded), command);
+					encoded), command, errors);
 			}
 			else
 			{
 				Path runPart = Files.writeString(bin.resolve("run-part"), "#!/bin/sh\ncat\n");
 				requireThat(runPart.toFile().setExecutable(true, false), "executable").isTrue();
-				output = run(new ProcessBuilder("sh", "-c", command), command);
+				output = run(new ProcessBuilder("sh", "-c", command), command, errors);
 			}
 			requireThat(output.strip(), "output").withContext(command, "command").isEqualTo(COMMAND);
 		}
 	}
 
 	/**
-	 * Runs a shell to completion.
+	 * Runs a shell to completion. The shell's standard error is kept apart from its output because PowerShell writes
+	 * progress records there, such as "Preparing modules for first use", when standard error is not a console.
 	 *
 	 * @param builder the shell to run
 	 * @param command the command that the shell runs, for the failure message
-	 * @return the shell's standard output and standard error
+	 * @param errors  the file that receives the shell's standard error
+	 * @return the shell's standard output
 	 * @throws IOException          if the shell cannot be run or fails
 	 * @throws InterruptedException if the thread is interrupted while the shell runs
 	 */
-	private static String run(ProcessBuilder builder, String command) throws IOException, InterruptedException
+	private static String run(ProcessBuilder builder, String command, Path errors)
+		throws IOException, InterruptedException
 	{
-		try (Process process = builder.redirectErrorStream(true).start())
+		try (Process process = builder.redirectError(errors.toFile()).start())
 		{
 			process.getOutputStream().close();
 			String output = new String(process.getInputStream().readAllBytes(), UTF_8);
 			int status = process.waitFor();
 			requireThat(status, "status").withContext(command, "command").withContext(output, "output").
-				isEqualTo(0);
+				withContext(Files.readString(errors, UTF_8), "errors").isEqualTo(0);
 			return output;
 		}
 	}
