@@ -54,7 +54,8 @@ public final class CodexPluginHooksTest
 	/**
 	 * Verifies that each hook's command for this platform starts the launcher of its event, from a plugin root
 	 * directory whose name holds a space, a single quote and a dollar sign, and passes the event to the launcher
-	 * unchanged.
+	 * unchanged. {@link #postToolUseStartsJavaOnlyForPartCommands()} checks the {@code PostToolUse} hook's command with
+	 * its real launcher instead, because each run of a command on Windows starts PowerShell.
 	 *
 	 * @throws IOException          if the hooks cannot be read or run
 	 * @throws InterruptedException if the thread is interrupted while a hook runs
@@ -73,6 +74,8 @@ public final class CodexPluginHooksTest
 			{
 				String launcher = LAUNCHERS.get(event.getKey());
 				requireThat(launcher, event.getKey()).isNotNull();
+				if (event.getKey().equals("PostToolUse"))
+					continue;
 				writeLauncher(launchers, launcher, platform);
 				for (JsonNode group : event.getValue())
 				{
@@ -84,7 +87,7 @@ public final class CodexPluginHooksTest
 					}
 				}
 			}
-			requireThat(commands, "commands").isEqualTo(LAUNCHERS.size());
+			requireThat(commands, "commands").isEqualTo(LAUNCHERS.size() - 1);
 		}
 	}
 
