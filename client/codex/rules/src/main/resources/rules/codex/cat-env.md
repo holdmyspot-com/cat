@@ -23,20 +23,8 @@ environment.
 `CAT_PROJECT_ROOT` is the directory in the `<cwd>` element of your environment context. Wherever a rule or skill writes
 `${CAT_PROJECT_ROOT}`, write that directory in its place; never expand `${CAT_PROJECT_ROOT}` from the environment.
 
-Codex runs your shell commands in a POSIX shell. When a rule or skill describes a command in words, or writes an input
-as a placeholder such as `<project>`, write the command in that shell: read an environment variable `NAME` as
-`"$NAME"` and the user's home directory as `"$HOME"`, and run a launcher by its path, as in `'<path>' <arguments>`. To
-send lines to a command's standard input, write each line in single quotes and pipe them from `printf`, as in
-`printf '%s\n' '<line>' '<line>' | '<path>' <arguments>`. Inside single quotes, write each `'` of a path or line as
-`'\''`.
+<!-- cat:include platform/{platform}/cat-env/shell.md -->
 
-`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/temp`, and the directory exists. Wherever a rule or skill writes
-`${CAT_TEMP}`, write that directory in its place; never expand `${CAT_TEMP}` from the environment. Create a temporary
-directory there with `mktemp -d -p ${CAT_TEMP} <workflow-name>-XXXXXX`, which prints the new directory's absolute path;
-use that output as the directory. Remove it with `rm -rf -- <directory>` once nothing needs it, or move it with
-`mv -- <directory> <new-path>` to hand it to a later owner.
+<!-- cat:include platform/{platform}/cat-env/temporary-directory.md -->
 
-Write files only inside `${CAT_PROJECT_ROOT}` unless the user names a location outside it. Put a scratch file, probe
-input, or saved command output in a temporary directory under `${CAT_TEMP}`, not in `/tmp`, the home directory, or
-another directory outside the project. When you know that a command you run writes its own temporary files to the
-system's temporary directory, point it at that directory through its `TMPDIR` or equivalent setting.
+<!-- cat:include platform/{platform}/cat-env/project-files.md -->

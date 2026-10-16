@@ -296,11 +296,11 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
-	 * Verifies that on Windows, each bundled harness rule in the harness's {@code windows} folder replaces the
-	 * harness rule of the same name, and keeps its place among the rules.
+	 * Verifies that on Windows, a rule's include of {@code {platform}} names the harness's Windows fragment, and that
+	 * the fragments themselves are not loaded as rules.
 	 */
 	@Test
-	public void loadsWindowsVariantsOnWindows() throws IOException
+	public void includesWindowsFragmentsOnWindows() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
@@ -312,18 +312,17 @@ public final class ProjectRuleLoaderTest
 				loadSessionForMainAgent(plugin, null, project, "harnessa");
 
 			requireThat(session.readingGuidance(), "readingGuidance").
-				isEqualTo("# Reading files\n\nRun run-part.cmd");
-			requireThat(session.rules(), "rules").startsWith("# CAT environment\n\nRemove-Item").
-				doesNotContain("rm -rf").contains("# Windows only").doesNotContain("# Reading files");
+				isEqualTo("# Reading files\n\nRun run-part.cmd\n\nRead every part");
+			requireThat(session.rules(), "rules").startsWith("# CAT environment\n\nRemove-Item\n\nShared guidance").
+				doesNotContain("rm -rf").doesNotContain("Run run-part");
 		}
 	}
 
 	/**
-	 * Verifies that on other platforms, the bundled harness rules in the harness's {@code windows} folder are not
-	 * loaded.
+	 * Verifies that on other platforms, a rule's include of {@code {platform}} names the harness's POSIX fragment.
 	 */
 	@Test
-	public void ignoresWindowsVariantsOnLinux() throws IOException
+	public void includesPosixFragmentsOnLinux() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
@@ -334,14 +333,39 @@ public final class ProjectRuleLoaderTest
 			SessionRules session = new ProjectRuleLoader(scope.yaml(), Platform.LINUX_X64).
 				loadSessionForMainAgent(plugin, null, project, "harnessa");
 
-			requireThat(session.readingGuidance(), "readingGuidance").isEqualTo("# Reading files\n\nRun run-part");
-			requireThat(session.rules(), "rules").startsWith("# CAT environment\n\nrm -rf").
-				doesNotContain("Remove-Item").doesNotContain("# Windows only");
+			requireThat(session.readingGuidance(), "readingGuidance").
+				isEqualTo("# Reading files\n\nRun run-part\n\nRead every part");
+			requireThat(session.rules(), "rules").startsWith("# CAT environment\n\nrm -rf\n\nShared guidance").
+				doesNotContain("Remove-Item").doesNotContain("Run run-part");
 		}
 	}
 
 	/**
-	 * Writes harness rules that have Windows variants, a Windows-only harness rule, and common and project rules.
+	 * Verifies that the files a rule gives its reader include the fragment for the current platform only.
+	 */
+	@Test
+	public void listsCurrentPlatformFragments() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-")).toAbsolutePath().normalize();
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			writeHarnessRules(plugin);
+
+			List<RuleSource> sources = new ProjectRuleLoader(scope.yaml(), Platform.WINDOWS_X64).
+				sourcesForMainAgent(plugin, null, project, "harnessa");
+
+			Path environment = plugin.resolve("rules/harnessa/cat-env.md");
+			requireThat(sources, "sources").contains(new RuleSource(
+				plugin.resolve("rules/harnessa/platform/windows/cat-env/temp.md"), RuleSource.Kind.INCLUDED,
+				Optional.of(environment))).doesNotContain(new RuleSource(
+				plugin.resolve("rules/harnessa/platform/posix/cat-env/temp.md"), RuleSource.Kind.INCLUDED,
+				Optional.of(environment)));
+		}
+	}
+
+	/**
+	 * Writes harness rules whose platform differences are fragments that each rule includes, and a common rule.
 	 *
 	 * @param plugin the plugin directory
 	 * @throws IOException if a file cannot be written
@@ -349,11 +373,14 @@ public final class ProjectRuleLoaderTest
 	private static void writeHarnessRules(Path plugin) throws IOException
 	{
 		write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
-		write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\nrm -rf\n");
-		write(plugin, "rules/harnessa/read-file.md", "# Reading files\n\nRun run-part\n");
-		write(plugin, "rules/harnessa/windows/cat-env.md", "# CAT environment\n\nRemove-Item\n");
-		write(plugin, "rules/harnessa/windows/read-file.md", "# Reading files\n\nRun run-part.cmd\n");
-		write(plugin, "rules/harnessa/windows/shell.md", "# Windows only\n\nPowerShell guidance\n");
+		write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\n" +
+			"<!-- cat:include platform/{platform}/cat-env/temp.md -->\n\nShared guidance\n");
+		write(plugin, "rules/harnessa/read-file.md", "# Reading files\n\n" +
+			"<!-- cat:include platform/{platform}/read-file/run-part.md -->\n\nRead every part\n");
+		write(plugin, "rules/harnessa/platform/posix/cat-env/temp.md", "rm -rf\n");
+		write(plugin, "rules/harnessa/platform/posix/read-file/run-part.md", "Run run-part\n");
+		write(plugin, "rules/harnessa/platform/windows/cat-env/temp.md", "Remove-Item\n");
+		write(plugin, "rules/harnessa/platform/windows/read-file/run-part.md", "Run run-part.cmd\n");
 	}
 
 	/**

@@ -3,21 +3,9 @@
 `${CAT_PLUGIN_ROOT}` stands for the CAT plugin's root directory, `<!-- cat:plugin-root -->`.
 The shell does not define it, so wherever this guide uses `${CAT_PLUGIN_ROOT}`, write that path in its place.
 
-Codex shows only part of a long tool result: it removes lines from the middle. So that you see all of a command's
-output, run any command that may print output through `${CAT_PLUGIN_ROOT}/bin/run-part`, with the exception of
-`${CAT_PLUGIN_ROOT}/bin/read-part` that should be run without it. Write the command between a `<<'EOF'` line and an
-`EOF` line, exactly as you would write it without run-part:
+<!-- cat:include platform/{platform}/read-file/run-part.md -->
 
-```
-<!-- cat:plugin-root posix -->/bin/run-part <<'EOF'
-<command>
-EOF
-```
-
-run-part changes only how you run a command, not which command you run: choose the command you would choose without
-run-part, then run it through run-part. The command can be anything that the shell runs, such as several commands
-joined by `;` or a pipeline, and it needs no extra quoting. Run each run-part command in a tool call of its own, and do
-not pipe its output.
+<!-- cat:include platform/{platform}/read-file/command.md -->
 
 run-part saves and segments the output into multiple parts. When you invoke it, it will return the first part of the
 output followed by an instruction in square brackets on the last line that explain how to fetch the rest of the

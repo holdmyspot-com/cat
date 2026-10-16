@@ -74,10 +74,15 @@ public final class ProjectRuleLoader
 	 */
 	private static final String READ_FILE_RULE = "read-file.md";
 	/**
-	 * The folder of a bundled harness's rules that holds its Windows variants. On Windows, each rule in it stands in for
-	 * the harness rule of the same name, because the harness runs commands in a different shell there.
+	 * The folder that replaces {@link MarkdownIncludes#PLATFORM_PLACEHOLDER} in an include target on Windows, where a
+	 * harness runs commands in PowerShell.
 	 */
-	private static final String WINDOWS_RULES = "windows";
+	private static final String WINDOWS_FRAGMENTS = "windows";
+	/**
+	 * The folder that replaces {@link MarkdownIncludes#PLATFORM_PLACEHOLDER} in an include target on every other
+	 * platform, where a harness runs commands in a POSIX shell.
+	 */
+	private static final String POSIX_FRAGMENTS = "posix";
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
 	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
@@ -125,7 +130,7 @@ public final class ProjectRuleLoader
 	 * Creates a loader backed by a YAML mapper.
 	 *
 	 * @param yamlMapper a non-null YAML parser
-	 * @param platform   the platform whose variants of the bundled harness rules the loader loads
+	 * @param platform   the platform whose fragments the rules' includes name
 	 * @throws NullPointerException if any argument is null
 	 */
 	public ProjectRuleLoader(YAMLMapper yamlMapper, Platform platform)
@@ -347,7 +352,7 @@ public final class ProjectRuleLoader
 		Matcher directive = MarkdownIncludes.DIRECTIVE.matcher(body);
 		while (directive.find())
 		{
-			Path included = MarkdownIncludes.resolve(file, directive.group(1), "Direct rule include", ruleRoot);
+			Path included = resolveInclude(file, directive.group(1), ruleRoot);
 			addSource(new RuleSource(absolute(included), RuleSource.Kind.INCLUDED, referrer), sources, unread);
 		}
 
@@ -485,7 +490,7 @@ public final class ProjectRuleLoader
 		Path pluginRules = pluginRoot.resolve("rules");
 		loadDirectory(pluginRoot, pluginRules.resolve("common"), pluginRules, RuleRoot.PLUGIN, audience,
 			rules);
-		loadHarnessDirectory(pluginRoot, pluginRules.resolve(harness), pluginRules, audience, rules);
+		loadDirectory(pluginRoot, pluginRules.resolve(harness), pluginRules, RuleRoot.PLUGIN, audience, rules);
 		if (userRulesRoot != null)
 		{
 			loadDirectory(userRulesRoot, userRulesRoot.resolve("common"), userRulesRoot, RuleRoot.USER,
@@ -619,48 +624,6 @@ public final class ProjectRuleLoader
 			Rule rule = render(ownerRoot, file, ruleRoot, root, audience);
 			if (rule != null)
 				rules.add(rule);
-		}
-	}
-
-	/**
-	 * Loads the bundled rules of one harness. On Windows, each rule in the harness's Windows folder stands in for the
-	 * harness rule of the same name: it keeps that rule's path, so it takes the rule's place in the injection order and
-	 * in other rules' prerequisites. The folder's other rules are added.
-	 *
-	 * @param pluginRoot a non-null CAT installation directory
-	 * @param directory a non-null harness rule directory
-	 * @param ruleRoot the plugin's rule directory
-	 * @param audience the recipient whose rules are loaded
-	 * @param rules a non-null list of discovered rules
-	 * @throws IOException if a directory is not a real directory or one of its rules is invalid
-	 */
-	private void loadHarnessDirectory(Path pluginRoot, Path directory, Path ruleRoot, RuleAudience audience,
-		List<Rule> rules) throws IOException
-	{
-		Map<String, Path> files = new HashMap<>();
-		for (Path file : ruleFiles(pluginRoot, directory, RuleRoot.PLUGIN))
-			files.put(file.getFileName().toString(), file);
-		Map<String, Path> variants = new HashMap<>();
-		if (platform.isWindows())
-		{
-			for (Path file : ruleFiles(pluginRoot, directory.resolve(WINDOWS_RULES), RuleRoot.PLUGIN))
-				variants.put(file.getFileName().toString(), file);
-		}
-		Map<String, Path> loaded = new HashMap<>(files);
-		loaded.putAll(variants);
-
-		for (Path file : loaded.values().stream().sorted(ruleFileOrder()).toList())
-		{
-			Rule rule = render(pluginRoot, file, ruleRoot, RuleRoot.PLUGIN, audience);
-			if (rule == null)
-				continue;
-			Path replaced = files.get(file.getFileName().toString());
-			if (replaced != null && !replaced.equals(file))
-			{
-				rule = new Rule(rule.root(), rulePath(pluginRoot, ruleRoot, RuleRoot.PLUGIN, replaced),
-					rule.displayPath(), rule.file(), rule.direct(), rule.dependencies(), rule.context());
-			}
-			rules.add(rule);
 		}
 	}
 
@@ -1063,7 +1026,7 @@ public final class ProjectRuleLoader
 		StringBuffer result = new StringBuffer(content.length());
 		while (matcher.find())
 		{
-			Path included = MarkdownIncludes.resolve(file, matcher.group(1), "Direct rule include", ruleRoot);
+			Path included = resolveInclude(file, matcher.group(1), ruleRoot);
 			if (Files.size(included) > MAXIMUM_RULE_BYTES)
 				throw new IOException("Direct rule include is too large: " + included);
 			String includedContent = Files.readString(included, UTF_8);
@@ -1080,6 +1043,27 @@ public final class ProjectRuleLoader
 		matcher.appendTail(result);
 		expanding.remove(normalized);
 		return result.toString();
+	}
+
+	/**
+	 * Resolves the target of a direct rule's include, naming the current platform's folder in place of
+	 * {@link MarkdownIncludes#PLATFORM_PLACEHOLDER}.
+	 *
+	 * @param file the file that declares the include
+	 * @param target the include's relative target path
+	 * @param ruleRoot the source-root boundary for included files
+	 * @return the regular included file
+	 * @throws IOException if the target is unavailable, symbolic, or outside {@code ruleRoot}
+	 */
+	private Path resolveInclude(Path file, String target, Path ruleRoot) throws IOException
+	{
+		String fragments;
+		if (platform.isWindows())
+			fragments = WINDOWS_FRAGMENTS;
+		else
+			fragments = POSIX_FRAGMENTS;
+		return MarkdownIncludes.resolve(file, target.replace(MarkdownIncludes.PLATFORM_PLACEHOLDER, fragments),
+			"Direct rule include", ruleRoot);
 	}
 
 	/**

@@ -14,11 +14,18 @@ import java.util.regex.Pattern;
 public final class MarkdownIncludes
 {
 	/**
-	 * Matches one CAT Markdown include directive, a line that consists of the directive alone, and captures its
-	 * relative target path. Text that mentions the directive within a longer line is not a directive.
+	 * The name that a rule's include target writes for the folder of the current platform's fragments:
+	 * {@code posix} or {@code windows}. The rule loader replaces it, so that a rule written once for every platform
+	 * includes only the text that differs between them.
 	 */
-	public static final Pattern DIRECTIVE = Pattern.compile("^<!-- cat:include ([A-Za-z0-9_./-]+) -->$",
-		Pattern.MULTILINE);
+	public static final String PLATFORM_PLACEHOLDER = "{platform}";
+	/**
+	 * Matches one CAT Markdown include directive, a line that consists of the directive alone, and captures its
+	 * relative target path, which may name the {@link #PLATFORM_PLACEHOLDER}. Text that mentions the directive within
+	 * a longer line is not a directive.
+	 */
+	public static final Pattern DIRECTIVE = Pattern.compile("^<!-- cat:include ((?:[A-Za-z0-9_./-]|" +
+		Pattern.quote(PLATFORM_PLACEHOLDER) + ")+) -->$", Pattern.MULTILINE);
 
 	/**
 	 * Resolves one relative include target without allowing a symbolic link or a path outside the supplied source roots.

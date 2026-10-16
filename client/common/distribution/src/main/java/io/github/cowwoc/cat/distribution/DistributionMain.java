@@ -253,7 +253,8 @@ public final class DistributionMain
 
 	/**
 	 * Validates the rule graphs that each packaged harness will inject before modifying the assembled artifacts. Each
-	 * artifact holds the Windows variants of its harness rules, so the graphs are validated with and without them.
+	 * artifact holds the POSIX and Windows fragments that its harness rules include, so the graphs are validated with
+	 * each.
 	 *
 	 * @param claudeRoot the assembled Claude artifact
 	 * @param codexRoot the assembled Codex artifact

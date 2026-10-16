@@ -11,6 +11,8 @@ paths:
   source file.
 - Keep lazy routing direct and authoritative: one observable trigger reaches one target rule rather than a duplicate
   index or a routing-only intermediate.
+- Keep the text that a direct rule shares across platforms in one file, so that an edit to it reaches the rule on every
+  platform, while each platform still receives only its own commands.
 
 ## Guidance
 
@@ -55,3 +57,8 @@ Use `<!-- cat:include path -->` in a direct rule only to assemble source-only Ma
 loader expands that body before injection and rejects a body with frontmatter. A separately routable rule is a
 prerequisite and must use `depends-on` instead. Verify that the injected context contains the expanded guidance and no
 `cat:include` directive.
+
+When a direct rule's text differs between platforms, write the shared text once and include each paragraph that
+differs from a path that names `{platform}`, such as `<!-- cat:include platform/{platform}/shell.md -->`. The loader
+replaces `{platform}` with `windows` on Windows and `posix` elsewhere, so give each fragment a file at the same path
+under both folders.
