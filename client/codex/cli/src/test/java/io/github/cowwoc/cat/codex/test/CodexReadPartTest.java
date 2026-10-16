@@ -39,7 +39,7 @@ public final class CodexReadPartTest
 	 */
 	private static final Pattern NEXT_PART = Pattern.compile("\\[(?<inside>The last line continues at the start of " +
 		"the next part\\. )?More output follows\\. Before any other command or answer, run: " +
-		Pattern.quote(SHELL.command(READ_PART.toString())) + " (?<path>\\S+) (?<position>\\S+)]\n\\z");
+		Pattern.quote(SHELL.command(READ_PART.toString())) + " (?<path>.+) (?<position>\\S+)]\n\\z");
 
 	/**
 	 * Creates a test instance.
@@ -297,6 +297,18 @@ public final class CodexReadPartTest
 	}
 
 	/**
+	 * Returns a file's path as the command that prints the next part names it, quoted if the shell needs quotes.
+	 *
+	 * @param file the file
+	 * @return the argument
+	 */
+	private static String argument(Path file)
+	{
+		String launcher = SHELL.command(READ_PART.toString());
+		return SHELL.command(READ_PART.toString(), file.toString()).substring(launcher.length() + 1);
+	}
+
+	/**
 	 * Prints every part of a file by following the line that ends each part, checking that each part fits the budget
 	 * and that each part that more parts follow exits with status 0.
 	 *
@@ -324,7 +336,7 @@ public final class CodexReadPartTest
 			requireThat(call.status(), "status").isEqualTo(0);
 			Matcher footer = NEXT_PART.matcher(call.output());
 			requireThat(footer.find(), "footer").isTrue();
-			requireThat(footer.group("path"), "path").isEqualTo(file.toString());
+			requireThat(footer.group("path"), "path").isEqualTo(argument(file));
 			int end = call.bytes().length - call.output().substring(footer.start()).getBytes(UTF_8).length;
 			// A part that ends inside a line ends that piece of the line with a newline that the file does not hold.
 			if (footer.group("inside") != null)

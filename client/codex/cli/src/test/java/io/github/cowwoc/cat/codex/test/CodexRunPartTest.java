@@ -145,7 +145,7 @@ public final class CodexRunPartTest
 
 			requireThat(call.output(), "output").startsWith("1" + EOL + "2" + EOL + "3" + EOL).
 				matches("(?s).*\\[More output follows\\. Before any other command or answer, run: " +
-					Pattern.quote(SHELL.command(READ_PART.toString())) + " \\S+[/\\\\]output\\.txt [1-9][0-9]*]\n");
+					Pattern.quote(SHELL.command(READ_PART.toString())) + " .+[/\\\\]output\\.txt[\"']* [1-9][0-9]*]\n");
 			requireThat(call.status(), "status").isEqualTo(0);
 		}
 	}
