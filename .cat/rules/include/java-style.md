@@ -41,6 +41,26 @@ Let Checkstyle and PMD enforce mechanical formatting. Apply these conventions wh
   	statement;
   }
   ```
+- Write a lambda whose body is one `return` statement or one expression statement that fits on one visual line as an
+  expression lambda, without braces or `return`. Keep a block body when that statement wraps onto a second line, when
+  the body holds more than one statement, or when its one statement cannot be an expression, such as `throw` or a
+  local variable declaration. Also keep it when the lambda's one expression statement returns a value and the lambda is
+  passed to an overloaded method: the expression form can then select a different overload, such as
+  `executor.submit(() -> future.complete(value))` selecting `submit(Callable)` where the block form selects
+  `submit(Runnable)`. This governs lambdas only, not the arms of a `switch`:
+
+  ```java
+  return withLock(entries -> new QueueCursor(new QueueSnapshot(entries)));
+  ```
+
+  rather than:
+
+  ```java
+  return withLock(entries ->
+  {
+  	return new QueueCursor(new QueueSnapshot(entries));
+  });
+  ```
 - Use camelCase for method names, Java variables (local variables, parameters, and instance fields), and keys and
   symbolic values that stay inside Java, such as map keys and string identifiers that no external format defines.
   Static final constants and enum constants keep UPPER_SNAKE_CASE. When a key or symbolic value crosses into
