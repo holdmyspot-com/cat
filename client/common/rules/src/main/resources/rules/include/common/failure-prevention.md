@@ -2,9 +2,9 @@
 
 ## Design Goals
 
-- Classify a reported or observed failure from its complete available chronological record—including any recorded decision
-  explanation—while separating that evidence from unavailable private reasoning or platform input; isolate its earliest
-  controllable cause and correct it rather than masking a downstream symptom.
+- Classify a reported or observed failure from its complete available chronological record—including any recorded
+  decision explanation—while separating that evidence from unavailable private reasoning or platform input; isolate its
+  earliest controllable cause and correct it rather than masking a downstream symptom.
 - Guard each reproducible, correctable failure with the smallest executable check of the claimed behavior, so the same
   defect cannot silently return.
 - Derive prevention controls from the failure predicate, verify them against the reported failure and meaningful
@@ -180,9 +180,9 @@ before changing the rule or prompt. Verify that the intended rule was loaded int
 form and position, then identify any conflicting instruction, malformed include, wrong audience route, or competing
 priority. Record each relevant instruction's recipient, role, order, occurrence count, and rendered text. Presence does
 not prove application: later task-adjacent delivery can make an otherwise identical instruction more likely to guide the
-response without overriding an earlier instruction. Isolate that effect by varying only delivery position in a controlled
-reproduction. Repair the first faulty delivery or routing boundary; do not infer prompt noncompliance from the final
-response alone.
+response without overriding an earlier instruction. Isolate that effect by varying only delivery position in a
+controlled reproduction. Repair the first faulty delivery or routing boundary; do not infer prompt noncompliance from
+the final response alone.
 
 When an agent's observable action or response violates an intended instruction and private reasoning or complete
 platform input is unavailable, diagnose it as a black box. First define the failing observable behavior and the
