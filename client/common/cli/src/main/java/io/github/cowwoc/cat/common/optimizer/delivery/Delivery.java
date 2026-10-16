@@ -144,7 +144,7 @@ public final class Delivery
 	 * tests alone.
 	 *
 	 * @param campaignId the campaign's identity
-	 * @param request the user's delivery request, which names the selected candidate and the label it carries, or empty
+	 * @param request the user's delivery request, which names the selected candidate and the label it carries, or null
 	 *   if the user kept the incumbent
 	 * @param selected the selected candidate's overlay, or the incumbent's if the user kept it; its fork's root is the
 	 *   base worktree
@@ -153,12 +153,13 @@ public final class Delivery
 	 * @param promptSources the participating prompt sources: paths relative to the base worktree, or absolute paths of
 	 *   read-only external participants; a change outside the candidate at or below one of them makes the result
 	 *   historical
-	 * @param record the certification record to write to the base worktree, present exactly when the request is
+	 * @param record the certification record to write to the base worktree, non-null exactly when the request is
 	 *   labelled {@code certified}
 	 * @param tests the confirmed prompt tests to write, empty unless the request is labelled {@code certified} or the
 	 *   user kept the incumbent
 	 * @return the result; a {@link Delivered} result carries no label when the user kept the incumbent
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if {@code campaignId}, {@code selected}, {@code working}, {@code promptSources}
+	 *   or {@code tests} are null
 	 * @throws IllegalArgumentException if the request's label never delivers a candidate, if {@code selected} changes
 	 *   an external file, if the request names a different candidate than {@code selected}, if {@code selected} and
 	 *   {@code working} have different forks, if {@code record} is absent from a certified request or present in
@@ -167,23 +168,21 @@ public final class Delivery
 	 * @throws IllegalStateException if the campaign already journals the delivery of another candidate
 	 * @throws IOException if a file cannot be read or written, or if Git fails
 	 */
-	public DeliveryResult deliver(String campaignId, Optional<DeliveryRequest> request, Overlay selected,
-		Overlay working, Set<Path> promptSources, Optional<CertificationRecord> record, List<DeliveredTest> tests)
+	public DeliveryResult deliver(String campaignId, DeliveryRequest request, Overlay selected, Overlay working,
+		Set<Path> promptSources, CertificationRecord record, List<DeliveredTest> tests)
 		throws IOException
 	{
 		requireThat(campaignId, "campaignId").isNotNull();
-		requireThat(request, "request").isNotNull();
 		requireThat(selected, "selected").isNotNull();
 		requireThat(working, "working").isNotNull();
 		requireThat(promptSources, "promptSources").isNotNull();
-		requireThat(record, "record").isNotNull();
 		requireThat(tests, "tests").isNotNull();
 		Outcome label = null;
-		if (request.isPresent())
+		if (request != null)
 		{
-			label = request.get().label();
+			label = request.label();
 			requireDeliverable(label);
-			requireThat(request.get().candidate().snapshot(), "request.candidate().snapshot()").
+			requireThat(request.candidate().snapshot(), "request.candidate().snapshot()").
 				isEqualTo(selected.identity(), "selected.identity()");
 			if (label != Outcome.CERTIFIED && !tests.isEmpty())
 			{
@@ -219,10 +218,10 @@ public final class Delivery
 		else
 		{
 			Map<Path, FileContent> additionalFiles = new HashMap<>();
-			if (record.isPresent())
+			if (record != null)
 			{
-				additionalFiles.put(CertificationRecord.location(record.get().target()),
-					new FileContent(recordCodec.write(record.get())));
+				additionalFiles.put(CertificationRecord.location(record.target()),
+					new FileContent(recordCodec.write(record)));
 			}
 			DeliveryPlan plan = DeliveryPlan.of(selected, InventoryScanner.scan(base, externalPaths),
 				testFiles(selected, tests), additionalFiles);
@@ -254,15 +253,15 @@ public final class Delivery
 	 * Rejects a certification record that does not match the delivery's label.
 	 *
 	 * @param label the label of the delivery request, or {@code null} if the user kept the incumbent
-	 * @param record the certification record to write
+	 * @param record the certification record to write, or null if there is none
 	 * @throws IllegalArgumentException if {@code record} is absent from a certified request or present otherwise
 	 */
-	private static void requireRecord(Outcome label, Optional<CertificationRecord> record)
+	private static void requireRecord(Outcome label, CertificationRecord record)
 	{
 		boolean certified = label == Outcome.CERTIFIED;
-		if (certified && record.isEmpty())
+		if (certified && record == null)
 			throw new IllegalArgumentException("A delivery labelled \"certified\" requires a certification record.");
-		if (!certified && record.isPresent())
+		if (!certified && record != null)
 		{
 			String writer;
 			if (label == null)
@@ -303,15 +302,16 @@ public final class Delivery
 			files.put(directory.resolve(ValuesFile.NAME), new FileContent(values.toString().getBytes(UTF_8)));
 
 			Path scenarioPath = directory.resolve(PromptTestFiles.SCENARIO);
-			Optional<String> recorded = Optional.empty();
+			String recorded = null;
 			List<String> patterns = List.of();
 			if (test.location().created())
 				createdDirectories.add(directory);
 			else
 			{
-				recorded = workspace.readFile(selected, scenarioPath).map(file -> new String(file.bytes(), UTF_8));
-				if (recorded.isPresent())
-					patterns = recordedPatterns(recorded.get());
+				recorded = workspace.readFile(selected, scenarioPath).map(file -> new String(file.bytes(), UTF_8)).
+					orElse(null);
+				if (recorded != null)
+					patterns = recordedPatterns(recorded);
 			}
 
 			List<String> appended = new ArrayList<>();

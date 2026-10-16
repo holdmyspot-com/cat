@@ -158,7 +158,7 @@ public final class InventoryDiff
 		void classify(PathChange change)
 		{
 			Path path = change.path();
-			Optional<Path> resolved = fork.resolve(path);
+			Path resolved = fork.resolve(path).orElse(null);
 			switch (change)
 			{
 				case Added added -> classifyAdded(path, resolved, added.after());
@@ -171,10 +171,10 @@ public final class InventoryDiff
 		 * Classifies a path that the attempt added.
 		 *
 		 * @param path the path in the prompt author's copy
-		 * @param resolved the path's resolved target, or empty if the fork's links form a cycle
+		 * @param resolved the path's resolved target, or null if the fork's links form a cycle
 		 * @param after the added entry
 		 */
-		private void classifyAdded(Path path, Optional<Path> resolved, FileEntry after)
+		private void classifyAdded(Path path, Path resolved, FileEntry after)
 		{
 			switch (after)
 			{
@@ -188,10 +188,10 @@ public final class InventoryDiff
 		 * Classifies a path that the attempt removed.
 		 *
 		 * @param path the path in the prompt author's copy
-		 * @param resolved the path's resolved target, or empty if the fork's links form a cycle
+		 * @param resolved the path's resolved target, or null if the fork's links form a cycle
 		 * @param before the removed entry
 		 */
-		private void classifyRemoved(Path path, Optional<Path> resolved, FileEntry before)
+		private void classifyRemoved(Path path, Path resolved, FileEntry before)
 		{
 			// The prompt author's copy holds a regular file where the fork holds a link, so removing that file removes
 			// the link
@@ -212,11 +212,11 @@ public final class InventoryDiff
 		 * Classifies a path whose entry the attempt changed.
 		 *
 		 * @param path the path in the prompt author's copy
-		 * @param resolved the path's resolved target, or empty if the fork's links form a cycle
+		 * @param resolved the path's resolved target, or null if the fork's links form a cycle
 		 * @param before the earlier entry
 		 * @param after the later entry
 		 */
-		private void classifyModified(Path path, Optional<Path> resolved, FileEntry before, FileEntry after)
+		private void classifyModified(Path path, Path resolved, FileEntry before, FileEntry after)
 		{
 			if (before instanceof RegularFile earlier && after instanceof RegularFile later)
 			{
@@ -240,38 +240,37 @@ public final class InventoryDiff
 		 * Checks an operation against the authority, recording it as forbidden or as a permitted outcome for its target.
 		 *
 		 * @param path the path in the prompt author's copy
-		 * @param resolved the path's resolved target, or empty if the fork's links form a cycle
+		 * @param resolved the path's resolved target, or null if the fork's links form a cycle
 		 * @param operation the operation
 		 * @param after the target's resulting regular file, or {@code null} if the operation deletes it
 		 */
-		private void check(Path path, Optional<Path> resolved, Operation operation, RegularFile after)
+		private void check(Path path, Path resolved, Operation operation, RegularFile after)
 		{
-			if (resolved.isEmpty())
+			if (resolved == null)
 			{
-				forbid(path, resolved, operation, Limit.LINK_CYCLE);
+				forbid(path, null, operation, Limit.LINK_CYCLE);
 				return;
 			}
-			Path target = resolved.get();
-			Optional<Limit> limit = authority.limitOf(operation, target);
+			Optional<Limit> limit = authority.limitOf(operation, resolved);
 			if (limit.isPresent())
 			{
 				forbid(path, resolved, operation, limit.get());
 				return;
 			}
-			outcomesByTarget.computeIfAbsent(target, _ -> new ArrayList<>()).add(new Outcome(path, operation, after));
+			outcomesByTarget.computeIfAbsent(resolved, _ -> new ArrayList<>()).add(new Outcome(path, operation, after));
 		}
 
 		/**
 		 * Records a forbidden operation.
 		 *
 		 * @param path the path in the prompt author's copy
-		 * @param resolved the path's resolved target, or empty if the fork's links form a cycle
+		 * @param resolved the path's resolved target, or null if the fork's links form a cycle
 		 * @param operation the operation
 		 * @param limit the reason it is forbidden
 		 */
-		private void forbid(Path path, Optional<Path> resolved, Operation operation, Limit limit)
+		private void forbid(Path path, Path resolved, Operation operation, Limit limit)
 		{
-			forbidden.add(new ForbiddenOperation(path, resolved.orElse(path), operation, limit));
+			forbidden.add(new ForbiddenOperation(path, Objects.requireNonNullElse(resolved, path), operation, limit));
 		}
 
 		/**

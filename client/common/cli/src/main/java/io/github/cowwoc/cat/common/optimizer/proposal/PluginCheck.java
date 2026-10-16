@@ -80,23 +80,22 @@ public record PluginCheck(Optional<PluginUnderTest> plugin, List<String> refusal
 	 * file belongs to a plugin when it lies inside a directory that holds a plugin manifest, inside a plugin root, or
 	 * inside a mapping's source directory, and the prompt files must not belong to more than one plugin.
 	 *
-	 * @param plugin the plugin under test that the contract author proposes, or empty if it proposes none
+	 * @param plugin the plugin under test that the contract author proposes, or null if it proposes none
 	 * @param project the project's files
 	 * @param promptFiles the in-project prompt files, which a candidate may edit, relative to the project directory
 	 * @return the check
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if {@code project} or {@code promptFiles} are null
 	 * @throws IOException if the base's files cannot be read
 	 */
-	public static PluginCheck of(Optional<PluginUnderTest> plugin, FileInventory project, Set<Path> promptFiles)
+	public static PluginCheck of(PluginUnderTest plugin, FileInventory project, Set<Path> promptFiles)
 		throws IOException
 	{
-		requireThat(plugin, "plugin").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(promptFiles, "promptFiles").isNotNull();
-		if (plugin.isEmpty())
+		if (plugin == null)
 			return NONE;
 
-		PluginUnderTest checked = plugin.get();
+		PluginUnderTest checked = plugin;
 		List<String> refusals = new ArrayList<>();
 		List<Path> differing = new ArrayList<>();
 		switch (checked)

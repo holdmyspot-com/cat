@@ -110,12 +110,12 @@ public interface SessionPort
 	 * files are named by their absolute paths.
 	 *
 	 * @param project the project's root directory
-	 * @param plugin  the plugin under test, or empty if trials install none
+	 * @param plugin  the plugin under test, or null if trials install none
 	 * @return the files, once each, with the rule that loads each one
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if {@code project} is null
 	 * @throws IOException          if a file cannot be read or a rule is invalid
 	 */
-	List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin) throws IOException;
+	List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin) throws IOException;
 
 	/**
 	 * Lists the directories that hold the runs of every session that this port starts, for the run of every campaign

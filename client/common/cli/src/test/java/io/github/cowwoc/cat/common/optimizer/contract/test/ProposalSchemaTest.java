@@ -1051,6 +1051,6 @@ public final class ProposalSchemaTest
 	{
 		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), contract.judge(),
 			contract.fixtures(), contract.limitations(), contract.minimumPassRate(), contract.salt(),
-			Optional.ofNullable(plugin));
+			plugin);
 	}
 }

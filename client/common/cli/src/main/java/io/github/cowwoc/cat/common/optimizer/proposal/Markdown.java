@@ -47,7 +47,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -320,11 +319,9 @@ public final class Markdown
 				continue;
 			}
 			boolean edited = !deliveredTest.location().created();
-			Optional<String> recordedFile;
+			String recordedFile = null;
 			if (edited)
-				recordedFile = Optional.of(recorded);
-			else
-				recordedFile = Optional.empty();
+				recordedFile = recorded;
 			String written = deliveredTest.scenarioFile(recordedFile, List.of());
 			if (written.equals(recorded))
 			{

@@ -289,7 +289,7 @@ public final class RunnerSessionsTest
 				new TrialPlugin(otherCopy, false)))
 			{
 				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, WorkspaceFixtures.NONE, Optional.of(plugin))));
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, WorkspaceFixtures.NONE, plugin)));
 			}
 			await(sessions.start(request(source, List.of(), "go")));
 
@@ -346,7 +346,7 @@ public final class RunnerSessionsTest
 			{
 			});
 
-			List<DerivedSource> sources = sessions.derivedSources(project, Optional.of(plugin));
+			List<DerivedSource> sources = sessions.derivedSources(project, plugin);
 
 			String defaultRule = base.resolve("rules/common/default.md").toString();
 			requireThat(sources, "sources").isEqualTo(List.of(
@@ -395,12 +395,12 @@ public final class RunnerSessionsTest
 					List<DerivedSource> expected = List.of();
 					if (dependsOnCat)
 						expected = List.of(artifactRule);
-					requireThat(sessions.derivedSources(project, Optional.of(plugin)), "sources").isEqualTo(expected);
+					requireThat(sessions.derivedSources(project, plugin), "sources").isEqualTo(expected);
 				}
 				List<DerivedSource> expected = List.of();
 				if (installCat)
 					expected = List.of(artifactRule);
-				requireThat(sessions.derivedSources(project, Optional.empty()), "sources").isEqualTo(expected);
+				requireThat(sessions.derivedSources(project, null), "sources").isEqualTo(expected);
 			}
 		}
 	}

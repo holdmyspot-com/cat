@@ -714,7 +714,7 @@ public final class ClaudeSessionsTest
 			{
 			});
 
-			requireThat(sessions.derivedSources(project, Optional.empty()).stream().map(DerivedSource::path).toList(),
+			requireThat(sessions.derivedSources(project, null).stream().map(DerivedSource::path).toList(),
 				"paths").isEqualTo(List.of("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md",
 				".claude/rules/java/testing.md", ".claude/rules/style.md"));
 		}

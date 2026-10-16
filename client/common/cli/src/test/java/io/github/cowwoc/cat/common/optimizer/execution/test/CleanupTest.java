@@ -30,7 +30,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -79,7 +78,7 @@ public final class CleanupTest
 			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
 
 			Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign,
-				Optional.of(delivered(Outcome.CERTIFIED)));
+				delivered(Outcome.CERTIFIED));
 
 			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Removed());
 			fixture.requireRemoved();
@@ -101,7 +100,7 @@ public final class CleanupTest
 			Fixture fixture = Fixture.create(cleanup);
 			Campaign campaign = fixture.store(certified(null));
 
-			Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign, Optional.of(delivered(null)));
+			Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign, delivered(null));
 
 			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Removed());
 			fixture.requireRemoved();
@@ -124,14 +123,14 @@ public final class CleanupTest
 		List<Ending> endings = List.of(
 			new Ending("improved", new Builder().lifecycle(Lifecycle.FINISHED).outcome(Outcome.IMPROVED_NOT_CERTIFIED).
 				delivery(new DeliveryRequest(CANDIDATE, 1, Outcome.IMPROVED_NOT_CERTIFIED)),
-				Optional.of(delivered(Outcome.IMPROVED_NOT_CERTIFIED))),
+				delivered(Outcome.IMPROVED_NOT_CERTIFIED)),
 			new Ending("accepted", new Builder().lifecycle(Lifecycle.FINISHED).outcome(Outcome.NOT_CERTIFIED).
 				delivery(new DeliveryRequest(CANDIDATE, 0, Outcome.NOT_CERTIFIED)),
-				Optional.of(delivered(Outcome.NOT_CERTIFIED))),
-			new Ending("cancelled", new Builder().lifecycle(Lifecycle.CANCELLED), Optional.empty()),
-			new Ending("conflicted", certified(certifiedRequest), Optional.of(new Conflicted(List.of()))),
-			new Ending("undelivered", certified(certifiedRequest), Optional.empty()),
-			new Ending("retained, undelivered", certified(null), Optional.empty()));
+				delivered(Outcome.NOT_CERTIFIED)),
+			new Ending("cancelled", new Builder().lifecycle(Lifecycle.CANCELLED), null),
+			new Ending("conflicted", certified(certifiedRequest), new Conflicted(List.of())),
+			new Ending("undelivered", certified(certifiedRequest), null),
+			new Ending("retained, undelivered", certified(null), null));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = Fixture.create(cleanup);
@@ -174,7 +173,7 @@ public final class CleanupTest
 				boolean crashed = false;
 				try
 				{
-					fixture.cleanup(crashing).end(campaign, Optional.of(delivered(Outcome.CERTIFIED)));
+					fixture.cleanup(crashing).end(campaign, delivered(Outcome.CERTIFIED));
 				}
 				catch (SimulatedCrash _)
 				{
@@ -214,7 +213,7 @@ public final class CleanupTest
 				": Permission denied. The next command retries the removal.";
 
 			Cleanup.Removal removal = fixture.cleanup(denying).end(campaign,
-				Optional.of(delivered(Outcome.CERTIFIED)));
+				delivered(Outcome.CERTIFIED));
 
 			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Failed(warning));
 			requireThat(FileCampaignStore.removals(fixture.base()), "removals").isEqualTo(List.of(CAMPAIGN));
@@ -246,7 +245,7 @@ public final class CleanupTest
 			Files.writeString(blocker.resolve("child"), "x", UTF_8);
 
 			Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign,
-				Optional.of(delivered(Outcome.CERTIFIED)));
+				delivered(Outcome.CERTIFIED));
 
 			requireThat(removal, "removal").isInstanceOf(Cleanup.Removal.Failed.class);
 			String warning = ((Cleanup.Removal.Failed) removal).warning();
@@ -307,9 +306,9 @@ public final class CleanupTest
 	 *
 	 * @param name the ending's name
 	 * @param campaign the builder of the ended campaign
-	 * @param delivery the result of the delivery that the last command ran, or empty if it ran none
+	 * @param delivery the result of the delivery that the last command ran, or null if it ran none
 	 */
-	private record Ending(String name, Builder campaign, Optional<DeliveryResult> delivery)
+	private record Ending(String name, Builder campaign, DeliveryResult delivery)
 	{
 	}
 

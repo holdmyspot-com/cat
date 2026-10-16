@@ -102,16 +102,15 @@ public final class Cleanup
 	 * delivery passed final verification.
 	 *
 	 * @param campaign the campaign, as stored after the command that may have ended it
-	 * @param delivery the result of the delivery that the command ran, or empty if it ran none
+	 * @param delivery the result of the delivery that the command ran, or null if it ran none
 	 * @return {@code true} if the campaign's files are removed
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if {@code campaign} is null
 	 */
-	public static boolean isRemovable(Campaign campaign, Optional<DeliveryResult> delivery)
+	public static boolean isRemovable(Campaign campaign, DeliveryResult delivery)
 	{
 		requireThat(campaign, "campaign").isNotNull();
-		requireThat(delivery, "delivery").isNotNull();
 		if (campaign.lifecycle() != Lifecycle.FINISHED || campaign.outcome() != Outcome.CERTIFIED ||
-			!(delivery.orElse(null) instanceof Delivered delivered))
+			!(delivery instanceof Delivered delivered))
 		{
 			return false;
 		}
@@ -125,12 +124,12 @@ public final class Cleanup
 	 * Removes a campaign's files if its ending removes them.
 	 *
 	 * @param campaign the campaign, as stored after the command that may have ended it
-	 * @param delivery the result of the delivery that the command ran, or empty if it ran none
+	 * @param delivery the result of the delivery that the command ran, or null if it ran none
 	 * @return what the ending did to the campaign's files; a removal that fails after it is recorded is retried by the
 	 *   next command
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if {@code campaign} is null
 	 */
-	public Removal end(Campaign campaign, Optional<DeliveryResult> delivery)
+	public Removal end(Campaign campaign, DeliveryResult delivery)
 	{
 		if (!isRemovable(campaign, delivery))
 			return new Removal.Kept();

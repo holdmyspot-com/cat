@@ -78,7 +78,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 		Duration timeLimit, TrialProfile profile, WorkspaceFixtures files)
 	{
-		this(role, part, source, turns, readOnly, timeLimit, profile, files, Optional.empty());
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, null);
 	}
 
 	/**
@@ -92,16 +92,18 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param timeLimit how long the session may run before its remaining turns are abandoned
 	 * @param profile the model and reasoning effort that the session starts under
 	 * @param files the fixtures that a trial's workspace receives on top of {@code source} before the first turn
-	 * @param plugin the plugin under test that a trial installs in place of the harness default
-	 * @throws NullPointerException if any argument is null
+	 * @param plugin the plugin under test that a trial installs in place of the harness default, or null if there is
+	 *   none
+	 * @throws NullPointerException if any argument other than {@code plugin} is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
 	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial receives fixtures or a plugin
 	 */
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
-		Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, Optional<TrialPlugin> plugin)
+		Duration timeLimit, TrialProfile profile, WorkspaceFixtures files, TrialPlugin plugin)
 	{
-		this(role, part, source, turns, readOnly, timeLimit, profile, files, plugin, Optional.empty());
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, Optional.ofNullable(plugin),
+			Optional.empty());
 	}
 
 	/**

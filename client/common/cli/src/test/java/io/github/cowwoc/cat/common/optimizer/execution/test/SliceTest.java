@@ -389,7 +389,7 @@ public final class SliceTest
 		}
 
 		@Override
-		public List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin) throws IOException
+		public List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin) throws IOException
 		{
 			return delegate.derivedSources(project, plugin);
 		}

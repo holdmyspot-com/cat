@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.Test;
 
@@ -604,8 +603,8 @@ public final class ContractTest
 	public void pluginRootDependentsAreProjectRemovals()
 	{
 		// Requirement: R-W10
-		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(Optional.of(
-				new PluginUnderTest.Root(Path.of("plugin"), false, "No prompt file invokes a CAT skill."))),
+		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(
+				new PluginUnderTest.Root(Path.of("plugin"), false, "No prompt file invokes a CAT skill.")),
 			List.of(
 				new Dependent(Dependent.Location.PROJECT, Path.of("AGENTS.md"), new Dependent.Span("Read it.\n"),
 					"Routes the agent to the prompt."),
@@ -626,10 +625,10 @@ public final class ContractTest
 	public void builtPluginRemovalsFollowMappings()
 	{
 		// Requirement: R-W10
-		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(Optional.of(
+		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(
 				new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath().toAbsolutePath(), "0".repeat(64),
 					List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
-					"No prompt file invokes a CAT skill."))),
+					"No prompt file invokes a CAT skill.")),
 			List.of(
 				new Dependent(Dependent.Location.PROJECT, Path.of("rules/repair.md"), new Dependent.WholeFile(),
 					"Repairs the output."),

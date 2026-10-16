@@ -19,17 +19,17 @@ public final class PluginRemovals
 	/**
 	 * The removals of a trial that is not a control trial, or of a plugin with no dependents to remove.
 	 */
-	public static final PluginRemovals NONE = new PluginRemovals(List.of(), Optional.empty());
+	public static final PluginRemovals NONE = new PluginRemovals(List.of(), null);
 	private final List<Dependent> dependents;
-	private final Optional<JsonMapper> json;
+	private final JsonMapper json;
 
 	/**
 	 * Creates removals.
 	 *
 	 * @param dependents the dependents, each in the plugin and relative to the plugin directory
-	 * @param json reads and writes hook configurations, or empty if {@code dependents} is empty
+	 * @param json reads and writes hook configurations, or null if {@code dependents} is empty
 	 */
-	private PluginRemovals(List<Dependent> dependents, Optional<JsonMapper> json)
+	private PluginRemovals(List<Dependent> dependents, JsonMapper json)
 	{
 		this.dependents = List.copyOf(dependents);
 		this.json = json;
@@ -55,7 +55,7 @@ public final class PluginRemovals
 		}
 		if (dependents.isEmpty())
 			return NONE;
-		return new PluginRemovals(dependents, Optional.of(json));
+		return new PluginRemovals(dependents, json);
 	}
 
 	/**
@@ -75,7 +75,7 @@ public final class PluginRemovals
 	 */
 	public Optional<JsonMapper> json()
 	{
-		return json;
+		return Optional.ofNullable(json);
 	}
 
 	/**

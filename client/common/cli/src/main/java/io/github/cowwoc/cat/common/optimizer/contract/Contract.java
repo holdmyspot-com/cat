@@ -71,7 +71,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	public Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles, JudgeProfile judge,
 		TrialFixtures fixtures, List<String> limitations, BigDecimal minimumPassRate, long salt)
 	{
-		this(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt, Optional.empty());
+		this(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt, null);
 	}
 
 	/**
@@ -87,15 +87,15 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 *   proven to exceed it
 	 * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are
 	 *   split into the development part and the held-out part
-	 * @param plugin the harness plugin that holds the target prompt file, or empty if it is not in a plugin
-	 * @throws NullPointerException if any argument is null
+	 * @param plugin the harness plugin that holds the target prompt file, or null if it is not in a plugin
+	 * @throws NullPointerException if any argument other than {@code plugin} is null
 	 * @throws IllegalArgumentException if the canonical constructor rejects the values
 	 */
 	public Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles, JudgeProfile judge,
-		TrialFixtures fixtures, List<String> limitations, BigDecimal minimumPassRate, long salt,
-		Optional<PluginUnderTest> plugin)
+		TrialFixtures fixtures, List<String> limitations, BigDecimal minimumPassRate, long salt, PluginUnderTest plugin)
 	{
-		this(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt, plugin, List.of());
+		this(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt,
+			Optional.ofNullable(plugin), List.of());
 	}
 
 	/**
@@ -146,7 +146,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		for (String limitation : limitations)
 			requireThat(limitation, "limitation").isNotBlank();
 		dependents = List.copyOf(dependents);
-		requireDependents(dependents, plugin);
+		requireDependents(dependents, plugin.orElse(null));
 
 		Map<String, Requirement> requirementById = new HashMap<>();
 		for (Requirement requirement : requirements)
@@ -253,30 +253,29 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	/**
 	 * Returns this contract with a plugin under test.
 	 *
-	 * @param value the harness plugin that holds the target prompt file, or empty if it is not in a plugin
+	 * @param value the harness plugin that holds the target prompt file, or null if it is not in a plugin
 	 * @return the contract
-	 * @throws NullPointerException if {@code value} is null
 	 */
-	public Contract withPlugin(Optional<PluginUnderTest> value)
+	public Contract withPlugin(PluginUnderTest value)
 	{
-		return new Contract(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt, value,
-			dependents);
+		return new Contract(requirements, tests, profiles, judge, fixtures, limitations, minimumPassRate, salt,
+			Optional.ofNullable(value), dependents);
 	}
 
 	/**
 	 * Requires dependents that a contract can remove.
 	 *
 	 * @param dependents the dependents
-	 * @param plugin the plugin under test, or empty if the target prompt file is not in a plugin
-	 * @throws IllegalArgumentException if a dependent lies in the plugin under test and {@code plugin} is empty, two
+	 * @param plugin the plugin under test, or null if the target prompt file is not in a plugin
+	 * @throws IllegalArgumentException if a dependent lies in the plugin under test and {@code plugin} is null, two
 	 *   dependents name one removal, or a dependent removes a whole file that another dependent edits
 	 */
-	private static void requireDependents(List<Dependent> dependents, Optional<PluginUnderTest> plugin)
+	private static void requireDependents(List<Dependent> dependents, PluginUnderTest plugin)
 	{
 		Map<Dependent.Location, Map<Path, List<Dependent.Removal>>> removals = new EnumMap<>(Dependent.Location.class);
 		for (Dependent dependent : dependents)
 		{
-			if (dependent.location() == Dependent.Location.PLUGIN && plugin.isEmpty())
+			if (dependent.location() == Dependent.Location.PLUGIN && plugin == null)
 			{
 				throw new IllegalArgumentException("The dependent " + dependent.path() + " lies in the plugin under " +
 					"test, and the contract has none");

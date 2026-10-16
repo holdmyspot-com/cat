@@ -32,7 +32,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
 
@@ -146,7 +145,7 @@ public final class Proposal
 	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
 		HostLogin login, CapCalibrator calibrator, ProposalSchema schema)
 	{
-		return of(derived, campaign, links, controlFile, login, calibrator, schema, Optional.empty());
+		return of(derived, campaign, links, controlFile, login, calibrator, schema, null);
 	}
 
 	/**
@@ -161,13 +160,13 @@ public final class Proposal
 	 * @param calibrator calibrates the caps of the first certification attempts
 	 * @param schema the proposal schema, which identifies the contract
 	 * @param incumbent the target's delivered certification and whether it applies to what CAT knows when it
-	 *   proposes, or empty if the target has none
+	 *   proposes, or null if the target has none
 	 * @return the proposal
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if any argument other than {@code incumbent} is null
 	 * @throws IllegalStateException if the campaign cannot accept a confirmation
 	 */
 	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
-		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent)
+		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, CertificationStatus incumbent)
 	{
 		return of(derived, campaign, links, controlFile, login, calibrator, schema, incumbent, Map.of());
 	}
@@ -185,14 +184,14 @@ public final class Proposal
 	 * @param calibrator calibrates the caps of the first certification attempts
 	 * @param schema the proposal schema, which identifies the contract
 	 * @param incumbent the target's delivered certification and whether it applies to what CAT knows when it
-	 *   proposes, or empty if the target has none
+	 *   proposes, or null if the target has none
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @return the proposal
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if any argument other than {@code incumbent} is null
 	 * @throws IllegalStateException if the campaign cannot accept a confirmation
 	 */
 	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
-		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent,
+		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, CertificationStatus incumbent,
 		Map<String, PilotResult> pilots)
 	{
 		return of(derived, campaign, links, controlFile, login, calibrator, schema, incumbent, pilots,
@@ -212,16 +211,16 @@ public final class Proposal
 	 * @param calibrator calibrates the caps of the first certification attempts
 	 * @param schema the proposal schema, which identifies the contract
 	 * @param incumbent the target's delivered certification and whether it applies to what CAT knows when it
-	 *   proposes, or empty if the target has none
+	 *   proposes, or null if the target has none
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @param plugin the check of the contract author's plugin under test, whose plugin the contract holds
 	 * @return the proposal
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if any argument other than {@code incumbent} is null
 	 * @throws IllegalArgumentException if exactly one of {@code derived} and {@code plugin} has a plugin under test
 	 * @throws IllegalStateException if the campaign cannot accept a confirmation
 	 */
 	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
-		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent,
+		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, CertificationStatus incumbent,
 		Map<String, PilotResult> pilots, PluginCheck plugin)
 	{
 		return of(derived, campaign, links, controlFile, login, calibrator, schema, incumbent, pilots, plugin,
@@ -241,23 +240,22 @@ public final class Proposal
 	 * @param calibrator calibrates the caps of the first certification attempts
 	 * @param schema the proposal schema, which identifies the contract
 	 * @param incumbent the target's delivered certification and whether it applies to what CAT knows when it
-	 *   proposes, or empty if the target has none
+	 *   proposes, or null if the target has none
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @param plugin the check of the contract author's plugin under test, whose plugin the contract holds
 	 * @param controlRefusals the reasons why the control source cannot remove the contract's dependents, which block
 	 *   confirmation; empty if it can
 	 * @return the proposal
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if any argument other than {@code incumbent} is null
 	 * @throws IllegalArgumentException if exactly one of {@code derived} and {@code plugin} has a plugin under test
 	 * @throws IllegalStateException if the campaign cannot accept a confirmation
 	 */
 	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
-		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, Optional<CertificationStatus> incumbent,
+		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, CertificationStatus incumbent,
 		Map<String, PilotResult> pilots, PluginCheck plugin, List<String> controlRefusals)
 	{
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(controlRefusals, "controlRefusals").isNotNull();
-		requireThat(incumbent, "incumbent").isNotNull();
 		requireThat(pilots, "pilots").isNotNull();
 		requireThat(derived, "derived").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
@@ -313,7 +311,7 @@ public final class Proposal
 		for (DeliveredTest test : DeliveredTest.of(contract, AddedTestCases.NONE, target))
 			delivered.put(test.id(), test);
 		return new Proposal(derived, contract, schema, links, controlFile, login, campaign.ceiling(), previews,
-			caps, incumbent.orElse(null), pilots, delivered, plugin, controlRefusals, campaign.header().goal());
+			caps, incumbent, pilots, delivered, plugin, controlRefusals, campaign.header().goal());
 	}
 
 	/**

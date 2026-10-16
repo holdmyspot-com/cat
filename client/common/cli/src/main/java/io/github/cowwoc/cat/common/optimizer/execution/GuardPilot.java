@@ -189,7 +189,9 @@ public final class GuardPilot
 		{
 			Path source = workspace.stage(control, excluded);
 			PluginRemovals removals = PluginRemovals.of(contract.pluginRemovals(), json);
-			new Run(contract, source, TrialPlugins.of(contract.plugin(), workspace, source, removals), pending).run();
+			TrialPlugin plugin = TrialPlugins.of(contract.plugin().orElse(null), workspace, source, removals).
+				orElse(null);
+			new Run(contract, source, plugin, pending).run();
 		}
 		for (Pilot pilot : pending)
 			pilots.put(pilot.test.id(), pilot.result(files));
@@ -336,7 +338,7 @@ public final class GuardPilot
 	{
 		private final Contract contract;
 		private final Path source;
-		private final Optional<TrialPlugin> plugin;
+		private final TrialPlugin plugin;
 		private final List<Pilot> pilots;
 		private final Deque<Job> queue = new ArrayDeque<>();
 		private final BlockingQueue<Ended> events = new LinkedBlockingQueue<>();
@@ -348,11 +350,11 @@ public final class GuardPilot
 		 *
 		 * @param contract the proposed contract
 		 * @param source the staged control source
-		 * @param plugin the copy of the plugin under test that belongs to {@code source}, or empty if the target
+		 * @param plugin the copy of the plugin under test that belongs to {@code source}, or null if the target
 		 *   prompt files are not in a plugin
 		 * @param pilots the pilots to run, in contract order
 		 */
-		Run(Contract contract, Path source, Optional<TrialPlugin> plugin, List<Pilot> pilots)
+		Run(Contract contract, Path source, TrialPlugin plugin, List<Pilot> pilots)
 		{
 			this.contract = contract;
 			this.source = source;

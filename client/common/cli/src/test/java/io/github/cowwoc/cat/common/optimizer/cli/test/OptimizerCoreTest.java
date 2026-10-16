@@ -95,6 +95,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -423,7 +424,7 @@ public final class OptimizerCoreTest
 			Files.writeString(root.resolve("CLAUDE.md"), "Be brief.\n");
 			Map<String, String> before = contents(root);
 			String exposure = "The sandbox is off. Remove the setting and run `start` again.";
-			FakeSessionPort sessions = new FakeSessionPort(HostLogin.UNKNOWN, Optional.of(exposure));
+			FakeSessionPort sessions = new FakeSessionPort(HostLogin.UNKNOWN, exposure);
 			CommandRefusedException refusal = null;
 			try (TestOptimizerCommandScope<FakeSessionPort> command = new TestOptimizerCommandScope<>(Harness.CLAUDE,
 				root, Set.of(), _ -> sessions))
@@ -460,7 +461,7 @@ public final class OptimizerCoreTest
 		 */
 		private final Map<Path, List<String>> unapprovedHooks = new HashMap<>();
 		/**
-		 * The prompt files that {@link #derivedSources(Path, Optional)} returns.
+		 * The prompt files that {@link #derivedSources(Path, PluginUnderTest)} returns.
 		 */
 		private volatile List<DerivedSource> derivedSources = List.of(new DerivedSource("CLAUDE.md",
 			"The harness reads the project instruction file in the project root at startup."));
@@ -508,13 +509,13 @@ public final class OptimizerCoreTest
 		}
 
 		@Override
-		public List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin)
+		public List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin)
 		{
 			return derivedSources;
 		}
 
 		/**
-		 * Adds prompt files to those that {@link #derivedSources(Path, Optional)} returns.
+		 * Adds prompt files to those that {@link #derivedSources(Path, PluginUnderTest)} returns.
 		 *
 		 * @param sources the files
 		 */
@@ -742,7 +743,7 @@ public final class OptimizerCoreTest
 	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> contractAuthor,
 		Set<Path> tracked) throws IOException
 	{
-		return repository(scope, contractAuthor, tracked, Optional.empty());
+		return repository(scope, contractAuthor, tracked, null);
 	}
 
 	/**
@@ -753,12 +754,12 @@ public final class OptimizerCoreTest
 	 *   started so far
 	 * @param tracked the files, relative to the project, that Git tracks
 	 * @param contractAuthorEnd how every contract author session ends instead of completing with
-	 *   {@code contractAuthor}'s response, or empty to let the contract author complete
+	 *   {@code contractAuthor}'s response, or null to let the contract author complete
 	 * @return the repository
 	 * @throws IOException if the repository cannot be written
 	 */
 	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> contractAuthor,
-		Set<Path> tracked, Optional<SessionResult> contractAuthorEnd) throws IOException
+		Set<Path> tracked, SessionResult contractAuthorEnd) throws IOException
 	{
 		Path root = scope.add(Files.createTempDirectory("optimizer-flow")).toRealPath();
 		Path scratch = Files.createDirectory(root.resolve("scratch-outside-git"));
@@ -773,8 +774,8 @@ public final class OptimizerCoreTest
 		AtomicInteger contractAuthors = new AtomicInteger();
 		Function<SessionRequest, SessionResult> script = request -> switch (request.role())
 		{
-			case CONTRACT_AUTHOR -> contractAuthorEnd.orElseGet(() -> contractAuthorResult(scratch, transcript,
-				initialProject, contractAuthor.apply(contractAuthors.getAndIncrement())));
+			case CONTRACT_AUTHOR -> Objects.requireNonNullElseGet(contractAuthorEnd, () -> contractAuthorResult(scratch,
+				transcript, initialProject, contractAuthor.apply(contractAuthors.getAndIncrement())));
 			case TRIAL -> new SessionResult.Completed(transcript, request.turns().stream().
 				map(_ -> List.of("answer")).toList(), effects, initialProject, "model", null, null, List.of(),
 				"CLAUDE.md", List.of());
@@ -888,7 +889,7 @@ public final class OptimizerCoreTest
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
-			}), Set.of(Path.of("CLAUDE.md")), Optional.of(end));
+			}), Set.of(Path.of("CLAUDE.md")), end);
 
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 

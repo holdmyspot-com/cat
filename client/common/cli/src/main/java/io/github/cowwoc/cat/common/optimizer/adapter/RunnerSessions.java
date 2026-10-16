@@ -150,13 +150,12 @@ public abstract class RunnerSessions implements SessionPort
 	 * directory written over its mapped path, as the trial installs them.
 	 */
 	@Override
-	public final List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin) throws IOException
+	public final List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin) throws IOException
 	{
 		requireThat(project, "project").isNotNull();
-		requireThat(plugin, "plugin").isNotNull();
 		Path root = project.toAbsolutePath().normalize();
 		List<DerivedSource> sources = new ArrayList<>(instructionFiles(root));
-		if (plugin.isPresent() && plugin.get() instanceof PluginUnderTest.Built built &&
+		if (plugin instanceof PluginUnderTest.Built built &&
 			isCat(built.base().toAbsolutePath().normalize()))
 		{
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -179,25 +178,25 @@ public abstract class RunnerSessions implements SessionPort
 	 * a plugin under test installs CAT.
 	 *
 	 * @param project the absolute, normalized project directory
-	 * @param plugin the trial's plugin under test, if any
+	 * @param plugin the trial's plugin under test, or null if it has none
 	 * @return the installation directory, or empty if the trial does not install CAT
 	 * @throws IOException if a manifest cannot be read
 	 */
-	private Optional<Path> catRoot(Path project, Optional<PluginUnderTest> plugin) throws IOException
+	private Optional<Path> catRoot(Path project, PluginUnderTest plugin) throws IOException
 	{
-		if (plugin.isEmpty())
+		if (plugin == null)
 		{
 			if (settings.installCat())
 				return Optional.of(settings.artifact().toAbsolutePath().normalize());
 			return Optional.empty();
 		}
-		if (plugin.get() instanceof PluginUnderTest.Root pluginRoot)
+		if (plugin instanceof PluginUnderTest.Root pluginRoot)
 		{
 			Path directory = project.resolve(pluginRoot.directory()).normalize();
 			if (isCat(directory))
 				return Optional.of(directory);
 		}
-		if (plugin.get().dependsOnCat())
+		if (plugin.dependsOnCat())
 			return Optional.of(settings.artifact().toAbsolutePath().normalize());
 		return Optional.empty();
 	}

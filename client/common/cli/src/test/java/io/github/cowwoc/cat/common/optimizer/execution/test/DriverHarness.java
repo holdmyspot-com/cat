@@ -56,7 +56,6 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.Function;
@@ -207,7 +206,7 @@ public final class DriverHarness
 		throws IOException
 	{
 		this.directory = directory;
-		this.sessions = new FakeSessionPort(login, Optional.empty(),
+		this.sessions = new FakeSessionPort(login, null,
 			List.of(directory.resolve("runs"), directory.resolve("runs-held_out")));
 		this.fork = fork;
 		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));

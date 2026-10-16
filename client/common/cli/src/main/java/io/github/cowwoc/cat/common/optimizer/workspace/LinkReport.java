@@ -64,7 +64,7 @@ public final class LinkReport
 			Path link = entry.getKey();
 			Status status = problems.getOrDefault(link, Status.RESOLVED);
 			Optional<Path> target = inventory.resolve(link);
-			entries.add(new Entry(link, target, status, limitOf(authority, status, target)));
+			entries.add(new Entry(link, target, status, limitOf(authority, status, target.orElse(null))));
 		}
 		return new LinkReport(entries);
 	}
@@ -74,17 +74,17 @@ public final class LinkReport
 	 *
 	 * @param authority the edit authority
 	 * @param status whether the link can be staged
-	 * @param target the resolved target, or empty if the links on the path form a cycle
+	 * @param target the resolved target, or null if the links on the path form a cycle
 	 * @return the limit, or empty if the target's content may be edited
 	 */
-	private static Optional<Limit> limitOf(Authority authority, Status status, Optional<Path> target)
+	private static Optional<Limit> limitOf(Authority authority, Status status, Path target)
 	{
-		if (target.isEmpty() || status == Status.CYCLE)
+		if (target == null || status == Status.CYCLE)
 			return Optional.of(Limit.LINK_CYCLE);
 		// The project directory as a whole is not a prompt source that a content edit can name
-		if (target.get().toString().isEmpty())
+		if (target.toString().isEmpty())
 			return Optional.of(Limit.OUTSIDE_PROMPT_SOURCES);
-		return authority.limitOf(Operation.EDIT_CONTENT, target.get());
+		return authority.limitOf(Operation.EDIT_CONTENT, target);
 	}
 
 	/**

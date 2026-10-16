@@ -19,7 +19,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -65,22 +64,21 @@ public record DeliveredTest(String id, Location location, Scenario scenario, Str
 	 * Returns the {@value PromptTestFiles#SCENARIO} that delivery writes for this prompt test: the recorded file
 	 * rewritten when delivery edits a recorded scenario that the scenario format reads, and a new file otherwise.
 	 *
-	 * @param recorded the content of the {@value PromptTestFiles#SCENARIO} recorded in this test's directory, or empty
+	 * @param recorded the content of the {@value PromptTestFiles#SCENARIO} recorded in this test's directory, or null
 	 *                 if there is none
 	 * @param appended the fixture patterns that delivery appends to the recorded file's patterns, in order; a new file
 	 *                 selects only its own {@code fixtures} directory
 	 * @return the file's content
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if {@code appended} is null
 	 */
-	public String scenarioFile(Optional<String> recorded, List<String> appended)
+	public String scenarioFile(String recorded, List<String> appended)
 	{
-		requireThat(recorded, "recorded").isNotNull();
 		requireThat(appended, "appended").isNotNull();
-		if (!location.created() && recorded.isPresent())
+		if (!location.created() && recorded != null)
 		{
 			try
 			{
-				return scenario.rewrite(recorded.get(), appended);
+				return scenario.rewrite(recorded, appended);
 			}
 			catch (ScenarioFormatException _)
 			{

@@ -381,7 +381,7 @@ public final class GuardPilotTest
 	{
 		// Requirement: R-W12
 		PluginUnderTest plugin = builtPlugin("a");
-		Contract contract = TierFixtures.tieredContract().withPlugin(Optional.of(plugin));
+		Contract contract = TierFixtures.tieredContract().withPlugin(plugin);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-plugin"));
@@ -411,7 +411,7 @@ public final class GuardPilotTest
 	{
 		// Requirement: R-W10
 		PluginUnderTest plugin = builtPlugin("a");
-		Contract withPlugin = TierFixtures.tieredContract().withPlugin(Optional.of(plugin));
+		Contract withPlugin = TierFixtures.tieredContract().withPlugin(plugin);
 		Contract contract = ContractFixtures.withDependents(withPlugin, List.of(new Dependent(
 			Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(), "Reads a part.")));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -448,8 +448,8 @@ public final class GuardPilotTest
 		PromptTest test = contract.tests().getFirst();
 		GuardPilot pilot = pilot(new ScriptedPort(Path.of("unused"), _ -> "pass"), workspace(Path.of("unused")), 4);
 
-		Sha256 before = pilot.definition(contract.withPlugin(Optional.of(builtPlugin("a"))), test);
-		Sha256 after = pilot.definition(contract.withPlugin(Optional.of(builtPlugin("b"))), test);
+		Sha256 before = pilot.definition(contract.withPlugin(builtPlugin("a")), test);
+		Sha256 after = pilot.definition(contract.withPlugin(builtPlugin("b")), test);
 
 		requireThat(after, "after").isNotEqualTo(before);
 	}
@@ -769,7 +769,7 @@ public final class GuardPilotTest
 		}
 
 		@Override
-		public List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin)
+		public List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin)
 		{
 			return List.of();
 		}

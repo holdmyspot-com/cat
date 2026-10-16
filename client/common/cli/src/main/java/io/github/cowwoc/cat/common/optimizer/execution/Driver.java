@@ -1707,8 +1707,8 @@ public final class Driver implements AutoCloseable
 			PluginRemovals removals = PluginRemovals.NONE;
 			if (key.purpose() == Purpose.CONTROL)
 				removals = PluginRemovals.of(campaign.contract().pluginRemovals(), context.json());
-			Optional<TrialPlugin> plugin = TrialPlugins.of(campaign.contract().plugin(), context.workspace(), source,
-				removals);
+			TrialPlugin plugin = TrialPlugins.of(campaign.contract().plugin().orElse(null), context.workspace(), source,
+				removals).orElse(null);
 			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
 				trial.testCase().turns(), List.of(), test.timeLimit(), profile,
 				WorkspaceFixtures.of(test, trial.testCase().testCase()), plugin));
@@ -1768,7 +1768,7 @@ public final class Driver implements AutoCloseable
 			if (path.isAbsolute())
 				promptSources.add(path);
 		}
-		Optional<CertificationRecord> record = Optional.empty();
+		CertificationRecord record = null;
 		List<DeliveredTest> tests = List.of();
 		if (incumbentKept || request.label() == Outcome.CERTIFIED)
 		{
@@ -1777,11 +1777,11 @@ public final class Driver implements AutoCloseable
 		}
 		if (!incumbentKept && request.label() == Outcome.CERTIFIED)
 		{
-			record = Optional.of(CertificationRecord.of(campaign, campaign.attempt(request.attempt()),
-				selected.snapshot(), context.promptSources()));
+			record = CertificationRecord.of(campaign, campaign.attempt(request.attempt()), selected.snapshot(),
+				context.promptSources());
 		}
-		DeliveryResult result = context.deliverer().deliver(campaignId, Optional.ofNullable(request), selected,
-			working, promptSources, record, tests);
+		DeliveryResult result = context.deliverer().deliver(campaignId, request, selected, working,
+			promptSources, record, tests);
 		Applicability applicability = null;
 		if (result instanceof DeliveryResult.Delivered delivered && incumbentKept)
 			applicability = delivered.applicability();

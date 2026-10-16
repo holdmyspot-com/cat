@@ -28,27 +28,25 @@ final class TrialPlugins
 	/**
 	 * Returns the plugin under test as the trials of a staged source install it.
 	 *
-	 * @param plugin the contract's plugin under test, or empty if its target prompt file is not in a plugin; a
+	 * @param plugin the contract's plugin under test, or null if its target prompt file is not in a plugin; a
 	 *   built plugin's base digest must be set
 	 * @param workspace the workspace that builds the staged source's copy of the plugin
 	 * @param source the staged source
 	 * @param removals the dependents that a built plugin's copy leaves out
-	 * @return the copy of the plugin that belongs to {@code source}, or empty if {@code plugin} is empty
-	 * @throws NullPointerException if any of the arguments are null
+	 * @return the copy of the plugin that belongs to {@code source}, or empty if {@code plugin} is null
+	 * @throws NullPointerException if any argument other than {@code plugin} is null
 	 * @throws IllegalArgumentException if a built plugin's base digest is empty
 	 * @throws IOException if the copy cannot be built, if the staged source has no plugin root, if the files of a
 	 *   built plugin's base no longer have the identity of its base digest, or if the copy does not hold a dependent
 	 */
-	static Optional<TrialPlugin> of(Optional<PluginUnderTest> plugin, WorkspacePort workspace, Path source,
+	static Optional<TrialPlugin> of(PluginUnderTest plugin, WorkspacePort workspace, Path source,
 		PluginRemovals removals) throws IOException
 	{
-		requireThat(plugin, "plugin").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
 		requireThat(source, "source").isNotNull();
 		requireThat(removals, "removals").isNotNull();
-		if (plugin.isEmpty())
+		if (plugin == null)
 			return Optional.empty();
-		return Optional.of(new TrialPlugin(workspace.pluginCopy(plugin.get(), source, removals),
-			plugin.get().dependsOnCat()));
+		return Optional.of(new TrialPlugin(workspace.pluginCopy(plugin, source, removals), plugin.dependsOnCat()));
 	}
 }

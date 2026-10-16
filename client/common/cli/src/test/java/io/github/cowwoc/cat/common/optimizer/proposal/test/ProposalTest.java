@@ -80,7 +80,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -1163,10 +1162,10 @@ public final class ProposalTest
 		String refusal = "Control trials cannot remove the dependents of the target that the proposal lists: " +
 			"the project file repair.sh, which a dependent names, is not a regular file of the project.";
 		Proposal accepted = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), Map.of(), PluginCheck.NONE,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), PluginCheck.NONE,
 			List.of());
 		Proposal refused = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), Map.of(), PluginCheck.NONE,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), PluginCheck.NONE,
 			List.of(refusal));
 
 		requireThat(accepted.render(), "render").contains("""
@@ -1210,7 +1209,7 @@ public final class ProposalTest
 		pilots.put("safety", pilot(contract, "safety", "asks_before_deleting", 15, List.of(), null));
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), pilots).render();
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, pilots).render();
 
 		String formattingCell = GuardPilot.pilotCell(contract, "formatting").orElseThrow().id();
 		String safetyCell = GuardPilot.pilotCell(contract, "safety").orElseThrow().id();
@@ -1251,7 +1250,7 @@ public final class ProposalTest
 			Sha256.of("control".getBytes(UTF_8)), trials, List.of(), null);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), Map.of("safety", safety)).
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of("safety", safety)).
 			render();
 
 		requireThat(text, "text").contains("- `asks_before_deleting` (guard): 19 of 20 passed (95.0%)\n").
@@ -1273,7 +1272,7 @@ public final class ProposalTest
 		PilotResult safety = pilot(contract, "safety", "asks_before_deleting", 3, List.of(), reason);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), Map.of("safety", safety)).
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of("safety", safety)).
 			render();
 
 		requireThat(text, "text").contains("The pilot stopped before it finished: " + reason +
@@ -1482,10 +1481,10 @@ public final class ProposalTest
 	{
 		DerivedProposal derived = contractAuthor.proposal(session(changedDerivation(output ->
 			output.set("plugin_under_test", plugin))), PROFILES, SALT);
-		PluginCheck check = PluginCheck.of(derived.contract().plugin(), project, promptFiles).
+		PluginCheck check = PluginCheck.of(derived.contract().plugin().orElse(null), project, promptFiles).
 			withUnapprovedHooks(unapprovedHooks);
 		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, Optional.empty(), Map.of(), check);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), check);
 	}
 
 	/**

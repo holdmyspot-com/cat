@@ -16,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Covers how the harness processes of leftover runner runs are found in the session port's run roots.
@@ -181,7 +180,7 @@ public final class LeftoverRunsTest
 	 */
 	private static LeftoverRuns finder(Path... runRoots)
 	{
-		return new LeftoverRuns(new FakeSessionPort(HostLogin.UNKNOWN, Optional.empty(), List.of(runRoots)),
+		return new LeftoverRuns(new FakeSessionPort(HostLogin.UNKNOWN, null, List.of(runRoots)),
 			JsonMapper.builder().build());
 	}
 

@@ -156,7 +156,7 @@ public final class OptimizerCore implements Core
 		return new ContractAuthorProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
 			scope.profiles().roleProfile()), RegressionScenarios.read(scope.json(), root, scope.home()),
 			header.target(), header.goal(), scope.sessions().reportsExitStatus(),
-			scope.sessions().derivedSources(root, Optional.empty()));
+			scope.sessions().derivedSources(root, null));
 	}
 
 	/**
@@ -436,7 +436,7 @@ public final class OptimizerCore implements Core
 					return report(root, loaded, null, unfinished.get());
 			}
 			SliceResult result = SliceRunner.run(context(root, loaded), campaign, List.of());
-			Optional<DeliveryResult> delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result);
+			DeliveryResult delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result).orElse(null);
 			noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
 			return new CommandResult(result.status(), scope.harness(), null, result.delivery(), null);
 		});
@@ -996,12 +996,12 @@ public final class OptimizerCore implements Core
 			}
 			CommandResult result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint)));
 			Campaign chosen = require(scope.store(), campaign, true);
-			Optional<DeliveryResult> delivery = Optional.empty();
+			DeliveryResult delivery = null;
 			if (chosen.lifecycle() == Lifecycle.FINISHED && (chosen.delivery() != null || chosen.isIncumbentKept()))
 			{
 				// A choice that ends the campaign delivers the selected candidate, or the kept incumbent's prompt tests
 				SliceResult slice = SliceRunner.run(context(root, chosen), campaign, List.of());
-				delivery = Optional.ofNullable(slice.delivery()).map(DeliveryReport::result);
+				delivery = Optional.ofNullable(slice.delivery()).map(DeliveryReport::result).orElse(null);
 				result = new CommandResult(slice.status(), scope.harness(), null, slice.delivery(), null);
 			}
 			noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
@@ -1216,7 +1216,8 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, "The contract author's proposal is invalid: " +
 				String.join("; ", e.problems()) + ". " + invalidRetry);
 		}
-		derived = derived.withDerivedSources(scope.sessions().derivedSources(root, derived.contract().plugin()));
+		derived = derived.withDerivedSources(scope.sessions().derivedSources(root,
+			derived.contract().plugin().orElse(null)));
 		new ProposalFile(heldOutDirectory(root, campaign.header().id()), scope.json()).write(derived, profiles);
 		return present(root, store, campaign, fork, derived);
 	}
@@ -1293,8 +1294,8 @@ public final class OptimizerCore implements Core
 			scope.json(), campaign.ceiling());
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
 		// The control trials install the plugin as the check recorded its base, as formal trials will
-		Map<String, PilotResult> pilots = pilot.run(derived.contract().withPlugin(plugin.plugin()), control, excluded,
-			file.read(), scope.random());
+		Contract checked = derived.contract().withPlugin(plugin.plugin().orElse(null));
+		Map<String, PilotResult> pilots = pilot.run(checked, control, excluded, file.read(), scope.random());
 		file.write(pilots);
 		return pilots;
 	}
@@ -1350,7 +1351,7 @@ public final class OptimizerCore implements Core
 		FileInventory inventory = fork.inventory();
 		Authority authority = authority(root, campaign, inventory);
 		LinkReport links = LinkReport.of(inventory, authority);
-		Optional<CertificationStatus> incumbent = Optional.empty();
+		CertificationStatus incumbent = null;
 		Optional<CertificationRecord> record = record(root, relativeTarget(root, campaign));
 		if (record.isPresent())
 		{
@@ -1362,9 +1363,8 @@ public final class OptimizerCore implements Core
 				if (entry.isPresent() && entry.get() instanceof FileEntry.RegularFile file)
 					promptFiles.put(path, file.contentHash());
 			}
-			incumbent = Optional.of(new CertificationStatus(record.get(),
-				record.get().applicability(promptFiles, campaign.identity(),
-					derived.contract().minimumPassRate())));
+			incumbent = new CertificationStatus(record.get(), record.get().applicability(promptFiles,
+				campaign.identity(), derived.contract().minimumPassRate()));
 		}
 		return Proposal.of(derived, campaign, links, relativeTarget(root, campaign), scope.sessions().hostLogin(),
 			scope.calibrator(), schema, incumbent, pilots, plugin, controlRefusals(root, campaign, fork, derived, plugin));
@@ -1393,8 +1393,8 @@ public final class OptimizerCore implements Core
 			contract.projectRemovals(), scope.json()));
 		if (plugin.refusals().isEmpty() && plugin.plugin().orElse(null) instanceof PluginUnderTest.Built built)
 		{
-			problems.addAll(ControlSource.pluginProblems(built, target, contract.withPlugin(plugin.plugin()).
-				pluginRemovals(), scope.json()));
+			problems.addAll(ControlSource.pluginProblems(built, target, contract.withPlugin(built).pluginRemovals(),
+				scope.json()));
 		}
 		if (problems.isEmpty())
 			return List.of();
@@ -1417,7 +1417,7 @@ public final class OptimizerCore implements Core
 		throws IOException
 	{
 		SortedSet<Path> promptFiles = authority(root, campaign, inventory).promptFiles(inventory);
-		PluginCheck check = PluginCheck.of(derived.contract().plugin(), inventory, promptFiles);
+		PluginCheck check = PluginCheck.of(derived.contract().plugin().orElse(null), inventory, promptFiles);
 		if (check.plugin().isPresent() && check.refusals().isEmpty())
 		{
 			Path directory = switch (check.plugin().get())

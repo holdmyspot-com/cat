@@ -35,7 +35,6 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -649,12 +648,12 @@ public final class CodexSessionsTest
 			{
 			});
 
-			requireThat(sessions.derivedSources(project, Optional.empty()), "none").isEmpty();
+			requireThat(sessions.derivedSources(project, null), "none").isEmpty();
 			Files.writeString(project.resolve("AGENTS.md"), "Instructions");
-			requireThat(paths(sessions.derivedSources(project, Optional.empty())), "agents").
+			requireThat(paths(sessions.derivedSources(project, null)), "agents").
 				isEqualTo(List.of("AGENTS.md"));
 			Files.writeString(project.resolve("AGENTS.override.md"), "Override");
-			requireThat(paths(sessions.derivedSources(project, Optional.empty())), "override").
+			requireThat(paths(sessions.derivedSources(project, null)), "override").
 				isEqualTo(List.of("AGENTS.override.md"));
 		}
 	}

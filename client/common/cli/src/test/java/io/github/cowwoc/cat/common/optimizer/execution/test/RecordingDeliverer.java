@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.execution.test;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
+import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveredTest;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult;
 import io.github.cowwoc.cat.common.optimizer.execution.Deliverer;
@@ -49,16 +50,20 @@ public final class RecordingDeliverer implements Deliverer
 	}
 
 	@Override
-	public DeliveryResult deliver(String campaignId, Optional<DeliveryRequest> request, Overlay selected,
-		Overlay working, Set<Path> promptSources, Optional<CertificationRecord> record, List<DeliveredTest> tests)
+	public DeliveryResult deliver(String campaignId, DeliveryRequest request, Overlay selected, Overlay working,
+		Set<Path> promptSources, CertificationRecord record, List<DeliveredTest> tests)
 	{
 		synchronized (lock)
 		{
-			calls.add(new Call(request, selected, working, promptSources, record, tests));
+			calls.add(new Call(Optional.ofNullable(request), selected, working, promptSources,
+				Optional.ofNullable(record), tests));
 			DeliveryResult result = scripted.poll();
 			if (result != null)
 				return result;
-			return new DeliveryResult.Delivered(request.map(DeliveryRequest::label).orElse(null),
+			Outcome label = null;
+			if (request != null)
+				label = request.label();
+			return new DeliveryResult.Delivered(label,
 				new Applicability(Applicability.Status.CURRENT, false, List.of()), List.of(), List.of(), List.of(), "");
 		}
 	}

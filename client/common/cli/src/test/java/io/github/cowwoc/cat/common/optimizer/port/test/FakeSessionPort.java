@@ -40,7 +40,7 @@ public final class FakeSessionPort implements SessionPort
 	public static final int JUDGE_VERSION = 5;
 	private final List<FakeSession> sessions = new ArrayList<>();
 	private final HostLogin login;
-	private final Optional<String> heldOutExposure;
+	private final String heldOutExposure;
 	private final List<Path> runRoots;
 	private final Map<Path, SessionEvidence> evidence = new HashMap<>();
 	private final Set<Path> readTranscripts = new HashSet<>();
@@ -61,17 +61,17 @@ public final class FakeSessionPort implements SessionPort
 	 */
 	public FakeSessionPort(HostLogin login)
 	{
-		this(login, Optional.empty());
+		this(login, null);
 	}
 
 	/**
 	 * Creates a port that has started no sessions.
 	 *
 	 * @param login the login that {@link #hostLogin()} reports
-	 * @param heldOutExposure the value that {@link #findHeldOutExposure(Path)} reports
-	 * @throws NullPointerException if any argument is null
+	 * @param heldOutExposure the value that {@link #findHeldOutExposure(Path)} reports, or null if it reports none
+	 * @throws NullPointerException if {@code login} is null
 	 */
-	public FakeSessionPort(HostLogin login, Optional<String> heldOutExposure)
+	public FakeSessionPort(HostLogin login, String heldOutExposure)
 	{
 		this(login, heldOutExposure, List.of());
 	}
@@ -80,14 +80,13 @@ public final class FakeSessionPort implements SessionPort
 	 * Creates a port that has started no sessions.
 	 *
 	 * @param login the login that {@link #hostLogin()} reports
-	 * @param heldOutExposure the value that {@link #findHeldOutExposure(Path)} reports
+	 * @param heldOutExposure the value that {@link #findHeldOutExposure(Path)} reports, or null if it reports none
 	 * @param runRoots the directories that {@link #runRoots()} reports
-	 * @throws NullPointerException if any argument is null
+	 * @throws NullPointerException if {@code login} or {@code runRoots} are null
 	 */
-	public FakeSessionPort(HostLogin login, Optional<String> heldOutExposure, List<Path> runRoots)
+	public FakeSessionPort(HostLogin login, String heldOutExposure, List<Path> runRoots)
 	{
 		requireThat(login, "login").isNotNull();
-		requireThat(heldOutExposure, "heldOutExposure").isNotNull();
 		requireThat(runRoots, "runRoots").isNotNull();
 		this.login = login;
 		this.heldOutExposure = heldOutExposure;
@@ -113,7 +112,7 @@ public final class FakeSessionPort implements SessionPort
 	}
 
 	@Override
-	public List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin)
+	public List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin)
 	{
 		return List.of();
 	}
@@ -135,7 +134,7 @@ public final class FakeSessionPort implements SessionPort
 	public Optional<String> findHeldOutExposure(Path project)
 	{
 		requireThat(project, "project").isNotNull();
-		return heldOutExposure;
+		return Optional.ofNullable(heldOutExposure);
 	}
 
 	@Override

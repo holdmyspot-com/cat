@@ -3411,7 +3411,7 @@ public final class DriverTest
 		PluginUnderTest plugin = new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath(), "a".repeat(64),
 			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
 			"No prompt file invokes a CAT skill, agent or command.");
-		Contract contract = ContractFixtures.contract().withPlugin(Optional.of(plugin));
+		Contract contract = ContractFixtures.contract().withPlugin(plugin);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("plugin-trials")),
@@ -3449,7 +3449,7 @@ public final class DriverTest
 		PluginUnderTest plugin = new PluginUnderTest.Built(Path.of("/plugin-base").toAbsolutePath(), "a".repeat(64),
 			List.of(new PluginUnderTest.Mapping(Path.of("rules"), Path.of("rules/codex"))), false,
 			"No prompt file invokes a CAT skill, agent or command.");
-		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(Optional.of(plugin)),
+		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract().withPlugin(plugin),
 			List.of(new Dependent(Dependent.Location.PLUGIN, Path.of("bin/read-part"), new Dependent.WholeFile(),
 				"Reads the part that the target tells the agent to read.")));
 		Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
@@ -5111,7 +5111,7 @@ public final class DriverTest
 			}
 
 			@Override
-			public List<DerivedSource> derivedSources(Path project, Optional<PluginUnderTest> plugin) throws IOException
+			public List<DerivedSource> derivedSources(Path project, PluginUnderTest plugin) throws IOException
 			{
 				return delegate.derivedSources(project, plugin);
 			}

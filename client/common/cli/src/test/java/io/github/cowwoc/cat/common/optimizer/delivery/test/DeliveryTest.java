@@ -90,7 +90,7 @@ public final class DeliveryTest
 	private static final Consumer<DeliveryChange> NO_HOOK = _ ->
 	{
 	};
-	private static final Optional<CertificationRecord> RECORD = Optional.of(record(1));
+	private static final CertificationRecord RECORD = record(1);
 	private static final Path RECORD_FILE = Path.of(".cat/certifications/rules/main.json");
 	/**
 	 * The directory that holds the regression scenarios of the target {@code rules/main.md}.
@@ -226,7 +226,7 @@ public final class DeliveryTest
 				{
 					Fixture fixture = template.copy(cleanup);
 					Overlay candidate = fixture.candidate();
-					Optional<DeliveryRequest> request = request(candidate, Outcome.CERTIFIED);
+					DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 					List<Integer> written = new ArrayList<>();
 					int limit = crashAfter;
 					Consumer<DeliveryChange> crashing = change ->
@@ -257,7 +257,7 @@ public final class DeliveryTest
 						isEqualTo(List.of(0, 1, 2, 3));
 					requireCandidateDelivered(fixture);
 					requireThat(new CertificationRecordJson(JSON).read(fixture.resolve(RECORD_FILE)), "record").
-						isEqualTo(RECORD.orElseThrow());
+						isEqualTo(RECORD);
 				}
 			}
 		}
@@ -286,7 +286,7 @@ public final class DeliveryTest
 					write(editedByUser, "edited by the user during delivery\n");
 			};
 			CampaignStore store = new InMemoryCampaignStore();
-			Optional<DeliveryRequest> request = request(candidate, Outcome.CERTIFIED);
+			DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 
 			DeliveryResult result = fixture.delivery(store, candidate, userEdit).
 				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of());
@@ -353,7 +353,7 @@ public final class DeliveryTest
 
 			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.NOT_CERTIFIED), candidate, candidate,
-					fixture.promptSources(), Optional.empty(), List.of());
+					fixture.promptSources(), null, List.of());
 
 			Delivered delivered = requireDelivered(result);
 			requireThat(delivered.applicability(), "applicability").
@@ -387,7 +387,7 @@ public final class DeliveryTest
 			{
 				fixture.delivery(store, candidate, writes::add).
 					deliver(CAMPAIGN, request(candidate, Outcome.NOT_CERTIFIED), candidate, candidate,
-						fixture.promptSources(), Optional.empty(), List.of());
+						fixture.promptSources(), null, List.of());
 				throw new AssertionError("A candidate that changes an external file was delivered");
 			}
 			catch (IllegalArgumentException e)
@@ -422,8 +422,8 @@ public final class DeliveryTest
 			Delivery delivery = new Delivery(new InMemoryCampaignStore(), workspace, JSON, NO_HOOK);
 
 			DeliveryResult result = delivery.deliver(CAMPAIGN,
-				Optional.of(new DeliveryRequest(new Candidate(1, kept.identity()), 1, Outcome.IMPROVED_NOT_CERTIFIED)),
-				kept, working, fixture.promptSources(), Optional.empty(), List.of());
+				new DeliveryRequest(new Candidate(1, kept.identity()), 1, Outcome.IMPROVED_NOT_CERTIFIED),
+				kept, working, fixture.promptSources(), null, List.of());
 
 			Delivered delivered = requireDelivered(result);
 			requireThat(workspace.materialized(), "materialized").isEqualTo(List.of(kept));
@@ -514,8 +514,8 @@ public final class DeliveryTest
 
 			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
 				deliver(CAMPAIGN,
-					Optional.of(new DeliveryRequest(new Candidate(2, candidate.identity()), 0, Outcome.NOT_CERTIFIED)),
-					candidate, candidate, fixture.promptSources(), Optional.empty(), List.of());
+					new DeliveryRequest(new Candidate(2, candidate.identity()), 0, Outcome.NOT_CERTIFIED),
+					candidate, candidate, fixture.promptSources(), null, List.of());
 
 			requireThat(requireDelivered(result).label().label(), "label").isEqualTo("not certified");
 		}
@@ -539,7 +539,7 @@ public final class DeliveryTest
 
 			fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.BELOW_MINIMUM), candidate, candidate,
-					fixture.promptSources(), Optional.empty(), List.of());
+					fixture.promptSources(), null, List.of());
 		}
 	}
 
@@ -557,7 +557,7 @@ public final class DeliveryTest
 			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
 			CampaignStore store = new InMemoryCampaignStore();
-			Optional<DeliveryRequest> request = request(candidate, Outcome.CERTIFIED);
+			DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 			DeliveryResult first = fixture.delivery(store, candidate, NO_HOOK).
 				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of());
 			List<DeliveryChange> writes = new ArrayList<>();
@@ -618,7 +618,7 @@ public final class DeliveryTest
 			requireThat(last, "last").isInstanceOf(Create.class);
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
 			requireThat(new CertificationRecordJson(JSON).read(fixture.resolve(RECORD_FILE)), "record").
-				isEqualTo(RECORD.orElseThrow());
+				isEqualTo(RECORD);
 			requireThat(delivered.diff(), "diff").contains("+++ b/" + PortablePaths.text(RECORD_FILE)).
 				contains("\"certification_index\"");
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
@@ -649,7 +649,7 @@ public final class DeliveryTest
 			DeliveryChange last = delivered.changes().getLast();
 			requireThat(last, "last").isInstanceOf(Edit.class);
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
-			requireThat(codec.read(fixture.resolve(RECORD_FILE)), "record").isEqualTo(RECORD.orElseThrow());
+			requireThat(codec.read(fixture.resolve(RECORD_FILE)), "record").isEqualTo(RECORD);
 			requireThat(delivered.diff(), "diff").contains("+++ b/" + PortablePaths.text(RECORD_FILE)).
 				contains("-  \"certification_index\" : 3").contains("+  \"certification_index\" : 1");
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
@@ -735,7 +735,7 @@ public final class DeliveryTest
 			try
 			{
 				delivery.deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate,
-					fixture.promptSources(), Optional.empty(), List.of());
+					fixture.promptSources(), null, List.of());
 				throw new AssertionError("A certified delivery without a record was accepted");
 			}
 			catch (IllegalArgumentException e)
@@ -887,8 +887,8 @@ public final class DeliveryTest
 			DeliveredTest created = promptTest("created_summary", true);
 
 			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
-				deliver(CAMPAIGN, Optional.empty(), Overlay.of(fixture.fork()), candidate, fixture.promptSources(),
-					Optional.empty(), List.of(created));
+				deliver(CAMPAIGN, null, Overlay.of(fixture.fork()), candidate, fixture.promptSources(),
+					null, List.of(created));
 
 			Delivered delivered = requireDelivered(result);
 			requireThat(delivered.label(), "label").isNull();
@@ -965,7 +965,7 @@ public final class DeliveryTest
 				{
 					Fixture fixture = template.copy(cleanup);
 					Overlay candidate = fixture.candidate();
-					Optional<DeliveryRequest> request = request(candidate, Outcome.CERTIFIED);
+					DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 					List<Integer> written = new ArrayList<>();
 					int limit = crashAfter;
 					Consumer<DeliveryChange> crashing = change ->
@@ -1023,7 +1023,7 @@ public final class DeliveryTest
 			try
 			{
 				delivery.deliver(CAMPAIGN, request(candidate, Outcome.IMPROVED_NOT_CERTIFIED), candidate, candidate,
-					fixture.promptSources(), Optional.empty(), tests);
+					fixture.promptSources(), null, tests);
 				throw new AssertionError("An uncertified delivery with prompt tests was accepted");
 			}
 			catch (IllegalArgumentException e)
@@ -1032,8 +1032,8 @@ public final class DeliveryTest
 			}
 			try
 			{
-				delivery.deliver(CAMPAIGN, Optional.empty(), candidate, candidate, fixture.promptSources(),
-					Optional.empty(), tests);
+				delivery.deliver(CAMPAIGN, null, candidate, candidate, fixture.promptSources(),
+					null, tests);
 				throw new AssertionError("A kept incumbent that changes files was accepted");
 			}
 			catch (IllegalArgumentException e)
@@ -1108,9 +1108,9 @@ public final class DeliveryTest
 	 * @param label the label that the delivered result carries
 	 * @return the request
 	 */
-	private static Optional<DeliveryRequest> request(Overlay candidate, Outcome label)
+	private static DeliveryRequest request(Overlay candidate, Outcome label)
 	{
-		return Optional.of(new DeliveryRequest(new Candidate(2, candidate.identity()), 1, label));
+		return new DeliveryRequest(new Candidate(2, candidate.identity()), 1, label);
 	}
 
 	/**
