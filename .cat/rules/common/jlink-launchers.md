@@ -40,6 +40,12 @@ work there. `JlinkImageBuilder` rewrites each batch launcher too: it gives it th
 and quotes the folder's assignment as `set "DIR=%~dp0"`, because an unquoted `&` in a folder name, such as a user's
 name, ends the command there. Keep both launchers' JVM options in one constant.
 
+On Windows, the Codex image holds only the batch launchers. Codex runs commands in PowerShell, and CAT's skills name a
+launcher by its absolute path without an extension; PowerShell resolves that path to the POSIX launcher whenever it
+exists, cannot run it, and hands it to the program that Windows associates with the file. `DistributionMain.codexImage`
+therefore removes the POSIX launchers, and `CodexImageLaunchersTest` runs each launcher by that path from the shell
+that Codex uses on the platform that runs the test. The Claude image keeps both launchers.
+
 The JVM options include `-Dstdout.encoding=UTF-8` and `-Dstderr.encoding=UTF-8`, so a program writes UTF-8 whatever
 the console's code page, and `--enable-native-access` for the module that holds `CommandLineArguments`. The `java`
 launcher reads its command line in the system's ANSI code page and replaces each character that the code page lacks;
