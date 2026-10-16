@@ -56,7 +56,9 @@ import io.github.cowwoc.cat.common.optimizer.store.test.InMemoryCampaignStore;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
@@ -66,6 +68,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -207,7 +210,7 @@ public final class DeliveryTest
 	/**
 	 * A crash after any change's file is written, but before the journal records it, is followed by a restart that
 	 * resumes the same delivery: every change, including the certification record's, is written exactly once across
-	 * both runs, and the delivery completes.
+	 * both runs, and the delivery completes. Each crash point runs its two deliveries in its own copy of one fixture.
 	 *
 	 * @throws IOException if the fixture or delivery fails
 	 */
@@ -216,44 +219,48 @@ public final class DeliveryTest
 	{
 		// Requirement: R-W8
 		int changeCount = 4;
-		for (int crashAfter = 1; crashAfter <= changeCount; ++crashAfter)
+		try (TemporaryDirectories templateCleanup = new TemporaryDirectories())
 		{
-			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			Fixture template = Fixture.create(templateCleanup);
+			for (int crashAfter = 1; crashAfter <= changeCount; ++crashAfter)
 			{
-				Fixture fixture = Fixture.create(cleanup);
-				Overlay candidate = fixture.candidate();
-				Optional<DeliveryRequest> request = request(candidate, Outcome.CERTIFIED);
-				List<Integer> written = new ArrayList<>();
-				int limit = crashAfter;
-				Consumer<DeliveryChange> crashing = change ->
+				try (TemporaryDirectories cleanup = new TemporaryDirectories())
 				{
-					written.add(change.sequence());
-					if (written.size() == limit)
-						throw new SimulatedCrash(change);
-				};
-				boolean crashed = false;
-				try
-				{
-					fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate, crashing).
+					Fixture fixture = template.copy(cleanup);
+					Overlay candidate = fixture.candidate();
+					Optional<DeliveryRequest> request = request(candidate, Outcome.CERTIFIED);
+					List<Integer> written = new ArrayList<>();
+					int limit = crashAfter;
+					Consumer<DeliveryChange> crashing = change ->
+					{
+						written.add(change.sequence());
+						if (written.size() == limit)
+							throw new SimulatedCrash(change);
+					};
+					boolean crashed = false;
+					try
+					{
+						fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate, crashing).
+							deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of());
+					}
+					catch (SimulatedCrash _)
+					{
+						crashed = true;
+					}
+					requireThat(crashed, "crashed").withContext(crashAfter, "crashAfter").isTrue();
+
+					// The restarted process opens a new store and executor over the same base worktree
+					DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate,
+						change -> written.add(change.sequence())).
 						deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of());
-				}
-				catch (SimulatedCrash _)
-				{
-					crashed = true;
-				}
-				requireThat(crashed, "crashed").withContext(crashAfter, "crashAfter").isTrue();
 
-				// The restarted process opens a new store and executor over the same base worktree
-				DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate,
-					change -> written.add(change.sequence())).
-					deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of());
-
-				requireDelivered(result);
-				requireThat(written, "written").withContext(crashAfter, "crashAfter").
-					isEqualTo(List.of(0, 1, 2, 3));
-				requireCandidateDelivered(fixture);
-				requireThat(new CertificationRecordJson(JSON).read(fixture.resolve(RECORD_FILE)), "record").
-					isEqualTo(RECORD.orElseThrow());
+					requireDelivered(result);
+					requireThat(written, "written").withContext(crashAfter, "crashAfter").
+						isEqualTo(List.of(0, 1, 2, 3));
+					requireCandidateDelivered(fixture);
+					requireThat(new CertificationRecordJson(JSON).read(fixture.resolve(RECORD_FILE)), "record").
+						isEqualTo(RECORD.orElseThrow());
+				}
 			}
 		}
 	}
@@ -939,8 +946,8 @@ public final class DeliveryTest
 	 * restart that resumes the same delivery: every change, including the prompt test's files, is written exactly once
 	 * across both runs, and the delivery completes.
 	 * <p>
-	 * The test can take about a second: each of the 7 crash points needs an untouched project, so it creates a fixture
-	 * with its own Git repository and runs two deliveries for each.
+	 * Each of the 7 crash points needs an untouched project, so each runs its two deliveries in its own copy of one
+	 * fixture.
 	 *
 	 * @throws IOException             if the fixture or delivery fails
 	 * @throws ScenarioFormatException if a written file cannot be read back
@@ -951,44 +958,49 @@ public final class DeliveryTest
 		// Requirement: R-W11
 		int changeCount = 7;
 		DeliveredTest created = promptTest("created_summary", true);
-		for (int crashAfter = 1; crashAfter <= changeCount; ++crashAfter)
+		try (TemporaryDirectories templateCleanup = new TemporaryDirectories())
 		{
-			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			Fixture template = Fixture.create(templateCleanup);
+			for (int crashAfter = 1; crashAfter <= changeCount; ++crashAfter)
 			{
-				Fixture fixture = Fixture.create(cleanup);
-				Overlay candidate = fixture.candidate();
-				Optional<DeliveryRequest> request = request(candidate, Outcome.CERTIFIED);
-				List<Integer> written = new ArrayList<>();
-				int limit = crashAfter;
-				Consumer<DeliveryChange> crashing = change ->
+				try (TemporaryDirectories cleanup = new TemporaryDirectories())
 				{
-					written.add(change.sequence());
-					if (written.size() == limit)
-						throw new SimulatedCrash(change);
-				};
-				boolean crashed = false;
-				try
-				{
-					fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate, crashing).
+					Fixture fixture = template.copy(cleanup);
+					Overlay candidate = fixture.candidate();
+					Optional<DeliveryRequest> request = request(candidate, Outcome.CERTIFIED);
+					List<Integer> written = new ArrayList<>();
+					int limit = crashAfter;
+					Consumer<DeliveryChange> crashing = change ->
+					{
+						written.add(change.sequence());
+						if (written.size() == limit)
+							throw new SimulatedCrash(change);
+					};
+					boolean crashed = false;
+					try
+					{
+						fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate, crashing).
+							deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD,
+								List.of(created));
+					}
+					catch (SimulatedCrash _)
+					{
+						crashed = true;
+					}
+					requireThat(crashed, "crashed").withContext(crashAfter, "crashAfter").isTrue();
+
+					// The restarted process opens a new store and executor over the same base worktree
+					DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate,
+						change -> written.add(change.sequence())).
 						deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD,
 							List.of(created));
-				}
-				catch (SimulatedCrash _)
-				{
-					crashed = true;
-				}
-				requireThat(crashed, "crashed").withContext(crashAfter, "crashAfter").isTrue();
 
-				// The restarted process opens a new store and executor over the same base worktree
-				DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate,
-					change -> written.add(change.sequence())).
-					deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of(created));
-
-				requireDelivered(result);
-				requireThat(written, "written").withContext(crashAfter, "crashAfter").
-					isEqualTo(List.of(0, 1, 2, 3, 4, 5, 6));
-				requireCandidateDelivered(fixture);
-				requirePromptTestDelivered(fixture, created);
+					requireDelivered(result);
+					requireThat(written, "written").withContext(crashAfter, "crashAfter").
+						isEqualTo(List.of(0, 1, 2, 3, 4, 5, 6));
+					requireCandidateDelivered(fixture);
+					requirePromptTestDelivered(fixture, created);
+				}
 			}
 		}
 	}
@@ -1223,6 +1235,32 @@ public final class DeliveryTest
 			git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
 				"commit", "--quiet", "--no-verify", "--message", "Fork point");
 			return new Fixture(root, base, external, InventoryScanner.scan(base, Set.of(external)));
+		}
+
+		/**
+		 * Copies the fixture, with its Git repository, to a new directory.
+		 *
+		 * @param cleanup the scope that deletes the copy
+		 * @return the copy
+		 * @throws IOException if the fixture cannot be copied
+		 */
+		Fixture copy(TemporaryDirectories cleanup) throws IOException
+		{
+			Path copy = cleanup.add(Files.createTempDirectory("cat-delivery-"));
+			try (Stream<Path> paths = Files.walk(root))
+			{
+				for (Path path : paths.toList())
+				{
+					Path destination = copy.resolve(root.relativize(path).toString());
+					if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+						Files.createDirectories(destination);
+					else
+						Files.copy(path, destination, StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS);
+				}
+			}
+			Path copiedBase = copy.resolve(root.relativize(base).toString());
+			Path copiedExternal = copy.resolve(root.relativize(external).toString());
+			return new Fixture(copy, copiedBase, copiedExternal, InventoryScanner.scan(copiedBase, Set.of(copiedExternal)));
 		}
 
 		/**

@@ -111,7 +111,8 @@ public final class CleanupTest
 	/**
 	 * Every other ending keeps the campaign's files: an uncertified delivery, an accepted uncertified candidate, a
 	 * cancelled campaign, a certified delivery that stopped on a conflict, a certified campaign whose delivery has not
-	 * run, and a retained incumbent whose prompt tests are not delivered yet.
+	 * run, and a retained incumbent whose prompt tests are not delivered yet. The endings share one fixture, because an
+	 * ending that keeps every file leaves the fixture as it found it; each ending replaces the campaign's snapshot.
 	 *
 	 * @throws IOException if the fixture or cleanup fails
 	 */
@@ -131,12 +132,13 @@ public final class CleanupTest
 			new Ending("conflicted", certified(certifiedRequest), Optional.of(new Conflicted(List.of()))),
 			new Ending("undelivered", certified(certifiedRequest), Optional.empty()),
 			new Ending("retained, undelivered", certified(null), Optional.empty()));
-		for (Ending ending : endings)
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			Fixture fixture = Fixture.create(cleanup);
+			fixture.store(endings.getFirst().campaign());
+			for (Ending ending : endings)
 			{
-				Fixture fixture = Fixture.create(cleanup);
-				Campaign campaign = fixture.store(ending.campaign());
+				Campaign campaign = fixture.snapshot(ending.campaign());
 
 				Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign, ending.delivery());
 
@@ -149,7 +151,8 @@ public final class CleanupTest
 
 	/**
 	 * A fault before any removal step leaves the removal recorded, and the next command's {@link Cleanup#resume()}
-	 * completes it without touching the other campaign. Resuming again changes nothing.
+	 * completes it without touching the other campaign. Resuming again changes nothing. The steps share one fixture,
+	 * whose campaign is stored again for each step after the previous step's removal.
 	 *
 	 * @throws IOException if the fixture or cleanup fails
 	 */
@@ -157,11 +160,11 @@ public final class CleanupTest
 	public void nextCommandCompletesInterruptedStep() throws IOException
 	{
 		// Requirement: R-W9
-		for (Cleanup.Step failing : Cleanup.Step.values())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			Fixture fixture = Fixture.create(cleanup);
+			for (Cleanup.Step failing : Cleanup.Step.values())
 			{
-				Fixture fixture = Fixture.create(cleanup);
 				Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
 				Consumer<Cleanup.Step> crashing = step ->
 				{
@@ -369,12 +372,8 @@ public final class CleanupTest
 		 */
 		Campaign store(Builder builder) throws IOException
 		{
-			Campaign built = builder.build();
-			Header header = built.header();
-			if (!header.id().equals(OTHER))
-				built = builder.header(header(CAMPAIGN, header.lifecycle())).build();
+			Campaign built = snapshot(builder);
 			String id = built.header().id();
-			new FileCampaignStore(base, JSON).replaceSnapshot(built);
 			Path directory = directory(id);
 			new GitForks().create(base, directory, Set.of());
 			for (Path runRoot : runRoots)
@@ -385,6 +384,23 @@ public final class CleanupTest
 				Files.createDirectories(run.resolve("project"));
 				Files.writeString(run.resolve("project/CLAUDE.md"), "prompt v1\n", UTF_8);
 			}
+			return built;
+		}
+
+		/**
+		 * Stores a campaign's snapshot, replacing any earlier snapshot of the campaign.
+		 *
+		 * @param builder the campaign's builder, whose identifier becomes {@link #CAMPAIGN} unless it is {@link #OTHER}
+		 * @return the stored campaign
+		 * @throws IOException if the campaign cannot be stored
+		 */
+		Campaign snapshot(Builder builder) throws IOException
+		{
+			Campaign built = builder.build();
+			Header header = built.header();
+			if (!header.id().equals(OTHER))
+				built = builder.header(header(CAMPAIGN, header.lifecycle())).build();
+			new FileCampaignStore(base, JSON).replaceSnapshot(built);
 			return built;
 		}
 
