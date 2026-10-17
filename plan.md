@@ -172,6 +172,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-85 | `optimize-medium` | A new committed file that delivery appends to and `status` reads; an error drops an earlier record or reports another harness's record as current. |
 | WI-86 | `optimize-medium` | Changes only how the proposal shows data that other code reads; an error drops an item that the proposal must list, or changes a stored derived-source path that staging resolves. |
 | WI-87 | `optimize-high` | Renames a path that every session and CAT command writes, and text that loads into every session; an error tells an agent a `CAT_TEMP` that its commands do not use, or leaves a campaign where the commands no longer look. |
+| WI-88 | `optimize-medium` | Deletes trial directories while a campaign or pilot runs; an error deletes a failed trial's evidence or a copy that a later trial still uses. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -351,6 +352,7 @@ requirement names.
 | WI-85 | Done (commit `16feb4b9f1`); the full build passed on the integrated tree (2819 tests, 0 failures, 10 skipped). A certified delivery appends its record to `certifications.json` in the target's test directory, creating it when absent and never changing an earlier record; staging leaves it out; a record's harness is its recorded provider. `status` and a new campaign's proposal list the latest record of each harness with its applicability and the earlier records as history; `status` JSON replaces the top-level `attempt`, `scope` and `applicability` with `latest` and `earlier` (the skill shows only `summary`). A malformed history is refused at its JSON path. Open: WI-71's certified delivery appends its record. |
 | WI-86 | Done (commit `22248dc5c0`); the full build passed in 81 s (2878 tests, 0 failures, 10 skipped; `TestabilityAuditTest.onlyMainReadsEnvironment` 1.03 s, not touched). The proposal names a trial plugin's files by plugin, shows an edited test's `values.json` as a note, generated values without seed or version, and scope cells as test × profile groups; stored derived-source paths are unchanged. Open: WI-71's revised proposal uses the format. |
 | WI-87 | Done (`a684ea7a6c`, `ca04c4bbf7`, `f6e35de12d`). The user ruled on 2026-10-17 that SessionStart moves every existing session directory from `.cat/work/` to `.cat/sessions/`. Full build passed (2895 tests, 0 failures, none at 1 s or more); bats 33/33. The repository `.gitignore` keeps `.cat/work/` beside `.cat/sessions/`, because the move leaves `.cat/work/temp` in place. `design.md` records the move in §4.1 and D81. Live exit check, 2026-10-17, both plugins reinstalled from `cd230bc8e2`, in a scratch project seeded with a marked `.cat/work/<session-id>/` and `.cat/work/temp/keep.txt`: the Claude session read `.cat/sessions/<session-id>/rules.md` and the Codex session's rules name `.cat/sessions/<session-id>/temp`; each directory holds its marker (Claude's SessionEnd then deleted its rules file, as designed); the seeded directory moved to `.cat/sessions/`, and `.cat/work/temp/keep.txt` stayed. |
+| WI-88 | Done. A recorded passing trial and a guard-pilot control trial that passes every assertion lose their effects and initial project; failed trials keep both (`design.md` D51, user ruling, 2026-10-17). |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -538,6 +540,8 @@ Changes made to `design.md` and this plan during implementation, apart from this
   test and profile (user request, 2026-10-17). WI-71's revised proposal needs it.
 - WI-87: the session work directory becomes the CAT session directory, `.cat/sessions/<session-id>/`, in every path,
   identifier and text of the repository (user request, 2026-10-17).
+- WI-88: a passing trial's two project copies are deleted once its verdict is recorded, and failed trials keep
+  theirs (user ruling, 2026-10-17). R-W14 added; D51 reworded.
 - WI-83: the Codex PostToolUse hook deletes a `run-part` output once its last part arrives uncut and no cut part
   awaits a re-read, and only a file that `run-part` saved (user request, 2026-10-16).
 - WI-70's delivery step: the session rules reach Codex through a rules file that the agent reads with `run-part`,
@@ -653,6 +657,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-W11 | Delivery writes each confirmed prompt test's values file with every test case of the campaign, and the scenario and fixtures of each created or edited prompt test, on a certified delivery and when the user keeps the incumbent; staging excludes the confirmed prompt test directories; a stopped campaign writes none. | §4.4, §4.7, D60 | WI-67 | U: `DeliveryTest`, `StagedSourceTest`, `DeliveryPlanTest`, `DriverTest`, `CleanupTest`, `OptimizerCoreTest`, `ScenarioTest`, `DeliveredTestTest`, `ProposalSchemaTest` |
 | R-W12 | Trial plugins: `prompt.json` in the target's test directory lists, per harness, the plugins that trials install, each by name with an optional `build` (`command`, `output`); `start` refuses, before creating anything, a target without it or without a key for its harness, naming the file, and a listed plugin without `build` whose name matches a plugin manifest tracked in the project; `start` runs each build command in the optimization worktree and stops, with the exit status and the end of the output, on a failed command, a missing manifest or a different manifest name; a plugin the project does not build is copied from the user's single installed copy; each base is copied into campaign storage once; CAT maps prompt-system directories, or else single files, onto each project-built base by comparing files, lists a participating file that no mapping covers, warns on a mapped file that differs, and refuses a target that would not load in trials; each staged source, the control source included, has a copy of each project-built plugin with its mapped files written over the base; every trial installs exactly the listed plugins and reuses the user's approvals of their hooks; each plugin's name, base identity, build command and mappings are measurement conditions. | §3.1, §4.4, §5, §6.1, D69, D78 | WI-73, WI-81 | U: `PromptConfigurationTest`, `InstalledPluginsTest`, `PluginMappingTest`, `StagedSourceTest`, `ProposalTest`, `ProposalSchemaTest`, `MeasurementIdentityTest`, `OptimizerCoreTest`, `CodexRunnerTest`, `ClaudeRunnerTest`, `CodexSessionsTest`, `ClaudeSessionsTest`; E: WI-71's certification campaign |
 | R-W13 | CAT session directories: one component, `SessionDirectory`, is the only code that names `.cat/sessions`, `.cat/work` or a session directory; it creates `.cat/sessions/<session-id>/` and its `temp/` (the session's `CAT_TEMP`) on first use and writes a marker naming the harness and its configuration directory, never overwriting one; the session ID is the hook input's `session_id` or the tool shell's `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, in canonical UUID form; the injected rules name the directory that the agent's own commands resolve; SessionStart removes each other session directory whose marker is more than 24 hours old and whose transcript the marker's configuration directory no longer holds (a Codex transcript in `archived_sessions/` counts as held), never one without a marker; before that sweep, SessionStart moves each `.cat/work/<session-id>/` that holds a marker to `.cat/sessions/<session-id>/` with one rename, leaving it in place with a standard-error line when the new path exists or the rename fails; CAT neither writes nor deletes `.cat/work/temp`; the Codex PostToolUse hook deletes a `run-part-*` folder that `run-part` saved once its last part arrives uncut and no cut part awaits a re-read. | D79, D81 | WI-83, WI-87 | U: `SessionDirectoryTest`, `SessionSweepTest`, `SessionDirectoryAuditTest`, `ClaudeSessionStartHookTest`, `CodexSessionStartHookTest`, `CodexRunPartTest`, `HarnessRunnerOptionsTest`, `CodexRunnerCliTest`, `ToolScopeTest`, `CodexPostToolUseHookTest`; E: WI-83's and WI-87's exit checks in both harnesses |
+| R-W14 | Passing trials' project copies: once a trial's passing verdict is recorded, the driver deletes its effects and its initial project; a guard-pilot control trial loses both once its judge passes every assertion; a failed trial, a failed run and a trial whose verdict is not recorded keep them; a failed deletion ends the pilot once its running sessions end. | §4.4, D51 | WI-88 | U: `DriverTest`, `GuardPilotTest` |
 
 ### 3.6 Measurement, contract and lifecycle
 
@@ -2518,6 +2523,19 @@ The riskiest pure code, built first.
   only in recorded output and §2 history; a live session in each harness gets rules that name
   `.cat/sessions/<session-id>/temp`, and that directory holds its marker.
 
+### WI-88 — Delete passing trials' project copies (user ruling, 2026-10-17)
+
+- **Problem:** each trial run keeps two full copies of the staged project, its effects and its initial project, until
+  the campaign's files are removed. In the read-file campaign they took about 230 MB per trial and 276 GB over 1,218
+  runs, yet only a failed trial's copies are read again: a prompt author's evidence section and a diagnosis render
+  them.
+- **Change:** once a trial's passing verdict is recorded, the driver deletes both copies; a guard-pilot control trial
+  loses them once its judge passes every assertion. Failed trials, failed runs and trials whose verdict is not
+  recorded keep them. The transcript and run record stay.
+- **Tests:** a recorded passing development trial's copies are gone and a failed one's remain (`DriverTest`); a pilot
+  keeps exactly the copies of its trials that failed an assertion (`GuardPilotTest`).
+- **Exit:** unit tests pass; the full build passes.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2648,6 +2666,7 @@ blocks only the part of a work item that it names.
 | WI-85 | WI-81 |
 | WI-86 | WI-82 |
 | WI-87 | WI-83, WI-84 |
+| WI-88 | WI-71's pilot code (`GuardPilot`) |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57 and WI-60 to WI-69. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.

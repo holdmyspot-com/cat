@@ -986,18 +986,18 @@ public final class OptimizerCoreTest
 		Files.writeString(root.resolve(".env.example"), "TOKEN=fixture\n");
 		Files.writeString(root.resolve("extra.local.md"), "Local rules.\n");
 		configure(root, NO_PLUGINS);
-		// The core only reads a session's files, so every session shares one empty set instead of creating its own
+		// The core only reads the files of a session other than a trial, so those sessions share one empty set instead of
+		// creating their own. A passing trial's project copies are deleted, so each trial gets its own.
 		Path transcript = Files.createFile(scratch.resolve("transcript.jsonl"));
 		Path effects = Files.createDirectory(scratch.resolve("effects"));
 		Path initialProject = Files.createDirectory(scratch.resolve("initial-project"));
 		AtomicInteger contractAuthors = new AtomicInteger();
+		AtomicInteger trials = new AtomicInteger();
 		Function<SessionRequest, SessionResult> script = request -> switch (request.role())
 		{
 			case CONTRACT_AUTHOR -> Objects.requireNonNullElseGet(contractAuthorEnd, () -> contractAuthorResult(request,
 				scratch, transcript, initialProject, contractAuthor.apply(contractAuthors.getAndIncrement())));
-			case TRIAL -> new SessionResult.Completed(transcript, request.turns().stream().
-				map(_ -> List.of("answer")).toList(), effects, initialProject, "model", null, null, List.of(),
-				"CLAUDE.md", List.of());
+			case TRIAL -> trialResult(request, scratch.resolve("trial-" + trials.incrementAndGet()), transcript);
 			case JUDGE -> new SessionResult.Completed(transcript, List.of(List.of(judgment(request))), effects,
 				initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
 			case TRIAGE -> new SessionResult.Completed(transcript, List.of(List.of(
@@ -1019,6 +1019,32 @@ public final class OptimizerCoreTest
 			throw new IOException(e.getMessage(), e);
 		}
 		return new Repository(root, command, new OptimizerCore(command));
+	}
+
+	/**
+	 * Returns a completed trial session that answered every turn and changed no file.
+	 *
+	 * @param request the trial's request
+	 * @param directory a new directory that receives the trial's effects and initial project
+	 * @param transcript the session's transcript
+	 * @return the result
+	 * @throws UncheckedIOException if the directories cannot be created
+	 */
+	private static SessionResult.Completed trialResult(SessionRequest request, Path directory, Path transcript)
+	{
+		Path effects = directory.resolve("effects");
+		Path initialProject = directory.resolve("initial-project");
+		try
+		{
+			Files.createDirectories(effects);
+			Files.createDirectories(initialProject);
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
+		}
+		return new SessionResult.Completed(transcript, request.turns().stream().map(_ -> List.of("answer")).toList(),
+			effects, initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
 	}
 
 	/**

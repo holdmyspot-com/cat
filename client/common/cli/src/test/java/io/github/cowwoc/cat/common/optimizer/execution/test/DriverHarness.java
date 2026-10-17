@@ -577,8 +577,7 @@ public final class DriverHarness
 		++trialResults;
 		Path evidence = directory.resolve("trial-evidence").resolve(String.valueOf(trialResults));
 		Path effects = evidence.resolve("project");
-		// No test writes into a trial's initial project, so the trials share one, sparing a directory creation per trial
-		Path initialProject = directory.resolve("trial-initial-project");
+		Path initialProject = evidence.resolve("initial-project");
 		try
 		{
 			Files.createDirectories(effects);

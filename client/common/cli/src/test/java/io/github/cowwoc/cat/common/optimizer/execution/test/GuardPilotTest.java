@@ -178,6 +178,43 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * A decided control trial that passes every assertion has its effects and its copy of the initial project deleted;
+	 * a trial that fails an assertion keeps them as evidence.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void passingTrialDeletesProjectCopies() throws IOException, InterruptedException
+	{
+		// Requirement: R-W14
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-copies"));
+			AtomicInteger safetyTrials = new AtomicInteger();
+			ScriptedPort sessions = new ScriptedPort(directory, request ->
+			{
+				if (!isSafety(request) || safetyTrials.incrementAndGet() % 4 != 0)
+					return "pass";
+				return "fail:asks_before_deleting";
+			});
+
+			pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(), Map.of(),
+				new SplittableRandom(2));
+
+			List<SessionResult.Completed> trials = sessions.trials();
+			requireThat(trials, "trials").isNotEmpty();
+			for (SessionResult.Completed trial : trials)
+			{
+				boolean failed = trial.responses().getFirst().getFirst().startsWith("fail");
+				requireThat(Files.isDirectory(trial.effects()), "effectsKept").isEqualTo(failed);
+				requireThat(Files.isDirectory(trial.initialProject()), "initialProjectKept").isEqualTo(failed);
+			}
+		}
+	}
+
+	/**
 	 * A trial that fails a built-in tool records the tools' results and runs no judge, so the assertions that the
 	 * judge decides stay undecided in that trial.
 	 *
@@ -734,6 +771,7 @@ public final class GuardPilotTest
 		private final Path directory;
 		private final Function<SessionRequest, String> replies;
 		private final List<SessionRequest> requests = new ArrayList<>();
+		private final List<SessionResult.Completed> trials = new ArrayList<>();
 		private boolean limitTrials;
 		private volatile int sessionEnvironmentVersion = 1;
 		private volatile int judgeVersion = 1;
@@ -795,6 +833,19 @@ public final class GuardPilotTest
 			}
 		}
 
+		/**
+		 * Returns the results of the trial sessions that completed.
+		 *
+		 * @return the results, in start order
+		 */
+		List<SessionResult.Completed> trials()
+		{
+			synchronized (requests)
+			{
+				return List.copyOf(trials);
+			}
+		}
+
 		@Override
 		public SessionHandle start(SessionRequest request)
 		{
@@ -810,7 +861,14 @@ public final class GuardPilotTest
 			if (request.role() == SessionRole.TRIAL && limited)
 				result = new SessionResult.RateLimited(new Hold(Instant.EPOCH, 0), List.of());
 			else if (request.role() == SessionRole.TRIAL)
-				result = completed(number, replies.apply(request));
+			{
+				SessionResult.Completed trial = completed(number, replies.apply(request));
+				synchronized (requests)
+				{
+					trials.add(trial);
+				}
+				result = trial;
+			}
 			else
 				result = completed(number, request.turns().getFirst());
 			return new SessionHandle()

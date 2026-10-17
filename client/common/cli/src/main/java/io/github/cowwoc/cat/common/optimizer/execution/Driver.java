@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Admission;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.AssumptionCheck;
@@ -1011,7 +1012,9 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Records a trial's verdict when its observed measurement conditions match the campaign's, persisting it before
 	 * adoption. Different conditions pause the campaign without recording the verdict. A
-	 * promotion replaces the working candidate in the optimization worktree once the worktree is verified.
+	 * promotion replaces the working candidate in the optimization worktree once the worktree is verified. Once a
+	 * passing verdict is recorded, the trial's effects and its copy of the initial project are deleted; a failed trial
+	 * keeps them as the evidence of its failure.
 	 *
 	 * @param key the logical trial
 	 * @param testCase the trial's test case
@@ -1021,7 +1024,8 @@ public final class Driver implements AutoCloseable
 	 * @param rationale the judge's rationale or, when a built-in tool failed, the record of the failed tools
 	 * @param failures the assertions that a failed trial failed, each with its behavior; empty for a pass
 	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
-	 * @throws IOException if the store or the worktree cannot be read or written
+	 * @throws IOException if the store or the worktree cannot be read or written, or a passing trial's project copies
+	 *   cannot be deleted
 	 */
 	private void complete(TrialKey key, DrawnTestCase testCase, int concurrency, SessionResult.Completed trial,
 		Verdict verdict, String rationale, List<FailedAssertion> failures, Triage triage)
@@ -1031,7 +1035,8 @@ public final class Driver implements AutoCloseable
 		TrialFiles files = new TrialFiles(trial.transcript(), trial.effects(), trial.initialProject());
 		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, failures,
 			triage, observed, trialInputTokens(trial), trial.responses(), files);
-		if (campaign.identity().differences(observed).isEmpty())
+		boolean recorded = campaign.identity().differences(observed).isEmpty();
+		if (recorded)
 		{
 			context.store().writeOutcome(campaignId, complete);
 			evidence.observe(new AssumptionCheck.Observation(concurrency, verdict));
@@ -1042,6 +1047,21 @@ public final class Driver implements AutoCloseable
 			next = WorktreeCheck.verify(context, next, previous);
 		campaign = next;
 		context.store().replaceSnapshot(campaign);
+		if (recorded && verdict == Verdict.PASS)
+			deleteProjects(trial);
+	}
+
+	/**
+	 * Deletes a trial's effects and its copy of the initial project. Nothing reads a passing trial's project copies,
+	 * and each holds a full copy of the trial's project.
+	 *
+	 * @param trial the trial session's result
+	 * @throws IOException if either directory cannot be deleted
+	 */
+	static void deleteProjects(SessionResult.Completed trial) throws IOException
+	{
+		TemporaryDirectories.deleteRecursively(trial.effects());
+		TemporaryDirectories.deleteRecursively(trial.initialProject());
 	}
 
 	/**

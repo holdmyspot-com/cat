@@ -614,6 +614,70 @@ public final class DriverTest
 	}
 
 	/**
+	 * Recording a passing trial's verdict deletes the trial's effects and its copy of the initial project.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void passingTrialDeletesProjectCopies() throws IOException
+	{
+		// Requirement: R-W14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("passing-copies")),
+				new Builder().confirmed().working(1).readyBaseline().development("safety", 10, 0).
+					slowStart(new SlowStart(1, 0)).build());
+			AtomicReference<SessionResult.Completed> first = new AtomicReference<>();
+			harness.trials(_ ->
+			{
+				SessionResult.Completed completed = harness.passed();
+				first.compareAndSet(null, completed);
+				return completed;
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().count("safety").outcomes() > 10);
+
+				requireThat(Files.notExists(first.get().effects()), "effectsDeleted").isTrue();
+				requireThat(Files.notExists(first.get().initialProject()), "initialProjectDeleted").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * Recording a failed trial's verdict keeps the trial's effects and its copy of the initial project, which later
+	 * render the failure's evidence.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void failedTrialKeepsProjectCopies() throws IOException
+	{
+		// Requirement: R-W14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("failed-copies")),
+				new Builder().confirmed().working(1).readyBaseline().development("safety", 10, 0).
+					slowStart(new SlowStart(1, 0)).build());
+			harness.triages(_ -> harness.triaged(Impact.BLOCKING));
+			AtomicReference<SessionResult.Completed> first = new AtomicReference<>();
+			harness.trials(_ ->
+			{
+				SessionResult.Completed completed = harness.failed();
+				first.compareAndSet(null, completed);
+				return completed;
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> !state.development().failures().isEmpty());
+
+				requireThat(first.get().effects(), "effects").isDirectory();
+				requireThat(first.get().initialProject(), "initialProject").isDirectory();
+			}
+		}
+	}
+
+	/**
 	 * A prompt author started after a failed trial is given that trial's section, rendered from the trial's retained
 	 * transcript and effects against a staged copy of the working candidate.
 	 *
@@ -5169,12 +5233,11 @@ public final class DriverTest
 			DriverHarness harness = new DriverHarness(directory, authorityWarningCampaign(), fork);
 			// Safety fails until the in-project prompt changes
 			Map<Path, Boolean> failsSafety = new HashMap<>();
-			SessionResult.Completed passed = harness.passed();
 			SessionResult.Completed failed = harness.failed();
 			harness.trials(request ->
 			{
 				if (!DriverHarness.cell(request).equals("safety"))
-					return passed;
+					return harness.passed();
 				Boolean fails = failsSafety.get(request.source());
 				try
 				{
@@ -5192,7 +5255,7 @@ public final class DriverTest
 				}
 				if (fails)
 					return failed;
-				return passed;
+				return harness.passed();
 			});
 			harness.promptAuthor().reports(_ ->
 			{

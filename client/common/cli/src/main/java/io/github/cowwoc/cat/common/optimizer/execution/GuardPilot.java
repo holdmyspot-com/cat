@@ -152,7 +152,8 @@ public final class GuardPilot
 	 * @param random draws the seed of each test's development stream
 	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the control source or its copies of the trial plugins cannot be staged
+	 * @throws IOException if the control source or its copies of the trial plugins cannot be staged, or the project
+	 *   copies of a control trial that passes every assertion cannot be deleted
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session. Every running session
 	 *   is interrupted too.
 	 */
@@ -359,6 +360,11 @@ public final class GuardPilot
 		private final BlockingQueue<Ended> events = new LinkedBlockingQueue<>();
 		private final Map<Job, SessionHandle> inFlight = new HashMap<>();
 		private String stopReason;
+		/**
+		 * The failure to delete a passing trial's project copies, which ends the run once its running sessions end;
+		 * {@code null} if every deletion succeeded.
+		 */
+		private IOException deletionFailure;
 
 		/**
 		 * Creates a run.
@@ -379,10 +385,12 @@ public final class GuardPilot
 		/**
 		 * Draws each pilot's test cases, then runs their sessions until every trial ends or a session is rejected.
 		 *
+		 * @throws IOException if a passing trial's project copies cannot be deleted. No further session starts, and the
+		 *   failure is thrown once the running sessions end.
 		 * @throws InterruptedException if the thread is interrupted while it waits for a session. Every running session
 		 *   is interrupted too.
 		 */
-		void run() throws InterruptedException
+		void run() throws IOException, InterruptedException
 		{
 			Generator generator = new Generator(contract);
 			for (Pilot pilot : pilots)
@@ -425,6 +433,8 @@ public final class GuardPilot
 				}
 				throw e;
 			}
+			if (deletionFailure != null)
+				throw deletionFailure;
 			if (stopReason == null)
 				return;
 			for (Pilot pilot : pilots)
@@ -584,7 +594,8 @@ public final class GuardPilot
 		}
 
 		/**
-		 * Records a trial that its judge decided.
+		 * Records a trial that its judge decided. A trial that passes every assertion has its effects and its copy of
+		 * the initial project deleted; a trial that fails one keeps them as the evidence of its failure.
 		 *
 		 * @param judging the judged trial
 		 * @param judgment the judge's verdict
@@ -605,6 +616,20 @@ public final class GuardPilot
 			DrawnTestCase testCase = judging.testCase();
 			judging.pilot().decided(judging.position(), new PilotTrial(testCase.testCase().describedValues(),
 				testCase.testCase().expectedOutcome(), assertions, judgment.rationale()));
+			if (assertions.containsValue(false))
+				return;
+			try
+			{
+				Driver.deleteProjects(judging.trial());
+			}
+			catch (IOException e)
+			{
+				if (deletionFailure == null)
+					deletionFailure = e;
+				else
+					deletionFailure.addSuppressed(e);
+				stop("The project copies of a passing trial could not be deleted: " + Driver.describe(e));
+			}
 		}
 
 		/**
