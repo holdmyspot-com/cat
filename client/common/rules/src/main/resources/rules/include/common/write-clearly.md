@@ -10,6 +10,8 @@
 - Keep a status update faithful to its evidence by distinguishing confirmation that the planned action still applies
   from evidence that requires a correction.
 - Distinguish advisory guidance from an enforcement boundary when reporting how a change addresses a failure.
+- Let each reader find, where they meet the text, the answer to the question they bring there, without facts that serve
+  another reader or place.
 
 ## Guidance
 
@@ -20,6 +22,13 @@ instruction with a friendly summary, and do not hide the instruction behind lang
 
 For every other reader-facing artifact, name the actor, input or state, action, result, and next decision that its
 intended reader needs. Use common precise language unless a specialized term preserves a necessary distinction.
+
+Before writing, identify the intended reader, where they will read the text, such as a terminal reply, a commit message,
+an error message, or a code comment, and the question they bring there. Write what answers that question at the scope
+that place covers. Leave out a fact that is true but serves another reader or place, such as how earlier work obtained
+or checked a value; mention it only when it changes what this reader must do, and then state that consequence rather
+than the history. Carrying another place's concern into this one, even as a single word, makes the reader look for a
+distinction that does not exist there.
 
 Before naming a concept, identify the established terms already used for the same subject. For each candidate name,
 consider what the intended reader would infer before reading its definition. Do not assume that familiar words make a

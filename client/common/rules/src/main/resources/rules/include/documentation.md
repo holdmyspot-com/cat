@@ -11,7 +11,9 @@ depends-on:
   constraints, rights, obligations, and consequences clearly enough for its intended reader to act correctly.
 - Keep replaceable implementation choices outside the documented interface unless they change a decision the intended
   reader must make, so an internal choice does not become a contract that later implementations must preserve.
-- Let each documentation site answer the question that its reader brings there, without facts that serve another site.
+- Let the reader of each kind of documentation site, such as a type, callable, parameter, value, comment, or document
+  section, find there the content listed for that kind of site, and find each other fact at the site whose reader uses
+  it.
 
 ## Contract Boundary
 
@@ -38,12 +40,9 @@ type.
 
 ## Write for Each Site's Goal
 
-This rule refines Clear Writing for documentation. Before writing documentation, identify its site, the element or
-place where the reader meets it, and the question that reader brings there. Write what answers that question. Leave out
-a fact that is true but serves another site, such as how earlier code obtained or checked a value; the site whose goal
-it serves documents it. Mention such a fact only when it changes how the reader at this site must use the element, and
-then state that consequence rather than the history. Carrying another site's concern into this one, even as a single
-word, makes the reader look for a distinction that this site does not have.
+A documentation site is the element or place where a reader meets documentation, such as a field, a method, a
+parameter, a source comment, or a document section. Apply Clear Writing's rule on writing for the reader and the place
+they read to each site: a fact that serves another site belongs in that site's documentation.
 
 For example, a method that only reads a conversation's requests says “Reads the next conversation portion without
 retaining earlier portions,” not “Reads the next verified portion without retaining earlier portions”; the method that
