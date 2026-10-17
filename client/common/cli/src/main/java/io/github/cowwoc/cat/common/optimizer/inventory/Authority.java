@@ -105,6 +105,16 @@ public final class Authority
 	}
 
 	/**
+	 * Returns the files and directories that decide which prompt files load.
+	 *
+	 * @return the paths, relative to the project directory or absolute
+	 */
+	public Set<Path> loaderConfiguration()
+	{
+		return loaderConfiguration;
+	}
+
+	/**
 	 * Returns the in-project prompt files: the regular files inside the project whose content a candidate may edit. A
 	 * file that a prompt-source link reaches is listed at its own path, not at the link's.
 	 *

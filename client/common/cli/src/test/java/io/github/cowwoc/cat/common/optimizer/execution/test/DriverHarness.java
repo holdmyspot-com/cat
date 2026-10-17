@@ -613,7 +613,7 @@ public final class DriverHarness
 	 */
 	public Sha256 snapshot(SessionRequest request)
 	{
-		Sha256 identity = new Sha256(request.source().getFileName().toString());
+		Sha256 identity = stagedCandidate(request);
 		return overlays.snapshotOf(identity).orElse(identity);
 	}
 
@@ -627,8 +627,23 @@ public final class DriverHarness
 	 */
 	public boolean stages(SessionRequest request, Sha256 snapshot)
 	{
-		Sha256 identity = new Sha256(request.source().getFileName().toString());
+		Sha256 identity = stagedCandidate(request);
 		return snapshot.equals(identity) || snapshot.equals(snapshot(request));
+	}
+
+	/**
+	 * Returns the identity of the candidate whose staged source a session works in.
+	 *
+	 * @param request the session's request
+	 * @return the identity that the staged directory's name starts with, before any suffix that names the selection
+	 */
+	public static Sha256 stagedCandidate(SessionRequest request)
+	{
+		String name = request.source().getFileName().toString();
+		int suffix = name.indexOf('-');
+		if (suffix == -1)
+			return new Sha256(name);
+		return new Sha256(name.substring(0, suffix));
 	}
 
 	/**

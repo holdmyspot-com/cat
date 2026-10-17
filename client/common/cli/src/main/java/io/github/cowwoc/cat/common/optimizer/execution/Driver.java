@@ -25,6 +25,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.FailureKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.PromptAuthorKind;
 import io.github.cowwoc.cat.common.optimizer.campaign.TestRevisionRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.FailureGroup;
+import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Impact;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
 import io.github.cowwoc.cat.common.optimizer.campaign.LogicalTrial;
@@ -43,6 +44,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.BuiltInToolResult;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Generator;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
@@ -78,6 +80,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.SourceSelection;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.ReportStatus;
@@ -1345,6 +1348,23 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
+	 * Returns the files of a candidate that a staged source holds, so that a trial's project holds only the files that
+	 * load the prompt system.
+	 *
+	 * @return the campaign's base selection, which holds the contract's dependents and ignored fixtures once a contract
+	 *   is confirmed
+	 */
+	private SourceSelection trialSelection()
+	{
+		Harness harness = campaign.header().harness();
+		Set<Path> loaderConfiguration = context.authority().loaderConfiguration();
+		List<TrialPlugin> plugins = campaign.plugins().orElse(List.of());
+		if (!campaign.isConfirmed())
+			return TrialSelection.base(harness, context.promptSources(), loaderConfiguration, plugins);
+		return TrialSelection.base(harness, context.promptSources(), loaderConfiguration, campaign.contract(), plugins);
+	}
+
+	/**
 	 * Renders the evidence section of each of the working candidate's development failures, as a judge receives it,
 	 * against the project as the failure's trial started. A failure whose trial's transcript, effects or initial
 	 * project are no longer retained has no section.
@@ -1718,7 +1738,7 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			Overlay candidate = context.overlays().require(key.snapshot());
-			source = context.workspace().stage(candidate, excludedTests());
+			source = context.workspace().stage(candidate, excludedTests(), trialSelection());
 			staged.put(key.snapshot(), candidate.identity());
 			TrialProfile profile = campaign.contract().findCell(trial.testCase().cellId()).orElseThrow().profile();
 			PromptTest test = campaign.contract().findTest(trial.testCase().testId()).orElseThrow();
@@ -1995,7 +2015,7 @@ public final class Driver implements AutoCloseable
 		try
 		{
 			Overlay overlay = context.overlays().require(snapshot);
-			Path source = context.workspace().stage(overlay, excludedTests());
+			Path source = context.workspace().stage(overlay, excludedTests(), trialSelection());
 			staged.put(snapshot, overlay.identity());
 			size = PromptMeasurements.measure(source, overlay.snapshot(), context.promptSources());
 		}

@@ -90,6 +90,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.NeededEdit;
 import io.github.cowwoc.cat.common.optimizer.execution.Reconciler;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceReports;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceResult;
+import io.github.cowwoc.cat.common.optimizer.execution.TrialSelection;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceRunner;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
 import io.github.cowwoc.cat.common.optimizer.execution.Step;
@@ -119,6 +120,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.SourceSelection;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import io.github.cowwoc.cat.common.optimizer.report.CellReport;
@@ -3461,6 +3463,46 @@ public final class DriverTest
 		for (String cell : ContractFixtures.twoCellContract().cellIds())
 			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
 		return start;
+	}
+
+	/**
+	 * Each trial and each prompt measurement stages only the files of its candidate that load the prompt system into a
+	 * trial, so that a trial's project holds none of the project's other files.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void trialsStageBaseSelection() throws IOException
+	{
+		// Requirement: R-W15
+		TrialPlugin plugin = builtPlugin();
+		Contract contract = ContractFixtures.contract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("selected-trials")),
+				new Builder().confirmed(contract, 1).working(1).plugins(List.of(plugin)).build());
+			List<SessionRequest> trials = new CopyOnWriteArrayList<>();
+			harness.trials(request ->
+			{
+				trials.add(request);
+				return harness.passed();
+			});
+			Campaign campaign;
+			try (Driver driver = harness.open())
+			{
+				campaign = harness.runUntil(driver, _ -> trials.size() >= 2);
+			}
+			SourceSelection expected = TrialSelection.base(campaign.header().harness(), Set.of(DriverHarness.PROMPT),
+				Set.of(), campaign.contract(), List.of(plugin));
+			requireThat(trials, "trials").isNotEmpty();
+			for (SessionRequest trial : trials)
+			{
+				Sha256 candidate = DriverHarness.stagedCandidate(trial);
+				requireThat(Set.copyOf(harness.workspace().selections(candidate)), "selections").
+					isEqualTo(Set.of(expected));
+				requireThat(harness.workspace().stagedWhole(candidate), "stagedWhole").isFalse();
+			}
+		}
 	}
 
 	/**

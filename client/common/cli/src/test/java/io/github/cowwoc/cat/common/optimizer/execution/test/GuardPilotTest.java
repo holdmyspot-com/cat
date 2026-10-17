@@ -45,6 +45,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.SourceSelection;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeWorkspacePort;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity.Hold;
 import org.testng.annotations.Test;
@@ -83,6 +84,10 @@ public final class GuardPilotTest
 {
 	private static final Path PROMPT = Path.of("CLAUDE.md");
 	/**
+	 * The files that the staged control source holds.
+	 */
+	private static final SourceSelection SELECTION = new SourceSelection(Set.of(PROMPT), Set.of(), List.of());
+	/**
 	 * The reply that fails the {@code forbidden-text} check of {@link #checkedContract()}.
 	 */
 	private static final String BROKEN = "BROKEN";
@@ -109,10 +114,11 @@ public final class GuardPilotTest
 
 			Set<Path> excluded = Set.of(Path.of(".cat/tests/main"));
 			Map<String, PilotResult> pilots = pilot(sessions, workspace, 4).run(contract, List.of(), control, excluded,
-				Map.of(), new SplittableRandom(1));
+				SELECTION, Map.of(), new SplittableRandom(1));
 
 			requireThat(workspace.excluded(control.identity()), "excluded").isEqualTo(excluded);
-			Path source = workspace.stage(control, excluded);
+			requireThat(workspace.selections(control.identity()), "selections").isEqualTo(List.of(SELECTION));
+			Path source = workspace.stage(control, excluded, SELECTION);
 			for (SessionRequest request : sessions.requests(SessionRole.TRIAL))
 			{
 				requireThat(request.part(), "part").isEqualTo(Part.DEVELOPMENT);
@@ -166,7 +172,7 @@ public final class GuardPilotTest
 			});
 
 			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
-				Map.of(), new SplittableRandom(2)).get("safety");
+				SELECTION, Map.of(), new SplittableRandom(2)).get("safety");
 
 			requireThat(safety.decided("asks_before_deleting"), "decided").isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.passes("asks_before_deleting"), "passes").isEqualTo(15);
@@ -200,7 +206,7 @@ public final class GuardPilotTest
 				return "fail:asks_before_deleting";
 			});
 
-			pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(), Map.of(),
+			pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(),
 				new SplittableRandom(2));
 
 			List<SessionResult.Completed> trials = sessions.trials();
@@ -237,7 +243,7 @@ public final class GuardPilotTest
 			});
 
 			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
-				Map.of(), new SplittableRandom(3)).get("safety");
+				SELECTION, Map.of(), new SplittableRandom(3)).get("safety");
 
 			requireThat(sessions.requests(SessionRole.JUDGE).stream().
 				filter(request -> request.turns().getFirst().equals(BROKEN)).count(), "safetyJudges").isEqualTo(0L);
@@ -277,7 +283,7 @@ public final class GuardPilotTest
 			});
 
 			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
-				Map.of(), new SplittableRandom(3)).get("safety");
+				SELECTION, Map.of(), new SplittableRandom(3)).get("safety");
 
 			requireThat(sessions.requests(SessionRole.JUDGE).stream().
 				filter(request -> request.turns().getFirst().equals(BROKEN)).count(), "safetyJudges").
@@ -311,7 +317,7 @@ public final class GuardPilotTest
 			});
 
 			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
-				Map.of(), new SplittableRandom(4)).get("safety");
+				SELECTION, Map.of(), new SplittableRandom(4)).get("safety");
 
 			requireThat(safety.trials(), "trials").isEmpty();
 			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
@@ -344,7 +350,7 @@ public final class GuardPilotTest
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 
 			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
-				Map.of(), new SplittableRandom(5)).get("safety");
+				SELECTION, Map.of(), new SplittableRandom(5)).get("safety");
 
 			requireThat(safety.trials(), "trials").isEmpty();
 			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
@@ -367,11 +373,11 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-reuse"));
 			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
-				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(5));
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(5));
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 
 			Map<String, PilotResult> second = pilot(sessions, workspace(directory), 4).
-				run(contract, List.of(), control(), Set.of(), first, new SplittableRandom(6));
+				run(contract, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(6));
 
 			requireThat(sessions.requests(SessionRole.TRIAL), "trials").isEmpty();
 			requireThat(second, "second").isEqualTo(first);
@@ -393,12 +399,12 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-revise"));
 			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
-				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(7));
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(7));
 			Contract revised = withSafetyStatement(contract, "The assistant confirms before deleting {{target}}.");
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 
 			Map<String, PilotResult> second = pilot(sessions, workspace(directory), 4).
-				run(revised, List.of(), control(), Set.of(), first, new SplittableRandom(8));
+				run(revised, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(8));
 
 			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
 			requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS);
@@ -430,11 +436,11 @@ public final class GuardPilotTest
 				return "pass";
 			});
 			Map<String, PilotResult> first = pilot(failing, workspace(directory), 4).
-				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(10));
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(10));
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 
 			Map<String, PilotResult> second = pilot(sessions, workspace(directory), 4).
-				run(contract, List.of(), control(), Set.of(), first, new SplittableRandom(11));
+				run(contract, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(11));
 
 			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
 			requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS);
@@ -460,12 +466,40 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-environment"));
 			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
-				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(12));
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(12));
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 			sessions.setSessionEnvironmentVersion(2);
 
 			pilot(sessions, workspace(directory), 4).
-				run(contract, List.of(), control(), Set.of(), first, new SplittableRandom(13));
+				run(contract, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(13));
+
+			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trials").
+				isEqualTo(GuardPilot.TRIALS * first.size());
+		}
+	}
+
+	/**
+	 * A stored pilot whose test, cell and control source are unchanged runs again once the trials' projects hold other
+	 * files of the control source, because its trials could not read the files that the new trials read.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void rerunsPilotAfterSelectionChange() throws IOException, InterruptedException
+	{
+		// Requirement: R-W15
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-selection"));
+			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(18));
+			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SourceSelection wider = SELECTION.withPatterns(List.of("docs/**"));
+
+			pilot(sessions, workspace(directory), 4).
+				run(contract, List.of(), control(), Set.of(), wider, first, new SplittableRandom(19));
 
 			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trials").
 				isEqualTo(GuardPilot.TRIALS * first.size());
@@ -488,12 +522,12 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-judge"));
 			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
-				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(14));
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(14));
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 			sessions.setJudgeVersion(2);
 
 			pilot(sessions, workspace(directory), 4).
-				run(contract, List.of(), control(), Set.of(), first, new SplittableRandom(15));
+				run(contract, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(15));
 
 			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trials").
 				isEqualTo(GuardPilot.TRIALS * first.size());
@@ -516,7 +550,7 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-rubric"));
 			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
-				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(16));
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(16));
 			JudgeProfile judge = contract.judge();
 			Contract revised = new Contract(contract.requirements(), contract.tests(), contract.profiles(),
 				new JudgeProfile(judge.profile(), judge.prompt(), judge.rubric() + " Capitalization is harmless.",
@@ -525,7 +559,7 @@ public final class GuardPilotTest
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 
 			pilot(sessions, workspace(directory), 4).
-				run(revised, List.of(), control(), Set.of(), first, new SplittableRandom(17));
+				run(revised, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(17));
 
 			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trials").
 				isEqualTo(GuardPilot.TRIALS * first.size());
@@ -554,10 +588,10 @@ public final class GuardPilotTest
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 			FakeWorkspacePort workspace = workspace(directory);
 
-			pilot(sessions, workspace, 4).run(contract, plugins, control(), Set.of(), Map.of(),
+			pilot(sessions, workspace, 4).run(contract, plugins, control(), Set.of(), SELECTION, Map.of(),
 				new SplittableRandom(9));
 
-			Path source = workspace.stage(control(), Set.of());
+			Path source = workspace.stage(control(), Set.of(), SELECTION);
 			List<Path> expected = List.of(workspace.pluginCopy(built, source, PluginRemovals.NONE),
 				workspace.pluginCopy(installed, source, PluginRemovals.NONE));
 			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
@@ -589,9 +623,9 @@ public final class GuardPilotTest
 			FakeWorkspacePort workspace = workspace(directory);
 			GuardPilot pilot = pilot(sessions, workspace, 4);
 
-			pilot.run(contract, List.of(plugin), control(), Set.of(), Map.of(), new SplittableRandom(9));
+			pilot.run(contract, List.of(plugin), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(9));
 
-			Path source = workspace.stage(control(), Set.of());
+			Path source = workspace.stage(control(), Set.of(), SELECTION);
 			Path expected = workspace.pluginCopy(plugin, source, PluginRemovals.of(contract.pluginRemovals(plugin),
 				json));
 			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
@@ -635,7 +669,7 @@ public final class GuardPilotTest
 			Overlay control = control();
 
 			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 1).
-				run(contract, List.of(), control, Set.of(), Map.of(), new SplittableRandom(9));
+				run(contract, List.of(), control, Set.of(), SELECTION, Map.of(), new SplittableRandom(9));
 
 			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trials").isEqualTo(1);
 			for (PromptTest test : contract.tests())

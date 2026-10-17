@@ -50,6 +50,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.PilotResult;
 import io.github.cowwoc.cat.common.optimizer.execution.ProcessHandleTerminator;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceResult;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceRunner;
+import io.github.cowwoc.cat.common.optimizer.execution.TrialSelection;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.PromptAuthorPrompt;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.JudgePrompt;
 import io.github.cowwoc.cat.common.optimizer.execution.prompt.TriagePrompt;
@@ -69,6 +70,7 @@ import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
+import io.github.cowwoc.cat.common.optimizer.port.SourceSelection;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
 import io.github.cowwoc.cat.common.optimizer.proposal.DraftDirectory;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
@@ -1843,8 +1845,10 @@ public final class OptimizerCore implements Core
 		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(campaign), schema,
 			scope.json(), campaign.ceiling());
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
+		SourceSelection selection = TrialSelection.base(scope.harness(), promptSources(root, campaign, derived),
+			Set.copyOf(scope.loaderConfiguration()), derived.contract(), plugin.plugins());
 		Map<String, PilotResult> pilots = pilot.run(derived.contract(), plugin.plugins(), control, excluded,
-			file.read(), scope.random());
+			selection, file.read(), scope.random());
 		file.write(pilots);
 		return pilots;
 	}
@@ -2194,16 +2198,28 @@ public final class OptimizerCore implements Core
 	 */
 	private Set<Path> promptSources(Path root, Campaign campaign) throws IOException
 	{
-		Set<Path> sources = new LinkedHashSet<>();
-		sources.add(relativeTarget(root, campaign));
 		Optional<DerivedProposal> derived = stored(root, campaign);
 		if (derived.isPresent())
+			return promptSources(root, campaign, derived.get());
+		return Set.of(relativeTarget(root, campaign));
+	}
+
+	/**
+	 * Returns the in-project prompt sources of a proposal: the campaign's target and every in-project derived source.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param derived the proposal
+	 * @return the sources, relative to the project
+	 */
+	private Set<Path> promptSources(Path root, Campaign campaign, DerivedProposal derived)
+	{
+		Set<Path> sources = new LinkedHashSet<>();
+		sources.add(relativeTarget(root, campaign));
+		for (Path path : derivedPaths(root, derived))
 		{
-			for (Path path : derivedPaths(root, derived.get()))
-			{
-				if (!path.isAbsolute())
-					sources.add(path);
-			}
+			if (!path.isAbsolute())
+				sources.add(path);
 		}
 		return sources;
 	}

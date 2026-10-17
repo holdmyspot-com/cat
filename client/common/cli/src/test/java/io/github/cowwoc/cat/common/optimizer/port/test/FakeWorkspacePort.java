@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +62,10 @@ public final class FakeWorkspacePort implements WorkspacePort
 	 * The selections of the requests to stage each candidate, in request order.
 	 */
 	private final Map<Sha256, List<SourceSelection>> selections = new HashMap<>();
+	/**
+	 * The candidates that a request staged whole, without a selection.
+	 */
+	private final Set<Sha256> stagedWhole = new HashSet<>();
 	/**
 	 * The directories of the staged sources that exist.
 	 */
@@ -180,7 +185,10 @@ public final class FakeWorkspacePort implements WorkspacePort
 			requireThat(excluded, "excluded").isNotNull();
 			Sha256 identity = candidate.identity();
 			exclusions.put(identity, Set.copyOf(excluded));
-			selection.ifPresent(chosen -> selections.computeIfAbsent(identity, _ -> new ArrayList<>()).add(chosen));
+			if (selection.isPresent())
+				selections.computeIfAbsent(identity, _ -> new ArrayList<>()).add(selection.get());
+			else
+				stagedWhole.add(identity);
 			String name = selection.map(chosen -> identity.hex() + "-" +
 				Sha256.of(chosen.describe().getBytes(UTF_8)).hex()).orElse(identity.hex());
 			Path directory = root.resolve("staged").resolve(name);
@@ -327,6 +335,22 @@ public final class FakeWorkspacePort implements WorkspacePort
 		synchronized (lock)
 		{
 			return Set.copyOf(staged);
+		}
+	}
+
+	/**
+	 * Indicates whether a request staged a candidate whole, without a selection.
+	 *
+	 * @param candidate the candidate's identity
+	 * @return {@code true} if a request staged every file of the candidate
+	 * @throws NullPointerException if {@code candidate} is null
+	 */
+	public boolean stagedWhole(Sha256 candidate)
+	{
+		synchronized (lock)
+		{
+			requireThat(candidate, "candidate").isNotNull();
+			return stagedWhole.contains(candidate);
 		}
 	}
 

@@ -94,4 +94,24 @@ public enum Harness
 		return (name != null && instructionFiles.contains(name.toString())) ||
 			(file.getNameCount() > 1 && projectDirectories.contains(file.getName(0).toString()));
 	}
+
+	/**
+	 * Returns the names of the instruction files that the harness reads from the project, in any directory.
+	 *
+	 * @return file names without a directory, such as {@code AGENTS.md}
+	 */
+	public List<String> instructionFiles()
+	{
+		return instructionFiles;
+	}
+
+	/**
+	 * Returns the top-level project directories whose files the harness reads from the project, such as its skills.
+	 *
+	 * @return directory names relative to the project, such as {@code .codex}
+	 */
+	public List<String> projectDirectories()
+	{
+		return projectDirectories;
+	}
 }

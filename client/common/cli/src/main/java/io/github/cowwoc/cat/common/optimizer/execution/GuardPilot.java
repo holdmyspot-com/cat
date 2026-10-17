@@ -24,6 +24,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
+import io.github.cowwoc.cat.common.optimizer.port.SourceSelection;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
@@ -136,9 +137,10 @@ public final class GuardPilot
 	 * Runs the pilot of each prompt test that a stored pilot does not describe.
 	 * <p>
 	 * A stored pilot is reused when it ran every trial, every trial ended with a decision, and its test's definition,
-	 * its cell, the control source's files, the session environment version and the judge version are unchanged, so a
-	 * revision reruns only the tests whose definition changed or whose earlier pilot has a failed run, and every test
-	 * once the sessions change what the model receives or how the judge decides. A test whose cell is unknown, or that
+	 * its cell, the control source's files, the selection, the session environment version and the judge version are
+	 * unchanged, so a revision reruns only the tests whose definition changed or whose earlier pilot has a failed run,
+	 * and every test once the trials' projects or the sessions change what the model receives or how the judge
+	 * decides. A test whose cell is unknown, or that
 	 * has no development test case, has no pilot. When the provider rejects or refuses a session, the pilot starts no
 	 * further session and each unfinished test's result records why it stopped.
 	 *
@@ -148,6 +150,7 @@ public final class GuardPilot
 	 *   project removed
 	 * @param excluded the project-relative paths that the staged control source leaves out, so that a trial cannot
 	 *   read the prompt tests
+	 * @param selection the files of the control source that the staged control source holds
 	 * @param stored the pilots that an earlier run of the same campaign stored, by prompt test
 	 * @param random draws the seed of each test's development stream
 	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
@@ -158,18 +161,19 @@ public final class GuardPilot
 	 *   is interrupted too.
 	 */
 	public Map<String, PilotResult> run(Contract contract, List<TrialPlugin> plugins, Overlay control,
-		Set<Path> excluded, Map<String, PilotResult> stored, RandomGenerator random)
+		Set<Path> excluded, SourceSelection selection, Map<String, PilotResult> stored, RandomGenerator random)
 		throws IOException, InterruptedException
 	{
 		requireThat(contract, "contract").isNotNull();
 		requireThat(plugins, "plugins").isNotNull();
 		requireThat(control, "control").isNotNull();
 		requireThat(excluded, "excluded").isNotNull();
+		requireThat(selection, "selection").isNotNull();
 		requireThat(stored, "stored").isNotNull();
 		requireThat(random, "random").isNotNull();
 		// Keyed by the files rather than the overlay, so that a pilot still applies once confirmation records the same
 		// files in the fork
-		Sha256 files = controlIdentity(control.snapshot().identity());
+		Sha256 files = controlIdentity(control.snapshot().identity(), selection);
 		Map<String, PilotResult> pilots = new LinkedHashMap<>();
 		List<Pilot> pending = new ArrayList<>();
 		for (PromptTest test : contract.tests())
@@ -191,7 +195,7 @@ public final class GuardPilot
 		}
 		if (!pending.isEmpty())
 		{
-			Path source = workspace.stage(control, excluded);
+			Path source = workspace.stage(control, excluded, selection);
 			List<Path> directories = TrialPlugins.of(plugins, contract, workspace, source, true, json);
 			new Run(contract, source, directories, pending).run();
 		}
@@ -275,16 +279,17 @@ public final class GuardPilot
 	}
 
 	/**
-	 * Returns the identity of the conditions that control trials run in: the control source's files, the session
-	 * environment version and the judge version.
+	 * Returns the identity of the conditions that control trials run in: the control source's files, the files of it
+	 * that the trials' projects hold, the session environment version and the judge version.
 	 *
 	 * @param files the identity of the control source's files
+	 * @param selection the files of the control source that the staged control source holds
 	 * @return the identity
 	 */
-	private Sha256 controlIdentity(Sha256 files)
+	private Sha256 controlIdentity(Sha256 files, SourceSelection selection)
 	{
-		String conditions = files.hex() + "\nsession environment version " + sessions.sessionEnvironmentVersion() +
-			"\njudge version " + sessions.judgeVersion();
+		String conditions = files.hex() + "\nselection\n" + selection.describe() + "\nsession environment version " +
+			sessions.sessionEnvironmentVersion() + "\njudge version " + sessions.judgeVersion();
 		return Sha256.of(conditions.getBytes(UTF_8));
 	}
 
