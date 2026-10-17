@@ -35,7 +35,7 @@ final class TopicReplayRepository
 	static Path invocationDirectory(Path repository, String name) throws IOException
 	{
 		Files.createDirectories(repository.resolve(".cat"));
-		Path root = repository.resolve(".cat/work/temp");
+		Path root = repository.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp");
 		Files.createDirectories(root);
 		return Files.createDirectory(root.resolve(name));
 	}

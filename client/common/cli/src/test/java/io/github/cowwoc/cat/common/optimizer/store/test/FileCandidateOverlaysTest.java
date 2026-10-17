@@ -85,7 +85,7 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path base = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-base-"));
-			Path campaign = base.resolve(".cat/work/optimizer/campaign-1");
+			Path campaign = base.resolve(".cat/sessions/optimizer/campaign-1");
 			Files.writeString(base.resolve("prompt.md"), "original", UTF_8);
 			Files.writeString(base.resolve("unchanged.md"), "unchanged", UTF_8);
 			FileInventory recorded = ForkTree.record(base, campaign, Set.of(Path.of("prompt.md"),

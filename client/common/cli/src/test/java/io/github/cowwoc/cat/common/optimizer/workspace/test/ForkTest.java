@@ -40,11 +40,11 @@ import org.testng.annotations.Test;
  */
 public final class ForkTest
 {
-	private static final String EXCLUDE_LINE = "/.cat/work/";
+	private static final String EXCLUDE_LINE = "/.cat/sessions/";
 	/**
 	 * The directory, relative to the repository, that holds the campaigns of one session.
 	 */
-	private static final String CAMPAIGNS = ".cat/work/2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b/optimizer";
+	private static final String CAMPAIGNS = ".cat/sessions/2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b/optimizer";
 	/**
 	 * The directory that holds the repository that each test copies, and the empty global exclude file that the
 	 * repository's configuration names.
@@ -194,7 +194,7 @@ public final class ForkTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
-			writeFile(base.resolve(".cat/work/temp/earlier.txt"), "earlier", READ_WRITE);
+			writeFile(base.resolve(".cat/sessions/temp/earlier.txt"), "earlier", READ_WRITE);
 
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of());
 
@@ -280,7 +280,7 @@ public final class ForkTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
-			Files.writeString(excludeFile(base), ".cat/work\n", UTF_8, StandardOpenOption.APPEND);
+			Files.writeString(excludeFile(base), ".cat/sessions\n", UTF_8, StandardOpenOption.APPEND);
 			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
 
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of());

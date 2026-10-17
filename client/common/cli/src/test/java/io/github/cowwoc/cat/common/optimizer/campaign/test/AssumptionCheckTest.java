@@ -50,19 +50,19 @@ public final class AssumptionCheckTest
 	public void protectedAccessIsDependence()
 	{
 		// Requirement: R-P2
-		List<Path> protectedRoots = List.of(Path.of("/project/.cat/work/optimizer/c1").toAbsolutePath());
+		List<Path> protectedRoots = List.of(Path.of("/project/.cat/sessions/optimizer/c1").toAbsolutePath());
 		requireThat(AssumptionCheck.isDependent(
-			List.of(Path.of("/project/.cat/work/optimizer/c1/trials.json").toAbsolutePath()), protectedRoots), "inside").
+			List.of(Path.of("/project/.cat/sessions/optimizer/c1/trials.json").toAbsolutePath()), protectedRoots), "inside").
 			isTrue();
-		requireThat(AssumptionCheck.isDependent(List.of(Path.of("/project/.cat/work/optimizer/c1").toAbsolutePath()),
+		requireThat(AssumptionCheck.isDependent(List.of(Path.of("/project/.cat/sessions/optimizer/c1").toAbsolutePath()),
 			protectedRoots), "root").isTrue();
-		requireThat(AssumptionCheck.isDependent(List.of(Path.of("/project/.cat/work/optimizer/c10/x").toAbsolutePath()),
+		requireThat(AssumptionCheck.isDependent(List.of(Path.of("/project/.cat/sessions/optimizer/c10/x").toAbsolutePath()),
 			protectedRoots), "sibling").isFalse();
 		requireThat(AssumptionCheck.isDependent(List.of(Path.of("/project/src/a.md").toAbsolutePath()), protectedRoots),
 			"outside").isFalse();
 		requireThat(AssumptionCheck.isDependent(
-			List.of(Path.of("/project/.cat/work/optimizer/c1/../c1/x").toAbsolutePath()), protectedRoots), "unnormalized").
-			isTrue();
+			List.of(Path.of("/project/.cat/sessions/optimizer/c1/../c1/x").toAbsolutePath()), protectedRoots),
+			"unnormalized").isTrue();
 	}
 
 	/**

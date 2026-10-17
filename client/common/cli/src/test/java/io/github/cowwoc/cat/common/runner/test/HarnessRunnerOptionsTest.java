@@ -279,7 +279,7 @@ public final class HarnessRunnerOptionsTest
 				HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact",
 					absolute("artifact")}, "harness", HarnessTemporaryRoot.from(scope));
 
-				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/work").resolve(SESSION_ID).
+				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/sessions").resolve(SESSION_ID).
 					resolve("temp");
 				requireThat(result.runRoot(), "runRoot").isEqualTo(sessionTemp.resolve("runner-runs"));
 				requireThat(sessionTemp, "sessionTemp").isDirectory();
@@ -307,7 +307,7 @@ public final class HarnessRunnerOptionsTest
 					absolute("artifact"), "--run-root", absolute("runs")}, "harness", HarnessTemporaryRoot.from(scope));
 
 				requireThat(result.runRoot(), "runRoot").isEqualTo(path("runs"));
-				requireThat(Files.exists(project.resolve(".cat/work")), "workRootExists").isFalse();
+				requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 			}
 		}
 	}
@@ -345,7 +345,7 @@ public final class HarnessRunnerOptionsTest
 					absolute("artifact"), "--run-root", absolute("runs")}, "harness", temporaryRoot);
 
 				requireThat(result.runRoot(), "runRoot").isEqualTo(path("runs"));
-				requireThat(Files.exists(project.resolve(".cat/work")), "workRootExists").isFalse();
+				requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 			}
 		}
 	}

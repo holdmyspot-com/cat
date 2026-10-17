@@ -125,7 +125,7 @@ public final class CodexRunPartTest
 			Files.createDirectories(project.resolve(".cat"));
 			Path folder = Files.createDirectories(project.resolve("src/main"));
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
-			Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/work").resolve(THREAD_ID).
+			Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/sessions").resolve(THREAD_ID).
 				resolve("temp");
 
 			Call call = runPart(script("pwd", "(Get-Location).Path"), false, folder, Map.of("TMPDIR", temporary.toString(),
@@ -167,10 +167,7 @@ public final class CodexRunPartTest
 			{
 				requireThat(entries.toList(), "sharedEntries").isEmpty();
 			}
-			try (Stream<Path> entries = Files.list(project.resolve(".cat/work")))
-			{
-				requireThat(entries.toList(), "workEntries").containsExactly(List.of(shared));
-			}
+			requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 		}
 	}
 

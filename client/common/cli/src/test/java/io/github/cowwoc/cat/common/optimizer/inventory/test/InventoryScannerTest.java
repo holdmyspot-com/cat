@@ -59,7 +59,7 @@ public final class InventoryScannerTest
 			writeFile(project.resolve("prompt.md"), "prompt", READ_WRITE);
 			writeFile(project.resolve(ProgramFixture.name("run")), ProgramFixture.TEXT, EXECUTABLE);
 			writeFile(project.resolve("sub/inner.md"), "inner", READ_WRITE);
-			writeFile(project.resolve(".cat/work/state.json"), "{}", READ_WRITE);
+			writeFile(project.resolve(".cat/sessions/state.json"), "{}", READ_WRITE);
 			Files.createSymbolicLink(project.resolve("alias.md"), Path.of("prompt.md"));
 			Files.createSymbolicLink(project.resolve("docs"), Path.of("sub"));
 			Files.createSymbolicLink(project.resolve("outside.md"), shared);

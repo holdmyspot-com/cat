@@ -257,7 +257,7 @@ public final class CleanupTest
 			requireThat(removal, "removal").isInstanceOf(Cleanup.Removal.Failed.class);
 			String warning = ((Cleanup.Removal.Failed) removal).warning();
 			requireThat(warning, "warning").startsWith("Could not record the removal of the files of campaign " +
-				CAMPAIGN + ": " + blocker + ": ").endsWith(". The files stay in .cat/work/.");
+				CAMPAIGN + ": " + blocker + ": ").endsWith(". The files stay in .cat/sessions/.");
 			requireThat(FileCampaignStore.removals(fixture.campaigns()), "removals").isEmpty();
 			Files.delete(blocker.resolve("child"));
 			Files.delete(blocker);

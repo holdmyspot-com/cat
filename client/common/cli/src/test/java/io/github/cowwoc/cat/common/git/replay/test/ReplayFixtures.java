@@ -39,7 +39,8 @@ final class ReplayFixtures
 	 */
 	static GitTopicReplayEditor editor(Path repository)
 	{
-		return new GitTopicReplayEditor(repository, repository.resolve(".cat/work/temp"));
+		return new GitTopicReplayEditor(repository,
+			repository.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp"));
 	}
 
 	/**

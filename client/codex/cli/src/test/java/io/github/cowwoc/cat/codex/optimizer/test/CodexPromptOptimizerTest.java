@@ -62,7 +62,7 @@ public final class CodexPromptOptimizerTest
 	{
 		Path root = scope.add(Files.createTempDirectory("codex-optimizer-project")).toRealPath();
 		Files.createDirectory(root.resolve(".git"));
-		Path campaign = root.resolve(".cat/work").resolve(SESSION_ID).resolve("optimizer").resolve(CAMPAIGN).
+		Path campaign = root.resolve(".cat/sessions").resolve(SESSION_ID).resolve("optimizer").resolve(CAMPAIGN).
 			resolve("held_out");
 		Files.createDirectories(campaign);
 		Files.copy(FIXTURE, campaign.resolve("campaign.json"));
@@ -199,7 +199,7 @@ public final class CodexPromptOptimizerTest
 			int exit = run(setup, Map.of(), List.of("status", CAMPAIGN), output);
 			requireThat(exit, "exit").isEqualTo(1);
 			requireThat(output.toString(), "output").contains("CODEX_THREAD_ID").contains("codex session");
-			requireThat(Files.exists(setup.root().resolve(".cat/work").resolve(SESSION_ID).resolve("temp")),
+			requireThat(Files.exists(setup.root().resolve(".cat/sessions").resolve(SESSION_ID).resolve("temp")),
 				"sessionCreated").isFalse();
 		}
 	}

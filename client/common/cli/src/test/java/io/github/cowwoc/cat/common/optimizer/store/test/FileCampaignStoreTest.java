@@ -1009,7 +1009,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 
 	/**
 	 * A campaign is stored in the CAT session directory of its session, as
-	 * {@code .cat/work/<session-id>/optimizer/<id>/held_out/campaign.json} with a format version, and each logical
+	 * {@code .cat/sessions/<session-id>/optimizer/<id>/held_out/campaign.json} with a format version, and each logical
 	 * trial as one record file in the same {@code held_out} directory.
 	 *
 	 * @throws IOException if the store fails
@@ -1038,7 +1038,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 
 			Path directory = heldOutDirectory(campaigns);
 			requireThat(directory, "directory").isEqualTo(project.toAbsolutePath().normalize().
-				resolve(".cat/work/" + SESSION_ID + "/optimizer/" + ID + "/held_out"));
+				resolve(".cat/sessions/" + SESSION_ID + "/optimizer/" + ID + "/held_out"));
 			requireThat(list(campaignDirectory(campaigns)), "campaignFiles").isEqualTo(List.of(directory));
 			requireThat(list(directory), "heldOutFiles").
 				isEqualTo(List.of(directory.resolve("campaign.json"), directory.resolve("trials")));

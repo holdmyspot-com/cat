@@ -28,7 +28,7 @@ EOF
 	last="${lines[${#lines[@]}-2]}"
 	closing="${lines[${#lines[@]}-1]}"
 	prefix="[More output follows. Before any other command or answer, run: '${runtime}/bin/read-part' "
-	[[ "${closing}" == "${prefix}'${project}/.cat/work/${thread}/temp/run-part-"*"/output.txt' "* ]]
+	[[ "${closing}" == "${prefix}'${project}/.cat/sessions/${thread}/temp/run-part-"*"/output.txt' "* ]]
 	command="${closing#*run: }"
 	command="${command%]}"
 

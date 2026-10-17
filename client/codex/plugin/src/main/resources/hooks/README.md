@@ -8,7 +8,7 @@ command in place of `${PLUGIN_ROOT}`, but the shell would then read a `$`, a quo
 name as syntax, so each command reads the environment variable instead. The launcher derives CAT's installation directory from its own
 location before it runs CAT's `client/bin/session-start` command.
 
-The hook writes the session's rules to `.cat/work/<session_id>/rules.md` in the session's project directory. That
+The hook writes the session's rules to `.cat/sessions/<session_id>/rules.md` in the session's project directory. That
 directory is the session's CAT session directory: it also holds `temp/`, the session's `CAT_TEMP`, which the rules
 name, and `session.json`, which records the harness, its configuration directory and the directory's creation time. The
 hook's additional context holds only the guidance on reading command output whole, from `rules/codex/read-file.md`,

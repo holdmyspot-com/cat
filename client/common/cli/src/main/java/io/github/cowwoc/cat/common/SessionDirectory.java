@@ -14,6 +14,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.nio.file.StandardCopyOption;
 import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
@@ -30,7 +31,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The CAT session directory of one harness session, {@code .cat/work/<session-id>/} in the session's project, which
+ * The CAT session directory of one harness session, {@code .cat/sessions/<session-id>/} in the session's project, which
  * holds the files that CAT writes for the session. Its {@code temp/} directory is the session's {@code CAT_TEMP}.
  * <p>
  * This class is the only code that names the directory that holds the CAT session directories or builds a CAT session
@@ -49,7 +50,7 @@ public final class SessionDirectory
 	 * The directory, relative to a project, that holds the CAT session directories. Code that excludes them from a copy,
 	 * a listing or a Git operation takes the directory from this constant.
 	 */
-	public static final String ROOT = ".cat/work";
+	public static final String ROOT = ".cat/sessions";
 	/**
 	 * The stand-in that a rule text writes for the session's ID, which {@link #insertSessionId(String)} replaces.
 	 */
@@ -58,6 +59,10 @@ public final class SessionDirectory
 	 * How long a session directory is kept, from its marker's creation time, before the sweep may remove it.
 	 */
 	public static final Duration RETENTION = Duration.ofHours(24);
+	/**
+	 * The directory, relative to a project, that held the CAT session directories that earlier versions of CAT wrote.
+	 */
+	private static final String FORMER_ROOT = ".cat/work";
 	private static final String MARKER = "session.json";
 	private static final String TEMP = "temp";
 	private static final String CAMPAIGNS = "optimizer";
@@ -128,6 +133,96 @@ public final class SessionDirectory
 	private static Path root(Path projectRoot)
 	{
 		return projectRoot.toAbsolutePath().normalize().resolve(ROOT);
+	}
+
+	/**
+	 * Moves the CAT session directories that earlier versions of CAT wrote below {@code .cat/work} to the directory that
+	 * holds the CAT session directories, whichever session wrote them. Each directory of {@code .cat/work} that a session
+	 * ID names and that holds a marker moves in one atomic rename. A directory whose new path exists, or whose rename
+	 * fails, stays in place, and one line on {@code error} names both paths and the cause. Every other entry of
+	 * {@code .cat/work}, including its shared {@code temp/} directory, stays in place.
+	 *
+	 * @param projectRoot the project
+	 * @param error the stream that reports each directory that stays in place
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static void moveFromFormerRoot(Path projectRoot, PrintStream error)
+	{
+		requireThat(projectRoot, "projectRoot").isNotNull();
+		requireThat(error, "error").isNotNull();
+		Path project = projectRoot.toAbsolutePath().normalize();
+		Path formerRoot = project.resolve(FORMER_ROOT);
+		Path root = root(project);
+		List<Path> candidates = new ArrayList<>();
+		try (DirectoryStream<Path> entries = Files.newDirectoryStream(formerRoot))
+		{
+			for (Path entry : entries)
+			{
+				if (isSessionId(entry.getFileName().toString()) &&
+					Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS) &&
+					Files.isRegularFile(entry.resolve(MARKER), LinkOption.NOFOLLOW_LINKS))
+				{
+					candidates.add(entry);
+				}
+			}
+		}
+		catch (NoSuchFileException | NotDirectoryException _)
+		{
+			return;
+		}
+		catch (IOException e)
+		{
+			error.println("CAT could not list " + formerRoot + " to move its CAT session directories to " + root + ": " +
+				describe(e));
+			return;
+		}
+		for (Path former : candidates)
+		{
+			Path target = root.resolve(former.getFileName().toString());
+			if (Files.exists(target, LinkOption.NOFOLLOW_LINKS))
+			{
+				reportKept(error, former, target, "that path already exists");
+				continue;
+			}
+			try
+			{
+				Files.createDirectories(root);
+				Files.move(former, target, StandardCopyOption.ATOMIC_MOVE);
+			}
+			catch (IOException e)
+			{
+				reportKept(error, former, target, describe(e));
+			}
+		}
+	}
+
+	/**
+	 * Reports a CAT session directory that stays below {@code .cat/work}.
+	 *
+	 * @param error the stream that receives the report
+	 * @param former the directory that stays in place
+	 * @param target the path that the directory was not moved to
+	 * @param cause why the directory stays in place
+	 */
+	private static void reportKept(PrintStream error, Path former, Path target, String cause)
+	{
+		error.println("CAT left the CAT session directory " + former + " in place instead of moving it to " + target +
+			": " + cause);
+	}
+
+	/**
+	 * Describes a failure in one line.
+	 *
+	 * @param failure the failure
+	 * @return the failure's type and message, without line breaks
+	 */
+	private static String describe(IOException failure)
+	{
+		String description = failure.getClass().getSimpleName();
+		String message = failure.getMessage();
+		if (message != null)
+			description += ": " + message;
+		return description.replaceAll("\\R", " ");
 	}
 
 	/**

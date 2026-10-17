@@ -69,18 +69,18 @@ public final class CodexSubagentStartHookTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-subagent-start-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/codex")).resolve("cat-env.md"),
-				"`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" + SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n");
+				"`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/sessions/" + SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n");
 
 			HookResult result = invoke(event(project, "cat:worker"), Map.of("PLUGIN_ROOT", plugin.toString()),
 				Path.of("."));
 
 			requireThat(result.error(), "error").isEmpty();
-			requireThat(context(result), "context").contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" + AGENT_ID +
+			requireThat(context(result), "context").contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/sessions/" + AGENT_ID +
 				"/temp`.");
-			requireThat(project.resolve(".cat/work").resolve(AGENT_ID).resolve("temp"), "agentTemp").isDirectory();
-			requireThat(project.resolve(".cat/work").resolve(AGENT_ID).resolve("session.json"), "agentMarker").
+			requireThat(project.resolve(".cat/sessions").resolve(AGENT_ID).resolve("temp"), "agentTemp").isDirectory();
+			requireThat(project.resolve(".cat/sessions").resolve(AGENT_ID).resolve("session.json"), "agentMarker").
 				isRegularFile();
-			requireThat(Files.exists(project.resolve(".cat/work").resolve(PARENT_ID)), "parentDirectoryExists").isFalse();
+			requireThat(Files.exists(project.resolve(".cat/sessions").resolve(PARENT_ID)), "parentDirectoryExists").isFalse();
 		}
 	}
 
@@ -102,24 +102,24 @@ public final class CodexSubagentStartHookTest
 			Files.writeString(codexRules.resolve("read-file.md"), "# Reading Command Output\n\nRun `" +
 				ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "/bin/run-part`.\n");
 			Files.writeString(codexRules.resolve("cat-env.md"), "# CAT Environment\n\n`CAT_TEMP` is " +
-				"`${CAT_PROJECT_ROOT}/.cat/work/" + SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n");
+				"`${CAT_PROJECT_ROOT}/.cat/sessions/" + SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n");
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("guidance.md"),
 				"---\nagents: [\"subagents\"]\n---\nsubagent guidance");
 
 			HookResult result = invoke(event(project, "cat:worker"), Map.of("PLUGIN_ROOT", plugin.toString()),
 				Path.of("."));
 
-			Path rulesFile = project.resolve(".cat/work").resolve(AGENT_ID).resolve("rules.md");
-			Path parentRulesFile = project.resolve(".cat/work").resolve(PARENT_ID).resolve("rules.md");
+			Path rulesFile = project.resolve(".cat/sessions").resolve(AGENT_ID).resolve("rules.md");
+			Path parentRulesFile = project.resolve(".cat/sessions").resolve(PARENT_ID).resolve("rules.md");
 			requireThat(context(result), "context").
 				startsWith("# Reading Command Output\n\nRun `" + plugin.resolve("bin/run-part") + "`.\n\n# CAT Rules\n\n").
 				contains("`" + parentRulesFile + "` belongs to the agent that started you: do not read it. CAT's rules " +
 					"for this session are in `" + rulesFile + "`. Read that whole file, as described above, before you plan").
 				doesNotContain("subagent guidance").doesNotContain("CAT Environment");
 			requireThat(Files.readString(rulesFile, UTF_8), "rules").contains("subagent guidance").
-				contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" + AGENT_ID + "/temp`.").
+				contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/sessions/" + AGENT_ID + "/temp`.").
 				doesNotContain("# Reading Command Output");
-			requireThat(Files.exists(project.resolve(".cat/work").resolve(PARENT_ID)), "parentDirectoryExists").isFalse();
+			requireThat(Files.exists(project.resolve(".cat/sessions").resolve(PARENT_ID)), "parentDirectoryExists").isFalse();
 			requireThat(result.error(), "error").isEmpty();
 		}
 	}
@@ -141,7 +141,7 @@ public final class CodexSubagentStartHookTest
 				"# Reading Command Output\n");
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("guidance.md"),
 				"---\nagents: [\"subagents\"]\n---\nsubagent guidance");
-			Path parentRulesFile = Files.createDirectories(project.resolve(".cat/work").resolve(PARENT_ID)).
+			Path parentRulesFile = Files.createDirectories(project.resolve(".cat/sessions").resolve(PARENT_ID)).
 				resolve("rules.md");
 			Files.writeString(parentRulesFile, "main agent rules");
 			String input = "{\"session_id\":\"" + PARENT_ID + "\",\"cwd\":" + jsonString(project) +

@@ -687,7 +687,7 @@ public final class HarnessRunManagerTest
 				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
 				"cat-project-"));
 			Files.writeString(project.resolve("README.md"), "project");
-			Path root = project.resolve(".cat/work/temp/runner-runs");
+			Path root = project.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp/runner-runs");
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
 
@@ -695,7 +695,7 @@ public final class HarnessRunManagerTest
 
 			Path copiedProject = run.directory().resolve("project");
 			requireThat(Files.readString(copiedProject.resolve("README.md")), "projectContents").isEqualTo("project");
-			requireThat(Files.exists(copiedProject.resolve(".cat/work/temp/runner-runs")), "nestedRunnerRoot").isFalse();
+			requireThat(Files.exists(copiedProject.resolve(project.relativize(root))), "nestedRunnerRoot").isFalse();
 		}
 	}
 

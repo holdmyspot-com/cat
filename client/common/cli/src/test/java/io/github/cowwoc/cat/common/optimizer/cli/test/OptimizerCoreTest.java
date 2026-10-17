@@ -1734,7 +1734,7 @@ public final class OptimizerCoreTest
 			repository.forks().addExcludeOnCreate();
 			ObjectNode started = output(repository, List.of("start", "CLAUDE.md"));
 			requireThat(started.get("message").asString(), "message").
-				contains("Added /.cat/work/").contains("info/exclude");
+				contains("Added /.cat/sessions/").contains("info/exclude");
 			requireThat(started.get("proposal").isNull(), "missingProposal").isFalse();
 			String id = started.get("campaign").asString();
 			requireThat(output(repository, List.of("confirm", id, "latest_versions")).get("message").isNull(),
@@ -1774,7 +1774,7 @@ public final class OptimizerCoreTest
 			repository.forks().addExcludeOnCreate();
 			ObjectNode started = output(repository, List.of("start", "CLAUDE.md"));
 			requireThat(started.get("message").asString(), "message").
-				contains("Added /.cat/work/").contains("info/exclude").
+				contains("Added /.cat/sessions/").contains("info/exclude").
 				contains("The contract author's proposal is invalid");
 		}
 	}
@@ -3685,7 +3685,7 @@ public final class OptimizerCoreTest
 			ObjectNode chosen = output(repository, List.of("choose", id, "retain_incumbent"));
 
 			requireThat(chosen.get("summary").asString(), "summary").
-				endsWith("\nRemoved the campaign's files from .cat/work/.");
+				endsWith("\nRemoved the campaign's files from .cat/sessions/.");
 			requireThat(Files.notExists(repository.directory(id)), "directoryIsAbsent").isTrue();
 		}
 	}

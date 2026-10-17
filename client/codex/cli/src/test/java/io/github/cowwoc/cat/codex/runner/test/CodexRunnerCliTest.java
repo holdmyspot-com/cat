@@ -45,7 +45,7 @@ public final class CodexRunnerCliTest
 				HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
 					project.resolve("artifact").toAbsolutePath().toString()}, "codex", HarnessTemporaryRoot.from(scope));
 
-				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/work").resolve(THREAD_ID).
+				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/sessions").resolve(THREAD_ID).
 					resolve("temp");
 				requireThat(options.runRoot().getParent(), "runRootParent").isEqualTo(sessionTemp);
 				requireThat(sessionTemp.resolveSibling("session.json"), "marker").isRegularFile();
@@ -76,7 +76,7 @@ public final class CodexRunnerCliTest
 			{
 				requireThat(e.getMessage(), "message").contains("--run-root").contains("CODEX_THREAD_ID");
 			}
-			requireThat(Files.exists(project.resolve(".cat/work")), "workRootExists").isFalse();
+			requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 		}
 	}
 

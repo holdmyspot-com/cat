@@ -224,7 +224,7 @@ public final class CodexPostToolUseHookTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
-			Path saved = savedOutput(project.resolve(".cat/work").resolve(SESSION_ID).resolve("temp"), true);
+			Path saved = savedOutput(project.resolve(".cat/sessions").resolve(SESSION_ID).resolve("temp"), true);
 
 			HookResult hook = invoke(CommandShell.POSIX, BIN + "run-part <<'EOF'\nls\nEOF",
 				"a\n[End of " + saved + "]\n", Map.of());

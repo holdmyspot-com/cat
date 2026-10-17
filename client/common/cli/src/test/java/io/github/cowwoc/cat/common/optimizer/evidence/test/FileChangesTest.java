@@ -114,7 +114,7 @@ public final class FileChangesTest
 		{
 			Path source = cleanup.add(Files.createTempDirectory("cat-evidence-source-"));
 			Path effects = cleanup.add(Files.createTempDirectory("cat-evidence-effects-"));
-			write(effects.resolve(".cat/work/state.json"), "{}");
+			write(effects.resolve(".cat/sessions/state.json"), "{}");
 			write(effects.resolve(".git/config"), "metadata");
 
 			requireThat(FileChanges.render(source, effects), "rendered").isEqualTo("No file changes.\n");

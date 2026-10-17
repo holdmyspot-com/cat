@@ -26,7 +26,7 @@ public final class AssumptionCheckReportTest
 	/**
 	 * The campaign's protected root.
 	 */
-	private static final Path PROTECTED = Path.of("/project/.cat/work/optimizer/c1").toAbsolutePath();
+	private static final Path PROTECTED = Path.of("/project/.cat/sessions/optimizer/c1").toAbsolutePath();
 
 	/**
 	 * Creates the test.
@@ -73,7 +73,7 @@ public final class AssumptionCheckReportTest
 	{
 		// Requirement: R-P2
 		AssumptionReport report = AssumptionReport.of(evidence(List.of(),
-			List.of(Path.of("/project/.cat/work/optimizer/c1/trials.json").toAbsolutePath())));
+			List.of(Path.of("/project/.cat/sessions/optimizer/c1/trials.json").toAbsolutePath())));
 		requireThat(report.dependenceDetected(), "dependenceDetected").isTrue();
 		requireThat(report.consequence(), "consequence").isEqualTo(Outcome.INVALID_STATISTICAL_ASSUMPTIONS);
 		requireThat(report.passRatesByConcurrency(), "rates").isEmpty();
@@ -88,7 +88,7 @@ public final class AssumptionCheckReportTest
 		// Requirement: R-P2
 		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().build();
 		ReportEvidence dependent = evidence(List.of(new Observation(1, Verdict.PASS)),
-			List.of(Path.of("/project/.cat/work/optimizer/c1/x").toAbsolutePath()));
+			List.of(Path.of("/project/.cat/sessions/optimizer/c1/x").toAbsolutePath()));
 		StatusReport report = StatusReport.of(campaign, dependent);
 		requireThat(report.outcome(), "outcome").isEqualTo(Outcome.INVALID_STATISTICAL_ASSUMPTIONS.label());
 		requireThat(report.assumptions().passRatesByConcurrency().size(), "rates").isEqualTo(1);

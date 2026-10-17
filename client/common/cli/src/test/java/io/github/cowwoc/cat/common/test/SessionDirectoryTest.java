@@ -10,7 +10,9 @@ import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -65,7 +67,7 @@ public final class SessionDirectoryTest
 			{
 				SessionDirectory session = scope.sessionDirectory(project, event, "session_id");
 
-				Path directory = project.resolve(".cat/work/" + SESSION_ID);
+				Path directory = project.resolve(".cat/sessions/" + SESSION_ID);
 				requireThat(session.directory(), "directory").isEqualTo(directory);
 				requireThat(session.temp(), "temp").isEqualTo(directory.resolve("temp"));
 				requireThat(session.temp(), "temp").isDirectory();
@@ -108,7 +110,7 @@ public final class SessionDirectoryTest
 				{
 					SessionDirectory session = scope.sessionDirectory().orElseThrow();
 
-					Path directory = project.resolve(".cat/work/" + variable.getValue());
+					Path directory = project.resolve(".cat/sessions/" + variable.getValue());
 					requireThat(session.directory(), "directory").isEqualTo(directory);
 					requireThat(session.temp(), "temp").isDirectory();
 					JsonNode marker = json.readTree(Files.readString(directory.resolve("session.json"), UTF_8));
@@ -156,7 +158,7 @@ public final class SessionDirectoryTest
 
 	/**
 	 * Verifies a session ID that is not a canonical UUID is refused, so that a session directory never takes the name
-	 * of another entry of the work root.
+	 * of another entry of the directory that holds the CAT session directories.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -215,7 +217,7 @@ public final class SessionDirectoryTest
 			for (Future<SessionDirectory> use : executor.invokeAll(uses))
 				use.get();
 
-			Path directory = project.resolve(".cat/work/" + SESSION_ID);
+			Path directory = project.resolve(".cat/sessions/" + SESSION_ID);
 			try (Stream<Path> entries = Files.list(directory))
 			{
 				requireThat(entries.map(entry -> entry.getFileName().toString()).sorted().toList(), "entries").
@@ -281,7 +283,7 @@ public final class SessionDirectoryTest
 						contains(HARNESS_B.sessionVariable());
 				}
 			}
-			requireThat(Files.exists(project.resolve(".cat/work")), "workRootExists").isFalse();
+			requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 		}
 	}
 
@@ -310,7 +312,7 @@ public final class SessionDirectoryTest
 				requireThat(e.getMessage(), "message").contains(HARNESS_A.sessionVariable()).
 					contains(HARNESS_B.sessionVariable());
 			}
-			requireThat(Files.exists(project.resolve(".cat/work")), "workRootExists").isFalse();
+			requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 		}
 	}
 
@@ -332,7 +334,7 @@ public final class SessionDirectoryTest
 				Map.of(HARNESS_B.sessionVariable(), SESSION_ID, "HOME", project.toString(), "USERPROFILE",
 					project.toString()), List.of(HARNESS_A, HARNESS_B));
 			requireThat(temporaryRoot, "temporaryRoot").isEqualTo(project.toAbsolutePath().normalize().
-				resolve(".cat/work/" + SESSION_ID + "/temp"));
+				resolve(".cat/sessions/" + SESSION_ID + "/temp"));
 		}
 	}
 
@@ -380,7 +382,7 @@ public final class SessionDirectoryTest
 			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
 
-			Path directory = project.toAbsolutePath().normalize().resolve(".cat/work/" + SESSION_ID);
+			Path directory = project.toAbsolutePath().normalize().resolve(".cat/sessions/" + SESSION_ID);
 			requireThat(session.campaigns(), "campaigns").isEqualTo(directory.resolve("optimizer"));
 			requireThat(session.runRoot("claude"), "runRoot").isEqualTo(directory.resolve("optimizer-runs/claude"));
 			requireThat(Files.exists(session.campaigns()), "campaignsExist").isFalse();
@@ -434,5 +436,175 @@ public final class SessionDirectoryTest
 				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
 			session.subagentRulesFile("../escape");
 		}
+	}
+
+	/**
+	 * Verifies that moving the former CAT session directories moves each directory below {@code .cat/work} that a session
+	 * ID names and that holds a marker, whichever session wrote it, to {@code .cat/sessions} with its campaign files,
+	 * and reports nothing.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void movesFormerDirectoriesWithMarker() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
+			String other = "01a147d8-bf56-7283-92b4-12dcaeb53738";
+			Path campaign = writeFormerDirectory(project, SESSION_ID).resolve("optimizer/c1/held_out/campaign.json");
+			Files.createDirectories(campaign.getParent());
+			Files.writeString(campaign, "{\"campaign\":1}", UTF_8);
+			Path otherMarker = writeFormerDirectory(project, other).resolve("session.json");
+			String otherMarkerContent = Files.readString(otherMarker, UTF_8);
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			SessionDirectory.moveFromFormerRoot(project, new PrintStream(error, true, UTF_8));
+
+			requireThat(error.toString(UTF_8), "error").isEmpty();
+			Path sessions = project.resolve(".cat/sessions");
+			requireThat(Files.readString(sessions.resolve(SESSION_ID + "/optimizer/c1/held_out/campaign.json"), UTF_8),
+				"campaign").isEqualTo("{\"campaign\":1}");
+			requireThat(sessions.resolve(SESSION_ID + "/temp"), "temp").isDirectory();
+			requireThat(Files.readString(sessions.resolve(other + "/session.json"), UTF_8), "otherMarker").
+				isEqualTo(otherMarkerContent);
+			requireThat(Files.exists(project.resolve(".cat/work/" + SESSION_ID)), "formerExists").isFalse();
+			requireThat(Files.exists(project.resolve(".cat/work/" + other)), "otherFormerExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that moving the former CAT session directories leaves a directory in place, and the directory at its new
+	 * path unchanged, when the new path exists, and reports both paths in one line on standard error.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void keepsFormerDirectoryWhenNewPathExists() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
+			Path former = writeFormerDirectory(project, SESSION_ID);
+			Files.writeString(former.resolve("rules.md"), "former rules", UTF_8);
+			Path current = Files.createDirectories(project.resolve(".cat/sessions/" + SESSION_ID));
+			Files.writeString(current.resolve("rules.md"), "current rules", UTF_8);
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			SessionDirectory.moveFromFormerRoot(project, new PrintStream(error, true, UTF_8));
+
+			requireThat(Files.readString(former.resolve("rules.md"), UTF_8), "formerRules").isEqualTo("former rules");
+			requireThat(former.resolve("session.json"), "formerMarker").isRegularFile();
+			try (Stream<Path> entries = Files.list(current))
+			{
+				requireThat(entries.map(entry -> entry.getFileName().toString()).toList(), "currentEntries").
+					isEqualTo(List.of("rules.md"));
+			}
+			requireThat(Files.readString(current.resolve("rules.md"), UTF_8), "currentRules").
+				isEqualTo("current rules");
+			String report = error.toString(UTF_8);
+			requireThat(report.lines().toList(), "reportLines").size().isEqualTo(1);
+			requireThat(report, "report").contains(former.toAbsolutePath().normalize().toString()).
+				contains(current.toAbsolutePath().normalize().toString()).contains("exists");
+		}
+	}
+
+	/**
+	 * Verifies that moving the former CAT session directories leaves a directory in place, and reports it in one line
+	 * on standard error, when the directory that holds the CAT session directories cannot be created because a file
+	 * has its name.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void keepsFormerDirectoryWhenMoveFails() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
+			Path former = writeFormerDirectory(project, SESSION_ID);
+			Path blocker = project.resolve(".cat/sessions");
+			Files.writeString(blocker, "not a directory", UTF_8);
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			SessionDirectory.moveFromFormerRoot(project, new PrintStream(error, true, UTF_8));
+
+			requireThat(former.resolve("session.json"), "formerMarker").isRegularFile();
+			requireThat(Files.readString(blocker, UTF_8), "blocker").isEqualTo("not a directory");
+			String report = error.toString(UTF_8);
+			requireThat(report.lines().toList(), "reportLines").size().isEqualTo(1);
+			requireThat(report, "report").contains(former.toAbsolutePath().normalize().toString()).
+				contains(blocker.resolve(SESSION_ID).toAbsolutePath().normalize().toString());
+		}
+	}
+
+	/**
+	 * Verifies that moving the former CAT session directories leaves in place a directory without a marker, a directory
+	 * whose name is not a session ID and the shared temporary directory {@code .cat/work/temp}, creates nothing and
+	 * reports nothing.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void keepsFormerEntriesThatAreNotSessions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
+			Path withoutMarker = Files.createDirectories(project.resolve(".cat/work/" + SESSION_ID + "/temp"));
+			Path notSession = Files.createDirectories(project.resolve(".cat/work/optimizer"));
+			Files.writeString(notSession.resolve("session.json"), "{}", UTF_8);
+			Path shared = Files.createDirectories(project.resolve(".cat/work/temp"));
+			Files.writeString(shared.resolve("session.json"), "{}", UTF_8);
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			SessionDirectory.moveFromFormerRoot(project, new PrintStream(error, true, UTF_8));
+
+			requireThat(error.toString(UTF_8), "error").isEmpty();
+			requireThat(withoutMarker, "withoutMarker").isDirectory();
+			requireThat(notSession.resolve("session.json"), "notSession").isRegularFile();
+			requireThat(shared.resolve("session.json"), "shared").isRegularFile();
+			requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that moving the former CAT session directories of a project without {@code .cat/work} creates nothing
+	 * and reports nothing.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void moveWithoutFormerRootDoesNothing() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			SessionDirectory.moveFromFormerRoot(project, new PrintStream(error, true, UTF_8));
+
+			requireThat(error.toString(UTF_8), "error").isEmpty();
+			try (Stream<Path> entries = Files.list(project))
+			{
+				requireThat(entries.toList(), "entries").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Creates a CAT session directory, with its {@code temp/} directory and a marker, below {@code .cat/work}.
+	 *
+	 * @param project the project
+	 * @param sessionId the session's ID
+	 * @return the directory
+	 * @throws IOException if the directory cannot be created
+	 */
+	private static Path writeFormerDirectory(Path project, String sessionId) throws IOException
+	{
+		Path directory = Files.createDirectories(project.resolve(".cat/work/" + sessionId + "/temp")).getParent();
+		Files.writeString(directory.resolve("session.json"), "{\"harness\":\"harness-a\",\"created_at\":\"" + CREATED +
+			"\"}", UTF_8);
+		return directory;
 	}
 }

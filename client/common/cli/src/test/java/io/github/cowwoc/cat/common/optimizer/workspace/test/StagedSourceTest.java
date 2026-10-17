@@ -214,11 +214,11 @@ public final class StagedSourceTest
 			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
 			StagedSources sources = new StagedSources(project.tree(), project.campaign().resolve("staged"));
 			Overlay overlay = Overlay.of(project.tree().inventory()).
-				write(Path.of(".cat/work/leak.txt"), content("leak"), READ_WRITE);
+				write(Path.of(".cat/sessions/leak.txt"), content("leak"), READ_WRITE);
 
 			Path staged = sources.stage(overlay, Set.of());
 
-			requireThat(Files.exists(staged.resolve(".cat/work")), "sessionDirectoriesExist").isFalse();
+			requireThat(Files.exists(staged.resolve(".cat/sessions")), "sessionDirectoriesExist").isFalse();
 			requireThat(staged.resolve(".cat/rules/r.md"), "catRule").isRegularFile();
 		}
 	}

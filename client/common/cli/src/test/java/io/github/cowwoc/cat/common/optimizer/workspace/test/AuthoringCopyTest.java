@@ -75,7 +75,7 @@ public final class AuthoringCopyTest
 			requireThat(scan.entries().get(Path.of("ext-dir/x.md")), "externalLink").isEqualTo(file("external x"));
 			requireThat(scan.entries().values().stream().filter(SymbolicLink.class::isInstance).toList(), "links").
 				isEmpty();
-			requireThat(scan.entries().containsKey(Path.of(".cat/work/state.json")), "sessionDirectories").isFalse();
+			requireThat(scan.entries().containsKey(Path.of(".cat/sessions/state.json")), "sessionDirectories").isFalse();
 		}
 	}
 
@@ -136,14 +136,14 @@ public final class AuthoringCopyTest
 			Files.writeString(effects.resolve("prompt.md"), "prompt author edit", UTF_8);
 			writeFile(effects.resolve("rules/c.md"), "created", READ_WRITE);
 			Files.delete(effects.resolve("rules/b.md"));
-			writeFile(effects.resolve(".cat/work/session.json"), "{}", READ_WRITE);
+			writeFile(effects.resolve(".cat/sessions/session.json"), "{}", READ_WRITE);
 			writeFile(effects.resolve(".git/HEAD"), "ref: refs/heads/main", READ_WRITE);
 			FileInventory after = port.scanPromptAuthorEffects(copy, effects);
 
 			requireThat(after.root(), "root").isEqualTo(effects);
 			requireThat(after.entries().get(Path.of("prompt.md")), "edited").isEqualTo(file("prompt author edit"));
 			requireThat(after.entries().get(Path.of("rules/c.md")), "created").isEqualTo(file("created"));
-			requireThat(after.entries().containsKey(Path.of(".cat/work/session.json")), "sessionDirectories").isFalse();
+			requireThat(after.entries().containsKey(Path.of(".cat/sessions/session.json")), "sessionDirectories").isFalse();
 			requireThat(after.entries().containsKey(Path.of(".git/HEAD")), "gitMetadata").isFalse();
 			requireThat(InventoryDiff.between(before, after).changes().stream().map(PathChange::path).toList(),
 				"changedPaths").isEqualTo(List.of(Path.of("prompt.md"), Path.of("rules/b.md"), Path.of("rules/c.md")));

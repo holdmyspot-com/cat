@@ -66,7 +66,7 @@ public final class ToolScopeTest
 				requireThat(scope.isInProject(), "isInProject").isTrue();
 				SessionDirectory session = scope.requireSessionDirectory();
 				requireThat(session.temp(), "temp").isEqualTo(root.toAbsolutePath().normalize().
-					resolve(".cat/work/" + SESSION_ID + "/temp"));
+					resolve(".cat/sessions/" + SESSION_ID + "/temp"));
 			}
 		}
 	}
@@ -87,7 +87,7 @@ public final class ToolScopeTest
 			{
 				requireThat(scope.isInProject(), "isInProject").isFalse();
 				requireThat(scope.requireSessionDirectory().directory(), "directory").
-					isEqualTo(root.toAbsolutePath().normalize().resolve(".cat/work/" + SESSION_ID));
+					isEqualTo(root.toAbsolutePath().normalize().resolve(".cat/sessions/" + SESSION_ID));
 			}
 		}
 	}

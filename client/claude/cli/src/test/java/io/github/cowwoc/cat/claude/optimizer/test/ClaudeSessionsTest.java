@@ -386,7 +386,7 @@ public final class ClaudeSessionsTest
 			SessionDirectory session = SessionDirectory.open(root, sessionId, ClaudeSessionHarness.HARNESS,
 				root.resolve("configuration"), Instant.EPOCH, json);
 			Path heldOut = Files.createDirectories(session.campaigns().resolve("c1/held_out"));
-			Path otherHeldOut = Files.createDirectories(root.resolve(".cat/work/" + otherSessionId +
+			Path otherHeldOut = Files.createDirectories(root.resolve(".cat/sessions/" + otherSessionId +
 				"/optimizer/c2/held_out"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, session.runRoot("claude"),
 				() -> List.of(heldOut, otherHeldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(),
@@ -404,7 +404,7 @@ public final class ClaudeSessionsTest
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			List<String> options = arguments.getFirst();
-			Path sessionDirectory = root.resolve(".cat/work/" + sessionId);
+			Path sessionDirectory = root.resolve(".cat/sessions/" + sessionId);
 			requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
 				isEqualTo(sessionDirectory.resolve("optimizer-runs/claude").toString());
 			List<String> denied = new ArrayList<>();
@@ -415,7 +415,7 @@ public final class ClaudeSessionsTest
 			}
 			requireThat(denied, "denied").isEqualTo(List.of(
 				sessionDirectory.resolve("optimizer/c1/held_out").toString(),
-				root.resolve(".cat/work/" + otherSessionId + "/optimizer/c2/held_out").toString(),
+				root.resolve(".cat/sessions/" + otherSessionId + "/optimizer/c2/held_out").toString(),
 				sessionDirectory.resolve("optimizer-runs/claude-held_out").toString()));
 		}
 	}

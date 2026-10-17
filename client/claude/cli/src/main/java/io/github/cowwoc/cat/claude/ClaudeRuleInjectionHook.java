@@ -60,6 +60,10 @@ final class ClaudeRuleInjectionHook
 				throw new IllegalArgumentException(eventName + " accepts no arguments");
 			JsonNode event = scope.readEvent(eventName, input);
 			Path projectDir = ClaudeHookScope.projectDir(scope, event, environment, workingDirectory);
+			// SessionStart moves the CAT session directories of earlier versions before it opens its own, so a resumed
+			// session keeps the directory that it wrote
+			if (!eventName.equals("SubagentStart"))
+				SessionDirectory.moveFromFormerRoot(projectDir, error);
 			// A Claude Code subagent's input carries its parent's session_id, and its shells the parent's
 			// CLAUDE_CODE_SESSION_ID, so the subagent shares its parent's CAT session directory
 			SessionDirectory session = scope.sessionDirectory(projectDir, event, "session_id");

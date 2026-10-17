@@ -412,7 +412,7 @@
 				</property>
 			</activation>
 			<properties>
-				<cat.work.temp>${project.rootDirectory}/../.cat/work/${env.CODEX_THREAD_ID}/temp</cat.work.temp>
+				<cat.work.temp>${project.rootDirectory}/../.cat/sessions/${env.CODEX_THREAD_ID}/temp</cat.work.temp>
 			</properties>
 		</profile>
 		<profile>
@@ -427,7 +427,7 @@
 				</property>
 			</activation>
 			<properties>
-				<cat.work.temp>${project.rootDirectory}/../.cat/work/${env.CLAUDE_CODE_SESSION_ID}/temp</cat.work.temp>
+				<cat.work.temp>${project.rootDirectory}/../.cat/sessions/${env.CLAUDE_CODE_SESSION_ID}/temp</cat.work.temp>
 			</properties>
 		</profile>
 		<profile>

@@ -207,7 +207,7 @@ final class ProjectFixtures
 		writeFile(base.resolve("rules/b.md"), "rule b", READ_WRITE);
 		writeFile(base.resolve("fixtures/data.txt"), "fixture data", READ_WRITE);
 		writeFile(base.resolve(".cat/rules/r.md"), "cat rule", READ_WRITE);
-		writeFile(base.resolve(".cat/work/state.json"), "{}", READ_WRITE);
+		writeFile(base.resolve(".cat/sessions/state.json"), "{}", READ_WRITE);
 		writeFile(external.resolve("shared.md"), "shared", READ_WRITE);
 		writeFile(external.resolve("dir/x.md"), "external x", READ_WRITE);
 		writeFile(external.resolve("dir/y.md"), "external y", READ_WRITE);
