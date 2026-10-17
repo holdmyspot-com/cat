@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.codex.runner.CodexRunner;
 import io.github.cowwoc.cat.codex.runner.CodexRunnerCli;
 import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
+import io.github.cowwoc.cat.common.optimizer.adapter.PluginFiles;
 import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
@@ -21,6 +22,7 @@ import io.github.cowwoc.cat.codex.secrets.CodexSessionsSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -177,6 +179,34 @@ public final class CodexSessions extends RunnerSessions
 	protected PromptSources newPromptSources(JsonMapper json, Map<String, Path> directories)
 	{
 		return new AppServerPromptSources(json, directories);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Codex registers the hooks of the project's {@code .codex/hooks.json}.
+	 */
+	@Override
+	protected List<Path> projectHookFiles()
+	{
+		return List.of(Path.of(".codex/hooks.json"));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Codex registers the hooks of each hooks file that the manifest's {@code hooks} property names and of each
+	 * declaration that the property holds inline, or of {@code hooks/hooks.json} if the manifest declares no hooks.
+	 */
+	@Override
+	protected List<HookDeclaration> pluginHooks(PluginFiles plugin, JsonMapper json) throws IOException
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(json, "json").isNotNull();
+		List<HookDeclaration> declarations = new ArrayList<>();
+		for (CodexHookApprovals.HookSource source : CodexHookApprovals.sources(plugin::resolve, json))
+			declarations.add(new HookDeclaration(source.file(), source.declaration().path("hooks")));
+		return declarations;
 	}
 
 	@Override

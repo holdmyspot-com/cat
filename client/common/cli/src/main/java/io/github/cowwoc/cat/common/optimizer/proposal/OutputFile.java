@@ -89,8 +89,22 @@ public final class OutputFile
 	public ObjectNode read(SessionResult.Completed result) throws InvalidProposalException
 	{
 		requireThat(result, "result").isNotNull();
-		String name = name(result.initialProject());
-		Path file = result.effects().resolve(name);
+		return read(result.effects(), name(result.initialProject()));
+	}
+
+	/**
+	 * Reads the object that a session wrote to a file of its project.
+	 *
+	 * @param project the session's project
+	 * @param name    the file's name, relative to {@code project}
+	 * @return the object
+	 * @throws InvalidProposalException if the project holds no regular file of that name, or the file is not UTF-8
+	 *                                  text that is exactly one JSON object without repeated property names
+	 * @throws UncheckedIOException     if the file cannot be read
+	 */
+	ObjectNode read(Path project, String name) throws InvalidProposalException
+	{
+		Path file = project.resolve(name);
 		// A link could make CAT read a file outside the session's project
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
 		{

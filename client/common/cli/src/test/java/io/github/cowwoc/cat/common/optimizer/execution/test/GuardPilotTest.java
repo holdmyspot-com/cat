@@ -36,6 +36,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.HookRegistration;
 import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
 import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
@@ -758,6 +759,12 @@ public final class GuardPilotTest
 		public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
 		{
 			return new LoadedSources(List.of(), List.of(), List.of());
+		}
+
+		@Override
+		public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
+		{
+			return List.of();
 		}
 
 		@Override

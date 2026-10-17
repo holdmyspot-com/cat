@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.proposal.DraftDirectory;
 import io.github.cowwoc.cat.common.optimizer.proposal.RegressionScenarios;
 
@@ -16,6 +17,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -187,6 +189,79 @@ public final class DraftDirectoryTest
 				".cat/tests/notes/long_document/fixtures/doc.md",
 				".cat/tests/notes/long_document/scenario.md",
 				".cat/tests/notes/long_document/values.json"));
+		}
+	}
+
+	/**
+	 * Verifies that a test revision's result becomes a new draft directory beside the stored one: a copy of it in which
+	 * the revised prompt test's directory holds exactly the files that the test revision left, while the stored draft
+	 * directory stays unchanged.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test
+	public void testRevisionReplacesOneTest() throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path project = project(scope);
+			Path heldOut = scope.add(Files.createTempDirectory("held_out-"));
+			Path seeded = scope.add(Files.createTempDirectory("seeded-"));
+			DraftDirectory.seed(scenarios(project), seeded);
+			List<String> confirmedFiles = files(seeded);
+			Path stored = DraftDirectory.store(seeded, heldOut);
+			Path revision = scope.add(Files.createTempDirectory("revision-"));
+			DraftDirectory.copyTest(stored, LONG_DOCUMENT, revision);
+			Files.delete(revision.resolve(LONG_DOCUMENT).resolve("fixtures/doc.md"));
+			write(revision.resolve(LONG_DOCUMENT).resolve("fixtures/other.md"), "Other notes.\n");
+
+			Path revised = DraftDirectory.revise(stored, LONG_DOCUMENT, revision);
+
+			requireThat(revised.getParent(), "parent").isEqualTo(stored.getParent());
+			requireThat(revised, "revised").isNotEqualTo(stored);
+			requireThat(files(revised), "files").isEqualTo(List.of(
+				".cat/tests/notes/fixtures/shared.md",
+				".cat/tests/notes/long_document/fixtures/other.md",
+				".cat/tests/notes/long_document/scenario.md",
+				".cat/tests/notes/long_document/values.json",
+				".cat/tests/notes/old_case/scenario.md"));
+			requireThat(files(stored), "stored").isEqualTo(confirmedFiles);
+		}
+	}
+
+	/**
+	 * Verifies that a test revision's draft directory receives the test's shared fixtures outside its directory, and
+	 * that the files that the test revision changed there are listed: a changed or removed shared fixture and a new
+	 * file, but not a change inside the test's directory.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test
+	public void listsChangesOutsideTheTest() throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path project = project(scope);
+			Path confirmed = scope.add(Files.createTempDirectory("confirmed-"));
+			DraftDirectory.seed(scenarios(project), confirmed);
+			Path revision = scope.add(Files.createTempDirectory("revision-"));
+			DraftDirectory.copyTest(confirmed, LONG_DOCUMENT, revision);
+			Map<Path, Sha256> received = DraftDirectory.sharedFiles(confirmed, LONG_DOCUMENT);
+			requireThat(received.keySet(), "received").
+				isEqualTo(Set.of(Path.of(".cat/tests/notes/fixtures/shared.md")));
+			requireThat(DraftDirectory.changedOutside(revision, LONG_DOCUMENT, received), "unchanged").isEmpty();
+
+			write(revision.resolve(LONG_DOCUMENT).resolve("fixtures/doc.md"), "Changed.\n");
+			write(revision.resolve(".cat/tests/notes/fixtures/shared.md"), "Changed.\n");
+			write(revision.resolve(".cat/tests/notes/extra.md"), "New.\n");
+
+			requireThat(DraftDirectory.changedOutside(revision, LONG_DOCUMENT, received), "changed").isEqualTo(List.of(
+				Path.of(".cat/tests/notes/extra.md"), Path.of(".cat/tests/notes/fixtures/shared.md")));
+
+			Files.delete(revision.resolve(".cat/tests/notes/fixtures/shared.md"));
+
+			requireThat(DraftDirectory.changedOutside(revision, LONG_DOCUMENT, received), "removed").isEqualTo(List.of(
+				Path.of(".cat/tests/notes/extra.md"), Path.of(".cat/tests/notes/fixtures/shared.md")));
 		}
 	}
 

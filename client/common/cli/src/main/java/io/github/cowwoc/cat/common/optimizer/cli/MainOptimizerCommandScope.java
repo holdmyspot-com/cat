@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.execution.CapCalibrator;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
@@ -23,6 +24,10 @@ import java.util.random.RandomGenerator;
  */
 public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 {
+	/**
+	 * The launcher's name in the runtime image's {@code bin} directory.
+	 */
+	private static final String LAUNCHER = "prompt-optimizer";
 	private final Harness harness;
 	private final Path directory;
 	private final List<Path> loaderConfiguration;
@@ -68,6 +73,24 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 	{
 		ensureOpen();
 		return directory;
+	}
+
+	/**
+	 * Returns the {@code prompt-optimizer} launcher of the runtime image that runs this command: the launcher in the
+	 * {@code bin} directory beside the image's Java home, with the {@code .cmd} suffix on Windows.
+	 *
+	 * @return the launcher's absolute path
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	@Override
+	public final Path launcher()
+	{
+		ensureOpen();
+		String name = LAUNCHER;
+		if (Platform.current().isWindows())
+			name += ".cmd";
+		return Path.of(System.getProperty("java.home")).toAbsolutePath().normalize().resolveSibling("bin").
+			resolve(name);
 	}
 
 	@Override

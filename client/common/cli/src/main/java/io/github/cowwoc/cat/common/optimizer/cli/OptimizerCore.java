@@ -60,6 +60,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.HookRegistration;
 import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
 import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
@@ -69,6 +70,7 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
+import io.github.cowwoc.cat.common.optimizer.proposal.DraftDirectory;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
@@ -157,7 +159,8 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Returns a contract author protocol for a campaign, with the target's current recorded scenarios, the
-	 * harness's role profile, the files that load in production and the campaign's trial plugins.
+	 * harness's role profile, the files that load in production, the campaign's trial plugins, the launcher that
+	 * provides the contract tools and the harness's tool-output limits.
 	 *
 	 * @param root the original project root, where scenarios are recorded
 	 * @param campaign the campaign, whose header holds the target and the user's goal, and whose trial plugins are
@@ -172,7 +175,8 @@ public final class OptimizerCore implements Core
 		return new ContractAuthorProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
 			scope.profiles().roleProfile()), RegressionScenarios.read(scope.json(), root, scope.home()),
 			header.target(), header.goal(), scope.sessions().reportsExitStatus(),
-			scope.sessions().loadedSources(root, List.of()).production(), campaign.plugins().orElseThrow());
+			scope.sessions().loadedSources(root, List.of()).production(), campaign.plugins().orElseThrow(),
+			scope.launcher(), scope.profiles()::toolOutputBytes);
 	}
 
 	/**
@@ -803,8 +807,8 @@ public final class OptimizerCore implements Core
 		DerivedProposal current;
 		try
 		{
-			current = stored.restore(contractAuthor.proposal(stored.derivation(), stored.observedSources(),
-				stored.profiles(), stored.salt()));
+			current = stored.restore(contractAuthor.proposal(stored.derivation(), stored.draft(),
+				stored.observedSources(), stored.profiles(), stored.salt()));
 		}
 		catch (InvalidProposalException e)
 		{
@@ -1466,20 +1470,23 @@ public final class OptimizerCore implements Core
 		String unsupported = unsupportedBindings(profiles);
 		if (!unsupported.isEmpty())
 			return report(root, campaign, null, unsupported);
+		List<PluginBase> bases = bases(campaign.plugins().orElseThrow(), fork.workspace());
+		List<HookRegistration> hooks = scope.sessions().hookRegistrations(staged, bases);
 		SessionRequest request;
 		long salt;
 		String invalidRetry;
 		if (previous == null)
 		{
 			salt = scope.random().nextLong();
-			request = protocol.request(staged, profiles, salt);
+			request = protocol.request(staged, profiles, hooks, salt);
 			invalidRetry = "Run `start` again to retry.";
 		}
 		else
 		{
 			// Revision keeps the salt, so the test cases that the user reviewed keep their parts
 			salt = previous.contract().salt();
-			request = protocol.request(staged, profiles, previous, feedback, pilotFile(root, campaign).read());
+			request = protocol.request(staged, profiles, hooks, previous, feedback,
+				pilotFile(root, campaign).read());
 			// The proposal that the user gave feedback on is still stored, so revise can regenerate it again
 			invalidRetry = "Run `revise` with feedback, or `start`, to retry.";
 		}
@@ -1541,16 +1548,18 @@ public final class OptimizerCore implements Core
 		DerivedProposal derived;
 		try
 		{
-			derived = protocol.proposal(completed, profiles, salt);
+			derived = protocol.proposal(completed, staged, profiles, salt);
 		}
 		catch (InvalidProposalException e)
 		{
 			return report(root, campaign, null, "The contract author's proposal is invalid: " +
 				String.join("; ", e.problems()) + ". " + invalidRetry);
 		}
-		derived = derived.withDerivedSources(scope.sessions().loadedSources(root,
-			bases(campaign.plugins().orElseThrow(), fork.workspace())).trials());
-		new ProposalFile(heldOutDirectory(root, campaign.header().id()), scope.json()).write(derived, profiles);
+		derived = derived.withDerivedSources(scope.sessions().loadedSources(root, bases).trials());
+		// The draft's values files hold the expected outcomes of both parts, so it moves into the held-out directory
+		Path heldOut = heldOutDirectory(root, campaign.header().id());
+		derived = derived.withDraft(DraftDirectory.store(derived.draft(), heldOut), derived.changes());
+		new ProposalFile(heldOut, scope.json()).write(derived, profiles);
 		return present(root, store, campaign, fork, derived);
 	}
 
@@ -1796,8 +1805,9 @@ public final class OptimizerCore implements Core
 			return Optional.empty();
 		try
 		{
-			return Optional.of(stored.get().restore(contractAuthor(root, campaign).proposal(stored.get().derivation(),
-				stored.get().observedSources(), stored.get().profiles(), stored.get().salt())));
+			ProposalFile.Stored proposal = stored.get();
+			return Optional.of(proposal.restore(contractAuthor(root, campaign).proposal(proposal.derivation(),
+				proposal.draft(), proposal.observedSources(), proposal.profiles(), proposal.salt())));
 		}
 		catch (InvalidProposalException e)
 		{

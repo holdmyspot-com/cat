@@ -105,9 +105,12 @@ public final class PromptTestLocations
 	 *
 	 * @param normalized a normalized prompt test directory, relative to the project
 	 * @return the test root, relative to the project, or an empty value if no test root holds the directory
+	 * @throws NullPointerException     if {@code normalized} is null
+	 * @throws IllegalArgumentException if {@code normalized} is absolute
 	 */
-	private static Optional<Path> testRoot(Path normalized)
+	public static Optional<Path> rootOf(Path normalized)
 	{
+		requireThat(normalized.isAbsolute(), "normalized.isAbsolute()").isFalse();
 		if (normalized.startsWith(TESTS))
 			return Optional.of(TESTS);
 		int count = normalized.getNameCount();
@@ -250,7 +253,7 @@ public final class PromptTestLocations
 			return Set.of();
 		}
 		Path directory = scenario.getParent();
-		Optional<Path> testRoot = testRoot(directory);
+		Optional<Path> testRoot = rootOf(directory);
 		if (testRoot.isEmpty())
 			return Set.of();
 		Set<Path> shared = new LinkedHashSet<>();

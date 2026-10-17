@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,11 +25,13 @@ import java.util.Map;
  *   harness events, one per line, or {@code none}
  * @param derivation the contract author's non-blank output as JSON, which a revision sends back to the contract author
  *   with the user's feedback
- * @param citedScenarios the content of each recorded regression scenario that a prompt test cites, by citation
+ * @param draft the draft directory that holds the prompt tests as files
+ * @param changes how each prompt test relates to the recorded prompt tests, by prompt test identifier; empty until
+ *   the caller compares the draft with the project
  */
 public record DerivedProposal(Contract contract, List<DerivedSource> derivedSources,
 	List<ScopeCondition> scopeConditions, List<Conflict> conflicts, String observedSources, String derivation,
-	Map<String, String> citedScenarios)
+	Path draft, Map<String, DraftChange> changes)
 {
 	/**
 	 * Creates a derived proposal.
@@ -40,7 +43,8 @@ public record DerivedProposal(Contract contract, List<DerivedSource> derivedSour
 	 * @param observedSources non-blank text listing the prompt sources reported loading by the contract author
 	 *   session's harness events
 	 * @param derivation the contract author's non-blank output as JSON
-	 * @param citedScenarios the content of each recorded regression scenario that a prompt test cites, by citation
+	 * @param draft the draft directory that holds the prompt tests as files
+	 * @param changes how each prompt test relates to the recorded prompt tests, by prompt test identifier
 	 * @throws NullPointerException if any of the arguments are null, or a list or map contains null
 	 * @throws IllegalArgumentException if {@code observedSources} or {@code derivation} are blank
 	 */
@@ -52,8 +56,9 @@ public record DerivedProposal(Contract contract, List<DerivedSource> derivedSour
 		derivedSources = List.copyOf(derivedSources);
 		scopeConditions = List.copyOf(scopeConditions);
 		conflicts = List.copyOf(conflicts);
-		requireThat(citedScenarios, "citedScenarios").isNotNull();
-		citedScenarios = Collections.unmodifiableMap(new LinkedHashMap<>(citedScenarios));
+		requireThat(draft, "draft").isNotNull();
+		requireThat(changes, "changes").isNotNull();
+		changes = Collections.unmodifiableMap(new LinkedHashMap<>(changes));
 	}
 
 	/**
@@ -65,7 +70,22 @@ public record DerivedProposal(Contract contract, List<DerivedSource> derivedSour
 	 */
 	public DerivedProposal withDerivedSources(List<DerivedSource> sources)
 	{
-		return new DerivedProposal(contract, sources, scopeConditions, conflicts, observedSources, derivation,
-			citedScenarios);
+		return new DerivedProposal(contract, sources, scopeConditions, conflicts, observedSources, derivation, draft,
+			changes);
+	}
+
+	/**
+	 * Returns this proposal with its draft directory at another path and with the relation of each prompt test to the
+	 * recorded prompt tests.
+	 *
+	 * @param draft the draft directory
+	 * @param changes how each prompt test relates to the recorded prompt tests, by prompt test identifier
+	 * @return the proposal
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public DerivedProposal withDraft(Path draft, Map<String, DraftChange> changes)
+	{
+		return new DerivedProposal(contract, derivedSources, scopeConditions, conflicts, observedSources, derivation,
+			draft, changes);
 	}
 }

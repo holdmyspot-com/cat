@@ -8,13 +8,17 @@ import io.github.cowwoc.cat.codex.optimizer.CodexSessions;
 import io.github.cowwoc.cat.codex.secrets.CodexSessionsSecrets;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
+import io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.ContractAuthorFixtures;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
+import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
+import io.github.cowwoc.cat.common.optimizer.port.HookRegistration;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
@@ -44,6 +48,7 @@ import java.util.concurrent.TimeoutException;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link CodexSessions} over the real runner bridge with a scripted harness.
@@ -291,6 +296,62 @@ public final class CodexSessionsTest
 			requireThat(denied, "denied").isEqualTo(expectedDenied);
 			requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedRunRoot), "transcript").
 				isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a contract author session receives its draft directory and the context file of the contract tools
+	 * as the fixtures that the runner copies into the session's project, and that the runner denies the session
+	 * reading only the held-out locations, so that the session may run the launcher and write the draft and the
+	 * proposal file in its project.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void contractAuthorWritesDraftAndRunsTools()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-contract-author-")).
+				toRealPath();
+			Path source = Files.createDirectories(root.resolve("source"));
+			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+			Path heldOut = Files.createDirectories(root.resolve("campaign/held_out"));
+			Path launcher = root.resolve("image/bin/prompt-optimizer");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"),
+				() -> List.of(heldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			List<List<String>> received = new CopyOnWriteArrayList<>();
+			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (options, input, output) ->
+			{
+				arguments.add(options);
+				received.add(ContractAuthorFixtures.regularFiles(Path.of(ScriptedHarness.optionValue(options,
+					"--fixtures"))));
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+					List.of(Turn.replies("ok")), input, output);
+			});
+
+			SessionResult result = await(sessions.start(new SessionRequest(SessionRole.CONTRACT_AUTHOR,
+				Part.DEVELOPMENT, source, List.of("brief"), List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT,
+				ContractAuthorFixtures.files(JsonMapper.builder().build()), List.of())));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			List<String> options = arguments.getFirst();
+			requireThat(ScriptedHarness.optionValue(options, "--project"), "project").isEqualTo(source.toString());
+			requireThat(received, "received").isEqualTo(List.of(ContractAuthorFixtures.FILES));
+			List<Path> denied = new ArrayList<>();
+			for (int i = 0; i < options.size() - 1; ++i)
+			{
+				if (options.get(i).equals("--deny-read"))
+					denied.add(Path.of(options.get(i + 1)));
+			}
+			requireThat(denied, "denied").isEqualTo(List.of(heldOut, root.resolve("runs-held_out")));
+			for (Path path : denied)
+				requireThat(launcher.startsWith(path), "launcher.startsWith(" + path + ")").isFalse();
 		}
 	}
 
@@ -707,5 +768,74 @@ public final class CodexSessionsTest
 	private static List<String> paths(List<DerivedSource> sources)
 	{
 		return sources.stream().map(DerivedSource::path).toList();
+	}
+
+	/**
+	 * Verifies that the hooks that Codex trials register are those of the project's {@code .codex/hooks.json}, of each
+	 * hooks file that a plugin's manifest names and of each declaration that its manifest holds inline, or of the
+	 * plugin's {@code hooks/hooks.json} when its manifest declares no hooks; that a hooks file that is not valid JSON
+	 * registers none; and that a hooks file that a project-built plugin's mapping copies from the project is named as
+	 * the project's file.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void listsHookRegistrations() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-hooks-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			write(project.resolve(".codex/hooks.json"), """
+				{"hooks": {"PreToolUse": [{"matcher": "shell", "hooks": [{"type": "command", "command": "check.sh"}]}]}}""");
+			write(project.resolve("plugin/hooks/hooks.json"), """
+				{"hooks": {"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "mapped.sh"}]}]}}""");
+
+			Path tools = root.resolve("tools");
+			write(tools.resolve(".codex-plugin/plugin.json"), """
+				{"name": "tools", "hooks": ["./extra/hooks.json", "./broken.json", \
+				{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "stop.sh"}]}]}}]}""");
+			write(tools.resolve("hooks/hooks.json"), """
+				{"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "unused.sh"}]}]}}""");
+			write(tools.resolve("extra/hooks.json"), """
+				{"hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "a.sh"}, \
+				{"type": "command", "command": "b.sh"}]}]}}""");
+			write(tools.resolve("broken.json"), "{not json");
+			Path cat = root.resolve("cat");
+			write(cat.resolve(".codex-plugin/plugin.json"), "{\"name\": \"cat\"}");
+			write(cat.resolve("hooks/hooks.json"), """
+				{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "base.sh"}]}]}}""");
+
+			List<PluginBase> plugins = List.of(
+				new PluginBase(new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of()),
+					tools),
+				new PluginBase(new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"),
+					Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("plugin/hooks"), Path.of("hooks")))), cat));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+
+			requireThat(sessions.hookRegistrations(project, plugins), "registrations").isEqualTo(List.of(
+				new HookRegistration("", ".codex/hooks.json", "PreToolUse", "shell", "check.sh"),
+				new HookRegistration("tools@market", "extra/hooks.json", "SessionStart", "startup", "a.sh"),
+				new HookRegistration("tools@market", "extra/hooks.json", "SessionStart", "startup", "b.sh"),
+				new HookRegistration("tools@market", ".codex-plugin/plugin.json", "Stop", "", "stop.sh"),
+				new HookRegistration("", "plugin/hooks/hooks.json", "UserPromptSubmit", "", "mapped.sh")));
+		}
+	}
+
+	/**
+	 * Writes a file and creates its directory.
+	 *
+	 * @param file    the file
+	 * @param content the file's content
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void write(Path file, String content) throws IOException
+	{
+		Files.createDirectories(file.getParent());
+		Files.writeString(file, content);
 	}
 }

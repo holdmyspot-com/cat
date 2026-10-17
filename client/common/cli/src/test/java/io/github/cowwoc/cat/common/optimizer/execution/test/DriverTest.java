@@ -109,6 +109,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.HookRegistration;
 import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
 import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
@@ -5124,6 +5125,13 @@ public final class DriverTest
 			public LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException
 			{
 				return delegate.loadedSources(project, plugins);
+			}
+
+			@Override
+			public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
+				throws IOException
+			{
+				return delegate.hookRegistrations(project, plugins);
 			}
 
 			@Override

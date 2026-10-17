@@ -138,6 +138,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	}
 
 	@Override
+	public Path launcher()
+	{
+		ensureOpen();
+		return directory.toAbsolutePath().resolve("bin/prompt-optimizer");
+	}
+
+	@Override
 	protected Harness harness()
 	{
 		ensureOpen();

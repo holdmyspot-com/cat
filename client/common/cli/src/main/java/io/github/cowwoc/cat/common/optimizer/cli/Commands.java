@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
+import io.github.cowwoc.cat.common.optimizer.proposal.ContractTools;
 import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.ChoiceItem;
 import tools.jackson.databind.json.JsonMapper;
@@ -26,8 +27,9 @@ import java.util.regex.Pattern;
 /**
  * Parses the arguments of the {@code prompt-optimizer} launcher and dispatches the command to the {@link Core}.
  * <p>
- * Every outcome is one JSON object on the output stream. The exit codes are 0 for a result, 1 for a refusal or a
- * failure, and 2 for invalid input.
+ * Every outcome is one JSON object on the output stream, apart from the report of a contract tool, which a contract
+ * author session reads as text. The exit codes are 0 for a result, 1 for a refusal or a failure, and 2 for invalid
+ * input.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe if {@code core} is.
  */
@@ -35,6 +37,10 @@ public final class Commands
 {
 	private static final String MAX_CONCURRENCY = "--max-concurrency";
 	private static final String GOAL = "--goal";
+	/**
+	 * The arguments of {@code contract fixtures}.
+	 */
+	private static final String FIXTURES_FORM = "<context file> <test directory> <test case number> <output directory>";
 
 	/**
 	 * The usage text.
@@ -47,7 +53,10 @@ public final class Commands
 		  confirm <campaign> <%s>
 		  revise <campaign> <feedback>
 		  choose <campaign> <choice> [--attempt N | --review-point N]
-		  cancel <campaign>""".formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, scopeIds());
+		  cancel <campaign>
+		  contract check <context file>
+		  contract fixtures %s""".formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, scopeIds(),
+		FIXTURES_FORM);
 	private static final Pattern CAMPAIGN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,63}");
 	private final Core core;
 	private final JsonMapper json;
@@ -80,6 +89,19 @@ public final class Commands
 	 * @throws InvalidCommandException if the arguments are not a well-formed command
 	 */
 	public Command parse(List<String> args)
+	{
+		return parseArguments(args);
+	}
+
+	/**
+	 * Validates the arguments of a command.
+	 *
+	 * @param args the arguments, starting with the command's name
+	 * @return the command
+	 * @throws NullPointerException    if {@code args} is null
+	 * @throws InvalidCommandException if the arguments are not a well-formed command
+	 */
+	private static Command parseArguments(List<String> args)
 	{
 		requireThat(args, "args").isNotNull();
 		if (args.isEmpty())
@@ -114,6 +136,7 @@ public final class Commands
 				yield new Command.Revise(campaign(rest.getFirst()), feedback);
 			}
 			case "choose" -> choose(rest);
+			case "contract" -> contract(rest);
 			default -> throw new InvalidCommandException("Unknown command: " + name);
 		};
 	}
@@ -237,6 +260,40 @@ public final class Commands
 	}
 
 	/**
+	 * Parses a contract tool: {@code contract check} or {@code contract fixtures}.
+	 *
+	 * @param rest the arguments after the command's name
+	 * @return the command
+	 * @throws InvalidCommandException if the arguments are not well-formed
+	 */
+	private static Command contract(List<String> rest)
+	{
+		String form = "check <context file> | fixtures " + FIXTURES_FORM;
+		if (rest.isEmpty())
+			throw new InvalidCommandException("contract: expected " + form);
+		List<String> arguments = rest.subList(1, rest.size());
+		return switch (rest.getFirst())
+		{
+			case "check" ->
+			{
+				expect("contract check", arguments, 1, "<context file>");
+				yield new Command.ContractCheck(path("contract check", "the context file", arguments.getFirst()));
+			}
+			case "fixtures" ->
+			{
+				String command = "contract fixtures";
+				expect(command, arguments, 4, FIXTURES_FORM);
+				yield new Command.ContractFixtures(path(command, "the context file", arguments.get(0)),
+					path(command, "the test directory", arguments.get(1)),
+					positive("The test case number", arguments.get(2)),
+					path(command, "the output directory", arguments.get(3)));
+			}
+			default -> throw new InvalidCommandException("contract: expected " + form + "; unknown tool '" +
+				rest.getFirst() + "'.");
+		};
+	}
+
+	/**
 	 * Checks the number of arguments.
 	 *
 	 * @param name the command's name
@@ -301,15 +358,29 @@ public final class Commands
 	 */
 	private static Path target(String command, String value)
 	{
+		return path(command, "the target", value);
+	}
+
+	/**
+	 * Validates a path argument.
+	 *
+	 * @param command the command's name, which prefixes the message of a rejected argument
+	 * @param name    what the argument names, such as {@code the target}
+	 * @param value   the argument
+	 * @return the path
+	 * @throws InvalidCommandException if the argument is not a path
+	 */
+	private static Path path(String command, String name, String value)
+	{
 		if (value.isBlank())
-			throw new InvalidCommandException(command + ": the target is blank.");
+			throw new InvalidCommandException(command + ": " + name + " is blank.");
 		try
 		{
 			return Path.of(value);
 		}
 		catch (InvalidPathException e)
 		{
-			throw new InvalidCommandException(command + ": the target is not a path: " + e.getMessage());
+			throw new InvalidCommandException(command + ": " + name + " is not a path: " + e.getMessage());
 		}
 	}
 
@@ -392,6 +463,8 @@ public final class Commands
 			out.println(statusMessage(json, "help", USAGE));
 			return 0;
 		}
+		if (isContractTool(args))
+			return executeContractTool(json, args, out);
 		Command command;
 		try
 		{
@@ -427,6 +500,61 @@ public final class Commands
 	}
 
 	/**
+	 * Indicates whether arguments run a contract tool, which needs no campaign and no harness.
+	 *
+	 * @param args the arguments, starting with the command's name
+	 * @return {@code true} if the command is {@code contract}
+	 * @throws NullPointerException if {@code args} is null
+	 */
+	public static boolean isContractTool(List<String> args)
+	{
+		requireThat(args, "args").isNotNull();
+		return !args.isEmpty() && args.getFirst().equals("contract");
+	}
+
+	/**
+	 * Runs a contract tool and prints its report as text for the contract author session that runs it.
+	 *
+	 * @param json the JSON mapper that reads the session's files
+	 * @param args the arguments, starting with {@code contract}
+	 * @param out  receives the report
+	 * @return 0 if the tool found no problem, 1 if it found one or failed, or 2 for invalid input
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if the arguments do not start with {@code contract}
+	 */
+	public static int executeContractTool(JsonMapper json, List<String> args, PrintStream out)
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(out, "out").isNotNull();
+		requireThat(isContractTool(args), "isContractTool(args)").isTrue();
+		Command.ContractTool tool;
+		try
+		{
+			tool = (Command.ContractTool) parseArguments(args);
+		}
+		catch (InvalidCommandException e)
+		{
+			out.println(e.getMessage() + "\n" + USAGE);
+			return 2;
+		}
+		ContractTools tools = new ContractTools(json);
+		try
+		{
+			return switch (tool)
+			{
+				case Command.ContractCheck check -> tools.check(check.context(), out);
+				case Command.ContractFixtures fixtures -> tools.fixtures(fixtures.context(),
+					fixtures.testDirectory(), fixtures.testCase(), fixtures.output(), out);
+			};
+		}
+		catch (IOException e)
+		{
+			out.println("The contract tool failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+			return 1;
+		}
+	}
+
+	/**
 	 * Calls the core.
 	 *
 	 * @param command the command
@@ -448,6 +576,7 @@ public final class Commands
 				core.choose(choose.campaign(), choose.choice(), choose.attempt(), choose.reviewPoint());
 			case Command.ResolveConflict resolve -> core.resolveConflict(resolve.campaign(), resolve.resolution());
 			case Command.Cancel cancel -> core.cancel(cancel.campaign());
+			case Command.ContractTool _ -> throw new AssertionError("A contract tool does not reach the core");
 		};
 	}
 

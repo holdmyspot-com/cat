@@ -33,6 +33,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
@@ -129,7 +130,8 @@ public final class RoleBriefTest
 	}
 
 	/**
-	 * Verifies that only contract-design is delivered to the contract author and its output turn remains unchanged.
+	 * Verifies that only contract-design is delivered to the contract author and that its correction turn, which a
+	 * session without a proposal file receives, carries no rules.
 	 *
 	 * @throws IOException if a fixture cannot be written or rendered
 	 * @throws InterruptedException if the wait is interrupted
@@ -147,9 +149,10 @@ public final class RoleBriefTest
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema,
 				new JudgeTemplate(json, new TrialProfile("role-model", "high")), new RegressionScenarios(root, List.of()),
-				root.resolve("CLAUDE.md"), null, true, List.of(), List.of());
+				root.resolve("CLAUDE.md"), null, true, List.of(), List.of(),
+				root.toAbsolutePath().resolve("bin/prompt-optimizer"), profile -> OptionalLong.empty());
 			SessionRequest request = contractAuthor.request(root, new ProfileEvidence(ContractFixtures.ONE_PROFILE,
-				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), ContractFixtures.SALT);
+				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), List.of(), ContractFixtures.SALT);
 
 			List<String> delivered = deliver(root, artifact, request);
 
@@ -162,7 +165,8 @@ public final class RoleBriefTest
 					requireThat(delivered.getFirst(), "brief").doesNotContain("Complete guidance for " + rule);
 			}
 			requireThat(delivered.getFirst(), "brief").doesNotContain("\n{{rules}}\n");
-			requireThat(delivered.get(1), "outputTurn").isEqualTo(request.turns().getLast());
+			requireThat(delivered.get(1), "correctionTurn").startsWith("CAT refused the proposal").
+				doesNotContain("Complete guidance for");
 		}
 	}
 

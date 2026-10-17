@@ -1,7 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.proposal;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Baseline;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
@@ -23,16 +21,12 @@ import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
 import io.github.cowwoc.cat.common.optimizer.contract.Split;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
-import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.VariableDeclaration;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveredTest;
 import io.github.cowwoc.cat.common.optimizer.execution.PilotResult;
-import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
-import io.github.cowwoc.cat.common.optimizer.inventory.FileDelta;
-import io.github.cowwoc.cat.common.optimizer.inventory.UnifiedDiff;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.EnumNames;
@@ -48,7 +42,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -297,61 +290,40 @@ public final class Markdown
 	}
 
 	/**
-	 * Shows how a test's {@value PromptTestFiles#SCENARIO} arises: written by the contract author, or derived from each
-	 * recorded regression scenario that the test cites, with any change shown as a difference from the recorded file.
+	 * Shows how a test's files relate to the prompt tests that the project records: created by the contract author,
+	 * recorded and unchanged, or recorded and edited, with the difference from the recorded files.
 	 *
 	 * @param test the prompt test
 	 */
 	private void scenario(PromptTest test)
 	{
-		DeliveredTest deliveredTest = delivered.get(test.id());
-		Path file = deliveredTest.location().directory().resolve(PromptTestFiles.SCENARIO);
-		if (test.regressionScenarios().isEmpty())
+		Path directory = delivered.get(test.id()).location().directory();
+		DraftChange change = derived.changes().get(test.id());
+		if (change == null)
+			throw new AssertionError("The proposal has no change for the prompt test " + test.id());
+		switch (change.kind())
 		{
-			text.append("- Scenario: written by the contract author; delivery creates `").append(file).append("`\n");
-			return;
-		}
-		for (String citation : test.regressionScenarios())
-		{
-			String recorded = derived.citedScenarios().get(citation);
-			if (recorded == null)
+			case CREATED -> text.append("- Files: created by the contract author; delivery writes `").
+				append(directory).append("`\n");
+			case RECORDED -> text.append("- Files: recorded at `").append(directory).append("`, unchanged\n");
+			case EDITED ->
 			{
-				text.append("- Scenario: converted from the recorded scenario `").append(citation).append("`\n");
-				continue;
-			}
-			boolean edited = !deliveredTest.location().created();
-			String recordedFile = null;
-			if (edited)
-				recordedFile = recorded;
-			String written = deliveredTest.scenarioFile(recordedFile, List.of());
-			if (written.equals(recorded))
-			{
-				text.append("- Scenario: recorded at `").append(citation).append("`, unchanged\n");
-				continue;
-			}
-			if (edited)
-			{
-				text.append("- Scenario: recorded at `").append(citation).append("` and edited; delivery rewrites it " +
+				text.append("- Files: recorded at `").append(directory).append("` and edited; delivery rewrites them " +
 					"with these changes:\n");
+				String diff = change.diff();
+				String fence = "`".repeat(Math.max(3, longestBacktickRun(diff) + 1));
+				text.append("\n    ").append(fence).append("diff\n");
+				for (String line : diff.substring(0, diff.length() - 1).split("\n", -1))
+					text.append("    ").append(line).append('\n');
+				text.append("    ").append(fence).append("\n\n");
 			}
-			else
-			{
-				text.append("- Scenario: converted from the recorded scenario `").append(citation).
-					append("`; delivery creates `").append(file).append("`, which differs from it by:\n");
-			}
-			String diff = UnifiedDiff.of(List.of(new FileDelta(file, new FileContent(recorded.getBytes(UTF_8)),
-				new FileContent(written.getBytes(UTF_8)), Set.of())));
-			String fence = "`".repeat(Math.max(3, longestBacktickRun(diff) + 1));
-			text.append("\n    ").append(fence).append("diff\n");
-			for (String line : diff.substring(0, diff.length() - 1).split("\n", -1))
-				text.append("    ").append(line).append('\n');
-			text.append("    ").append(fence).append("\n\n");
 		}
 	}
 
 	/**
-	 * Shows the files that a test writes into each trial's workspace: one that the contract author wrote with its
-	 * content, and one that CAT copies from a cited scenario by the file that it is copied from.
+	 * Shows the files that a test writes into each trial's workspace: one that the contract author created with its
+	 * content, and one of a recorded prompt test by the file that it is copied from, whose changes the test's
+	 * difference from the recorded files shows.
 	 *
 	 * @param test the prompt test
 	 */
@@ -362,10 +334,12 @@ public final class Markdown
 			text.append("- Fixtures: none\n");
 			return;
 		}
+		DraftChange change = derived.changes().get(test.id());
+		boolean created = change != null && change.kind() == DraftChange.Kind.CREATED;
 		text.append("- Fixtures, written into each trial's workspace with each test case's values:\n");
 		for (FixtureFile fixture : test.fixtures())
 		{
-			if (!fixture.source().isEmpty())
+			if (!fixture.source().isEmpty() && !created)
 			{
 				text.append("  - `").append(fixture.path()).append("`, copied from `").append(fixture.source()).
 					append("`\n");

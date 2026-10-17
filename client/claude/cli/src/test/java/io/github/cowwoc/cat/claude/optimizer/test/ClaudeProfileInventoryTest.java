@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -386,6 +387,26 @@ public final class ClaudeProfileInventoryTest
 			ClaudeProfileInventory port = new ClaudeProfileInventory(cleanup.add(Files.createTempDirectory("cat-profiles-")));
 			for (String model : List.of("opus", "sonnet", "haiku", "gpt-5.6-luna", "unlisted-model"))
 				requireThat(port.supportsModel(model), "supportsModel(" + model + ")").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that the inventory states no tool-output limit for Claude, whose limit CAT does not know, whatever the
+	 * profile's tool-output token limit.
+	 *
+	 * @throws IOException if the artifact cannot be created
+	 */
+	@Test
+	public void toolOutputLimitIsUnknown() throws IOException
+	{
+		// Requirement: R-C27
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			ClaudeProfileInventory port = new ClaudeProfileInventory(cleanup.add(Files.createTempDirectory("cat-profiles-")));
+			TrialProfile profile = new TrialProfile("opus", "high");
+			requireThat(port.toolOutputBytes(profile), "default").isEqualTo(OptionalLong.empty());
+			requireThat(port.toolOutputBytes(profile.withToolOutputTokenLimit(2000)), "limited").
+				isEqualTo(OptionalLong.empty());
 		}
 	}
 }

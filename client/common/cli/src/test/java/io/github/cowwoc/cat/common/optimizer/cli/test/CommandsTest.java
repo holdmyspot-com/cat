@@ -12,10 +12,12 @@ import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.campaign.Throttle;
 import io.github.cowwoc.cat.common.optimizer.campaign.test.Builder;
+import io.github.cowwoc.cat.common.optimizer.cli.Command;
 import io.github.cowwoc.cat.common.optimizer.cli.CommandRefusedException;
 import io.github.cowwoc.cat.common.optimizer.cli.CommandResult;
 import io.github.cowwoc.cat.common.optimizer.cli.Commands;
 import io.github.cowwoc.cat.common.optimizer.cli.Core;
+import io.github.cowwoc.cat.common.optimizer.cli.InvalidCommandException;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptConfiguration;
@@ -750,5 +752,63 @@ public final class CommandsTest
 		requireThat(settings.budget(), "budget").isEqualTo(Duration.ofMinutes(8));
 		requireThat(settings.budget().plus(settings.grace()), "budgetAndGrace").
 			isLessThan(Duration.ofMinutes(10));
+	}
+
+	/**
+	 * Verifies that the usage text lists both contract tools with their arguments.
+	 */
+	@Test
+	public void usageListsContractTools()
+	{
+		// Requirement: R-C27
+		requireThat(Commands.USAGE, "usage").contains("contract check <context file>").
+			contains("contract fixtures <context file> <test directory> <test case number> <output directory>");
+	}
+
+	/**
+	 * Verifies that both contract tools are parsed with their arguments, and that a malformed form is refused.
+	 */
+	@Test
+	public void parsesContractTools()
+	{
+		// Requirement: R-C27
+		Commands commands = new Commands(new FakeCore(), JSON, ZoneOffset.UTC);
+		requireThat(commands.parse(List.of("contract", "check", "cat-contract.json")), "check").
+			isEqualTo(new Command.ContractCheck(Path.of("cat-contract.json")));
+		requireThat(commands.parse(List.of("contract", "fixtures", "cat-contract.json", ".cat/tests/CLAUDE/notes", "2",
+			"../sized")), "fixtures").isEqualTo(new Command.ContractFixtures(Path.of("cat-contract.json"),
+			Path.of(".cat/tests/CLAUDE/notes"), 2, Path.of("../sized")));
+		for (List<String> malformed : List.of(List.of("contract"), List.of("contract", "verify", "cat-contract.json"),
+			List.of("contract", "check"), List.of("contract", "check", "a.json", "b.json"),
+			List.of("contract", "fixtures", "cat-contract.json", "notes", "0", "out"),
+			List.of("contract", "fixtures", "cat-contract.json", "notes", "first", "out"),
+			List.of("contract", "fixtures", "cat-contract.json", "notes", "1")))
+		{
+			try
+			{
+				commands.parse(malformed);
+				throw new AssertionError("Accepted " + malformed);
+			}
+			catch (InvalidCommandException _)
+			{
+				// Expected
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a contract tool does not reach the core and that its failure to read the context file exits with
+	 * a nonzero status.
+	 */
+	@Test
+	public void contractToolBypassesCore()
+	{
+		// Requirement: R-C27
+		FakeCore core = new FakeCore();
+		StringBuilder output = new StringBuilder();
+		int exit = run(core, List.of("contract", "check", "missing-cat-contract.json"), output);
+		requireThat(exit, "exit").isEqualTo(1);
+		requireThat(core.calls, "calls").isEmpty();
+		requireThat(output.toString(), "output").contains("missing-cat-contract.json");
 	}
 }

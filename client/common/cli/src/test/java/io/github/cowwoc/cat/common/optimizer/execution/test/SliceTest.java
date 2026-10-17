@@ -20,6 +20,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.SliceRunner;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
 import io.github.cowwoc.cat.common.optimizer.execution.Step;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.HookRegistration;
 import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
 import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -392,6 +393,13 @@ public final class SliceTest
 		public LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException
 		{
 			return delegate.loadedSources(project, plugins);
+		}
+
+		@Override
+		public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
+			throws IOException
+		{
+			return delegate.hookRegistrations(project, plugins);
 		}
 
 		@Override

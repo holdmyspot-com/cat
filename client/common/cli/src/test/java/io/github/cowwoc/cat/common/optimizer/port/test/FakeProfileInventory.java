@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 
@@ -153,5 +154,21 @@ public final class FakeProfileInventory implements ProfileInventory
 	public TrialProfile roleProfile()
 	{
 		return role;
+	}
+
+	/**
+	 * Returns 40,000 bytes for every profile without a tool-output token limit, and 4 bytes per token of a profile's
+	 * limit.
+	 *
+	 * @param profile the trial profile
+	 * @return the number of bytes
+	 */
+	@Override
+	public OptionalLong toolOutputBytes(TrialProfile profile)
+	{
+		requireThat(profile, "profile").isNotNull();
+		if (profile.toolOutputTokenLimit() == 0)
+			return OptionalLong.of(40_000);
+		return OptionalLong.of(4L * profile.toolOutputTokenLimit());
 	}
 }

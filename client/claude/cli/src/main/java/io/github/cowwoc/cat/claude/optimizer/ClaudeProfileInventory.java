@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.regex.Matcher;
@@ -37,7 +38,8 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * A binding is the {@code model} and {@code effort} frontmatter of a skill's {@code SKILL.md} or of a subagent's
  * {@code .md} file below an {@code agents} directory; {@code inherit} binds nothing. The role profile is the binding of
- * the artifact's {@code optimize-xhigh} agent definition.
+ * the artifact's {@code optimize-xhigh} agent definition. CAT does not know how many bytes of a tool output Claude Code
+ * keeps whole, so the inventory states no tool-output limit.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -256,5 +258,12 @@ public final class ClaudeProfileInventory implements ProfileInventory
 	{
 		ClaudeAgentDefinition definition = ClaudeAgentDefinition.load(artifact, ROLE_AGENT);
 		return new TrialProfile(definition.model(), definition.effort());
+	}
+
+	@Override
+	public OptionalLong toolOutputBytes(TrialProfile profile)
+	{
+		requireThat(profile, "profile").isNotNull();
+		return OptionalLong.empty();
 	}
 }

@@ -12,10 +12,15 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The available model and effort combinations (trial profiles), the capability ranking of their model families, and
@@ -87,6 +92,92 @@ public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking rankin
 			}
 		}
 		return found;
+	}
+
+	/**
+	 * Writes this evidence into a JSON object: {@code inventory_source}, {@code inventory} as an array of profiles,
+	 * {@code ranking_source}, {@code ranking} as an array of model families and {@code bindings} as an array of
+	 * profiles, each with its {@code file}, in file order. Each profile is an object with its {@code model} and
+	 * {@code effort}.
+	 *
+	 * @param node the object that receives the properties
+	 * @throws NullPointerException if {@code node} is null
+	 */
+	public void write(ObjectNode node)
+	{
+		requireThat(node, "node").isNotNull();
+		node.put("inventory_source", inventory.source());
+		ArrayNode profiles = node.putArray("inventory");
+		for (TrialProfile profile : inventory.profiles())
+			writeProfile(profile, profiles.addObject());
+		node.put("ranking_source", ranking.source());
+		ArrayNode families = node.putArray("ranking");
+		ranking.families().forEach(families::add);
+		ArrayNode bindingNodes = node.putArray("bindings");
+		for (Map.Entry<String, TrialProfile> entry : bindings.entrySet().stream().
+			sorted(Map.Entry.comparingByKey()).toList())
+		{
+			ObjectNode binding = bindingNodes.addObject();
+			writeProfile(entry.getValue(), binding);
+			binding.put("file", entry.getKey());
+		}
+	}
+
+	/**
+	 * Writes a profile's dimensions into a JSON object.
+	 *
+	 * @param profile the profile
+	 * @param node    the object that receives its {@code model} and {@code effort}
+	 */
+	private static void writeProfile(TrialProfile profile, ObjectNode node)
+	{
+		node.put("model", profile.model());
+		node.put("effort", profile.effort());
+	}
+
+	/**
+	 * Reads the evidence that {@link #write(ObjectNode)} wrote.
+	 *
+	 * @param node the object
+	 * @return the evidence
+	 * @throws NullPointerException     if {@code node} is null
+	 * @throws IllegalArgumentException if a property is missing or invalid
+	 */
+	public static ProfileEvidence read(JsonNode node)
+	{
+		requireThat(node, "node").isNotNull();
+		if (!node.path("inventory_source").isString() || !node.path("inventory").isArray() ||
+			!node.path("ranking_source").isString() || !node.path("ranking").isArray() ||
+			!node.path("bindings").isArray())
+		{
+			throw new IllegalArgumentException("The profile evidence needs string \"inventory_source\" and " +
+				"\"ranking_source\" properties and \"inventory\", \"ranking\" and \"bindings\" arrays");
+		}
+		List<TrialProfile> profiles = new ArrayList<>();
+		for (JsonNode profile : node.get("inventory"))
+			profiles.add(readProfile(profile));
+		List<String> families = new ArrayList<>();
+		for (JsonNode family : node.get("ranking"))
+			families.add(family.asString());
+		Map<String, TrialProfile> bindings = new LinkedHashMap<>();
+		for (JsonNode binding : node.get("bindings"))
+			bindings.put(binding.path("file").asString(), readProfile(binding));
+		return new ProfileEvidence(new ProfileCatalog(node.get("inventory_source").asString(), profiles),
+			new CapabilityRanking(families, node.get("ranking_source").asString()), bindings);
+	}
+
+	/**
+	 * Reads a profile's dimensions.
+	 *
+	 * @param node an object with string {@code model} and {@code effort} properties
+	 * @return the profile
+	 * @throws IllegalArgumentException if a property is missing or invalid
+	 */
+	private static TrialProfile readProfile(JsonNode node)
+	{
+		if (!node.path("model").isString() || !node.path("effort").isString())
+			throw new IllegalArgumentException("A profile needs string \"model\" and \"effort\" properties: " + node);
+		return new TrialProfile(node.get("model").asString(), node.get("effort").asString());
 	}
 
 	/**

@@ -63,4 +63,25 @@ public final class PromptOptimizerCliTest
 			requireThat(result.get("message").asString(), "message").isEqualTo("configuration unavailable");
 		}
 	}
+
+	/**
+	 * Verifies that a contract tool runs without opening a command scope, so that it needs nothing of the harness
+	 * inside a contract author session's sandbox.
+	 */
+	@Test
+	public void contractToolOpensNoScope()
+	{
+		// Requirement: R-C27
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+		{
+			int exit = PromptOptimizerCli.run(new String[]{"contract", "check", "missing-cat-contract.json"}, () ->
+			{
+				throw new AssertionError("A contract tool opened a command scope");
+			}, ZoneOffset.UTC, out);
+
+			requireThat(exit, "exit").isEqualTo(1);
+			requireThat(bytes.toString(StandardCharsets.UTF_8), "output").contains("missing-cat-contract.json");
+		}
+	}
 }

@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.function.UnaryOperator;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -68,7 +69,7 @@ public final class CodexHookApprovals
 			configuration.resolve("config.toml"), name);
 
 		List<String> unapproved = new ArrayList<>();
-		for (HookSource source : sources(plugin, json))
+		for (HookSource source : sources(plugin::resolve, json))
 		{
 			for (Entry<String, JsonNode> event : source.declaration().path("hooks").properties())
 			{
@@ -92,37 +93,37 @@ public final class CodexHookApprovals
 	 * Returns the hook declarations that Codex loads from a plugin: each hooks file that the manifest names, each
 	 * inline declaration in the manifest, or the default hooks file when the manifest declares no hooks.
 	 *
-	 * @param plugin the plugin directory
+	 * @param resolve returns the file that the plugin holds at a path relative to its directory
 	 * @param json the JSON mapper
 	 * @return the declarations, in manifest order
 	 * @throws IOException if a file cannot be read or the manifest is not valid JSON
 	 */
-	private static List<HookSource> sources(Path plugin, JsonMapper json) throws IOException
+	static List<HookSource> sources(UnaryOperator<Path> resolve, JsonMapper json) throws IOException
 	{
-		JsonNode hooks = read(plugin.resolve(MANIFEST), json).path("hooks");
+		JsonNode hooks = read(resolve.apply(MANIFEST), json).path("hooks");
 		List<HookSource> sources = new ArrayList<>();
 		if (hooks.isMissingNode() || hooks.isNull())
 		{
-			addFile(plugin, plugin.resolve(DEFAULT_HOOKS), json, sources);
+			addFile(resolve, DEFAULT_HOOKS, json, sources);
 			return sources;
 		}
 		if (hooks.isString())
 		{
-			addFile(plugin, plugin.resolve(hooks.asString()), json, sources);
+			addFile(resolve, Path.of(hooks.asString()), json, sources);
 			return sources;
 		}
 		if (hooks.isObject())
 		{
-			sources.add(new HookSource("plugin.json#hooks[0]", hooks));
+			sources.add(new HookSource("plugin.json#hooks[0]", MANIFEST, hooks));
 			return sources;
 		}
 		for (int index = 0; index < hooks.size(); ++index)
 		{
 			JsonNode entry = hooks.get(index);
 			if (entry.isString())
-				addFile(plugin, plugin.resolve(entry.asString()), json, sources);
+				addFile(resolve, Path.of(entry.asString()), json, sources);
 			else
-				sources.add(new HookSource("plugin.json#hooks[" + index + "]", entry));
+				sources.add(new HookSource("plugin.json#hooks[" + index + "]", MANIFEST, entry));
 		}
 		return sources;
 	}
@@ -131,14 +132,16 @@ public final class CodexHookApprovals
 	 * Adds the declarations of a hooks file. Codex skips a hooks file that is missing or is not valid JSON, so it runs
 	 * none of its hooks and none needs an approval.
 	 *
-	 * @param plugin the plugin directory
-	 * @param file the hooks file
+	 * @param resolve returns the file that the plugin holds at a path relative to its directory
+	 * @param relative the hooks file, relative to the plugin directory
 	 * @param json the JSON mapper
 	 * @param sources receives the file's declarations
 	 * @throws IOException if the file cannot be read
 	 */
-	private static void addFile(Path plugin, Path file, JsonMapper json, List<HookSource> sources) throws IOException
+	private static void addFile(UnaryOperator<Path> resolve, Path relative, JsonMapper json, List<HookSource> sources)
+		throws IOException
 	{
+		Path file = resolve.apply(relative);
 		if (!Files.isRegularFile(file))
 			return;
 		JsonNode declaration;
@@ -150,8 +153,8 @@ public final class CodexHookApprovals
 		{
 			return;
 		}
-		String key = PortablePaths.text(plugin.relativize(file.normalize()));
-		sources.add(new HookSource(key, declaration));
+		Path normalized = relative.normalize();
+		sources.add(new HookSource(PortablePaths.text(normalized), normalized, declaration));
 	}
 
 	/**
@@ -199,9 +202,10 @@ public final class CodexHookApprovals
 	 *
 	 * @param key the source part of its hooks' approval keys: the hooks file relative to the plugin directory, or
 	 *   {@code plugin.json#hooks[<index>]} for an inline declaration
+	 * @param file the file that holds the declaration, relative to the plugin directory
 	 * @param declaration the declaration, an object whose {@code hooks} maps each event to its matcher groups
 	 */
-	private record HookSource(String key, JsonNode declaration)
+	record HookSource(String key, Path file, JsonNode declaration)
 	{
 	}
 }

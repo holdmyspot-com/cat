@@ -16,11 +16,13 @@ import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementIdentity;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
+import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations.Location;
 import io.github.cowwoc.cat.common.optimizer.contract.Scenario;
@@ -866,6 +868,86 @@ public final class DeliveryTest
 	{
 		return new DeliveredTest(test.id(), test.location(), test.scenario(), test.designGoals(), test.testCases(),
 			fixtures);
+	}
+
+	/**
+	 * A prompt test that the contract author wrote as files in its draft directory is delivered as the draft holds it:
+	 * at its directory there, with the draft's {@value PromptTestFiles#SCENARIO} unchanged and each fixture at its file
+	 * in the draft, even one that a pattern selects from a shared {@code fixtures/} directory. A recorded test's
+	 * directory is edited, and any other directory is created.
+	 *
+	 * @throws IOException             if the fixture or delivery fails
+	 * @throws ScenarioFormatException if a delivered values file cannot be read back
+	 */
+	@Test
+	public void deliversPromptTestsFromTheDraft() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-C26
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.") +
+				"\n## Fixtures\n\n- **patterns**: `fixtures/**`, `../fixtures/**`\n";
+			String createdScenario = RECORDED_SCENARIO.replace("# Release notes", "# Release dates");
+			FixtureFile shared = new FixtureFile("docs/{{file}}", "Release {{file}} fixes the installer.\n",
+				PortablePaths.text(TESTS.resolve("fixtures/docs/{{file}}")));
+			FixtureFile own = new FixtureFile("AGENTS.md", "Reply in one sentence.\n",
+				PortablePaths.text(TESTS.resolve("release_dates/fixtures/AGENTS.md")));
+			Contract fixtureContract = ContractFixtures.contract();
+			PromptTest first = fixtureContract.tests().getFirst();
+			PromptTest second = fixtureContract.tests().get(1);
+			List<PromptTest> promptTests = new ArrayList<>(fixtureContract.tests());
+			promptTests.set(0, withDraft(first, List.of(PortablePaths.text(EDITED_SCENARIO)), List.of(shared),
+				new PromptTest.Draft(EDITED_SCENARIO.getParent(), editedScenario)));
+			promptTests.set(1, withDraft(second, List.of(), List.of(own),
+				new PromptTest.Draft(TESTS.resolve("release_dates"), createdScenario)));
+			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
+				fixtureContract.judge(), fixtureContract.fixtures(), fixtureContract.limitations(),
+				fixtureContract.minimumPassRate(), fixtureContract.salt());
+
+			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
+				subList(0, 2);
+			requireThat(tests.stream().map(DeliveredTest::location).toList(), "locations").isEqualTo(List.of(
+				new Location(EDITED_SCENARIO.getParent(), false), new Location(TESTS.resolve("release_dates"), true)));
+
+			Fixture fixture = Fixture.create(cleanup).commit(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
+			Overlay candidate = fixture.candidate();
+			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
+				recordedScenario()).
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD, tests);
+
+			requireDelivered(result);
+			requireThat(read(fixture.resolve(EDITED_SCENARIO)), "editedScenario").isEqualTo(editedScenario);
+			requireThat(read(fixture.resolve(TESTS.resolve("release_dates").resolve(PromptTestFiles.SCENARIO))),
+				"createdScenario").isEqualTo(createdScenario);
+			requireThat(read(fixture.resolve(Path.of(shared.source()))), "shared").isEqualTo(shared.content());
+			requireThat(Files.notExists(fixture.resolve(EDITED_SCENARIO.resolveSibling(PromptTestFiles.FIXTURES))),
+				"noOwnCopy").isTrue();
+			requireThat(read(fixture.resolve(Path.of(own.source()))), "own").isEqualTo(own.content());
+			try (Reader in = Files.newBufferedReader(fixture.resolve(EDITED_SCENARIO.resolveSibling(ValuesFile.NAME)),
+				UTF_8))
+			{
+				requireThat(ValuesFile.read(JSON, in, ValuesFile.NAME), "testCases").isEqualTo(first.allTestCases());
+			}
+		}
+	}
+
+	/**
+	 * Returns a prompt test that the contract author wrote as files in its draft directory.
+	 *
+	 * @param test                a prompt test
+	 * @param regressionScenarios the recorded scenarios that the test keeps
+	 * @param fixtures            the test's fixtures, each naming its file in the draft directory
+	 * @param draft               the test's directory in the draft directory
+	 * @return {@code test} with the draft
+	 */
+	private static PromptTest withDraft(PromptTest test, List<String> regressionScenarios, List<FixtureFile> fixtures,
+		PromptTest.Draft draft)
+	{
+		return new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+			test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(), test.uncoveredInteractions(),
+			test.variables(), test.committedTestCases(), test.testCases(), test.assertions(), regressionScenarios,
+			fixtures, Optional.of(draft));
 	}
 
 	/**

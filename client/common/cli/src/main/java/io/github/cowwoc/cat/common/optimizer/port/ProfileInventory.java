@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.OptionalLong;
 
 /**
  * Lists the current harness's trial profiles with their source, and reads the profile that a prompt file binds.
@@ -75,4 +76,14 @@ public interface ProfileInventory
 	 * @throws IOException if the installed agent definition is missing or binds no profile
 	 */
 	TrialProfile roleProfile() throws IOException;
+
+	/**
+	 * Returns the number of bytes of each tool output that a trial of a profile receives whole; the harness shortens
+	 * a longer output before the model receives it.
+	 *
+	 * @param profile the trial profile, whose tool-output token limit applies when it has one
+	 * @return the number of bytes, or empty if the harness's limit is not known
+	 * @throws NullPointerException if {@code profile} is null
+	 */
+	OptionalLong toolOutputBytes(TrialProfile profile);
 }

@@ -16,6 +16,7 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,7 +35,8 @@ import tools.jackson.databind.json.JsonMapper;
  * agent does rather than how deeply it reasons, so a model's highest effort is the one below it. A binding is the
  * top-level {@code model} and {@code model_reasoning_effort} of a custom agent's {@code .toml} file below an
  * {@code agents} directory. The role profile is the binding of the artifact's {@code optimize-xhigh} agent
- * definition, which must name a model of version 6 or later.
+ * definition, which must name a model of version 6 or later. A trial's {@code config.toml} sets
+ * {@code tool_output_token_limit} only from its profile, so the tool-output limit depends on the profile alone.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -46,6 +48,16 @@ public final class CodexProfileInventory implements ProfileInventory
 	private static final String DELEGATING_EFFORT = "ultra";
 	private static final Pattern TOP_LEVEL_FIELD = Pattern.compile(
 		"^(model|model_reasoning_effort)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')\\s*(?:#.*)?$");
+	/**
+	 * The token budget of a tool call: Codex keeps at most this many tokens of each tool output, or the profile's
+	 * tool-output token limit when it is lower.
+	 */
+	private static final long TOOL_OUTPUT_TOKENS = 10_000;
+	/**
+	 * The number of bytes per token of the budget that Codex keeps whole; it removes bytes from the middle of a longer
+	 * output.
+	 */
+	private static final long BYTES_PER_TOKEN = 4;
 	private final Path artifact;
 	private final String executable;
 	private final HarnessVersion.Launcher launcher;
@@ -243,5 +255,15 @@ public final class CodexProfileInventory implements ProfileInventory
 				" binds the model " + definition.model() + ", which is not of version 6 or later.");
 		}
 		return new TrialProfile(definition.model(), definition.effort());
+	}
+
+	@Override
+	public OptionalLong toolOutputBytes(TrialProfile profile)
+	{
+		requireThat(profile, "profile").isNotNull();
+		long tokens = TOOL_OUTPUT_TOKENS;
+		if (profile.toolOutputTokenLimit() > 0)
+			tokens = Math.min(tokens, profile.toolOutputTokenLimit());
+		return OptionalLong.of(tokens * BYTES_PER_TOKEN);
 	}
 }

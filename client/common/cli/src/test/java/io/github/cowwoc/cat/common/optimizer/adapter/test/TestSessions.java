@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.adapter.test;
 
 import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
+import io.github.cowwoc.cat.common.optimizer.adapter.PluginFiles;
 import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
@@ -123,6 +124,18 @@ final class TestSessions extends RunnerSessions
 
 	@Override
 	protected List<String> readOnlyArguments(List<Path> evidence)
+	{
+		return List.of();
+	}
+
+	@Override
+	protected List<Path> projectHookFiles()
+	{
+		return List.of();
+	}
+
+	@Override
+	protected List<HookDeclaration> pluginHooks(PluginFiles plugin, JsonMapper json)
 	{
 		return List.of();
 	}

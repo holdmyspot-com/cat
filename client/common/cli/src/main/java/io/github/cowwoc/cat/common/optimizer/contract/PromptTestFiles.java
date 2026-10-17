@@ -134,6 +134,46 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		throws IOException, ScenarioFormatException
 	{
 		requireThat(json, "json").isNotNull();
+		PromptTestFiles files = readScenario(root, directory);
+		Path valuesFile = directory.resolve(ValuesFile.NAME);
+		if (!Files.exists(valuesFile, LinkOption.NOFOLLOW_LINKS))
+			return files;
+		List<TestCase> testCases;
+		try (BufferedReader in = Files.newBufferedReader(valuesFile))
+		{
+			testCases = ValuesFile.read(json, in, valuesFile.toString());
+		}
+		for (int i = 0; i < testCases.size(); ++i)
+		{
+			List<String> problems = files.problems(testCases.get(i));
+			if (!problems.isEmpty())
+			{
+				throw new ScenarioFormatException(valuesFile + ": test case " + (i + 1) + " is not valid for the " +
+					"prompt test: " + String.join("; ", problems));
+			}
+		}
+		return new PromptTestFiles(root, directory, files.scenario(), files.patterns(), files.fixtures(), testCases);
+	}
+
+	/**
+	 * Reads the scenario and the fixtures of a prompt test directory, leaving out its values file, whose test cases
+	 * the caller reads.
+	 * <p>
+	 * The prompt test's fixtures are the files that the patterns of its {@code ## Fixtures} section select, or the files
+	 * of its own {@code fixtures/} directory if it has no such section. A file that a later pattern selects replaces
+	 * the file at the same workspace path that an earlier pattern selects.
+	 *
+	 * @param root      the test root, which holds the prompt test directory or is that directory
+	 * @param directory the prompt test directory
+	 * @return the prompt test's files, without test cases
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}
+	 * @throws IOException              if a file cannot be read
+	 * @throws ScenarioFormatException  if the scenario does not follow the format, a fixture pattern leaves the test
+	 *                                  root or selects no file, or a fixture is a symbolic link
+	 */
+	public static PromptTestFiles readScenario(Path root, Path directory) throws IOException, ScenarioFormatException
+	{
 		requireThat(root, "root").isNotNull();
 		requireThat(directory, "directory").isNotNull();
 		if (!directory.startsWith(root))
@@ -170,26 +210,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		}
 		List<Fixture> fixtures = new ArrayList<>(byPath.values());
 		fixtures.sort(Comparator.comparing(Fixture::path));
-
-		Path valuesFile = directory.resolve(ValuesFile.NAME);
-		if (!Files.exists(valuesFile, LinkOption.NOFOLLOW_LINKS))
-			return new PromptTestFiles(root, directory, scenario, patterns, fixtures, List.of());
-		List<TestCase> testCases;
-		try (BufferedReader in = Files.newBufferedReader(valuesFile))
-		{
-			testCases = ValuesFile.read(json, in, valuesFile.toString());
-		}
-		PromptTestFiles files = new PromptTestFiles(root, directory, scenario, patterns, fixtures, List.of());
-		for (int i = 0; i < testCases.size(); ++i)
-		{
-			List<String> problems = files.problems(testCases.get(i));
-			if (!problems.isEmpty())
-			{
-				throw new ScenarioFormatException(valuesFile + ": test case " + (i + 1) + " is not valid for the " +
-					"prompt test: " + String.join("; ", problems));
-			}
-		}
-		return new PromptTestFiles(root, directory, scenario, patterns, fixtures, testCases);
+		return new PromptTestFiles(root, directory, scenario, patterns, fixtures, List.of());
 	}
 
 	/**

@@ -117,6 +117,19 @@ public interface SessionPort
 	LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException;
 
 	/**
+	 * Lists the hooks that trials register: each hook that the project's harness settings declare, followed by each
+	 * hook that a trial plugin declares, as trials install the plugin. A file that a project-built trial plugin's
+	 * mapping copies from the project is named as the project's file.
+	 *
+	 * @param project the project's root directory
+	 * @param plugins the campaign's trial plugins with their base copies
+	 * @return the hooks, in declaration order; a file that is missing or is not valid JSON registers none
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a file cannot be read
+	 */
+	List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins) throws IOException;
+
+	/**
 	 * Finds the user's installed copies of a plugin that the project does not build, through the harness's install
 	 * records.
 	 *

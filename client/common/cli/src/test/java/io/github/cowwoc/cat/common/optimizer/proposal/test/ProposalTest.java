@@ -26,12 +26,11 @@ import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
-import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.Requirement;
-import io.github.cowwoc.cat.common.optimizer.contract.Scenario;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
+import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.ValueGenerator;
@@ -46,12 +45,15 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Authority;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.HookRegistration;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.proposal.Conflict;
 import io.github.cowwoc.cat.common.optimizer.proposal.DerivedProposal;
+import io.github.cowwoc.cat.common.optimizer.proposal.DraftChange;
+import io.github.cowwoc.cat.common.optimizer.proposal.DraftDirectory;
 import io.github.cowwoc.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import io.github.cowwoc.cat.common.optimizer.proposal.JsonResponse;
 import io.github.cowwoc.cat.common.optimizer.proposal.JudgeTemplate;
@@ -68,6 +70,7 @@ import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibrationException;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 import io.github.cowwoc.cat.common.secrets.PromptTemplateSecrets;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -81,8 +84,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.DataProvider;
@@ -107,6 +112,14 @@ public final class ProposalTest
 	 */
 	private static final RegressionScenarios.Format EARLIER = new RegressionScenarios.Earlier(
 		"scenario.md: the scenario has no ## Variables section");
+	/**
+	 * The citation of a recorded scenario of {@code rules/safety.md} in an earlier format.
+	 */
+	private static final String REPORTED = ".cat/tests/rules/safety/reported.md";
+	/**
+	 * The citation of a recorded scenario of {@code rules/style.md} in an earlier format.
+	 */
+	private static final String ANALOGOUS = ".cat/tests/rules/style/analogous.md";
 	private static final String OBSERVED = "hook: .claude/hooks/session-start.sh\nskill: release-notes";
 	private static final TrialProfile ROLE = new TrialProfile("role-model", "xhigh");
 	private static final ProfileEvidence PROFILES = new ProfileEvidence(ContractFixtures.ONE_PROFILE,
@@ -124,6 +137,14 @@ public final class ProposalTest
 	 */
 	private static final String STAGED = "/runs/contract-author/project";
 	/**
+	 * The launcher that provides the contract tools.
+	 */
+	private static final Path LAUNCHER = Path.of("/opt/cat/bin/prompt-optimizer").toAbsolutePath();
+	/**
+	 * Returns no tool-output limit for any profile, as for a harness whose limit is not known.
+	 */
+	private static final Function<TrialProfile, OptionalLong> UNKNOWN_LIMIT = profile -> OptionalLong.empty();
+	/**
 	 * Holds the projects of the sessions that the tests create.
 	 */
 	private final TemporaryDirectories directories = new TemporaryDirectories();
@@ -131,7 +152,8 @@ public final class ProposalTest
 	private final ProposalSchema schema = new ProposalSchema(json);
 	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
 	private final ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
-		new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(), List.of());
+		new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(), List.of(), LAUNCHER,
+		UNKNOWN_LIMIT);
 
 	/**
 	 * Creates the test fixture.
@@ -180,20 +202,54 @@ public final class ProposalTest
 	 */
 	private SessionResult.Completed session(String output)
 	{
+		return session(output, Path.of("CLAUDE.md"), Map.of());
+	}
+
+	/**
+	 * Returns a completed contract author session that wrote its proposal file and its draft directory. Each prompt
+	 * test of the output that holds its scenario inline is written as files to the draft directory. The session's
+	 * project directory replaces each occurrence of {@link #STAGED} in the output.
+	 *
+	 * @param output   the contract author output
+	 * @param target   the campaign's target, relative to the project, in whose test directory a new prompt test is
+	 *                 written
+	 * @param recorded the directory of each recorded prompt test, by its citation, which a test that cites it is
+	 *                 written to
+	 * @return the session's result
+	 */
+	private SessionResult.Completed session(String output, Path target, Map<String, Path> recorded)
+	{
 		try
 		{
 			Path initialProject = directories.add(Files.createTempDirectory("contract-author-initial-"));
 			Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
-			String name = OutputFile.name(initialProject);
-			// The output is JSON text, so a Windows path's separators must be escaped
-			String escaped = effects.toString().replace("\\", "\\\\");
-			Files.writeString(effects.resolve(name), output.replace(STAGED, escaped), UTF_8);
-			return session(effects, initialProject, "The proposal is in " + name + ".");
+			write(effects, initialProject, output, target, recorded);
+			return session(effects, initialProject, "The proposal is in " + OutputFile.name(initialProject) + ".");
 		}
 		catch (IOException e)
 		{
 			throw new UncheckedIOException(e);
 		}
+	}
+
+	/**
+	 * Writes a contract author output to a session's project as its proposal file and its draft directory.
+	 *
+	 * @param effects        the session's project after the session
+	 * @param initialProject the session's project before the session
+	 * @param output         the contract author output
+	 * @param target         the campaign's target, relative to the project
+	 * @param recorded       the directory of each recorded prompt test, by its citation
+	 * @throws IOException if a file cannot be written
+	 */
+	private void write(Path effects, Path initialProject, String output, Path target, Map<String, Path> recorded)
+		throws IOException
+	{
+		// The output is JSON text, so a Windows path's separators must be escaped
+		String escaped = effects.toString().replace("\\", "\\\\");
+		String proposalFile = DraftFixtures.write(json, output.replace(STAGED, escaped),
+			effects.resolve(DraftDirectory.name(initialProject)), target, recorded);
+		Files.writeString(effects.resolve(OutputFile.name(initialProject)), proposalFile, UTF_8);
 	}
 
 	/**
@@ -271,6 +327,27 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Returns a contract whose prompt tests do not name their directories in a draft directory, so that it can be
+	 * compared with a contract that a test builds.
+	 *
+	 * @param contract a contract
+	 * @return the contract without its prompt tests' drafts
+	 */
+	private static Contract withoutDrafts(Contract contract)
+	{
+		List<PromptTest> tests = new ArrayList<>();
+		for (PromptTest test : contract.tests())
+		{
+			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
+				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
+				test.assertions(), test.regressionScenarios(), test.fixtures()));
+		}
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.fixtures(),
+			contract.limitations(), contract.minimumPassRate(), contract.salt());
+	}
+
+	/**
 	 * Returns the proposal of the valid contract author output for a fresh campaign.
 	 *
 	 * @param links the symbolic links
@@ -280,7 +357,8 @@ public final class ProposalTest
 	 */
 	private Proposal proposal(LinkReport links, HostLogin login) throws InvalidProposalException
 	{
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
 		return Proposal.of(derived, new Builder().build(), links, CONTROL_FILE, login,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 	}
@@ -323,24 +401,24 @@ public final class ProposalTest
 
 	/**
 	 * Verifies that the contract author's first session works in the prompt system, so the harness loads it as in
-	 * production; that its first turn carries an output schema in which CAT's judge fields are absent and the contract
-	 * author's findings are required; and that a separate final turn asks for the proposal alone, so that no progress
-	 * narration from the inspection shares the final response.
+	 * production; that its one turn carries an output schema in which CAT's judge fields are absent and the contract
+	 * author's findings are required; and that the same turn names the proposal file, the draft directory and the
+	 * launcher, so that the author writes each file as it settles it instead of in a separate output turn.
 	 */
 	@Test
 	public void requestCarriesTheContractAuthorSchema()
 	{
 		// Requirement: R-E20
 		// Requirement: R-E13
-		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT);
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT);
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.CONTRACT_AUTHOR);
 		requireThat(request.source(), "source").isEqualTo(PROMPT_SYSTEM);
-		requireThat(request.turns().size(), "turns.size()").isEqualTo(2);
+		requireThat(request.turns().size(), "turns.size()").isEqualTo(1);
 		String prompt = request.turns().getFirst();
 		requireThat(prompt, "prompt").contains("Previous proposal:\n\nnone\n").contains("User feedback:\n\nnone\n").
-			contains("do not write the proposal file yet");
-		requireThat(request.turns().getLast(), "finalTurn").contains(OutputFile.NAME);
+			contains(OutputFile.name(PROMPT_SYSTEM)).contains(DraftDirectory.name(PROMPT_SYSTEM)).
+			contains(LAUNCHER + " contract check");
 		JsonNode outputSchema = readOutputSchema(prompt);
 		JsonNode judgeProperties = outputSchema.get("properties").get("judge").get("properties");
 		requireThat(List.copyOf(judgeProperties.propertyNames()), "judge.properties").
@@ -353,7 +431,7 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Reads the schema from the contract author's Output section before its Rules section.
+	 * Reads the schema from the contract author's Output section, which the instruction to check the files follows.
 	 *
 	 * @param prompt the contract author's rendered prompt
 	 * @return the output schema
@@ -361,7 +439,7 @@ public final class ProposalTest
 	private JsonNode readOutputSchema(String prompt)
 	{
 		int start = prompt.indexOf('{', prompt.indexOf("### Output"));
-		int end = prompt.indexOf("\n\n## Rules", start);
+		int end = prompt.indexOf("\n\nBefore you end the turn", start);
 		return json.readTree(prompt.substring(start, end));
 	}
 
@@ -375,9 +453,15 @@ public final class ProposalTest
 	@Test
 	public void derivesTheProposalFromItsFile() throws InvalidProposalException
 	{
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM,
+			PROFILES, SALT);
 
-		requireThat(derived.contract(), "contract").isEqualTo(expectedContract());
+		requireThat(withoutDrafts(derived.contract()), "contract").isEqualTo(expectedContract());
+		for (PromptTest test : derived.contract().tests())
+		{
+			requireThat(test.draft().orElseThrow().directory(), "directory").
+				isEqualTo(Path.of(".cat/tests/CLAUDE").resolve(test.id()));
+		}
 		requireThat(derived.contract().judge().profile(), "judge.profile").isEqualTo(ROLE);
 		requireThat(derived.contract().judge().prompt(), "judge.prompt").
 			isEqualTo(PromptTemplate.load("/optimizer/judge/judge.md").text());
@@ -412,7 +496,7 @@ public final class ProposalTest
 				"/runs/contract-author/project/rules/safety.md consistent.");
 		});
 
-		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 		Conflict expected = new Conflict(List.of("r1", "r2"),
 			incumbent("[AGENTS.md:6](/staged/incumbent/AGENTS.md:6) contradicts /staged/incumbent/rules/safety.md."),
 			List.of(incumbent("Edit /staged/incumbent/AGENTS.md."),
@@ -420,7 +504,7 @@ public final class ProposalTest
 			incumbent("Keeps [AGENTS.md](/staged/incumbent/AGENTS.md) and /staged/incumbent/rules/safety.md consistent."));
 		requireThat(derived.conflicts(), "conflicts").isEqualTo(List.of(expected));
 		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/contract-author/project");
-		requireThat(contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT).conflicts(),
+		requireThat(contractAuthor.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES, SALT).conflicts(),
 			"storedConflicts"). isEqualTo(List.of(expected));
 	}
 
@@ -437,12 +521,13 @@ public final class ProposalTest
 			put("evidence", "[CLAUDE.md:2](/runs/contract-author/project/CLAUDE.md:2) loads " +
 				"/runs/contract-author/project/rules/images.md."));
 
-		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 		ScopeCondition expected = new ScopeCondition(Outcome.UNSUPPORTED_OUTPUT, List.of("r1"),
 			incumbent("[CLAUDE.md:2](/staged/incumbent/CLAUDE.md:2) loads /staged/incumbent/rules/images.md."));
 		requireThat(derived.scopeConditions(), "scopeConditions").isEqualTo(List.of(expected));
 		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/contract-author/project");
-		requireThat(contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT).scopeConditions(),
+		requireThat(contractAuthor.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES,
+			SALT).scopeConditions(),
 			"storedScope"). isEqualTo(List.of(expected));
 	}
 
@@ -468,17 +553,19 @@ public final class ProposalTest
 			conflict.put("reason", "Keeps the most intent.");
 		});
 
-		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 		requireThat(derived.conflicts(), "conflicts").isEqualTo(List.of(expected));
 		requireThat(derived.scopeConditions().getFirst().evidence(), "scopeEvidence").
 			isEqualTo("CLAUDE.md asks for a diagram image with every summary.");
-		requireThat(json.readTree(derived.derivation()), "derivation").isEqualTo(json.readTree(output));
+		requireThat(json.readTree(derived.derivation()).at("/conflicts/0/evidence").asString(), "storedEvidence").
+			isEqualTo(evidence);
 	}
 
 	/**
-	 * Supplies contract author text locations displayed alongside the conflict and scope findings.
+	 * Supplies proposal file text locations displayed alongside the conflict and scope findings.
 	 *
-	 * @return JSON pointers to prose, sources, variables, test cases and assertions
+	 * @return JSON pointers to prose, sources, a prompt test's applicability and uncovered interactions, and the
+	 *   judge's fields
 	 */
 	@DataProvider
 	public Object[][] proposalTextLocations()
@@ -487,21 +574,14 @@ public final class ProposalTest
 		{
 			{"/requirements/0/description"}, {"/requirements/0/source"},
 			{"/tests/0/applicability"},
-			{"/tests/0/turns/0"}, {"/tests/0/expected_behavior"},
-			{"/tests/0/regression_scenarios/0"},
 			{"/tests/1/uncovered_interactions/0"},
-			{"/tests/0/variables/0/description"},
-			{"/tests/0/test_cases/0/values/0/text"},
-			{"/tests/0/test_cases/0/expected_outcome"},
-			{"/tests/1/assertions/0/statement"},
-			{"/tests/1/assertions/1/statement"},
 			{"/judge/rubric"}, {"/judge/decision_rule"}, {"/limitations/0"}
 		};
 	}
 
 	/**
-	 * Verifies that all displayed contract author prose is rewritten in the saved derivation and accepted again with
-	 * the user's paths, including nested arrays and assertions.
+	 * Verifies that all displayed proposal file prose is rewritten in the saved derivation and accepted again with
+	 * the user's paths, including nested arrays.
 	 *
 	 * @param pointer the location of the text in the contract author output
 	 * @throws InvalidProposalException if the output is rejected
@@ -511,8 +591,6 @@ public final class ProposalTest
 	public void rewritesOtherProposalText(String pointer) throws InvalidProposalException
 	{
 		ObjectNode output = (ObjectNode) json.readTree(fixture("derivation-with-checks.json"));
-		ObjectNode test = (ObjectNode) output.at("/tests/0");
-		test.putArray("regression_scenarios").add("scenario.md");
 		int separator = pointer.lastIndexOf('/');
 		JsonNode parent = output.at(pointer.substring(0, separator));
 		String field = pointer.substring(separator + 1);
@@ -522,11 +600,12 @@ public final class ProposalTest
 		else
 			((ArrayNode) parent).set(Integer.parseInt(field), json.getNodeFactory().stringNode(stagedText));
 
-		DerivedProposal derived = contractAuthor.proposal(session(json.writeValueAsString(output)), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(json.writeValueAsString(output)), PROMPT_SYSTEM,
+			PROFILES, SALT);
 
 		requireThat(json.readTree(derived.derivation()).at(pointer).asString(), "savedText").
 			isEqualTo(incumbent("/staged/incumbent/notes.md"));
-		DerivedProposal reread = contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT);
+		DerivedProposal reread = contractAuthor.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES, SALT);
 		requireThat(reread.contract(), "storedContract").isEqualTo(derived.contract());
 	}
 
@@ -541,7 +620,7 @@ public final class ProposalTest
 		// Requirement: R-E13
 		try
 		{
-			contractAuthor.proposal(session(fixture("derivation-aggregate.json")), PROFILES, SALT);
+			contractAuthor.proposal(session(fixture("derivation-aggregate.json")), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -560,7 +639,7 @@ public final class ProposalTest
 		// Requirement: R-C5
 		try
 		{
-			contractAuthor.proposal(session(fixture("derivation-with-judge-fields.json")), PROFILES, SALT);
+			contractAuthor.proposal(session(fixture("derivation-with-judge-fields.json")), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -581,7 +660,7 @@ public final class ProposalTest
 	{
 		try
 		{
-			contractAuthor.proposal(session("{\n  \"requirements\": [\n    oops\n  ]\n}\n"), PROFILES, SALT);
+			contractAuthor.proposal(session("{\n  \"requirements\": [\n    oops\n  ]\n}\n"), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -605,7 +684,8 @@ public final class ProposalTest
 		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
 		try
 		{
-			contractAuthor.proposal(session(effects, initialProject, fixture("derivation.json")), PROFILES, SALT);
+			contractAuthor.proposal(session(effects, initialProject, fixture("derivation.json")), PROMPT_SYSTEM,
+				PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -629,13 +709,15 @@ public final class ProposalTest
 		Files.writeString(project.resolve(OutputFile.NAME), "{\"user\": \"data\"}\n", UTF_8);
 		String name = OutputFile.name(project);
 		requireThat(name, "name").isNotEqualTo(OutputFile.NAME);
-		requireThat(contractAuthor.request(project, PROFILES, SALT).turns().getLast(), "outputTurn").contains(name);
+		requireThat(contractAuthor.request(project, PROFILES, List.of(), SALT).turns().getFirst(), "turn").
+			contains(name);
 
 		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
 		Files.writeString(effects.resolve(OutputFile.NAME), "{\"user\": \"data\"}\n", UTF_8);
-		Files.writeString(effects.resolve(name), fixture("derivation.json"), UTF_8);
-		DerivedProposal derived = contractAuthor.proposal(session(effects, project, "Done."), PROFILES, SALT);
-		requireThat(derived.contract(), "contract").isEqualTo(expectedContract());
+		write(effects, project, fixture("derivation.json"), Path.of("CLAUDE.md"), Map.of());
+		DerivedProposal derived = contractAuthor.proposal(session(effects, project, "Done."), project, PROFILES,
+			SALT);
+		requireThat(withoutDrafts(derived.contract()), "contract").isEqualTo(expectedContract());
 	}
 
 	/**
@@ -645,7 +727,7 @@ public final class ProposalTest
 	@Test
 	public void correctionNamesTheFileAndEachProblem()
 	{
-		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT);
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT);
 		String correction = request.followUp().orElseThrow().next(session(fixture("derivation-with-judge-fields.json"))).
 			orElseThrow();
 		requireThat(correction, "correction").contains(OutputFile.NAME).
@@ -662,13 +744,14 @@ public final class ProposalTest
 	@Test
 	public void validatesAStoredDerivation() throws InvalidProposalException
 	{
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
-		DerivedProposal stored = contractAuthor.proposal(derived.derivation(), OBSERVED, PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
+		DerivedProposal stored = contractAuthor.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES, SALT);
 		requireThat(stored.contract(), "contract").isEqualTo(derived.contract());
 		requireThat(stored.observedSources(), "observedSources").isEqualTo(OBSERVED);
 		try
 		{
-			contractAuthor.proposal("not json", OBSERVED, PROFILES, SALT);
+			contractAuthor.proposal("not json", PROMPT_SYSTEM, OBSERVED, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -694,7 +777,7 @@ public final class ProposalTest
 		});
 		try
 		{
-			contractAuthor.proposal(session(output), PROFILES, SALT);
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -716,7 +799,7 @@ public final class ProposalTest
 			put("path", "CLAUDE.md").put("rule", "The harness reads it at startup."));
 		try
 		{
-			contractAuthor.proposal(session(output), PROFILES, SALT);
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -736,23 +819,24 @@ public final class ProposalTest
 	public void feedbackRegeneratesTheCompleteProposal() throws InvalidProposalException
 	{
 		// Requirement: R-C2
-		DerivedProposal first = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		DerivedProposal first = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES, SALT);
 		String feedback = "Split the safety test by the kind of directory.";
 
-		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, first, feedback, Map.of());
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), first, feedback, Map.of());
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.CONTRACT_AUTHOR);
 		requireThat(request.source(), "source").isEqualTo(PROMPT_SYSTEM);
-		requireThat(request.turns().size(), "turns.size()").isEqualTo(2);
+		requireThat(request.turns().size(), "turns.size()").isEqualTo(1);
 		String prompt = request.turns().getFirst();
 		requireThat(prompt, "prompt").contains("User feedback:\n\n" + feedback + "\n").contains(first.derivation());
-		requireThat(json.readTree(first.derivation()), "derivation").
-			isEqualTo(json.readTree(fixture("derivation.json")));
+		requireThat(json.readTree(first.derivation()).at("/tests/0/directory").asString(), "directory").
+			isEqualTo(".cat/tests/CLAUDE/formatting");
 
 		String revised = changedDerivation(root -> ((ObjectNode) root.get("requirements").get(1)).
 			put("description", "Never delete a directory or a file without asking."));
-		Proposal second = Proposal.of(contractAuthor.proposal(session(revised), PROFILES, SALT), new Builder().build(),
-			noLinks(), CONTROL_FILE, HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
+		Proposal second = Proposal.of(contractAuthor.proposal(session(revised), PROMPT_SYSTEM, PROFILES, SALT),
+			new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		requireThat(second.render(), "render").contains("Never delete a directory or a file without asking.").
 			contains("formatting").contains("safety").contains("## Statistical procedure");
 	}
@@ -841,7 +925,8 @@ public final class ProposalTest
 	public void rendersAnUnavailableCap() throws InvalidProposalException
 	{
 		// Requirement: R-C1
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			(level, minimumPassRate) ->
 			{
@@ -926,7 +1011,8 @@ public final class ProposalTest
 		// Requirement: R-C15
 		// Requirement: R-E22
 		// Requirement: R-C1
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), twoProfiles(), SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM,
+			twoProfiles(), SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		int weakest = minimumTrials(proposal, CertificationScope.WEAKEST_CELL);
@@ -971,7 +1057,8 @@ public final class ProposalTest
 		// Requirement: R-C15
 		ProfileEvidence partial = new ProfileEvidence(ContractFixtures.TWO_PROFILES,
 			new CapabilityRanking(List.of("big"), "test ranking without small"), Map.of());
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), partial, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, partial,
+			SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 
@@ -1005,7 +1092,7 @@ public final class ProposalTest
 		// Requirement: R-E22
 		// Requirement: R-C1
 		ProfileEvidence evidence = evidence(ContractFixtures.TWO_PROFILES, Map.of());
-		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence, SALT).turns().getFirst(), "request").
+		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence, List.of(), SALT).turns().getFirst(), "request").
 			contains("Capability ranking, most capable first (test ranking in inventory order): big, small");
 
 		String revised = changedDerivation(output ->
@@ -1013,7 +1100,7 @@ public final class ProposalTest
 			output.putArray("capability_ranking").add("small").add("big");
 			output.putArray("certification_profiles").addObject().put("model", "small").put("effort", "");
 		});
-		DerivedProposal derived = contractAuthor.proposal(session(revised), evidence, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(revised), PROMPT_SYSTEM, evidence, SALT);
 		requireThat(derived.contract().profiles().ranking(), "ranking").isEqualTo(new CapabilityRanking(
 			List.of("small", "big"), "the user's revision feedback"));
 		requireThat(derived.contract().profiles().described(), "described").
@@ -1056,7 +1143,7 @@ public final class ProposalTest
 	{
 		try
 		{
-			contractAuthor.proposal(session(output), evidence, SALT);
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, evidence, SALT);
 		}
 		catch (InvalidProposalException e)
 		{
@@ -1075,7 +1162,8 @@ public final class ProposalTest
 	public void recordsObservedAndDerivedLoading() throws InvalidProposalException
 	{
 		// Requirement: R-C7
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT).
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT).
 			withDerivedSources(List.of(new DerivedSource("CLAUDE.md",
 				"The harness reads the project instruction file in the project root at startup.")));
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
@@ -1156,7 +1244,7 @@ public final class ProposalTest
 				  {"location": "project", "plugin": null, "path": ".codex/hooks.json", "removes": "hook_registration",
 				   "text": null, "event": "PostToolUse", "command": "repair.sh", "serves": "Runs the repair script."}
 				]
-				""")))), PROFILES, SALT);
+				""")))), PROMPT_SYSTEM, PROFILES, SALT);
 		String refusal = "Control trials cannot remove the dependents of the target that the proposal lists: " +
 			"the project file repair.sh, which a dependent names, is not a regular file of the project.";
 		Proposal accepted = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
@@ -1197,7 +1285,8 @@ public final class ProposalTest
 	public void showsGuardPilotRates() throws InvalidProposalException
 	{
 		// Requirement: R-C23
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
 		Contract contract = derived.contract();
 		Map<String, PilotResult> pilots = new LinkedHashMap<>();
 		String sessionFailed = "The trial session failed: the harness exited with status 1";
@@ -1235,7 +1324,8 @@ public final class ProposalTest
 	public void guardAtMinimumRateHasNoWarning() throws InvalidProposalException
 	{
 		// Requirement: R-C23
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
 		Contract contract = derived.contract();
 		String safetyCell = GuardPilot.pilotCell(contract, "safety").orElseThrow().id();
 		List<PilotTrial> trials = new ArrayList<>();
@@ -1264,7 +1354,8 @@ public final class ProposalTest
 	public void showsStoppedPilot() throws InvalidProposalException
 	{
 		// Requirement: R-C23
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
 		Contract contract = derived.contract();
 		String reason = "The provider rejected a pilot session because of a rate limit.";
 		PilotResult safety = pilot(contract, "safety", "asks_before_deleting", 3, List.of(), reason);
@@ -1286,11 +1377,12 @@ public final class ProposalTest
 	public void revisionBriefCarriesPilotResults() throws InvalidProposalException
 	{
 		// Requirement: R-C23
-		DerivedProposal first = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		DerivedProposal first = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES, SALT);
 		Map<String, PilotResult> pilots = Map.of("safety", pilot(first.contract(), "safety", "asks_before_deleting",
 			15, List.of(), null));
 
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, first, "Keep the tests.", pilots).turns().
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), first, "Keep the tests.",
+			pilots).turns().
 			getFirst();
 
 		requireThat(prompt, "prompt").contains(first.derivation() + "\n\nGuard pilot results of the previous " +
@@ -1330,24 +1422,52 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that the contract author's request lists each trial plugin that the project builds, with the project
-	 * paths that trials write over it, and no plugin that the project does not build.
+	 * Verifies that the contract author's request lists every trial plugin, with the project paths that trials write
+	 * over each one that the project builds.
 	 */
 	// Requirement: R-W10
+	// Requirement: R-C27
 	@Test
-	public void requestListsBuiltTrialPlugins()
+	public void requestListsTrialPlugins()
 	{
 		ContractAuthorProtocol withPlugins = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(),
-			List.of(builtPlugin(), installedPlugin()));
+			List.of(builtPlugin(), installedPlugin()), LAUNCHER, UNKNOWN_LIMIT);
 
-		String listed = withPlugins.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
-		String none = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+		String listed = withPlugins.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+		String none = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
 
 		requireThat(listed, "listed").
-			contains("\n- `cat`, with these project paths written over it: `source/rules` → `rules/codex`\n").
-			doesNotContain("tools@market");
-		requireThat(none, "none").contains("write over each, are:\n\nnone\n\n");
+			contains("\n- `cat`, built by the project, with these project paths written over it: `source/rules` → " +
+				"`rules/codex`\n- `tools@market`, installed by the user\n");
+		requireThat(none, "none").contains("each one that the project builds,\n  are:\n\nnone\n\n");
+	}
+
+	/**
+	 * Verifies that the contract author's request lists every hook registration with its event, matcher, command and
+	 * the file that registers it, of the project or of a trial plugin, and names the draft directory, the proposal
+	 * file and the launcher that provides the contract tools.
+	 */
+	// Requirement: R-C27
+	@Test
+	public void requestListsHookRegistrations()
+	{
+		List<HookRegistration> hooks = List.of(
+			new HookRegistration("", ".claude/settings.json", "SessionStart", "", "bin/session-start"),
+			new HookRegistration("cat", "hooks/hooks.json", "PostToolUse", "Bash", "${PLUGIN_ROOT}/bin/repair"));
+
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, hooks, SALT).turns().getFirst();
+		String none = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+
+		requireThat(prompt, "prompt").
+			contains("- event `SessionStart`, command `bin/session-start`, registered by `.claude/settings.json` " +
+				"of the project\n").
+			contains("- event `PostToolUse`, matcher `Bash`, command `${PLUGIN_ROOT}/bin/repair`, registered by " +
+				"`hooks/hooks.json` of the trial plugin `cat`\n").
+			contains("the draft directory `" + DraftDirectory.name(PROMPT_SYSTEM) + "`").
+			contains("the proposal file `" + OutputFile.name(PROMPT_SYSTEM) + "`").
+			contains("`" + LAUNCHER + " contract fixtures ");
+		requireThat(none, "none").contains("with the file that\n  registers it:\n\nnone\n\n");
 	}
 
 	/**
@@ -1405,7 +1525,8 @@ public final class ProposalTest
 	 */
 	private Proposal pluginProposal(PluginCheck check) throws InvalidProposalException
 	{
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
 		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), check);
 	}
@@ -1515,7 +1636,8 @@ public final class ProposalTest
 	public void rendersTrialProfilesAndCells() throws InvalidProposalException
 	{
 		// Requirement: R-C10
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), twoProfiles(), SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM,
+			twoProfiles(), SALT);
 		requireThat(derived.contract().cellIds(), "cells").isEqualTo(List.of(ContractFixtures.BIG_CELL,
 			ContractFixtures.SMALL_CELL, ContractFixtures.PLAIN_BIG_CELL, ContractFixtures.PLAIN_SMALL_CELL, "safety"));
 		requireThat(derived.contract().findCell("safety").orElseThrow().profile(), "safety.profile").
@@ -1545,7 +1667,7 @@ public final class ProposalTest
 		// Requirement: R-C10
 		ProfileCatalog inventory = new ProfileCatalog("test inventory of three profiles", List.of(
 			new TrialProfile("big", "high"), new TrialProfile("big", "low"), new TrialProfile("small", "high")));
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")),
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM,
 			evidence(inventory, Map.of()), SALT);
 		requireThat(derived.contract().cellIds().size(), "cells").isEqualTo(9);
 
@@ -1571,7 +1693,7 @@ public final class ProposalTest
 		// Requirement: R-C10
 		String restricted = changedDerivation(output -> output.putArray("profile_restriction").addObject().
 			put("model", "small").put("effort", ""));
-		DerivedProposal derived = contractAuthor.proposal(session(restricted), evidence(
+		DerivedProposal derived = contractAuthor.proposal(session(restricted), PROMPT_SYSTEM, evidence(
 			ContractFixtures.TWO_PROFILES, Map.of()), SALT);
 		requireThat(derived.contract().cellIds(), "cells").isEqualTo(List.of("formatting", "plain_list", "safety"));
 		requireThat(derived.contract().findCell("formatting").orElseThrow().profile(), "profile").
@@ -1581,14 +1703,14 @@ public final class ProposalTest
 
 		String byEffort = changedDerivation(output -> output.putArray("profile_restriction").addObject().
 			put("model", "").put("effort", "high"));
-		requireThat(contractAuthor.proposal(session(byEffort), twoProfiles(), SALT).contract().profiles().restriction(),
-			"effortRestriction").isEqualTo(List.of(new TrialProfile("", "high")));
+		requireThat(contractAuthor.proposal(session(byEffort), PROMPT_SYSTEM, twoProfiles(), SALT).contract().
+			profiles().restriction(), "effortRestriction").isEqualTo(List.of(new TrialProfile("", "high")));
 
 		String unmatched = changedDerivation(output -> output.putArray("profile_restriction").addObject().
 			put("model", "huge").put("effort", ""));
 		try
 		{
-			contractAuthor.proposal(session(unmatched), twoProfiles(), SALT);
+			contractAuthor.proposal(session(unmatched), PROMPT_SYSTEM, twoProfiles(), SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1608,7 +1730,7 @@ public final class ProposalTest
 		String output = changedDerivation(derivation -> derivation.putObject("trial_profiles"));
 		try
 		{
-			contractAuthor.proposal(session(output), PROFILES, SALT);
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1626,13 +1748,14 @@ public final class ProposalTest
 	public void requestListsTheProfileInventory()
 	{
 		// Requirement: R-C10
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, evidence(ContractFixtures.TWO_PROFILES, Map.of()), SALT).
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, evidence(ContractFixtures.TWO_PROFILES, Map.of()),
+			List.of(), SALT).
 			turns(). getFirst();
 		requireThat(prompt, "prompt").contains(ContractFixtures.TWO_PROFILES.source()).
 			contains("- model `big`, effort `high`").contains("- model `small`, effort `high`");
 
 		ProfileCatalog plain = new ProfileCatalog("plain models", List.of(new TrialProfile("plain", "")));
-		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence(plain, Map.of()), SALT).turns().getFirst(),
+		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence(plain, Map.of()), List.of(), SALT).turns().getFirst(),
 			"plainPrompt").contains("- model `plain`, no effort dimension").doesNotContain("effort ``");
 	}
 
@@ -1645,7 +1768,7 @@ public final class ProposalTest
 	{
 		// Requirement: R-E20
 		// Requirement: R-C9
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
 
 		JsonNode outputSchema = readOutputSchema(prompt);
 		JsonNode test = outputSchema.get("properties").get("tests").get("items");
@@ -1667,79 +1790,154 @@ public final class ProposalTest
 	 */
 	private String rendered(String derivation) throws InvalidProposalException
 	{
-		DerivedProposal derived = contractAuthor.proposal(session(derivation), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(derivation), PROMPT_SYSTEM, PROFILES, SALT);
 		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 	}
 
 	/**
-	 * Verifies that the contract author is instructed to turn recorded scenarios into cited prompt tests.
+	 * Verifies that the contract author's request lists each recorded prompt test of the target with its directory in
+	 * the draft directory, the citation that records it and the guidance whose contract requires it, and asks for a
+	 * recorded test in an earlier format to be converted.
 	 */
 	@Test
-	public void requestAsksForRegressionScenarios()
+	public void requestListsRecordedPromptTests()
 	{
 		// Requirement: R-I3
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
-		requireThat(prompt, "prompt").contains("### Recorded regression scenarios").
-			contains("regression_scenarios").contains("prompt test");
+		String prompt = regressionContractAuthor().request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().
+			getFirst();
+		requireThat(prompt, "prompt").contains("### Recorded prompt tests").
+			contains("- `.cat/tests/rules/safety/reported`, recorded as `" + REPORTED + "` for `rules/safety.md`. " +
+				"Its `scenario.md` holds the recorded file in an earlier format, which you convert: " +
+				"scenario.md: the scenario has no ## Variables section\n").
+			contains("- `.cat/tests/rules/style/analogous`, recorded as `" + ANALOGOUS + "` for `rules/style.md`.");
 	}
 
 	/**
-	 * Verifies that proposal refusal names every uncited scenario of a requirement or derived source.
+	 * Verifies that a proposal that leaves out recorded prompt tests of the target is refused, naming each of them.
 	 *
-	 * @throws InvalidProposalException when both recorded scenarios have no citing test
+	 * @throws InvalidProposalException when both recorded prompt tests are missing
 	 */
 	@Test(expectedExceptions = InvalidProposalException.class,
 		expectedExceptionsMessageRegExp = "(?s).*reported\\.md.*analogous\\.md.*")
-	public void refusesUncitedRegressionScenarios() throws InvalidProposalException
+	public void refusesMissingRecordedPromptTests() throws InvalidProposalException
 	{
 		// Requirement: R-I3
-		regressionContractAuthor().proposal(session(fixture("derivation.json")), PROFILES, SALT);
+		// Requirement: R-C26
+		regressionContractAuthor().proposal(regressionSession(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
 	}
 
 	/**
-	 * Verifies that a proposal citing every applicable scenario is accepted, and unrelated guidance requires no test.
+	 * Verifies that a proposal that keeps every recorded prompt test of the target is accepted, each recorded test
+	 * citing its scenario, that the proposal shows a converted test as an edit of the recorded file, and that the
+	 * scenarios of guidance outside the target require no test.
 	 *
 	 * @throws InvalidProposalException if a complete proposal is rejected
 	 */
 	@Test
-	public void acceptsAllRegressionScenarios() throws InvalidProposalException
+	public void acceptsEveryRecordedPromptTest() throws InvalidProposalException
 	{
 		// Requirement: R-I3
-		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
-			putArray("regression_scenarios").add("reported.md").add("analogous.md"));
-		DerivedProposal proposal = regressionContractAuthor().proposal(session(output), PROFILES, SALT);
-		requireThat(proposal.contract().findTest("formatting").orElseThrow().regressionScenarios(), "citations").
-			isEqualTo(List.of("reported.md", "analogous.md"));
-		requireThat(Proposal.of(proposal, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render(), "render").
-			contains("- Scenario: converted from the recorded scenario `reported.md`; delivery creates " +
-				"`" + Path.of(".cat/tests/CLAUDE/formatting/scenario.md") + "`, which differs from it by:\n").
-			contains("- Scenario: converted from the recorded scenario `analogous.md`; delivery creates " +
-				"`" + Path.of(".cat/tests/CLAUDE/formatting/scenario.md") + "`, which differs from it by:\n");
+		// Requirement: R-C26
+		String output = changedDerivation(proposal ->
+		{
+			((ObjectNode) proposal.get("tests").get(0)).putArray("regression_scenarios").add(REPORTED);
+			((ObjectNode) proposal.get("tests").get(2)).putArray("regression_scenarios").add(ANALOGOUS);
+		});
+		DerivedProposal proposal = regressionContractAuthor().proposal(regressionSession(output), PROMPT_SYSTEM,
+			PROFILES, SALT);
+		requireThat(proposal.contract().findTest("reported").orElseThrow().regressionScenarios(), "reported").
+			isEqualTo(List.of(REPORTED));
+		requireThat(proposal.contract().findTest("analogous").orElseThrow().regressionScenarios(), "analogous").
+			isEqualTo(List.of(ANALOGOUS));
+		requireThat(render(proposal), "render").
+			contains("- Files: recorded at `" + Path.of(".cat/tests/rules/safety/reported") + "` and edited; " +
+				"delivery rewrites them with these changes:\n").
+			contains("- Files: recorded at `" + Path.of(".cat/tests/rules/style/analogous") + "` and edited; " +
+				"delivery rewrites them with these changes:\n").
+			contains("- Files: created by the contract author; delivery writes `" +
+				Path.of(".cat/tests/rules/plain_list") + "`\n");
 	}
 
 	/**
-	 * Verifies that the proposal shows how each prompt test's scenario arises: written by the contract author, recorded
-	 * and unchanged, or recorded and edited, an edit being shown as a difference from the recorded file.
+	 * Returns the rendered proposal of a derived proposal.
 	 *
+	 * @param derived the derived proposal
+	 * @return the rendered proposal
+	 */
+	private String render(DerivedProposal derived)
+	{
+		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
+	}
+
+	/**
+	 * Returns a project that records one prompt test of its instruction file {@code CLAUDE.md}, at
+	 * {@code .cat/tests/CLAUDE/formatting}.
+	 *
+	 * @param scenario the recorded test's {@code scenario.md}
+	 * @return the project
+	 * @throws IOException if a file cannot be written
+	 */
+	private Path recordedProject(String scenario) throws IOException
+	{
+		Path project = directories.add(Files.createTempDirectory("contract-author-recorded-")).toRealPath();
+		Files.writeString(project.resolve("CLAUDE.md"), "Answer in the requested tone.\n", UTF_8);
+		Path test = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting"));
+		Files.writeString(test.resolve("scenario.md"), scenario, UTF_8);
+		return project;
+	}
+
+	/**
+	 * Returns a contract author whose target is a project's {@code CLAUDE.md}, with the project's recorded scenarios.
+	 *
+	 * @param scenarios the project's recorded scenarios
+	 * @return the contract author
+	 */
+	private ContractAuthorProtocol contractAuthor(RegressionScenarios scenarios)
+	{
+		return new ContractAuthorProtocol(json, schema, judge, scenarios, scenarios.project().resolve("CLAUDE.md"),
+			null, true, List.of(), List.of(), LAUNCHER, UNKNOWN_LIMIT);
+	}
+
+	/**
+	 * Returns a completed session of a contract author whose target is a project's {@code CLAUDE.md}. The session's
+	 * draft directory starts with the files that the contract author's request supplies, and each prompt test of the
+	 * output is then written over them, a recorded one at its directory.
+	 *
+	 * @param author  the contract author
+	 * @param project the project
+	 * @param output  the contract author output
+	 * @return the session's result
+	 * @throws IOException if a file cannot be read or written
+	 */
+	private SessionResult.Completed recordedSession(ContractAuthorProtocol author, Path project, String output)
+		throws IOException
+	{
+		Path initialProject = directories.add(Files.createTempDirectory("contract-author-initial-"));
+		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
+		author.request(project, PROFILES, List.of(), SALT).files().write(effects);
+		write(effects, initialProject, output, Path.of("CLAUDE.md"),
+			DraftDirectory.testDirectories(RegressionScenarios.read(json, project, project)));
+		return session(effects, initialProject, "The proposal is in " + OutputFile.name(initialProject) + ".");
+	}
+
+	/**
+	 * Verifies that the proposal shows how each prompt test's files relate to the recorded ones: created by the
+	 * contract author, recorded and unchanged, or recorded and edited, an edit being shown as a difference from the
+	 * recorded files.
+	 *
+	 * @throws IOException              if a file cannot be written
 	 * @throws InvalidProposalException if a proposal is rejected
 	 */
 	@Test
-	public void rendersScenarioStatus() throws InvalidProposalException
+	public void rendersPromptTestChanges() throws IOException, InvalidProposalException
 	{
 		// Requirement: R-C1
-		String citation = ".cat/tests/CLAUDE/formatting/scenario.md";
-		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
-			putArray("regression_scenarios").add(citation));
-		String recorded = """
+		// Requirement: R-C26
+		Path project = recordedProject("""
 			# Formatting
-
-			Recorded after a report.
-
-			## Design Goals
-
-			The summary keeps the requested tone.
 
 			## Variables
 
@@ -1755,42 +1953,45 @@ public final class ProposalTest
 
 			- **kind**: effect
 			- **description**: The summary keeps the {{tone}} tone.
-			""";
-		Proposal edited = Proposal.of(contractAuthor(citation, recorded).proposal(session(output), PROFILES, SALT),
-			new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
-		String text = edited.render();
-
-		requireThat(text, "text").contains("- Scenario: recorded at `" + citation + "` and edited; delivery " +
-			"rewrites it with these changes:\n\n    ```diff\n    --- a/" + citation + "\n    +++ b/" + citation + "\n").
-			contains("\n    +### Turn 2\n").contains("\n    -### keeps_tone\n").
-			contains("- Scenario: written by the contract author; delivery creates " +
-				"`" + Path.of(".cat/tests/CLAUDE/safety/scenario.md") + "`\n");
-
-		PromptTest test = edited.contract().findTest("formatting").orElseThrow();
-		String unchanged = test.scenario().renderFile("Formatting", test.expectedBehaviour());
-		requireThat(Proposal.of(contractAuthor(citation, unchanged).proposal(session(output), PROFILES, SALT),
-			new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render(), "unchanged").
-			contains("- Scenario: recorded at `" + citation + "`, unchanged\n");
-	}
-
-	/**
-	 * Verifies that the contract author sees the test cases that an earlier campaign committed to a recorded
-	 * scenario's values file, and that they become the committed test cases of the prompt test that cites the
-	 * scenario, and of no other test.
-	 *
-	 * @throws InvalidProposalException if the proposal is rejected
-	 * @throws ScenarioFormatException  if the recorded scenario does not follow the format
-	 */
-	@Test
-	public void citingTestReceivesCommittedTestCases() throws InvalidProposalException, ScenarioFormatException
-	{
-		// Requirement: R-C16
+			""");
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
 		String citation = ".cat/tests/CLAUDE/formatting/scenario.md";
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(citation));
-		Scenario recorded = Scenario.parse("""
+
+		ContractAuthorProtocol author = contractAuthor(scenarios);
+		DerivedProposal edited = author.proposal(recordedSession(author, project, output),
+			project, PROFILES, SALT);
+		String text = render(edited);
+
+		requireThat(text, "text").contains("- Files: recorded at `" + Path.of(".cat/tests/CLAUDE/formatting") +
+				"` and edited; delivery rewrites them with these changes:\n\n    ```diff\n    --- a/" + citation +
+				"\n    +++ b/" + citation + "\n").
+			contains("\n    +### Turn 2\n").contains("\n    -### keeps_tone\n").
+			contains("+++ b/.cat/tests/CLAUDE/formatting/values.json\n").
+			contains("- Files: created by the contract author; delivery writes `" +
+				Path.of(".cat/tests/CLAUDE/safety") + "`\n");
+
+		Map<String, DraftChange> changes = new LinkedHashMap<>(edited.changes());
+		changes.put("formatting", new DraftChange(DraftChange.Kind.RECORDED, ""));
+		requireThat(render(edited.withDraft(edited.draft(), changes)), "unchanged").
+			contains("- Files: recorded at `" + Path.of(".cat/tests/CLAUDE/formatting") + "`, unchanged\n");
+	}
+
+	/**
+	 * Verifies that the contract author's draft directory starts with the test cases that an earlier campaign
+	 * committed to a recorded prompt test's values file, and that they become the committed test cases of that prompt
+	 * test, and of no other, even when its values file repeats them.
+	 *
+	 * @throws IOException              if a file cannot be read or written
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	@Test
+	public void recordedTestKeepsCommittedTestCases() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-C16
+		// Requirement: R-C26
+		Path project = recordedProject("""
 			# Formatting
 
 			## Variables
@@ -1809,43 +2010,59 @@ public final class ProposalTest
 			- **kind**: effect
 			- **description**: The summary keeps the {{tone}} tone.
 			""");
+		Files.writeString(project.resolve(".cat/tests/CLAUDE/formatting/values.json"), """
+			{
+			  "format_version": 1,
+			  "test_cases": [
+			    {
+			      "values": {"tone": "a terse", "audience": "a manager"},
+			      "expected_outcome": "a terse summary shortened for a manager reader"
+			    }
+			  ]
+			}
+			""", UTF_8);
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
+		ContractAuthorProtocol author = contractAuthor(scenarios);
 		TestCase committed = new TestCase(Map.of("tone", new TestValue.Text("a terse"), "audience",
 			new TestValue.Text("a manager")), "a terse summary shortened for a manager reader");
-		PromptTestFiles files = new PromptTestFiles(PROMPT_SYSTEM.resolve(".cat/tests"),
-			PROMPT_SYSTEM.resolve(".cat/tests/CLAUDE/formatting"), recorded, List.of("fixtures/**"), List.of(),
-			List.of(committed));
-		ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
-			new RegressionScenarios(PROMPT_SYSTEM, List.of(new RegressionScenarios.Scenario(
-				PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, recorded.render(),
-				new RegressionScenarios.Current(files, List.of())))), TARGET, null, true, List.of(), List.of());
 
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
-		Contract contract = contractAuthor.proposal(session(output), PROFILES, SALT).contract();
+		Path workspace = directories.add(Files.createTempDirectory("contract-author-workspace-"));
+		author.request(project, PROFILES, List.of(), SALT).files().write(workspace);
+		requireThat(Files.readString(workspace.resolve(DraftDirectory.name(project)).
+			resolve(".cat/tests/CLAUDE/formatting/values.json"), UTF_8), "seeded").
+			contains("a terse summary shortened for a manager reader");
 
-		requireThat(prompt, "prompt").contains("Committed test cases, which CAT adds to the test that cites this " +
-			"scenario:\n\n- `audience`: a manager; `tone`: a terse; expected outcome: a terse summary shortened for a " +
-			"manager reader\n");
+		String output = changedDerivation(proposal ->
+		{
+			ObjectNode test = (ObjectNode) proposal.get("tests").get(0);
+			test.putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md");
+			ObjectNode repeated = ((ArrayNode) test.get("test_cases")).addObject();
+			ArrayNode values = repeated.putArray("values");
+			values.addObject().put("variable", "tone").put("text", "a terse");
+			values.addObject().put("variable", "audience").put("text", "a manager");
+			repeated.put("expected_outcome", "a terse summary shortened for a manager reader");
+		});
+		Contract contract = author.proposal(recordedSession(author, project, output), project, PROFILES,
+			SALT).contract();
 
-		requireThat(contract.findTest("formatting").orElseThrow().committedTestCases(), "formatting").
-			isEqualTo(List.of(committed));
+		PromptTest formatting = contract.findTest("formatting").orElseThrow();
+		requireThat(formatting.committedTestCases(), "formatting").isEqualTo(List.of(committed));
+		requireThat(formatting.testCases(), "testCases").doesNotContain(committed);
 		requireThat(contract.findTest("safety").orElseThrow().committedTestCases(), "safety").isEmpty();
 	}
 
 	/**
-	 * Verifies that the contract author sees the file of each text fixture of a recorded scenario rather than its
-	 * content, that CAT adds the fixture to the prompt test that cites the scenario, and of no other test, and that the
-	 * proposal names the file that CAT copies it from rather than showing its content.
+	 * Verifies that a recorded prompt test keeps the fixtures of its directory, that no other test receives them, and
+	 * that the proposal names the file of a recorded test's fixture rather than showing its content.
 	 *
+	 * @throws IOException              if a file cannot be written
 	 * @throws InvalidProposalException if the proposal is rejected
-	 * @throws ScenarioFormatException  if the recorded scenario does not follow the format
 	 */
 	@Test
-	public void citingTestReceivesRecordedFixtures() throws InvalidProposalException, ScenarioFormatException
+	public void recordedTestKeepsItsFixtures() throws IOException, InvalidProposalException
 	{
-		String citation = ".cat/tests/CLAUDE/formatting/scenario.md";
-		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
-			putArray("regression_scenarios").add(citation));
-		Scenario recorded = Scenario.parse("""
+		// Requirement: R-C26
+		Path project = recordedProject("""
 			# Formatting
 
 			## Variables
@@ -1864,62 +2081,64 @@ public final class ProposalTest
 			- **kind**: effect
 			- **description**: The summary keeps the {{tone}} tone.
 			""");
-		FixtureFile notes = new FixtureFile("notes/{{tone}}.md", "Release 4.296 renamed the exporter.\n",
-			".cat/tests/CLAUDE/fixtures/notes/{{tone}}.md");
-		PromptTestFiles files = new PromptTestFiles(PROMPT_SYSTEM.resolve(".cat/tests"),
-			PROMPT_SYSTEM.resolve(".cat/tests/CLAUDE/formatting"), recorded, List.of("../fixtures/**"), List.of(),
-			List.of());
-		ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
-			new RegressionScenarios(PROMPT_SYSTEM, List.of(new RegressionScenarios.Scenario(
-				PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, recorded.render(),
-				new RegressionScenarios.Current(files, List.of(notes))))), TARGET, null, true, List.of(), List.of());
+		String content = "Release 4.296 renamed the exporter.\n";
+		Path fixtures = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/fixtures/notes"));
+		Files.writeString(fixtures.resolve("{{tone}}.md"), content, UTF_8);
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
+			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
 
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
-		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
-		String rendered = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
+		ContractAuthorProtocol author = contractAuthor(scenarios);
+		DerivedProposal derived = author.proposal(recordedSession(author, project, output), project,
+			PROFILES, SALT);
 
-		requireThat(prompt, "prompt").contains("- `notes/{{tone}}.md`, the file `" +
-			PROMPT_SYSTEM.toAbsolutePath().normalize().resolve(notes.source()) + "`\n").
-			doesNotContain(notes.content());
+		FixtureFile notes = new FixtureFile("notes/{{tone}}.md", content,
+			".cat/tests/CLAUDE/formatting/fixtures/notes/{{tone}}.md");
 		requireThat(derived.contract().findTest("formatting").orElseThrow().fixtures(), "formatting").
 			isEqualTo(List.of(notes));
 		requireThat(derived.contract().findTest("safety").orElseThrow().fixtures(), "safety").isEmpty();
-		requireThat(rendered, "rendered").contains("  - `notes/{{tone}}.md`, copied from `" + notes.source() +
-			"`\n").doesNotContain(notes.content());
+		requireThat(render(derived), "rendered").contains("  - `notes/{{tone}}.md`, copied from `" +
+			notes.source() + "`\n").doesNotContain(content);
 	}
 
 	/**
-	 * Returns a contract author that holds one recorded scenario of the prompt system's instruction file.
+	 * Returns the recorded scenarios of a prompt system whose target is the {@code rules} directory: a scenario of each
+	 * of two target prompt files, one of which no requirement names, and a scenario of guidance outside the target.
 	 *
-	 * @param citation the scenario's citation
-	 * @param content  the scenario's content
-	 * @return the contract author
+	 * @return the scenarios
 	 */
-	private ContractAuthorProtocol contractAuthor(String citation, String content)
+	private static RegressionScenarios regressionScenarios()
 	{
-		return new ContractAuthorProtocol(json, schema, judge, new RegressionScenarios(PROMPT_SYSTEM, List.of(
-			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("CLAUDE.md"), citation, content, EARLIER))), TARGET,
-			null, true, List.of(), List.of());
+		return new RegressionScenarios(PROMPT_SYSTEM, List.of(
+			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("rules/safety.md"), REPORTED, "Reported case",
+				EARLIER),
+			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("rules/style.md"), ANALOGOUS, "Analogous case",
+				EARLIER),
+			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("CLAUDE.md"), ".cat/tests/CLAUDE/unrelated.md",
+				"Unrelated case", EARLIER)));
 	}
 
 	/**
-	 * Returns a contract author whose target is the {@code rules} directory, with a scenario of two target prompt
-	 * files, one of which no requirement names, and a scenario of guidance outside the target.
+	 * Returns a contract author whose target is the {@code rules} directory, with the scenarios of
+	 * {@link #regressionScenarios()}.
 	 *
 	 * @return the contract author
 	 */
 	private ContractAuthorProtocol regressionContractAuthor()
 	{
-		RegressionScenarios scenarios = new RegressionScenarios(PROMPT_SYSTEM, List.of(
-			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("rules/safety.md"), "reported.md", "Reported case",
-				EARLIER),
-			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("rules/style.md"), "analogous.md", "Analogous case",
-				EARLIER),
-			new RegressionScenarios.Scenario(PROMPT_SYSTEM.resolve("CLAUDE.md"), "unrelated.md", "Unrelated case",
-				EARLIER)));
-		return new ContractAuthorProtocol(json, schema, judge, scenarios, PROMPT_SYSTEM.resolve("rules"), null, true,
-			List.of(), List.of());
+		return new ContractAuthorProtocol(json, schema, judge, regressionScenarios(), PROMPT_SYSTEM.resolve("rules"),
+			null, true, List.of(), List.of(), LAUNCHER, UNKNOWN_LIMIT);
+	}
+
+	/**
+	 * Returns a completed session of {@link #regressionContractAuthor()}.
+	 *
+	 * @param output the contract author output
+	 * @return the session's result
+	 */
+	private SessionResult.Completed regressionSession(String output)
+	{
+		return session(output, Path.of("rules"), DraftDirectory.testDirectories(regressionScenarios()));
 	}
 
 	/**
@@ -1929,16 +2148,16 @@ public final class ProposalTest
 	public void sendsOnlyTheTargetsScenarios()
 	{
 		// Requirement: R-C24
-		String prompt = regressionContractAuthor().request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
-		requireThat(prompt, "prompt").contains("Reported case").contains("Analogous case").
-			doesNotContain("Unrelated case");
+		String prompt = regressionContractAuthor().request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().
+			getFirst();
+		requireThat(prompt, "prompt").contains(REPORTED).contains(ANALOGOUS).doesNotContain("unrelated.md");
 	}
 
 	/**
-	 * Verifies that a recorded scenario of a target prompt file must be cited even when no requirement names that
+	 * Verifies that a recorded scenario of a target prompt file must be kept even when no requirement names that
 	 * file.
 	 *
-	 * @throws InvalidProposalException when the scenario has no citing test
+	 * @throws InvalidProposalException when the scenario has no prompt test
 	 */
 	@Test(expectedExceptions = InvalidProposalException.class,
 		expectedExceptionsMessageRegExp = ".*analogous\\.md.*")
@@ -1946,12 +2165,12 @@ public final class ProposalTest
 	{
 		// Requirement: R-C24
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
-			putArray("regression_scenarios").add("reported.md"));
-		regressionContractAuthor().proposal(session(output), PROFILES, SALT);
+			putArray("regression_scenarios").add(REPORTED));
+		regressionContractAuthor().proposal(regressionSession(output), PROMPT_SYSTEM, PROFILES, SALT);
 	}
 
 	/**
-	 * Verifies that a proposal that breaks the output schema is refused with its missing scenario citations in the
+	 * Verifies that a proposal that breaks the output schema is refused with its missing recorded prompt tests in the
 	 * same list of problems, so that one correction turn can fix both.
 	 */
 	@Test
@@ -1962,7 +2181,7 @@ public final class ProposalTest
 			remove("risk_rank"));
 		try
 		{
-			regressionContractAuthor().proposal(session(output), PROFILES, SALT);
+			regressionContractAuthor().proposal(regressionSession(output), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -1983,8 +2202,8 @@ public final class ProposalTest
 		String goal = "Summaries must stay safe for a general audience.";
 		ContractAuthorProtocol withGoal = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), PROMPT_SYSTEM.resolve("rules/safety.md"), goal, true,
-			List.of(), List.of());
-		String prompt = withGoal.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+			List.of(), List.of(), LAUNCHER, UNKNOWN_LIMIT);
+		String prompt = withGoal.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
 		requireThat(prompt, "prompt").contains("`rules/safety.md`").contains(goal);
 	}
 
@@ -1998,8 +2217,9 @@ public final class ProposalTest
 		ContractAuthorProtocol withLoaded = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(
 				new DerivedSource("AGENTS.md", "Codex reads the project's instruction file."),
-				new DerivedSource("/plugins/cat/rules/codex/read-file.md", "CAT's rule loader injects the rule.")), List.of());
-		String prompt = withLoaded.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+				new DerivedSource("/plugins/cat/rules/codex/read-file.md", "CAT's rule loader injects the rule.")),
+			List.of(), LAUNCHER, UNKNOWN_LIMIT);
+		String prompt = withLoaded.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
 		requireThat(prompt, "prompt").
 			contains("- `AGENTS.md`: Codex reads the project's instruction file.\n").
 			contains("- `/plugins/cat/rules/codex/read-file.md`: CAT's rule loader injects the rule.\n");
@@ -2017,7 +2237,7 @@ public final class ProposalTest
 			putNull("trigger").putArray("behaviors").add("missing_sources"));
 		try
 		{
-			contractAuthor.proposal(session(output), PROFILES, SALT);
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -2039,7 +2259,7 @@ public final class ProposalTest
 		String goal = "Summaries keep the requested format.";
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("requirements").get(0)).
 			put("source", Requirement.GOAL));
-		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 		Campaign campaign = new Builder().header(new Header("campaign-1", Path.of("/project").toAbsolutePath(),
 			Path.of("/project/CLAUDE.md").toAbsolutePath(), Harness.CLAUDE, Lifecycle.ACTIVE, goal)).build();
 		String text = Proposal.of(derived, campaign, noLinks(), CONTROL_FILE, HostLogin.API_KEY,
@@ -2065,7 +2285,8 @@ public final class ProposalTest
 	public void catAddsTheExpectedOutcomeToEveryTest() throws InvalidProposalException
 	{
 		// Requirement: R-C8
-		Contract contract = contractAuthor.proposal(session(fixture("derivation-with-checks.json")), PROFILES, SALT).
+		Contract contract = contractAuthor.proposal(session(fixture("derivation-with-checks.json")), PROMPT_SYSTEM,
+			PROFILES, SALT).
 			contract();
 
 		for (PromptTest test : contract.tests())
@@ -2088,13 +2309,15 @@ public final class ProposalTest
 			put("requirement_id", "r1"));
 		try
 		{
-			contractAuthor.proposal(session(declared), PROFILES, SALT);
+			contractAuthor.proposal(session(declared), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
 		{
-			requireThat(e.problems(), "problems").isEqualTo(List.of("$.tests[0]: Test 'formatting' " +
-				"declares the assertion 'expected_outcome', but CAT reserves that identifier for the assertion it adds"));
+			requireThat(e.problems().size(), "problems.size()").isEqualTo(1);
+			requireThat(e.problems().getFirst(), "problem").
+				startsWith(DraftDirectory.NAME + "/.cat/tests/CLAUDE/formatting/scenario.md: Line ").
+				contains("the assertion id expected_outcome is reserved for the assertion that CAT adds");
 		}
 	}
 
@@ -2108,7 +2331,8 @@ public final class ProposalTest
 	public void derivationKeepsBuiltInTools() throws InvalidProposalException
 	{
 		// Requirement: R-C9
-		Contract contract = contractAuthor.proposal(session(fixture("derivation-with-checks.json")), PROFILES, SALT).
+		Contract contract = contractAuthor.proposal(session(fixture("derivation-with-checks.json")), PROMPT_SYSTEM,
+			PROFILES, SALT).
 			contract();
 
 		PromptTest list = contract.findTest("plain_list").orElseThrow();
@@ -2124,7 +2348,7 @@ public final class ProposalTest
 				putArray(property));
 			try
 			{
-				contractAuthor.proposal(session(proposed), PROFILES, SALT);
+				contractAuthor.proposal(session(proposed), PROMPT_SYSTEM, PROFILES, SALT);
 				requireThat(false, "rejected").isTrue();
 			}
 			catch (InvalidProposalException e)
@@ -2148,13 +2372,14 @@ public final class ProposalTest
 		String output = changedDerivation(proposal -> ((ArrayNode) proposal.at("/tests/0/assertions")).
 			addObject().put("id", "runs_true").put("kind", "guard").put("tool", "exit-status ^true$ 0").
 			put("on_tool_failure", "fail").put("statement", "The command true succeeds.").put("requirement_id", "r1"));
-		contractAuthor.proposal(session(output), PROFILES, SALT);
+		contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 
 		ContractAuthorProtocol unreported = new ContractAuthorProtocol(json, schema, judge,
-			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, false, List.of(), List.of());
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, false, List.of(), List.of(), LAUNCHER,
+			UNKNOWN_LIMIT);
 		try
 		{
-			unreported.proposal(session(output), PROFILES, SALT);
+			unreported.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -2269,6 +2494,96 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that validation gives each generator call of a draft's values file that states no seed its version and
+	 * seed, and writes them into the file, so that reading the draft again gives the same test cases.
+	 *
+	 * @throws InvalidProposalException if the output is rejected
+	 * @throws IOException              if the values file cannot be read
+	 * @throws ScenarioFormatException  if the values file is malformed
+	 */
+	@Test
+	public void writesSeedsIntoTheDraft() throws InvalidProposalException, IOException, ScenarioFormatException
+	{
+		// Requirement: R-C26
+		DerivedProposal derived = contractAuthor.proposal(session(changedDerivation(proposal ->
+		{
+			ObjectNode test = (ObjectNode) proposal.get("tests").get(0);
+			test.putArray("fixtures").addObject().put("path", "notes.md").put("content", "{{before}}\n");
+			test.withArray("variables").addObject().put("name", "before").
+				put("description", "Log lines before the notes.");
+			for (JsonNode testCase : test.get("test_cases"))
+			{
+				((ArrayNode) testCase.get("values")).addObject().put("variable", "before").putObject("call").
+					put("generator", "log_lines").put("count", 3);
+			}
+		})), PROMPT_SYSTEM, PROFILES, SALT);
+
+		PromptTest test = derived.contract().findTest("formatting").orElseThrow();
+		Path valuesFile = derived.draft().resolve(test.draft().orElseThrow().directory()).resolve(ValuesFile.NAME);
+		requireThat(Files.readString(valuesFile, UTF_8), "valuesFile").contains("\"seed\"").contains("\"version\"");
+		try (BufferedReader in = Files.newBufferedReader(valuesFile, UTF_8))
+		{
+			requireThat(ValuesFile.read(json, in, valuesFile.toString()), "testCases").
+				isEqualTo(test.allTestCases());
+		}
+	}
+
+	/**
+	 * Verifies that a prompt test whose {@code scenario.md} has no {@code ## Expected Behavior} section is refused,
+	 * naming the file in the session's draft directory.
+	 */
+	@Test
+	public void refusesMissingExpectedBehavior()
+	{
+		// Requirement: R-C20
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
+			remove("expected_behavior"));
+		try
+		{
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems(), "problems").isEqualTo(List.of(DraftDirectory.NAME +
+				"/.cat/tests/CLAUDE/formatting/scenario.md: the scenario has no ## Expected Behavior section. Add one " +
+				"between ## Scenario and ## Assertions with a description of what a compliant reply does and its " +
+				"time_limit_seconds."));
+		}
+	}
+
+	/**
+	 * Verifies that each problem of a refused proposal names the file and line of the draft, or the JSON path of the
+	 * proposal file, that it concerns, and that a problem of one prompt test's item of the proposal file does not hide
+	 * the problems of another prompt test's files.
+	 */
+	@Test
+	public void problemsNameTheirFileAndLine()
+	{
+		// Requirement: R-C26
+		String output = changedDerivation(proposal ->
+		{
+			((ObjectNode) proposal.get("tests").get(0)).remove("risk_rank");
+			// A generator call that states its seed without its version
+			((ArrayNode) proposal.get("tests").get(1).get("test_cases").get(1).get("values")).addObject().
+				put("variable", "before").putObject("call").put("generator", "log_lines").put("seed", 3).
+				put("count", 3);
+		});
+		try
+		{
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
+			requireThat(false, "rejected").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(String.join("\n", e.problems()), "problems").
+				contains("$.tests[0].risk_rank: required property is missing").
+				matches("(?s).*" + DraftDirectory.NAME + "/\\.cat/tests/CLAUDE/plain_list/values\\.json:\\d+:\\d+: " +
+					"a generator call .*");
+		}
+	}
+
+	/**
 	 * Verifies that a valid conflict is accepted and rendered immediately before the certifiable scope.
 	 *
 	 * @throws InvalidProposalException if the valid conflict is rejected
@@ -2300,7 +2615,7 @@ public final class ProposalTest
 
 			## Certifiable scope
 			""");
-		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 		Conflict conflict = derived.conflicts().getFirst();
 		requireThat(conflict.resolutions(), "resolutions").isEqualTo(
 			List.of("Exempt explanations from brevity.", "Drop brevity."));
@@ -2360,7 +2675,7 @@ public final class ProposalTest
 		});
 		try
 		{
-			contractAuthor.proposal(session(output), PROFILES, SALT);
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -2426,7 +2741,7 @@ public final class ProposalTest
 		});
 		try
 		{
-			contractAuthor.proposal(session(output), PROFILES, SALT);
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -2454,8 +2769,8 @@ public final class ProposalTest
 			conflict.putArray("requirement_ids").add("r1").add("r2");
 			conflict.put("evidence", "CLAUDE.md: be brief; give a full explanation.");
 		});
-		Proposal.of(contractAuthor.proposal(session(output), PROFILES, SALT), new Builder().build(), noLinks(),
-			CONTROL_FILE, HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).
+		Proposal.of(contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT), new Builder().build(),
+			noLinks(), CONTROL_FILE, HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).
 			confirmation(CertificationScope.LATEST_VERSIONS, 7);
 	}
 
@@ -2469,7 +2784,7 @@ public final class ProposalTest
 		// Requirement: R-E20
 		// Requirement: R-C13
 		// Requirement: R-C14
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
 		requireThat(prompt.replace('\n', ' '), "prompt").contains("### Conflicts  ").
 			contains("Report the conflict; do not decide which requirement").
 			contains("On a revision, drop a conflict that the user's feedback");
@@ -2495,7 +2810,8 @@ public final class ProposalTest
 	public void rejectsMissingConflicts() throws InvalidProposalException
 	{
 		// Requirement: R-C13
-		contractAuthor.proposal(session(changedDerivation(root -> root.remove("conflicts"))), PROFILES, SALT);
+		contractAuthor.proposal(session(changedDerivation(root -> root.remove("conflicts"))), PROMPT_SYSTEM, PROFILES,
+			SALT);
 	}
 
 	/**
@@ -2518,7 +2834,7 @@ public final class ProposalTest
 			conflict.putObject("requirement_ids").put("unexpected", "r1");
 			conflict.put("evidence", "CLAUDE.md: conflicting instructions.");
 		});
-		contractAuthor.proposal(session(output), PROFILES, SALT);
+		contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 	}
 
 	/**
@@ -2554,7 +2870,8 @@ public final class ProposalTest
 	public void acceptsTriggerWithAbsentTest() throws InvalidProposalException
 	{
 		// Requirement: R-D17
-		Contract contract = contractAuthor.proposal(session(triggeredDerivation("plain_list")), PROFILES, SALT).
+		Contract contract = contractAuthor.proposal(session(triggeredDerivation("plain_list")), PROMPT_SYSTEM, PROFILES,
+			SALT).
 			contract();
 
 		requireThat(contract.requirements().get(1).trigger(), "r2.trigger()").
@@ -2575,7 +2892,7 @@ public final class ProposalTest
 		// Requirement: R-D17
 		try
 		{
-			contractAuthor.proposal(session(triggeredDerivation(null)), PROFILES, SALT);
+			contractAuthor.proposal(session(triggeredDerivation(null)), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -2594,7 +2911,8 @@ public final class ProposalTest
 	public void alwaysApplyingNeedsNoAbsentTest() throws InvalidProposalException
 	{
 		// Requirement: R-D17
-		Contract contract = contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, SALT).contract();
+		Contract contract = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT).contract();
 
 		for (Requirement requirement : contract.requirements())
 			requireThat(requirement.trigger(), requirement.id() + ".trigger()").isNull();
@@ -2631,7 +2949,7 @@ public final class ProposalTest
 			putArray("absent_triggers").add(requirementId));
 		try
 		{
-			contractAuthor.proposal(session(output), PROFILES, SALT);
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -2668,7 +2986,7 @@ public final class ProposalTest
 	public void requestAsksForTriggersAndAbsentTests()
 	{
 		// Requirement: R-D17
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
 
 		requireThat(prompt, "prompt").contains("`trigger`").contains("`absent_triggers`");
 		JsonNode outputSchema = readOutputSchema(prompt);
@@ -2688,7 +3006,7 @@ public final class ProposalTest
 	public void requestAsksForFailureBehaviors()
 	{
 		// Requirement: R-C18
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
 
 		requireThat(prompt, "prompt").contains("`behaviors`");
 		JsonNode outputSchema = readOutputSchema(prompt);
@@ -2753,7 +3071,7 @@ public final class ProposalTest
 			ArrayNode testCases = (ArrayNode) root.get("tests").get(1).get("test_cases");
 			testCases.remove(2);
 		});
-		DerivedProposal derived = contractAuthor.proposal(session(output), PROFILES, SALT);
+		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		PromptTest plain = derived.contract().findTest("plain_list").orElseThrow();
@@ -2787,12 +3105,13 @@ public final class ProposalTest
 	public void saltComesFromCat() throws InvalidProposalException
 	{
 		// Requirement: R-C16
-		requireThat(contractAuthor.proposal(session(fixture("derivation.json")), PROFILES, 99L).contract().salt(),
+		requireThat(contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			99L).contract().salt(),
 			"salt"). isEqualTo(99L);
 		String output = changedDerivation(derivation -> derivation.put("salt", 5));
 		try
 		{
-			contractAuthor.proposal(session(output), PROFILES, SALT);
+			contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 			requireThat(false, "rejected").isTrue();
 		}
 		catch (InvalidProposalException e)
@@ -2802,28 +3121,28 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that the contract author's output schema requires test cases, each with a value for every variable and
-	 * an expected outcome, and holds neither committed test cases, which CAT reads from values files, nor recorded
-	 * fixtures, which CAT reads from the cited scenarios, nor the salt.
+	 * Verifies that the contract author's output schema names each prompt test's directory in the draft directory and
+	 * the requirement of each of its assertions, and holds none of what the test's files hold: no turns, variables,
+	 * test cases, committed test cases or fixtures, nor the salt.
 	 */
 	@Test
-	public void outputSchemaRequiresTestCases()
+	public void outputSchemaNamesTestDirectories()
 	{
 		// Requirement: R-C16
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
 
 		JsonNode outputSchema = readOutputSchema(prompt);
 		JsonNode test = outputSchema.get("properties").get("tests").get("items");
 		List<String> testRequired = test.get("required").valueStream().map(JsonNode::asString).toList();
-		requireThat(testRequired, "test.required").contains("variables").contains("test_cases");
-		requireThat(test.get("properties").has("committed_test_cases"), "hasCommittedTestCases").isFalse();
-		requireThat(test.get("properties").has("recorded_fixtures"), "hasRecordedFixtures").isFalse();
-		List<String> variableRequired = test.get("properties").get("variables").get("items").get("required").
+		requireThat(testRequired, "test.required").contains("directory").contains("assertions");
+		for (String property : List.of("turns", "variables", "test_cases", "committed_test_cases", "fixtures",
+			"recorded_fixtures"))
+		{
+			requireThat(test.get("properties").has(property), property).isFalse();
+		}
+		List<String> assertionRequired = test.get("properties").get("assertions").get("items").get("required").
 			valueStream().map(JsonNode::asString).toList();
-		requireThat(variableRequired, "variable.required").containsExactly(List.of("name", "description"));
-		JsonNode testCase = outputSchema.get("$defs").get("test_case");
-		List<String> testCaseRequired = testCase.get("required").valueStream().map(JsonNode::asString).toList();
-		requireThat(testCaseRequired, "testCase.required").containsExactly(List.of("values", "expected_outcome"));
+		requireThat(assertionRequired, "assertion.required").containsExactly(List.of("id", "requirement_id"));
 		requireThat(outputSchema.get("properties").has("salt"), "hasSalt").isFalse();
 	}
 }

@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.common.RuleSource;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
+import io.github.cowwoc.cat.common.optimizer.port.HookRegistration;
 import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
 import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -34,6 +35,8 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
@@ -495,6 +498,151 @@ public abstract class RunnerSessions implements SessionPort
 	 * @return the options, empty if the runner has no option for read-only evidence
 	 */
 	protected abstract List<String> readOnlyArguments(List<Path> evidence);
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The registrations are those of the project's hook files, in the order that {@link #projectHookFiles()} lists
+	 * them, followed by those of each trial plugin in turn, in the order that
+	 * {@link #pluginHooks(PluginFiles, JsonMapper)} lists them. A plugin's hooks file that a mapping copies from the
+	 * project is named as the project's file. A file that does not exist or is not valid JSON registers no hook.
+	 */
+	@Override
+	public final List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins) throws IOException
+	{
+		requireThat(project, "project").isNotNull();
+		requireThat(plugins, "plugins").isNotNull();
+		JsonMapper json = JsonMapper.builder().build();
+		List<HookRegistration> registrations = new ArrayList<>();
+		for (Path file : projectHookFiles())
+		{
+			Optional<JsonNode> content = readHooksFile(project.resolve(file), json);
+			if (content.isPresent())
+				addRegistrations("", file, content.get().path("hooks"), registrations);
+		}
+		for (PluginBase base : plugins)
+		{
+			PluginFiles files = new PluginFiles(project, base);
+			for (HookDeclaration declaration : pluginHooks(files, json))
+			{
+				Optional<Path> projectFile = files.projectFile(declaration.file());
+				if (projectFile.isPresent())
+					addRegistrations("", projectFile.get(), declaration.hooks(), registrations);
+				else
+					addRegistrations(base.plugin().name(), declaration.file(), declaration.hooks(), registrations);
+			}
+		}
+		return registrations;
+	}
+
+	/**
+	 * Adds the hooks that one file declares.
+	 *
+	 * @param plugin        the name of the trial plugin whose file declares the hooks, or an empty string for a file
+	 *                      of the project
+	 * @param file          the file, relative to the plugin directory or to the project
+	 * @param hooks         the object that maps each event to its matcher groups; any other value declares no hook
+	 * @param registrations receives each hook in declaration order
+	 */
+	private static void addRegistrations(String plugin, Path file, JsonNode hooks,
+		List<HookRegistration> registrations)
+	{
+		if (!hooks.isObject())
+			return;
+		String fileText = PortablePaths.text(file.normalize());
+		for (String event : hooks.propertyNames())
+		{
+			JsonNode groups = hooks.get(event);
+			if (!groups.isArray())
+				continue;
+			for (JsonNode group : groups)
+			{
+				JsonNode matcherNode = group.path("matcher");
+				String matcher;
+				if (matcherNode.isString())
+					matcher = matcherNode.asString();
+				else
+					matcher = "";
+				for (JsonNode hook : group.path("hooks"))
+				{
+					JsonNode command = hook.path("command");
+					String text;
+					if (command.isString())
+						text = command.asString();
+					else
+						text = hook.path("type").asString("");
+					registrations.add(new HookRegistration(plugin, fileText, event, matcher, text));
+				}
+			}
+		}
+	}
+
+	/**
+	 * Returns the project files whose hooks the harness registers.
+	 *
+	 * @return the files, relative to the project
+	 */
+	protected abstract List<Path> projectHookFiles();
+
+	/**
+	 * Returns the hook declarations of a trial plugin.
+	 *
+	 * @param plugin the plugin's files as trials install them
+	 * @param json   the JSON mapper
+	 * @return the declarations, in the order that the harness registers them
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a file exists but cannot be read
+	 */
+	protected abstract List<HookDeclaration> pluginHooks(PluginFiles plugin, JsonMapper json) throws IOException;
+
+	/**
+	 * Reads a hooks file.
+	 *
+	 * @param file the file
+	 * @param json the JSON mapper
+	 * @return the file's JSON value, or empty if the file is not a regular file or is not valid JSON
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the file exists but cannot be read
+	 */
+	protected static Optional<JsonNode> readHooksFile(Path file, JsonMapper json) throws IOException
+	{
+		requireThat(file, "file").isNotNull();
+		requireThat(json, "json").isNotNull();
+		if (!Files.isRegularFile(file))
+			return Optional.empty();
+		String text = Files.readString(file);
+		try
+		{
+			return Optional.of(json.readTree(text));
+		}
+		catch (JacksonException _)
+		{
+			// The harness ignores a hooks file that it cannot parse
+			return Optional.empty();
+		}
+	}
+
+	/**
+	 * The hooks that one file declares.
+	 *
+	 * @param file  the file that declares the hooks, relative to the project or to the plugin directory
+	 * @param hooks the object that maps each event to its matcher groups
+	 */
+	public record HookDeclaration(Path file, JsonNode hooks)
+	{
+		/**
+		 * Creates a hook declaration.
+		 *
+		 * @param file  the file that declares the hooks, relative to the project or to the plugin directory
+		 * @param hooks the object that maps each event to its matcher groups
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		public HookDeclaration
+		{
+			requireThat(file, "file").isNotNull();
+			requireThat(hooks, "hooks").isNotNull();
+		}
+	}
 
 	/**
 	 * How a harness runner is configured. Every session of a port shares these settings; the model and reasoning

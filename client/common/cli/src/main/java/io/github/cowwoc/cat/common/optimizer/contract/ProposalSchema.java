@@ -63,7 +63,7 @@ public final class ProposalSchema
 	 * The property of a test that holds the test cases that an earlier campaign committed, which CAT reads rather than
 	 * the contract author writes.
 	 */
-	private static final String COMMITTED_TEST_CASES = "committed_test_cases";
+	public static final String COMMITTED_TEST_CASES = "committed_test_cases";
 	/**
 	 * The property of a test that holds the fixtures of the recorded scenarios that it cites, which CAT copies from
 	 * the scenarios' files rather than the contract author writes.

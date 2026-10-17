@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.evidence.SessionEvidence;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
+import io.github.cowwoc.cat.common.optimizer.port.HookRegistration;
 import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
 import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.SessionHandle;
@@ -115,6 +116,12 @@ public final class FakeSessionPort implements SessionPort
 	public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
 	{
 		return new LoadedSources(List.of(), List.of(), List.of());
+	}
+
+	@Override
+	public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
+	{
+		return List.of();
 	}
 
 	@Override

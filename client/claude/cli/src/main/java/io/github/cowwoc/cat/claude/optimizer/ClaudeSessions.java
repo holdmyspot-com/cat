@@ -7,6 +7,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.claude.runner.ClaudeRunnerCli;
 import io.github.cowwoc.cat.common.optimizer.adapter.Bridge;
 import io.github.cowwoc.cat.common.optimizer.adapter.HarnessEvents;
+import io.github.cowwoc.cat.common.optimizer.adapter.PluginFiles;
 import io.github.cowwoc.cat.common.optimizer.adapter.PromptSources;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
@@ -294,6 +295,67 @@ public final class ClaudeSessions extends RunnerSessions
 	protected PromptSources newPromptSources(JsonMapper json, Map<String, Path> directories)
 	{
 		return new StreamJsonPromptSources(json, directories);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Claude Code registers the hooks of the project's shared and local settings.
+	 */
+	@Override
+	protected List<Path> projectHookFiles()
+	{
+		return List.of(Path.of(".claude/settings.json"), Path.of(".claude/settings.local.json"));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Claude Code registers the hooks of the plugin's {@code hooks/hooks.json}, of each hooks file that the manifest's
+	 * {@code hooks} property names and of each declaration that the property holds inline.
+	 */
+	@Override
+	protected List<HookDeclaration> pluginHooks(PluginFiles plugin, JsonMapper json) throws IOException
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(json, "json").isNotNull();
+		Path manifest = Path.of(".claude-plugin/plugin.json");
+		JsonNode hooks = readHooksFile(plugin.resolve(manifest), json).map(node -> node.path("hooks")).
+			orElse(json.missingNode());
+		List<JsonNode> entries = new ArrayList<>();
+		if (hooks.isArray())
+			hooks.forEach(entries::add);
+		else
+			entries.add(hooks);
+
+		List<Path> files = new ArrayList<>();
+		files.add(Path.of("hooks/hooks.json"));
+		List<HookDeclaration> inline = new ArrayList<>();
+		for (JsonNode entry : entries)
+		{
+			if (entry.isString())
+			{
+				Path file = Path.of(entry.asString()).normalize();
+				if (!files.contains(file))
+					files.add(file);
+			}
+			else if (entry.isObject())
+			{
+				// An inline declaration may wrap its events in a "hooks" property, as a hooks file does
+				JsonNode events = entry.path("hooks");
+				if (!events.isObject())
+					events = entry;
+				inline.add(new HookDeclaration(manifest, events));
+			}
+		}
+		List<HookDeclaration> declarations = new ArrayList<>();
+		for (Path file : files)
+		{
+			Optional<JsonNode> content = readHooksFile(plugin.resolve(file), json);
+			content.ifPresent(node -> declarations.add(new HookDeclaration(file, node.path("hooks"))));
+		}
+		declarations.addAll(inline);
+		return declarations;
 	}
 
 	@Override

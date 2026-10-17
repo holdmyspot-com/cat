@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
+import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
 import java.nio.file.DirectoryNotEmptyException;
@@ -12,12 +13,16 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -144,9 +149,7 @@ public final class DraftDirectory
 		String file = citation.getFileName().toString();
 		if (file.endsWith(MARKDOWN))
 			file = file.substring(0, file.length() - MARKDOWN.length());
-		String stem = file.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
-		if (stem.isEmpty())
-			stem = "scenario";
+		String stem = snakeCase(file);
 		Path parent = citation.getParent();
 		Path directory = resolve(parent, stem);
 		for (int suffix = 2; taken.contains(directory) ||
@@ -155,6 +158,21 @@ public final class DraftDirectory
 			directory = resolve(parent, stem + "_" + suffix);
 		}
 		return directory;
+	}
+
+	/**
+	 * Returns a name in lowercase words joined by underscores, the form of a prompt test's identifier.
+	 *
+	 * @param name a file or directory name
+	 * @return the name's runs of letters and digits in lowercase, joined by underscores, or {@code scenario} if it has
+	 *   none
+	 */
+	static String snakeCase(String name)
+	{
+		String snake = name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
+		if (snake.isEmpty())
+			return "scenario";
+		return snake;
 	}
 
 	/**
@@ -240,6 +258,116 @@ public final class DraftDirectory
 	}
 
 	/**
+	 * Creates a draft directory beside a stored one that holds a test revision's result: a copy of the stored draft
+	 * directory in which the revised prompt test's directory holds the files that the test revision left. The stored
+	 * draft directory lies in the held-out directory, so the new one does too, and it stays unchanged.
+	 *
+	 * @param stored        the stored draft directory that holds the confirmed prompt tests
+	 * @param testDirectory the revised prompt test's directory, relative to the draft directories
+	 * @param revision      the test revision's draft directory
+	 * @return the new draft directory
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code testDirectory} is absolute
+	 * @throws IOException              if a file cannot be read or written
+	 */
+	public static Path revise(Path stored, Path testDirectory, Path revision) throws IOException
+	{
+		requireThat(stored, "stored").isNotNull();
+		requireThat(testDirectory.isAbsolute(), "testDirectory.isAbsolute()").isFalse();
+		requireThat(revision, "revision").isNotNull();
+		Path revised = unused(stored.getParent());
+		copyTree(revision.resolve(testDirectory), revised.resolve(testDirectory));
+		Path replaced = stored.resolve(testDirectory);
+		copyTree(stored, revised, path -> path.startsWith(replaced));
+		return revised;
+	}
+
+	/**
+	 * Returns the files that copying a prompt test into a test revision's draft directory places outside the test's
+	 * directory: the files of the shared fixtures that its patterns select.
+	 *
+	 * @param stored        the stored draft directory that holds the prompt test
+	 * @param testDirectory the prompt test's directory, relative to {@code stored}
+	 * @return the hash of each file, by its path relative to {@code stored}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code testDirectory} is absolute
+	 * @throws IOException              if a file cannot be read
+	 */
+	public static Map<Path, Sha256> sharedFiles(Path stored, Path testDirectory) throws IOException
+	{
+		requireThat(stored, "stored").isNotNull();
+		requireThat(testDirectory.isAbsolute(), "testDirectory.isAbsolute()").isFalse();
+		Map<Path, Sha256> files = new TreeMap<>();
+		Path scenario = testDirectory.normalize().resolve(PromptTestFiles.SCENARIO);
+		for (Path shared : PromptTestLocations.sharedFixtures(stored, scenario))
+		{
+			for (Path file : regularFiles(stored.resolve(shared)))
+			{
+				Path path = shared.resolve(file);
+				if (!path.startsWith(testDirectory))
+					files.put(path, Sha256.of(Files.readAllBytes(stored.resolve(path))));
+			}
+		}
+		return files;
+	}
+
+	/**
+	 * Returns the files that a test revision changed outside the directory of the prompt test that it revises: each
+	 * file of its draft directory there that it did not receive or holds with other content, and each file that it
+	 * received there and removed.
+	 *
+	 * @param revision      the test revision's draft directory
+	 * @param testDirectory the revised prompt test's directory, relative to the draft directory
+	 * @param received      the files that the draft directory received outside the test's directory, as
+	 *                      {@link #sharedFiles(Path, Path)} returns them
+	 * @return the changed files, relative to the draft directory, sorted
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code testDirectory} is absolute
+	 * @throws IOException              if a file cannot be read
+	 */
+	public static List<Path> changedOutside(Path revision, Path testDirectory, Map<Path, Sha256> received)
+		throws IOException
+	{
+		requireThat(revision, "revision").isNotNull();
+		requireThat(testDirectory.isAbsolute(), "testDirectory.isAbsolute()").isFalse();
+		requireThat(received, "received").isNotNull();
+		Set<Path> paths = new TreeSet<>(regularFiles(revision));
+		paths.addAll(received.keySet());
+		List<Path> changed = new ArrayList<>();
+		for (Path path : paths)
+		{
+			if (path.startsWith(testDirectory))
+				continue;
+			Sha256 expected = received.get(path);
+			Path file = revision.resolve(path);
+			if (expected == null || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) ||
+				!expected.equals(Sha256.of(Files.readAllBytes(file))))
+			{
+				changed.add(path);
+			}
+		}
+		return changed;
+	}
+
+	/**
+	 * Returns the regular files below a directory.
+	 *
+	 * @param directory the directory, which need not exist
+	 * @return each file, relative to {@code directory}
+	 * @throws IOException if the directory cannot be read
+	 */
+	private static List<Path> regularFiles(Path directory) throws IOException
+	{
+		if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS))
+			return List.of();
+		try (Stream<Path> walk = Files.walk(directory))
+		{
+			return walk.filter(file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)).
+				map(directory::relativize).toList();
+		}
+	}
+
+	/**
 	 * Copies the directories and regular files below a directory, keeping a file that the target already holds.
 	 *
 	 * @param source the directory to copy, which need not exist
@@ -247,6 +375,20 @@ public final class DraftDirectory
 	 * @throws IOException if a file cannot be read or written
 	 */
 	private static void copyTree(Path source, Path target) throws IOException
+	{
+		copyTree(source, target, _ -> false);
+	}
+
+	/**
+	 * Copies the directories and regular files below a directory, keeping a file that the target already holds and
+	 * leaving out the paths that a filter selects.
+	 *
+	 * @param source the directory to copy, which need not exist
+	 * @param target the copy
+	 * @param skip   selects the paths below {@code source} that are left out
+	 * @throws IOException if a file cannot be read or written
+	 */
+	private static void copyTree(Path source, Path target, Predicate<Path> skip) throws IOException
 	{
 		if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
 			return;
@@ -257,6 +399,8 @@ public final class DraftDirectory
 		}
 		for (Path path : paths)
 		{
+			if (skip.test(path))
+				continue;
 			BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class,
 				LinkOption.NOFOLLOW_LINKS);
 			Path copy = target.resolve(source.relativize(path).toString());
@@ -282,10 +426,7 @@ public final class DraftDirectory
 	{
 		requireThat(draft, "draft").isNotNull();
 		requireThat(heldOut, "heldOut").isNotNull();
-		Path drafts = Files.createDirectories(heldOut.resolve(DRAFTS));
-		Path stored = drafts.resolve("1");
-		for (int number = 2; Files.exists(stored, LinkOption.NOFOLLOW_LINKS); ++number)
-			stored = drafts.resolve(String.valueOf(number));
+		Path stored = unused(heldOut.resolve(DRAFTS));
 		try
 		{
 			Files.move(draft, stored);
@@ -296,6 +437,24 @@ public final class DraftDirectory
 			copyTree(draft, stored);
 			TemporaryDirectories.deleteRecursively(draft);
 		}
+		return stored;
+	}
+
+	/**
+	 * Returns a path for a new stored draft directory: the first of {@code 1}, {@code 2} and so on that a directory
+	 * does not hold.
+	 *
+	 * @param drafts the directory that holds the stored draft directories, which this method creates if it does not
+	 *               exist
+	 * @return the path, which does not exist
+	 * @throws IOException if {@code drafts} cannot be created
+	 */
+	private static Path unused(Path drafts) throws IOException
+	{
+		Files.createDirectories(drafts);
+		Path stored = drafts.resolve("1");
+		for (int number = 2; Files.exists(stored, LinkOption.NOFOLLOW_LINKS); ++number)
+			stored = drafts.resolve(String.valueOf(number));
 		return stored;
 	}
 

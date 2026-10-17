@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.testng.annotations.Test;
@@ -575,6 +576,29 @@ public final class CodexProfileInventoryTest
 			{
 				requireThat(port.supportsModel(model), "supportsModel(" + model + ")").isFalse();
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a trial receives each tool output whole up to 4 bytes per token of its token budget: 10,000
+	 * tokens, or the profile's tool-output token limit when it is lower.
+	 *
+	 * @throws IOException if the artifact cannot be created
+	 */
+	@Test
+	public void toolOutputBytesFollowTokenBudget() throws IOException
+	{
+		// Requirement: R-C27
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexProfileInventory port = new CodexProfileInventory(cleanup.add(Files.createTempDirectory("cat-profiles-")),
+				"codex", launcher("", new CopyOnWriteArrayList<>()));
+			TrialProfile profile = new TrialProfile("gpt-6-sol", "high");
+			requireThat(port.toolOutputBytes(profile), "default").isEqualTo(OptionalLong.of(40_000));
+			requireThat(port.toolOutputBytes(profile.withToolOutputTokenLimit(2000)), "limited").
+				isEqualTo(OptionalLong.of(8000));
+			requireThat(port.toolOutputBytes(profile.withToolOutputTokenLimit(20_000)), "aboveBudget").
+				isEqualTo(OptionalLong.of(40_000));
 		}
 	}
 }

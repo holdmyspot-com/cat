@@ -64,11 +64,15 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionResult;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 import io.github.cowwoc.cat.common.optimizer.port.TokenUsage;
+import io.github.cowwoc.cat.common.optimizer.port.HookRegistration;
 import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
 import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeSessionPort;
+import io.github.cowwoc.cat.common.optimizer.proposal.ContractContext;
+import io.github.cowwoc.cat.common.optimizer.proposal.ProposalCheck;
 import io.github.cowwoc.cat.common.optimizer.proposal.OutputFile;
+import io.github.cowwoc.cat.common.optimizer.proposal.test.DraftFixtures;
 import io.github.cowwoc.cat.common.optimizer.proposal.test.ProposalTest;
 import io.github.cowwoc.cat.common.optimizer.report.TokenStatistics;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
@@ -530,6 +534,12 @@ public final class OptimizerCoreTest
 		}
 
 		@Override
+		public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
+		{
+			return List.of();
+		}
+
+		@Override
 		public List<Path> installedPlugins(String name)
 		{
 			synchronized (installed)
@@ -813,8 +823,8 @@ public final class OptimizerCoreTest
 		AtomicInteger contractAuthors = new AtomicInteger();
 		Function<SessionRequest, SessionResult> script = request -> switch (request.role())
 		{
-			case CONTRACT_AUTHOR -> Objects.requireNonNullElseGet(contractAuthorEnd, () -> contractAuthorResult(scratch,
-				transcript, initialProject, contractAuthor.apply(contractAuthors.getAndIncrement())));
+			case CONTRACT_AUTHOR -> Objects.requireNonNullElseGet(contractAuthorEnd, () -> contractAuthorResult(request,
+				scratch, transcript, initialProject, contractAuthor.apply(contractAuthors.getAndIncrement())));
 			case TRIAL -> new SessionResult.Completed(transcript, request.turns().stream().
 				map(_ -> List.of("answer")).toList(), effects, initialProject, "model", null, null, List.of(),
 				"CLAUDE.md", List.of());
@@ -833,22 +843,40 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Returns a contract author session that wrote its output to its output file and ended with the same text.
+	 * Returns a contract author session that received the request's files, wrote its prompt tests to the draft
+	 * directory and the rest of its output to its proposal file, and ended with its output.
 	 *
+	 * @param request the contract author's request
 	 * @param scratch the directory that receives the session's project
 	 * @param transcript the session's transcript
 	 * @param initialProject the session's project before the session
-	 * @param output the session's output
+	 * @param output the session's output, whose prompt tests may hold their scenarios inline
 	 * @return the session's result
 	 * @throws UncheckedIOException if the session's project cannot be written
 	 */
-	private static SessionResult.Completed contractAuthorResult(Path scratch, Path transcript, Path initialProject,
-		String output)
+	private static SessionResult.Completed contractAuthorResult(SessionRequest request, Path scratch,
+		Path transcript, Path initialProject, String output)
 	{
 		try
 		{
 			Path effects = Files.createTempDirectory(scratch, "contract-author-");
-			Files.writeString(effects.resolve(OutputFile.name(initialProject)), output, StandardCharsets.UTF_8);
+			request.files().write(effects);
+			ContractContext context = ContractContext.read(JSON, effects.resolve(ContractContext.name(request.source())));
+			Map<String, Path> recorded = new HashMap<>();
+			for (ProposalCheck.RecordedTest test : context.recorded())
+				recorded.put(test.citation(), test.directory());
+			String proposalFile;
+			if (context.revision().isPresent())
+			{
+				proposalFile = DraftFixtures.writeRevision(JSON, output, effects.resolve(context.draft()),
+					context.target(), recorded);
+			}
+			else
+			{
+				proposalFile = DraftFixtures.write(JSON, output, effects.resolve(context.draft()), context.target(),
+					recorded);
+			}
+			Files.writeString(effects.resolve(OutputFile.name(initialProject)), proposalFile, StandardCharsets.UTF_8);
 			return new SessionResult.Completed(transcript, List.of(List.of("working", output)), effects,
 				initialProject, "model", null, null, List.of(), "hook: none", List.of());
 		}
@@ -856,6 +884,30 @@ public final class OptimizerCoreTest
 		{
 			throw new UncheckedIOException(e);
 		}
+	}
+
+	/**
+	 * Returns the files of the draft directory that a contract author's request gives its session.
+	 *
+	 * @param scope   removes the directory that receives the request's files
+	 * @param request the contract author's request
+	 * @return the content of each file, by its path relative to the draft directory with {@code /} separators
+	 * @throws IOException if the files cannot be written or read
+	 */
+	private static Map<String, String> draftFiles(TemporaryDirectories scope, SessionRequest request)
+		throws IOException
+	{
+		Path project = scope.add(Files.createTempDirectory("contract-author-files"));
+		request.files().write(project);
+		Path draft = project.resolve(ContractContext.read(JSON, project.resolve(ContractContext.name(
+			request.source()))).draft());
+		Map<String, String> files = new TreeMap<>();
+		try (Stream<Path> paths = Files.walk(draft))
+		{
+			for (Path file : paths.filter(Files::isRegularFile).toList())
+				files.put(PortablePaths.text(draft.relativize(file)), Files.readString(file));
+		}
+		return files;
 	}
 
 	/**
@@ -980,6 +1032,61 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that {@code start} moves the contract author's draft directory into the campaign's held-out directory
+	 * and that the stored proposal names it there.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void startStoresDraftInHeldOut() throws IOException, CommandRefusedException,
+		InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			Path heldOut = repository.directory(id).resolve("held_out");
+			String draft = JSON.readTree(Files.readString(heldOut.resolve("proposal.json"))).get("draft").asString();
+			requireThat(draft, "draft").isEqualTo("drafts/1");
+			Path scenario = heldOut.resolve(draft).resolve(".cat/tests/CLAUDE/formatting/scenario.md");
+			requireThat(Files.readString(scenario), "scenario").contains("Summarize the notes in {{tone}} style.");
+			requireThat(heldOut.resolve(draft).resolve(".cat/tests/CLAUDE/formatting/values.json"), "values").
+				isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that a contract author session that reaches its time limit leaves no proposal and no draft directory
+	 * in the campaign's held-out directory.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void timedOutContractAuthorStoresNothing() throws IOException, CommandRefusedException,
+		InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md")), new SessionResult.Failed(
+				"The contract author session reached its 30-minute time limit", List.of()));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			Path heldOut = repository.directory(id).resolve("held_out");
+			requireThat(Files.exists(heldOut.resolve("proposal.json")), "proposalFileExists").isFalse();
+			requireThat(Files.exists(heldOut.resolve("drafts")), "draftsExist").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that start persists the selected ceiling and supplies it to the concurrency policy.
 	 */
 	@Test
@@ -1077,8 +1184,8 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that the contract author receives a recorded scenario's path and complete content from the project's
-	 * test tree.
+	 * Verifies that the contract author's request names a recorded scenario of the project's test tree and that its
+	 * draft directory holds the scenario's complete content.
 	 *
 	 * @throws IOException if the project cannot be written
 	 * @throws CommandRefusedException if the project cannot start a campaign
@@ -1096,9 +1203,10 @@ public final class OptimizerCoreTest
 			Path scenarios = Files.createDirectories(repository.root().resolve(".cat/tests/CLAUDE"));
 			Files.writeString(scenarios.resolve("reported.md"), "Turn: Summarize the notes.\nExpected: Be brief.\n");
 			repository.core().start(Path.of("CLAUDE.md"));
-			requireThat(repository.sessions().requests.getFirst().turns().getFirst(), "contractAuthorTurn").
-				contains(".cat/tests/CLAUDE/reported.md").
-				contains("Turn: Summarize the notes.\nExpected: Be brief.\n");
+			SessionRequest request = repository.sessions().requests.getFirst();
+			requireThat(request.turns().getFirst(), "contractAuthorTurn").contains(".cat/tests/CLAUDE/reported.md");
+			requireThat(draftFiles(scope, request).get(".cat/tests/CLAUDE/reported/scenario.md"), "scenario").
+				isEqualTo("Turn: Summarize the notes.\nExpected: Be brief.\n");
 		}
 	}
 
@@ -1132,7 +1240,10 @@ public final class OptimizerCoreTest
 
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 
-			requireThat(repository.sessions().requests.getFirst().turns().getFirst(), "contractAuthorTurn").
+			SessionRequest request = repository.sessions().requests.getFirst();
+			requireThat(request.turns().getFirst(), "contractAuthorTurn").contains("target-case.md").
+				doesNotContain("rule-case.md");
+			requireThat(String.join("\n", draftFiles(scope, request).values()), "draft").
 				contains("Turn: Summarize the target.").doesNotContain("Turn: Summarize the rule.");
 			requireThat(result.message(), "message").contains("The contract author's proposal is invalid").
 				contains("target-case.md").doesNotContain("rule-case.md");
@@ -2723,8 +2834,10 @@ public final class OptimizerCoreTest
 			requireThat(revision.test(), "test").isEqualTo("formatting");
 			requireThat(revision.before(), "before").contains("Summarize the notes in {{tone}} style.");
 			requireThat(revision.after(), "after").contains("Summarize the meeting notes in {{tone}} style.");
-			requireThat(Files.readString(repository.directory(id).resolve("held_out/proposal.json")), "stored").
-				contains("Summarize the meeting notes");
+			Path heldOut = repository.directory(id).resolve("held_out");
+			String draft = JSON.readTree(Files.readString(heldOut.resolve("proposal.json"))).get("draft").asString();
+			requireThat(Files.readString(heldOut.resolve(draft).resolve(".cat/tests/CLAUDE/formatting/scenario.md")),
+				"stored").contains("Summarize the meeting notes");
 		}
 	}
 

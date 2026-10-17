@@ -56,7 +56,9 @@ public final class PromptOptimizerCli
 	}
 
 	/**
-	 * Opens a scope, runs a command and closes the scope; renders creation failures as command failures.
+	 * Opens a scope, runs a command and closes the scope; renders creation failures as command failures. A contract
+	 * tool runs without a scope, since it needs no campaign and no harness, inside a contract author session's
+	 * sandbox.
 	 *
 	 * @param args the command and its arguments
 	 * @param factory opens the selected harness's command scope
@@ -71,9 +73,12 @@ public final class PromptOptimizerCli
 		requireThat(factory, "factory").isNotNull();
 		requireThat(zone, "zone").isNotNull();
 		requireThat(out, "out").isNotNull();
+		List<String> arguments = List.of(args);
+		if (Commands.isContractTool(arguments))
+			return Commands.executeContractTool(JsonMapper.builder().build(), arguments, out);
 		try (OptimizerCommandScope scope = factory.open())
 		{
-			return run(scope, List.of(args), zone, out);
+			return run(scope, arguments, zone, out);
 		}
 		catch (IOException e)
 		{

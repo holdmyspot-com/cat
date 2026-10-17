@@ -274,7 +274,11 @@ public final class Delivery
 
 	/**
 	 * Returns the files that write the prompt tests: each test's values file, its regression scenario and its fixture
-	 * files under {@value PromptTestFiles#FIXTURES}. A test that delivery creates gets a new scenario titled with its
+	 * files. A test that the contract author wrote as files in its draft directory is written as the draft holds it:
+	 * its {@value PromptTestFiles#SCENARIO} unchanged and each fixture at its file in the draft.
+	 * <p>
+	 * A test that the contract author wrote into the proposal itself has its fixture files under
+	 * {@value PromptTestFiles#FIXTURES}. A test that delivery creates gets a new scenario titled with its
 	 * identifier and its own copy of every fixture. A test that edits a recorded scenario keeps that scenario's title,
 	 * design goals and fixture patterns; a recorded scenario that does not follow the scenario format is replaced as a
 	 * created one would be. Recorded fixture files that the test no longer names are kept.
@@ -302,11 +306,27 @@ public final class Delivery
 			files.put(directory.resolve(ValuesFile.NAME), new FileContent(values.toString().getBytes(UTF_8)));
 
 			Path scenarioPath = directory.resolve(PromptTestFiles.SCENARIO);
-			String recorded = null;
-			List<String> patterns = List.of();
 			if (test.location().created())
 				createdDirectories.add(directory);
-			else
+			if (test.draft().isPresent())
+			{
+				// The draft holds every file of the test where delivery writes it
+				for (FixtureFile fixture : test.fixtures())
+				{
+					Path file;
+					if (fixture.source().isEmpty())
+						file = directory.resolve(PromptTestFiles.FIXTURES).resolve(fixture.path());
+					else
+						file = Path.of(fixture.source());
+					files.put(file, new FileContent(fixture.content().getBytes(UTF_8)));
+				}
+				files.put(scenarioPath, new FileContent(test.draft().get().getBytes(UTF_8)));
+				continue;
+			}
+
+			String recorded = null;
+			List<String> patterns = List.of();
+			if (!test.location().created())
 			{
 				recorded = workspace.readFile(selected, scenarioPath).map(file -> new String(file.bytes(), UTF_8)).
 					orElse(null);

@@ -208,4 +208,64 @@ public sealed interface Command
 			requireThat(campaign, "campaign").isNotNull();
 		}
 	}
+
+	/**
+	 * A contract tool, which a contract author session runs while it writes the proposal file and the draft
+	 * directory. A contract tool needs no campaign and no harness.
+	 */
+	sealed interface ContractTool extends Command permits ContractCheck, ContractFixtures
+	{
+	}
+
+	/**
+	 * Checks a contract author session's proposal file and draft directory as CAT does when the session ends.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param context the context file that CAT wrote into the session's project
+	 */
+	record ContractCheck(Path context) implements ContractTool
+	{
+		/**
+		 * Creates the command.
+		 *
+		 * @param context the context file that CAT wrote into the session's project
+		 * @throws NullPointerException if {@code context} is null
+		 */
+		public ContractCheck
+		{
+			requireThat(context, "context").isNotNull();
+		}
+	}
+
+	/**
+	 * Writes the workspace files of one test case of a prompt test in a contract author session's draft directory.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 *
+	 * @param context       the context file that CAT wrote into the session's project
+	 * @param testDirectory the prompt test's directory, relative to the draft directory
+	 * @param testCase      the test case's number, counted from 1 in the test's values file
+	 * @param output        the new directory to write to
+	 */
+	record ContractFixtures(Path context, Path testDirectory, int testCase, Path output) implements ContractTool
+	{
+		/**
+		 * Creates the command.
+		 *
+		 * @param context       the context file that CAT wrote into the session's project
+		 * @param testDirectory the prompt test's directory, relative to the draft directory
+		 * @param testCase      the test case's number, counted from 1 in the test's values file
+		 * @param output        the new directory to write to
+		 * @throws NullPointerException     if any of the arguments are null
+		 * @throws IllegalArgumentException if {@code testCase} is not positive
+		 */
+		public ContractFixtures
+		{
+			requireThat(context, "context").isNotNull();
+			requireThat(testDirectory, "testDirectory").isNotNull();
+			requireThat(testCase, "testCase").isPositive();
+			requireThat(output, "output").isNotNull();
+		}
+	}
 }

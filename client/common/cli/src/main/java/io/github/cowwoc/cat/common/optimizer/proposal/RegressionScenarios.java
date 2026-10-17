@@ -19,10 +19,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.StringJoiner;
-import java.util.TreeMap;
 import java.util.stream.Stream;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -372,79 +369,6 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		if (file.startsWith(project))
 			return PortablePaths.text(project.relativize(file));
 		return file.toString();
-	}
-
-	/**
-	 * Returns every scenario's source, exact citation, format and complete content for the contract author, with the
-	 * file of each text fixture and each committed test case of a scenario in the current format. The contract author
-	 * reads a fixture's file when a test case depends on its content, so the content is not repeated here.
-	 *
-	 * @return the scenario material, or {@code none} when no scenario is recorded
-	 */
-	public String prompt()
-	{
-		if (scenarios.isEmpty())
-			return "none";
-		StringJoiner text = new StringJoiner("\n\n");
-		for (Scenario scenario : scenarios)
-		{
-			StringBuilder entry = new StringBuilder(scenario.content().length() + 256);
-			entry.append("Guidance source: ").append(scenario.source()).append("\nCitation: ").
-				append(scenario.citation()).append("\nFormat: ");
-			switch (scenario.format())
-			{
-				case Current current ->
-				{
-					entry.append("current\n\n").append(scenario.content());
-					appendFixtures(entry, current.textFixtures());
-					appendCommitted(entry, current.files().testCases());
-				}
-				case Earlier earlier -> entry.append("earlier, which you convert: ").append(earlier.problem()).
-					append("\n\n").append(scenario.content());
-			}
-			text.add(entry);
-		}
-		return text.toString();
-	}
-
-	/**
-	 * Appends the test cases that earlier campaigns committed to a scenario's values file, if any.
-	 *
-	 * @param entry     the scenario's entry
-	 * @param committed the committed test cases
-	 */
-	private static void appendCommitted(StringBuilder entry, List<TestCase> committed)
-	{
-		if (committed.isEmpty())
-			return;
-		entry.append("\n\nCommitted test cases, which CAT adds to the test that cites this scenario:\n");
-		for (TestCase testCase : committed)
-		{
-			StringJoiner values = new StringJoiner("; ");
-			for (Map.Entry<String, String> value : new TreeMap<>(testCase.describedValues()).entrySet())
-				values.add("`" + value.getKey() + "`: " + value.getValue());
-			entry.append("\n- ").append(values).append("; expected outcome: ").append(testCase.expectedOutcome());
-		}
-		entry.append('\n');
-	}
-
-	/**
-	 * Appends the workspace path and the file of each text fixture of a scenario, if any.
-	 *
-	 * @param entry    the scenario's entry
-	 * @param fixtures the scenario's text fixtures
-	 */
-	private void appendFixtures(StringBuilder entry, List<FixtureFile> fixtures)
-	{
-		if (fixtures.isEmpty())
-			return;
-		entry.append("\n\nFixtures, which CAT adds to the test that cites this scenario:\n");
-		for (FixtureFile fixture : fixtures)
-		{
-			entry.append("\n- `").append(fixture.path()).append("`, the file `").
-				append(project.resolve(fixture.source())).append('`');
-		}
-		entry.append('\n');
 	}
 
 	/**

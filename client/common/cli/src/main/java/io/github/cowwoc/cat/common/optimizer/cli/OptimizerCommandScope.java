@@ -132,6 +132,15 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	public abstract Path home();
 
 	/**
+	 * Returns the {@code prompt-optimizer} launcher that runs this command, which a contract author session runs for
+	 * the contract tools.
+	 *
+	 * @return the launcher's absolute path
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	public abstract Path launcher();
+
+	/**
 	 * Returns the harness that runs the launcher.
 	 *
 	 * @return the harness

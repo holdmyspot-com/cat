@@ -2,8 +2,12 @@
 
 `tests` lists every prompt test. CAT certifies each prompt test on its own, in each of its cells, so a weak use cannot
 hide behind common or easy ones. Write a separate test for each use that needs its own claim; a change to an incidental
-value is another test case of the same test, not another test. When CAT delivers a certified prompt, it writes each test
-to the target's test directory as a `scenario.md` file and a `fixtures/` directory.
+value is another test case of the same test, not another test.
+
+A prompt test is a directory of files in the draft directory `{{draft_directory}}`, at the path relative to the project
+where it belongs: its `scenario.md`, its `values.json` and its `fixtures/` directory. When CAT delivers a certified
+prompt, it writes these files to the project at the same paths, so the user's project receives them as you write
+them.
 
 Write every test by these rules:
 
@@ -16,29 +20,48 @@ Write every test by these rules:
   fail, and a fixture that the requirement does not concern needs only the content that the turn uses.
 - It is organic: no turn, fixture or file name tells the agent the expected outcome or that it is being tested.
 
-For each test, give:
+Each item of `tests` gives:
 
+- `directory`: the test's directory relative to the draft directory, with `/` separators. Its last name is the test's
+  identifier, in lowercase words joined by underscores;
 - `risk_rank`: 1 for the riskiest test; tests may share a rank;
 - `requirement_ids`: the requirements it proves. Every requirement needs a test that lists it; CAT refuses a proposal
   with a requirement that no test lists;
 - `absent_triggers`: the requirements whose `trigger` this test leaves absent, so that a compliant response does not
   take the action they oblige, or an empty list. Name only requirements that have a trigger;
 - `applicability`: the conditions under which those requirements apply to a trial;
-- `turns`: the complete prewritten user turns, in order. Where a variable's value is inserted, write `{{` and `}}`
-  around the `name` of one of this test's `variables`, as in `{{tone}}`;
-- `time_limit_seconds`: how long a compliant agent needs, with margin;
-- `expected_behavior`: what a compliant response does, observable in text, file effects or tool effects;
-- `uncovered_interactions`: every material interaction this test cannot cover;
-- `variables`, `test_cases`, `fixtures` and `assertions`, as described below;
-- `regression_scenarios`: the citations of the recorded scenarios that this test covers, or an empty list.
+- `assertions`: one item for each assertion of the test's `scenario.md`, giving its `id` and the `requirement_id`
+  whose compliance it shows. Give each requirement that the test proves at least one assertion;
+- `uncovered_interactions`: every material interaction this test cannot cover.
 
-For each requirement with a `trigger`, write at least one test whose turns leave the trigger absent, whose
-`expected_behavior` says that the obligated action does not occur, and whose `absent_triggers` lists the requirement.
-Such a test catches a prompt that makes the agent take the action everywhere. CAT refuses a proposal in which a
-requirement with a trigger has no such test.
+For each requirement with a `trigger`, write at least one test whose turns leave the trigger absent, whose expected
+behavior says that the obligated action does not occur, and whose `absent_triggers` lists the requirement. Such a test
+catches a prompt that makes the agent take the action everywhere. CAT refuses a proposal in which a requirement with a
+trigger has no such test.
 
 A turn sequence is fixed before the trial starts. When a material obligation needs a follow-up turn chosen from the
 agent's reply, list it in `uncovered_interactions` and report an `unsupported_test_interaction` scope condition.
+
+### The scenario file
+
+`scenario.md` starts with a `# ` title and a `## Design Goals` list that says what the test proves, then holds these
+sections in this order. Each key-value pair is a list item `- **<key>**: <value>`, and a value that spans several lines
+continues on lines indented by two spaces.
+
+- `## Variables`: one pair per variable, `- **<name>**: <description>`, whose description says what the value
+  represents.
+- `## Fixtures`, only when the test selects fixtures other than those of its own `fixtures/` directory: the pair
+  `- **patterns**:` followed by code spans separated by commas, such as `` `fixtures/**`, `../shared/fixtures/*.md` ``.
+- `## Scenario`: the complete prewritten user turn, or, when the test has several turns, one `### Turn <n>` subsection
+  per turn, numbered from 1.
+- `## Expected Behavior`: the pairs `description`, what a compliant response does, observable in text, file effects or
+  tool effects, and `time_limit_seconds`, how long a compliant agent needs, with margin.
+- `## Assertions`: one `### <id>` subsection per assertion, holding its pairs as Assertions below describes.
+
+Where a variable's value is inserted, write `{{` and `}}` around the variable's name, as in `{{tone}}`. A placeholder
+may appear in a turn, the expected behavior, an assertion's `description` and `tool`, and a fixture's path and content.
+CAT replaces only declared names, so other text in double braces stays as written. `{{expected_outcome}}` stands for
+the test case's expected outcome, and no variable may take that name.
 
 ### Variables and test cases
 
@@ -46,14 +69,25 @@ A test that always presents the same content cannot be certified fairly: prompt 
 content, so certifying on it measures them on their own training data. Every test therefore has variables, such as a
 file's name or content, the value that a turn asks about, or the wording of a turn. CAT refuses a test without one.
 
-- `variables`: each variable's `name` and a `description` of what its value represents. `{{name}}` inserts the value
-  in a turn, an assertion's statement or `tool` arguments, and a fixture's path or content. CAT replaces only declared
-  names, so other text in double braces stays as written. `{{expected_outcome}}` stands for the test case's expected
-  outcome, and no variable may take that name.
-- `test_cases`: each gives every variable a value, in `values`, and states its `expected_outcome`: the result that a
-  compliant reply gives for those values, such as the date that the turn asks for. An expected outcome is never a pass
-  or fail result. Two test cases with the same values are the same test case, so make every test case's values
-  differ.
+`values.json` holds the test cases, each of which gives every variable a value, in `values`, and states its
+`expected_outcome`: the result that a compliant reply gives for those values, such as the date that the turn asks for.
+An expected outcome is never a pass or fail result. Two test cases with the same values are the same test case, so make
+every test case's values differ.
+
+```json
+{
+  "format_version": 1,
+  "test_cases": [
+    {
+      "values": {
+        "notes": "release-notes.md",
+        "before": {"generator": "log_lines", "count": 18000}
+      },
+      "expected_outcome": "2025-03-04"
+    }
+  ]
+}
+```
 
 Before any trial, CAT assigns each distinct expected outcome to the development part or the held-out part, each with
 probability 1/2, ignoring case and spacing, so test cases with the same expected outcome share a part. Prompt editing
@@ -64,13 +98,14 @@ in 100 that either part receives fewer than 2.
 
 ### Values
 
-A value is either `text` or a `call` to a value generator built into CAT, which writes bulk content that looks real,
-such as the log lines around the entry that a turn asks about. Write a call as `{"generator": "log_lines", "count":
-18000}`, with whole-number parameters. CAT adds a random seed and the generator's version, so two calls with the same
-parameters produce different content.
+A value is either text or a call to a value generator built into CAT, which writes bulk content that looks real, such
+as the log lines around the entry that a turn asks about. Write a call as `{"generator": "log_lines", "count": 18000}`,
+with whole-number parameters. When the proposal validates, CAT adds a random seed and the generator's version to each
+call in `values.json`, so two calls with the same parameters produce different content. Keep the seed and version of a
+call that already has them, so that its content stays the same.
 
 - Write bulk content as a generator call, never as typed text: any text beyond the facts that decide the expected
-  outcome and the context that the turn needs. Typed bulk makes the proposal too large to write and correct.
+  outcome and the context that the turn needs.
 - Use a generated value only in a fixture's content. CAT refuses one in a turn, an assertion or a fixture's path.
 - Generated content never decides a test case's expected outcome: only the values and fixture text that you write do.
   Write each fact that decides it with a word that the generator's output never contains, or a date or number outside
@@ -82,41 +117,46 @@ The generators, with every word, date and number that their output can contain:
 
 ### Fixtures
 
-`fixtures` lists the text files that CAT writes into each trial's workspace before the first turn, each with its `path`
-relative to the workspace root, using `/` as the separator, and its `content`. Use a fixture when a turn needs a file
-whose content the test case decides. CAT replaces placeholders in each path and content.
+A fixture is a text file that CAT writes into each trial's workspace before the first turn. Put it in the test's
+`fixtures/` directory: its path below `fixtures/` is its path in the workspace. Use a fixture when a turn needs a file
+whose content the test case decides. CAT replaces placeholders in each fixture's path and content.
 
-- A fixture's path stays inside the workspace and outside `.git`, and must not name a file that the project already
-  has. CAT refuses a fixture that would replace a project file.
+- A pattern of `## Fixtures` is relative to the test's directory and has the form `<directory>/fixtures/<glob>`; it
+  selects the files below that `fixtures` directory that the glob matches, and must stay inside the test root that
+  holds the test. A file that a later pattern selects replaces the one at the same workspace path that an earlier
+  pattern selects.
+- A fixture's workspace path stays inside the workspace and outside `.git`, and must not name a file that the project
+  already has. CAT refuses a fixture that would replace a project file.
 - A value inserted into a path must be a single name: not empty, not `.` or `..`, and without `/`, `\`, control
   characters or any of `< > : " | ? *`. CAT refuses a test case that breaks this rule or whose fixture paths collide.
+- Write fixtures as UTF-8 text.
 
 ### Assertions
 
-`assertions` lists every statement that a compliant trial satisfies. A trial passes when it passes every assertion of
-its test. Give each requirement that the test checks at least one assertion. For each assertion, give:
+The `## Assertions` section lists every statement that a compliant trial satisfies. A trial passes when it passes every
+assertion of its test. Each assertion's `### <id>` is unique within the test. CAT adds the assertion `expected_outcome`,
+which the judge decides: the reply's result matches the test case's expected outcome. Do not use that id. Each
+assertion holds these pairs:
 
-- `id`: unique within the test. CAT adds the assertion `expected_outcome`, which the judge decides: the reply's result
-  matches the test case's expected outcome. Do not use that id;
-- `requirement_id`: the requirement whose compliance the assertion shows;
 - `kind`: `guard` when an agent passes the assertion almost always even when the target prompt files are empty, such
   as answering a search question correctly; it protects an operation that the prompts must not harm. `effect` when the
   prompts exist to make the assertion true, such as reading a long file whole. Any assertion that is not a guard is an
   effect;
-- `statement`: what the assertion requires, in words that the judge can decide from the trial's record;
-- `tool`: the built-in tool that decides the assertion, or `null` when the judge decides it;
-- `on_tool_failure`: what a failure of `tool` means: `fail` when the failure fails the trial; `judge` when the judge
-  then decides the assertion from its statement. Write `fail` when `tool` is `null`.
+- `tool`, when a built-in tool decides the assertion: its name and arguments in one code span, such as
+  `` `read-in-full logs/service.log` ``. Leave the pair out when the judge decides the assertion;
+- `on_tool_failure`, only with `tool`: what a failure of the tool means: `fail` when the failure fails the trial,
+  which is the meaning when the pair is absent; `judge` when the judge then decides the assertion from its description;
+- `description`: what the assertion requires, in words that the judge can decide from the trial's record.
 
 `tool` names one of CAT's built-in tools, never a tool of the agent under test: `tool-used Read` is CAT's built-in tool
-that passes when the agent called its Read tool. The statement may still describe the agent's tools, such as "the agent
-used the Read tool". Under `fail`, give a built-in tool only when it observes everything that the assertion requires;
-whether a reply is correct, relevant, complete or appropriate stays with the judge. Under `judge`, the tool may fail a
-reply that satisfies the statement but must pass no reply that the statement rejects, such as a `pattern` for the usual
-phrasings of a correct answer; write the whole requirement in the statement, because the judge decides from it. A
-built-in tool that passes decides its assertion, and so does one that fails under `fail`: the judge neither repeats nor
-overrides it. A built-in tool that fails under `fail` names the behavior in the table below, so list that behavior on
-the assertion's requirement.
+that passes when the agent called its Read tool. The description may still describe the agent's tools, such as "the
+agent used the Read tool". Under `fail`, give a built-in tool only when it observes everything that the assertion
+requires; whether a reply is correct, relevant, complete or appropriate stays with the judge. Under `judge`, the tool may
+fail a reply that satisfies the description but must pass no reply that the description rejects, such as a `pattern`
+for the usual phrasings of a correct answer; write the whole requirement in the description, because the judge decides
+from it. A built-in tool that passes decides its assertion, and so does one that fails under `fail`: the judge neither
+repeats nor overrides it. A built-in tool that fails under `fail` names the behavior in the table below, so list that
+behavior on the assertion's requirement.
 
 Write a built-in tool's name followed by its arguments, separated by spaces. Write an argument that contains a space or
 a double quote in double quotes, with `\"` for a quote and `\\` for a backslash. An argument may contain placeholders,
@@ -145,3 +185,20 @@ a tool's output before the model receives it, and the part that they cut off doe
 
 CAT refuses a built-in tool whose evidence the harness does not report, such as `exit-status` for a harness that
 reports no exit statuses.
+
+### Checking your files
+
+The launcher {{launcher}} provides two commands. Run them from the current directory; neither changes the draft
+directory or the proposal file.
+
+- `{{launcher}} contract check {{context_file}}` checks the proposal file and the draft directory together, as CAT
+  does when the session ends, apart from the split of each test's expected outcomes between the parts, which CAT draws
+  only then. It prints every problem at once, each with the file and line or the JSON path of the proposal file that
+  it concerns, and exits with a non-zero status when there is one. It also prints, for each test, how many distinct
+  expected outcomes its test cases have.
+- `{{launcher}} contract fixtures {{context_file}} <test directory> <test case number> <output directory>` writes the
+  workspace files of one test case, counted from 1 in `values.json`, into a new output directory outside the draft
+  directory, with its values inserted and its generator calls expanded. Give the test directory as the test's
+  `directory` in the proposal file, relative to the draft directory. For each file it prints the path, the size in
+  bytes, the number of lines and how the size compares with the tool-output limit of each trial profile, so that you
+  can size each fixture by the rules above.

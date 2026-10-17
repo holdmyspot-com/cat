@@ -233,14 +233,15 @@ public final class RegressionScenariosTest
 			RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"));
 			requireThat(found.scenarios().stream().map(RegressionScenarios.Scenario::citation).toList(), "citations").
 				isEqualTo(List.of(".cat/tests/common/wording/reported/scenario.md"));
-			requireThat(found.prompt(), "prompt").contains("Turn: Summarize.\nExpected: Be brief.");
+			requireThat(found.scenarios().getFirst().content(), "content").
+				isEqualTo("Turn: Summarize.\nExpected: Be brief.");
 		}
 	}
 
 	/**
 	 * Verifies that a prompt test directory in the current format is read with its scenario, fixtures and committed
-	 * test cases, and that a scenario in an earlier format is kept for conversion with the reason it does not parse.
-	 * The contract author receives each scenario's format and the file of each text fixture, not its content.
+	 * test cases, and that a scenario in an earlier format is kept for conversion with the reason it does not parse;
+	 * each text fixture keeps the file that it is read from.
 	 *
 	 * @throws IOException if the scenario tree cannot be created or read
 	 */
@@ -297,14 +298,6 @@ public final class RegressionScenariosTest
 			String source = "plugin/src/test/resources/common/reading/whole_file_read/fixtures/{{notes}}";
 			requireThat(texts, "texts").isEqualTo(List.of(new FixtureFile("{{notes}}", "Release 4.2 shipped.",
 				source)));
-			requireThat(read.prompt(), "prompt").
-				contains("Citation: plugin/src/test/resources/common/reading/reported/scenario.md\n" +
-					"Format: earlier, which you convert: ").
-				contains("Citation: plugin/src/test/resources/common/reading/whole_file_read/scenario.md\n" +
-					"Format: current\n").
-				contains("Fixtures, which CAT adds to the test that cites this scenario:\n\n- `{{notes}}`, the file `" +
-					root.toAbsolutePath().normalize().resolve(source) + "`\n").
-				doesNotContain("Release 4.2 shipped.");
 		}
 	}
 
