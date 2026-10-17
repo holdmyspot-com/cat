@@ -8,11 +8,13 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
+import io.github.cowwoc.cat.common.optimizer.port.SourceSelection;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -133,6 +135,27 @@ public final class WorkspaceContract
 		requireThat(subject.stagedContent(staged, Path.of("new.md")), "created").isEqualTo("created");
 		requireThat(subject.stagedContent(staged, Path.of("keep.md")), "untouched").isEqualTo("keep");
 		requireThat(subject.stagedContent(staged, Path.of("deleted.md")), "deleted").isNull();
+	}
+
+	/**
+	 * Checks that a staged source with a selection holds only the selected files, apart from the whole source, and
+	 * is deleted with the candidate's other sources.
+	 *
+	 * @throws IOException if staging fails
+	 */
+	public void stagesSelectedFiles() throws IOException
+	{
+		Overlay candidate = candidate();
+		WorkspacePort port = subject.port();
+		Path whole = port.stage(candidate, Set.of());
+		Path selected = port.stage(candidate, Set.of(),
+			new SourceSelection(Set.of(Path.of("prompt.md")), Set.of(), List.of("new*")));
+		requireThat(selected, "selected").isNotEqualTo(whole);
+		requireThat(subject.stagedContent(selected, Path.of("prompt.md")), "edited").isEqualTo("edited");
+		requireThat(subject.stagedContent(selected, Path.of("new.md")), "created").isEqualTo("created");
+		requireThat(subject.stagedContent(selected, Path.of("keep.md")), "unselected").isNull();
+		port.deleteStaged(candidate.identity());
+		requireThat(subject.stagedExists(candidate.identity(), selected), "selectedAfterDeletion").isFalse();
 	}
 
 	/**

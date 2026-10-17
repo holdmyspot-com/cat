@@ -52,6 +52,23 @@ public final class FakeWorkspaceContractTest
 	}
 
 	/**
+	 * Verifies that a staged source with a selection holds only the selected files.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void stagesSelectedFiles() throws IOException
+	{
+		// Requirement: R-W15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, true)).
+				stagesSelectedFiles();
+		}
+	}
+
+	/**
 	 * Verifies that repeated staging reuses the cached source.
 	 *
 	 * @throws IOException if the fixture or check fails

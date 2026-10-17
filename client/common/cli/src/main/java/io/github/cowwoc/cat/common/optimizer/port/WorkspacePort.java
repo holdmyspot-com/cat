@@ -50,7 +50,21 @@ public interface WorkspacePort
 	Path stage(Overlay candidate, Set<Path> excluded) throws IOException;
 
 	/**
-	 * Deletes a candidate's staged source. Deleting a source that does not exist does nothing.
+	 * Returns a staged source for a candidate that holds only some of its files, building it if it does not exist.
+	 *
+	 * @param candidate the candidate's overlay on the fork
+	 * @param excluded  the project-relative paths to leave out of the source, with everything below them, even where
+	 *                  {@code selection} holds them
+	 * @param selection the files to stage
+	 * @return the directory that trial sessions copy
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if an excluded path is absolute
+	 * @throws IOException if the source cannot be built
+	 */
+	Path stage(Overlay candidate, Set<Path> excluded, SourceSelection selection) throws IOException;
+
+	/**
+	 * Deletes a candidate's staged sources. Deleting a source that does not exist does nothing.
 	 *
 	 * @param candidate the candidate's identity
 	 * @throws NullPointerException if {@code candidate} is null

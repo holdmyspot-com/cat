@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
@@ -232,14 +233,14 @@ final class Dereferenced
 	 * @param tree the fork tree that holds the recorded files' content
 	 * @param overlay the candidate whose snapshot this tree was computed from; its edits replace recorded content
 	 * @param directory the directory to fill
-	 * @param excluded  the paths of the tree to leave out, with everything below them
+	 * @param kept      accepts the path, relative to {@code directory}, of each file of the tree to write
 	 * @throws IOException if a file cannot be written
 	 */
-	void writeTo(ForkTree tree, Overlay overlay, Path directory, Set<Path> excluded) throws IOException
+	void writeTo(ForkTree tree, Overlay overlay, Path directory, Predicate<Path> kept) throws IOException
 	{
 		for (Placement placement : placements)
 		{
-			if (excluded.stream().anyMatch(placement.destination()::startsWith))
+			if (!kept.test(placement.destination()))
 				continue;
 			Path file = directory.resolve(placement.destination());
 			Files.createDirectories(file.getParent());

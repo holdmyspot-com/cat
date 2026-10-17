@@ -27,6 +27,7 @@ import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.workspace.ControlSource;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkTree;
+import io.github.cowwoc.cat.common.optimizer.port.SourceSelection;
 import io.github.cowwoc.cat.common.optimizer.workspace.StagedSources;
 import io.github.cowwoc.cat.common.optimizer.workspace.Workspace;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
@@ -137,6 +138,39 @@ public final class StagedSourceTest
 			sources.delete(overlay.identity());
 			requireThat(Files.exists(whole), "wholeExists").isFalse();
 			requireThat(Files.exists(excluding), "excludingExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a staged source built from a selection holds only the files that the selection names, still
+	 * leaves out the excluded paths, and is deleted with the candidate's other sources.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	@Test
+	public void stagesOnlySelectedFiles() throws IOException
+	{
+		// Requirement: R-W15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
+			StagedSources sources = new StagedSources(project.tree(), project.campaign().resolve("staged"));
+			Overlay overlay = Overlay.of(project.tree().inventory()).
+				write(Path.of("module/AGENTS.md"), content("module instructions"), READ_WRITE).
+				write(Path.of(".cat/tests/r/case/AGENTS.md"), content("test instructions"), READ_WRITE);
+			SourceSelection selection = new SourceSelection(Set.of(Path.of("prompt.md"), Path.of(".cat")),
+				Set.of("AGENTS.md"), List.of("rules/a*"));
+
+			Path whole = sources.stage(overlay, Set.of());
+			Path selected = sources.stage(overlay, Set.of(Path.of(".cat/tests/r/case")), selection);
+
+			Map<Path, FileEntry> entries = InventoryScanner.scan(selected, Set.of()).entries();
+			requireThat(entries.keySet(), "paths").containsExactly(Set.of(Path.of("prompt.md"),
+				Path.of(".cat/rules/r.md"), Path.of("module/AGENTS.md"), Path.of("rules/a.md")));
+			requireThat(selected, "selected").isNotEqualTo(whole);
+
+			sources.delete(overlay.identity());
+			requireThat(Files.exists(selected), "selectedExists").isFalse();
 		}
 	}
 

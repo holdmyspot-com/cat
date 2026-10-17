@@ -62,7 +62,7 @@ public final class AuthoringCopies
 		Path copy = Files.createTempDirectory(storage, "copy-");
 		try
 		{
-			files.writeTo(tree, working, copy, Set.of());
+			files.writeTo(tree, working, copy, _ -> true);
 		}
 		catch (IOException | RuntimeException e)
 		{

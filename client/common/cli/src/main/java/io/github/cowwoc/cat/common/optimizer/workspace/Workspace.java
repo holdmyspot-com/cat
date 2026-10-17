@@ -17,6 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.PathChange.Modified;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange.Removed;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
+import io.github.cowwoc.cat.common.optimizer.port.SourceSelection;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 
 import java.io.IOException;
@@ -83,6 +84,12 @@ public final class Workspace implements WorkspacePort
 	public Path stage(Overlay candidate, Set<Path> excluded) throws IOException
 	{
 		return stagedSources.stage(candidate, excluded);
+	}
+
+	@Override
+	public Path stage(Overlay candidate, Set<Path> excluded, SourceSelection selection) throws IOException
+	{
+		return stagedSources.stage(candidate, excluded, selection);
 	}
 
 	@Override

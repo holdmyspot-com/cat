@@ -1,6 +1,7 @@
 package io.github.cowwoc.cat.common.optimizer.port.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
@@ -11,6 +12,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.PluginRemovals;
+import io.github.cowwoc.cat.common.optimizer.port.SourceSelection;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.port.contract.test.WorkspaceContract;
 import io.github.cowwoc.cat.common.optimizer.workspace.Workspace;
@@ -55,6 +57,14 @@ public final class FakeWorkspacePort implements WorkspacePort
 	 * The paths that the latest request to stage each candidate excluded.
 	 */
 	private final Map<Sha256, Set<Path>> exclusions = new HashMap<>();
+	/**
+	 * The selections of the requests to stage each candidate, in request order.
+	 */
+	private final Map<Sha256, List<SourceSelection>> selections = new HashMap<>();
+	/**
+	 * The directories of the staged sources that exist.
+	 */
+	private final Set<Path> directories = new LinkedHashSet<>();
 	private final Map<Path, FileInventory> authoringCopies = new HashMap<>();
 	private final Map<Path, FileContent> contents = new HashMap<>();
 	private final Map<Path, FileInventory> promptAuthorEffects = new HashMap<>();
@@ -137,20 +147,52 @@ public final class FakeWorkspacePort implements WorkspacePort
 	@Override
 	public Path stage(Overlay candidate, Set<Path> excluded) throws IOException
 	{
+		return stage(candidate, excluded, Optional.empty());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The fake names the source after the candidate's identity and a digest of the selection.
+	 */
+	@Override
+	public Path stage(Overlay candidate, Set<Path> excluded, SourceSelection selection) throws IOException
+	{
+		requireThat(selection, "selection").isNotNull();
+		return stage(candidate, excluded, Optional.of(selection));
+	}
+
+	/**
+	 * Returns a staged source for a candidate.
+	 *
+	 * @param candidate the candidate's overlay on the fork
+	 * @param excluded  the project-relative paths to leave out of the source, with everything below them
+	 * @param selection the files to stage, or empty to stage every file
+	 * @return the directory of the staged source
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if a file cannot be copied
+	 */
+	private Path stage(Overlay candidate, Set<Path> excluded, Optional<SourceSelection> selection) throws IOException
+	{
 		synchronized (lock)
 		{
 			requireThat(candidate, "candidate").isNotNull();
 			requireThat(excluded, "excluded").isNotNull();
 			Sha256 identity = candidate.identity();
 			exclusions.put(identity, Set.copyOf(excluded));
-			Path directory = root.resolve("staged").resolve(identity.hex());
-			if (project == null && staged.contains(identity) || project != null && Files.isDirectory(directory))
+			selection.ifPresent(chosen -> selections.computeIfAbsent(identity, _ -> new ArrayList<>()).add(chosen));
+			String name = selection.map(chosen -> identity.hex() + "-" +
+				Sha256.of(chosen.describe().getBytes(UTF_8)).hex()).orElse(identity.hex());
+			Path directory = root.resolve("staged").resolve(name);
+			if (project == null && directories.contains(directory) || project != null && Files.isDirectory(directory))
 				return directory;
 			if (project != null)
 			{
 				for (Path file : candidate.snapshot().entries().keySet())
 				{
 					if (file.isAbsolute() || excluded.stream().anyMatch(file::startsWith))
+						continue;
+					if (selection.isPresent() && !selection.get().selects(file))
 						continue;
 					Path target = directory.resolve(file);
 					Files.createDirectories(target.getParent());
@@ -162,6 +204,7 @@ public final class FakeWorkspacePort implements WorkspacePort
 			}
 			Files.createDirectories(directory);
 			staged.add(identity);
+			directories.add(directory);
 			return directory;
 		}
 	}
@@ -174,7 +217,18 @@ public final class FakeWorkspacePort implements WorkspacePort
 			requireThat(candidate, "candidate").isNotNull();
 			try
 			{
-				TemporaryDirectories.deleteRecursively(root.resolve("staged").resolve(candidate.hex()));
+				Path parent = root.resolve("staged");
+				TemporaryDirectories.deleteRecursively(parent.resolve(candidate.hex()));
+				for (Path directory : List.copyOf(directories))
+				{
+					String name = directory.getFileName().toString();
+					if (directory.getParent().equals(parent) &&
+						(name.equals(candidate.hex()) || name.startsWith(candidate.hex() + "-")))
+					{
+						TemporaryDirectories.deleteRecursively(directory);
+						directories.remove(directory);
+					}
+				}
 			}
 			catch (IOException e)
 			{
@@ -273,6 +327,22 @@ public final class FakeWorkspacePort implements WorkspacePort
 		synchronized (lock)
 		{
 			return Set.copyOf(staged);
+		}
+	}
+
+	/**
+	 * Returns the selections of the requests to stage a candidate.
+	 *
+	 * @param candidate the candidate's identity
+	 * @return the selections in request order, or an empty list if every request staged the whole candidate
+	 * @throws NullPointerException if {@code candidate} is null
+	 */
+	public List<SourceSelection> selections(Sha256 candidate)
+	{
+		synchronized (lock)
+		{
+			requireThat(candidate, "candidate").isNotNull();
+			return List.copyOf(selections.getOrDefault(candidate, List.of()));
 		}
 	}
 
