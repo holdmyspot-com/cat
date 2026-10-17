@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.CodexSubagentStartHook;
 import io.github.cowwoc.cat.common.Platform;
+import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
@@ -84,26 +85,41 @@ public final class CodexSubagentStartHookTest
 	}
 
 	/**
-	 * Verifies a subagent's rules begin by telling it not to read a rules file that a message inherited from the agent
-	 * that started it names, since that file states the other agent's {@code CAT_TEMP}.
+	 * Verifies that a subagent receives the guidance on reading a file whole followed by a pointer to a rules file in
+	 * the work directory of its {@code agent_id}, which tells it to disregard the earlier pointer to the rules file of
+	 * the agent that started it, since that file states the other agent's {@code CAT_TEMP}.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void disownsInheritedRulesFile() throws IOException
+	public void deliversRulesThroughSubagentFile() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-subagent-start-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path codexRules = Files.createDirectories(plugin.resolve("rules/codex"));
+			Files.writeString(codexRules.resolve("read-file.md"), "# Reading Command Output\n\nRun `" +
+				ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "/bin/run-part`.\n");
+			Files.writeString(codexRules.resolve("cat-env.md"), "# CAT Environment\n\n`CAT_TEMP` is " +
+				"`${CAT_PROJECT_ROOT}/.cat/work/" + SessionWorkDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n");
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("guidance.md"),
-				"subagent guidance");
+				"---\nagents: [\"subagents\"]\n---\nsubagent guidance");
 
-			String context = context(invoke(event(project, "cat:worker"), Map.of("PLUGIN_ROOT", plugin.toString()),
-				Path.of(".")));
+			HookResult result = invoke(event(project, "cat:worker"), Map.of("PLUGIN_ROOT", plugin.toString()),
+				Path.of("."));
 
-			requireThat(context, "context").startsWith("The CAT rules below are yours.").
-				contains("do not read that file").contains("subagent guidance");
+			Path rulesFile = project.resolve(".cat/work").resolve(AGENT_ID).resolve("rules.md");
+			requireThat(context(result), "context").
+				startsWith("# Reading Command Output\n\nRun `" + plugin.resolve("bin/run-part") + "`.\n\n# CAT Rules\n\n").
+				contains("Disregard the previous read instruction. Read this file instead: `" + rulesFile + "`. Read " +
+					"all of it, as described above, before you plan").
+				doesNotContain("subagent guidance").doesNotContain("CAT Environment");
+			requireThat(Files.readString(rulesFile, UTF_8), "rules").contains("subagent guidance").
+				contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" + AGENT_ID + "/temp`.").
+				doesNotContain("# Reading Command Output");
+			requireThat(Files.exists(project.resolve(".cat/work").resolve(PARENT_ID)), "parentDirectoryExists").isFalse();
+			requireThat(result.error(), "error").isEmpty();
 		}
 	}
 

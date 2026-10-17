@@ -16,10 +16,12 @@ by an instruction to read that file whole, as that guidance describes, before an
 work directory of every other session of the project that is more than 24 hours old and whose transcript Codex or
 Claude Code no longer keeps.
 
-For a `SubagentStart` event, the hook returns the subagent's rules as additional context. Their `CAT_TEMP` names the
-work directory of the event's `agent_id`, the thread ID that Codex gives the subagent's shell commands in
-`CODEX_THREAD_ID`. A subagent that Codex starts with its parent's conversation also receives the parent's instruction
-to read the parent's rules file, so the rules begin by telling the subagent not to read that file.
+For a `SubagentStart` event, the hook writes the subagent's rules to the `rules.md` of the work directory of the
+event's `agent_id`, the thread ID that Codex gives the subagent's shell commands in `CODEX_THREAD_ID`, so their
+`CAT_TEMP` names that directory. Its additional context holds the same guidance on reading command output whole,
+followed by an instruction to disregard the previous instruction to read a rules file and to read the subagent's file
+whole instead. A subagent that Codex starts with its parent's conversation also receives the parent's instruction to
+read the parent's rules file; Codex places the subagent's context after it.
 
 The command hook sets `additionalContextLimit` to `0`, disabling additional-context spilling for this hook. Codex
 otherwise applies a default limit. For the meaning and introduction of this Codex hook property, see

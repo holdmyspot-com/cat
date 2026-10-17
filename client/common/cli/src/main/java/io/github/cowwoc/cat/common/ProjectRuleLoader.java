@@ -249,7 +249,48 @@ public final class ProjectRuleLoader
 	public SessionRules loadSessionForMainAgent(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness)
 		throws IOException
 	{
-		RuleAudience audience = RuleAudience.primary();
+		return loadSession(pluginRoot, userRulesRoot, projectRoot, harness, RuleAudience.primary());
+	}
+
+	/**
+	 * Loads the rules for one harness subagent, with the harness rule on reading a file whole kept apart from the
+	 * others, for a subagent that receives the others in a file. Without that rule, the reading guidance is empty and
+	 * the other rules are every rule, so the subagent can receive them inline instead.
+	 *
+	 * @param pluginRoot a non-null CAT installation directory
+	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
+	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
+	 * @param harness a non-blank lowercase harness identifier
+	 * @param agentType the harness subagent type, or blank when the host did not provide one
+	 * @return the rule on reading a file whole, or an empty value when the plugin lacks it, and every other rule in
+	 *         injection order
+	 * @throws NullPointerException if {@code pluginRoot}, {@code projectRoot}, {@code harness}, or {@code agentType}
+	 *         are null
+	 * @throws IllegalArgumentException if {@code harness} is blank or invalid
+	 * @throws IOException if a rule directory or file is not a real directory or regular file, or its content is invalid
+	 */
+	public SessionRules loadSessionForSubagent(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness,
+		String agentType) throws IOException
+	{
+		requireThat(agentType, "agentType").isNotNull();
+		return loadSession(pluginRoot, userRulesRoot, projectRoot, harness, RuleAudience.subagent(agentType));
+	}
+
+	/**
+	 * Loads the rules for one recipient, with the harness rule on reading a file whole kept apart from the others.
+	 *
+	 * @param pluginRoot a non-null CAT installation directory
+	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
+	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
+	 * @param harness a non-blank lowercase harness identifier
+	 * @param audience the rule recipient
+	 * @return the rule on reading a file whole, or an empty value when the plugin lacks it, and every other rule in
+	 *         injection order
+	 * @throws IOException if a rule directory or file is not a real directory or regular file, or its content is invalid
+	 */
+	private SessionRules loadSession(Path pluginRoot, Path userRulesRoot, Path projectRoot, String harness,
+		RuleAudience audience) throws IOException
+	{
 		List<Rule> rules = orderedRules(pluginRoot, userRulesRoot, projectRoot, harness, audience);
 		String readFilePath = "rules/" + harness + "/" + READ_FILE_RULE;
 		Rule readFile = null;
