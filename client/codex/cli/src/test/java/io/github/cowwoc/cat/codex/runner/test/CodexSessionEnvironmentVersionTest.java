@@ -29,7 +29,8 @@ import org.testng.annotations.Test;
 public final class CodexSessionEnvironmentVersionTest
 {
 	/**
-	 * The registry of session environment versions and the hash of the configuration and permission profile of each.
+	 * The registry of session environment versions and the hash of the configuration, permission profile and developer
+	 * instructions of each.
 	 */
 	private static final Path REGISTRY = Path.of("src/test/resources/optimizer/session-environment-versions.txt");
 
@@ -41,9 +42,9 @@ public final class CodexSessionEnvironmentVersionTest
 	}
 
 	/**
-	 * Verifies that the declared session environment version is registered with the hash of the configuration and
-	 * permission profile that the runner writes for a fixed host configuration, so that changing them requires a
-	 * decision about the version.
+	 * Verifies that the declared session environment version is registered with the hash of the configuration,
+	 * permission profile and developer instructions that the runner gives a session for a fixed host configuration, so
+	 * that changing them requires a decision about the version.
 	 *
 	 * @throws IOException if the configuration or the registry cannot be read or written
 	 */
@@ -93,10 +94,15 @@ public final class CodexSessionEnvironmentVersionTest
 					Platform.LINUX_X64));
 			CodexConnectionConfiguration.copyTrustedCatHooks(source, destination);
 
-			// Run directories differ per run, so the hash covers the configuration with their root and the run's
-			// identifier replaced
-			String configuration = replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root).
-				replace(run.id(), "<run>");
+			// The instructions name paths in plain text, which each platform separates in its own way
+			String instructions = CodexRunner.developerInstructions(manager.root().toRealPath(),
+				run.directory().resolve("project"), run.directory().resolve("home"), "").
+				replace(root.toRealPath().toString(), "<root>").replace(root.toString(), "<root>").replace('\\', '/');
+
+			// Run directories differ per run, so the hash covers the configuration and instructions with their root
+			// and the run's identifier replaced
+			String configuration = (replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root) +
+				"\ninstructions = " + instructions + "\n").replace(run.id(), "<run>");
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(root, root, List::of, "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			int version = new CodexSessions(sessionSettings).sessionEnvironmentVersion();

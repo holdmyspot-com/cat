@@ -349,15 +349,35 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that outside Linux a session is denied reading the runner's records of its own run, namely the run's
-	 * artifacts, manifest, lock, initial project and Codex session logs, the login that the run copied from the host,
-	 * and the other runs and fixtures under the run root, each by its own path, besides the paths that the caller
-	 * denies.
+	 * Verifies that a session's developer instructions first tell the model that the denied reads under the run root
+	 * do not cover its project or home, then give the agent's contract, if any. Codex lists the run root among the
+	 * denied reads, and without that note models answered that their own project was denied without trying to read it.
+	 */
+	@Test
+	public void developerNoteExemptsProject()
+	{
+		Path root = Path.of("/runs");
+		Path project = Path.of("/runs/codex/run-1/project");
+		Path home = Path.of("/runs/codex/run-1/home");
+		String note = "The denied reads protect other sessions' projects in /runs. They do not apply to your project " +
+			"/runs/codex/run-1/project, your working directory, or to anything under it, nor to " +
+			"/runs/codex/run-1/home: you have full read and write access to both. Your project's files are not in " +
+			"your context; read one with a shell command whenever a task needs it.";
+
+		requireThat(CodexRunner.developerInstructions(root, project, home, ""), "withoutAgent").isEqualTo(note);
+		requireThat(CodexRunner.developerInstructions(root, project, home, "Review the plan."), "withAgent").
+			isEqualTo(note + "\n\nReview the plan.");
+	}
+
+	/**
+	 * Verifies that on macOS and Windows a session is denied the whole run root as one path, besides the Codex session
+	 * logs and login in its home and the paths that the caller denies. Their sandboxes keep the session's project and
+	 * home readable and writable inside the denied root.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
 	@Test
-	public void deniesEachOtherRunOutsideLinux() throws IOException
+	public void deniesRunRootOutsideLinux() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -368,17 +388,50 @@ public final class CodexRunnerTest
 			Path directory = run.directory();
 			manager.snapshotProject(run);
 			Path login = Files.writeString(directory.resolve("home/auth.json"), "{}");
-			HarnessRun other = manager.create("codex");
-			Path fixtures = Files.createDirectories(root.resolve("fixtures"));
+			manager.create("codex");
+			Files.createDirectories(root.resolve("fixtures"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
-			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
-				Platform.MACOS_ARM64);
+			for (Platform platform : List.of(Platform.MACOS_ARM64, Platform.WINDOWS_X64))
+			{
+				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
+					platform);
 
-			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
-				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
-				directory.resolve("initial-project"), directory.resolve("home/sessions"), login, other.directory(),
-				fixtures));
+				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(heldOut, root,
+					directory.resolve("home/sessions"), login));
+			}
+		}
+	}
+
+	/**
+	 * Verifies that on macOS and Windows a session that validates evidence under the run root is still denied the whole
+	 * run root as one path, because their sandboxes keep a read-only allowance readable inside a denied root.
+	 *
+	 * @throws IOException if the run cannot be created
+	 */
+	@Test
+	public void deniesRunRootBesideEvidenceOutsideLinux() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize());
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRun run = manager.create("codex");
+			Path directory = run.directory();
+			manager.snapshotProject(run);
+			HarnessRun evidence = manager.create("codex");
+			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
+			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
+
+			for (Platform platform : List.of(Platform.MACOS_X64, Platform.WINDOWS_ARM64))
+			{
+				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+					List.of(heldOut), platform);
+
+				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(heldOut, root,
+					directory.resolve("home/sessions")));
+			}
 		}
 	}
 

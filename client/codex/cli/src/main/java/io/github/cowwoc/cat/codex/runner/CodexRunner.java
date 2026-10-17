@@ -237,15 +237,16 @@ public final class CodexRunner
 			{
 				manager.recordHarnessProcess(run, process.pid(), process.startedAt());
 				String selectedModel = model;
-				String developerInstructions = "";
+				String agentInstructions = "";
 				String selectedEffort = effort;
 				if (agent != null)
 				{
 					selectedModel = agent.model();
-					developerInstructions = agent.developerInstructions();
+					agentInstructions = agent.developerInstructions();
 					selectedEffort = agent.effort();
 				}
-				process.initialize(worktree, selectedModel, developerInstructions, selectedEffort, permissionProfile);
+				process.initialize(worktree, selectedModel, developerInstructions(manager.root().toRealPath(), worktree,
+					isolatedHome, agentInstructions), selectedEffort, permissionProfile);
 				return new HarnessRunSession(run, process, scope, lock);
 			}
 			catch (IOException e)
@@ -275,16 +276,44 @@ public final class CodexRunner
 	}
 
 	/**
+	 * Returns the developer instructions of a session: a note that the denied reads under the run root cover neither
+	 * the session's project nor its home, followed by the agent's contract, if any. Codex lists the run root among the
+	 * denied reads in the model's instructions, and without the note models answered that their own project was
+	 * denied without trying to read it.
+	 *
+	 * @param root the run root, as the denied reads name it
+	 * @param project the session's project, which is its working directory
+	 * @param home the session's Codex home
+	 * @param agentInstructions the agent's contract, or an empty string for a session without an agent
+	 * @return the developer instructions
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static String developerInstructions(Path root, Path project, Path home, String agentInstructions)
+	{
+		requireThat(root, "root").isNotNull();
+		requireThat(project, "project").isNotNull();
+		requireThat(home, "home").isNotNull();
+		requireThat(agentInstructions, "agentInstructions").isNotNull();
+		String note = "The denied reads protect other sessions' projects in " + root + ". They do not apply to your " +
+			"project " + project + ", your working directory, or to anything under it, nor to " + home + ": you have " +
+			"full read and write access to both. Your project's files are not in your context; read one with a shell " +
+			"command whenever a task needs it.";
+		if (agentInstructions.isEmpty())
+			return note;
+		return note + "\n\n" + agentInstructions;
+	}
+
+	/**
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
 	 * file and directory under the run root except the session's project, home and evidence, the directory where Codex
 	 * logs the session's events, and the login that the runner copied into the session's home. The session therefore
 	 * cannot read the runner's records of its own run or of any other run, the fixtures of any run, or the login. The
 	 * method creates the session log directory, because the sandbox skips a denied path that does not exist yet.
 	 * <p>
-	 * On Linux, when no evidence lies under the run root, the result names the run root itself rather than each path
-	 * under it, which also denies the runs that start after the session. The sandbox still lets the session write its
-	 * project and home, but it would hide read-only evidence under a denied run root, so evidence there, or another
-	 * platform, keeps one path per denied file and directory.
+	 * The result names the run root itself rather than each path under it, which also denies the runs that start after
+	 * the session. Every platform's sandbox still lets the session read and write its project and home inside the
+	 * denied root, but the Linux sandbox would also hide read-only evidence there, so a Linux session with evidence
+	 * under the run root is denied each other file and directory by its own path instead.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
@@ -305,7 +334,7 @@ public final class CodexRunner
 		requireThat(platform, "platform").isNotNull();
 		Path home = run.directory().resolve("home");
 		List<Path> result = new ArrayList<>(deniedReads);
-		if (platform.isLinux() && !containsAny(manager.root(), readOnlyEvidence))
+		if (!(platform.isLinux() && containsAny(manager.root(), readOnlyEvidence)))
 		{
 			// Codex lists every denied path in the model's instructions and omits the rest of a long list, and the
 			// omission led trial agents to refuse reading their own project
