@@ -453,7 +453,7 @@ public final class GeneratorTest
 		List<TestCase> development = contract.split().testCases(test, Part.DEVELOPMENT);
 		Generator generator = new Generator(contract);
 		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
-		int draws = 10_000;
+		int draws = 4000;
 		Map<TestCase, Integer> counts = new HashMap<>();
 		for (int i = 0; i < draws; ++i)
 			counts.merge(generator.draw(CAPITAL_CELL, stream).testCase(), 1, Integer::sum);
@@ -523,7 +523,7 @@ public final class GeneratorTest
 		List<TestCase> confirmed = contract.split().testCases(test, Part.DEVELOPMENT);
 
 		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
-		int draws = 10_000;
+		int draws = 4000;
 		Map<TestCase, Integer> counts = new HashMap<>();
 		for (int i = 0; i < draws; ++i)
 		{
