@@ -135,10 +135,11 @@ public final class GuardPilot
 	 * Runs the pilot of each prompt test that a stored pilot does not describe.
 	 * <p>
 	 * A stored pilot is reused when it ran every trial, every trial ended with a decision, and its test's definition,
-	 * its cell and the control source's files are unchanged, so a revision reruns only the tests whose definition
-	 * changed or whose earlier pilot has a failed run. A test whose cell is unknown, or that has no development test
-	 * case, has no pilot. When the provider rejects or refuses a session, the pilot starts no further session and each
-	 * unfinished test's result records why it stopped.
+	 * its cell, the control source's files, the session environment version and the judge version are unchanged, so a
+	 * revision reruns only the tests whose definition changed or whose earlier pilot has a failed run, and every test
+	 * once the sessions change what the model receives or how the judge decides. A test whose cell is unknown, or that
+	 * has no development test case, has no pilot. When the provider rejects or refuses a session, the pilot starts no
+	 * further session and each unfinished test's result records why it stopped.
 	 *
 	 * @param contract the proposed contract
 	 * @param plugins the campaign's trial plugins, which every trial installs
@@ -166,7 +167,7 @@ public final class GuardPilot
 		requireThat(random, "random").isNotNull();
 		// Keyed by the files rather than the overlay, so that a pilot still applies once confirmation records the same
 		// files in the fork
-		Sha256 files = control.snapshot().identity();
+		Sha256 files = controlIdentity(control.snapshot().identity());
 		Map<String, PilotResult> pilots = new LinkedHashMap<>();
 		List<Pilot> pending = new ArrayList<>();
 		for (PromptTest test : contract.tests())
@@ -256,7 +257,7 @@ public final class GuardPilot
 		/**
 		 * Returns the pilot's result.
 		 *
-		 * @param control the identity of the control source's files
+		 * @param control the identity of the conditions that the trials ran in
 		 * @return the result, whose trials are in draw order
 		 */
 		PilotResult result(Sha256 control)
@@ -269,6 +270,20 @@ public final class GuardPilot
 			}
 			return new PilotResult(test.id(), definition, cell.id(), control, decided, failedRuns, stopReason);
 		}
+	}
+
+	/**
+	 * Returns the identity of the conditions that control trials run in: the control source's files, the session
+	 * environment version and the judge version.
+	 *
+	 * @param files the identity of the control source's files
+	 * @return the identity
+	 */
+	private Sha256 controlIdentity(Sha256 files)
+	{
+		String conditions = files.hex() + "\nsession environment version " + sessions.sessionEnvironmentVersion() +
+			"\njudge version " + sessions.judgeVersion();
+		return Sha256.of(conditions.getBytes(UTF_8));
 	}
 
 	/**

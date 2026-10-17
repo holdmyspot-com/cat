@@ -408,6 +408,62 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * A stored pilot whose test, cell and control source are unchanged runs again once the sessions change what the
+	 * model receives, because its trials no longer show how the agent behaves without the target prompts.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void rerunsPilotAfterSessionEnvironmentChange() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-environment"));
+			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
+				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(12));
+			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			sessions.setSessionEnvironmentVersion(2);
+
+			pilot(sessions, workspace(directory), 4).
+				run(contract, List.of(), control(), Set.of(), first, new SplittableRandom(13));
+
+			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trials").
+				isEqualTo(GuardPilot.TRIALS * first.size());
+		}
+	}
+
+	/**
+	 * A stored pilot whose test, cell and control source are unchanged runs again once the judge changes, because its
+	 * trials were decided by the earlier judge.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void rerunsPilotAfterJudgeChange() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-judge"));
+			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
+				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(14));
+			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			sessions.setJudgeVersion(2);
+
+			pilot(sessions, workspace(directory), 4).
+				run(contract, List.of(), control(), Set.of(), first, new SplittableRandom(15));
+
+			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trials").
+				isEqualTo(GuardPilot.TRIALS * first.size());
+		}
+	}
+
+	/**
 	 * Each control trial installs the copy of every trial plugin that belongs to the staged control source, in
 	 * configuration order.
 	 *
@@ -517,7 +573,7 @@ public final class GuardPilotTest
 			{
 				PilotResult pilot = pilots.get(test.id());
 				requireThat(pilot.stopReason(), "stopReason").contains("rate limit");
-				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), control.identity()), "applies").
+				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), pilot.control()), "applies").
 					isFalse();
 			}
 		}
@@ -647,6 +703,8 @@ public final class GuardPilotTest
 		private final Function<SessionRequest, String> replies;
 		private final List<SessionRequest> requests = new ArrayList<>();
 		private boolean limitTrials;
+		private volatile int sessionEnvironmentVersion = 1;
+		private volatile int judgeVersion = 1;
 
 		/**
 		 * Creates a port.
@@ -658,6 +716,26 @@ public final class GuardPilotTest
 		{
 			this.directory = directory;
 			this.replies = replies;
+		}
+
+		/**
+		 * Sets the session environment version that the port reports.
+		 *
+		 * @param version the version
+		 */
+		void setSessionEnvironmentVersion(int version)
+		{
+			sessionEnvironmentVersion = version;
+		}
+
+		/**
+		 * Sets the judge version that the port reports.
+		 *
+		 * @param version the version
+		 */
+		void setJudgeVersion(int version)
+		{
+			judgeVersion = version;
 		}
 
 		/**
@@ -746,13 +824,13 @@ public final class GuardPilotTest
 		@Override
 		public int sessionEnvironmentVersion()
 		{
-			return 1;
+			return sessionEnvironmentVersion;
 		}
 
 		@Override
 		public int judgeVersion()
 		{
-			return 1;
+			return judgeVersion;
 		}
 
 		@Override

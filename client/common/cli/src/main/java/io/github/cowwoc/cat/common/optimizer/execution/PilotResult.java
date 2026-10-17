@@ -18,7 +18,8 @@ import java.util.List;
  * @param definition the identity of the prompt test and the requirements that it checks when the pilot ran; a pilot
  *   whose test has another identity no longer applies
  * @param cellId the cell that the trials ran in
- * @param control the identity of the control source's files that the trials ran on
+ * @param control the identity of the conditions that the trials ran in: the control source's files, the session
+ *   environment version and the judge version
  * @param trials the trials that the proposed built-in tools or judge decided, in completion order
  * @param failedRuns why each trial that ended without a decision ended, one entry per trial, such as a session that
  *   failed or a judge whose output never matched its result schema
@@ -33,7 +34,7 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 	 * @param testId the prompt test
 	 * @param definition the identity of the prompt test and the requirements that it checks when the pilot ran
 	 * @param cellId the cell that the trials ran in
-	 * @param control the identity of the control source's files that the trials ran on
+	 * @param control the identity of the conditions that the trials ran in
 	 * @param trials the trials that the proposed built-in tools or judge decided, in completion order
 	 * @param failedRuns why each trial that ended without a decision ended, one entry per trial
 	 * @param stopReason why the pilot stopped before running every trial, or {@code null} if it ran every trial
@@ -116,11 +117,13 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 
 	/**
 	 * Indicates whether this pilot still describes a prompt test: it ran every trial, every trial ended with a decision,
-	 * and the test's definition, its weakest cell and the control source's files are the ones that it ran with.
+	 * and the test's definition, its weakest cell and the conditions of its control trials are the ones that it ran
+	 * with.
 	 *
 	 * @param definition the current identity of the prompt test and the requirements that it checks
 	 * @param cellId the test's current weakest cell
-	 * @param control the identity of the current control source's files
+	 * @param control the identity of the current conditions of control trials: the control source's files, the
+	 *   session environment version and the judge version
 	 * @return {@code true} if the pilot need not run again
 	 * @throws NullPointerException if any of the arguments are null
 	 */
