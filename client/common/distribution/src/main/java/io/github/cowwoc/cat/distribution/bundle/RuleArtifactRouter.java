@@ -7,8 +7,10 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import io.github.cowwoc.cat.common.BoundedInput;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -24,10 +26,8 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 public final class RuleArtifactRouter
 {
 	private static final int MAXIMUM_RULE_INPUT_BYTES = 1_048_576;
-	// The generated indexes are written into directories that hold authored rule files, and authored rule files never
-	// start with ".cat-", so the prefix keeps an index from overwriting one of them.
-	private static final String ROUTE_INDEX = ".cat-path-scoped-rules.md";
-	private static final String LAZY_DEPENDENCY_INDEX = ".cat-lazy-rule-dependencies.md";
+	private static final String ROUTE_INDEX = "path-scoped-rules.md";
+	private static final String LAZY_DEPENDENCY_INDEX = "lazy-rule-dependencies.md";
 	private static final Set<String> FRONTMATTER_KEYS = Set.of("agents", "depends-on", "paths");
 
 	/**
@@ -107,7 +107,7 @@ public final class RuleArtifactRouter
 			content.append("When lazy loading `").append(entry.getKey()).append("`, first lazy load ").
 				append(entry.getValue().stream().map(path -> "`" + path + "`").collect(java.util.stream.Collectors.joining(
 					" and "))).append(".\n");
-		Files.writeString(rules.resolve("common").resolve(LAZY_DEPENDENCY_INDEX), content, UTF_8);
+		writeNew(artifact, common.resolve(LAZY_DEPENDENCY_INDEX), content);
 	}
 
 	/**
@@ -132,13 +132,34 @@ public final class RuleArtifactRouter
 					continue;
 				Path target = artifact.resolve("rules/include").resolve(directory.getFileName()).resolve(file.getFileName());
 				Files.createDirectories(target.getParent());
-				Files.writeString(target, rule.body(), UTF_8);
+				writeNew(artifact, target, rule.body());
 				Files.delete(file);
 				routes.add(new Route(artifact.relativize(target).toString().replace('\\', '/'), rule.paths()));
 			}
 		}
 		if (!routes.isEmpty())
-			Files.writeString(directory.resolve(ROUTE_INDEX), render(routes), UTF_8);
+			writeNew(artifact, directory.resolve(ROUTE_INDEX), render(routes));
+	}
+
+	/**
+	 * Writes a file that routing generates, without replacing a rule file that already has its name.
+	 *
+	 * @param artifact the assembled plugin artifact
+	 * @param target the file to create
+	 * @param content the file's content
+	 * @throws IOException if {@code target} already exists or cannot be written
+	 */
+	private static void writeNew(Path artifact, Path target, CharSequence content) throws IOException
+	{
+		try
+		{
+			Files.writeString(target, content, UTF_8, StandardOpenOption.CREATE_NEW);
+		}
+		catch (FileAlreadyExistsException e)
+		{
+			throw new IOException("Rule routing generates " + artifact.relativize(target).toString().replace('\\', '/') +
+				", but a rule file already has that path. Rename that rule file.", e);
+		}
 	}
 
 	/**

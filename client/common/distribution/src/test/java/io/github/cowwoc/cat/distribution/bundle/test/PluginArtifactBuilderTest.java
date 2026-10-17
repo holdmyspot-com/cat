@@ -338,11 +338,79 @@ public final class PluginArtifactBuilderTest
 
 			RuleArtifactRouter.route(artifact, scope.yaml());
 
-			String index = Files.readString(common.resolve(".cat-lazy-rule-dependencies.md"));
+			String index = Files.readString(common.resolve("lazy-rule-dependencies.md"));
 			requireThat(index, "index").contains("`../include/java/javadoc.md`").
 				contains("`../include/documentation/general.md`").doesNotContain("`rules/include/");
 			requireThat(Files.readString(include.resolve("javadoc.md")), "javadocRule").
 				doesNotContain("depends-on");
+		}
+	}
+
+	/**
+	 * Verifies that routing rejects an authored rule whose name matches the generated lazy-rule dependency index,
+	 * rather than replacing the authored rule.
+	 *
+	 * @throws IOException for the expected rejection
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*rules/common/lazy-rule-dependencies\\.md.*Rename.*")
+	public void rejectsRuleNamedLikeLazyDependencyIndex() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-lazy-rule-artifact-"));
+			Path common = Files.createDirectories(artifact.resolve("rules/common"));
+			Path include = Files.createDirectories(artifact.resolve("rules/include/java"));
+			Files.writeString(common.resolve("lazy-rule-dependencies.md"), "Authored rule\n");
+			Files.writeString(include.resolve("javadoc.md"), "---\ndepends-on: [\"../documentation/general.md\"]\n---\n" +
+				"Javadoc rules\n");
+			Files.createDirectories(artifact.resolve("rules/include/documentation"));
+			Files.writeString(artifact.resolve("rules/include/documentation/general.md"), "Documentation rules\n");
+
+			RuleArtifactRouter.route(artifact, scope.yaml());
+		}
+	}
+
+	/**
+	 * Verifies that routing rejects an authored rule whose name matches the generated path-scoped rule index, rather
+	 * than replacing the authored rule.
+	 *
+	 * @throws IOException for the expected rejection
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*rules/common/path-scoped-rules\\.md.*Rename.*")
+	public void rejectsRuleNamedLikePathScopedIndex() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-path-rule-artifact-"));
+			Path common = Files.createDirectories(artifact.resolve("rules/common"));
+			Files.writeString(common.resolve("path-scoped-rules.md"), "Authored rule\n");
+			Files.writeString(common.resolve("java.md"), "---\npaths: [\"*.java\"]\n---\nJava rules\n");
+
+			RuleArtifactRouter.route(artifact, scope.yaml());
+		}
+	}
+
+	/**
+	 * Verifies that routing rejects a path-scoped rule whose destination below {@code rules/include} already holds an
+	 * authored rule, rather than replacing the authored rule.
+	 *
+	 * @throws IOException for the expected rejection
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*rules/include/common/java\\.md.*Rename.*")
+	public void rejectsOccupiedPathScopedDestination() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-path-rule-artifact-"));
+			Path common = Files.createDirectories(artifact.resolve("rules/common"));
+			Files.writeString(common.resolve("java.md"), "---\npaths: [\"*.java\"]\n---\nJava rules\n");
+			Path include = Files.createDirectories(artifact.resolve("rules/include/common"));
+			Files.writeString(include.resolve("java.md"), "Authored rule\n");
+
+			RuleArtifactRouter.route(artifact, scope.yaml());
 		}
 	}
 
