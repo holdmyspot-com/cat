@@ -56,5 +56,5 @@ bound for every such group. Name the user-facing concept and define it in two se
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`,
-  `rules/include/common/consistent-terminology.md`, `rules/include/documentation/general.md` before its first governed
+  `rules/include/common/consistent-terminology.md`, `rules/include/documentation.md` before its first governed
   action.

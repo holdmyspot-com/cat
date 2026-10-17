@@ -58,5 +58,5 @@ our audit log stores. Keep the entry names in a field or constant. The construct
 ### guidance_selection
 
 - **kind**: effect
-- **description**: The retained events establish that the executor selects `rules/include/documentation/general.md`
+- **description**: The retained events establish that the executor selects `rules/include/documentation/declared-values.md`
   before its first governed action.

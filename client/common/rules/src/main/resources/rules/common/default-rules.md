@@ -82,12 +82,18 @@ When defining a function, method, constructor, or command, or changing its param
 operation of the same API takes some of the same inputs, even in another type or representation, lazy load
 `../include/common/consistent-parameters.md`.
 
-When writing or editing maintained documentation, including product, legal, API, function, method, command,
-configuration, or user-facing workflow documentation, or a source comment, including a comment in a prompt or rule file,
-lazy load `../include/documentation/general.md`.
+When writing or editing a product, legal, or user-facing workflow document, an overview, release notes, or a
+changelog, lazy load `../include/documentation/standalone-documents.md`.
+
+When writing or editing the documentation of a module, type, method, function, constructor, script, command, or
+configuration entry, including API documentation and command help text, lazy load
+`../include/documentation/interface-contracts.md`.
 
 When declaring a variable outside a function body, such as a field, constant, or module-level variable, or changing the
-value or contents of an existing one, lazy load `../include/documentation/general.md`.
+value or contents of an existing one, lazy load `../include/documentation/declared-values.md`.
+
+When writing or editing a source comment, including a comment in a prompt or rule file, lazy load
+`../include/documentation/source-comments.md`.
 
 When applying a skill would cause you to ask for permission or confirmation, pause, leave requested work unfinished, or
 diverge from the user's intent, lazy load `../include/common/skill-interruption-reporting.md` before taking that action.

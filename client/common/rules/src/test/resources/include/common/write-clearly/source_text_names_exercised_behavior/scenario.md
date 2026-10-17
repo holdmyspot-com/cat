@@ -78,4 +78,4 @@ learn its meaning.
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`
   before its first governed action. Selection of `rules/include/java/javadoc.md`,
-  `rules/include/documentation/general.md`, `rules/include/common/check-assumptions.md` is permitted but not required.
+  `rules/include/documentation.md`, `rules/include/common/check-assumptions.md` is permitted but not required.

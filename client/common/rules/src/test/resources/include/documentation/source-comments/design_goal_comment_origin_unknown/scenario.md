@@ -42,5 +42,5 @@ Keep the {{artifact}} until the later consumer has completed its read.
 ### guidance_selection
 
 - **kind**: effect
-- **description**: The retained events establish that the executor selects `rules/include/documentation/general.md`
+- **description**: The retained events establish that the executor selects `rules/include/documentation/source-comments.md`
   before its first governed action.

@@ -1,7 +1,8 @@
 ---
 depends-on:
   - ../common/write-clearly.md
-  - ../documentation/general.md
+  - ../documentation/interface-contracts.md
+  - ../documentation/declared-values.md
 ---
 
 # Javadoc

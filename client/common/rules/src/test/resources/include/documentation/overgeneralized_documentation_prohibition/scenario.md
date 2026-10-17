@@ -29,5 +29,5 @@ verification." Write the final generalized rule.
 ### guidance_selection
 
 - **kind**: effect
-- **description**: The retained events establish that the executor selects `rules/include/documentation/general.md`
+- **description**: The retained events establish that the executor selects `rules/include/documentation.md`
   before its first governed action.

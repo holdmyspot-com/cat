@@ -1,6 +1,6 @@
 ---
 depends-on:
-  - ../documentation/general.md
+  - ../documentation/interface-contracts.md
 ---
 
 # Bash Documentation and Source Code
