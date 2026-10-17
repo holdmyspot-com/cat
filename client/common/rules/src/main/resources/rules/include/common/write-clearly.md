@@ -58,12 +58,12 @@ workflow purpose, such as a test project, validation workspace, staging area, or
 it is new or existing, what it contains or excludes, who uses it next, and what that use proves or produces. A named
 source file or output directory whose contents are already stated beside it needs no second definition.
 
-When a name or description reports a quantity that combines several values, such as a total, count, sum, maximum or
-average, say which values it combines and the scope that bounds it, such as one response, one turn, one session or one
-run. Place that scope directly beside the word for the quantity, not in a trailing clause that could attach to another
-phrase. Mention values that the quantity leaves out only when a reader would otherwise expect them to be included. For
-example, write “The output tokens of the selected turn, summed over its responses” rather than “Total output tokens
-counted once per response in the selected turn.”
+When a name or description reports a value that is combined or chosen from several values, such as a total, count,
+sum, maximum, average, or the latest or first value, say which values it draws from and the scope that bounds them, such
+as one response, one turn, one session or one run. Place that scope directly beside the word for the value, not in a
+trailing clause that could attach to another phrase. Mention values that it leaves out only when a reader would
+otherwise expect them to be included. For example, write “The output tokens of the selected turn, summed over its
+responses” rather than “Total output tokens counted once per response in the selected turn.”
 
 When reporting an implementation decision that the user did not need to approve, first state the observable behavior,
 then define any unfamiliar workflow term and the concrete problem it prevents. For example, explain that a release gate
