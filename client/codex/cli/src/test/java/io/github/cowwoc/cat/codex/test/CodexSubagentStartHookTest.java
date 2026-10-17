@@ -113,9 +113,8 @@ public final class CodexSubagentStartHookTest
 			Path parentRulesFile = project.resolve(".cat/work").resolve(PARENT_ID).resolve("rules.md");
 			requireThat(context(result), "context").
 				startsWith("# Reading Command Output\n\nRun `" + plugin.resolve("bin/run-part") + "`.\n\n# CAT Rules\n\n").
-				contains("If an earlier message tells you to read `" + parentRulesFile + "`, that instruction was " +
-					"copied from the agent that started you and is not meant for you: do not read `" + parentRulesFile +
-					"`. Read this file instead: `" + rulesFile + "`. Read all of it, as described above, before you plan").
+				contains("`" + parentRulesFile + "` belongs to the agent that started you: do not read it. CAT's rules " +
+					"for this session are in `" + rulesFile + "`. Read that whole file, as described above, before you plan").
 				doesNotContain("subagent guidance").doesNotContain("CAT Environment");
 			requireThat(Files.readString(rulesFile, UTF_8), "rules").contains("subagent guidance").
 				contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" + AGENT_ID + "/temp`.").

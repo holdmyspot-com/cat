@@ -34,18 +34,14 @@ final class CodexRuleInjectionHook
 		"list its headings, or read only part of it: guidance that you skip still applies.";
 
 	/**
-	 * Tells a subagent to read its own rules file whole, given that file and the rules file of the agent that started
-	 * it. A subagent that receives the conversation of the agent that started it also receives that agent's pointer to
+	 * Tells a subagent to read its own rules file whole, given the rules file of the agent that started it and then its
+	 * own. A subagent that receives the conversation of the agent that started it also receives that agent's pointer to
 	 * its rules file, whose rules can differ, such as in the directory that {@code CAT_TEMP} names; Codex places this
 	 * pointer after the copied one. The pointer names the other file, since the subagent cannot see whether its
 	 * conversation was copied.
 	 */
-	private static final String SUBAGENT_RULES_FILE_POINTER = "If an earlier message tells you to read `%2$s`, that " +
-		"instruction was copied from the agent that started you and is not meant for you: do not read `%2$s`. Read " +
-		"this file instead: `%1$s`. Read all of it, as described above, before you plan, run another command, or " +
-		"respond, even when you could answer the request without it, then apply every instruction in it for the rest " +
-		"of this conversation. Do not search it, list its headings, or read only part of it: guidance that you skip " +
-		"still applies.";
+	private static final String SUBAGENT_RULES_FILE_POINTER = "`%s` belongs to the agent that started you: do not " +
+		"read it. " + RULES_FILE_POINTER;
 
 	/**
 	 * Prevents instantiation.
@@ -107,7 +103,7 @@ final class CodexRuleInjectionHook
 					SessionRules session = loader.loadSessionForSubagent(pluginRoot, userRulesRoot, projectDir,
 						HARNESS_ID, scope.subagentType(event));
 					context = context(directory, session,
-						rulesFile -> SUBAGENT_RULES_FILE_POINTER.formatted(rulesFile, parentRulesFile));
+						rulesFile -> SUBAGENT_RULES_FILE_POINTER.formatted(parentRulesFile, rulesFile));
 				}
 				else
 				{
