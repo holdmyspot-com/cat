@@ -798,12 +798,12 @@ public final class ProposalCheck
 			try
 			{
 				Path root = draft.resolve(PromptTestLocations.rootOf(directory).orElseThrow());
-				files = PromptTestFiles.readScenario(root, testDirectory);
+				files = PromptTestFiles.readScenario(project, root, testDirectory);
 				content = Files.readString(scenarioFile, UTF_8);
 			}
 			catch (ScenarioFormatException e)
 			{
-				problems.add(relativize(e.getMessage()));
+				problems.add(e.getMessage());
 				return null;
 			}
 			catch (CharacterCodingException _)

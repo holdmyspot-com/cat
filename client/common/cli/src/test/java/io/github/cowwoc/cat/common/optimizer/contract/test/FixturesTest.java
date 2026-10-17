@@ -95,7 +95,7 @@ public final class FixturesTest
 	 */
 	private PromptTestFiles read(Path directory) throws IOException, ScenarioFormatException
 	{
-		return PromptTestFiles.read(json, directory, directory);
+		return PromptTestFiles.read(json, directory, directory, directory);
 	}
 
 	/**
@@ -242,7 +242,7 @@ public final class FixturesTest
 			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO),
 				withPatterns("fixtures/**", "../fixtures/{AGENTS.md,docs/\\{\\{notes\\}\\}}"));
 
-			PromptTestFiles files = PromptTestFiles.read(json, root, directory);
+			PromptTestFiles files = PromptTestFiles.read(json, root, root, directory);
 			requireThat(files.fixtures(), "fixtures").isEqualTo(List.of(
 				new PromptTestFiles.Fixture("AGENTS.md", true, Set.of()),
 				new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of("before")),
@@ -259,7 +259,7 @@ public final class FixturesTest
 				withPatterns("../fixtures/{AGENTS.md,docs/\\{\\{notes\\}\\}}", "fixtures/**"));
 			Path reversed = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
-			Fixtures.copy(PromptTestFiles.read(json, root, directory), testCase("notes.md"), reversed);
+			Fixtures.copy(PromptTestFiles.read(json, root, root, directory), testCase("notes.md"), reversed);
 			requireThat(Files.readString(reversed.resolve("docs/notes.md")), "reversed").endsWith("\nFrom the case");
 		}
 	}
@@ -283,7 +283,7 @@ public final class FixturesTest
 			Files.writeString(scenario, withPatterns("fixtures/**", "../../../fixtures/**"));
 			try
 			{
-				PromptTestFiles.read(json, root, directory);
+				PromptTestFiles.read(json, root, root, directory);
 				throw new AssertionError("A pattern outside the test root was accepted");
 			}
 			catch (ScenarioFormatException e)
@@ -294,7 +294,7 @@ public final class FixturesTest
 			Files.writeString(scenario, withPatterns("fixtures/**", "../fixtures/missing.md"));
 			try
 			{
-				PromptTestFiles.read(json, root, directory);
+				PromptTestFiles.read(json, root, root, directory);
 				throw new AssertionError("A pattern that matches no file was accepted");
 			}
 			catch (ScenarioFormatException e)
@@ -304,7 +304,7 @@ public final class FixturesTest
 
 			Path bare = Files.createDirectories(root.resolve("guidance/bare"));
 			Files.writeString(bare.resolve(PromptTestFiles.SCENARIO), SCENARIO);
-			requireThat(PromptTestFiles.read(json, root, bare).fixtures(), "bare").isEmpty();
+			requireThat(PromptTestFiles.read(json, root, root, bare).fixtures(), "bare").isEmpty();
 		}
 	}
 
@@ -435,6 +435,44 @@ public final class FixturesTest
 			catch (ScenarioFormatException e)
 			{
 				requireThat(e.getMessage(), "message").contains(PromptTestFiles.SCENARIO);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a problem names the prompt test's files relative to the project, with {@code /} between names.
+	 *
+	 * @throws IOException if a file cannot be written or read
+	 */
+	@Test
+	public void problemNamesFilesRelativeToProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-fixtures-"));
+			Path root = Files.createDirectories(project.resolve(".cat/tests"));
+			Path directory = Files.createDirectories(root.resolve("guidance/case"));
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), "not a scenario\n");
+			try
+			{
+				PromptTestFiles.readScenario(project, root, directory);
+				throw new AssertionError("A malformed scenario was accepted");
+			}
+			catch (ScenarioFormatException e)
+			{
+				requireThat(e.getMessage(), "malformed").startsWith(".cat/tests/guidance/case/scenario.md: ");
+			}
+
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), withPatterns("../fixtures/missing.md"));
+			try
+			{
+				PromptTestFiles.readScenario(project, root, directory);
+				throw new AssertionError("A pattern that matches no file was accepted");
+			}
+			catch (ScenarioFormatException e)
+			{
+				requireThat(e.getMessage(), "matchesNothing").
+					startsWith(".cat/tests/guidance/case/scenario.md: the fixture pattern ");
 			}
 		}
 	}

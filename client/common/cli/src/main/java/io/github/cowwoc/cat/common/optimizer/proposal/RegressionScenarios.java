@@ -330,7 +330,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		{
 			try
 			{
-				PromptTestFiles files = PromptTestFiles.read(json, tests, file.getParent());
+				PromptTestFiles files = PromptTestFiles.read(json, project, tests, file.getParent());
 				List<FixtureFile> textFixtures = new ArrayList<>();
 				for (PromptTestFiles.Fixture fixture : files.fixtures())
 				{

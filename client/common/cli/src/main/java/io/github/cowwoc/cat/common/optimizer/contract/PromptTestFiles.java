@@ -120,6 +120,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	 * the file at the same workspace path that an earlier pattern selects.
 	 *
 	 * @param json      the JSON mapper that reads the values file
+	 * @param project   the directory that problems name files relative to, with {@code /} between names
 	 * @param root      the test root, which holds the prompt test directory or is that directory
 	 * @param directory the prompt test directory
 	 * @return the prompt test's files
@@ -130,26 +131,26 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	 *                                  leaves the test root or selects no file, a fixture is a symbolic link, or a
 	 *                                  committed test case is not valid for the prompt test
 	 */
-	public static PromptTestFiles read(JsonMapper json, Path root, Path directory)
+	public static PromptTestFiles read(JsonMapper json, Path project, Path root, Path directory)
 		throws IOException, ScenarioFormatException
 	{
 		requireThat(json, "json").isNotNull();
-		PromptTestFiles files = readScenario(root, directory);
+		PromptTestFiles files = readScenario(project, root, directory);
 		Path valuesFile = directory.resolve(ValuesFile.NAME);
 		if (!Files.exists(valuesFile, LinkOption.NOFOLLOW_LINKS))
 			return files;
 		List<TestCase> testCases;
 		try (BufferedReader in = Files.newBufferedReader(valuesFile))
 		{
-			testCases = ValuesFile.read(json, in, valuesFile.toString());
+			testCases = ValuesFile.read(json, in, display(project, valuesFile));
 		}
 		for (int i = 0; i < testCases.size(); ++i)
 		{
 			List<String> problems = files.problems(testCases.get(i));
 			if (!problems.isEmpty())
 			{
-				throw new ScenarioFormatException(valuesFile + ": test case " + (i + 1) + " is not valid for the " +
-					"prompt test: " + String.join("; ", problems));
+				throw new ScenarioFormatException(display(project, valuesFile) + ": test case " + (i + 1) +
+					" is not valid for the prompt test: " + String.join("; ", problems));
 			}
 		}
 		return new PromptTestFiles(root, directory, files.scenario(), files.patterns(), files.fixtures(), testCases);
@@ -163,6 +164,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	 * of its own {@code fixtures/} directory if it has no such section. A file that a later pattern selects replaces
 	 * the file at the same workspace path that an earlier pattern selects.
 	 *
+	 * @param project   the directory that problems name files relative to, with {@code /} between names
 	 * @param root      the test root, which holds the prompt test directory or is that directory
 	 * @param directory the prompt test directory
 	 * @return the prompt test's files, without test cases
@@ -172,16 +174,18 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	 * @throws ScenarioFormatException  if the scenario does not follow the format, a fixture pattern leaves the test
 	 *                                  root or selects no file, or a fixture is a symbolic link
 	 */
-	public static PromptTestFiles readScenario(Path root, Path directory) throws IOException, ScenarioFormatException
+	public static PromptTestFiles readScenario(Path project, Path root, Path directory)
+		throws IOException, ScenarioFormatException
 	{
+		requireThat(project, "project").isNotNull();
 		requireThat(root, "root").isNotNull();
 		requireThat(directory, "directory").isNotNull();
 		if (!directory.startsWith(root))
 			throw new IllegalArgumentException("directory must lie at or below root.\nroot: " + root +
 				"\ndirectory: " + directory);
 		Path scenarioFile = directory.resolve(SCENARIO);
-		ScenarioParser parser = new ScenarioParser(PortablePaths.text(scenarioFile) + ": ",
-			Files.readString(scenarioFile));
+		String scenarioName = display(project, scenarioFile);
+		ScenarioParser parser = new ScenarioParser(scenarioName + ": ", Files.readString(scenarioFile));
 		Scenario scenario = parser.parse();
 		Set<String> declared = new HashSet<>();
 		for (VariableDeclaration variable : scenario.variables())
@@ -200,18 +204,33 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 			Path base = pattern.base(directory);
 			if (!base.startsWith(root.normalize()))
 			{
-				throw new ScenarioFormatException(scenarioFile + ": the fixture pattern " + text + " leaves the test " +
-					"root " + root + "; name a fixtures directory inside it");
+				throw new ScenarioFormatException(scenarioName + ": the fixture pattern " + text + " leaves the test " +
+					"root " + display(project, root) + "; name a fixtures directory inside it");
 			}
 			List<Fixture> selected = readFixtures(base, declared, pattern);
 			if (selected.isEmpty() && !implicit)
-				throw new ScenarioFormatException(scenarioFile + ": the fixture pattern " + text + " selects no file");
+				throw new ScenarioFormatException(scenarioName + ": the fixture pattern " + text + " selects no file");
 			for (Fixture fixture : selected)
 				byPath.put(fixture.path(), fixture);
 		}
 		List<Fixture> fixtures = new ArrayList<>(byPath.values());
 		fixtures.sort(Comparator.comparing(Fixture::path));
 		return new PromptTestFiles(root, directory, scenario, patterns, fixtures, List.of());
+	}
+
+	/**
+	 * Returns the name of a file in a problem.
+	 *
+	 * @param project the directory that problems name files relative to
+	 * @param file    the file
+	 * @return {@code file} relative to {@code project} with {@code /} between names if it lies below the project,
+	 *   otherwise {@code file} as the platform writes it
+	 */
+	private static String display(Path project, Path file)
+	{
+		if (file.startsWith(project))
+			return PortablePaths.text(project.relativize(file));
+		return file.toString();
 	}
 
 	/**

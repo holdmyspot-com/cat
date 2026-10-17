@@ -21,7 +21,6 @@ import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
 import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile.DraftTestCase;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
@@ -321,7 +320,7 @@ public final class ContractTools
 		String location = PortablePaths.text(session.project().relativize(valuesFile));
 		try
 		{
-			files = PromptTestFiles.readScenario(session.draft(), test);
+			files = PromptTestFiles.readScenario(session.project(), session.draft(), test);
 			try (BufferedReader in = Files.newBufferedReader(valuesFile, UTF_8))
 			{
 				testCases = ValuesFile.readDraft(json, in, location);
@@ -329,8 +328,7 @@ public final class ContractTools
 		}
 		catch (ScenarioFormatException e)
 		{
-			// The problem names files relative to the project, as the check's problems do
-			problems.add(e.getMessage().replace(session.project() + File.separator, ""));
+			problems.add(e.getMessage());
 			return Optional.empty();
 		}
 		if (number < 1 || number > testCases.size())
