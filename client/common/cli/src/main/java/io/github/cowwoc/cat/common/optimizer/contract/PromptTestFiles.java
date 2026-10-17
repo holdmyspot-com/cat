@@ -180,7 +180,8 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 			throw new IllegalArgumentException("directory must lie at or below root.\nroot: " + root +
 				"\ndirectory: " + directory);
 		Path scenarioFile = directory.resolve(SCENARIO);
-		ScenarioParser parser = new ScenarioParser(scenarioFile + ": ", Files.readString(scenarioFile));
+		ScenarioParser parser = new ScenarioParser(PortablePaths.text(scenarioFile) + ": ",
+			Files.readString(scenarioFile));
 		Scenario scenario = parser.parse();
 		Set<String> declared = new HashSet<>();
 		for (VariableDeclaration variable : scenario.variables())
