@@ -52,6 +52,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void hookInputNamesDirectory() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-session-"));
@@ -88,6 +89,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void sessionVariableNamesDirectory() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-session-"));
@@ -133,6 +135,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void configurationVariableNamesDirectory() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-session-"));
@@ -160,6 +163,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void refusesNonCanonicalSessionId() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
@@ -195,6 +199,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void concurrentFirstUsesLeaveOneMarker() throws IOException, InterruptedException, ExecutionException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			ExecutorService executor = Executors.newFixedThreadPool(8))
 		{
@@ -231,6 +236,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void keepsExistingMarker() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
@@ -255,6 +261,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void refusesWithoutSessionVariable() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
@@ -287,6 +294,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void replayEditorRefusesWithoutSession() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
@@ -315,6 +323,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void replayEditorUsesSessionTemp() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
@@ -336,6 +345,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void providesRulesFiles() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
@@ -363,6 +373,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void providesCampaignPaths() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
@@ -386,6 +397,7 @@ public final class SessionWorkDirectoryTest
 	@Test
 	public void listsCampaignsOfEverySession() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));

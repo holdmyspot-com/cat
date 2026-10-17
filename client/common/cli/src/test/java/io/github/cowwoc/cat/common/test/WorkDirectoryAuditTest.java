@@ -45,6 +45,7 @@ public final class WorkDirectoryAuditTest
 	@Test
 	public void onlySessionWorkDirectorySpellsWorkRoot() throws IOException
 	{
+		// Requirement: R-W13
 		Path client = clientDirectory();
 		Path owner = client.resolve(OWNER);
 		List<Path> spelling = new ArrayList<>();

@@ -47,6 +47,7 @@ public final class SessionSweepTest
 	@Test
 	public void removesGoneSessionOfFirstHarness() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
@@ -74,6 +75,7 @@ public final class SessionSweepTest
 	@Test
 	public void removesGoneSessionOfSecondHarness() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
@@ -99,6 +101,7 @@ public final class SessionSweepTest
 	@Test
 	public void keepsSessionsWithTranscript() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
@@ -136,6 +139,7 @@ public final class SessionSweepTest
 	@Test
 	public void keepsTranscriptBehindLink() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
@@ -161,6 +165,7 @@ public final class SessionSweepTest
 	@Test
 	public void keepsNewAndUnmarkedDirectories() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
@@ -189,6 +194,7 @@ public final class SessionSweepTest
 	@Test
 	public void reportsFailedRemoval() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
@@ -225,6 +231,7 @@ public final class SessionSweepTest
 	@Test
 	public void removesCampaignWorktreesFirst() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
@@ -261,6 +268,7 @@ public final class SessionSweepTest
 	@Test
 	public void failedWorktreeKeepsSession() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
