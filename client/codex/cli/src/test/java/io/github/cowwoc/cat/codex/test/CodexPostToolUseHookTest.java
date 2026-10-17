@@ -210,7 +210,7 @@ public final class CodexPostToolUseHookTest
 
 	/**
 	 * Verifies that a {@code run-part} result whose only part Codex did not cut deletes the folder of the saved output
-	 * in the session's temporary directory, and passes unchanged.
+	 * in the session's temporary directory, and ends by saying that the output ended and was deleted.
 	 *
 	 * @throws IOException if the test folders cannot be used
 	 */
@@ -225,15 +225,15 @@ public final class CodexPostToolUseHookTest
 			HookResult hook = invoke(CommandShell.POSIX, BIN + "run-part <<'EOF'\nls\nEOF",
 				"a\n[End of " + saved + "]\n", Map.of());
 
-			requireThat(hook.output(), "output").isEmpty();
-			requireThat(hook.error(), "error").isEmpty();
+			requireThat(reason(hook), "reason").isEqualTo("a\n" + endOfDeletedOutput(saved));
 			requireThat(Files.exists(saved.getParent()), "folderExists").isFalse();
 		}
 	}
 
 	/**
 	 * Verifies that a {@code read-part} result that prints the last part uncut deletes the folder of the saved output
-	 * in the temporary folder that {@code run-part} falls back to outside a session.
+	 * in the temporary folder that {@code run-part} falls back to outside a session, and ends by saying that the output
+	 * ended and was deleted.
 	 *
 	 * @throws IOException if the test folders cannot be used
 	 */
@@ -248,8 +248,7 @@ public final class CodexPostToolUseHookTest
 			HookResult hook = invoke(CommandShell.POSIX, readPart(saved, "40"), "z\n[End of " + saved + "]\n",
 				Map.of("TMPDIR", temporary.toString()));
 
-			requireThat(hook.output(), "output").isEmpty();
-			requireThat(hook.error(), "error").isEmpty();
+			requireThat(reason(hook), "reason").isEqualTo("z\n" + endOfDeletedOutput(saved));
 			requireThat(Files.exists(saved.getParent()), "folderExists").isFalse();
 		}
 	}
@@ -277,7 +276,7 @@ public final class CodexPostToolUseHookTest
 
 	/**
 	 * Verifies that after Codex cut a part, an uncut last part keeps the saved output until the cut part is printed
-	 * again uncut, which then deletes it.
+	 * again uncut, which then deletes it and ends by saying so instead of naming a next part.
 	 *
 	 * @throws IOException if the test folders cannot be used
 	 */
@@ -301,8 +300,8 @@ public final class CodexPostToolUseHookTest
 			requireThat(saved, "savedAfterLastPart").isRegularFile();
 
 			HookResult repeated = invoke(CommandShell.POSIX, readPart(saved, "40"), "line 40" + nextPart, environment);
-			requireThat(repeated.output(), "repeatedOutput").isEmpty();
-			requireThat(repeated.error(), "repeatedError").isEmpty();
+			requireThat(reason(repeated), "repeatedReason").isEqualTo("line 40\n[You have now read every part of " +
+				"this output. CAT deleted " + saved + ".]\n");
 			requireThat(Files.exists(saved.getParent()), "folderExists").isFalse();
 		}
 	}
@@ -399,6 +398,18 @@ public final class CodexPostToolUseHookTest
 			requireThat(hook.error(), "error").startsWith("CAT PostToolUse: ").contains("Cannot delete");
 			requireThat(saved, "saved").isRegularFile();
 		}
+	}
+
+	/**
+	 * Returns the closing line of a last part whose saved output the hook deleted.
+	 *
+	 * @param saved the saved output
+	 * @return the closing line
+	 */
+	private static String endOfDeletedOutput(Path saved)
+	{
+		assert saved != null;
+		return "[End of output. CAT deleted " + saved + ".]\n";
 	}
 
 	/**

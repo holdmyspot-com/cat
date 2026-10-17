@@ -35,13 +35,15 @@ import tools.jackson.databind.json.JsonMapper;
  * would skip the removed lines. Codex shows this hook the result after its cut but not the call's
  * {@code max_output_tokens}, so the hook recognizes a cut by Codex's markers. It replaces the closing instruction with
  * one that prints the same part again without the limit, and returns the result as a blocking decision, whose reason
- * Codex shows the model in place of the result. Every other result passes unchanged.
+ * Codex shows the model in place of the result.
  * <p>
  * A result that Codex did not cut and that ends with {@code [End of <path>]} shows the agent the last part of a saved
  * output. When {@code <path>} is a file that {@code run-part} saved, the hook deletes the file's folder, unless a part
  * that Codex cut has not yet been printed again uncut: the hook records the position of each cut part in the folder and
- * clears it when that part comes back uncut, so that the repaired instruction still finds the file. Output whose last
- * part the agent never reads stays until its session's work directory is removed.
+ * clears it when that part comes back uncut, so that the repaired instruction still finds the file. Once it deletes the
+ * folder, it returns the result as a blocking decision whose closing line says that the output ended and the file is
+ * deleted. Output whose last part the agent never reads stays until its session's work directory is removed. Every
+ * other result passes unchanged.
  */
 public final class CodexPostToolUseHook
 {
@@ -101,7 +103,8 @@ public final class CodexPostToolUseHook
 	/**
 	 * Processes one Codex PostToolUse event. A failure leaves the result unchanged: the hook writes no response and
 	 * reports the failure on {@code error}, because stopping the session would lose more output than the cut did. A
-	 * failure to record a cut part's position is reported on {@code error} after the repaired result.
+	 * failure to record a cut part's position is reported on {@code error} after the repaired result. A failure to
+	 * delete a saved output leaves its result unchanged, so the result still names the file, which still exists.
 	 *
 	 * @param args a non-null empty command-line argument array
 	 * @param shell the shell that ran the agent's command, and that runs the command that the repaired result names
@@ -160,14 +163,46 @@ public final class CodexPostToolUseHook
 				}
 				return;
 			}
-			if (folder.isPresent() && isSeenWhole(folder.get(), position,
-				LAST_PART.matcher(result.stringValue()).find()))
+			boolean lastPart = LAST_PART.matcher(result.stringValue()).find();
+			if (folder.isPresent() && isSeenWhole(folder.get(), position, lastPart))
+			{
 				removal.remove(folder.get());
+				String deleted = deleted(result.stringValue(), folder.get().resolve(CodexRunPart.SAVED_OUTPUT),
+					lastPart);
+				output.write(json.writeValueAsBytes(Map.of("decision", "block", "reason", deleted)));
+				output.write('\n');
+			}
 		}
 		catch (IOException | IllegalArgumentException | JacksonException e)
 		{
 			error.println("CAT " + EVENT_NAME + ": " + e.getMessage());
 		}
+	}
+
+	/**
+	 * Returns a result whose saved output the hook deleted, with its closing line replaced by one that says so. The
+	 * closing line of a last part still starts with {@code [End of }, which marks the last part for the agent.
+	 *
+	 * @param result the command's result as Codex showed it
+	 * @param saved the deleted file
+	 * @param lastPart {@code true} if the result is the last part, or {@code false} if it is an earlier part that the
+	 *   agent printed again after the last one
+	 * @return the result with its closing line replaced
+	 */
+	private static String deleted(String result, Path saved, boolean lastPart)
+	{
+		Matcher closingLine = CLOSING_LINE.matcher(result);
+		String kept;
+		if (closingLine.find())
+			kept = result.substring(0, closingLine.start());
+		else
+			kept = result.stripTrailing();
+		String start;
+		if (lastPart)
+			start = "[End of output.";
+		else
+			start = "[You have now read every part of this output.";
+		return kept + "\n" + start + " CAT deleted " + saved + ".]\n";
 	}
 
 	/**

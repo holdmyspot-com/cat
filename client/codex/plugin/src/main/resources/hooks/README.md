@@ -31,8 +31,9 @@ the agent set `max_output_tokens` on a command that runs `$PLUGIN_ROOT/bin/run-p
 next part. The hook then returns a blocking decision whose reason is the part with that line replaced by an instruction
 to print the same part again without the limit; Codex shows the reason to the model in place of the result. When a
 result that Codex did not cut ends with the last part of an output that `run-part` saved, the hook deletes the
-`run-part-*` folder that holds it, unless a part that Codex cut has not yet been printed again uncut. The launcher
-passes every other event over without starting Java.
+`run-part-*` folder that holds it, unless a part that Codex cut has not yet been printed again uncut. It then returns a
+blocking decision whose reason is the result with its closing line replaced by one that says the output ended and the
+file is deleted. The launcher passes every other event over without starting Java.
 
 ## Windows
 
