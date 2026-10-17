@@ -53,6 +53,14 @@ consistently. Do not define a term by repeating it or replacing it with another 
 folder containing the copied project that the validator examines” instead of “an integration project.” Do not explain
 ordinary technical terms unless this project gives them a specialized meaning.
 
+When a name or description reports a quantity that combines several values, such as a total, count, sum, maximum or
+average, say which values it combines and the scope that bounds it, such as one response, one turn, one session or one
+run. Place that scope directly beside the word for the quantity, not in a trailing clause that could attach to another
+phrase. Mention values that the quantity leaves out only when a reader would otherwise expect them to be included.
+Describe how the code avoids counting a value twice at the code that does it, not in the quantity's description. For
+example, write “The output tokens of the selected turn, summed over its responses” rather than “Total output tokens
+counted once per response in the selected turn.”
+
 When reporting an implementation decision that the user did not need to approve, first state the observable behavior,
 then define any unfamiliar workflow term and the concrete problem it prevents. For example, explain that a release gate
 is a required release check and that a fresh evidence directory prevents a rerun from replacing an earlier check's
