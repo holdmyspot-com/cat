@@ -171,6 +171,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-84 | `optimize-high` | A storage move with a campaign format bump, a cross-session refusal and worktree removal in the sweep; an error loses a campaign, lets two sessions advance one target, or leaves a stale Git worktree entry. |
 | WI-85 | `optimize-medium` | A new committed file that delivery appends to and `status` reads; an error drops an earlier record or reports another harness's record as current. |
 | WI-86 | `optimize-medium` | Changes only how the proposal shows data that other code reads; an error drops an item that the proposal must list, or changes a stored derived-source path that staging resolves. |
+| WI-87 | `optimize-high` | Renames a path that every session and CAT command writes, and text that loads into every session; an error tells an agent a `CAT_TEMP` that its commands do not use, or leaves a campaign where the commands no longer look. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -349,6 +350,7 @@ requirement names.
 | WI-84 | Done (commit `453dfacfeb`). The full build passed (2876 tests, 0 failures, 105 s); no test took 1 s or more. Every launcher command, `status` included, needs the host session variable and refuses without it. A campaign of another session is shown by `status` with its owning session; every other command for it, and `start` for its target, is refused with the command that resumes that session. Campaigns under the old `.cat/work/optimizer/` are neither read nor deleted. Live exit, 2026-10-17: WI-71's certification start in a Codex host created its campaign at `.cat/work/<thread-id>/optimizer/<campaign-id>/`, under the host thread's ID, and no `.cat/work/optimizer/` was created. |
 | WI-85 | Done (commit `16feb4b9f1`); the full build passed on the integrated tree (2819 tests, 0 failures, 10 skipped). A certified delivery appends its record to `certifications.json` in the target's test directory, creating it when absent and never changing an earlier record; staging leaves it out; a record's harness is its recorded provider. `status` and a new campaign's proposal list the latest record of each harness with its applicability and the earlier records as history; `status` JSON replaces the top-level `attempt`, `scope` and `applicability` with `latest` and `earlier` (the skill shows only `summary`). A malformed history is refused at its JSON path. Open: WI-71's certified delivery appends its record. |
 | WI-86 | Done (commit `22248dc5c0`); the full build passed in 81 s (2878 tests, 0 failures, 10 skipped; `TestabilityAuditTest.onlyMainReadsEnvironment` 1.03 s, not touched). The proposal names a trial plugin's files by plugin, shows an edited test's `values.json` as a note, generated values without seed or version, and scope cells as test × profile groups; stored derived-source paths are unchanged. Open: WI-71's revised proposal uses the format. |
+| WI-87 | Not started. Open: how CAT treats the directories under `.cat/work/` that sessions wrote before the change (§5 WI-87). |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -534,6 +536,8 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - WI-86: the proposal names a trial plugin's files by plugin, leaves the generated `values.json` out of an edited test's
   difference, describes generated values without a seed or version, and groups certification scope cells by prompt
   test and profile (user request, 2026-10-17). WI-71's revised proposal needs it.
+- WI-87: the session work directory becomes the CAT session directory, `.cat/sessions/<session-id>/`, in every path,
+  identifier and text of the repository (user request, 2026-10-17).
 - WI-83: the Codex PostToolUse hook deletes a `run-part` output once its last part arrives uncut and no cut part
   awaits a re-read, and only a file that `run-part` saved (user request, 2026-10-16).
 - WI-70's delivery step: the session rules reach Codex through a rules file that the agent reads with `run-part`,
@@ -2477,6 +2481,44 @@ The riskiest pure code, built first.
   cells form one group and one whose cells form several, with every cell recoverable from the groups).
 - **Exit:** unit tests pass; the full build passes; WI-71's revised proposal uses the new format.
 
+### WI-87 — The CAT session directory (user request, 2026-10-17)
+
+- **Problem:** the user wants the directory that holds one host session's files named for that: `.cat/sessions/` in
+  place of `.cat/work/`, and the term "CAT session directory" in place of "session work directory", "CAT work
+  directory" and "work directory" for that concept.
+- **Paths:** the owning component builds `.cat/sessions/<session-id>/`; every path inside it keeps its relative name
+  (`temp/`, `session.json`, `rules.md`, `subagents/`, `optimizer/`, `optimizer-runs/`). The root that
+  `InventoryScanner`, `Fork`, `ForkView` and staging exclude becomes `.cat/sessions/`, and so do the local exclude
+  entry that `start` adds and the repository's `.gitignore` entry. CAT still neither writes nor deletes
+  `.cat/work/temp`.
+- **Term:** rename the concept throughout the repository: identifiers (`SessionWorkDirectory` becomes
+  `SessionDirectory`, `WorkDirectoryAuditTest` becomes `SessionDirectoryAuditTest`, and likewise each other name of
+  this concept), Javadoc, comments, messages, the injected session rules, plugin rules and skills, `docs/`,
+  `.cat/rules/`, every mention in `design.md`, including its glossary, D17 and D79, and this plan's R-W1, R-W13 and
+  R-L1. Other concepts keep their names, such as a process's working directory and a trial's project. Recorded harness
+  output, such as test transcripts and changelog captures, and the §2 rows that report finished work keep the paths
+  they recorded.
+- **Existing directories (open, the user's decision):** a `.cat/work/<session-id>/` written before the change holds a
+  session's rules and `CAT_TEMP`, and can hold its campaigns.
+  - **Move (recommended):** SessionStart, at startup or resume, moves its own session's old directory to
+    `.cat/sessions/<session-id>/` when the new one does not exist, and the sweep removes old directories under the same
+    marker and transcript conditions as new ones. A resumed session keeps its campaigns; another live session's
+    directory is never moved under it. The project rule that only plugin installation migrates plugin data cannot
+    apply, because installation does not know the user's projects, so `design.md` records this exception.
+  - **No move:** CAT ignores `.cat/work/<session-id>/`. A campaign started before the change can no longer be run or
+    seen, and the user deletes the old directories.
+- **Order:** land it before WI-71's revise. The change alters the `CAT_TEMP` path that every trial's rules state, and
+  the revise reruns every pilot anyway (`design.md` D80).
+- **Tests:** `SessionDirectoryTest` (the directory, `temp/` and marker under `.cat/sessions/`), `SessionSweepTest`,
+  `SessionDirectoryAuditTest` (fails when another main source file spells `.cat/sessions` or `.cat/work`),
+  `ClaudeSessionStartHookTest` and `CodexSessionStartHookTest` (the rules name `.cat/sessions/<session-id>/temp`), the
+  exclusion tests of `InventoryScanner`, `Fork` and staging, `FileCampaignStoreTest`, and, with the move, a session's
+  own old directory moved at startup and at resume, an existing new directory left as is, and another session's old
+  directory left in place.
+- **Exit:** unit tests pass; the full build passes; a search of the repository finds the old term and `.cat/work/<`
+  only in recorded output and §2 history; a live session in each harness gets rules that name
+  `.cat/sessions/<session-id>/temp`, and that directory holds its marker.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2606,6 +2648,7 @@ blocks only the part of a work item that it names.
 | WI-84 | WI-82, WI-83 |
 | WI-85 | WI-81 |
 | WI-86 | WI-82 |
+| WI-87 | WI-83, WI-84 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57 and WI-60 to WI-69. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
