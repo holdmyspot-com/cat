@@ -1,22 +1,25 @@
 #!/usr/bin/env bats
 
 # Tests the run-part and read-part launchers in the Codex plugin's bin folder: they start the client's programs from an
-# installed plugin path that contains spaces, run-part saves a command's output in the project's CAT temporary folder,
-# the line that ends a part names the plugin's read-part, and rg in a run-part command keeps the saved output short.
+# installed plugin path that contains spaces, run-part saves a command's output in the temporary folder of the Codex
+# thread's session work directory in the project, the line that ends a part names the plugin's read-part, and rg in a
+# run-part command keeps the saved output short.
 
 load bootstrap-helpers
 
-# The project holds a CAT temporary folder and the command runs in a folder below it, so run-part must look upward for
-# the folder that receives the output. In a Codex thread whose configuration sets no limit, a part holds about 40,000
+# The command runs in a folder below the CAT project, so run-part must look upward for the project that receives the
+# output. In a Codex thread whose configuration sets no limit, a part holds about 40,000
 # bytes, so the command's output takes several parts; the second is printed by running the command the first names.
 @test "the plugin's run-part saves output in the project and the next part's command runs the plugin's read-part" {
 	runtime="${TEST_ROOT}/installed plugin"
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${runtime}"
 	project="${TEST_ROOT}/project"
-	mkdir -p "${project}/.cat/work/temp" "${project}/src"
+	thread=0b6f3c2e-6d1a-4c8e-9f3b-2a7d5e1c4b90
+	codex_home="${TEST_ROOT}/codex home"
+	mkdir -p "${project}/.cat" "${project}/src" "${codex_home}"
 	cd "${project}/src"
 
-	run env CODEX_THREAD_ID=thread LC_ALL=C LANG=C "${runtime}/bin/run-part" <<'EOF'
+	run env CODEX_THREAD_ID="${thread}" CODEX_HOME="${codex_home}" LC_ALL=C LANG=C "${runtime}/bin/run-part" <<'EOF'
 seq 1 20000
 EOF
 
@@ -25,11 +28,11 @@ EOF
 	last="${lines[${#lines[@]}-2]}"
 	closing="${lines[${#lines[@]}-1]}"
 	prefix="[More output follows. Before any other command or answer, run: '${runtime}/bin/read-part' "
-	[[ "${closing}" == "${prefix}'${project}/.cat/work/temp/run-part-"*"/output.txt' "* ]]
+	[[ "${closing}" == "${prefix}'${project}/.cat/work/${thread}/temp/run-part-"*"/output.txt' "* ]]
 	command="${closing#*run: }"
 	command="${command%]}"
 
-	run env CODEX_THREAD_ID=thread LC_ALL=C LANG=C bash -c "${command}"
+	run env CODEX_THREAD_ID="${thread}" CODEX_HOME="${codex_home}" LC_ALL=C LANG=C bash -c "${command}"
 
 	[ "${status}" -eq 0 ]
 	[ "${lines[0]}" = "$((last + 1))" ]
@@ -56,7 +59,7 @@ run_part()
 	runtime="${TEST_ROOT}/installed plugin"
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${runtime}"
 	project="${TEST_ROOT}/project"
-	mkdir -p "${project}/.cat/work/temp"
+	mkdir -p "${project}/.cat"
 	cd "${project}"
 	create_fake_rg
 	run env PATH="${FAKE_BIN}:${PATH}" LC_ALL=C LANG=C "${runtime}/bin/run-part" <<<"$1"
