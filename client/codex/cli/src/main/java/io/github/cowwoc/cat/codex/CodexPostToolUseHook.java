@@ -41,9 +41,9 @@ import tools.jackson.databind.json.JsonMapper;
  * output. When {@code <path>} is a file that {@code run-part} saved, the hook deletes the file's folder, unless a part
  * that Codex cut has not yet been printed again uncut: the hook records the position of each cut part in the folder and
  * clears it when that part comes back uncut, so that the repaired instruction still finds the file. Once it deletes the
- * folder, it returns the result as a blocking decision whose closing line says that the output ended and the file is
- * deleted. Output whose last part the agent never reads stays until its session's work directory is removed. Every
- * other result passes unchanged.
+ * folder, it returns the result as a blocking decision whose closing line says that the agent has read the whole
+ * output and that the output file was deleted, without naming it. Output whose last part the agent never reads stays
+ * until its session's work directory is removed. Every other result passes unchanged.
  */
 public final class CodexPostToolUseHook
 {
@@ -167,8 +167,7 @@ public final class CodexPostToolUseHook
 			if (folder.isPresent() && isSeenWhole(folder.get(), position, lastPart))
 			{
 				removal.remove(folder.get());
-				String deleted = deleted(result.stringValue(), folder.get().resolve(CodexRunPart.SAVED_OUTPUT),
-					lastPart);
+				String deleted = deleted(result.stringValue(), lastPart);
 				output.write(json.writeValueAsBytes(Map.of("decision", "block", "reason", deleted)));
 				output.write('\n');
 			}
@@ -180,16 +179,18 @@ public final class CodexPostToolUseHook
 	}
 
 	/**
-	 * Returns a result whose saved output the hook deleted, with its closing line replaced by one that says so. The
-	 * closing line of a last part still starts with {@code [End of }, which marks the last part for the agent.
+	 * Returns a result whose saved output the hook deleted, with its closing line replaced by one that says the output
+	 * file was deleted: {@code [End of output. The output file was deleted.]} after the last part, or
+	 * {@code [You have now read every part of this output. The output file was deleted.]} after an earlier part.
+	 * Neither names the deleted file, which no longer exists. The first still starts with {@code [End of }, which marks
+	 * the last part for the agent.
 	 *
 	 * @param result the command's result as Codex showed it
-	 * @param saved the deleted file
 	 * @param lastPart {@code true} if the result is the last part, or {@code false} if it is an earlier part that the
 	 *   agent printed again after the last one
 	 * @return the result with its closing line replaced
 	 */
-	private static String deleted(String result, Path saved, boolean lastPart)
+	private static String deleted(String result, boolean lastPart)
 	{
 		Matcher closingLine = CLOSING_LINE.matcher(result);
 		String kept;
@@ -197,12 +198,12 @@ public final class CodexPostToolUseHook
 			kept = result.substring(0, closingLine.start());
 		else
 			kept = result.stripTrailing();
-		String start;
+		String closing;
 		if (lastPart)
-			start = "[End of output.";
+			closing = "[End of output. The output file was deleted.]";
 		else
-			start = "[You have now read every part of this output.";
-		return kept + "\n" + start + " CAT deleted " + saved + ".]\n";
+			closing = "[You have now read every part of this output. The output file was deleted.]";
+		return kept + "\n" + closing + "\n";
 	}
 
 	/**
