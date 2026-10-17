@@ -317,6 +317,23 @@ public final class SessionWorkDirectory
 	}
 
 	/**
+	 * Returns the file that holds the rules that the main agent of another session of the same project reads, without
+	 * creating that session's work directory.
+	 *
+	 * @param sessionId the harness's ID of the other session, a UUID in canonical form
+	 * @return the file's path
+	 * @throws NullPointerException if {@code sessionId} is null
+	 * @throws IOException if {@code sessionId} is not a UUID in canonical form
+	 */
+	public Path rulesFileOf(String sessionId) throws IOException
+	{
+		requireThat(sessionId, "sessionId").isNotNull();
+		if (!isSessionId(sessionId))
+			throw new IOException("The session ID is not a UUID in canonical form: " + sessionId);
+		return directory.resolveSibling(sessionId).resolve("rules.md");
+	}
+
+	/**
 	 * Returns the file that holds the rules that one of the session's subagents reads.
 	 *
 	 * @param agentId the harness's ID of the subagent

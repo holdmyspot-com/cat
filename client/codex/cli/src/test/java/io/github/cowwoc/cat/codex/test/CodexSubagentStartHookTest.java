@@ -86,8 +86,8 @@ public final class CodexSubagentStartHookTest
 
 	/**
 	 * Verifies that a subagent receives the guidance on reading a file whole followed by a pointer to a rules file in
-	 * the work directory of its {@code agent_id}, which tells it to disregard the earlier pointer to the rules file of
-	 * the agent that started it, since that file states the other agent's {@code CAT_TEMP}.
+	 * the work directory of its {@code agent_id}, which tells it not to read the rules file of the agent that started
+	 * it, since that file states the other agent's {@code CAT_TEMP}.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -110,15 +110,48 @@ public final class CodexSubagentStartHookTest
 				Path.of("."));
 
 			Path rulesFile = project.resolve(".cat/work").resolve(AGENT_ID).resolve("rules.md");
+			Path parentRulesFile = project.resolve(".cat/work").resolve(PARENT_ID).resolve("rules.md");
 			requireThat(context(result), "context").
 				startsWith("# Reading Command Output\n\nRun `" + plugin.resolve("bin/run-part") + "`.\n\n# CAT Rules\n\n").
-				contains("Disregard the previous read instruction. Read this file instead: `" + rulesFile + "`. Read " +
-					"all of it, as described above, before you plan").
+				contains("If an earlier message tells you to read `" + parentRulesFile + "`, that instruction was " +
+					"copied from the agent that started you and is not meant for you: do not read `" + parentRulesFile +
+					"`. Read this file instead: `" + rulesFile + "`. Read all of it, as described above, before you plan").
 				doesNotContain("subagent guidance").doesNotContain("CAT Environment");
 			requireThat(Files.readString(rulesFile, UTF_8), "rules").contains("subagent guidance").
 				contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" + AGENT_ID + "/temp`.").
 				doesNotContain("# Reading Command Output");
 			requireThat(Files.exists(project.resolve(".cat/work").resolve(PARENT_ID)), "parentDirectoryExists").isFalse();
+			requireThat(result.error(), "error").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that an input without {@code agent_id} gives the subagent every rule in the response and leaves the
+	 * rules file of the session's main agent unchanged, since the subagent then shares that agent's work directory.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void inlinesRulesWithoutAgentId() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-subagent-start-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/codex")).resolve("read-file.md"),
+				"# Reading Command Output\n");
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("guidance.md"),
+				"---\nagents: [\"subagents\"]\n---\nsubagent guidance");
+			Path parentRulesFile = Files.createDirectories(project.resolve(".cat/work").resolve(PARENT_ID)).
+				resolve("rules.md");
+			Files.writeString(parentRulesFile, "main agent rules");
+			String input = "{\"session_id\":\"" + PARENT_ID + "\",\"cwd\":" + jsonString(project) +
+				",\"agent_type\":\"cat:worker\"}";
+
+			HookResult result = invoke(input, Map.of("PLUGIN_ROOT", plugin.toString()), Path.of("."));
+
+			requireThat(context(result), "context").contains("# Reading Command Output").contains("subagent guidance");
+			requireThat(Files.readString(parentRulesFile, UTF_8), "parentRules").isEqualTo("main agent rules");
 			requireThat(result.error(), "error").isEmpty();
 		}
 	}

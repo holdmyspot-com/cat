@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;
+import java.util.function.Function;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -33,15 +34,18 @@ final class CodexRuleInjectionHook
 		"list its headings, or read only part of it: guidance that you skip still applies.";
 
 	/**
-	 * Tells a subagent to read its own rules file whole. A subagent that receives the conversation of the agent that
-	 * started it also receives that agent's pointer to its rules file, whose rules can differ, such as in the directory
-	 * that {@code CAT_TEMP} names; Codex places this pointer after the copied one.
+	 * Tells a subagent to read its own rules file whole, given that file and the rules file of the agent that started
+	 * it. A subagent that receives the conversation of the agent that started it also receives that agent's pointer to
+	 * its rules file, whose rules can differ, such as in the directory that {@code CAT_TEMP} names; Codex places this
+	 * pointer after the copied one. The pointer names the other file, since the subagent cannot see whether its
+	 * conversation was copied.
 	 */
-	private static final String SUBAGENT_RULES_FILE_POINTER = "Disregard the previous read instruction. Read this " +
-		"file instead: `%s`. Read all of it, as described above, before you plan, run another command, or respond, " +
-		"even when you could answer the request without it, then apply every instruction in it for the rest of this " +
-		"conversation. Do not search it, list its headings, or read only part of it: guidance that you skip still " +
-		"applies.";
+	private static final String SUBAGENT_RULES_FILE_POINTER = "If an earlier message tells you to read `%2$s`, that " +
+		"instruction was copied from the agent that started you and is not meant for you: do not read `%2$s`. Read " +
+		"this file instead: `%1$s`. Read all of it, as described above, before you plan, run another command, or " +
+		"respond, even when you could answer the request without it, then apply every instruction in it for the rest " +
+		"of this conversation. Do not search it, list its headings, or read only part of it: guidance that you skip " +
+		"still applies.";
 
 	/**
 	 * Prevents instantiation.
@@ -59,8 +63,10 @@ final class CodexRuleInjectionHook
 	 * directories of sessions that their harness no longer keeps.
 	 * <p>
 	 * A Codex subagent is a thread whose shells receive its own thread ID, the input's {@code agent_id}, so its rules
-	 * file lies in the work directory of that ID rather than its parent's, and its pointer tells it to disregard the
-	 * pointer to its parent's rules file that its parent's copied messages may hold.
+	 * file lies in the work directory of that ID rather than its parent's, and its pointer tells it not to read the
+	 * parent's rules file, which the parent's copied messages may name. An input without {@code agent_id} leaves the
+	 * subagent sharing its parent's work directory, so the subagent receives every rule in the response, leaving the
+	 * parent's rules file unchanged.
 	 *
 	 * @param eventName the Codex hook event name
 	 * @param args the hook command-line arguments
@@ -85,35 +91,29 @@ final class CodexRuleInjectionHook
 				Path pluginRoot = scope.pluginRoot();
 				Path userRulesRoot = scope.userRulesRoot();
 				ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
-				SessionWorkDirectory directory;
-				SessionRules session;
-				String pointer;
-				if (eventName.equals("SubagentStart"))
-				{
-					String idProperty = "agent_id";
-					if (!event.path(idProperty).isString())
-						idProperty = "session_id";
-					directory = scope.sessionWorkDirectory(projectDir, event, idProperty);
-					session = loader.loadSessionForSubagent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID,
-						scope.subagentType(event));
-					pointer = SUBAGENT_RULES_FILE_POINTER;
-				}
-				else
-				{
-					directory = scope.sessionWorkDirectory(projectDir, event, "session_id");
-					directory.sweep(Instant.now(), error);
-					session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID);
-					pointer = RULES_FILE_POINTER;
-				}
 				String context;
-				if (session.readingGuidance().isEmpty())
-					context = directory.insertSessionId(session.rules());
+				if (!eventName.equals("SubagentStart"))
+				{
+					SessionWorkDirectory directory = scope.sessionWorkDirectory(projectDir, event, "session_id");
+					directory.sweep(Instant.now(), error);
+					SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir,
+						HARNESS_ID);
+					context = context(directory, session, RULES_FILE_POINTER::formatted);
+				}
+				else if (event.path("agent_id").isString())
+				{
+					SessionWorkDirectory directory = scope.sessionWorkDirectory(projectDir, event, "agent_id");
+					Path parentRulesFile = directory.rulesFileOf(event.path("session_id").asString());
+					SessionRules session = loader.loadSessionForSubagent(pluginRoot, userRulesRoot, projectDir,
+						HARNESS_ID, scope.subagentType(event));
+					context = context(directory, session,
+						rulesFile -> SUBAGENT_RULES_FILE_POINTER.formatted(rulesFile, parentRulesFile));
+				}
 				else
 				{
-					Path rulesFile = directory.rulesFile();
-					Files.writeString(rulesFile, directory.insertSessionId(session.rules()), StandardCharsets.UTF_8);
-					context = directory.insertSessionId(session.readingGuidance()) + "\n\n# CAT Rules\n\n" +
-						pointer.formatted(rulesFile);
+					SessionWorkDirectory directory = scope.sessionWorkDirectory(projectDir, event, "session_id");
+					context = directory.insertSessionId(loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir,
+						HARNESS_ID, scope.subagentType(event)));
 				}
 				output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
 					"additionalContext", context))));
@@ -128,6 +128,27 @@ final class CodexRuleInjectionHook
 		{
 			writeScopeFailure(eventName, output, error, e);
 		}
+	}
+
+	/**
+	 * Writes an agent's rules, other than the guidance on reading a file whole, to the rules file of its work directory
+	 * and returns that guidance followed by a pointer to the file. Without that guidance, writes no file and returns
+	 * every rule, because the agent would have no instruction on how to read the file whole.
+	 *
+	 * @param directory the agent's work directory
+	 * @param session the agent's rules
+	 * @param pointer returns the instruction to read a rules file whole, given the file
+	 * @return the agent's additional context
+	 * @throws IOException if the rules file cannot be written
+	 */
+	private static String context(SessionWorkDirectory directory, SessionRules session, Function<Path, String> pointer)
+		throws IOException
+	{
+		if (session.readingGuidance().isEmpty())
+			return directory.insertSessionId(session.rules());
+		Path rulesFile = directory.rulesFile();
+		Files.writeString(rulesFile, directory.insertSessionId(session.rules()), StandardCharsets.UTF_8);
+		return directory.insertSessionId(session.readingGuidance()) + "\n\n# CAT Rules\n\n" + pointer.apply(rulesFile);
 	}
 
 	/**

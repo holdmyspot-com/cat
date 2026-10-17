@@ -328,8 +328,8 @@ public final class SessionWorkDirectoryTest
 	}
 
 	/**
-	 * Verifies the paths of the rules files inside a session directory, and that the session ID replaces the rule
-	 * texts' stand-in.
+	 * Verifies the paths of the rules files inside a session directory and of another session's rules file, which naming
+	 * it does not create, and that the session ID replaces the rule texts' stand-in.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -345,6 +345,10 @@ public final class SessionWorkDirectoryTest
 			requireThat(session.rulesFile(), "rulesFile").isEqualTo(session.directory().resolve("rules.md"));
 			requireThat(session.subagentRulesFile("ab8e622242de0738a"), "subagentRulesFile").
 				isEqualTo(session.directory().resolve("subagents/ab8e622242de0738a.md"));
+			String otherSession = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+			requireThat(session.rulesFileOf(otherSession), "rulesFileOf").
+				isEqualTo(session.directory().resolveSibling(otherSession).resolve("rules.md"));
+			requireThat(Files.exists(session.directory().resolveSibling(otherSession)), "otherSessionExists").isFalse();
 			requireThat(session.insertSessionId("work/" + SessionWorkDirectory.SESSION_ID_DIRECTIVE + "/temp"), "text").
 				isEqualTo("work/" + SESSION_ID + "/temp");
 		}
