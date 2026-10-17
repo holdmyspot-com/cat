@@ -134,10 +134,11 @@ public final class GuardPilot
 	/**
 	 * Runs the pilot of each prompt test that a stored pilot does not describe.
 	 * <p>
-	 * A stored pilot is reused when it ran every trial and its test's definition, its cell and the control source's
-	 * files are unchanged, so a revision reruns only the tests whose definition changed. A test whose cell is unknown,
-	 * or that has no development test case, has no pilot. When the provider rejects or refuses a session, the pilot
-	 * starts no further session and each unfinished test's result records why it stopped.
+	 * A stored pilot is reused when it ran every trial, every trial ended with a decision, and its test's definition,
+	 * its cell and the control source's files are unchanged, so a revision reruns only the tests whose definition
+	 * changed or whose earlier pilot has a failed run. A test whose cell is unknown, or that has no development test
+	 * case, has no pilot. When the provider rejects or refuses a session, the pilot starts no further session and each
+	 * unfinished test's result records why it stopped.
 	 *
 	 * @param contract the proposed contract
 	 * @param plugins the campaign's trial plugins, which every trial installs

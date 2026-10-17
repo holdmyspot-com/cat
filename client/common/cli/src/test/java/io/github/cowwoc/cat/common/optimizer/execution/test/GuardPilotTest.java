@@ -372,6 +372,42 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * A stored pilot with a trial that ended without a decision runs again even though its test is unchanged, so that a
+	 * session failure does not stand in for the control trials.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void rerunsPilotWithFailedRuns() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-failed"));
+			ScriptedPort failing = new ScriptedPort(directory, request ->
+			{
+				if (isSafety(request))
+					return "invalid";
+				return "pass";
+			});
+			Map<String, PilotResult> first = pilot(failing, workspace(directory), 4).
+				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(10));
+			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+
+			Map<String, PilotResult> second = pilot(sessions, workspace(directory), 4).
+				run(contract, List.of(), control(), Set.of(), first, new SplittableRandom(11));
+
+			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
+			requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS);
+			requireThat(trials.stream().allMatch(GuardPilotTest::isSafety), "onlySafety").isTrue();
+			requireThat(second.get("formatting"), "formatting").isEqualTo(first.get("formatting"));
+			requireThat(second.get("safety").failedRuns(), "failedRuns").isEmpty();
+		}
+	}
+
+	/**
 	 * Each control trial installs the copy of every trial plugin that belongs to the staged control source, in
 	 * configuration order.
 	 *

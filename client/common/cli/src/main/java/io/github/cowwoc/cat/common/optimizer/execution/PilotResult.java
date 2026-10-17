@@ -115,8 +115,8 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 	}
 
 	/**
-	 * Indicates whether this pilot still describes a prompt test: it ran every trial, and the test's definition, its
-	 * weakest cell and the control source's files are the ones that it ran with.
+	 * Indicates whether this pilot still describes a prompt test: it ran every trial, every trial ended with a decision,
+	 * and the test's definition, its weakest cell and the control source's files are the ones that it ran with.
 	 *
 	 * @param definition the current identity of the prompt test and the requirements that it checks
 	 * @param cellId the test's current weakest cell
@@ -129,7 +129,7 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 		requireThat(definition, "definition").isNotNull();
 		requireThat(cellId, "cellId").isNotNull();
 		requireThat(control, "control").isNotNull();
-		return stopReason == null && this.definition.equals(definition) && this.cellId.equals(cellId) &&
-			this.control.equals(control);
+		return stopReason == null && failedRuns.isEmpty() && this.definition.equals(definition) &&
+			this.cellId.equals(cellId) && this.control.equals(control);
 	}
 }
