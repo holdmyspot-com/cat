@@ -40,10 +40,21 @@ infer without implying an equivalence, role, lifecycle, or behavior that does no
 when it is clearer or more intuitive while preserving the distinction. If neither candidate meets these conditions,
 generate another name or use a short descriptive phrase.
 
-Remove each qualifier in turn and compare the shorter name at the interface where its reader encounters it. Keep a
-qualifier only when removing it would collide with a nearby term or create a meaningful ambiguity for that reader. Do
-not retain a word merely because it truthfully describes the implementation, or when its information is already
-supplied by the package, owning type, method, generic bound, or surrounding terminology.
+Remove each qualifier in turn and compare the shorter name or description at the interface where its reader encounters
+it. Keep a qualifier only when removing it would collide with a nearby term or create a meaningful ambiguity for that
+reader. Do not retain a word merely because it truthfully describes the implementation, or when its information is
+already supplied by the package, owning type, method, generic bound, or surrounding terminology.
+
+Describe what an element represents and the contract that its reader can observe there, not how its values came to be
+acceptable. A qualifier that records a check, a source or an earlier processing step, such as “verified,” “validated,”
+“parsed,” “normalized,” “deduplicated” or “raw,” belongs in a name or description only where it distinguishes inputs
+that the element accepts, results that it returns, failures that it reports or states that its reader must tell apart.
+Document each check at the element that performs it, as part of that element's contract, and describe the code that
+stores, sums, iterates over, queues or passes along its results by what those values are. Repeating the qualifier there
+implies that another kind of the same value exists, so the reader looks for a distinction that is not there. For
+example, write “Reads the next conversation portion without retaining earlier portions,” not “Reads the next verified
+portion without retaining earlier portions,” and let the method that performs the check say “Checks that request indices
+are consecutive and that the turn has ended before returning its counts.”
 
 Omit an internal structural qualifier when the intended reader never uses that distinction. When the distinction does
 affect the reader's decision, name its observable consequence instead of relying on structural jargon.
@@ -56,8 +67,7 @@ ordinary technical terms unless this project gives them a specialized meaning.
 When a name or description reports a quantity that combines several values, such as a total, count, sum, maximum or
 average, say which values it combines and the scope that bounds it, such as one response, one turn, one session or one
 run. Place that scope directly beside the word for the quantity, not in a trailing clause that could attach to another
-phrase. Mention values that the quantity leaves out only when a reader would otherwise expect them to be included.
-Describe how the code avoids counting a value twice at the code that does it, not in the quantity's description. For
+phrase. Mention values that the quantity leaves out only when a reader would otherwise expect them to be included. For
 example, write “The output tokens of the selected turn, summed over its responses” rather than “Total output tokens
 counted once per response in the selected turn.”
 
