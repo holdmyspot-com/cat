@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Lifecycle;
@@ -141,7 +142,7 @@ public final class Cleanup
 		catch (IOException e)
 		{
 			return new Removal.Failed("Could not record the removal of the files of campaign " + id + ": " +
-				cause(id, e) + ". The files stay in .cat/work/.");
+				cause(id, e) + ". The files stay in " + SessionWorkDirectory.WORK_ROOT + "/.");
 		}
 		try
 		{

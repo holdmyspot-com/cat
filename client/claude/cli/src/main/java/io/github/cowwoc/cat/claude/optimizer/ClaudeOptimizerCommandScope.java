@@ -8,6 +8,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.optimizer.adapter.DeferredInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
@@ -153,7 +154,7 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock)
 	{
 		Path root = directory.toAbsolutePath().normalize();
-		Path runRoot = root.resolve(".cat").resolve("work").resolve("optimizer-runs").resolve(HARNESS_ID);
+		Path runRoot = root.resolve(SessionWorkDirectory.WORK_ROOT).resolve("optimizer-runs").resolve(HARNESS_ID);
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, heldOut, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock, Optional.of(ProjectRuleLoader.rulesDirectory(home)));

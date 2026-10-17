@@ -8,6 +8,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.BoundedInput;
 import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.PortablePaths;
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
@@ -353,7 +354,8 @@ public final class OptimizerCore implements Core
 	{
 		switch (removal)
 		{
-			case Cleanup.Removal.Removed _ -> notices.add("Removed the campaign's files from .cat/work/.");
+			case Cleanup.Removal.Removed _ -> notices.add("Removed the campaign's files from " +
+				SessionWorkDirectory.WORK_ROOT + "/.");
 			case Cleanup.Removal.Failed failed -> notices.add(failed.warning());
 			case Cleanup.Removal.Kept _, Cleanup.Removal.Deferred _ ->
 			{

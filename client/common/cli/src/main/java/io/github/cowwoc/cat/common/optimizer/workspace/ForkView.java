@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.workspace;
 
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
@@ -22,7 +23,7 @@ public interface ForkView
 	 * The line that creating a fork appends to the repository's local exclude when CAT's work directory is not
 	 * already ignored.
 	 */
-	String EXCLUDE_ENTRY = "/.cat/work/";
+	String EXCLUDE_ENTRY = "/" + SessionWorkDirectory.WORK_ROOT + "/";
 
 	/**
 	 * Returns the recorded files.

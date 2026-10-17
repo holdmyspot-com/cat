@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.store;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
@@ -23,11 +24,11 @@ import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Stores campaigns under {@code <base>/.cat/work/optimizer/<campaign-id>/}. The campaign's {@code held_out}
- * directory holds every file with held-out content: the snapshot in {@code campaign.json}, the proposal in
- * {@code proposal.json}, and one record per logical trial in {@code trials/<sha256 of the trial key>.json}. The
- * delivery journal is {@code delivery.json} in the campaign directory. The {@code held_out} and {@code trials}
- * directories exist from the first snapshot write.
+ * Stores campaigns under {@code optimizer/<campaign-id>/} in the base worktree's work root
+ * ({@link SessionWorkDirectory#WORK_ROOT}). The campaign's {@code held_out} directory holds every file with held-out
+ * content: the snapshot in {@code campaign.json}, the proposal in {@code proposal.json}, and one record per logical
+ * trial in {@code trials/<sha256 of the trial key>.json}. The delivery journal is {@code delivery.json} in the
+ * campaign directory. The {@code held_out} and {@code trials} directories exist from the first snapshot write.
  * <p>
  * The file {@code removal} in a campaign directory records that the removal of the campaign's files started. The
  * campaign directory is deleted by renaming it to {@code .deleting-<campaign-id>} and deleting that directory, so an
@@ -103,7 +104,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	 *
 	 * @param base the base worktree
 	 * @param campaignId the campaign's identifier
-	 * @return the campaign directory below {@code .cat/work/optimizer}
+	 * @return the campaign directory below {@link #root(Path)}
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static Path directory(Path base, String campaignId)
@@ -275,7 +276,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	public static Path root(Path base)
 	{
 		requireThat(base, "base").isNotNull();
-		return base.resolve(".cat/work/optimizer");
+		return base.resolve(SessionWorkDirectory.WORK_ROOT).resolve("optimizer");
 	}
 
 	@Override

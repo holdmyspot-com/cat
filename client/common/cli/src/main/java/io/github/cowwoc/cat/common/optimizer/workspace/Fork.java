@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
 
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
@@ -34,8 +35,9 @@ import java.util.Set;
  */
 public final class Fork implements ForkView
 {
-	private static final String[] CHECK_IGNORE = {"check-ignore", "--quiet", "--no-index", ".cat/work/probe"};
-	private static final String CLEAN_PATHSPEC_EXCLUDING_WORK = ":(exclude).cat/work";
+	private static final String[] CHECK_IGNORE = {"check-ignore", "--quiet", "--no-index",
+		SessionWorkDirectory.WORK_ROOT + "/probe"};
+	private static final String CLEAN_PATHSPEC_EXCLUDING_WORK = ":(exclude)" + SessionWorkDirectory.WORK_ROOT;
 	private final ForkTree recorded;
 	private final ParticipantSelection selection;
 	private final ForkTree tree;
