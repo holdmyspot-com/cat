@@ -32,6 +32,10 @@ public final class PromptTestLocations
 	 * The file name suffix of guidance that maps to a scenario directory.
 	 */
 	private static final String MARKDOWN = ".md";
+	/**
+	 * The name of a target's certification history file in its scenario directory.
+	 */
+	private static final String CERTIFICATION_HISTORY = "certifications.json";
 
 	/**
 	 * Prevents construction.
@@ -97,6 +101,20 @@ public final class PromptTestLocations
 			}
 		}
 		return TESTS.resolve(withoutSuffix(normalized));
+	}
+
+	/**
+	 * Returns where a target keeps its certification history: the file {@value #CERTIFICATION_HISTORY} in the target's
+	 * scenario directory, beside its prompt test configuration.
+	 *
+	 * @param target the guidance file, relative to the project
+	 * @return the history file, relative to the project
+	 * @throws NullPointerException     if {@code target} is null
+	 * @throws IllegalArgumentException if {@code target} is absolute
+	 */
+	public static Path certificationHistory(Path target)
+	{
+		return scenarioDirectory(target).resolve(CERTIFICATION_HISTORY);
 	}
 
 	/**
@@ -187,7 +205,8 @@ public final class PromptTestLocations
 	 * directory of each prompt test and each regression scenario that a prompt test cites inside the project, which is
 	 * the directory of a {@value PromptTestFiles#SCENARIO} or the file of a scenario in an earlier format, and each
 	 * {@value PromptTestFiles#FIXTURES} directory inside the test root that a cited {@value PromptTestFiles#SCENARIO}'s
-	 * fixture patterns name, and the target's prompt test configuration, which names the trial plugins.
+	 * fixture patterns name, the target's prompt test configuration, which names the trial plugins, and the target's
+	 * certification history, which holds the results of earlier certifications.
 	 *
 	 * @param contract the contract
 	 * @param target   the campaign target, relative to the project
@@ -204,6 +223,7 @@ public final class PromptTestLocations
 		for (Location location : of(contract, target).values())
 			excluded.add(location.directory());
 		excluded.add(PromptConfiguration.location(target));
+		excluded.add(certificationHistory(target));
 		for (PromptTest test : contract.tests())
 		{
 			for (String citation : test.regressionScenarios())

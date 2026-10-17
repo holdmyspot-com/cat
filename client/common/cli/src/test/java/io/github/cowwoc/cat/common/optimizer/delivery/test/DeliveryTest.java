@@ -11,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord.CellResult;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.MeasurementCondition;
@@ -50,7 +51,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeWorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
-import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
+import io.github.cowwoc.cat.common.optimizer.store.CertificationHistoryJson;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.test.InMemoryCampaignStore;
@@ -81,8 +82,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Every test starts from the same fork: the base holds the prompt sources {@code rules/main.md},
  * {@code rules/style.md} and {@code rules/old.md} and the non-prompt file {@code README.md}, and the external directory
  * holds the read-only prompt source {@code shared.md}. The candidate edits {@code rules/main.md}, creates
- * {@code rules/new.md} and deletes {@code rules/old.md}. A certified delivery also writes the certification record of
- * the target {@code rules/main.md} to {@code .cat/certifications/rules/main.json}.
+ * {@code rules/new.md} and deletes {@code rules/old.md}. A certified delivery also appends the certification record of
+ * the target {@code rules/main.md} to {@code .cat/tests/rules/main/certifications.json}.
  */
 public final class DeliveryTest
 {
@@ -93,7 +94,7 @@ public final class DeliveryTest
 	{
 	};
 	private static final CertificationRecord RECORD = record(1);
-	private static final Path RECORD_FILE = Path.of(".cat/certifications/rules/main.json");
+	private static final Path RECORD_FILE = Path.of(".cat/tests/rules/main/certifications.json");
 	/**
 	 * The directory that holds the regression scenarios of the target {@code rules/main.md}.
 	 */
@@ -258,8 +259,7 @@ public final class DeliveryTest
 					requireThat(written, "written").withContext(crashAfter, "crashAfter").
 						isEqualTo(List.of(0, 1, 2, 3));
 					requireCandidateDelivered(fixture);
-					requireThat(new CertificationRecordJson(JSON).read(fixture.resolve(RECORD_FILE)), "record").
-						isEqualTo(RECORD);
+					requireThat(history(fixture).records(), "records").isEqualTo(List.of(RECORD));
 				}
 			}
 		}
@@ -619,8 +619,7 @@ public final class DeliveryTest
 			DeliveryChange last = delivered.changes().getLast();
 			requireThat(last, "last").isInstanceOf(Create.class);
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
-			requireThat(new CertificationRecordJson(JSON).read(fixture.resolve(RECORD_FILE)), "record").
-				isEqualTo(RECORD);
+			requireThat(history(fixture).records(), "records").isEqualTo(List.of(RECORD));
 			requireThat(delivered.diff(), "diff").contains("+++ b/" + PortablePaths.text(RECORD_FILE)).
 				contains("\"certification_index\"");
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
@@ -629,19 +628,21 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * A certified delivery replaces the record that an earlier certification of the same target left, and the diff
-	 * shows the replacement.
+	 * A certified delivery appends its record to the history that an earlier certification of the same target left:
+	 * the history holds the earlier record unchanged, followed by the delivered one, and the diff adds the new record
+	 * without removing a line of the earlier one.
 	 *
 	 * @throws IOException if the fixture or delivery fails
 	 */
 	@Test
-	public void certifiedDeliveryReplacesEarlierRecord() throws IOException
+	public void certifiedDeliveryAppendsToEarlierHistory() throws IOException
 	{
 		// Requirement: R-M6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CertificationRecordJson codec = new CertificationRecordJson(JSON);
-			Fixture fixture = Fixture.create(cleanup).commit(RECORD_FILE, codec.write(record(3)));
+			CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+			byte[] earlier = codec.write(CertificationHistory.EMPTY.appended(record(3)));
+			Fixture fixture = Fixture.create(cleanup).commit(RECORD_FILE, earlier);
 			Overlay candidate = fixture.candidate();
 
 			Delivered delivered = requireDelivered(fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
@@ -651,11 +652,60 @@ public final class DeliveryTest
 			DeliveryChange last = delivered.changes().getLast();
 			requireThat(last, "last").isInstanceOf(Edit.class);
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
-			requireThat(codec.read(fixture.resolve(RECORD_FILE)), "record").isEqualTo(RECORD);
+			requireThat(history(fixture).records(), "records").isEqualTo(List.of(record(3), RECORD));
 			requireThat(delivered.diff(), "diff").contains("+++ b/" + PortablePaths.text(RECORD_FILE)).
-				contains("-  \"certification_index\" : 3").contains("+  \"certification_index\" : 1");
+				contains("+    \"certification_index\" : 1").doesNotContain("-    \"certification_index\"");
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
 		}
+	}
+
+	/**
+	 * A history file that does not describe a valid history stops delivery before any write, with a failure that names
+	 * the file and the JSON path of the problem, and the file keeps its content.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void malformedHistoryStopsDelivery() throws IOException
+	{
+		// Requirement: R-M6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			String malformed = "{\"format_version\": 1, \"records\": [\"text\"]}\n";
+			Fixture fixture = Fixture.create(cleanup).commit(RECORD_FILE, malformed.getBytes(UTF_8));
+			Overlay candidate = fixture.candidate();
+			List<DeliveryChange> writes = new ArrayList<>();
+
+			IOException failure = null;
+			try
+			{
+				fixture.delivery(new InMemoryCampaignStore(), candidate, writes::add).
+					deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate,
+						fixture.promptSources(), RECORD, List.of());
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "message").contains(RECORD_FILE.getFileName().toString()).
+				contains("records[0]");
+			requireThat(writes, "writes").isEmpty();
+			requireThat(read(fixture.resolve(RECORD_FILE)), "history").isEqualTo(malformed);
+		}
+	}
+
+	/**
+	 * Returns the certification history that a delivery left in the fixture.
+	 *
+	 * @param fixture the fixture
+	 * @return the history
+	 * @throws IOException if the history cannot be read
+	 */
+	private static CertificationHistory history(Fixture fixture) throws IOException
+	{
+		return new CertificationHistoryJson(JSON).read(fixture.resolve(RECORD_FILE));
 	}
 
 	/**

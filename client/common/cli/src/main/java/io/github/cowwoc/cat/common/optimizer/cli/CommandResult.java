@@ -12,13 +12,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * What a command tells the host agent: a campaign's status, or the certification record of a target that has no
+ * What a command tells the host agent: a campaign's status, or the certification history of a target that has no
  * campaign.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param status the campaign's status after the command, or {@code null} if the result reports a certification record
- * @param certification the certification record of a target that has no campaign, or {@code null} if the result
+ * @param certification the certification history of a target that has no campaign, or {@code null} if the result
  *   reports a campaign
  * @param harness the harness that started the campaign, or {@code null} if the result reports a certification record
  * @param proposal the rendered proposal that the user must review, or {@code null} if the command presents none
@@ -35,7 +35,7 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 	 *
 	 * @param status the campaign's status after the command, or {@code null} if the result reports a certification
 	 *   record
-	 * @param certification the certification record of a target that has no campaign, or {@code null} if the result
+	 * @param certification the certification history of a target that has no campaign, or {@code null} if the result
 	 *   reports a campaign
 	 * @param harness the harness that started the campaign, or {@code null} if the result reports a certification
 	 *   record
@@ -118,9 +118,9 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 	}
 
 	/**
-	 * Returns a result that reports the certification record of a target that has no campaign.
+	 * Returns a result that reports the certification history of a target that has no campaign.
 	 *
-	 * @param certification the record and its applicability
+	 * @param certification the latest record of each harness with its applicability, and the earlier records
 	 * @return the result
 	 * @throws NullPointerException if {@code certification} is null
 	 */

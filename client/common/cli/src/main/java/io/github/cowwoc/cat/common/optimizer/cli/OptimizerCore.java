@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Registry;
@@ -84,7 +85,7 @@ import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
-import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
+import io.github.cowwoc.cat.common.optimizer.store.CertificationHistoryJson;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
 import io.github.cowwoc.cat.common.runner.PluginManifest;
 import io.github.cowwoc.cat.common.optimizer.workspace.ControlSource;
@@ -94,6 +95,7 @@ import io.github.cowwoc.cat.common.optimizer.workspace.PluginBuild;
 import io.github.cowwoc.cat.common.optimizer.workspace.WorkspaceException;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -117,6 +119,7 @@ import java.util.SplittableRandom;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -1021,42 +1024,62 @@ public final class OptimizerCore implements Core
 
 		// A finished campaign must not hide a certification that a later campaign delivered
 		Path relative = root.relativize(absolute);
-		Optional<CertificationRecord> record = record(root, relative);
-		if (record.isEmpty() && header.isPresent())
+		CertificationHistory history = history(root, relative);
+		if (history.records().isEmpty() && header.isPresent())
 			return report(root, require(store, header.get().id(), false), null, null);
-		if (record.isEmpty())
+		if (history.records().isEmpty())
 		{
 			String absent = "no campaign or certification record exists for " + relative + ".";
 			if (isId)
 				throw new CommandRefusedException("No campaign has the identifier " + subject + ", and " + absent);
 			throw new CommandRefusedException("N" + absent.substring(1));
 		}
-		Map<Path, Sha256> promptFiles = new TreeMap<>();
-		for (Path path : record.get().promptFiles().keySet())
-		{
-			Optional<FileEntry> entry = InventoryScanner.entry(root, path);
-			if (entry.isPresent() && entry.get() instanceof FileEntry.RegularFile file)
-				promptFiles.put(path, file.contentHash());
-		}
-		MeasurementIdentity known = environment(path -> InventoryScanner.entry(root, path));
-		return CommandResult.of(new CertificationStatus(record.get(),
-			record.get().applicability(promptFiles, known, record.get().parameters().minimumPassRate())));
+		Entries files = path -> InventoryScanner.entry(root, path);
+		MeasurementIdentity known = environment(files);
+		return CommandResult.of(certificationStatus(history, files, known,
+			record -> record.parameters().minimumPassRate()));
 	}
 
 	/**
-	 * Reads the certification record of a target.
+	 * Compares the latest certification of each harness with the prompt files and conditions that exist now.
+	 *
+	 * @param history the target's certification history, which holds at least one record
+	 * @param files the files that exist now
+	 * @param known the conditions that CAT knows now
+	 * @param minimumPassRate the minimum pass rate {@code p_min} that a record must prove now
+	 * @return the status
+	 * @throws IOException if a prompt file cannot be read
+	 */
+	private static CertificationStatus certificationStatus(CertificationHistory history, Entries files,
+		MeasurementIdentity known, Function<CertificationRecord, BigDecimal> minimumPassRate) throws IOException
+	{
+		Map<Path, Sha256> promptFiles = new TreeMap<>();
+		for (CertificationRecord record : history.latest())
+		{
+			for (Path path : record.promptFiles().keySet())
+			{
+				Optional<FileEntry> entry = files.entry(path);
+				if (entry.isPresent() && entry.get() instanceof FileEntry.RegularFile file)
+					promptFiles.put(path, file.contentHash());
+			}
+		}
+		return CertificationStatus.of(history, promptFiles, known, minimumPassRate);
+	}
+
+	/**
+	 * Reads the certification history of a target.
 	 *
 	 * @param root the project root
 	 * @param target the target, relative to the project
-	 * @return the record, or empty if the target has none
-	 * @throws IOException if the record exists but cannot be read
+	 * @return the history, which is empty if the target has never been certified
+	 * @throws IOException if the history file exists but cannot be read
 	 */
-	private Optional<CertificationRecord> record(Path root, Path target) throws IOException
+	private CertificationHistory history(Path root, Path target) throws IOException
 	{
-		Path file = root.resolve(CertificationRecord.location(target));
+		Path file = root.resolve(PromptTestLocations.certificationHistory(target));
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
-			return Optional.empty();
-		return Optional.of(new CertificationRecordJson(scope.json()).read(file));
+			return CertificationHistory.EMPTY;
+		return new CertificationHistoryJson(scope.json()).read(file);
 	}
 
 	@Override
@@ -1691,19 +1714,12 @@ public final class OptimizerCore implements Core
 		Authority authority = authority(root, campaign, inventory);
 		LinkReport links = LinkReport.of(inventory, authority);
 		CertificationStatus incumbent = null;
-		Optional<CertificationRecord> record = record(root, relativeTarget(root, campaign));
-		if (record.isPresent())
+		CertificationHistory history = history(root, relativeTarget(root, campaign));
+		if (!history.records().isEmpty())
 		{
-			// Compare the record with the fork's files and the conditions that the campaign knows now
-			Map<Path, Sha256> promptFiles = new TreeMap<>();
-			for (Path path : record.get().promptFiles().keySet())
-			{
-				Optional<FileEntry> entry = inventory.entry(path);
-				if (entry.isPresent() && entry.get() instanceof FileEntry.RegularFile file)
-					promptFiles.put(path, file.contentHash());
-			}
-			incumbent = new CertificationStatus(record.get(), record.get().applicability(promptFiles,
-				campaign.identity(), derived.contract().minimumPassRate()));
+			// Compare each harness's latest record with the fork's files and the campaign's known conditions
+			incumbent = certificationStatus(history, inventory::entry, campaign.identity(),
+				record -> derived.contract().minimumPassRate());
 		}
 		return Proposal.of(derived, campaign, links, relativeTarget(root, campaign), scope.sessions().hostLogin(),
 			scope.calibrator(), schema, incumbent, pilots, plugin, controlRefusals(root, campaign, fork, derived, plugin));

@@ -87,8 +87,8 @@ public interface Core
 	 * Reports a campaign without changing it. Either harness may report any campaign.
 	 * <p>
 	 * {@code subject} names a campaign by its identifier or by its target. A target resolves as {@code start}
-	 * resolves it. A target reports its resumable campaign; otherwise its certification record, if any, and whether
-	 * the record still applies; otherwise its latest campaign.
+	 * resolves it. A target reports its resumable campaign; otherwise its certification history, if any, and whether
+	 * each harness's latest record still applies; otherwise its latest campaign.
 	 *
 	 * @param subject the campaign's identifier, or a target
 	 * @return the result

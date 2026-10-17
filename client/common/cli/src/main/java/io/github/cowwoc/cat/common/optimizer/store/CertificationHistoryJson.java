@@ -12,6 +12,7 @@ import static io.github.cowwoc.cat.common.optimizer.store.JsonFields.text;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.PortablePaths;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord.CellResult;
@@ -40,13 +41,14 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Converts a {@link CertificationRecord} to and from the JSON file that a certified delivery writes to the project.
+ * Converts a {@link CertificationHistory} to and from the JSON file that a certified delivery appends to in the
+ * project.
  * <p>
- * The file holds the target, the certification index, the scope's identifier, the minimum pass rate and the
- * significance level {@code alpha} as decimal strings, whether the control and incumbent comparisons follow from the
- * minimum pass rate, each cell's counts with the pairs of each assertion's control and incumbent comparisons, each
- * prompt file's content hash and the measurement conditions. A cell whose comparisons follow from the minimum pass
- * rate has no pairs.
+ * The file holds the format version and the {@code records}, oldest first. Each record holds the target, the
+ * certification index, the scope's identifier, the minimum pass rate and the significance level {@code alpha} as
+ * decimal strings, whether the control and incumbent comparisons follow from the minimum pass rate, each cell's counts
+ * with the pairs of each assertion's control and incumbent comparisons, each prompt file's content hash and the
+ * measurement conditions. A cell whose comparisons follow from the minimum pass rate has no pairs.
  * <p>
  * {@code alpha} is {@code 1 / threshold} of the level. A reciprocal that has no finite decimal form is rounded up to
  * {@value #ALPHA_DIGITS} significant digits, so the written value never understates the level's error probability.
@@ -55,13 +57,14 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
-public final class CertificationRecordJson
+public final class CertificationHistoryJson
 {
 	/**
 	 * The format version that this version of CAT writes and reads.
 	 */
-	private static final int FORMAT_VERSION = 6;
+	private static final int FORMAT_VERSION = 1;
 	private static final String MALFORMED = "is malformed";
+	private static final String RECORDS = "records";
 	/**
 	 * The significant digits of an {@code alpha} that has no finite decimal form.
 	 */
@@ -79,24 +82,53 @@ public final class CertificationRecordJson
 	 * @param json the JSON mapper
 	 * @throws NullPointerException if {@code json} is null
 	 */
-	public CertificationRecordJson(JsonMapper json)
+	public CertificationHistoryJson(JsonMapper json)
 	{
 		requireThat(json, "json").isNotNull();
 		this.json = json;
 	}
 
 	/**
-	 * Converts a record to the content of its file.
+	 * Converts a history to the content of its file.
 	 *
-	 * @param record the record
+	 * @param history the history
 	 * @return the file's bytes
-	 * @throws NullPointerException if {@code record} is null
+	 * @throws NullPointerException if {@code history} is null
 	 */
-	public byte[] write(CertificationRecord record)
+	public byte[] write(CertificationHistory history)
 	{
-		requireThat(record, "record").isNotNull();
+		requireThat(history, "history").isNotNull();
 		ObjectNode root = json.createObjectNode();
 		root.put(VERSION, FORMAT_VERSION);
+		ArrayNode records = root.putArray(RECORDS);
+		for (CertificationRecord record : history.records())
+			writeRecord(records.addObject(), record);
+		return json.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
+	}
+
+	/**
+	 * Reads a history file.
+	 *
+	 * @param file the file
+	 * @return the history
+	 * @throws NullPointerException if {@code file} is null
+	 * @throws IOException if the file cannot be read, is not valid JSON, or does not describe a valid history; the
+	 *   message names the file and the JSON path of the first problem
+	 */
+	public CertificationHistory read(Path file) throws IOException
+	{
+		requireThat(file, "file").isNotNull();
+		return JsonFiles.read(json, file, CertificationHistoryJson::readHistory, MALFORMED);
+	}
+
+	/**
+	 * Writes a record.
+	 *
+	 * @param root the object that receives the record's fields
+	 * @param record the record
+	 */
+	private void writeRecord(ObjectNode root, CertificationRecord record)
+	{
 		root.put("target", PortablePaths.text(record.target()));
 		root.put("certification_index", record.certificationIndex());
 		root.put("scope", record.scope().id());
@@ -122,22 +154,6 @@ public final class CertificationRecordJson
 		for (Entry<Path, Sha256> entry : record.promptFiles().entrySet())
 			promptFiles.put(PortablePaths.text(entry.getKey()), entry.getValue().hex());
 		root.set("identity", new CampaignJson(json).writeIdentity(record.identity()));
-		return json.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
-	}
-
-	/**
-	 * Reads a record file.
-	 *
-	 * @param file the file
-	 * @return the record
-	 * @throws NullPointerException if {@code file} is null
-	 * @throws IOException if the file cannot be read, is not valid JSON, or does not describe a valid record; the
-	 *   message names the file
-	 */
-	public CertificationRecord read(Path file) throws IOException
-	{
-		requireThat(file, "file").isNotNull();
-		return JsonFiles.read(json, file, CertificationRecordJson::readRecord, MALFORMED);
 	}
 
 	/**
@@ -183,7 +199,36 @@ public final class CertificationRecordJson
 	}
 
 	/**
-	 * Converts a record file's document to a record.
+	 * Converts a history file's document to a history.
+	 *
+	 * @param root the document
+	 * @return the history
+	 * @throws IllegalArgumentException if the document does not describe a valid history; the message starts with the
+	 *   JSON path of the first problem
+	 */
+	private static CertificationHistory readHistory(JsonNode root)
+	{
+		requireVersion(root, FORMAT_VERSION);
+		List<CertificationRecord> records = new ArrayList<>();
+		List<JsonNode> elements = elements(root, RECORDS);
+		for (int i = 0; i < elements.size(); ++i)
+		{
+			String path = RECORDS + "[" + i + "]";
+			requireObject(elements.get(i), path);
+			try
+			{
+				records.add(readRecord(elements.get(i)));
+			}
+			catch (IllegalArgumentException | NullPointerException e)
+			{
+				throw new IllegalArgumentException(path + "." + e.getMessage(), e);
+			}
+		}
+		return new CertificationHistory(records);
+	}
+
+	/**
+	 * Converts a record's document to a record.
 	 *
 	 * @param root the document
 	 * @return the record
@@ -191,7 +236,6 @@ public final class CertificationRecordJson
 	 */
 	private static CertificationRecord readRecord(JsonNode root)
 	{
-		requireVersion(root, FORMAT_VERSION);
 		String scopeId = text(root, "scope");
 		CertificationScope scope = CertificationScope.fromId(scopeId).orElseThrow(() ->
 			new IllegalArgumentException("scope: " + scopeId + " is not a certification scope"));

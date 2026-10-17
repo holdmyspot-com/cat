@@ -363,16 +363,59 @@ public final class ApplicabilityTest
 	}
 
 	/**
-	 * Returns the record of a first certification of {@code CLAUDE.md} under the current parameters, measured with
-	 * the trial model {@code model-a}, judge version {@code judge-1} and session environment version
+	 * A certification record of another harness is compared with the prompt files alone: the harness's own conditions
+	 * are unchecked rather than changed, so the record stays current until a prompt file changes, and the history that
+	 * keeps one latest record per harness can tell each harness whether its own record applies.
+	 */
+	@Test
+	public void otherHarnessRecordChecksOnlyPromptFiles()
+	{
+		// Requirement: R-M6
+		CertificationRecord record = record("codex");
+		Map<MeasurementCondition, String> known = new EnumMap<>(MeasurementCondition.class);
+		known.put(MeasurementCondition.PROVIDER, "claude");
+		known.put(MeasurementCondition.JUDGE, "judge-2");
+		known.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION, "environment-2");
+		MeasurementIdentity identity = new MeasurementIdentity(known);
+
+		Applicability unchanged = record.applicability(Map.of(Path.of("CLAUDE.md"), hash("prompt v2")), identity,
+			Contract.DEFAULT_MINIMUM_PASS_RATE);
+		Applicability edited = record.applicability(Map.of(Path.of("CLAUDE.md"), hash("prompt v3")), identity,
+			Contract.DEFAULT_MINIMUM_PASS_RATE);
+
+		requireThat(unchanged.status(), "unchangedStatus").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(unchanged.changed(), "unchangedChanged").isEmpty();
+		requireThat(unchanged.unchecked(), "unchecked").contains(MeasurementCondition.JUDGE).
+			contains(MeasurementCondition.PROVIDER).contains(MeasurementCondition.SESSION_ENVIRONMENT_VERSION);
+		requireThat(edited.status(), "editedStatus").isEqualTo(Applicability.Status.HISTORICAL);
+		requireThat(edited.promptContentChanged(), "promptContentChanged").isTrue();
+		requireThat(edited.changed(), "editedChanged").isEmpty();
+	}
+
+	/**
+	 * Returns the record of a first certification of {@code CLAUDE.md} by Claude Code under the current parameters,
+	 * measured with the trial model {@code model-a}, judge version {@code judge-1} and session environment version
 	 * {@code environment-1}.
 	 *
 	 * @return the record
 	 */
 	private static CertificationRecord record()
 	{
+		return record("claude");
+	}
+
+	/**
+	 * Returns the record of a first certification of {@code CLAUDE.md} under the current parameters, measured with
+	 * the trial model {@code model-a}, judge version {@code judge-1} and session environment version
+	 * {@code environment-1}.
+	 *
+	 * @param harness the model provider that the record names
+	 * @return the record
+	 */
+	private static CertificationRecord record(String harness)
+	{
 		Map<MeasurementCondition, String> recorded = new EnumMap<>(MeasurementCondition.class);
-		recorded.put(MeasurementCondition.PROVIDER, "claude");
+		recorded.put(MeasurementCondition.PROVIDER, harness);
 		recorded.put(MeasurementCondition.JUDGE, "judge-1");
 		recorded.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION, "environment-1");
 		recorded.put(MeasurementCondition.MODEL, "model-a");

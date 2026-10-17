@@ -84,7 +84,7 @@ public final class PromptTestLocationsTest
 	 * The paths that staging excludes are every prompt test's directory and every scenario that a prompt test cites
 	 * inside the project: the directory of a {@code scenario.md}, or the scenario file of an earlier format. The
 	 * {@code fixtures/} directories that a cited scenario's fixture patterns name inside its test root are excluded
-	 * too, and so is the target's prompt test configuration.
+	 * too, and so are the target's prompt test configuration and certification history.
 	 *
 	 * @throws IOException if a file cannot be written or read
 	 */
@@ -111,13 +111,14 @@ public final class PromptTestLocationsTest
 				Path.of(".cat/tests/main/tone_kept"), Path.of(".cat/tests/main/plain_list"),
 				Path.of(".cat/tests/main/safety"), Path.of(".cat/tests/other/list_given"),
 				Path.of(".cat/tests/other/old_list.md"), Path.of(".cat/tests/main/fixtures"),
-				Path.of(".cat/tests/shared/fixtures"), PromptConfiguration.location(TARGET)));
+				Path.of(".cat/tests/shared/fixtures"), PromptConfiguration.location(TARGET),
+				PromptTestLocations.certificationHistory(TARGET)));
 		}
 	}
 
 	/**
 	 * A prompt test that delivery creates holds its own fixtures, so staging excludes only its directory and the
-	 * target's prompt test configuration.
+	 * target's prompt test configuration and certification history.
 	 *
 	 * @throws IOException if a file cannot be read
 	 */
@@ -135,7 +136,8 @@ public final class PromptTestLocationsTest
 			Path tests = Path.of("client/codex/cli/src/test/resources");
 			requireThat(PromptTestLocations.excluded(contract, target, project), "excluded").isEqualTo(Set.of(
 				tests.resolve("codex/read-file/formatting"), tests.resolve("codex/read-file/plain_list"),
-				tests.resolve("codex/read-file/safety"), tests.resolve("codex/read-file/prompt.json")));
+				tests.resolve("codex/read-file/safety"), tests.resolve("codex/read-file/prompt.json"),
+				tests.resolve("codex/read-file/certifications.json")));
 		}
 	}
 }

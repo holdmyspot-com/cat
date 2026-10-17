@@ -742,6 +742,33 @@ public final class StagedSourceTest
 	}
 
 	/**
+	 * Verifies that a staged source leaves out the target's certification history, which records deliveries and no
+	 * input of a trial, and keeps the target.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	// Requirement: R-M6
+	@Test
+	public void leavesOutCertificationHistory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			Path target = Path.of("prompt.md");
+			Path history = PromptTestLocations.certificationHistory(target);
+			Overlay overlay = Overlay.of(project.tree().inventory()).
+				write(history, content("{\"format_version\": 1, \"records\": []}"), READ_WRITE);
+
+			Path source = port.stage(overlay, PromptTestLocations.excluded(ContractFixtures.contract(), target,
+				project.base()));
+
+			requireThat(Files.exists(source.resolve(history)), "history").isFalse();
+			requireThat(source.resolve(target), "target").isRegularFile();
+		}
+	}
+
+	/**
 	 * Verifies that a trial plugin's copy is refused when campaign storage holds no copy of its base, so that trials
 	 * never install a base that {@code start} did not copy.
 	 *

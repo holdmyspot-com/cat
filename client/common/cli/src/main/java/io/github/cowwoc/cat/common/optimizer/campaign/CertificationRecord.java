@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -147,25 +148,14 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	}
 
 	/**
-	 * Returns the file that holds the record of a target.
+	 * Returns the harness that measured the certification.
 	 *
-	 * @param target the target, relative to the project
-	 * @return {@code .cat/certifications/<target without its extension>.json}, relative to the project
-	 * @throws NullPointerException if {@code target} is null
+	 * @return the model provider that the measurement conditions record, which names the harness, or empty if they
+	 *   record none
 	 */
-	public static Path location(Path target)
+	public Optional<String> harness()
 	{
-		requireThat(target, "target").isNotNull();
-		String name = target.getFileName().toString();
-		// A name that starts with its only dot, such as ".cursorrules", has no extension
-		int dot = name.lastIndexOf('.');
-		if (dot > 0)
-			name = name.substring(0, dot);
-		Path relative = Path.of(name + ".json");
-		Path parent = target.getParent();
-		if (parent != null)
-			relative = parent.resolve(relative);
-		return Path.of(".cat/certifications").resolve(relative);
+		return Optional.ofNullable(identity.values().get(MeasurementCondition.PROVIDER));
 	}
 
 	/**

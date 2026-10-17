@@ -7,6 +7,7 @@ import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationAttempt;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord.CellResult;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Pairing;
@@ -24,7 +25,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
-import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
+import io.github.cowwoc.cat.common.optimizer.store.CertificationHistoryJson;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -108,9 +109,9 @@ public final class CertificationRecordTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path file = cleanup.add(Files.createTempDirectory("cat-record-")).resolve("CLAUDE.json");
-			CertificationRecordJson codec = new CertificationRecordJson(JSON);
-			Files.write(file, codec.write(record));
-			requireThat(codec.read(file), "read").isEqualTo(record);
+			CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+			Files.write(file, codec.write(CertificationHistory.EMPTY.appended(record)));
+			requireThat(codec.read(file).records(), "read").isEqualTo(List.of(record));
 		}
 	}
 
@@ -128,8 +129,8 @@ public final class CertificationRecordTest
 		Campaign campaign = certifiedCampaign();
 		CertificationRecord record = CertificationRecord.of(campaign, campaign.attempt(2), snapshot(),
 			promptSources());
-		CertificationRecordJson codec = new CertificationRecordJson(JSON);
-		ObjectNode edited = (ObjectNode) JSON.readTree(codec.write(record));
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		ObjectNode edited = (ObjectNode) JSON.readTree(codec.write(CertificationHistory.EMPTY.appended(record)));
 		edited.put("format_version", 5);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -161,16 +162,18 @@ public final class CertificationRecordTest
 		CertificationRecord record = CertificationRecord.of(campaign, campaign.attempt(2), snapshot(),
 			promptSources());
 
-		byte[] bytes = new CertificationRecordJson(JSON).write(record);
+		byte[] bytes = new CertificationHistoryJson(JSON).write(CertificationHistory.EMPTY.appended(record));
 
 		requireThat(bytes.length, "size").isLessThan(MAXIMUM_SIZE);
 		String text = new String(bytes, UTF_8);
 		requireThat(text, "text").doesNotContain(FAILING_TEXT);
 		JsonNode root = JSON.readTree(bytes);
-		requireThat(new HashSet<>(root.propertyNames()), "fields").isEqualTo(Set.of("format_version", "target",
+		requireThat(new HashSet<>(root.propertyNames()), "fileFields").isEqualTo(Set.of("format_version", "records"));
+		JsonNode entry = root.get("records").get(0);
+		requireThat(new HashSet<>(entry.propertyNames()), "fields").isEqualTo(Set.of("target",
 			"certification_index", "scope", "minimum_pass_rate", "comparisons_implied", "alpha", "cells", "prompt_files",
 			"identity"));
-		requireThat(root.get("scope").asString(), "scope").isEqualTo("weakest_cell");
+		requireThat(entry.get("scope").asString(), "scope").isEqualTo("weakest_cell");
 	}
 
 	/**
@@ -185,7 +188,7 @@ public final class CertificationRecordTest
 	public void alphaIsTheLevelAsADecimal() throws IOException
 	{
 		// Requirement: R-M6
-		CertificationRecordJson codec = new CertificationRecordJson(JSON);
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
 		Map<Integer, String> expected = Map.of(1, "0.02", 2, "0.006666666667", 3, "0.003333333334");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -197,20 +200,22 @@ public final class CertificationRecordTest
 					CertificationScope.LATEST_VERSIONS, CertificationParameters.current(index,
 					Contract.DEFAULT_MINIMUM_PASS_RATE), List.of(),
 					Map.of(Path.of("CLAUDE.md"), hash("prompt v1")), Builder.OBSERVED);
-				byte[] bytes = codec.write(record);
-				requireThat(JSON.readTree(bytes).get("alpha").asString(), "alpha").withContext(index, "index").
+				byte[] bytes = codec.write(CertificationHistory.EMPTY.appended(record));
+				requireThat(JSON.readTree(bytes).get("records").get(0).get("alpha").asString(), "alpha").
+					withContext(index, "index").
 					isEqualTo(entry.getValue());
 				Path file = directory.resolve("CLAUDE-" + index + ".json");
 				Files.write(file, bytes);
-				requireThat(codec.read(file), "read").withContext(index, "index").isEqualTo(record);
+				requireThat(codec.read(file).records(), "read").withContext(index, "index").
+					isEqualTo(List.of(record));
 			}
 
 			CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
 				CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
 				List.of(), Map.of(),
 				Builder.OBSERVED);
-			ObjectNode edited = (ObjectNode) JSON.readTree(codec.write(record));
-			edited.put("alpha", "0.03");
+			ObjectNode edited = (ObjectNode) JSON.readTree(codec.write(CertificationHistory.EMPTY.appended(record)));
+			((ObjectNode) edited.get("records").get(0)).put("alpha", "0.03");
 			Path file = directory.resolve("edited.json");
 			Files.write(file, JSON.writeValueAsBytes(edited));
 			IOException failure = null;
@@ -239,7 +244,7 @@ public final class CertificationRecordTest
 	{
 		// Requirement: R-M6
 		// Requirement: R-F9
-		CertificationRecordJson codec = new CertificationRecordJson(JSON);
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
 		Map<BigDecimal, Boolean> expected = Map.of(Contract.DEFAULT_MINIMUM_PASS_RATE, true,
 			Boundaries.PAIRED_MINIMUM_PASS_RATE, false);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -251,16 +256,17 @@ public final class CertificationRecordTest
 				CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
 					CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, minimumPassRate), List.of(),
 					Map.of(Path.of("CLAUDE.md"), hash("prompt v1")), Builder.OBSERVED);
-				byte[] bytes = codec.write(record);
-				requireThat(JSON.readTree(bytes).get("comparisons_implied").asBoolean(), "comparisonsImplied").
+				byte[] bytes = codec.write(CertificationHistory.EMPTY.appended(record));
+				requireThat(JSON.readTree(bytes).get("records").get(0).get("comparisons_implied").asBoolean(),
+					"comparisonsImplied").
 					withContext(minimumPassRate, "minimumPassRate").isEqualTo(entry.getValue());
 				Path file = directory.resolve("CLAUDE-" + minimumPassRate + ".json");
 				Files.write(file, bytes);
-				requireThat(codec.read(file), "read").withContext(minimumPassRate, "minimumPassRate").
-					isEqualTo(record);
+				requireThat(codec.read(file).records(), "read").withContext(minimumPassRate, "minimumPassRate").
+					isEqualTo(List.of(record));
 
 				ObjectNode edited = (ObjectNode) JSON.readTree(bytes);
-				edited.put("comparisons_implied", !entry.getValue());
+				((ObjectNode) edited.get("records").get(0)).put("comparisons_implied", !entry.getValue());
 				Path editedFile = directory.resolve("edited-" + minimumPassRate + ".json");
 				Files.write(editedFile, JSON.writeValueAsBytes(edited));
 				IOException failure = null;
@@ -276,21 +282,6 @@ public final class CertificationRecordTest
 				requireThat(failure.getMessage(), "message").contains("comparisons_implied");
 			}
 		}
-	}
-
-	/**
-	 * The record of a target lives below {@code .cat/certifications}, named after the target without its extension.
-	 */
-	@Test
-	public void locationDropsTheExtension()
-	{
-		// Requirement: R-M6
-		requireThat(CertificationRecord.location(Path.of("CLAUDE.md")), "CLAUDE.md").
-			isEqualTo(Path.of(".cat/certifications/CLAUDE.json"));
-		requireThat(CertificationRecord.location(Path.of(".claude/skills/review/SKILL.md")), "SKILL.md").
-			isEqualTo(Path.of(".cat/certifications/.claude/skills/review/SKILL.json"));
-		requireThat(CertificationRecord.location(Path.of(".cursorrules")), ".cursorrules").
-			isEqualTo(Path.of(".cat/certifications/.cursorrules.json"));
 	}
 
 	/**

@@ -505,22 +505,21 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies that the status of a target that only a certification record describes is one object with the
-	 * record's index, scope and applicability, and a summary that names them, and no campaign, harness, proposal or
-	 * delivery.
+	 * Verifies that the status of a target that only a certification history describes is one object with the
+	 * latest record of each harness, with its index, scope and applicability, the earlier records, and a summary that
+	 * names them, and no campaign, harness, proposal or delivery.
 	 */
 	@Test
 	public void printsCertificationRecord()
 	{
 		// Requirement: R-M6
-		CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 2,
-			CertificationScope.LATEST_VERSIONS, CertificationParameters.current(2, Contract.DEFAULT_MINIMUM_PASS_RATE),
-			List.of(), Map.of(),
-			Builder.OBSERVED);
+		CertificationRecord first = certificationRecord(1);
+		CertificationRecord record = certificationRecord(2);
 		Applicability applicability = new Applicability(Applicability.Status.HISTORICAL, true,
 			List.of(MeasurementCondition.JUDGE), List.of(), List.of(MeasurementCondition.MODEL));
 		FakeCore core = new FakeCore();
-		core.result = CommandResult.of(new CertificationStatus(record, applicability));
+		core.result = CommandResult.of(new CertificationStatus(
+			List.of(new CertificationStatus.Latest(record, applicability)), List.of(first)));
 		StringBuilder output = new StringBuilder();
 
 		requireThat(run(core, List.of("status", "CLAUDE.md"), output), "exit").isEqualTo(0);
@@ -530,22 +529,45 @@ public final class CommandsTest
 		requireThat(json.get("status").asString(), "status").isEqualTo("certified");
 		requireThat(json.get("campaign").isNull(), "campaignIsNull").isTrue();
 		requireThat(json.get("target").asString(), "target").isEqualTo("CLAUDE.md");
-		requireThat(json.get("attempt").asInt(), "attempt").isEqualTo(2);
-		requireThat(json.get("scope").asString(), "scope").isEqualTo("latest_versions");
-		JsonNode applicabilityNode = json.get("applicability");
+		requireThat(json.get("latest").size(), "latestSize").isEqualTo(1);
+		JsonNode latest = json.get("latest").get(0);
+		requireThat(latest.get("harness").asString(), "harness").isEqualTo("provider-1");
+		requireThat(latest.get("attempt").asInt(), "attempt").isEqualTo(2);
+		requireThat(latest.get("scope").asString(), "scope").isEqualTo("latest_versions");
+		requireThat(json.get("earlier").size(), "earlierSize").isEqualTo(1);
+		requireThat(json.get("earlier").get(0).get("attempt").asInt(), "earlierAttempt").isEqualTo(1);
+		requireThat(json.get("earlier").get(0).has("applicability"), "earlierHasApplicability").isFalse();
+		JsonNode applicabilityNode = latest.get("applicability");
 		requireThat(applicabilityNode.get("status").asString(), "applicability").isEqualTo("historical");
 		requireThat(applicabilityNode.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();
 		requireThat(applicabilityNode.get("changed").get(0).asString(), "changed").isEqualTo("judge");
 		requireThat(applicabilityNode.get("unchecked").get(0).asString(), "unchecked").isEqualTo("model");
 		requireThat(json.get("harness").isNull(), "harnessIsNull").isTrue();
 		requireThat(json.get("summary").asString(), "summary").isEqualTo("""
-			Certification record of CLAUDE.md, scope latest_versions (every cell of each model family's latest \
+			Certification history of CLAUDE.md
+			Latest certification in provider-1: scope latest_versions (every cell of each model family's latest \
 			version)
 			Attempt 2: certified (historical; changed: prompt_content, judge)
-			  Not checked: trial model.""");
+			  Not checked: trial model.
+			Earlier certifications:
+			  Attempt 1 in provider-1: certified, scope latest_versions""");
 		requireThat(json.get("proposal").isNull(), "proposalIsNull").isTrue();
 		requireThat(json.get("delivery_result").isNull(), "deliveryResultIsNull").isTrue();
 		requireThat(json.get("message").isNull(), "messageIsNull").isTrue();
+	}
+
+	/**
+	 * Returns a certification of {@code CLAUDE.md} under the latest-versions scope, measured by the default
+	 * conditions.
+	 *
+	 * @param index the certification index
+	 * @return the record
+	 */
+	private static CertificationRecord certificationRecord(int index)
+	{
+		return new CertificationRecord(Path.of("CLAUDE.md"), index, CertificationScope.LATEST_VERSIONS,
+			CertificationParameters.current(index, Contract.DEFAULT_MINIMUM_PASS_RATE), List.of(), Map.of(),
+			Builder.OBSERVED);
 	}
 
 	/**

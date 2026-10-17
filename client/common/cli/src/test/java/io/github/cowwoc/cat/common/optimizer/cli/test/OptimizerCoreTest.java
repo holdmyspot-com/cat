@@ -11,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationParameters;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
@@ -40,6 +41,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptConfiguration;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveryResult.Delivered;
@@ -48,7 +50,7 @@ import io.github.cowwoc.cat.common.optimizer.execution.GuardPilot;
 import io.github.cowwoc.cat.common.optimizer.execution.PromptAuthorConflict;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
-import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
+import io.github.cowwoc.cat.common.optimizer.store.CertificationHistoryJson;
 import tools.jackson.databind.JsonNode;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
@@ -3033,6 +3035,24 @@ public final class OptimizerCoreTest
 	private static void writeRecord(Repository repository, String promptText,
 		java.util.function.Consumer<Map<MeasurementCondition, String>> change) throws IOException
 	{
+		writeRecord(repository, promptText, 1, change);
+	}
+
+	/**
+	 * Appends a certification record of {@code CLAUDE.md} to the target's history, as a certified delivery would,
+	 * creating the history if the target has none. The record names the provider, harness version, session
+	 * environment version and judge version that the test scope reports, except for any condition that
+	 * {@code change} replaces, and the trial model {@code model-a}, which only a session observes.
+	 *
+	 * @param repository the test project
+	 * @param promptText the text whose hash the record holds for {@code CLAUDE.md}
+	 * @param certificationIndex the record's certification index
+	 * @param change edits the recorded conditions
+	 * @throws IOException if the history cannot be read or written
+	 */
+	private static void writeRecord(Repository repository, String promptText, int certificationIndex,
+		java.util.function.Consumer<Map<MeasurementCondition, String>> change) throws IOException
+	{
 		Map<MeasurementCondition, String> values = new java.util.EnumMap<>(MeasurementCondition.class);
 		values.put(MeasurementCondition.PROVIDER, Harness.CLAUDE.commandName());
 		values.put(MeasurementCondition.HARNESS_VERSION, "1.0");
@@ -3041,14 +3061,18 @@ public final class OptimizerCoreTest
 		values.put(MeasurementCondition.JUDGE, String.valueOf(FakeSessionPort.JUDGE_VERSION));
 		values.put(MeasurementCondition.MODEL, "model-a");
 		change.accept(values);
-		CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
-			CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
-			List.of(),
+		CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), certificationIndex,
+			CertificationScope.LATEST_VERSIONS,
+			CertificationParameters.current(certificationIndex, Contract.DEFAULT_MINIMUM_PASS_RATE), List.of(),
 			Map.of(Path.of("CLAUDE.md"), Sha256.of(promptText.getBytes(StandardCharsets.UTF_8))),
 			new MeasurementIdentity(values));
-		Path file = repository.root().resolve(CertificationRecord.location(record.target()));
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		Path file = repository.root().resolve(PromptTestLocations.certificationHistory(record.target()));
+		CertificationHistory history = CertificationHistory.EMPTY;
+		if (Files.exists(file))
+			history = codec.read(file);
 		Files.createDirectories(file.getParent());
-		Files.write(file, new CertificationRecordJson(JSON).write(record));
+		Files.write(file, codec.write(history.appended(record)));
 	}
 
 	/**
@@ -3073,16 +3097,21 @@ public final class OptimizerCoreTest
 
 			requireThat(status.get("status").asString(), "status").isEqualTo("certified");
 			requireThat(status.get("target").asString(), "target").isEqualTo("CLAUDE.md");
-			requireThat(status.get("attempt").asInt(), "attempt").isEqualTo(1);
-			requireThat(status.get("scope").asString(), "scope").isEqualTo("latest_versions");
-			JsonNode applicability = status.get("applicability");
+			requireThat(status.get("latest").size(), "latestSize").isEqualTo(1);
+			requireThat(status.get("earlier").isEmpty(), "earlierIsEmpty").isTrue();
+			JsonNode latest = status.get("latest").get(0);
+			requireThat(latest.get("harness").asString(), "harness").isEqualTo("claude");
+			requireThat(latest.get("attempt").asInt(), "attempt").isEqualTo(1);
+			requireThat(latest.get("scope").asString(), "scope").isEqualTo("latest_versions");
+			JsonNode applicability = latest.get("applicability");
 			requireThat(applicability.get("status").asString(), "applicability").isEqualTo("current");
 			requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isFalse();
 			requireThat(applicability.get("changed").isEmpty(), "changedIsEmpty").isTrue();
 			requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("model");
 			requireThat(applicability.get("unchecked").size(), "uncheckedSize").isEqualTo(1);
 			requireThat(status.get("summary").asString(), "summary").isEqualTo("""
-				Certification record of CLAUDE.md, scope latest_versions (every cell of each model family's latest \
+				Certification history of CLAUDE.md
+				Latest certification in claude: scope latest_versions (every cell of each model family's latest \
 				version)
 				Attempt 1: certified
 				  Not checked: trial model.""");
@@ -3108,13 +3137,120 @@ public final class OptimizerCoreTest
 
 			ObjectNode status = output(repository, List.of("status", "CLAUDE.md"));
 
-			JsonNode applicability = status.get("applicability");
+			JsonNode applicability = status.get("latest").get(0).get("applicability");
 			requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
 			requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();
 			requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("harness_version");
 			requireThat(status.get("summary").asString(), "summary").contains(
 				"Attempt 1: certified (historical; changed: prompt_content, harness_version)\n" +
 				"  Not checked: trial model.");
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} of a target that has no campaign but a history of certifications by two harnesses
+	 * reports the latest record of each harness with its applicability, in the order of the history, and lists the
+	 * records that a later record of the same harness followed as earlier history.
+	 */
+	@Test
+	public void statusReportsLatestPerHarness() throws Exception
+	{
+		// Requirement: R-M6
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			writeRecord(repository, "Be brief.\n", 1, _ ->
+			{
+			});
+			writeRecord(repository, "Be brief.\n", 1, values -> values.put(MeasurementCondition.PROVIDER,
+				Harness.CODEX.commandName()));
+			writeRecord(repository, "Be brief.\n", 2, _ ->
+			{
+			});
+
+			ObjectNode status = output(repository, List.of("status", "CLAUDE.md"));
+
+			JsonNode latest = status.get("latest");
+			requireThat(latest.size(), "latestSize").isEqualTo(2);
+			requireThat(latest.get(0).get("harness").asString(), "firstHarness").isEqualTo("codex");
+			requireThat(latest.get(0).get("attempt").asInt(), "firstAttempt").isEqualTo(1);
+			requireThat(latest.get(0).get("applicability").get("status").asString(), "firstApplicability").
+				isEqualTo("current");
+			requireThat(latest.get(1).get("harness").asString(), "secondHarness").isEqualTo("claude");
+			requireThat(latest.get(1).get("attempt").asInt(), "secondAttempt").isEqualTo(2);
+			requireThat(latest.get(1).get("applicability").get("status").asString(), "secondApplicability").
+				isEqualTo("current");
+			JsonNode earlier = status.get("earlier");
+			requireThat(earlier.size(), "earlierSize").isEqualTo(1);
+			requireThat(earlier.get(0).get("harness").asString(), "earlierHarness").isEqualTo("claude");
+			requireThat(earlier.get(0).get("attempt").asInt(), "earlierAttempt").isEqualTo(1);
+			requireThat(status.get("summary").asString(), "summary").contains("Latest certification in codex:").
+				contains("Latest certification in claude:").contains("""
+					Earlier certifications:
+					  Attempt 1 in claude: certified, scope latest_versions""");
+		}
+	}
+
+	/**
+	 * Verifies that a new campaign's proposal reports the target's history like {@code status} does: the latest record
+	 * of each harness and the earlier records.
+	 */
+	@Test
+	public void proposalListsEarlierCertifications() throws Exception
+	{
+		// Requirement: R-M6
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			writeRecord(repository, "Be brief.\n", 1, _ ->
+			{
+			});
+			writeRecord(repository, "Be brief.\n", 2, _ ->
+			{
+			});
+
+			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(started.proposal(), "proposal").contains("## Incumbent certification").
+				contains("Attempt 2: certified").contains("""
+					Earlier certifications:
+					  Attempt 1 in claude: certified, scope latest_versions""");
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} of a target whose history file is malformed refuses with the file and the JSON path
+	 * of the problem instead of reporting a partial history.
+	 */
+	@Test
+	public void statusRefusesMalformedHistory() throws Exception
+	{
+		// Requirement: R-M6
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path file = repository.root().resolve(PromptTestLocations.certificationHistory(Path.of("CLAUDE.md")));
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, "{\"format_version\": 1, \"records\": [\"text\"]}\n");
+
+			IOException failure = null;
+			try
+			{
+				repository.core().status("CLAUDE.md");
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "message").contains("certifications.json").contains("records[0]");
 		}
 	}
 
@@ -3196,7 +3332,7 @@ public final class OptimizerCoreTest
 				result = new OptimizerCore(codex).status("CLAUDE.md");
 			}
 
-			Applicability applicability = result.certification().applicability();
+			Applicability applicability = result.certification().latest().getFirst().applicability();
 			requireThat(applicability.status(), "applicability").isEqualTo(Applicability.Status.CURRENT);
 			requireThat(applicability.changed(), "changed").isEmpty();
 			requireThat(applicability.unchecked(), "unchecked").isEqualTo(List.of(MeasurementCondition.JUDGE,
@@ -3249,7 +3385,8 @@ public final class OptimizerCoreTest
 
 				## Incumbent certification
 
-				Certification record of CLAUDE.md, scope latest_versions (every cell of each model family's latest \
+				Certification history of CLAUDE.md
+				Latest certification in claude: scope latest_versions (every cell of each model family's latest \
 				version)
 				Attempt 1: certified (historical; changed: judge)
 				  Not checked: trial model.

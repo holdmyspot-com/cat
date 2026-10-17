@@ -68,7 +68,7 @@ public sealed interface Command
 	}
 
 	/**
-	 * Reports a campaign, or the certification record of a target that has no campaign, without changing it.
+	 * Reports a campaign, or the certification history of a target that has no campaign, without changing it.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *

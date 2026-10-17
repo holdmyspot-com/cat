@@ -11,6 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.proposal.ContractTools;
 import io.github.cowwoc.cat.common.optimizer.report.CertificationStatus;
 import io.github.cowwoc.cat.common.optimizer.report.ChoiceItem;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
@@ -21,6 +22,7 @@ import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.regex.Pattern;
 
@@ -616,22 +618,47 @@ public final class Commands
 	}
 
 	/**
-	 * Renders the certification record of a target that has no campaign.
+	 * Renders the certification history of a target that has no campaign: the latest record of each harness with its
+	 * applicability, and the earlier records.
 	 *
-	 * @param certification the record and its applicability
+	 * @param certification the latest record of each harness with its applicability, and the earlier records
 	 * @return the JSON object, without the fields that every result has
 	 */
 	private ObjectNode certification(CertificationStatus certification)
 	{
-		CertificationRecord record = certification.record();
 		ObjectNode root = json.createObjectNode();
 		root.put("status", Outcome.CERTIFIED.label());
 		root.putNull("campaign");
-		root.put("target", record.target().toString());
-		root.put("attempt", record.certificationIndex());
-		root.put("scope", record.scope().id());
-		DeliveryJson.applicability(root.putObject("applicability"), certification.applicability());
+		root.put("target", certification.target().toString());
+		ArrayNode latest = root.putArray("latest");
+		for (CertificationStatus.Latest entry : certification.latest())
+		{
+			ObjectNode node = recordNode(latest.addObject(), entry.record());
+			DeliveryJson.applicability(node.putObject("applicability"), entry.applicability());
+		}
+		ArrayNode earlier = root.putArray("earlier");
+		for (CertificationRecord record : certification.earlier())
+			recordNode(earlier.addObject(), record);
 		return root;
+	}
+
+	/**
+	 * Describes a certification record.
+	 *
+	 * @param node the object to describe the record in
+	 * @param record the record
+	 * @return {@code node}
+	 */
+	private static ObjectNode recordNode(ObjectNode node, CertificationRecord record)
+	{
+		Optional<String> harness = record.harness();
+		if (harness.isPresent())
+			node.put("harness", harness.get());
+		else
+			node.putNull("harness");
+		node.put("attempt", record.certificationIndex());
+		node.put("scope", record.scope().id());
+		return node;
 	}
 
 	/**

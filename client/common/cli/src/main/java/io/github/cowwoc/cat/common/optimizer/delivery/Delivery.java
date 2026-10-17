@@ -8,12 +8,14 @@ import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
+import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.FixturePattern;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
 import io.github.cowwoc.cat.common.optimizer.contract.Scenario;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
@@ -40,7 +42,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.inventory.TestFiles;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
-import io.github.cowwoc.cat.common.optimizer.store.CertificationRecordJson;
+import io.github.cowwoc.cat.common.optimizer.store.CertificationHistoryJson;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
 
 import java.io.IOException;
@@ -78,9 +80,9 @@ import tools.jackson.databind.json.JsonMapper;
  *   candidate there if it is not the working candidate.</li>
  *   <li>It plans the delivery against a fresh scan of the base worktree and the read-only external participants that
  *   the fork recorded, and stops before writing anything if the plan has conflicts. A certified delivery's plan also
- *   creates or replaces the target's certification record, after the candidate's changes. A certified delivery, and
- *   keeping the incumbent, also write each confirmed prompt test's regression scenario and values file, after the
- *   candidate's changes and before the record.</li>
+ *   appends its certification record to the target's certification history, after the candidate's changes. A
+ *   certified delivery, and keeping the incumbent, also write each confirmed prompt test's regression scenario and
+ *   values file, after the candidate's changes and before the record.</li>
  *   <li>It writes the delivery journal, then applies each change after checking its target's live state, recording
  *   each applied change in the journal. A restarted delivery resumes from the journal and applies each change at most
  *   once.</li>
@@ -97,7 +99,7 @@ public final class Delivery
 	private final CampaignStore store;
 	private final WorkspacePort workspace;
 	private final JsonMapper json;
-	private final CertificationRecordJson recordCodec;
+	private final CertificationHistoryJson historyCodec;
 	private final Consumer<DeliveryChange> afterWrite;
 
 	/**
@@ -105,7 +107,7 @@ public final class Delivery
 	 *
 	 * @param store the store that holds the campaign's delivery journal
 	 * @param workspace the optimization worktree
-	 * @param json the JSON mapper that writes certification records
+	 * @param json the JSON mapper that reads and writes the certification history
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Delivery(CampaignStore store, WorkspacePort workspace, JsonMapper json)
@@ -120,7 +122,7 @@ public final class Delivery
 	 *
 	 * @param store the store that holds the campaign's delivery journal
 	 * @param workspace the optimization worktree
-	 * @param json the JSON mapper that writes certification records
+	 * @param json the JSON mapper that reads and writes the certification history
 	 * @param afterWrite receives each change after its target is written and before the journal records it; an
 	 *   exception that it throws stops the delivery at that point, as a crash would
 	 * @throws NullPointerException if any of the arguments are null
@@ -135,7 +137,7 @@ public final class Delivery
 		this.store = store;
 		this.workspace = workspace;
 		this.json = json;
-		this.recordCodec = new CertificationRecordJson(json);
+		this.historyCodec = new CertificationHistoryJson(json);
 		this.afterWrite = afterWrite;
 	}
 
@@ -153,8 +155,8 @@ public final class Delivery
 	 * @param promptSources the participating prompt sources: paths relative to the base worktree, or absolute paths of
 	 *   read-only external participants; a change outside the candidate at or below one of them makes the result
 	 *   historical
-	 * @param record the certification record to write to the base worktree, non-null exactly when the request is
-	 *   labelled {@code certified}
+	 * @param record the certification record to append to the target's certification history in the base worktree,
+	 *   non-null exactly when the request is labelled {@code certified}
 	 * @param tests the confirmed prompt tests to write, empty unless the request is labelled {@code certified} or the
 	 *   user kept the incumbent
 	 * @return the result; a {@link Delivered} result carries no label when the user kept the incumbent
@@ -166,7 +168,8 @@ public final class Delivery
 	 *   another, if {@code tests} accompany a request that is not labelled {@code certified}, if a kept incumbent
 	 *   changes a file, or if a prompt test cannot be written as a regression scenario
 	 * @throws IllegalStateException if the campaign already journals the delivery of another candidate
-	 * @throws IOException if a file cannot be read or written, or if Git fails
+	 * @throws IOException if a file cannot be read or written, if Git fails, or if the target's certification history
+	 *   does not describe a valid history
 	 */
 	public DeliveryResult deliver(String campaignId, DeliveryRequest request, Overlay selected, Overlay working,
 		Set<Path> promptSources, CertificationRecord record, List<DeliveredTest> tests)
@@ -217,14 +220,20 @@ public final class Delivery
 			journal = recorded.get();
 		else
 		{
+			// The history is read after the scan: a user's edit in between makes the scanned preimage differ from the
+			// live file, so delivery stops before overwriting that edit instead of dropping the records it added
+			FileInventory current = InventoryScanner.scan(base, externalPaths);
 			Map<Path, FileContent> additionalFiles = new HashMap<>();
 			if (record != null)
 			{
-				additionalFiles.put(CertificationRecord.location(record.target()),
-					new FileContent(recordCodec.write(record)));
+				Path historyFile = PromptTestLocations.certificationHistory(record.target());
+				CertificationHistory history = CertificationHistory.EMPTY;
+				// Anything else at the path is a conflict that the plan reports
+				if (current.entry(historyFile).orElse(null) instanceof RegularFile)
+					history = historyCodec.read(base.resolve(historyFile));
+				additionalFiles.put(historyFile, new FileContent(historyCodec.write(history.appended(record))));
 			}
-			DeliveryPlan plan = DeliveryPlan.of(selected, InventoryScanner.scan(base, externalPaths),
-				testFiles(selected, tests), additionalFiles);
+			DeliveryPlan plan = DeliveryPlan.of(selected, current, testFiles(selected, tests), additionalFiles);
 			if (!plan.conflicts().isEmpty())
 				return new Conflicted(plan.conflicts());
 			journal = new DeliveryJournal(selected.identity(), plan.changes(), 0);
