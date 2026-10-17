@@ -128,6 +128,16 @@ public final class HarnessRunManager
 	}
 
 	/**
+	 * Returns the directory that holds every run and the fixtures of every run.
+	 *
+	 * @return the absolute, normalized run root
+	 */
+	public Path root()
+	{
+		return root;
+	}
+
+	/**
 	 * Creates one owned run directory.
 	 *
 	 * @param harness the harness name

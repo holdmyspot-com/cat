@@ -89,7 +89,8 @@ public final class CodexSessionEnvironmentVersionTest
 			CodexConnectionConfiguration.copy(source, destination, npmCache, temporaryDirectory, 0,
 				Platform.LINUX_X64);
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
-				CodexRunner.sessionDeniedReads(manager, run, List.of(evidence), List.of(deniedFile)));
+				CodexRunner.sessionDeniedReads(manager, run, List.of(evidence), List.of(deniedFile),
+					Platform.LINUX_X64));
 			CodexConnectionConfiguration.copyTrustedCatHooks(source, destination);
 
 			// Run directories differ per run, so the hash covers the configuration with their root and the run's

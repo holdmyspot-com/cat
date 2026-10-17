@@ -213,7 +213,7 @@ public final class CodexRunner
 			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache,
 				temporaryDirectory, toolOutputTokenLimit, Platform.current());
 			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
-				readOnlyEvidence, sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads));
+				readOnlyEvidence, sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, Platform.current()));
 			Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 			HarnessEnvironment.copyAllowed(environment, isolatedEnvironment, AUTHENTICATION_VARIABLES);
 			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared npm cache so
@@ -280,28 +280,44 @@ public final class CodexRunner
 	 * logs the session's events, and the login that the runner copied into the session's home. The session therefore
 	 * cannot read the runner's records of its own run or of any other run, the fixtures of any run, or the login. The
 	 * method creates the session log directory, because the sandbox skips a denied path that does not exist yet.
+	 * <p>
+	 * On Linux, when no evidence lies under the run root, the result names the run root itself rather than each path
+	 * under it, which also denies the runs that start after the session. The sandbox still lets the session write its
+	 * project and home, but it would hide read-only evidence under a denied run root, so evidence there, or another
+	 * platform, keeps one path per denied file and directory.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads the files and directories that the caller denies the session reading
+	 * @param platform the platform that the session runs on
 	 * @return the paths to deny
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if the run root cannot be listed or the session log directory cannot be created
 	 */
 	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
-		List<Path> readOnlyEvidence, List<Path> deniedReads) throws IOException
+		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform) throws IOException
 	{
 		requireThat(manager, "manager").isNotNull();
 		requireThat(run, "run").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		Path home = run.directory().resolve("home");
-		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
-		accessible.add(run.directory().resolve("project"));
-		accessible.add(home);
 		List<Path> result = new ArrayList<>(deniedReads);
-		result.addAll(manager.deniedReads(accessible));
+		if (platform.isLinux() && !containsAny(manager.root(), readOnlyEvidence))
+		{
+			// Codex lists every denied path in the model's instructions and omits the rest of a long list, and the
+			// omission led trial agents to refuse reading their own project
+			result.add(manager.root());
+		}
+		else
+		{
+			List<Path> accessible = new ArrayList<>(readOnlyEvidence);
+			accessible.add(run.directory().resolve("project"));
+			accessible.add(home);
+			result.addAll(manager.deniedReads(accessible));
+		}
 		// The session's events are the same record as the run's artifacts, kept by Codex instead of the runner
 		result.add(Files.createDirectories(home.resolve("sessions")));
 		// The Codex process reads the login itself; the sandbox confines only the commands that the session runs
@@ -309,6 +325,23 @@ public final class CodexRunner
 		if (Files.exists(login, NOFOLLOW_LINKS))
 			result.add(login);
 		return result;
+	}
+
+	/**
+	 * Indicates whether a directory contains any of several paths.
+	 *
+	 * @param directory an absolute, normalized directory
+	 * @param paths the paths
+	 * @return {@code true} if a path, once made absolute and normalized, lies at or under {@code directory}
+	 */
+	private static boolean containsAny(Path directory, List<Path> paths)
+	{
+		for (Path path : paths)
+		{
+			if (path.toAbsolutePath().normalize().startsWith(directory))
+				return true;
+		}
+		return false;
 	}
 
 	/**

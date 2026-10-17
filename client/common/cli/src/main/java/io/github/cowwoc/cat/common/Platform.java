@@ -107,6 +107,16 @@ public enum Platform
 	}
 
 	/**
+	 * Indicates whether the platform is Linux.
+	 *
+	 * @return {@code true} for Linux
+	 */
+	public boolean isLinux()
+	{
+		return this == LINUX_X64 || this == LINUX_ARM64;
+	}
+
+	/**
 	 * Indicates whether the platform is Windows.
 	 *
 	 * @return {@code true} for Windows
