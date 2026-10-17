@@ -24,6 +24,8 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 public final class RuleArtifactRouter
 {
 	private static final int MAXIMUM_RULE_INPUT_BYTES = 1_048_576;
+	// The generated indexes are written into directories that hold authored rule files, and authored rule files never
+	// start with ".cat-", so the prefix keeps an index from overwriting one of them.
 	private static final String ROUTE_INDEX = ".cat-path-scoped-rules.md";
 	private static final String LAZY_DEPENDENCY_INDEX = ".cat-lazy-rule-dependencies.md";
 	private static final Set<String> FRONTMATTER_KEYS = Set.of("agents", "depends-on", "paths");
