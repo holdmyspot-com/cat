@@ -32,6 +32,7 @@ public final class CodexPromptOptimizerTest
 {
 	private static final Path FIXTURE = Path.of("../../common/cli/src/test/resources/optimizer/cli/campaign.json");
 	private static final String CAMPAIGN = "fixture-campaign";
+	private static final String SESSION_ID = "2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b";
 
 	/**
 	 * Creates the test.
@@ -61,7 +62,8 @@ public final class CodexPromptOptimizerTest
 	{
 		Path root = scope.add(Files.createTempDirectory("codex-optimizer-project")).toRealPath();
 		Files.createDirectory(root.resolve(".git"));
-		Path campaign = root.resolve(".cat/work/optimizer").resolve(CAMPAIGN).resolve("held_out");
+		Path campaign = root.resolve(".cat/work").resolve(SESSION_ID).resolve("optimizer").resolve(CAMPAIGN).
+			resolve("held_out");
 		Files.createDirectories(campaign);
 		Files.copy(FIXTURE, campaign.resolve("campaign.json"));
 		Path home = scope.add(Files.createTempDirectory("codex-optimizer-home")).toRealPath();
@@ -106,7 +108,7 @@ public final class CodexPromptOptimizerTest
 		{
 			Setup setup = setup(scope);
 			StringBuilder output = new StringBuilder();
-			int exit = run(setup, Map.of(), List.of("status", CAMPAIGN), output);
+			int exit = run(setup, Map.of("CODEX_THREAD_ID", SESSION_ID), List.of("status", CAMPAIGN), output);
 			requireThat(exit, "exit").isEqualTo(0);
 			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
 			requireThat(json.get("campaign").asString(), "campaign").isEqualTo(CAMPAIGN);
@@ -128,7 +130,7 @@ public final class CodexPromptOptimizerTest
 		{
 			Setup setup = setup(scope);
 			StringBuilder output = new StringBuilder();
-			int exit = run(setup, Map.of("CODEX_THREAD_ID", "session-1"), List.of("status", CAMPAIGN), output);
+			int exit = run(setup, Map.of("CODEX_THREAD_ID", SESSION_ID), List.of("status", CAMPAIGN), output);
 			requireThat(exit, "exit").isEqualTo(0);
 		}
 	}
@@ -178,6 +180,27 @@ public final class CodexPromptOptimizerTest
 			HostInterruptSignal signal = CodexOptimizerCommandScopeSecrets.access().interrupts(
 				Map.of("CODEX_THREAD_ID", "session-1"), configuration, Clock.systemUTC());
 			requireThat(signal.isInterruptedAfter(Instant.EPOCH), "interrupted").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a command is refused, naming the variable that it lacks, when the environment names no host
+	 * session to own the campaigns.
+	 *
+	 * @throws IOException if a file cannot be written
+	 */
+	@Test
+	public void statusWithoutHostSessionIsRefused() throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Setup setup = setup(scope);
+			StringBuilder output = new StringBuilder();
+			int exit = run(setup, Map.of(), List.of("status", CAMPAIGN), output);
+			requireThat(exit, "exit").isEqualTo(1);
+			requireThat(output.toString(), "output").contains("CODEX_THREAD_ID").contains("codex session");
+			requireThat(Files.exists(setup.root().resolve(".cat/work").resolve(SESSION_ID).resolve("temp")),
+				"sessionCreated").isFalse();
 		}
 	}
 

@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.execution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
@@ -22,11 +23,13 @@ import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
 import io.github.cowwoc.cat.common.optimizer.workspace.GitForks;
+import io.github.cowwoc.cat.common.test.SessionHarnesses;
 
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +42,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link Cleanup} against a test-owned base worktree, which is a real Git repository whose campaigns hold real
- * optimization worktrees, and two test-owned run roots.
+ * optimization worktrees, and the two run roots of the session work directory that holds the campaigns.
  * <p>
  * Every test stores two campaigns in the base: the campaign under test and another campaign. Each run root holds a run
  * of each campaign, identified by a project path below that campaign's directory, and a run whose manifest is
@@ -50,6 +53,8 @@ public final class CleanupTest
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	private static final String CAMPAIGN = "campaign-1";
 	private static final String OTHER = "campaign-2";
+	private static final String SESSION_ID = "6b1f7c1e-5d0a-4c55-9a8e-2f6c0f1d2e3a";
+
 	private static final Candidate CANDIDATE = new Candidate(2, Builder.snapshot("candidate-2"));
 	private static final Consumer<Cleanup.Step> NO_HOOK = _ ->
 	{
@@ -219,9 +224,9 @@ public final class CleanupTest
 				delivered(Outcome.CERTIFIED));
 
 			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Failed(warning));
-			requireThat(FileCampaignStore.removals(fixture.base()), "removals").isEqualTo(List.of(CAMPAIGN));
+			requireThat(FileCampaignStore.removals(fixture.campaigns()), "removals").isEqualTo(List.of(CAMPAIGN));
 			requireThat(fixture.cleanup(denying).resume(), "retryWarnings").isEqualTo(List.of(warning));
-			requireThat(FileCampaignStore.removals(fixture.base()), "removalsAfterRetry").
+			requireThat(FileCampaignStore.removals(fixture.campaigns()), "removalsAfterRetry").
 				isEqualTo(List.of(CAMPAIGN));
 
 			requireThat(fixture.cleanup(NO_HOOK).resume(), "warnings").isEmpty();
@@ -254,7 +259,7 @@ public final class CleanupTest
 			String warning = ((Cleanup.Removal.Failed) removal).warning();
 			requireThat(warning, "warning").startsWith("Could not record the removal of the files of campaign " +
 				CAMPAIGN + ": " + blocker + ": ").endsWith(". The files stay in .cat/work/.");
-			requireThat(FileCampaignStore.removals(fixture.base()), "removals").isEmpty();
+			requireThat(FileCampaignStore.removals(fixture.campaigns()), "removals").isEmpty();
 			Files.delete(blocker.resolve("child"));
 			Files.delete(blocker);
 			fixture.requireKept("unrecorded");
@@ -316,12 +321,13 @@ public final class CleanupTest
 	}
 
 	/**
-	 * A base worktree with two campaigns and two run roots.
+	 * A base worktree with a session work directory that holds two campaigns and two run roots.
 	 *
 	 * @param base the base worktree, a Git repository
-	 * @param runRoots the run root and the held-out run root
+	 * @param campaigns the session's directory that holds the campaigns
+	 * @param runRoots the session's run root and held-out run root
 	 */
-	private record Fixture(Path base, List<Path> runRoots)
+	private record Fixture(Path base, Path campaigns, List<Path> runRoots)
 	{
 		/**
 		 * Creates the base worktree with one commit, the other campaign with its worktree and runs, and the run roots.
@@ -342,8 +348,11 @@ public final class CleanupTest
 			git.run("add", "--all");
 			git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
 				"commit", "--quiet", "--no-verify", "--message", "Fork point");
-			Fixture fixture = new Fixture(base, List.of(Files.createDirectory(root.resolve("runs")),
-				Files.createDirectory(root.resolve("held-out-runs"))));
+			SessionWorkDirectory session = SessionWorkDirectory.open(base, SESSION_ID, SessionHarnesses.HARNESS_A,
+				root.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
+			Path sessionRuns = Files.createDirectories(session.runRoot("claude"));
+			Fixture fixture = new Fixture(base, session.campaigns(), List.of(sessionRuns,
+				Files.createDirectories(sessionRuns.resolveSibling("claude-held_out"))));
 			fixture.store(new Builder().header(fixture.header(OTHER, Lifecycle.ACTIVE)));
 			for (Path runRoot : fixture.runRoots())
 			{
@@ -417,7 +426,7 @@ public final class CleanupTest
 			Header header = built.header();
 			if (!header.id().equals(OTHER))
 				built = builder.header(header(CAMPAIGN, header.lifecycle())).build();
-			new FileCampaignStore(base, JSON).replaceSnapshot(built);
+			new FileCampaignStore(campaigns, JSON).replaceSnapshot(built);
 			return built;
 		}
 
@@ -429,7 +438,7 @@ public final class CleanupTest
 		 */
 		Path directory(String id)
 		{
-			return FileCampaignStore.directory(base, id);
+			return FileCampaignStore.directory(campaigns, id);
 		}
 
 		/**
@@ -440,7 +449,7 @@ public final class CleanupTest
 		 */
 		Cleanup cleanup(Consumer<Cleanup.Step> beforeStep)
 		{
-			return new Cleanup(base, new GitForks(), runRoots, JSON, beforeStep);
+			return new Cleanup(base, campaigns, new GitForks(), runRoots, JSON, beforeStep);
 		}
 
 		/**
@@ -451,7 +460,7 @@ public final class CleanupTest
 		 */
 		Cleanup cleanup(Forks forks)
 		{
-			return new Cleanup(base, forks, runRoots, JSON, NO_HOOK);
+			return new Cleanup(base, campaigns, forks, runRoots, JSON, NO_HOOK);
 		}
 
 		/**

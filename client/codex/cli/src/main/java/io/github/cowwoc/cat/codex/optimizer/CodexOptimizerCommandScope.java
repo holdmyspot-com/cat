@@ -6,7 +6,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
 import io.github.cowwoc.cat.common.optimizer.adapter.DeferredInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
@@ -17,6 +16,7 @@ import io.github.cowwoc.cat.common.optimizer.port.ProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.codex.secrets.CodexOptimizerCommandScopeAccess;
+import io.github.cowwoc.cat.codex.CodexSessionHarness;
 import io.github.cowwoc.cat.codex.secrets.CodexOptimizerCommandScopeSecrets;
 
 import java.io.IOException;
@@ -55,10 +55,13 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	private static final String EXECUTABLE = "codex";
 	private static final String SESSION_ID = "CODEX_THREAD_ID";
 	private static final List<Path> LOADER_CONFIGURATION = List.of(Path.of(".codex/config.toml"));
-	private final SessionPort sessions;
+	private final Map<String, String> environment;
+	private final Path artifact;
+	private final Path configurationDirectory;
 	private final HostInterruptSignal interrupts;
 	private final ProfileInventory profiles;
 	private final Path home;
+	private SessionPort sessions;
 
 	/**
 	 * Creates the scope of the running process: its environment, its home directory, its working directory and the
@@ -84,15 +87,17 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 */
 	CodexOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact)
 	{
-		super(Harness.CODEX, directory, LOADER_CONFIGURATION);
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
-		this.home = home;
 		Path configurationDirectory = RolloutInterruptSignal.codexHome(home,
 			environment.get("CODEX_HOME"));
-		this.sessions = sessions(environment, home, directory, artifact, configurationDirectory, this::heldOutDirectories,
-			clock());
+		super(Harness.CODEX, CodexSessionHarness.HARNESS, environment, configurationDirectory, directory,
+			LOADER_CONFIGURATION);
+		this.environment = Map.copyOf(environment);
+		this.artifact = artifact;
+		this.configurationDirectory = configurationDirectory;
+		this.home = home;
 		this.interrupts = interrupts(environment, configurationDirectory, clock());
 		this.profiles = new CodexProfileInventory(artifact, EXECUTABLE, HarnessVersion.process());
 	}
@@ -110,9 +115,14 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	}
 
 	@Override
-	public SessionPort sessions()
+	public SessionPort sessions() throws IOException
 	{
 		ensureOpen();
+		if (sessions == null)
+		{
+			sessions = sessions(environment, home, runRoot(), artifact, configurationDirectory,
+				this::heldOutDirectories, clock());
+		}
 		return sessions;
 	}
 
@@ -142,18 +152,16 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 *
 	 * @param environment            the process environment
 	 * @param home                   the user's home directory
-	 * @param directory              the working directory
+	 * @param runRoot                the directory that holds the runs of the host session's campaigns
 	 * @param artifact               the complete Codex artifact that nested sessions install
 	 * @param configurationDirectory the host's Codex configuration directory
 	 * @param heldOut                lists the campaigns' held-out directories
 	 * @param clock                  the clock
 	 * @return the port
 	 */
-	private static SessionPort sessions(Map<String, String> environment, Path home, Path directory, Path artifact,
+	private static SessionPort sessions(Map<String, String> environment, Path home, Path runRoot, Path artifact,
 		Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock)
 	{
-		Path root = directory.toAbsolutePath().normalize();
-		Path runRoot = root.resolve(SessionWorkDirectory.WORK_ROOT).resolve("optimizer-runs").resolve(HARNESS_ID);
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, heldOut, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock, Optional.of(ProjectRuleLoader.rulesDirectory(home)));

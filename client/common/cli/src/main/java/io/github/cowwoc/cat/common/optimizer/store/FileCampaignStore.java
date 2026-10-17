@@ -24,8 +24,9 @@ import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Stores campaigns under {@code optimizer/<campaign-id>/} in the base worktree's work root
- * ({@link SessionWorkDirectory#WORK_ROOT}). The campaign's {@code held_out} directory holds every file with held-out
+ * Stores campaigns in one directory, one campaign per subdirectory {@code <campaign-id>/}: in production, the
+ * {@link SessionWorkDirectory#campaigns() campaigns directory} of the session that started them. Another session's
+ * store is read only. The campaign's {@code held_out} directory holds every file with held-out
  * content: the snapshot in {@code campaign.json}, the proposal in {@code proposal.json}, and one record per logical
  * trial in {@code trials/<sha256 of the trial key>.json}. The delivery journal is {@code delivery.json} in the
  * campaign directory. The {@code held_out} and {@code trials} directories exist from the first snapshot write.
@@ -58,7 +59,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private static final String REMOVAL = "removal";
 	private static final String LOCK = "driver.lock";
 	private static final String DELETING_PREFIX = ".deleting-";
-	private final Path base;
+	private final Path campaigns;
 	private final JsonMapper json;
 	private final CampaignJson codec;
 	private final DeliveryJournalJson journalCodec;
@@ -67,13 +68,13 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	/**
 	 * Creates a store.
 	 *
-	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns
 	 * @param json the JSON mapper
 	 * @throws NullPointerException if any argument is null
 	 */
-	public FileCampaignStore(Path base, JsonMapper json)
+	public FileCampaignStore(Path campaigns, JsonMapper json)
 	{
-		this(base, json, _ ->
+		this(campaigns, json, _ ->
 		{
 		});
 	}
@@ -81,18 +82,18 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	/**
 	 * Creates a store that reports each completed write step.
 	 *
-	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns
 	 * @param json the JSON mapper
 	 * @param afterStep receives each step after it completes; an exception that it throws stops the write at that
 	 *   point, as a crash would
 	 * @throws NullPointerException if any argument is null
 	 */
-	public FileCampaignStore(Path base, JsonMapper json, Consumer<WriteStep> afterStep)
+	public FileCampaignStore(Path campaigns, JsonMapper json, Consumer<WriteStep> afterStep)
 	{
-		requireThat(base, "base").isNotNull();
+		requireThat(campaigns, "campaigns").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(afterStep, "afterStep").isNotNull();
-		this.base = base;
+		this.campaigns = campaigns;
 		this.json = json;
 		this.codec = new CampaignJson(json);
 		this.journalCodec = new DeliveryJournalJson(json);
@@ -102,58 +103,59 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	/**
 	 * Returns the directory that holds a campaign's files.
 	 *
-	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns
 	 * @param campaignId the campaign's identifier
-	 * @return the campaign directory below {@link #root(Path)}
+	 * @return the campaign directory below {@code campaigns}
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static Path directory(Path base, String campaignId)
+	public static Path directory(Path campaigns, String campaignId)
 	{
-		requireThat(base, "base").isNotNull();
+		requireThat(campaigns, "campaigns").isNotNull();
 		requireThat(campaignId, "campaignId").isNotNull();
-		return root(base).resolve(campaignId);
+		return campaigns.resolve(campaignId);
 	}
 
 	/**
 	 * Returns the file whose lock gives one process at a time the right to write a campaign.
 	 *
-	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns
 	 * @param campaignId the campaign's identifier
 	 * @return the lock file in the campaign directory
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static Path lockFile(Path base, String campaignId)
+	public static Path lockFile(Path campaigns, String campaignId)
 	{
-		return directory(base, campaignId).resolve(LOCK);
+		return directory(campaigns, campaignId).resolve(LOCK);
 	}
 
 	/**
 	 * Returns the directory that holds a campaign's held-out content: its snapshot, proposal and trial records.
 	 *
-	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns
 	 * @param campaignId the campaign's identifier
 	 * @return the campaign's {@code held_out} directory
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static Path heldOutDirectory(Path base, String campaignId)
+	public static Path heldOutDirectory(Path campaigns, String campaignId)
 	{
-		return directory(base, campaignId).resolve(HELD_OUT);
+		return directory(campaigns, campaignId).resolve(HELD_OUT);
 	}
 
 	/**
-	 * Returns the {@code held_out} directories of a worktree's campaigns. Nested sessions of the development part must
-	 * not read them.
+	 * Returns the {@code held_out} directories of the campaigns in a directory. Nested sessions of the development part
+	 * must not read them.
 	 *
-	 * @param base the base worktree
-	 * @return the real paths of those that exist, in no particular order; empty if the worktree has no campaigns
-	 * @throws NullPointerException if {@code base} is null
+	 * @param campaigns the directory that holds the campaigns
+	 * @return the real paths of those that exist, in no particular order; empty if the directory holds no campaigns or
+	 *   does not exist
+	 * @throws NullPointerException if {@code campaigns} is null
 	 * @throws IOException if the campaigns directory cannot be listed
 	 */
-	public static List<Path> heldOutDirectories(Path base) throws IOException
+	public static List<Path> heldOutDirectories(Path campaigns) throws IOException
 	{
-		requireThat(base, "base").isNotNull();
+		requireThat(campaigns, "campaigns").isNotNull();
 		List<Path> paths = new ArrayList<>();
-		for (Path directory : campaignDirectories(base))
+		for (Path directory : campaignDirectories(campaigns))
 		{
 			Path heldOut = directory.resolve(HELD_OUT);
 			if (Files.isDirectory(heldOut))
@@ -166,14 +168,14 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	 * Records that the removal of a campaign's files started, so that a later process can complete an interrupted
 	 * removal. Recording it again does nothing.
 	 *
-	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns
 	 * @param campaignId the campaign's identifier
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the campaign directory does not exist or the record cannot be written
 	 */
-	public static void recordRemoval(Path base, String campaignId) throws IOException
+	public static void recordRemoval(Path campaigns, String campaignId) throws IOException
 	{
-		Path file = directory(base, campaignId).resolve(REMOVAL);
+		Path file = directory(campaigns, campaignId).resolve(REMOVAL);
 		if (Files.exists(file, LinkOption.NOFOLLOW_LINKS))
 			return;
 		AtomicFiles.replace(file, new byte[0], _ ->
@@ -182,18 +184,18 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	/**
-	 * Returns the campaigns of a worktree whose removal started.
+	 * Returns the campaigns in a directory whose removal started.
 	 *
-	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns
 	 * @return the campaigns' identifiers, in name order
-	 * @throws NullPointerException if {@code base} is null
+	 * @throws NullPointerException if {@code campaigns} is null
 	 * @throws IOException if the campaigns directory cannot be listed
 	 */
-	public static List<String> removals(Path base) throws IOException
+	public static List<String> removals(Path campaigns) throws IOException
 	{
-		requireThat(base, "base").isNotNull();
+		requireThat(campaigns, "campaigns").isNotNull();
 		List<String> ids = new ArrayList<>();
-		for (Path directory : campaignDirectories(base))
+		for (Path directory : campaignDirectories(campaigns))
 		{
 			if (isCampaign(directory) && Files.exists(directory.resolve(REMOVAL), LinkOption.NOFOLLOW_LINKS))
 				ids.add(directory.getFileName().toString());
@@ -204,15 +206,15 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	/**
 	 * Deletes a campaign's directory and everything below it. Deleting a directory that does not exist does nothing.
 	 *
-	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns
 	 * @param campaignId the campaign's identifier
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the directory cannot be renamed or deleted
 	 */
-	public static void delete(Path base, String campaignId) throws IOException
+	public static void delete(Path campaigns, String campaignId) throws IOException
 	{
-		Path directory = directory(base, campaignId);
-		Path deleting = root(base).resolve(DELETING_PREFIX + campaignId);
+		Path directory = directory(campaigns, campaignId);
+		Path deleting = campaigns.resolve(DELETING_PREFIX + campaignId);
 		// A deletion of the same campaign that was interrupted after its rename holds the name
 		TemporaryDirectories.deleteRecursively(deleting);
 		if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS))
@@ -223,14 +225,14 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	/**
 	 * Completes every campaign directory deletion that was interrupted after its rename.
 	 *
-	 * @param base the base worktree
-	 * @throws NullPointerException if {@code base} is null
+	 * @param campaigns the directory that holds the campaigns
+	 * @throws NullPointerException if {@code campaigns} is null
 	 * @throws IOException if the campaigns directory cannot be listed or a directory cannot be deleted
 	 */
-	public static void completeDeletions(Path base) throws IOException
+	public static void completeDeletions(Path campaigns) throws IOException
 	{
-		requireThat(base, "base").isNotNull();
-		for (Path directory : campaignDirectories(base))
+		requireThat(campaigns, "campaigns").isNotNull();
+		for (Path directory : campaignDirectories(campaigns))
 		{
 			if (directory.getFileName().toString().startsWith(DELETING_PREFIX))
 				TemporaryDirectories.deleteRecursively(directory);
@@ -249,40 +251,26 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	/**
-	 * Returns the directories below the campaigns directory of a worktree, including those that are being deleted.
+	 * Returns the directories below a campaigns directory, including those that are being deleted.
 	 *
-	 * @param base the base worktree
-	 * @return the directories in name order; empty if the worktree has no campaigns
+	 * @param campaigns the directory that holds the campaigns
+	 * @return the directories in name order; empty if the directory does not exist
 	 * @throws IOException if the campaigns directory cannot be listed
 	 */
-	private static List<Path> campaignDirectories(Path base) throws IOException
+	private static List<Path> campaignDirectories(Path campaigns) throws IOException
 	{
-		Path root = root(base);
-		if (Files.notExists(root))
+		if (Files.notExists(campaigns))
 			return List.of();
-		try (Stream<Path> entries = Files.list(root))
+		try (Stream<Path> entries = Files.list(campaigns))
 		{
 			return entries.filter(Files::isDirectory).sorted().toList();
 		}
 	}
 
-	/**
-	 * Returns the directory that holds all campaigns of a worktree.
-	 *
-	 * @param base the base worktree
-	 * @return the campaigns directory
-	 * @throws NullPointerException if {@code base} is null
-	 */
-	public static Path root(Path base)
-	{
-		requireThat(base, "base").isNotNull();
-		return base.resolve(SessionWorkDirectory.WORK_ROOT).resolve("optimizer");
-	}
-
 	@Override
 	public Optional<Campaign> readSnapshot(String campaignId) throws IOException
 	{
-		Path directory = directory(base, campaignId);
+		Path directory = directory(campaigns, campaignId);
 		Path file = directory.resolve(HELD_OUT).resolve(SNAPSHOT);
 		if (Files.notExists(file))
 		{
@@ -297,7 +285,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	@Override
 	public void writeSnapshot(Campaign campaign) throws IOException
 	{
-		Path heldOut = heldOutDirectory(base, campaign.header().id());
+		Path heldOut = heldOutDirectory(campaigns, campaign.header().id());
 		// Sessions that start before the first trial record is written must already be denied the records' directory.
 		AtomicFiles.createDirectories(heldOut.resolve(TRIALS));
 		JsonFiles.replace(json, heldOut.resolve(SNAPSHOT), codec.writeCampaign(campaign), afterStep);
@@ -331,7 +319,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	public List<Header> listHeaders() throws IOException
 	{
 		List<Header> headers = new ArrayList<>();
-		for (Path directory : campaignDirectories(base))
+		for (Path directory : campaignDirectories(campaigns))
 		{
 			if (!isCampaign(directory))
 				continue;
@@ -351,7 +339,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	@Override
 	public Optional<DeliveryJournal> readJournal(String campaignId) throws IOException
 	{
-		Path file = directory(base, campaignId).resolve(JOURNAL);
+		Path file = directory(campaigns, campaignId).resolve(JOURNAL);
 		if (Files.notExists(file))
 			return Optional.empty();
 		return Optional.of(JsonFiles.read(json, file, journalCodec::read, MALFORMED));
@@ -360,7 +348,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	@Override
 	public void replaceJournal(String campaignId, DeliveryJournal journal) throws IOException
 	{
-		Path directory = directory(base, campaignId);
+		Path directory = directory(campaigns, campaignId);
 		AtomicFiles.createDirectories(directory);
 		JsonFiles.replace(json, directory.resolve(JOURNAL), journalCodec.write(journal), afterStep);
 	}
@@ -376,7 +364,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	{
 		String keyText = key.purpose().name() + "\n" + key.series() + "\n" + key.snapshot().hex() + "\n" +
 			key.cell() + "\n" + key.sequence();
-		return heldOutDirectory(base, campaignId).resolve(TRIALS).resolve(Sha256.of(keyText.getBytes(UTF_8)).hex() +
+		return heldOutDirectory(campaigns, campaignId).resolve(TRIALS).resolve(Sha256.of(keyText.getBytes(UTF_8)).hex() +
 			RECORD_SUFFIX);
 	}
 

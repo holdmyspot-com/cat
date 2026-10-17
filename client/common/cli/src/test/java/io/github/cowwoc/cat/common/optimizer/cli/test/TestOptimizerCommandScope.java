@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.fakes.test.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
@@ -12,8 +13,10 @@ import io.github.cowwoc.cat.common.optimizer.port.SessionPort;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeProfileInventory;
 import io.github.cowwoc.cat.common.optimizer.port.test.FakeSessionPort;
+import io.github.cowwoc.cat.common.test.SessionHarnesses;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -28,6 +31,8 @@ import java.util.random.RandomGenerator;
  * calibration, a manual clock, a fake version launcher and the campaign store of a project directory that the test
  * creates.
  * <p>
+ * The command runs in the host session {@link #SESSION_ID} unless the test names another one.
+ * <p>
  * The launcher reports version {@code 1.0} and counts how often it runs. The clock starts at
  * {@code 2026-10-01T00:00:00Z}, and campaign identifiers, split salts and draw seeds come from a seeded generator.
  *
@@ -35,6 +40,10 @@ import java.util.random.RandomGenerator;
  */
 final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCommandScope
 {
+	/**
+	 * The ID of the host session that runs a command unless the test names another one.
+	 */
+	static final String SESSION_ID = "0f8e2c4a-7b1d-4e6f-9a3c-5d2b8e1f4a7c";
 	private static final Instant START = Instant.parse("2026-10-01T00:00:00Z");
 	/**
 	 * A seed whose first salts give every test of the fixture derivation at least 2 outcome-changing combinations in each
@@ -42,6 +51,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	 */
 	private static final long SEED = 432_969;
 	private final Harness harness;
+	private final String sessionId;
 	private final Path directory;
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ManualClock clock = new ManualClock(START);
@@ -63,7 +73,22 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	 */
 	static TestOptimizerCommandScope<FakeSessionPort> of(Harness harness, Path directory)
 	{
-		return new TestOptimizerCommandScope<>(harness, directory, Set.of(), _ -> new FakeSessionPort());
+		return of(harness, SESSION_ID, directory);
+	}
+
+	/**
+	 * Creates a scope whose command runs in a named host session, and whose sessions end only when the test ends
+	 * them.
+	 *
+	 * @param harness   the harness that runs the launcher
+	 * @param sessionId the ID of the host session that runs the command
+	 * @param directory the project directory, which the test creates and deletes
+	 * @return the scope
+	 * @throws NullPointerException if any argument is null
+	 */
+	static TestOptimizerCommandScope<FakeSessionPort> of(Harness harness, String sessionId, Path directory)
+	{
+		return new TestOptimizerCommandScope<>(harness, sessionId, directory, Set.of(), _ -> new FakeSessionPort());
 	}
 
 	/**
@@ -78,11 +103,29 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	TestOptimizerCommandScope(Harness harness, Path directory, Set<Path> tracked,
 		Function<ManualClock, S> sessions)
 	{
+		this(harness, SESSION_ID, directory, tracked, sessions);
+	}
+
+	/**
+	 * Creates a scope whose command runs in a named host session.
+	 *
+	 * @param harness   the harness that runs the launcher
+	 * @param sessionId the ID of the host session that runs the command
+	 * @param directory the project directory, which the test creates and deletes
+	 * @param tracked   the files, relative to the project, that the forks treat as tracked by Git
+	 * @param sessions  creates the session port from the scope's clock
+	 * @throws NullPointerException if any argument is null
+	 */
+	TestOptimizerCommandScope(Harness harness, String sessionId, Path directory, Set<Path> tracked,
+		Function<ManualClock, S> sessions)
+	{
 		requireThat(harness, "harness").isNotNull();
+		requireThat(sessionId, "sessionId").isNotNull();
 		requireThat(directory, "directory").isNotNull();
 		requireThat(tracked, "tracked").isNotNull();
 		requireThat(sessions, "sessions").isNotNull();
 		this.harness = harness;
+		this.sessionId = sessionId;
 		this.directory = directory;
 		this.forks = new InMemoryForks(directory, tracked);
 		this.sessions = sessions.apply(clock);
@@ -142,6 +185,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	{
 		ensureOpen();
 		return directory.toAbsolutePath().resolve("bin/prompt-optimizer");
+	}
+
+	@Override
+	protected SessionWorkDirectory openSessionWorkDirectory(Path projectRoot) throws IOException
+	{
+		return SessionWorkDirectory.open(projectRoot, sessionId, SessionHarnesses.HARNESS_A,
+			directory.resolve("configuration"), clock().instant(), json());
 	}
 
 	@Override

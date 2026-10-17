@@ -1,6 +1,8 @@
 package io.github.cowwoc.cat.common.secrets;
 
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.optimizer.cli.CommandRefusedException;
+
 import io.github.cowwoc.cat.common.optimizer.cli.OptimizerCommandScope;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
@@ -36,24 +38,37 @@ public interface OptimizerCommandScopeAccess
 	Path projectRoot(OptimizerCommandScope scope) throws CommandRefusedException, IOException;
 
 	/**
-	 * Returns the campaign store of a scope's project.
+	 * Returns the work directory of the host session that runs a scope's command, creating it on first use.
+	 *
+	 * @param scope the scope
+	 * @return the directory
+	 * @throws IllegalStateException if {@code scope} is closed
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository, or the environment
+	 *   names no host session
+	 * @throws IOException if the working directory cannot be resolved or the directory cannot be created
+	 */
+	SessionWorkDirectory sessionWorkDirectory(OptimizerCommandScope scope) throws CommandRefusedException, IOException;
+
+	/**
+	 * Returns the store of the campaigns of the host session that runs a scope's command.
 	 *
 	 * @param scope the scope
 	 * @return the store
 	 * @throws IllegalStateException if {@code scope} is closed
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository
-	 * @throws IOException if the working directory cannot be resolved
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository, or the environment
+	 *   names no host session
+	 * @throws IOException if the working directory cannot be resolved or the session's directory cannot be created
 	 */
 	CampaignStore store(OptimizerCommandScope scope) throws CommandRefusedException, IOException;
 
 	/**
-	 * Lists the {@code held_out} directories of the campaigns of a scope's project.
+	 * Lists the {@code held_out} directories of the campaigns of every session of a scope's project.
 	 *
 	 * @param scope the scope
 	 * @return the real paths of those that exist
 	 * @throws IllegalStateException if {@code scope} is closed
-	 * @throws IOException if the working directory is not inside a Git repository or the campaigns cannot be
-	 *   listed
+	 * @throws IOException if the working directory is not inside a Git repository, the environment names no host
+	 *   session, or the campaigns cannot be listed
 	 */
 	List<Path> heldOutDirectories(OptimizerCommandScope scope) throws IOException;
 }

@@ -1,8 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.cli;
 
-import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.directory;
-import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.heldOutDirectory;
-import static io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore.lockFile;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.BoundedInput;
@@ -13,6 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
+import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
 import io.github.cowwoc.cat.common.optimizer.campaign.Registry;
 import io.github.cowwoc.cat.common.optimizer.campaign.Choice;
@@ -87,6 +85,7 @@ import io.github.cowwoc.cat.common.optimizer.report.ReportEvidence;
 import io.github.cowwoc.cat.common.optimizer.report.StatusReport;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.CertificationHistoryJson;
+import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.FileCandidateOverlays;
 import io.github.cowwoc.cat.common.runner.PluginManifest;
 import io.github.cowwoc.cat.common.optimizer.workspace.ControlSource;
@@ -127,8 +126,12 @@ import java.util.stream.Stream;
 /**
  * Implements the commands on the real store, fork, driver and sessions of one project.
  * <p>
- * Every command that changes a campaign first checks that the harness that runs it started the campaign, and refuses
- * before it changes anything otherwise. {@code status} is the exception: either harness may report any campaign.
+ * The campaigns of a command are those of the host session that runs it. Every command that runs, changes or delivers
+ * a campaign first checks that the host session started the campaign in the harness that runs the command, and
+ * refuses before it changes anything otherwise, naming the session that owns the campaign and the command that
+ * resumes it. {@code start} refuses a target whose resumable campaign another session owns in the same way.
+ * {@code status} is the exception: any session in either harness may report any campaign, and is told which session
+ * owns a campaign that it did not start.
  * <p>
  * Every command first completes the removal of any campaign's files that an earlier command started. {@code run}
  * removes the files of a campaign whose certified delivery it completed, and {@code choose} those of a campaign whose
@@ -148,6 +151,12 @@ public final class OptimizerCore implements Core
 	private static final int MAXIMUM_CONFIGURATION_BYTES = 1_048_576;
 	private final OptimizerCommandScope scope;
 	private final ProposalSchema schema;
+	/**
+	 * The directory that holds each campaign of another session that this command reads, by the campaign's
+	 * identifier. Every other campaign is the host session's.
+	 */
+	private final Map<String, Path> otherSessionCampaigns = new HashMap<>();
+
 	/**
 	 * Creates the core.
 	 *
@@ -273,7 +282,7 @@ public final class OptimizerCore implements Core
 				absolute + " is not. Run start with the prompt file to optimize.");
 		}
 		CampaignStore store = scope.store();
-		Registry.Opening opening = Registry.open(store.listHeaders(), root, absolute,
+		Registry.Opening opening = Registry.open(headers(), scope.sessionWorkDirectory().sessionId(), root, absolute,
 			scope.harness());
 		return switch (opening)
 		{
@@ -281,6 +290,29 @@ public final class OptimizerCore implements Core
 			case Registry.Opening.Resume resume -> resume(root, store, resume.header());
 			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling, goal);
 		};
+	}
+
+	/**
+	 * Returns the header of every campaign of every session of the project.
+	 *
+	 * @return each header with the session that started its campaign
+	 * @throws CommandRefusedException if the environment names no host session
+	 * @throws IOException if the campaigns cannot be listed
+	 */
+	private List<Registry.OwnedHeader> headers() throws CommandRefusedException, IOException
+	{
+		SessionWorkDirectory host = scope.sessionWorkDirectory();
+		List<Registry.OwnedHeader> headers = new ArrayList<>();
+		for (Header header : scope.store().listHeaders())
+			headers.add(new Registry.OwnedHeader(host.sessionId(), header));
+		for (Map.Entry<String, Path> session : host.campaignsBySession().entrySet())
+		{
+			if (session.getKey().equals(host.sessionId()))
+				continue;
+			for (Header header : new FileCampaignStore(session.getValue(), scope.json()).listHeaders())
+				headers.add(new Registry.OwnedHeader(session.getKey(), header));
+		}
+		return headers;
 	}
 
 	/**
@@ -365,17 +397,39 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns the refusal for a campaign that the other harness started.
+	 * Returns the refusal for a campaign that another session or the other harness started.
 	 *
-	 * @param header the campaign
+	 * @param owner the campaign and the session that started it
 	 * @return the exception to throw
+	 * @throws CommandRefusedException if the environment names no host session
+	 * @throws IOException if the host session's work directory cannot be opened
 	 */
-	private static CommandRefusedException refused(Header header)
+	private CommandRefusedException refused(Registry.OwnedHeader owner) throws CommandRefusedException, IOException
 	{
-		String owner = header.harness().commandName();
+		Header header = owner.header();
+		if (!owner.sessionId().equals(scope.sessionWorkDirectory().sessionId()))
+		{
+			return new CommandRefusedException("Campaign " + header.id() + " for " + header.target() + " " +
+				ownership(owner) + " Use `status " + header.id() + "` to read it from here.");
+		}
+		String harness = header.harness().commandName();
 		return new CommandRefusedException("Campaign " + header.id() + " for " + header.target() +
-			" was started by " + owner + " and can only be resumed there. Use `status " + header.id() +
+			" was started by " + harness + " and can only be resumed there. Use `status " + header.id() +
 			"` to read it from here.");
+	}
+
+	/**
+	 * Describes which session owns a campaign and how to resume it.
+	 *
+	 * @param owner the campaign and the session that started it
+	 * @return the sentences that name the session and the command that resumes it
+	 */
+	private static String ownership(Registry.OwnedHeader owner)
+	{
+		Harness harness = owner.header().harness();
+		return "belongs to " + harness.commandName() + " session " + owner.sessionId() +
+			", and only that session can run, change or deliver it. Resume that session with `" +
+			harness.resumeCommand(owner.sessionId()) + "` to continue the campaign.";
 	}
 
 	/**
@@ -428,7 +482,7 @@ public final class OptimizerCore implements Core
 	{
 		String id = ID_TIME.format(scope.clock().instant()) + "-" +
 			HexFormat.of().toHexDigits(scope.random().nextInt()).substring(Integer.BYTES * 2 - RANDOM_ID_DIGITS);
-		Path directory = directory(root, id);
+		Path directory = campaignDirectory(id);
 		Path relative = root.relativize(target);
 		// The configuration is checked before anything is created, so a refusal leaves nothing behind
 		List<PromptConfiguration.ConfiguredPlugin> configured = configuredPlugins(root, relative);
@@ -455,6 +509,64 @@ public final class OptimizerCore implements Core
 		if (result.message() != null)
 			message += "\n" + result.message();
 		return new CommandResult(result.status(), result.harness(), result.proposal(), result.delivery(), message);
+	}
+
+	/**
+	 * Returns the directory that holds a campaign's files.
+	 *
+	 * @param id the campaign's identifier
+	 * @return the directory, in the work directory of the session that started the campaign
+	 * @throws IOException if the host session's work directory cannot be opened
+	 */
+	private Path campaignDirectory(String id) throws IOException
+	{
+		return FileCampaignStore.directory(campaignsOf(id), id);
+	}
+
+	/**
+	 * Returns the directory that holds the campaigns of the session that started a campaign.
+	 *
+	 * @param id the campaign's identifier
+	 * @return the directory
+	 * @throws IOException if the host session's work directory cannot be opened
+	 */
+	private Path campaignsOf(String id) throws IOException
+	{
+		Path other = otherSessionCampaigns.get(id);
+		if (other != null)
+			return other;
+		try
+		{
+			return scope.sessionWorkDirectory().campaigns();
+		}
+		catch (CommandRefusedException e)
+		{
+			throw new IOException(e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * Returns the directory that holds a campaign's held-out content.
+	 *
+	 * @param id the campaign's identifier
+	 * @return the directory, in the work directory of the session that started the campaign
+	 * @throws IOException if the host session's work directory cannot be opened
+	 */
+	private Path heldOutDirectory(String id) throws IOException
+	{
+		return FileCampaignStore.heldOutDirectory(campaignsOf(id), id);
+	}
+
+	/**
+	 * Returns the file whose lock gives one process at a time the right to write a campaign.
+	 *
+	 * @param id the campaign's identifier
+	 * @return the file, in the work directory of the session that started the campaign
+	 * @throws IOException if the host session's work directory cannot be opened
+	 */
+	private Path lockFile(String id) throws IOException
+	{
+		return FileCampaignStore.lockFile(campaignsOf(id), id);
 	}
 
 	/**
@@ -806,7 +918,7 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		String id = campaign.header().id();
-		ProposalFile.Stored stored = new ProposalFile(heldOutDirectory(root, id), scope.json()).read().
+		ProposalFile.Stored stored = new ProposalFile(heldOutDirectory(id), scope.json()).read().
 			orElseThrow(() -> new IOException("Campaign " + id + " has no stored confirmed proposal"));
 		ContractAuthorProtocol contractAuthor = contractAuthor(root, campaign);
 		DerivedProposal current;
@@ -821,7 +933,7 @@ public final class OptimizerCore implements Core
 		}
 		TestRevisionProtocol protocol = new TestRevisionProtocol(scope.json(), schema, contractAuthor);
 		ForkView fork = openFork(root, campaign);
-		Overlay incumbent = new FileCandidateOverlays(directory(root, id), fork.inventory(), fork::version,
+		Overlay incumbent = new FileCandidateOverlays(campaignDirectory(id), fork.inventory(), fork::version,
 			scope.json()).require(campaign.incumbent().snapshot());
 		Path staged = fork.workspace().stage(incumbent, Set.of());
 
@@ -915,12 +1027,12 @@ public final class OptimizerCore implements Core
 			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
 		requireParticipantsHeld(root, fork, revised);
 		// The stored proposal changes only once nothing blocks confirming it, so it stays the confirmed contract's
-		new ProposalFile(heldOutDirectory(root, campaign.header().id()), scope.json()).write(revised,
+		new ProposalFile(heldOutDirectory(campaign.header().id()), scope.json()).write(revised,
 			stored.profiles());
 
 		List<CampaignEvent> events = new ArrayList<>();
 		events.add(revise);
-		events.addAll(moveOnto(root, campaign, fork));
+		events.addAll(moveOnto(campaign, fork));
 		events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
 		return events;
 	}
@@ -1013,6 +1125,9 @@ public final class OptimizerCore implements Core
 			Optional<Campaign> campaign = store.load(subject);
 			if (campaign.isPresent())
 				return report(root, campaign.get(), null, null);
+			Optional<SessionCampaign> other = loadFromOtherSession(subject);
+			if (other.isPresent())
+				return reportOtherSession(root, other.get());
 		}
 
 		Path absolute = scope.directory().toRealPath().resolve(subject).normalize();
@@ -1020,15 +1135,15 @@ public final class OptimizerCore implements Core
 		if (Files.exists(absolute))
 			absolute = absolute.toRealPath();
 		requireInsideProject(root, absolute);
-		Optional<Header> header = Registry.ofTarget(store.listHeaders(), root, absolute);
-		if (header.isPresent() && header.get().lifecycle().isResumable())
-			return report(root, require(store, header.get().id(), false), null, null);
+		Optional<Registry.OwnedHeader> header = Registry.ofTarget(headers(), root, absolute);
+		if (header.isPresent() && header.get().header().lifecycle().isResumable())
+			return report(root, header.get());
 
 		// A finished campaign must not hide a certification that a later campaign delivered
 		Path relative = root.relativize(absolute);
 		CertificationHistory history = history(root, relative);
 		if (history.records().isEmpty() && header.isPresent())
-			return report(root, require(store, header.get().id(), false), null, null);
+			return report(root, header.get());
 		if (history.records().isEmpty())
 		{
 			String absent = "no campaign or certification record exists for " + relative + ".";
@@ -1040,6 +1155,76 @@ public final class OptimizerCore implements Core
 		MeasurementIdentity known = environment(files);
 		return CommandResult.of(certificationStatus(history, files, known,
 			record -> record.parameters().minimumPassRate()));
+	}
+
+	/**
+	 * A campaign and the session that started it.
+	 *
+	 * @param sessionId the ID of the session that started the campaign
+	 * @param campaign the campaign
+	 */
+	private record SessionCampaign(String sessionId, Campaign campaign)
+	{
+	}
+
+	/**
+	 * Loads a campaign that another session of the project started, and reads its files from that session's work
+	 * directory for the rest of the command.
+	 *
+	 * @param id the campaign's identifier
+	 * @return the campaign, or empty if no other session has it
+	 * @throws CommandRefusedException if the environment names no host session
+	 * @throws IOException if the campaigns cannot be read
+	 */
+	private Optional<SessionCampaign> loadFromOtherSession(String id) throws CommandRefusedException, IOException
+	{
+		SessionWorkDirectory host = scope.sessionWorkDirectory();
+		for (Map.Entry<String, Path> session : host.campaignsBySession().entrySet())
+		{
+			if (session.getKey().equals(host.sessionId()))
+				continue;
+			Optional<Campaign> campaign = new FileCampaignStore(session.getValue(), scope.json()).load(id);
+			if (campaign.isPresent())
+			{
+				otherSessionCampaigns.put(id, session.getValue());
+				return Optional.of(new SessionCampaign(session.getKey(), campaign.get()));
+			}
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Reports a campaign of any session.
+	 *
+	 * @param root the project root
+	 * @param owner the campaign and the session that started it
+	 * @return the result
+	 * @throws CommandRefusedException if the environment names no host session
+	 * @throws IOException if the campaign cannot be read
+	 */
+	private CommandResult report(Path root, Registry.OwnedHeader owner) throws CommandRefusedException, IOException
+	{
+		String id = owner.header().id();
+		if (owner.sessionId().equals(scope.sessionWorkDirectory().sessionId()))
+			return report(root, require(scope.store(), id, false), null, null);
+		SessionCampaign other = loadFromOtherSession(id).orElseThrow(() ->
+			new IOException("Campaign " + id + " of session " + owner.sessionId() + " was removed while it was read."));
+		return reportOtherSession(root, other);
+	}
+
+	/**
+	 * Reports a campaign that another session started, with a notice that names that session.
+	 *
+	 * @param root the project root
+	 * @param other the campaign and the session that started it
+	 * @return the result
+	 * @throws IOException if the campaign's fork cannot be read
+	 */
+	private CommandResult reportOtherSession(Path root, SessionCampaign other) throws IOException
+	{
+		Registry.OwnedHeader owner = new Registry.OwnedHeader(other.sessionId(), other.campaign().header());
+		return report(root, other.campaign(), null, null).
+			withNotices(List.of("Campaign " + owner.header().id() + " " + ownership(owner)));
 	}
 
 	/**
@@ -1104,12 +1289,12 @@ public final class OptimizerCore implements Core
 			// A revision after confirmation runs on the files that its presentation recorded beside the fork's
 			if (loaded.isConfirmed())
 				fork = fork.including(participants(root, derived).existing());
-			Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(root, loaded).read(),
+			Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(loaded).read(),
 				pluginCheck(root, loaded, fork));
 			if (!proposal.isConfirmable(certificationScope))
 				throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
 			requireParticipantsHeld(root, fork, derived);
-			List<CampaignEvent> events = new ArrayList<>(moveOnto(root, loaded, fork));
+			List<CampaignEvent> events = new ArrayList<>(moveOnto(loaded, fork));
 			events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
 			return apply(root, loaded, events);
 		});
@@ -1184,20 +1369,19 @@ public final class OptimizerCore implements Core
 	 * fork, the incumbent and the working candidate keep their edits on it, and the optimization worktree is rewritten
 	 * to hold the working candidate. Repeating the move after an interruption repeats each step.
 	 *
-	 * @param root the project root
 	 * @param campaign the campaign
 	 * @param fork the fork that the revised contract runs on
 	 * @return the event that moves the campaign, or none if the campaign is not confirmed or is on that fork already
 	 * @throws CommandRefusedException if the working candidate's edits do not apply to the larger fork
 	 * @throws IOException if the overlays, the fork's selection or the worktree cannot be read or written
 	 */
-	private List<CampaignEvent> moveOnto(Path root, Campaign campaign, ForkView fork)
+	private List<CampaignEvent> moveOnto(Campaign campaign, ForkView fork)
 		throws CommandRefusedException, IOException
 	{
 		if (!campaign.isConfirmed())
 			return List.of();
 		FileInventory larger = fork.inventory();
-		FileCandidateOverlays overlays = new FileCandidateOverlays(directory(root, campaign.header().id()), larger,
+		FileCandidateOverlays overlays = new FileCandidateOverlays(campaignDirectory(campaign.header().id()), larger,
 			fork::version, scope.json());
 		if (overlays.require(campaign.incumbent().snapshot()).fork().equals(larger))
 			return List.of();
@@ -1432,7 +1616,8 @@ public final class OptimizerCore implements Core
 	 */
 	private Cleanup cleanup() throws CommandRefusedException, IOException
 	{
-		return new Cleanup(scope.projectRoot(), scope.forks(), scope.sessions().runRoots(), scope.json());
+		return new Cleanup(scope.projectRoot(), scope.sessionWorkDirectory().campaigns(), scope.forks(),
+			scope.sessions().runRoots(), scope.json());
 	}
 
 	/**
@@ -1485,7 +1670,7 @@ public final class OptimizerCore implements Core
 	private CommandResult derive(Path root, CampaignStore store, Campaign campaign, ForkView fork,
 		DerivedProposal previous, String feedback) throws IOException, InterruptedException
 	{
-		Path directory = directory(root, campaign.header().id());
+		Path directory = campaignDirectory(campaign.header().id());
 		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), fork::version, scope.json()).
 			require(campaign.incumbent().snapshot());
 		// The contract author reads the regression scenarios, so nothing is left out
@@ -1511,7 +1696,7 @@ public final class OptimizerCore implements Core
 			// Revision keeps the salt, so the test cases that the user reviewed keep their parts
 			salt = previous.contract().salt();
 			request = protocol.request(staged, profiles, hooks, previous, feedback,
-				pilotFile(root, campaign).read());
+				pilotFile(campaign).read());
 			// The proposal that the user gave feedback on is still stored, so revise can regenerate it again
 			invalidRetry = "Run `revise` with feedback, or `start`, to retry.";
 		}
@@ -1582,7 +1767,7 @@ public final class OptimizerCore implements Core
 		}
 		derived = derived.withDerivedSources(scope.sessions().loadedSources(root, bases).trials());
 		// The draft's values files hold the expected outcomes of both parts, so it moves into the held-out directory
-		Path heldOut = heldOutDirectory(root, campaign.header().id());
+		Path heldOut = heldOutDirectory(campaign.header().id());
 		derived = derived.withDraft(DraftDirectory.store(derived.draft(), heldOut), derived.changes());
 		new ProposalFile(heldOut, scope.json()).write(derived, profiles);
 		return present(root, store, campaign, fork, derived);
@@ -1622,7 +1807,7 @@ public final class OptimizerCore implements Core
 		{
 			ForkView selected = fork.selectParticipants(root, participants.existing());
 			if (!selected.inventory().equals(fork.inventory()))
-				campaign = rebind(root, store, campaign, selected.inventory());
+				campaign = rebind(store, campaign, selected.inventory());
 			fork = selected;
 		}
 
@@ -1652,10 +1837,10 @@ public final class OptimizerCore implements Core
 		if (!controlRefusals(root, campaign, fork, derived, plugin).isEmpty())
 			return Map.of();
 		FileInventory inventory = fork.inventory();
-		PilotFile file = pilotFile(root, campaign);
+		PilotFile file = pilotFile(campaign);
 		Overlay control = ControlSource.of(fork.workspace(), inventory, relativeTarget(root, campaign),
 			derived.contract().projectRemovals(), scope.json());
-		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(root, campaign), schema,
+		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(campaign), schema,
 			scope.json(), campaign.ceiling());
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
 		Map<String, PilotResult> pilots = pilot.run(derived.contract(), plugin.plugins(), control, excluded,
@@ -1668,18 +1853,17 @@ public final class OptimizerCore implements Core
 	 * Binds a campaign that waits for its first confirmed contract to the incumbent of its fork's changed files. The
 	 * incumbent overlay is saved for the new files before the campaign refers to it.
 	 *
-	 * @param root the project root
 	 * @param store the store
 	 * @param campaign the campaign
 	 * @param inventory the fork's files
 	 * @return the rebound campaign
 	 * @throws IOException if the overlay or the campaign cannot be stored
 	 */
-	private Campaign rebind(Path root, CampaignStore store, Campaign campaign, FileInventory inventory)
+	private Campaign rebind(CampaignStore store, Campaign campaign, FileInventory inventory)
 		throws IOException
 	{
 		Overlay incumbent = Overlay.of(inventory);
-		new FileCandidateOverlays(directory(root, campaign.header().id()), inventory, scope.json()).save(incumbent);
+		new FileCandidateOverlays(campaignDirectory(campaign.header().id()), inventory, scope.json()).save(incumbent);
 		Campaign rebound = campaign.withIncumbent(incumbent.identity());
 		store.replaceSnapshot(rebound);
 		return rebound;
@@ -1688,13 +1872,13 @@ public final class OptimizerCore implements Core
 	/**
 	 * Returns the file that holds a campaign's guard pilot.
 	 *
-	 * @param root the project root
 	 * @param campaign the campaign
 	 * @return the file
+	 * @throws IOException if the host session's work directory cannot be opened
 	 */
-	private PilotFile pilotFile(Path root, Campaign campaign)
+	private PilotFile pilotFile(Campaign campaign) throws IOException
 	{
-		return new PilotFile(heldOutDirectory(root, campaign.header().id()), scope.json());
+		return new PilotFile(heldOutDirectory(campaign.header().id()), scope.json());
 	}
 
 	/**
@@ -1817,7 +2001,7 @@ public final class OptimizerCore implements Core
 	 */
 	private Optional<DerivedProposal> stored(Path root, Campaign campaign) throws IOException
 	{
-		Optional<ProposalFile.Stored> stored = new ProposalFile(heldOutDirectory(root, campaign.header().id()),
+		Optional<ProposalFile.Stored> stored = new ProposalFile(heldOutDirectory(campaign.header().id()),
 			scope.json()).read();
 		if (stored.isEmpty())
 			return Optional.empty();
@@ -1871,7 +2055,7 @@ public final class OptimizerCore implements Core
 	private CommandResult report(Path root, Campaign campaign, String proposal, String message) throws IOException
 	{
 		boolean links = false;
-		Path directory = directory(root, campaign.header().id());
+		Path directory = campaignDirectory(campaign.header().id());
 		if (scope.forks().exists(directory))
 		{
 			ForkView fork = scope.forks().open(root, directory);
@@ -1898,9 +2082,15 @@ public final class OptimizerCore implements Core
 	{
 		Optional<Campaign> campaign = store.load(id);
 		if (campaign.isEmpty())
+		{
+			Optional<SessionCampaign> other = loadFromOtherSession(id);
+			if (other.isPresent())
+				throw refused(new Registry.OwnedHeader(other.get().sessionId(), other.get().campaign().header()));
 			throw new CommandRefusedException("No campaign has the identifier " + id + ".");
-		if (sameHarness && campaign.get().header().harness() != scope.harness())
-			throw refused(campaign.get().header());
+		}
+		Header header = campaign.get().header();
+		if (sameHarness && header.harness() != scope.harness())
+			throw refused(new Registry.OwnedHeader(scope.sessionWorkDirectory().sessionId(), header));
 		return campaign.get();
 	}
 
@@ -1917,7 +2107,7 @@ public final class OptimizerCore implements Core
 	{
 		try
 		{
-			return scope.forks().open(root, directory(root, campaign.header().id()));
+			return scope.forks().open(root, campaignDirectory(campaign.header().id()));
 		}
 		catch (WorkspaceException e)
 		{
@@ -1929,14 +2119,13 @@ public final class OptimizerCore implements Core
 	/**
 	 * Returns the judge protocol of a campaign, which writes each judge's evidence under the campaign's directory.
 	 *
-	 * @param root the project root
 	 * @param campaign the campaign
 	 * @return the protocol
 	 * @throws IOException if the judge's directory cannot be created
 	 */
-	private JudgePrompt judgePrompt(Path root, Campaign campaign) throws IOException
+	private JudgePrompt judgePrompt(Campaign campaign) throws IOException
 	{
-		Path judgeDirectory = directory(root, campaign.header().id()).resolve("judge");
+		Path judgeDirectory = campaignDirectory(campaign.header().id()).resolve("judge");
 		Files.createDirectories(judgeDirectory);
 		return new JudgePrompt(scope.json(), judgeDirectory);
 	}
@@ -1952,7 +2141,7 @@ public final class OptimizerCore implements Core
 	 */
 	private DriverContext context(Path root, Campaign campaign) throws CommandRefusedException, IOException
 	{
-		Path directory = directory(root, campaign.header().id());
+		Path directory = campaignDirectory(campaign.header().id());
 		ForkView fork = openFork(root, campaign);
 		FileInventory inventory = fork.inventory();
 		CampaignStore store = scope.store();
@@ -1962,7 +2151,7 @@ public final class OptimizerCore implements Core
 		Path valuesDirectory = directory.resolve("values");
 		Files.createDirectories(valuesDirectory);
 		Set<Path> promptSources = promptSources(root, campaign);
-		JudgePrompt judge = judgePrompt(root, campaign);
+		JudgePrompt judge = judgePrompt(campaign);
 		TriagePrompt triage = new TriagePrompt(scope.json(), triageDirectory);
 		PromptAuthorPrompt promptAuthor = new PromptAuthorPrompt(scope.json(), schema, promptSources,
 			Set.copyOf(scope.loaderConfiguration()));
@@ -1973,7 +2162,7 @@ public final class OptimizerCore implements Core
 			values,
 			new Delivery(store, fork.workspace(), scope.json())::deliver, scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(scope.sessions(), scope.json()), authority,
-			promptSources, environment(inventory::entry), lockFile(root, campaign.header().id()), scope.random(),
+			promptSources, environment(inventory::entry), lockFile(campaign.header().id()), scope.random(),
 			scope.sliceSettings(), scope.json());
 	}
 

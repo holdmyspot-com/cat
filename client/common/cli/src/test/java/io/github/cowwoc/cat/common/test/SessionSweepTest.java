@@ -15,6 +15,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -198,7 +200,9 @@ public final class SessionSweepTest
 			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
 			ByteArrayOutputStream error = new ByteArrayOutputStream();
 
-			current.sweep(NOW, new PrintStream(error, true, UTF_8), directory ->
+			current.sweep(NOW, new PrintStream(error, true, UTF_8), (_, _) ->
+			{
+			}, directory ->
 			{
 				if (directory.getFileName().toString().equals(stuck))
 					throw new IOException("Directory is busy");
@@ -209,6 +213,75 @@ public final class SessionSweepTest
 			requireThat(Files.exists(gone.directory()), "goneExists").isFalse();
 			requireThat(error.toString(UTF_8), "error").contains(stuckDirectory.directory().toString()).
 				contains("Directory is busy");
+		}
+	}
+
+	/**
+	 * Verifies the sweep removes the optimization worktree of each campaign in a gone session's directory, giving the
+	 * project and the campaign directory, before it removes the session's directory.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void removesCampaignWorktreesFirst() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path configuration = root.resolve("configuration");
+			SessionWorkDirectory gone = open(project, OTHER, HARNESS_A, configuration, OLD);
+			Path campaign = Files.createDirectories(gone.campaigns().resolve("20261015-0900-abc123"));
+			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
+			List<String> calls = new ArrayList<>();
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			current.sweep(NOW, new PrintStream(error, true, UTF_8),
+				(base, directory) -> calls.add("worktree " + base + " " + directory), directory ->
+				{
+					calls.add("directory " + directory);
+					TemporaryDirectories.deleteRecursively(directory);
+				});
+
+			Path normalizedProject = project.toAbsolutePath().normalize();
+			requireThat(calls, "calls").isEqualTo(List.of("worktree " + normalizedProject + " " + campaign,
+				"directory " + gone.directory()));
+			requireThat(Files.exists(gone.directory()), "goneExists").isFalse();
+			requireThat(error.toString(UTF_8), "error").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies a campaign worktree that cannot be removed keeps its session's directory, is reported on standard error
+	 * with the session's directory, the campaign and the cause, and does not stop the sweep from removing another gone
+	 * session's directory.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void failedWorktreeKeepsSession() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path configuration = root.resolve("configuration");
+			SessionWorkDirectory stuck = open(project, OTHER, HARNESS_A, configuration, OLD);
+			Files.createDirectories(stuck.campaigns().resolve("20261015-0900-abc123"));
+			SessionWorkDirectory gone = open(project, "66666666-6666-4666-8666-666666666666", HARNESS_A,
+				configuration, OLD);
+			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			current.sweep(NOW, new PrintStream(error, true, UTF_8), (_, _) ->
+			{
+				throw new IOException("git worktree remove failed");
+			}, TemporaryDirectories::deleteRecursively);
+
+			requireThat(stuck.marker(), "stuckMarker").isRegularFile();
+			requireThat(Files.exists(gone.directory()), "goneExists").isFalse();
+			requireThat(error.toString(UTF_8), "error").contains(stuck.directory().toString()).
+				contains("20261015-0900-abc123").contains("git worktree remove failed");
 		}
 	}
 

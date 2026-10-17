@@ -4,8 +4,10 @@ import static io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.SessionRe
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.cowwoc.cat.codex.CodexSessionHarness;
 import io.github.cowwoc.cat.codex.optimizer.CodexSessions;
 import io.github.cowwoc.cat.codex.secrets.CodexSessionsSecrets;
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.ContractAuthorFixtures;
@@ -352,6 +354,66 @@ public final class CodexSessionsTest
 			requireThat(denied, "denied").isEqualTo(List.of(heldOut, root.resolve("runs-held_out")));
 			for (Path path : denied)
 				requireThat(launcher.startsWith(path), "launcher.startsWith(" + path + ")").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a development session started for a campaign in a session's work directory runs under that
+	 * session's run root and is denied reading the {@code held_out} directories of the campaigns of every session and
+	 * the session's held-out run root.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void deniesHeldOutReadsInSessionWorkDirectory()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-session-denied-")).
+				toRealPath();
+			Path source = Files.createDirectories(root.resolve("source"));
+			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+			JsonMapper json = JsonMapper.builder().build();
+			String sessionId = "2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b";
+			String otherSessionId = "5a7c9e1b-3d2f-4a6b-8c0e-9f1d3b5a7c2e";
+			SessionWorkDirectory session = SessionWorkDirectory.open(root, sessionId, CodexSessionHarness.HARNESS,
+				root.resolve("configuration"), Instant.EPOCH, json);
+			Path heldOut = Files.createDirectories(session.campaigns().resolve("c1/held_out"));
+			Path otherHeldOut = Files.createDirectories(root.resolve(".cat/work/" + otherSessionId +
+				"/optimizer/c2/held_out"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, session.runRoot("codex"),
+				() -> List.of(heldOut, otherHeldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(),
+				Clock.systemUTC());
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (options, input, output) ->
+			{
+				arguments.add(options);
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+					List.of(Turn.replies("ok")), input, output);
+			});
+
+			SessionResult result = await(sessions.start(new SessionRequest(SessionRole.PROMPT_AUTHOR,
+				Part.DEVELOPMENT, source, List.of("brief"), List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			List<String> options = arguments.getFirst();
+			Path sessionDirectory = root.resolve(".cat/work/" + sessionId);
+			requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
+				isEqualTo(sessionDirectory.resolve("optimizer-runs/codex").toString());
+			List<String> denied = new ArrayList<>();
+			for (int i = 0; i < options.size() - 1; ++i)
+			{
+				if (options.get(i).equals("--deny-read"))
+					denied.add(options.get(i + 1));
+			}
+			requireThat(denied, "denied").isEqualTo(List.of(
+				sessionDirectory.resolve("optimizer/c1/held_out").toString(),
+				root.resolve(".cat/work/" + otherSessionId + "/optimizer/c2/held_out").toString(),
+				sessionDirectory.resolve("optimizer-runs/codex-held_out").toString()));
 		}
 	}
 

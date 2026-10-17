@@ -51,6 +51,7 @@ public final class Cleanup
 {
 	private static final String MANIFEST = "run.json";
 	private final Path base;
+	private final Path campaigns;
 	private final Forks forks;
 	private final List<Path> runRoots;
 	private final JsonMapper json;
@@ -60,14 +61,15 @@ public final class Cleanup
 	 * Creates a cleanup.
 	 *
 	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns that this cleanup removes
 	 * @param forks creates and removes the campaigns' optimization worktrees
-	 * @param runRoots the directories that hold the runs of every campaign of the project
+	 * @param runRoots the directories that hold the runs of those campaigns
 	 * @param json the JSON mapper that parses run manifests
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Cleanup(Path base, Forks forks, List<Path> runRoots, JsonMapper json)
+	public Cleanup(Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json)
 	{
-		this(base, forks, runRoots, json, _ ->
+		this(base, campaigns, forks, runRoots, json, _ ->
 		{
 		});
 	}
@@ -76,21 +78,25 @@ public final class Cleanup
 	 * Creates a cleanup that reports each step before it runs.
 	 *
 	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns that this cleanup removes
 	 * @param forks creates and removes the campaigns' optimization worktrees
-	 * @param runRoots the directories that hold the runs of every campaign of the project
+	 * @param runRoots the directories that hold the runs of those campaigns
 	 * @param json the JSON mapper that parses run manifests
 	 * @param beforeStep receives each step before it runs; an exception that it throws stops the removal at that
 	 *   point, as a crash would
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Cleanup(Path base, Forks forks, List<Path> runRoots, JsonMapper json, Consumer<Step> beforeStep)
+	public Cleanup(Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json,
+		Consumer<Step> beforeStep)
 	{
 		requireThat(base, "base").isNotNull();
+		requireThat(campaigns, "campaigns").isNotNull();
 		requireThat(forks, "forks").isNotNull();
 		requireThat(runRoots, "runRoots").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(beforeStep, "beforeStep").isNotNull();
 		this.base = base;
+		this.campaigns = campaigns;
 		this.forks = forks;
 		this.runRoots = List.copyOf(runRoots);
 		this.json = json;
@@ -137,7 +143,7 @@ public final class Cleanup
 		String id = campaign.header().id();
 		try
 		{
-			FileCampaignStore.recordRemoval(base, id);
+			FileCampaignStore.recordRemoval(campaigns, id);
 		}
 		catch (IOException e)
 		{
@@ -165,7 +171,7 @@ public final class Cleanup
 	public List<String> resume() throws IOException
 	{
 		List<String> warnings = new ArrayList<>();
-		for (String id : FileCampaignStore.removals(base))
+		for (String id : FileCampaignStore.removals(campaigns))
 		{
 			try
 			{
@@ -178,7 +184,7 @@ public final class Cleanup
 		}
 		try
 		{
-			FileCampaignStore.completeDeletions(base);
+			FileCampaignStore.completeDeletions(campaigns);
 		}
 		catch (IOException e)
 		{
@@ -206,8 +212,8 @@ public final class Cleanup
 	 *
 	 * @param id the campaign's identifier, or {@code null} if the failure concerns no single campaign
 	 * @param failure the failure
-	 * @return {@code <path>: <cause>}; the path is the campaign directory, or the optimizer directory if {@code id} is
-	 *   null, when the failure names no file
+	 * @return {@code <path>: <cause>}; the path is the campaign directory, or the directory that holds the campaigns if
+	 *   {@code id} is null, when the failure names no file
 	 */
 	private String cause(String id, IOException failure)
 	{
@@ -220,9 +226,9 @@ public final class Cleanup
 		}
 		Path path;
 		if (id == null)
-			path = FileCampaignStore.root(base);
+			path = campaigns;
 		else
-			path = FileCampaignStore.directory(base, id);
+			path = FileCampaignStore.directory(campaigns, id);
 		String reason = failure.getMessage();
 		if (reason == null)
 			reason = failure.getClass().getSimpleName();
@@ -238,8 +244,8 @@ public final class Cleanup
 	 */
 	private boolean remove(String id) throws IOException
 	{
-		Path directory = FileCampaignStore.directory(base, id);
-		Optional<CampaignLock> lock = CampaignLock.tryAcquire(FileCampaignStore.lockFile(base, id));
+		Path directory = FileCampaignStore.directory(campaigns, id);
+		Optional<CampaignLock> lock = CampaignLock.tryAcquire(FileCampaignStore.lockFile(campaigns, id));
 		if (lock.isEmpty())
 			return false;
 		// Deleting the open lock file releases nothing until the lock closes
@@ -257,8 +263,8 @@ public final class Cleanup
 			beforeStep.accept(Step.CAMPAIGN_DIRECTORY);
 			// Windows refuses to rename a directory that holds an open file, and deleting the campaign directory
 			// renames it first
-			Files.deleteIfExists(FileCampaignStore.lockFile(base, id));
-			FileCampaignStore.delete(base, id);
+			Files.deleteIfExists(FileCampaignStore.lockFile(campaigns, id));
+			FileCampaignStore.delete(campaigns, id);
 		}
 		return true;
 	}

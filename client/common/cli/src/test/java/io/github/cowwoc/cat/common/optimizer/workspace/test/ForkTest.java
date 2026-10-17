@@ -42,6 +42,10 @@ public final class ForkTest
 {
 	private static final String EXCLUDE_LINE = "/.cat/work/";
 	/**
+	 * The directory, relative to the repository, that holds the campaigns of one session.
+	 */
+	private static final String CAMPAIGNS = ".cat/work/2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b/optimizer";
+	/**
 	 * The directory that holds the repository that each test copies, and the empty global exclude file that the
 	 * repository's configuration names.
 	 */
@@ -192,10 +196,49 @@ public final class ForkTest
 			Path base = repository(root);
 			writeFile(base.resolve(".cat/work/temp/earlier.txt"), "earlier", READ_WRITE);
 
-			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of());
 
 			requireThat(fork.excludeAdded(), "excludeAdded").isTrue();
 		}
+	}
+
+	/**
+	 * Verifies that removing the optimization worktree of a campaign in a session's work directory deletes the
+	 * worktree and leaves the repository no record of it.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void removesSessionCampaignWorktree() throws IOException
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path campaign = base.resolve(CAMPAIGNS + "/c1");
+			Fork.create(base, campaign, Set.of());
+			Git git = new Git(base);
+			requireThat(worktreeCount(git), "worktreesBefore").isEqualTo(2L);
+
+			Fork.remove(base, campaign);
+
+			requireThat(Files.exists(campaign.resolve("worktree")), "worktreeExists").isFalse();
+			requireThat(worktreeCount(git), "worktreesAfter").isEqualTo(1L);
+		}
+	}
+
+	/**
+	 * Returns how many worktrees a repository records, its main worktree included.
+	 *
+	 * @param git the repository's Git
+	 * @return the count
+	 * @throws IOException if Git fails
+	 */
+	private static long worktreeCount(Git git) throws IOException
+	{
+		return git.lines("worktree", "list", "--porcelain").stream().filter(line -> line.startsWith("worktree ")).
+			count();
 	}
 
 	/**
@@ -213,12 +256,12 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 
-			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of());
 
 			requireThat(fork.excludeAdded(), "excludeAdded").isTrue();
 			requireThat(Files.readAllLines(excludeFile(base), UTF_8).stream().filter(EXCLUDE_LINE::equals).count(),
 				"excludeLines").isEqualTo(1L);
-			requireThat(Files.isDirectory(base.resolve(".cat/work/optimizer/c1")), "campaignExists").isTrue();
+			requireThat(Files.isDirectory(base.resolve(CAMPAIGNS + "/c1")), "campaignExists").isTrue();
 			requireThat(new Git(base).lines("status", "--porcelain", "--untracked-files=all"), "status").isEmpty();
 		}
 	}
@@ -240,7 +283,7 @@ public final class ForkTest
 			Files.writeString(excludeFile(base), ".cat/work\n", UTF_8, StandardOpenOption.APPEND);
 			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
 
-			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of());
 
 			requireThat(fork.excludeAdded(), "excludeAdded").isFalse();
 			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
@@ -261,14 +304,14 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 
-			Fork first = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of());
-			Fork second = Fork.create(base, base.resolve(".cat/work/optimizer/c2"), Set.of());
+			Fork first = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of());
+			Fork second = Fork.create(base, base.resolve(CAMPAIGNS + "/c2"), Set.of());
 
 			requireThat(first.excludeAdded(), "firstAdded").isTrue();
 			requireThat(second.excludeAdded(), "secondAdded").isFalse();
 			requireThat(Files.readAllLines(excludeFile(base), UTF_8).stream().filter(EXCLUDE_LINE::equals).count(),
 				"excludeLines").isEqualTo(1L);
-			requireThat(base.resolve(".cat/work/optimizer/c2/worktree"), "secondWorktree").isDirectory();
+			requireThat(base.resolve(CAMPAIGNS + "/c2/worktree"), "secondWorktree").isDirectory();
 		}
 	}
 
@@ -289,9 +332,9 @@ public final class ForkTest
 			Git git = new Git(base);
 			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
 
-			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of(Path.of("ignored.md"), external));
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(Path.of("ignored.md"), external));
 
-			Path worktreeDirectory = base.resolve(".cat/work/optimizer/c1/worktree");
+			Path worktreeDirectory = base.resolve(CAMPAIGNS + "/c1/worktree");
 			// The base is listed first, with its commit on the line that starts with "HEAD "
 			List<String> worktrees = git.lines("worktree", "list", "--porcelain");
 			requireThat(worktrees.stream().filter(line -> line.startsWith("worktree ")).count(), "worktrees").
@@ -483,7 +526,7 @@ public final class ForkTest
 			Path base = repository(root);
 			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
 
-			Fork fork = Fork.create(base, base.resolve(".cat/work/optimizer/c1"), Set.of(Path.of("ignored.md"), external));
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(Path.of("ignored.md"), external));
 
 			FileInventory inventory = fork.inventory();
 			requireThat(inventory.root(), "root").isEqualTo(base);
@@ -496,7 +539,7 @@ public final class ForkTest
 			requireThat(inventory.entries().get(external), "external").isEqualTo(file("shared"));
 			requireThat(inventory.entries().keySet().stream().filter(path -> path.startsWith(".cat")).toList(),
 				"campaignFiles").isEmpty();
-			requireThat(Fork.open(base, base.resolve(".cat/work/optimizer/c1")).inventory(), "reopened").
+			requireThat(Fork.open(base, base.resolve(CAMPAIGNS + "/c1")).inventory(), "reopened").
 				isEqualTo(inventory);
 		}
 	}
@@ -514,7 +557,7 @@ public final class ForkTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
-			Path campaign = base.resolve(".cat/work/optimizer/c1");
+			Path campaign = base.resolve(CAMPAIGNS + "/c1");
 
 			try
 			{
@@ -547,7 +590,7 @@ public final class ForkTest
 			Path base = repository(root);
 			Git git = new Git(base);
 			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
-			Path campaign = base.resolve(".cat/work/optimizer/c1");
+			Path campaign = base.resolve(CAMPAIGNS + "/c1");
 			Path blocker = writeFile(campaign.resolve("worktree-external"), "not a directory", READ_WRITE);
 
 			try
@@ -591,7 +634,7 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 			Git git = new Git(base);
-			Path campaign = base.resolve(".cat/work/optimizer/c1");
+			Path campaign = base.resolve(CAMPAIGNS + "/c1");
 			Path foreign = writeFile(campaign.resolve("worktree/foreign.txt"), "not CAT's", READ_WRITE);
 
 			try

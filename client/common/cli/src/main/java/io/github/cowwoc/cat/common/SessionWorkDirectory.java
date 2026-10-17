@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.workspace.Fork;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.DirectoryNotEmptyException;
@@ -20,6 +21,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import tools.jackson.core.JacksonException;
@@ -35,6 +38,9 @@ import tools.jackson.databind.json.JsonMapper;
  * configuration directory, the creation time in UTC and where that configuration directory keeps the session's
  * transcript. A later use keeps the marker. The sweep removes the directories of sessions that their harness no longer
  * keeps.
+ * <p>
+ * The session's prompt-optimizer campaigns live in {@code optimizer/<campaign-id>/}, and the runs of the nested
+ * sessions that they start live below {@code optimizer-runs/}.
  */
 public final class SessionWorkDirectory
 {
@@ -53,8 +59,10 @@ public final class SessionWorkDirectory
 	public static final Duration RETENTION = Duration.ofHours(24);
 	private static final String MARKER = "session.json";
 	private static final String TEMP = "temp";
+	private static final String CAMPAIGNS = "optimizer";
 	private static final Pattern AGENT_ID = Pattern.compile("[A-Za-z0-9-]+");
 	private static final Pattern GLOB = Pattern.compile("[*?\\[{]");
+	private final Path projectRoot;
 	private final Path directory;
 	private final String sessionId;
 	private final JsonMapper json;
@@ -62,12 +70,14 @@ public final class SessionWorkDirectory
 	/**
 	 * Creates a session work directory value.
 	 *
+	 * @param projectRoot the session's project, absolute and normalized
 	 * @param directory the session's directory
 	 * @param sessionId the session's ID
 	 * @param json the JSON mapper that reads markers
 	 */
-	private SessionWorkDirectory(Path directory, String sessionId, JsonMapper json)
+	private SessionWorkDirectory(Path projectRoot, Path directory, String sessionId, JsonMapper json)
 	{
+		this.projectRoot = projectRoot;
 		this.directory = directory;
 		this.sessionId = sessionId;
 		this.json = json;
@@ -105,7 +115,7 @@ public final class SessionWorkDirectory
 		Path marker = directory.resolve(MARKER);
 		if (Files.notExists(marker, LinkOption.NOFOLLOW_LINKS))
 			writeMarker(marker, markerContent(sessionId, harness, configurationDirectory, now), json);
-		return new SessionWorkDirectory(directory, sessionId, json);
+		return new SessionWorkDirectory(projectRoot.toAbsolutePath().normalize(), directory, sessionId, json);
 	}
 
 	/**
@@ -235,6 +245,68 @@ public final class SessionWorkDirectory
 	}
 
 	/**
+	 * Returns the directory that holds the session's prompt-optimizer campaigns, one directory per campaign. This method
+	 * does not create it.
+	 *
+	 * @return the directory's path
+	 */
+	public Path campaigns()
+	{
+		return directory.resolve(CAMPAIGNS);
+	}
+
+	/**
+	 * Returns the directory that holds the runs of the nested sessions that the session's campaigns start through a
+	 * harness's runner. This method does not create it.
+	 *
+	 * @param harnessId the runner's harness, such as {@code claude}
+	 * @return the directory's path
+	 * @throws NullPointerException if {@code harnessId} is null
+	 * @throws IllegalArgumentException if {@code harnessId} is blank
+	 */
+	public Path runRoot(String harnessId)
+	{
+		requireThat(harnessId, "harnessId").isNotBlank();
+		return directory.resolve("optimizer-runs").resolve(harnessId);
+	}
+
+	/**
+	 * Lists the campaign directory of every session of the project, this session's included, without creating any.
+	 * Only a campaign's own session changes it, so a session uses another session's directory only to read it.
+	 *
+	 * @return the {@link #campaigns()} directory of each session directory in the work root, by session ID in
+	 *   ascending order, whether or not it exists
+	 * @throws IOException if the work root cannot be listed
+	 */
+	public SortedMap<String, Path> campaignsBySession() throws IOException
+	{
+		SortedMap<String, Path> campaigns = new TreeMap<>();
+		for (Path session : sessionDirectories())
+			campaigns.put(session.getFileName().toString(), session.resolve(CAMPAIGNS));
+		return campaigns;
+	}
+
+	/**
+	 * Lists the session directories in the work root, this session's included.
+	 *
+	 * @return the directories that a session ID names
+	 * @throws IOException if the work root cannot be listed
+	 */
+	private List<Path> sessionDirectories() throws IOException
+	{
+		List<Path> sessions = new ArrayList<>();
+		try (DirectoryStream<Path> entries = Files.newDirectoryStream(directory.getParent()))
+		{
+			for (Path entry : entries)
+			{
+				if (isSessionId(entry.getFileName().toString()) && Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS))
+					sessions.add(entry);
+			}
+		}
+		return sessions;
+	}
+
+	/**
 	 * Returns the file that holds the rules that the session's main agent reads.
 	 *
 	 * @return the file's path
@@ -336,9 +408,11 @@ public final class SessionWorkDirectory
 
 	/**
 	 * Removes the directory of every other session of the project whose marker is older than {@link #RETENTION} and
-	 * whose transcript the marker's configuration directory no longer holds. A directory without a readable marker is
-	 * kept. A directory that cannot be removed, and a transcript location that cannot be read, are reported on
-	 * {@code error}; the sweep then continues with the next directory.
+	 * whose transcript the marker's configuration directory no longer holds. Before it removes a directory, it removes
+	 * the optimization worktree of each campaign in the directory's {@code optimizer/} through Git, so the repository
+	 * keeps no record of a worktree that is gone. A directory without a readable marker is kept, and so is a directory
+	 * whose campaign worktree cannot be removed. That failure, a directory that cannot be removed, and a transcript
+	 * location that cannot be read, are reported on {@code error}; the sweep then continues with the next directory.
 	 *
 	 * @param now the current time
 	 * @param error receives the failures
@@ -346,38 +420,38 @@ public final class SessionWorkDirectory
 	 */
 	public void sweep(Instant now, PrintStream error)
 	{
-		sweep(now, error, TemporaryDirectories::deleteRecursively);
+		sweep(now, error, Fork::remove, TemporaryDirectories::deleteRecursively);
 	}
 
 	/**
 	 * Removes the directory of every other session of the project whose marker is older than {@link #RETENTION} and
 	 * whose transcript the marker's configuration directory no longer holds, as {@link #sweep(Instant, PrintStream)}
-	 * does, through a given removal.
+	 * does, through given removals.
 	 *
 	 * @param now the current time
 	 * @param error receives the failures
+	 * @param worktrees removes the optimization worktree of one campaign in a session directory that the sweep removes
 	 * @param removal removes one session directory
 	 * @throws NullPointerException if any argument is null
 	 */
-	public void sweep(Instant now, PrintStream error, Removal removal)
+	public void sweep(Instant now, PrintStream error, WorktreeRemoval worktrees, Removal removal)
 	{
 		requireThat(now, "now").isNotNull();
 		requireThat(error, "error").isNotNull();
+		requireThat(worktrees, "worktrees").isNotNull();
 		requireThat(removal, "removal").isNotNull();
-		Path root = directory.getParent();
 		List<Path> sessions = new ArrayList<>();
-		try (DirectoryStream<Path> entries = Files.newDirectoryStream(root))
+		try
 		{
-			for (Path entry : entries)
+			for (Path session : sessionDirectories())
 			{
-				String name = entry.getFileName().toString();
-				if (!name.equals(sessionId) && isSessionId(name) && Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS))
-					sessions.add(entry);
+				if (!session.getFileName().toString().equals(sessionId))
+					sessions.add(session);
 			}
 		}
 		catch (IOException e)
 		{
-			error.println("CAT could not list " + root + ": " + e.getMessage());
+			error.println("CAT could not list " + directory.getParent() + ": " + e.getMessage());
 			return;
 		}
 		for (Path session : sessions)
@@ -393,7 +467,7 @@ public final class SessionWorkDirectory
 					"session's transcript: " + e.getMessage());
 				continue;
 			}
-			if (!gone)
+			if (!gone || !removeWorktrees(session, worktrees, error))
 				continue;
 			try
 			{
@@ -404,6 +478,47 @@ public final class SessionWorkDirectory
 				error.println("CAT could not remove the session work directory " + session + ": " + e.getMessage());
 			}
 		}
+	}
+
+	/**
+	 * Removes the optimization worktree of each campaign in another session's directory.
+	 *
+	 * @param session another session's directory
+	 * @param worktrees removes one campaign's worktree
+	 * @param error receives the failures
+	 * @return {@code false} if the campaigns could not be listed or a campaign's worktree could not be removed
+	 */
+	private boolean removeWorktrees(Path session, WorktreeRemoval worktrees, PrintStream error)
+	{
+		List<Path> campaigns = new ArrayList<>();
+		try
+		{
+			for (Path child : children(session.resolve(CAMPAIGNS)))
+			{
+				if (Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS))
+					campaigns.add(child);
+			}
+		}
+		catch (IOException e)
+		{
+			error.println("CAT kept the session work directory " + session + " because it could not list the " +
+				"session's campaigns: " + e.getMessage());
+			return false;
+		}
+		for (Path campaign : campaigns)
+		{
+			try
+			{
+				worktrees.remove(projectRoot, campaign);
+			}
+			catch (IOException e)
+			{
+				error.println("CAT kept the session work directory " + session + " because it could not remove the " +
+					"optimization worktree of campaign " + campaign.getFileName() + ": " + e.getMessage());
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -513,8 +628,26 @@ public final class SessionWorkDirectory
 	}
 
 	/**
+	 * Removes the optimization worktree of a campaign, and Git's record of it, as
+	 * {@link #sweep(Instant, PrintStream, WorktreeRemoval, Removal)} does before it removes the campaign's session
+	 * directory.
+	 */
+	@FunctionalInterface
+	public interface WorktreeRemoval
+	{
+		/**
+		 * Removes the optimization worktree that a campaign directory holds, if any, and Git's record of it.
+		 *
+		 * @param project the project, whose repository records the worktree
+		 * @param campaign the campaign directory
+		 * @throws IOException if Git fails or the worktree cannot be deleted
+		 */
+		void remove(Path project, Path campaign) throws IOException;
+	}
+
+	/**
 	 * Removes a directory that CAT wrote for a session, such as a session directory that
-	 * {@link #sweep(Instant, PrintStream, Removal)} removes.
+	 * {@link #sweep(Instant, PrintStream, WorktreeRemoval, Removal)} removes.
 	 */
 	@FunctionalInterface
 	public interface Removal

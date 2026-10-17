@@ -54,11 +54,11 @@ public final class FixtureCampaignTest
 		{
 			requireThat(committed, "committed").isNotNull();
 			String stored = new String(committed.readAllBytes(), StandardCharsets.UTF_8);
-			Path root = scope.add(Files.createTempDirectory("fixture-campaign"));
-			Path written = root.resolve(".cat/work/optimizer").resolve(ID).resolve("held_out/campaign.json");
+			Path campaigns = scope.add(Files.createTempDirectory("fixture-campaign"));
+			Path written = campaigns.resolve(ID).resolve("held_out/campaign.json");
 			Files.createDirectories(written.getParent());
 			Files.writeString(written, stored, StandardCharsets.UTF_8);
-			FileCampaignStore store = new FileCampaignStore(root, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
 			Campaign campaign = store.load(ID).orElseThrow();
 			store.replaceSnapshot(campaign);
 			String fresh = Files.readString(written, StandardCharsets.UTF_8);

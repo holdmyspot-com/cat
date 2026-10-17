@@ -1,11 +1,13 @@
 package io.github.cowwoc.cat.common.optimizer.campaign;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * The harness that started a campaign and is the only one allowed to advance it.
+ * The harness that started a campaign and is the only one allowed to advance it, in the session that started it.
  */
 public enum Harness
 {
@@ -48,6 +50,24 @@ public enum Harness
 	public String commandName()
 	{
 		return name().toLowerCase(Locale.ROOT);
+	}
+
+	/**
+	 * Returns the terminal command that resumes a session of the harness.
+	 *
+	 * @param sessionId the session's ID
+	 * @return the command, such as {@code claude --resume <session-id>} or {@code codex resume <session-id>}
+	 * @throws NullPointerException if {@code sessionId} is null
+	 * @throws IllegalArgumentException if {@code sessionId} is blank
+	 */
+	public String resumeCommand(String sessionId)
+	{
+		requireThat(sessionId, "sessionId").isNotBlank();
+		return switch (this)
+		{
+			case CLAUDE -> "claude --resume " + sessionId;
+			case CODEX -> "codex resume " + sessionId;
+		};
 	}
 
 	/**

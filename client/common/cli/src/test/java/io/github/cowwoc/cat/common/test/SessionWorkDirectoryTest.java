@@ -351,6 +351,59 @@ public final class SessionWorkDirectoryTest
 	}
 
 	/**
+	 * Verifies a session's campaigns live in its {@code optimizer} directory and its runs in
+	 * {@code optimizer-runs/<harness>}, and that naming them creates neither.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void providesCampaignPaths() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
+			SessionWorkDirectory session = SessionWorkDirectory.open(project, SESSION_ID, HARNESS_A,
+				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
+
+			Path directory = project.toAbsolutePath().normalize().resolve(".cat/work/" + SESSION_ID);
+			requireThat(session.campaigns(), "campaigns").isEqualTo(directory.resolve("optimizer"));
+			requireThat(session.runRoot("claude"), "runRoot").isEqualTo(directory.resolve("optimizer-runs/claude"));
+			requireThat(Files.exists(session.campaigns()), "campaignsExist").isFalse();
+			requireThat(Files.exists(directory.resolve("optimizer-runs")), "runsExist").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies a session lists the campaign directory of every session of the project, its own included, by session
+	 * ID, skips entries that are not session directories, and creates nothing.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void listsCampaignsOfEverySession() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
+			JsonMapper json = JsonMapper.builder().build();
+			String other = "01a147d8-bf56-7283-92b4-12dcaeb53738";
+			SessionWorkDirectory otherSession = SessionWorkDirectory.open(project, other, HARNESS_B,
+				project.resolve("configuration-b"), CREATED, json);
+			SessionWorkDirectory session = SessionWorkDirectory.open(project, SESSION_ID, HARNESS_A,
+				project.resolve("configuration"), CREATED, json);
+			Files.createDirectories(session.directory().resolveSibling("temp"));
+			Files.createDirectories(session.directory().resolveSibling("optimizer/20261015-0900-abc123"));
+
+			Map<String, Path> campaigns = session.campaignsBySession();
+
+			requireThat(campaigns, "campaigns").isEqualTo(Map.of(other, otherSession.campaigns(), SESSION_ID,
+				session.campaigns()));
+			requireThat(new ArrayList<>(campaigns.keySet()), "order").isEqualTo(List.of(other, SESSION_ID));
+			requireThat(Files.exists(otherSession.campaigns()), "otherCampaignsExist").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies a subagent ID that cannot be a file name is refused.
 	 *
 	 * @throws IOException if the test filesystem cannot be used

@@ -20,12 +20,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Tests the behavior that {@link OptimizerCommandScope} shares with every variant.
  */
 public final class OptimizerCommandScopeTest
 {
+	/**
+	 * A host session other than the one that runs the commands of the tests.
+	 */
+	private static final String OTHER_SESSION = "5a7c9e1b-3d2f-4a6b-8c0e-9f1d3b5a7c2e";
+
 	/**
 	 * Creates the test.
 	 */
@@ -59,8 +65,8 @@ public final class OptimizerCommandScopeTest
 	}
 
 	/**
-	 * Verifies that the held-out directories are those of the campaigns in the project's store, even when the command
-	 * runs in a subdirectory of the project.
+	 * Verifies that the held-out directories are those of the campaigns of every session of the project, even when the
+	 * command runs in a subdirectory of the project.
 	 *
 	 * @throws IOException if the project cannot be written
 	 * @throws CommandRefusedException if the project is not found
@@ -74,15 +80,25 @@ public final class OptimizerCommandScopeTest
 			Path root = cleanup.add(Files.createTempDirectory("optimizer-scope")).toRealPath();
 			Files.createDirectory(root.resolve(".git"));
 			Path directory = Files.createDirectories(root.resolve("a/b"));
+			Path otherHeldOut;
+			try (TestOptimizerCommandScope<FakeSessionPort> other = TestOptimizerCommandScope.of(Harness.CODEX,
+				OTHER_SESSION, root))
+			{
+				Campaign campaign = new Builder().confirmed().build();
+				OptimizerCommandScopeSecrets.access().store(other).replaceSnapshot(campaign);
+				otherHeldOut = OptimizerCommandScopeSecrets.access().sessionWorkDirectory(other).campaigns().
+					resolve(campaign.header().id()).resolve("held_out");
+			}
 			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				directory))
 			{
 				Campaign campaign = new Builder().confirmed().build();
 				OptimizerCommandScopeSecrets.access().store(scope).replaceSnapshot(campaign);
-				Path campaignDirectory = root.resolve(".cat/work/optimizer").resolve(campaign.header().id());
+				Path campaignDirectory = OptimizerCommandScopeSecrets.access().sessionWorkDirectory(scope).campaigns().
+					resolve(campaign.header().id());
 
-				requireThat(OptimizerCommandScopeSecrets.access().heldOutDirectories(scope), "heldOutDirectories").
-					isEqualTo(List.of(campaignDirectory.resolve("held_out")));
+				requireThat(Set.copyOf(OptimizerCommandScopeSecrets.access().heldOutDirectories(scope)),
+					"heldOutDirectories").isEqualTo(Set.of(campaignDirectory.resolve("held_out"), otherHeldOut));
 			}
 		}
 	}

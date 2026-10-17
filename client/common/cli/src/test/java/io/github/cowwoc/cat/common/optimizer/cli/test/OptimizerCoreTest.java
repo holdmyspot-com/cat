@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.PortablePaths;
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.fakes.test.ManualClock;
 import io.github.cowwoc.cat.common.git.Git;
@@ -125,6 +126,11 @@ public final class OptimizerCoreTest
 	 * A prompt test configuration whose Claude trials install no plugin.
 	 */
 	private static final String NO_PLUGINS = "{\"claude\": {\"plugins\": []}}";
+	/**
+	 * A host session other than the one that starts the campaigns of the tests.
+	 */
+	private static final String OTHER_SESSION = "5a7c9e1b-3d2f-4a6b-8c0e-9f1d3b5a7c2e";
+
 	/**
 	 * Matches the identifier of each assertion that a judge request lists, which its turn holds as a JSON array of
 	 * objects indented by two spaces.
@@ -289,6 +295,140 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that another session may report a campaign, by its identifier or its target, and is shown the session
+	 * that owns it, without running a session, reading a version or changing anything.
+	 */
+	@Test
+	public void statusShowsOwningSession() throws Exception
+	{
+		// Requirement: R-L1
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Project project = project(scope, Harness.CLAUDE);
+			try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(Harness.CLAUDE,
+				OTHER_SESSION, project.root()))
+			{
+				OptimizerCommandScopeSecrets.access().sessionWorkDirectory(command);
+				Map<String, String> before = contents(project.root());
+				OptimizerCore core = new OptimizerCore(command);
+				for (String subject : List.of(project.campaign(), "CLAUDE.md"))
+				{
+					CommandResult result = core.status(subject);
+					requireThat(result.status().campaignId(), subject).isEqualTo(project.campaign());
+					requireThat(result.harness(), "harness").isEqualTo(Harness.CLAUDE);
+					requireThat(String.join("\n", result.notices()), "notices").
+						contains(TestOptimizerCommandScope.SESSION_ID).
+						contains("claude --resume " + TestOptimizerCommandScope.SESSION_ID);
+				}
+				requireThat(command.sessions().sessions(), "sessions").isEmpty();
+				requireThat(command.versionReads(), "versionReads").isEqualTo(0);
+				requireThat(contents(project.root()), "contents").isEqualTo(before);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that every command that runs, changes or delivers a campaign, and {@code start} for its target, refuses
+	 * a session other than the one that started it, names that session and the command that resumes it, and changes
+	 * nothing.
+	 */
+	@Test
+	public void refusesOtherSessionBeforeAnyChange() throws Exception
+	{
+		// Requirement: R-L1
+		for (Harness harness : Harness.values())
+		{
+			try (TemporaryDirectories scope = new TemporaryDirectories())
+			{
+				Project project = project(scope, harness);
+				try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(harness,
+					OTHER_SESSION, project.root()))
+				{
+					OptimizerCommandScopeSecrets.access().sessionWorkDirectory(command);
+					Map<String, String> before = contents(project.root());
+					OptimizerCore core = new OptimizerCore(command);
+					String id = project.campaign();
+					List<ThrowingCall> calls = List.of(
+						() -> core.run(id),
+						() -> core.confirm(id, CertificationScope.LATEST_VERSIONS),
+						() -> core.revise(id, "more"),
+						() -> core.choose(id, Choice.STOP, 0, 0),
+						() -> core.cancel(id),
+						() -> core.start(project.target()));
+					String resume = switch (harness)
+					{
+						case CLAUDE -> "claude --resume ";
+						case CODEX -> "codex resume ";
+					};
+					for (ThrowingCall call : calls)
+					{
+						CommandRefusedException refusal = null;
+						try
+						{
+							call.run();
+						}
+						catch (CommandRefusedException e)
+						{
+							refusal = e;
+						}
+						requireThat(refusal, "refusal").isNotNull();
+						requireThat(refusal.getMessage(), "message").contains(id).
+							contains(resume + TestOptimizerCommandScope.SESSION_ID);
+					}
+					requireThat(command.sessions().sessions(), "sessions").isEmpty();
+					requireThat(command.versionReads(), "versionReads").isEqualTo(0);
+					requireThat(contents(project.root()), "contents").isEqualTo(before);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a campaign stored where campaigns were kept before they moved into session work directories is
+	 * neither found nor deleted.
+	 */
+	@Test
+	public void ignoresCampaignsOfOldLocation() throws Exception
+	{
+		// Requirement: R-W1
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path root = scope.add(Files.createTempDirectory("optimizer-core")).toRealPath();
+			Files.createDirectory(root.resolve(".git"));
+			Path target = root.resolve("CLAUDE.md");
+			Files.writeString(target, "Be brief.\n");
+			Header header = new Header("campaign-1", root, target, Harness.CLAUDE, Lifecycle.ACTIVE);
+			new FileCampaignStore(root.resolve(SessionWorkDirectory.WORK_ROOT).resolve("optimizer"), JSON).
+				replaceSnapshot(new Builder().header(header).confirmed().build());
+			try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(Harness.CLAUDE, root))
+			{
+				OptimizerCommandScopeSecrets.access().sessionWorkDirectory(command);
+				Map<String, String> before = contents(root);
+				OptimizerCore core = new OptimizerCore(command);
+				List<ThrowingCall> calls = List.of(
+					() -> core.status("campaign-1"),
+					() -> core.status("CLAUDE.md"),
+					() -> core.cancel("campaign-1"));
+				for (ThrowingCall call : calls)
+				{
+					CommandRefusedException refusal = null;
+					try
+					{
+						call.run();
+					}
+					catch (CommandRefusedException e)
+					{
+						refusal = e;
+					}
+					requireThat(refusal, "refusal").isNotNull();
+					requireThat(refusal.getMessage(), "message").startsWith("No campaign");
+				}
+				requireThat(contents(root), "contents").isEqualTo(before);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the harness that started a campaign gets past the harness check, and is refused only for what the
 	 * campaign lacks.
 	 */
@@ -438,19 +578,25 @@ public final class OptimizerCoreTest
 			Path root = scope.add(Files.createTempDirectory("optimizer-core")).toRealPath();
 			Files.createDirectory(root.resolve(".git"));
 			Files.writeString(root.resolve("CLAUDE.md"), "Be brief.\n");
-			Map<String, String> before = contents(root);
 			String exposure = "The sandbox is off. Remove the setting and run `start` again.";
 			FakeSessionPort sessions = new FakeSessionPort(HostLogin.UNKNOWN, exposure);
 			CommandRefusedException refusal = null;
+			Map<String, String> before;
 			try (TestOptimizerCommandScope<FakeSessionPort> command = new TestOptimizerCommandScope<>(Harness.CLAUDE,
 				root, Set.of(), _ -> sessions))
 			{
-				new OptimizerCore(command).start(Path.of("CLAUDE.md"));
+				OptimizerCommandScopeSecrets.access().sessionWorkDirectory(command);
+				before = contents(root);
+				try
+				{
+					new OptimizerCore(command).start(Path.of("CLAUDE.md"));
+				}
+				catch (CommandRefusedException e)
+				{
+					refusal = e;
+				}
 			}
-			catch (CommandRefusedException e)
-			{
-				refusal = e;
-			}
+
 			requireThat(refusal, "refusal").isNotNull();
 			requireThat(refusal.getMessage(), "message").isEqualTo(exposure);
 			requireThat(sessions.sessions(), "sessions").isEmpty();
@@ -703,14 +849,28 @@ public final class OptimizerCoreTest
 		}
 
 		/**
+		 * Returns the directory that holds the campaigns of the host session.
+		 *
+		 * @return the directory
+		 * @throws CommandRefusedException if the project is not a Git repository
+		 * @throws IOException if the session's work directory cannot be created
+		 */
+		Path campaigns() throws CommandRefusedException, IOException
+		{
+			return OptimizerCommandScopeSecrets.access().sessionWorkDirectory(scope).campaigns();
+		}
+
+		/**
 		 * Returns the campaign directory.
 		 *
 		 * @param id the campaign's identifier
 		 * @return the directory
+		 * @throws CommandRefusedException if the project is not a Git repository
+		 * @throws IOException if the session's work directory cannot be created
 		 */
-		Path directory(String id)
+		Path directory(String id) throws CommandRefusedException, IOException
 		{
-			return root.resolve(".cat/work/optimizer").resolve(id);
+			return campaigns().resolve(id);
 		}
 
 		/**
@@ -841,6 +1001,15 @@ public final class OptimizerCoreTest
 		};
 		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
 			tracked, clock -> new ScriptedSessions(clock, script));
+		// The host session's work directory exists before any command runs in it
+		try
+		{
+			OptimizerCommandScopeSecrets.access().sessionWorkDirectory(command);
+		}
+		catch (CommandRefusedException e)
+		{
+			throw new IOException(e.getMessage(), e);
+		}
 		return new Repository(root, command, new OptimizerCore(command));
 	}
 
@@ -2439,7 +2608,7 @@ public final class OptimizerCoreTest
 				paths.add("missing/fixture.txt");
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path snapshot = repository.root().resolve(".cat/work/optimizer").resolve(id).resolve("held_out/campaign.json");
+			Path snapshot = repository.directory(id).resolve("held_out/campaign.json");
 			String before = Files.readString(snapshot);
 			CommandRefusedException refusal = null;
 			try
@@ -3003,7 +3172,7 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			Path directory = repository.directory(id);
 			requireThat(repository.forks().exists(directory), "forkBefore").isTrue();
-			FileCampaignStore.recordRemoval(repository.root(), id);
+			FileCampaignStore.recordRemoval(repository.campaigns(), id);
 
 			CommandRefusedException refusal = null;
 			try
@@ -3414,7 +3583,7 @@ public final class OptimizerCoreTest
 			Files.writeString(repository.root().resolve(rule), "Be kind.\n");
 			configure(repository.root(), rule, NO_PLUGINS);
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			FileCampaignStore.recordRemoval(repository.root(), id);
+			FileCampaignStore.recordRemoval(repository.campaigns(), id);
 			Path worktree = repository.directory(id).resolve("worktree");
 			repository.forks().denyRemoval();
 			String warning = "Could not remove the files of campaign " + id + ": " + worktree +
@@ -3429,7 +3598,7 @@ public final class OptimizerCoreTest
 			String message = refusal(() -> repository.core().cancel("no-such-campaign"));
 			requireThat(message, "message").isEqualTo("No campaign has the identifier no-such-campaign.\n" +
 				warning);
-			requireThat(FileCampaignStore.removals(repository.root()), "removals").isEqualTo(List.of(id));
+			requireThat(FileCampaignStore.removals(repository.campaigns()), "removals").isEqualTo(List.of(id));
 		}
 	}
 
