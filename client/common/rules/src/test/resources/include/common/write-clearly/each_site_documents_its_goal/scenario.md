@@ -1,10 +1,10 @@
-# Check terms stay at the check
+# Each site documents its goal
 
 ## Design Goals
 
-- Prove that documentation describes the code that stores, sums or iterates over checked values by what those values
-  are, documents the check at the method that performs it, and keeps the distinction between checked and unchecked
-  input where a caller must make it.
+- Prove that each documentation site answers its own reader's question: a field states what its value means, a
+  method that checks its input documents the check, code that only stores, sums or iterates over the values leaves the
+  check out, and a factory that skips the check still tells its caller what it must supply.
 
 ## Variables
 
@@ -63,12 +63,18 @@ writes in index order.
 
 ## Assertions
 
-### downstream_names_values
+### other_sites_leave_check_out
 
 - **kind**: effect
 - **description**: The Javadoc of the `requests` and `outputTokens` fields, the constructor, `outputTokens()` and
-  `forEachRequest()` describes the requests and tokens without a qualifier that records the index check, such as
-  “verified,” “validated,” “checked” or “in-order,” since the class holds no other kind of request.
+  `forEachRequest()` does not mention the index check, whether as a qualifier such as “verified,” “validated,”
+  “checked” or “in-order” or as a clause about how the requests were checked.
+
+### field_states_meaning
+
+- **kind**: effect
+- **description**: The Javadoc of the `outputTokens` field states that it holds the turn's output tokens summed over
+  its requests.
 
 ### check_documented_where_performed
 

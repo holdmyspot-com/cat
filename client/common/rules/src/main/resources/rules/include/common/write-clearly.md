@@ -10,6 +10,7 @@
 - Keep a status update faithful to its evidence by distinguishing confirmation that the planned action still applies
   from evidence that requires a correction.
 - Distinguish advisory guidance from an enforcement boundary when reporting how a change addresses a failure.
+- Let each documentation site answer the question that its reader brings there, without facts that serve another site.
 <!--
 An explanation for the next Guidance paragraph was placed after the last Design Goal, where it appeared to explain
 that goal instead. This made the comment's subject unclear, so the goal requires placing explanations with their
@@ -44,17 +45,6 @@ Remove each qualifier in turn and compare the shorter name or description at the
 it. Keep a qualifier only when removing it would collide with a nearby term or create a meaningful ambiguity for that
 reader. Do not retain a word merely because it truthfully describes the implementation, or when its information is
 already supplied by the package, owning type, method, generic bound, or surrounding terminology.
-
-Describe what an element represents and the contract that its reader can observe there, not how its values came to be
-acceptable. A qualifier that records a check, a source or an earlier processing step, such as “verified,” “validated,”
-“parsed,” “normalized,” “deduplicated” or “raw,” belongs in a name or description only where it distinguishes inputs
-that the element accepts, results that it returns, failures that it reports or states that its reader must tell apart.
-Document each check at the element that performs it, as part of that element's contract, and describe the code that
-stores, sums, iterates over, queues or passes along its results by what those values are. Repeating the qualifier there
-implies that another kind of the same value exists, so the reader looks for a distinction that is not there. For
-example, write “Reads the next conversation portion without retaining earlier portions,” not “Reads the next verified
-portion without retaining earlier portions,” and let the method that performs the check say “Checks that request indices
-are consecutive and that the turn has ended before returning its counts.”
 
 Omit an internal structural qualifier when the intended reader never uses that distinction. When the distinction does
 affect the reader's decision, name its observable consequence instead of relying on structural jargon.
@@ -93,6 +83,33 @@ consumer; do not leave the reader to infer the process relationship from a pipe 
 
 Use a product or framework name only when it changes the explained behavior. When an ordinary parent and child process
 would behave the same way, name those generic roles instead.
+
+## Write for Each Site's Goal
+
+Before writing documentation, identify its site, the element or place where the reader meets it, and the question that
+reader brings there. Write what answers that question. Leave out a fact that is true but serves another site, such as
+how a value was checked, where it came from or how earlier code processed it; the site whose goal it serves documents
+it. Mention such a fact only when it changes how the reader at this site must use the element, and then state that
+consequence rather than the history. Carrying another site's concern into this one, even as a single word, makes the
+reader look for a distinction that this site does not have.
+
+The goal of each kind of site:
+
+- A type, module or file: what it represents or is responsible for, and when a reader uses it.
+- A field, property, record component, constant or variable: what one value means, with its unit and the scope it
+  covers.
+- A function, method or constructor: what it does or returns for its caller, and the inputs it accepts, the results it
+  returns and the failures it reports.
+- A parameter: its effect on the result. A return value: each result and when it occurs. An error or exception: the
+  condition that causes it.
+- An inline comment: why the code beside it does something that the code does not make obvious.
+- A message, help text or document section: what its reader needs to complete the task that brought them there.
+
+For example, a method that checks a turn's requests says “Checks that request indices are consecutive and that the turn
+has ended before returning its counts,” while a method that only reads them says “Reads the next conversation portion
+without retaining earlier portions,” not “Reads the next verified portion without retaining earlier portions,” and a
+field that stores their sum says “The selected turn's output tokens, summed over its requests.” A factory that skips the
+check still says so, because its caller must then supply requests in order.
 
 ## Prefer the Shortest Complete Response
 
