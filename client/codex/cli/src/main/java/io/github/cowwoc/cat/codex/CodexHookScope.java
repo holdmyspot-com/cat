@@ -27,6 +27,7 @@ final class CodexHookScope
 	 */
 	static HookScope open(Map<String, String> environment) throws IOException
 	{
-		return HookScope.fromEnvironment(environment, "Codex", "PLUGIN_ROOT", Platform.current().homeVariable());
+		return HookScope.fromEnvironment(environment, "Codex", "PLUGIN_ROOT", Platform.current().homeVariable(),
+			CodexSessionHarness.HARNESS);
 	}
 }

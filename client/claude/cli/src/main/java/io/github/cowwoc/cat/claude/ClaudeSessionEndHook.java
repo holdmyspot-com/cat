@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.HookScope;
 import io.github.cowwoc.cat.common.Platform;
-import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
@@ -14,7 +13,8 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Deletes CAT rule-context files after Claude ends a session.
+ * Deletes the rules files of a session's work directory after Claude ends the session. A resumed session's
+ * SessionStart writes them again; the rest of the directory stays until the sweep removes it.
  */
 public final class ClaudeSessionEndHook
 {
@@ -32,7 +32,7 @@ public final class ClaudeSessionEndHook
 	}
 
 	/**
-	 * Processes one Claude SessionEnd event and deletes its owned context files.
+	 * Processes one Claude SessionEnd event and deletes the rules files of its session.
 	 *
 	 * @param args a non-null empty command-line argument array
 	 * @param input non-null harness hook input
@@ -55,10 +55,7 @@ public final class ClaudeSessionEndHook
 				throw new IllegalArgumentException("SessionEnd accepts no arguments");
 			JsonNode event = scope.readEvent("SessionEnd", input);
 			Path projectDir = ClaudeHookScope.projectDir(scope, event, environment, workingDirectory);
-			try (ToolScope toolScope = ToolScope.forWorkingDirectory(projectDir))
-			{
-				ClaudeSessionContext.delete(toolScope.catTemp(), event);
-			}
+			scope.sessionWorkDirectory(projectDir, event, "session_id").deleteRulesFiles();
 		}
 		catch (IOException | IllegalArgumentException | JacksonException e)
 		{

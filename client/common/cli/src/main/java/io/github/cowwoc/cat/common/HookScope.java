@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 import tools.jackson.core.JacksonException;
@@ -17,7 +18,8 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Owns values and services shared for one harness hook invocation.
+ * Owns values and services shared for one harness hook invocation, including the work directory of the session that
+ * the hook input names.
  */
 public final class HookScope implements AutoCloseable
 {
@@ -29,6 +31,8 @@ public final class HookScope implements AutoCloseable
 	private boolean closed;
 	private final Path pluginRoot;
 	private final Path userRulesRoot;
+	private final SessionHarness harness;
+	private final Path configurationDirectory;
 	private final Reference<JsonMapper> json = LazyReference.create(() -> JsonMapper.builder().
 		build());
 	private final Reference<YAMLMapper> yaml = LazyReference.create(() -> YAMLMapper.builder().
@@ -39,14 +43,21 @@ public final class HookScope implements AutoCloseable
 	 *
 	 * @param pluginRoot a non-null CAT plugin root
 	 * @param userHome the current user's non-null home directory
+	 * @param harness the harness that runs the hook, whose sessions own the session work directories that the hook
+	 *   obtains
+	 * @param configurationDirectory the harness's configuration directory, which a new session marker records
 	 * @throws NullPointerException if any argument is null
 	 */
-	public HookScope(Path pluginRoot, Path userHome)
+	public HookScope(Path pluginRoot, Path userHome, SessionHarness harness, Path configurationDirectory)
 	{
 		requireThat(pluginRoot, "pluginRoot").isNotNull();
 		requireThat(userHome, "userHome").isNotNull();
+		requireThat(harness, "harness").isNotNull();
+		requireThat(configurationDirectory, "configurationDirectory").isNotNull();
 		this.pluginRoot = pluginRoot.toAbsolutePath().normalize();
 		this.userRulesRoot = ProjectRuleLoader.rulesDirectory(userHome.toAbsolutePath().normalize());
+		this.harness = harness;
+		this.configurationDirectory = configurationDirectory.toAbsolutePath().normalize();
 	}
 
 	/**
@@ -58,6 +69,8 @@ public final class HookScope implements AutoCloseable
 	 * @param harness the harness's display name
 	 * @param pluginRootVariable the variable through which the harness supplies CAT's installation directory
 	 * @param homeVariable the variable that names the current user's home directory
+	 * @param sessionHarness the harness's session values; its configuration variable, when set, names the harness's
+	 *   configuration directory
 	 * @return the scope
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code harness}, {@code pluginRootVariable} or {@code homeVariable} are
@@ -67,8 +80,9 @@ public final class HookScope implements AutoCloseable
 	 *   saved the caller's locale
 	 */
 	public static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
-		String homeVariable) throws IOException
+		String homeVariable, SessionHarness sessionHarness) throws IOException
 	{
+		requireThat(sessionHarness, "sessionHarness").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(pluginRootVariable, "pluginRootVariable").isNotBlank();
@@ -93,7 +107,8 @@ public final class HookScope implements AutoCloseable
 			}
 			throw new IOException(name + " conflicts with " + harness + " " + pluginRootVariable);
 		}
-		return new HookScope(resolvedPluginRoot, userHome);
+		return new HookScope(resolvedPluginRoot, userHome, sessionHarness,
+			sessionHarness.configurationDirectory(environment, homeVariable));
 	}
 
 	/**
@@ -218,21 +233,32 @@ public final class HookScope implements AutoCloseable
 	}
 
 	/**
-	 * Creates the project's CAT temporary directory if it is missing. The injected rules name it
-	 * {@code ${CAT_TEMP}}, {@code .cat/work/temp} below {@code ${CAT_PROJECT_ROOT}}, and the agent creates its temporary
+	 * Returns the work directory of the session that a hook input names, creating it and its marker on first use. The
+	 * injected rules name its {@code temp/} directory {@code ${CAT_TEMP}}, and the agent creates its temporary
 	 * directories inside it.
 	 *
 	 * @param projectDir the session's project directory
-	 * @return the CAT temporary directory
-	 * @throws NullPointerException if {@code projectDir} is null
-	 * @throws IOException if the directory cannot be created
+	 * @param event the hook input
+	 * @param property the input's property that holds the session's ID, such as {@code session_id}
+	 * @return the session work directory
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code property} is blank
 	 * @throws IllegalStateException if this scope is closed
+	 * @throws IOException if the property is not a UUID in canonical form, or if the directory or its marker cannot be
+	 *   created
 	 */
-	public Path createCatTemp(Path projectDir) throws IOException
+	public SessionWorkDirectory sessionWorkDirectory(Path projectDir, JsonNode event, String property)
+		throws IOException
 	{
-		ensureOpen();
 		requireThat(projectDir, "projectDir").isNotNull();
-		return Files.createDirectories(projectDir.resolve(".cat/work/temp"));
+		requireThat(event, "event").isNotNull();
+		requireThat(property, "property").isNotBlank();
+		ensureOpen();
+		JsonNode sessionId = event.path(property);
+		if (!sessionId.isString())
+			throw new IOException("The hook input lacks " + property);
+		return SessionWorkDirectory.open(projectDir, sessionId.stringValue(), harness, configurationDirectory,
+			Instant.now(), json());
 	}
 
 	/**

@@ -11,7 +11,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  *
  * @param operation the requested lifecycle operation
  *
- * @param runRoot the absolute owned-run root
+ * @param runRoot the absolute owned-run root, or {@code null} for {@link Operation#VERIFY_DEPENDENCY_CACHE}
+ *   when the command line names no {@code --run-root}
  *
  * @param runId the generated run identifier for an explicit operation, or {@code null}
  *
@@ -56,19 +57,21 @@ public record HarnessRunnerMaintenanceOptions(Operation operation, Path runRoot,
 	 *
 	 * @param args command-line arguments
 	 *
-	 * @param temporaryRoot the CAT work temp directory from the owning tool scope
+	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
 	 *
 	 * @return parsed maintenance options
 	 *
-	 * @throws IllegalArgumentException if the command is incomplete or invalid
+	 * @throws IllegalArgumentException if the command is incomplete or invalid, or if an operation that acts on runs
+	 *   names no {@code --run-root} outside a harness session
 	 */
-	public static HarnessRunnerMaintenanceOptions parse(String[] args, Path temporaryRoot)
+	public static HarnessRunnerMaintenanceOptions parse(String[] args, HarnessTemporaryRoot temporaryRoot)
 	{
 		requireThat(args, "args").isNotNull();
 		if (args.length == 0)
 			throw new IllegalArgumentException("Missing lifecycle command");
+		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		Operation operation = operation(args[0]);
-		Path runRoot = HarnessTemporaryRoot.defaultRunRoot(temporaryRoot);
+		String explicitRunRoot = null;
 		String runId = null;
 		Duration retention = HarnessRunManager.DEFAULT_RETENTION;
 		String diagnostic = null;
@@ -81,7 +84,7 @@ public record HarnessRunnerMaintenanceOptions(Operation operation, Path runRoot,
 				throw new IllegalArgumentException("Missing value for " + option);
 			String value = args[index + 1];
 			if (option.equals("--run-root"))
-				runRoot = HarnessTemporaryRoot.explicitRunRoot(Path.of(value));
+				explicitRunRoot = value;
 			else if (option.equals("--run-id") && operation != Operation.DELETE_STALE_RUNS)
 				runId = value;
 			else if (option.equals("--diagnostic") && operation == Operation.FAIL_RUN)
@@ -94,6 +97,11 @@ public record HarnessRunnerMaintenanceOptions(Operation operation, Path runRoot,
 				throw new IllegalArgumentException("Unsupported option: " + option);
 			index += 2;
 		}
+		Path runRoot;
+		if (operation == Operation.VERIFY_DEPENDENCY_CACHE && explicitRunRoot == null)
+			runRoot = null;
+		else
+			runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		if (operation == Operation.DELETE_STALE_RUNS)
 			return new HarnessRunnerMaintenanceOptions(operation, runRoot, null, retention, null, null);
 		if (operation == Operation.PRUNE_TERMINAL_RUNTIMES)
@@ -108,7 +116,7 @@ public record HarnessRunnerMaintenanceOptions(Operation operation, Path runRoot,
 	 *
 	 * @param operation the requested lifecycle operation
 	 *
-	 * @param runRoot the absolute owned-run root
+	 * @param runRoot the absolute owned-run root, or {@code null} for {@link Operation#VERIFY_DEPENDENCY_CACHE}
 	 *
 	 * @param runId the generated run identifier for an explicit operation, or {@code null}
 	 *
@@ -121,8 +129,12 @@ public record HarnessRunnerMaintenanceOptions(Operation operation, Path runRoot,
 	public HarnessRunnerMaintenanceOptions
 	{
 		requireThat(operation, "operation").isNotNull();
-		requireThat(runRoot, "runRoot").isNotNull();
-		if (!runRoot.isAbsolute())
+		if (runRoot == null)
+		{
+			if (operation != Operation.VERIFY_DEPENDENCY_CACHE)
+				throw new NullPointerException("runRoot may not be null");
+		}
+		else if (!runRoot.isAbsolute())
 			throw new IllegalArgumentException("runRoot must be absolute");
 		if (operation == Operation.DELETE_RUN)
 		{

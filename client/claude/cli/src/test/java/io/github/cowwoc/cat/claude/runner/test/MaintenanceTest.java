@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.claude.runner.ClaudeRunnerCli;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.runner.HarnessRun;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import org.testng.annotations.Test;
@@ -19,6 +18,8 @@ import java.time.Clock;
  */
 public final class MaintenanceTest
 {
+	private static final Path TEMP = Path.of(System.getProperty("cat.work.temp")).toAbsolutePath().normalize();
+
 	/**
 	 * Creates the test.
 	 */
@@ -34,10 +35,9 @@ public final class MaintenanceTest
 	@Test
 	public void mainPrunesTerminalRuntime() throws IOException
 	{
-		try (ToolScope scope = new ToolScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(scope.temporaryWorkRoot()),
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
 				"maintenance-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("claude");

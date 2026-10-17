@@ -33,7 +33,7 @@ final class ClaudeHookScope
 	static HookScope open(Map<String, String> environment) throws IOException
 	{
 		return HookScope.fromEnvironment(environment, "Claude", "CLAUDE_PLUGIN_ROOT",
-			Platform.current().homeVariable());
+			Platform.current().homeVariable(), ClaudeSessionHarness.HARNESS);
 	}
 
 	/**

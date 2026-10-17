@@ -49,6 +49,10 @@ public final class CodexRunPartTest
 	 * under {@code TMPDIR}.
 	 */
 	private static final Path OUTSIDE_PROJECT = Path.of("/").toAbsolutePath();
+	/**
+	 * A Codex thread ID in canonical form.
+	 */
+	private static final String THREAD_ID = "01a147d8-bf56-7283-92b4-12dcaeb53738";
 
 	/**
 	 * Creates a test instance.
@@ -106,29 +110,67 @@ public final class CodexRunPartTest
 	}
 
 	/**
-	 * Verifies that a command runs in its folder and that its output is saved in the CAT temporary folder of the nearest
-	 * project that contains that folder, so that it stays inside the project.
+	 * Verifies that a command runs in its folder and that, in a Codex thread, its output is saved in the temporary
+	 * folder of the thread's work directory in the nearest project that contains that folder, so that it stays inside
+	 * the project.
 	 *
 	 * @throws IOException if the temporary folders cannot be created
 	 */
 	@Test
-	public void savesOutputInProjectTemp() throws IOException
+	public void savesOutputInSessionTemp() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("run-part-test-"));
-			Path catTemp = Files.createDirectories(project.resolve(".cat/work/temp"));
+			Files.createDirectories(project.resolve(".cat"));
 			Path folder = Files.createDirectories(project.resolve("src/main"));
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/work").resolve(THREAD_ID).
+				resolve("temp");
 
-			Call call = runPart(script("pwd", "(Get-Location).Path"), false, folder, Map.of("TMPDIR", temporary.toString()));
+			Call call = runPart(script("pwd", "(Get-Location).Path"), false, folder, Map.of("TMPDIR", temporary.toString(),
+				"CODEX_THREAD_ID", THREAD_ID, "CODEX_HOME", temporary.toString()));
 
 			Matcher lastPart = LAST_PART.matcher(call.output());
 			requireThat(lastPart.find(), "lastPart").isTrue();
 			Path saved = Path.of(lastPart.group("path"));
-			requireThat(saved.getParent().getParent(), "folder").isEqualTo(catTemp);
+			requireThat(saved.getParent().getParent(), "folder").isEqualTo(sessionTemp);
+			requireThat(sessionTemp.resolveSibling("session.json"), "marker").isRegularFile();
 			// pwd prints the folder's real path, which differs where the temporary folder is a symbolic link, as on macOS
 			requireThat(call.output(), "output").isEqualTo(folder.toRealPath() + EOL + "[End of " + saved + "]\n");
+		}
+	}
+
+	/**
+	 * Verifies that without {@code CODEX_THREAD_ID} the output is saved under {@code TMPDIR} even inside a CAT project
+	 * that holds the shared temporary folder of earlier releases, and that no work directory is created.
+	 *
+	 * @throws IOException if the temporary folders cannot be created
+	 */
+	@Test
+	public void fallsBackWithoutThreadId() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Path shared = Files.createDirectories(project.resolve(".cat/work/temp"));
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+
+			Call call = runPart(script("pwd", "(Get-Location).Path"), false, project, Map.of("TMPDIR",
+				temporary.toString()));
+
+			Matcher lastPart = LAST_PART.matcher(call.output());
+			requireThat(lastPart.find(), "lastPart").isTrue();
+			Path saved = Path.of(lastPart.group("path"));
+			requireThat(saved.getParent().getParent(), "folder").isEqualTo(temporary);
+			try (Stream<Path> entries = Files.list(shared))
+			{
+				requireThat(entries.toList(), "sharedEntries").isEmpty();
+			}
+			try (Stream<Path> entries = Files.list(project.resolve(".cat/work")))
+			{
+				requireThat(entries.toList(), "workEntries").containsExactly(List.of(shared));
+			}
 		}
 	}
 

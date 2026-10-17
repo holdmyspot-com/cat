@@ -7,6 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.Platform;
+import io.github.cowwoc.cat.common.SessionHarness;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
@@ -15,6 +16,7 @@ import io.github.cowwoc.cat.common.runner.HarnessOneShotRunner;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerMaintenance;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerOptions;
+import io.github.cowwoc.cat.common.runner.HarnessTemporaryRoot;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -80,20 +82,21 @@ public final class CodexRunnerCli
 		requireThat(args, "args").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(capacity, "capacity").isNotNull();
-		try (ToolScope scope = new ToolScope())
+		String agentName = agentName(args);
+		HarnessOneShotOptions options;
+		try (ToolScope scope = toolScope(Path.of(""), environment))
 		{
-			String agentName = agentName(args);
-			HarnessOneShotOptions options = HarnessOneShotOptions.parse(withoutOptions(args, Set.of("--agent")),
-				"codex", scope.catTemp());
-			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
-			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
-			String prompt = options.prompt();
-			try (HarnessCapacity.Permit _ = capacity.acquire())
-			{
-				HarnessOneShotRunner.run(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
-					options.executable(), environment, options.model(), "", options.installCat(), agent), manager, prompt,
-					options.output(), options.keepRun());
-			}
+			options = HarnessOneShotOptions.parse(withoutOptions(args, Set.of("--agent")), "codex",
+				HarnessTemporaryRoot.from(scope));
+		}
+		CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
+		HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
+		String prompt = options.prompt();
+		try (HarnessCapacity.Permit _ = capacity.acquire())
+		{
+			HarnessOneShotRunner.run(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
+				options.executable(), environment, options.model(), "", options.installCat(), agent), manager, prompt,
+				options.output(), options.keepRun());
 		}
 	}
 
@@ -106,11 +109,27 @@ public final class CodexRunnerCli
 	public static void executeMaintenance(String[] args) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
-		try (ToolScope scope = new ToolScope())
+		Map<String, String> environment = Platform.current().environment(System.getenv());
+		try (ToolScope scope = toolScope(Path.of(""), environment))
 		{
-			HarnessRunnerMaintenance.execute(args, HARNESS_ID, scope.temporaryWorkRoot(),
-				Platform.current().environment(System.getenv()), System.out);
+			HarnessRunnerMaintenance.execute(args, HARNESS_ID, HarnessTemporaryRoot.from(scope), environment,
+				System.out);
 		}
+	}
+
+	/**
+	 * Opens the tool scope of a runner command. Its session work directory, whose temporary directory holds the runs
+	 * of a command line that names no {@code --run-root}, belongs to the session whose tool shell runs the command, in
+	 * the nearest CAT project.
+	 *
+	 * @param workingDirectory the directory from which the command was invoked
+	 * @param environment the command's environment, whose session variable names the session
+	 * @return an open tool scope
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static ToolScope toolScope(Path workingDirectory, Map<String, String> environment)
+	{
+		return ToolScope.forSession(workingDirectory, environment, SessionHarness.installed());
 	}
 
 	/**
@@ -132,16 +151,17 @@ public final class CodexRunnerCli
 		requireThat(output, "output").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = toolScope(Path.of(""), environment))
 		{
 			String agentName = agentName(args);
 			int toolOutputTokenLimit = toolOutputTokenLimit(args);
 			String[] runnerArgs = withoutOptions(args, Set.of("--agent", TOOL_OUTPUT_TOKEN_LIMIT));
+			HarnessTemporaryRoot temporaryRoot = HarnessTemporaryRoot.from(scope);
 			HarnessRunnerOptions options;
 			if (runnerArgs.length > 0 && runnerArgs[0].equals("serve"))
-				options = HarnessRunnerOptions.parseServe(runnerArgs, "codex", scope.catTemp());
+				options = HarnessRunnerOptions.parseServe(runnerArgs, "codex", temporaryRoot);
 			else
-				options = HarnessRunnerOptions.parse(runnerArgs, "codex", scope.catTemp());
+				options = HarnessRunnerOptions.parse(runnerArgs, "codex", temporaryRoot);
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
 			try (HarnessCapacity.Permit _ = capacityForMaximum.apply(options.maximumConcurrency()).acquire())

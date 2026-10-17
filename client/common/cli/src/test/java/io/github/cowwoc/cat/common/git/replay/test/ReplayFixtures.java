@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.git.replay.test;
 
+import io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor;
 import io.github.cowwoc.cat.common.git.replay.History;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,6 +29,17 @@ final class ReplayFixtures
 		Path root = Path.of(System.getProperty("cat.work.temp")).toAbsolutePath().normalize();
 		Files.createDirectories(root);
 		return root;
+	}
+
+	/**
+	 * Returns an editor that keeps its state in a temporary directory inside its repository.
+	 *
+	 * @param repository the repository
+	 * @return the editor
+	 */
+	static GitTopicReplayEditor editor(Path repository)
+	{
+		return new GitTopicReplayEditor(repository, repository.resolve(".cat/work/temp"));
 	}
 
 	/**

@@ -48,11 +48,16 @@ public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile
 	 *
 	 * @param args command-line arguments
 	 * @param defaultExecutable the harness executable name
-	 * @param catTemp the CAT-owned temporary root from the owning tool scope
+	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
 	 * @return parsed one-shot options
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the arguments are incomplete or invalid, or if they name no
+	 *   {@code --run-root} outside a harness session
 	 */
-	public static HarnessOneShotOptions parse(String[] args, String defaultExecutable, Path catTemp)
+	public static HarnessOneShotOptions parse(String[] args, String defaultExecutable,
+		HarnessTemporaryRoot temporaryRoot)
 	{
+		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		requireThat(args, "args").isNotNull();
 		requireThat(defaultExecutable, "defaultExecutable").isNotBlank();
 		if (args.length == 0 || !args[0].equals("run"))
@@ -94,9 +99,7 @@ public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile
 		Path promptFile = path(values, "--prompt-file");
 		String model = values.getOrDefault("--model", "");
 		Path output = path(values, "--output");
-		Path runRoot = HarnessTemporaryRoot.defaultRunRoot(catTemp);
-		if (values.containsKey("--run-root"))
-			runRoot = HarnessTemporaryRoot.explicitRunRoot(Path.of(values.get("--run-root")));
+		Path runRoot = temporaryRoot.runRoot(values.get("--run-root"));
 		String executable = values.getOrDefault("--executable", defaultExecutable);
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(promptFile, "promptFile").isNotNull();

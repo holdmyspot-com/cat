@@ -29,8 +29,12 @@
 		<cat.test.excludedGroups>native</cat.test.excludedGroups>
 		<!-- The harness that native tests start: claude or codex. Native tests skip when it is empty. -->
 		<cat.native.harness/>
-		<!-- The repository's .cat/work/temp directory, which holds the fixtures that a harness runner consumes -->
-		<cat.work.temp>${project.rootDirectory}/../.cat/work/temp</cat.work.temp>
+		<!--
+			The directory that holds the fixtures that a harness runner consumes. A build inside a harness session uses the
+			session's temporary directory (see the profiles "claude-session" and "codex-session"); any other build uses
+			this directory, which "clean" removes.
+		-->
+		<cat.work.temp>${project.rootDirectory}/target/work-temp</cat.work.temp>
 		<checkstyle.version>14.3.0</checkstyle.version>
 		<commons-compress.version>1.28.0</commons-compress.version>
 		<exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
@@ -399,6 +403,33 @@
 	</build>
 
 	<profiles>
+		<profile>
+			<!-- A build inside a Codex session keeps its fixtures in the session's temporary directory. -->
+			<id>codex-session</id>
+			<activation>
+				<property>
+					<name>env.CODEX_THREAD_ID</name>
+				</property>
+			</activation>
+			<properties>
+				<cat.work.temp>${project.rootDirectory}/../.cat/work/${env.CODEX_THREAD_ID}/temp</cat.work.temp>
+			</properties>
+		</profile>
+		<profile>
+			<!--
+				A build inside a Claude Code session keeps its fixtures in the session's temporary directory. Declared after
+				"codex-session", it wins when both variables are set.
+			-->
+			<id>claude-session</id>
+			<activation>
+				<property>
+					<name>env.CLAUDE_CODE_SESSION_ID</name>
+				</property>
+			</activation>
+			<properties>
+				<cat.work.temp>${project.rootDirectory}/../.cat/work/${env.CLAUDE_CODE_SESSION_ID}/temp</cat.work.temp>
+			</properties>
+		</profile>
 		<profile>
 			<!--
 				Runs only the tests in TestNG group "native", which start real nested harness sessions.

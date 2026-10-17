@@ -10,9 +10,14 @@
 ## Guidance
 
 For workflows, the owning pouch scope resolves the CAT temporary root once. Its built-in value is the gitignored
-`.cat/work/temp` directory in the current project; future configuration may override that value at the scope boundary.
-Create a unique child directory per invocation and pass it to every cooperating command. Do not read an environment
-variable to rediscover this value.
+`temp` directory of the session's work directory, `.cat/work/<session-id>/temp`, in the current project; future
+configuration may override that value at the scope boundary. Create a unique child directory per invocation and pass it
+to every cooperating command. Do not read an environment variable to rediscover this value.
+
+CAT removes a session's work directory, with everything below its temporary root, once the session's harness no longer
+keeps the session's transcript and the directory is more than 24 hours old. To hand an artifact to another session,
+give that session the artifact's absolute path. The receiving session reads it in place, or moves it below its own
+temporary root to take over its cleanup.
 
 Before creating a workflow artifact, classify its commit intent and last required consumer. Put an artifact intended for
 commit at its version-controlled repository path. Put every other artifact beneath the resolved CAT temporary root:

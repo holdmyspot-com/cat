@@ -38,11 +38,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *
 	 * @param args the legacy command and its options
 	 * @param defaultExecutable the harness executable name
-	 * @param temporaryRoot the CAT work temp directory from the owning tool scope
+	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
 	 * @return parsed runner options
-	 * @throws IllegalArgumentException if the command is not {@code serve} or its options are invalid
+	 * @throws IllegalArgumentException if the command is not {@code serve}, if its options are invalid, or if it names
+	 *   no {@code --run-root} outside a harness session
 	 */
-	public static HarnessRunnerOptions parseServe(String[] args, String defaultExecutable, Path temporaryRoot)
+	public static HarnessRunnerOptions parseServe(String[] args, String defaultExecutable,
+		HarnessTemporaryRoot temporaryRoot)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(defaultExecutable, "defaultExecutable").isNotBlank();
@@ -57,16 +59,19 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *
 	 * @param args command-line arguments
 	 * @param defaultExecutable the harness executable name
-	 * @param temporaryRoot the CAT work temp directory from the owning tool scope
+	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
 	 * @return parsed runner options
-	 * @throws IllegalArgumentException if arguments are incomplete or invalid
+	 * @throws IllegalArgumentException if arguments are incomplete or invalid, or if they name no {@code --run-root}
+	 *   outside a harness session
 	 */
-	public static HarnessRunnerOptions parse(String[] args, String defaultExecutable, Path temporaryRoot)
+	public static HarnessRunnerOptions parse(String[] args, String defaultExecutable,
+		HarnessTemporaryRoot temporaryRoot)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(defaultExecutable, "defaultExecutable").isNotBlank();
+		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		Path project = Path.of("").toAbsolutePath().normalize();
-		Path runRoot = HarnessTemporaryRoot.defaultRunRoot(temporaryRoot);
+		String explicitRunRoot = null;
 		String executable = defaultExecutable;
 		String model = "";
 		String effort = "";
@@ -116,7 +121,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			else if (option.equals("--project"))
 				project = Path.of(value);
 			else if (option.equals("--run-root"))
-				runRoot = HarnessTemporaryRoot.explicitRunRoot(Path.of(value));
+				explicitRunRoot = value;
 			else if (option.equals("--executable"))
 				executable = value;
 			else if (option.equals("--model"))
@@ -143,6 +148,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new IllegalArgumentException("--receipt requires --keep-run and --output");
 		if (!options.installCat && !options.includeUserRules)
 			throw new IllegalArgumentException("--exclude-user-rules requires --install-cat");
+		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
 			options.keepRun, options.receipt, options.installCat, options.includeUserRules, options.maximumConcurrency,
 			options.deniedReads, options.fixtures, options.plugins);

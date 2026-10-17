@@ -9,4 +9,6 @@ module io.github.cowwoc.cat.claude.cli
 	exports io.github.cowwoc.cat.claude.optimizer;
 	exports io.github.cowwoc.cat.claude.runner to io.github.cowwoc.cat.claude.cli.test;
 	exports io.github.cowwoc.cat.claude.secrets to io.github.cowwoc.cat.claude.cli.test;
+
+	provides io.github.cowwoc.cat.common.SessionHarness with io.github.cowwoc.cat.claude.ClaudeSessionHarness;
 }

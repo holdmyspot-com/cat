@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.runner.HarnessOneShotOptions;
+import io.github.cowwoc.cat.common.runner.HarnessTemporaryRoot;
 import io.github.cowwoc.cat.common.secrets.HarnessOneShotOptionsSecrets;
 
 import java.io.IOException;
@@ -16,6 +17,12 @@ import org.testng.annotations.Test;
  */
 public final class HarnessOneShotOptionsTest
 {
+	/**
+	 * The temporary root of a command that runs in a harness session whose temporary directory is {@code /caller-temp}.
+	 */
+	private static final HarnessTemporaryRoot SESSION = HarnessTemporaryRoot.of(Path.of("/caller-temp").
+		toAbsolutePath());
+
 	/**
 	 * Creates the test fixture.
 	 */
@@ -30,7 +37,7 @@ public final class HarnessOneShotOptionsTest
 	public void defaultsToNoCatInstallation()
 	{
 		HarnessOneShotOptions result = HarnessOneShotOptions.parse(new String[] {"run", "--artifact", "/artifact",
-			"--prompt-file", "/prompt", "--output", "/output"}, "harness", Path.of("/caller-temp").toAbsolutePath());
+			"--prompt-file", "/prompt", "--output", "/output"}, "harness", SESSION);
 
 		requireThat(result.installCat(), "installCat").isFalse();
 	}
@@ -43,7 +50,7 @@ public final class HarnessOneShotOptionsTest
 	{
 		HarnessOneShotOptions result = HarnessOneShotOptions.parse(new String[] {"run", "--artifact", "/artifact",
 			"--prompt-file", "/prompt", "--output", "/output", "--install-cat"}, "harness",
-			Path.of("/caller-temp").toAbsolutePath());
+			SESSION);
 
 		requireThat(result.installCat(), "installCat").isTrue();
 	}
@@ -63,7 +70,7 @@ public final class HarnessOneShotOptionsTest
 			Files.write(prompt, new byte[HarnessOneShotOptionsSecrets.access().maximumPromptBytes() + 1]);
 			HarnessOneShotOptions options = HarnessOneShotOptions.parse(new String[] {"run", "--artifact", "/artifact",
 				"--prompt-file", prompt.toString(), "--output", "/output"}, "harness",
-				Path.of("/caller-temp").toAbsolutePath());
+				SESSION);
 
 			options.prompt();
 		}

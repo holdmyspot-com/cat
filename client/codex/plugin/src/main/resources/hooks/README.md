@@ -8,10 +8,17 @@ command in place of `${PLUGIN_ROOT}`, but the shell would then read a `$`, a quo
 name as syntax, so each command reads the environment variable instead. The launcher derives CAT's installation directory from its own
 location before it runs CAT's `client/bin/session-start` command.
 
-The hook writes the session's rules to `.cat/work/temp/codex-context/<session_id>.md` in the session's project
-directory. Its additional context holds only the guidance on reading command output whole, from
-`rules/codex/read-file.md`, followed by an instruction to read that file whole, as that guidance describes, before
-anything else.
+The hook writes the session's rules to `.cat/work/<session_id>/rules.md` in the session's project directory. That
+directory is the session's work directory: it also holds `temp/`, the session's `CAT_TEMP`, which the rules name, and
+`session.json`, which records the harness, its configuration directory and the directory's creation time. The hook's
+additional context holds only the guidance on reading command output whole, from `rules/codex/read-file.md`, followed
+by an instruction to read that file whole, as that guidance describes, before anything else. The hook then removes the
+work directory of every other session of the project that is more than 24 hours old and whose transcript Codex or
+Claude Code no longer keeps.
+
+For a `SubagentStart` event, the hook returns the subagent's rules as additional context. Their `CAT_TEMP` names the
+work directory of the event's `agent_id`, the thread ID that Codex gives the subagent's shell commands in
+`CODEX_THREAD_ID`.
 
 The command hook sets `additionalContextLimit` to `0`, disabling additional-context spilling for this hook. Codex
 otherwise applies a default limit. For the meaning and introduction of this Codex hook property, see
@@ -21,7 +28,9 @@ CAT runs `post-tool-use` after each shell command, through the `$PLUGIN_ROOT/hoo
 the agent set `max_output_tokens` on a command that runs `$PLUGIN_ROOT/bin/run-part` or
 `$PLUGIN_ROOT/bin/read-part`, Codex removes lines from the middle of the part, and the part's closing line names the
 next part. The hook then returns a blocking decision whose reason is the part with that line replaced by an instruction
-to print the same part again without the limit; Codex shows the reason to the model in place of the result. The launcher
+to print the same part again without the limit; Codex shows the reason to the model in place of the result. When a
+result that Codex did not cut ends with the last part of an output that `run-part` saved, the hook deletes the
+`run-part-*` folder that holds it, unless a part that Codex cut has not yet been printed again uncut. The launcher
 passes every other event over without starting Java.
 
 ## Windows

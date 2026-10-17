@@ -86,7 +86,7 @@ public final class EditorPatchWorkflowTest
 			String source = commits.getLast();
 			Path replay = invocationDirectory(repository, "replay");
 			Path manifest = replay.resolve("manifest.json");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
+			GitTopicReplayEditor editor = ReplayFixtures.editor(repository);
 			writeSourceManifest(git, manifest, base, source);
 			Path sourcePatch = replay.resolve("source.patch");
 			editor.captureSourcePathPatch(manifest, source, sourcePatch, List.of("Plugin.java"));
@@ -197,7 +197,7 @@ public final class EditorPatchWorkflowTest
 			String source = commits.getLast();
 			Path replay = invocationDirectory(repository, "replay");
 			Path manifest = replay.resolve("manifest.json");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
+			GitTopicReplayEditor editor = ReplayFixtures.editor(repository);
 			writeSourceManifest(git, manifest, base, source);
 			Path patch = replay.resolve("feature.patch");
 			editor.captureThreeWayAdaptedSourceHunkPatch(manifest, source, patch, target, "Plugin.java", 1);
@@ -227,7 +227,7 @@ public final class EditorPatchWorkflowTest
 			String source = commit(git, repository, "feature.txt", "feature\n", "feature");
 			Path replay = invocationDirectory(repository, "replay");
 			Path manifest = replay.resolve("manifest.json");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository);
+			GitTopicReplayEditor editor = ReplayFixtures.editor(repository);
 			writeSourceManifest(git, manifest, base, source);
 			editor.captureSourcePatch(manifest, source, replay.resolve("feature.patch"));
 			Path plan = replay.resolve("output-plan.json");

@@ -5,6 +5,9 @@ import io.github.cowwoc.cat.common.git.Git;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.Platform;
+import io.github.cowwoc.cat.common.SessionHarness;
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -12,6 +15,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -85,27 +89,30 @@ public final class GitTopicReplayEditor
 	private final CompletedBatchManifest completedBatchManifest;
 
 	/**
-	 * Creates an editor that runs Git in one repository.
-	 *
-	 * @param repository the repository working directory
-	 */
-	public GitTopicReplayEditor(Path repository)
-	{
-		this(repository, temporaryRoot(repository));
-	}
-
-	/**
-	 * Returns the CAT work temp directory for one repository.
+	 * Returns the temporary directory of the session whose tool shell runs the editor, in the CAT project nearest to a
+	 * repository.
 	 *
 	 * @param repository the repository that owns the workflow state
-	 * @return the CAT-owned temporary root
+	 * @param environment the editor's environment
+	 * @param harnesses the harnesses whose session variables may name the session
+	 * @return the session's temporary directory
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if no session variable is set, with a message that names every session variable, or if the
+	 *   session work directory cannot be created
 	 */
-	public static Path temporaryRoot(Path repository)
+	public static Path temporaryRoot(Path repository, Map<String, String> environment, List<SessionHarness> harnesses)
+		throws IOException
 	{
 		requireThat(repository, "repository").isNotNull();
-		try (ToolScope scope = ToolScope.forWorkingDirectory(repository))
+		try (ToolScope scope = ToolScope.forSession(repository, environment, harnesses))
 		{
-			return scope.temporaryWorkRoot();
+			Optional<SessionWorkDirectory> session = scope.sessionWorkDirectory();
+			if (session.isEmpty())
+			{
+				throw new IOException(scope.missingSession() + ", so git-topic-replay has no session work directory " +
+					"to keep its state in. Run it from a harness session's shell.");
+			}
+			return session.get().temp();
 		}
 	}
 
@@ -208,7 +215,10 @@ public final class GitTopicReplayEditor
 	public static void main(String[] args) throws IOException
 	{
 		args = CommandLineArguments.recover(args);
-		new GitTopicReplayEditor(repositoryRoot(Path.of("."))).execute(args);
+		Path repository = repositoryRoot(Path.of("."));
+		Path temporaryRoot = temporaryRoot(repository, Platform.current().environment(System.getenv()),
+			SessionHarness.installed());
+		new GitTopicReplayEditor(repository, temporaryRoot).execute(args);
 	}
 
 	/**

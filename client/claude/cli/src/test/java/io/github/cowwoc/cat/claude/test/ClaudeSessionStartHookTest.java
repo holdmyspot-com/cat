@@ -8,6 +8,7 @@ import io.github.cowwoc.cat.claude.ClaudeSessionStartHook;
 import io.github.cowwoc.cat.claude.ClaudeSubagentStartHook;
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.ByteArrayInputStream;
@@ -16,7 +17,10 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.testng.annotations.Test;
@@ -27,6 +31,10 @@ import tools.jackson.databind.JsonNode;
  */
 public final class ClaudeSessionStartHookTest
 {
+	private static final String SESSION_ID = "6b1f7c1e-5d0a-4c55-9a8e-2f6c0f1d2e3a";
+	private static final String CAT_TEMP_RULE = "`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" +
+		SessionWorkDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n";
+
 	/**
 	 * Verifies Claude receives a short instruction that locates the complete main-agent rules in CAT's temporary root and
 	 * requires reading that whole file rather than a searched subset.
@@ -55,10 +63,8 @@ public final class ClaudeSessionStartHookTest
 				contains("Do not search it, list its headings, or read only part of it").doesNotContain("plugin common").
 				doesNotContain("plugin claude").doesNotContain("project common").doesNotContain("project claude").
 				doesNotContain("plugin codex");
-			try (ToolScope scope = ToolScope.forWorkingDirectory(project))
-			{
-				requireThat(rules.startsWith(scope.catTemp()), "rulesLocation").isTrue();
-			}
+			requireThat(rules, "rules").isEqualTo(project.resolve(".cat/work").resolve(sessionId(rules)).
+				resolve("rules.md"));
 			try
 			{
 				String completeRules = Files.readString(rules);
@@ -142,8 +148,7 @@ public final class ClaudeSessionStartHookTest
 			Path context = referencedFile(context(invoke(cwdInput(project),
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project)));
 
-			String sessionId = context.getFileName().toString().replace(".md", "");
-			String error = invokeSessionEnd("{\"session_id\":\"" + sessionId + "\"}",
+			String error = invokeSessionEnd("{\"session_id\":\"" + sessionId(context) + "\"}",
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project);
 
 			requireThat(Files.exists(context), "contextExists").isFalse();
@@ -195,10 +200,10 @@ public final class ClaudeSessionStartHookTest
 			write(plugin, "rules/common/rules.md", "rules");
 			Path context = referencedFile(context(invokeSubagent(cwdInput(project),
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project)));
-			String suffix = "-agent-test.md";
-			String sessionId = context.getFileName().toString().replace(suffix, "");
+			requireThat(context.getFileName().toString(), "contextName").isEqualTo("agent-test.md");
+			requireThat(context.getParent().getFileName().toString(), "contextParent").isEqualTo("subagents");
 
-			String error = invokeSessionEnd("{\"session_id\":\"" + sessionId + "\"}",
+			String error = invokeSessionEnd("{\"session_id\":\"" + sessionId(context.getParent()) + "\"}",
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project);
 
 			requireThat(Files.exists(context), "contextExists").isFalse();
@@ -283,11 +288,12 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies the hook creates {@code .cat/work/temp} in the session's own directory, which the injected rules name
-	 * as the project directory, even when an enclosing directory is a CAT project.
+	 * Verifies the hook creates the session's work directory in the session's own directory, which the injected rules
+	 * name as the project directory, even when an enclosing directory is a CAT project, and that it no longer creates
+	 * the shared temporary directory.
 	 */
 	@Test
-	public void createsCatTempInSessionDirectory() throws IOException
+	public void createsWorkDirectoryInSessionDirectory() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -296,11 +302,136 @@ public final class ClaudeSessionStartHookTest
 			Files.createDirectories(parent.resolve(".cat"));
 			Path session = Files.createDirectories(parent.resolve("module"));
 
-			HookResult result = invoke(cwdInput(session),
+			HookResult result = invoke("{\"cwd\":" + jsonString(session) + ",\"session_id\":\"" + SESSION_ID + "\"}",
 				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), session);
 
 			requireThat(result.error(), "error").isEmpty();
-			requireThat(Files.isDirectory(session.resolve(".cat/work/temp")), "catTempExists").isTrue();
+			requireThat(session.resolve(".cat/work/" + SESSION_ID + "/temp"), "catTemp").isDirectory();
+			requireThat(Files.exists(session.resolve(".cat/work/temp")), "sharedTempExists").isFalse();
+			requireThat(Files.exists(parent.resolve(".cat/work")), "parentWorkExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies SessionStart writes the main agent's rules to the session work directory that the input's
+	 * {@code session_id} names, creates its {@code temp} directory and marker, and states that directory as
+	 * {@code CAT_TEMP} in the rules.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void writesRulesToSessionWorkDirectory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path configuration = project.resolve("claude-configuration");
+			write(plugin, "rules/claude/cat-env.md", CAT_TEMP_RULE);
+			Path directory = project.resolve(".cat/work").resolve(SESSION_ID);
+
+			HookResult result = invoke("{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" + SESSION_ID +
+				"\",\"source\":\"startup\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(), "CLAUDE_CONFIG_DIR",
+				configuration.toString()), project);
+			Path rules = referencedFile(context(result));
+
+			requireThat(result.error(), "error").isEmpty();
+			requireThat(rules, "rules").isEqualTo(directory.resolve("rules.md"));
+			requireThat(directory.resolve("temp"), "temp").isDirectory();
+			requireThat(Files.readString(rules), "rulesContent").contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" +
+				SESSION_ID + "/temp`.");
+			try (ToolScope scope = new ToolScope())
+			{
+				JsonNode marker = scope.json().readTree(Files.readString(directory.resolve("session.json")));
+				requireThat(marker.path("harness").asString(), "harness").isEqualTo("claude");
+				requireThat(marker.path("configuration_directory").asString(), "configurationDirectory").
+					isEqualTo(configuration.toString());
+				requireThat(marker.path("transcripts").get(0).asString(), "transcript").
+					isEqualTo("projects/*/" + SESSION_ID + ".jsonl");
+			}
+		}
+	}
+
+	/**
+	 * Verifies SubagentStart writes a subagent's rules to its own file in the work directory of the parent session,
+	 * whose ID the input's {@code session_id} carries, and states that directory as {@code CAT_TEMP} in the rules.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void writesSubagentRulesToSessionDirectory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			write(plugin, "rules/claude/cat-env.md", CAT_TEMP_RULE);
+			Path directory = project.resolve(".cat/work").resolve(SESSION_ID);
+
+			HookResult result = invokeSubagent("{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" + SESSION_ID +
+				"\",\"agent_id\":\"a1b2c3\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project);
+			Path rules = referencedFile(context(result));
+
+			requireThat(result.error(), "error").isEmpty();
+			requireThat(rules, "rules").isEqualTo(directory.resolve("subagents/a1b2c3.md"));
+			requireThat(directory.resolve("session.json"), "marker").isRegularFile();
+			requireThat(Files.readString(rules), "rulesContent").contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" +
+				SESSION_ID + "/temp`.");
+		}
+	}
+
+	/**
+	 * Verifies SessionStart refuses a {@code session_id} that is not a UUID in canonical form without writing rules or a
+	 * work directory.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesNonCanonicalSessionId() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+
+			HookResult result = invoke("{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" +
+				SESSION_ID.toUpperCase(Locale.ROOT) + "\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project);
+
+			requireThat(result.output(), "output").isEqualTo("{}\n");
+			requireThat(result.error(), "error").contains("not a UUID in canonical form");
+			requireThat(Files.exists(project.resolve(".cat/work")), "workExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies SessionStart removes the work directory of another session whose marker is older than a day and whose
+	 * transcript the configuration directory no longer holds, and keeps the directory of a session whose transcript
+	 * remains.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void sweepsGoneSessions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path configuration = project.resolve("claude-configuration");
+			String gone = "11111111-1111-4111-8111-111111111111";
+			String kept = "22222222-2222-4222-8222-222222222222";
+			write(configuration, "projects/-project/" + kept + ".jsonl", "{}\n");
+			Path goneDirectory = writeOldMarker(project, gone, configuration);
+			Path keptDirectory = writeOldMarker(project, kept, configuration);
+
+			HookResult result = invoke("{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" + SESSION_ID +
+				"\",\"source\":\"resume\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(), "CLAUDE_CONFIG_DIR",
+				configuration.toString()), project);
+
+			requireThat(result.error(), "error").isEmpty();
+			requireThat(Files.exists(goneDirectory), "goneExists").isFalse();
+			requireThat(keptDirectory, "keptDirectory").isDirectory();
+			requireThat(project.resolve(".cat/work").resolve(SESSION_ID), "ownDirectory").isDirectory();
 		}
 	}
 
@@ -327,14 +458,11 @@ public final class ClaudeSessionStartHookTest
 
 			requireThat(result.error(), "error").isEmpty();
 			requireThat(Files.readString(context), "context").contains("launch project");
-			try (ToolScope scope = ToolScope.forWorkingDirectory(project))
-			{
-				requireThat(context.startsWith(scope.catTemp()), "contextInLaunchDirectory").isTrue();
-			}
+			requireThat(context.startsWith(project.resolve(".cat/work")), "contextInLaunchDirectory").isTrue();
 			requireThat(Files.exists(module.resolve(".cat")), "moduleCatExists").isFalse();
 
-			String sessionId = context.getFileName().toString().replace(".md", "");
-			String error = invokeSessionEnd("{\"cwd\":" + jsonString(module) + ",\"session_id\":\"" + sessionId + "\"}",
+			String error = invokeSessionEnd("{\"cwd\":" + jsonString(module) + ",\"session_id\":\"" + sessionId(context) +
+				"\"}",
 				environment, module);
 
 			requireThat(error, "sessionEndError").isEmpty();
@@ -479,6 +607,36 @@ public final class ClaudeSessionStartHookTest
 			requireThat(oversized.error(), "oversizedError").contains("input is too large");
 			requireThat(arguments.error(), "argumentsError").contains("accepts no arguments");
 		}
+	}
+
+	/**
+	 * Returns the session ID that names the work directory holding a main agent's rules file or a subagents' directory.
+	 *
+	 * @param file a rules file or the subagents' directory, directly inside a session work directory
+	 * @return the session ID
+	 */
+	private static String sessionId(Path file)
+	{
+		return file.getParent().getFileName().toString();
+	}
+
+	/**
+	 * Creates the work directory of another session with a marker that is two days old.
+	 *
+	 * @param project the project
+	 * @param sessionId the other session's ID
+	 * @param configuration the configuration directory that the marker names
+	 * @return the session's work directory
+	 * @throws IOException if the directory cannot be created
+	 */
+	private static Path writeOldMarker(Path project, String sessionId, Path configuration) throws IOException
+	{
+		Path directory = Files.createDirectories(project.resolve(".cat/work").resolve(sessionId).resolve("temp")).
+			getParent();
+		Files.writeString(directory.resolve("session.json"), "{\"harness\":\"claude\",\"configuration_directory\":" +
+			jsonString(configuration) + ",\"created_at\":\"" + Instant.now().minus(Duration.ofDays(2)) +
+			"\",\"transcripts\":[\"projects/*/" + sessionId + ".jsonl\"]}", UTF_8);
+		return directory;
 	}
 
 	/**

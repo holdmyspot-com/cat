@@ -5,6 +5,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.Platform;
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.ToolScope;
 import java.io.Console;
 import java.io.File;
 import java.io.IOException;
@@ -15,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -28,8 +31,10 @@ import java.util.Optional;
  * commands in, {@code bash} or PowerShell, and saves what it writes to standard output and standard error. It saves
  * the command's exit status in {@code <file>.exit-status}, so that whichever call prints the last part,
  * {@code run-part} or {@code read-part}, exits with that status; a part that more parts follow exits with status 0.
- * The output stays inside the project: it is saved in the CAT temporary folder, {@code .cat/work/temp}, of the nearest
- * folder that holds one, starting from the folder that the command runs in.
+ * The output stays inside the project: in a Codex thread, which names its ID in {@code CODEX_THREAD_ID}, it is saved
+ * in the temporary folder of the thread's session work directory (see {@link SessionWorkDirectory}) in the nearest CAT
+ * project that contains the folder that the command runs in. Outside a CAT project, or without
+ * {@code CODEX_THREAD_ID}, it is saved in the folder that {@link #fallbackFolder(Map)} returns.
  * <p>
  * The command receives the saved output's path in {@code CAT_RUN_PART_OUTPUT} and, in {@code bash}, finds the
  * plugin's {@code client/run-part-overrides} folder first on its {@code PATH}. A program in that folder, such as
@@ -45,9 +50,17 @@ public final class CodexRunPart
 	 */
 	private static final String[] LOCALE_VARIABLES = {"LC_ALL", "LC_CTYPE"};
 	/**
-	 * The CAT temporary folder relative to a project folder. The session-start hook creates it in the session's project.
+	 * The start of the name of the folder that holds one saved output.
 	 */
-	private static final Path CAT_TEMP = Path.of(".cat/work/temp");
+	static final String FOLDER_PREFIX = "run-part-";
+	/**
+	 * The name of the saved output's file in its folder.
+	 */
+	static final String SAVED_OUTPUT = "output.txt";
+	/**
+	 * The text appended to a saved output's path to name the file that holds the command's exit status.
+	 */
+	static final String EXIT_STATUS_SUFFIX = ".exit-status";
 	/**
 	 * The folder, in the runtime image, of the programs that the command finds before the caller's {@code PATH}.
 	 */
@@ -78,15 +91,16 @@ public final class CodexRunPart
 	 * @param args a non-null empty command-line argument array
 	 * @param input the command
 	 * @param terminal {@code true} if {@code input} is a terminal, which holds no command
-	 * @param workingDirectory the folder that the command runs in; the output is saved in the CAT temporary folder of
-	 *   the nearest folder that holds one, starting from this folder
+	 * @param workingDirectory the folder that the command runs in; in a Codex thread, the output is saved in the
+	 *   temporary folder of the thread's session work directory in the nearest CAT project that contains this folder
 	 * @param shell the shell that runs the command, and that runs the commands that this program prints
 	 * @param readPart the {@code read-part} launcher that the line that ends a part names
 	 * @param overrides the folder of the programs that the command finds before the caller's {@code PATH} when
 	 *   {@code shell} is {@code bash}
-	 * @param environment the environment: when no folder from {@code workingDirectory} upward holds a CAT temporary
-	 *   folder, {@code TMPDIR}, or else {@code TEMP}, names the folder of the saved output, which is the JVM's
-	 *   temporary folder ({@code java.io.tmpdir}) when both are unset; the command
+	 * @param environment the environment: {@code CODEX_THREAD_ID} names the Codex thread, and {@code CODEX_HOME}, or
+	 *   else the user's home directory, locates Codex's configuration, which the session marker records; outside a
+	 *   CAT project, or without {@code CODEX_THREAD_ID}, the output is saved in the folder that
+	 *   {@link #fallbackFolder(Map)} returns for this environment; the command
 	 *   runs in this environment with the caller's locale restored, the overrides folder first on a set {@code PATH}
 	 *   when {@code shell} is {@code bash}, and {@code CAT_RUN_PART_OUTPUT} naming the saved output; in PowerShell,
 	 *   {@code CAT_RG_LINE_LIMIT} sets the line limit of a command that is one {@code rg} search
@@ -138,8 +152,8 @@ public final class CodexRunPart
 					command = search.get();
 				}
 			}
-			Path saved = Files.createTempDirectory(outputFolder(workingDirectory, environment), "run-part-").
-				resolve("output.txt");
+			Path saved = Files.createTempDirectory(outputFolder(workingDirectory, environment), FOLDER_PREFIX).
+				resolve(SAVED_OUTPUT);
 			ProcessBuilder builder = new ProcessBuilder(shell.processArguments(command, environment)).
 				directory(workingDirectory.toFile()).
 				redirectErrorStream(true).
@@ -160,7 +174,7 @@ public final class CodexRunPart
 			}
 			if (search.isPresent())
 				status = RipgrepOutputLimit.limitOutput(saved, status, lineLimit);
-			Files.writeString(Path.of(saved + ".exit-status"), status + "\n");
+			Files.writeString(Path.of(saved + EXIT_STATUS_SUFFIX), status + "\n");
 			return CodexReadPart.run(new String[]{saved.toString()}, shell, readPart, environment, output, error);
 		}
 		catch (IOException | InvalidPathException e)
@@ -181,17 +195,38 @@ public final class CodexRunPart
 	 *
 	 * @param workingDirectory the folder that the command runs in
 	 * @param environment the environment of the JVM
-	 * @return the CAT temporary folder of the nearest folder that holds one, starting from {@code workingDirectory};
-	 *   otherwise {@code TMPDIR}, or else {@code TEMP}, or the JVM's temporary folder when both are unset
+	 * @return the temporary folder of the Codex thread's session work directory in the nearest CAT project that
+	 *   contains {@code workingDirectory}; otherwise the folder that {@link #fallbackFolder(Map)} returns
+	 * @throws IOException if {@code CODEX_THREAD_ID} is not a UUID in canonical form, if neither {@code CODEX_HOME} nor
+	 *   the home directory's variable is set, or if the session work directory cannot be created
 	 */
-	private static Path outputFolder(Path workingDirectory, Map<String, String> environment)
+	private static Path outputFolder(Path workingDirectory, Map<String, String> environment) throws IOException
 	{
-		for (Path folder = workingDirectory.toAbsolutePath(); folder != null; folder = folder.getParent())
+		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment,
+			List.of(CodexSessionHarness.HARNESS)))
 		{
-			Path catTemp = folder.resolve(CAT_TEMP);
-			if (Files.isDirectory(catTemp))
-				return catTemp;
+			if (scope.isInProject())
+			{
+				Optional<SessionWorkDirectory> session = scope.sessionWorkDirectory();
+				if (session.isPresent())
+					return session.get().temp();
+			}
 		}
+		return fallbackFolder(environment);
+	}
+
+	/**
+	 * Returns the folder that holds the saved output of a command that runs outside a CAT project or outside a Codex
+	 * thread.
+	 *
+	 * @param environment the environment of the JVM
+	 * @return the folder that {@code TMPDIR}, or else {@code TEMP}, names, or the JVM's temporary folder
+	 *   ({@code java.io.tmpdir}) when both are unset or empty
+	 * @throws NullPointerException if {@code environment} is null
+	 */
+	public static Path fallbackFolder(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
 		for (String name : new String[]{"TMPDIR", "TEMP"})
 		{
 			String temporary = environment.get(name);

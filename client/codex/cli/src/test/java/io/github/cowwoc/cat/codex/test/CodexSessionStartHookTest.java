@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.codex.CodexSessionStartHook;
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.ByteArrayInputStream;
@@ -14,6 +15,8 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -26,6 +29,9 @@ import tools.jackson.databind.JsonNode;
  */
 public final class CodexSessionStartHookTest
 {
+	private static final String CAT_TEMP_RULE = "`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" +
+		SessionWorkDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n";
+
 	/**
 	 * Verifies unconditional rules are injected while path-scoped rules remain lazy.
 	 */
@@ -206,11 +212,82 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies the hook creates {@code .cat/work/temp} in the session's project directory, so the agent can create a
-	 * child directory there without first creating its parent.
+	 * Verifies the hook creates the work directory of the session that the input's {@code session_id} names in the
+	 * session's project directory, with its {@code temp} directory, so the agent can create a child directory there
+	 * without first creating its parent, and a marker that records the harness, its configuration directory and where
+	 * the session's transcript is kept. The hook no longer creates the shared temporary directory.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void createsCatTemp() throws IOException
+	public void createsSessionWorkDirectory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path configuration = project.resolve("codex-home");
+			writeReadingGuidance(plugin);
+			Path directory = project.resolve(".cat/work").resolve(sessionId());
+
+			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(), "CODEX_HOME",
+				configuration.toString()), Path.of("."));
+
+			requireThat(result.error(), "error").isEmpty();
+			requireThat(directory.resolve("temp"), "temp").isDirectory();
+			requireThat(Files.exists(project.resolve(".cat/work/temp")), "sharedTempExists").isFalse();
+			JsonNode marker = readJson(Files.readString(directory.resolve("session.json"), UTF_8));
+			requireThat(marker.path("harness").asString(), "harness").isEqualTo("codex");
+			requireThat(marker.path("configuration_directory").asString(), "configurationDirectory").
+				isEqualTo(configuration.toString());
+			requireThat(marker.path("transcripts").get(0).asString(), "liveTranscript").
+				isEqualTo("sessions/**/rollout-*-" + sessionId() + ".jsonl");
+			requireThat(marker.path("transcripts").get(1).asString(), "archivedTranscript").
+				isEqualTo("archived_sessions/rollout-*-" + sessionId() + ".jsonl");
+		}
+	}
+
+	/**
+	 * Verifies SessionStart removes the work directory of another session whose marker is older than a day and whose
+	 * transcript the configuration directory no longer holds, and keeps the directory of a session whose transcript is
+	 * archived.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void sweepsGoneSessions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path configuration = project.resolve("codex-home");
+			writeReadingGuidance(plugin);
+			String gone = "11111111-1111-4111-8111-111111111111";
+			String archived = "22222222-2222-4222-8222-222222222222";
+			Path transcript = configuration.resolve("archived_sessions/rollout-2026-10-14T10-00-00-" + archived +
+				".jsonl");
+			Files.createDirectories(transcript.getParent());
+			Files.writeString(transcript, "{}\n", UTF_8);
+			Path goneDirectory = writeOldMarker(project, gone, configuration);
+			Path archivedDirectory = writeOldMarker(project, archived, configuration);
+
+			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(), "CODEX_HOME",
+				configuration.toString()), Path.of("."));
+
+			requireThat(result.error(), "error").isEmpty();
+			requireThat(Files.exists(goneDirectory), "goneExists").isFalse();
+			requireThat(archivedDirectory, "archivedDirectory").isDirectory();
+		}
+	}
+
+	/**
+	 * Verifies the hook refuses a {@code session_id} that is not a UUID in canonical form and creates no work directory.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void rejectsNonCanonicalSessionId() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -218,11 +295,12 @@ public final class CodexSessionStartHookTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			writeReadingGuidance(plugin);
 
-			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()),
-				Path.of("."));
+			HookResult result = invoke("{\"session_id\":\"{" + sessionId() + "}\",\"cwd\":" + jsonString(project) + "}",
+				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of("."));
 
-			requireThat(result.error(), "error").isEmpty();
-			requireThat(Files.isDirectory(project.resolve(".cat/work/temp")), "catTempExists").isTrue();
+			assertStopped(result, "nonCanonical");
+			requireThat(result.error(), "error").contains("not a UUID in canonical form");
+			requireThat(Files.exists(project.resolve(".cat/work")), "workExists").isFalse();
 		}
 	}
 
@@ -285,13 +363,13 @@ public final class CodexSessionStartHookTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			writeReadingGuidance(plugin);
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/codex")).resolve("cat-env.md"),
-				"# CAT Environment\n\nEnvironment guidance\n");
+				"# CAT Environment\n\nEnvironment guidance\n\n" + CAT_TEMP_RULE);
 			Files.writeString(Files.createDirectories(project.resolve(".cat/rules/common")).resolve("rule.md"),
 				"project guidance");
 
 			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), Path.of("."));
 
-			Path rulesFile = project.resolve(".cat/work/temp/codex-context/" + sessionId() + ".md");
+			Path rulesFile = project.resolve(".cat/work").resolve(sessionId()).resolve("rules.md");
 			requireThat(context(result), "context").
 				startsWith("# Reading Command Output\n\nRun `" + plugin.resolve("bin/run-part") + "`.\n\n# CAT Rules\n\n").
 				contains("CAT's rules for this session are in `" + rulesFile + "`. Read that whole file, as described " +
@@ -299,7 +377,8 @@ public final class CodexSessionStartHookTest
 					"without it, then apply every instruction in it for the rest of this conversation.").
 				doesNotContain("Environment guidance").doesNotContain("project guidance");
 			requireThat(Files.readString(rulesFile, UTF_8), "rules").startsWith("# CAT Environment").
-				contains("project guidance").doesNotContain("# Reading Command Output");
+				contains("project guidance").doesNotContain("# Reading Command Output").
+				contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" + sessionId() + "/temp`.");
 			requireThat(result.error(), "error").isEmpty();
 		}
 	}
@@ -316,15 +395,17 @@ public final class CodexSessionStartHookTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/codex")).resolve("cat-env.md"),
-				"# CAT Environment\n\nEnvironment guidance\n");
+				"# CAT Environment\n\nEnvironment guidance\n\n" + CAT_TEMP_RULE);
 			Files.writeString(Files.createDirectories(project.resolve(".cat/rules/common")).resolve("rule.md"),
 				"project guidance");
 
 			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), Path.of("."));
 
 			requireThat(context(result), "context").contains("Environment guidance").contains("project guidance").
-				doesNotContain("CAT's rules for this session are in");
-			requireThat(Files.exists(project.resolve(".cat/work/temp/codex-context")), "rulesDirectoryExists").isFalse();
+				doesNotContain("CAT's rules for this session are in").
+				contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" + sessionId() + "/temp`.");
+			requireThat(Files.exists(project.resolve(".cat/work").resolve(sessionId()).resolve("rules.md")),
+				"rulesFileExists").isFalse();
 			requireThat(result.error(), "error").isEmpty();
 		}
 	}
@@ -365,7 +446,7 @@ public final class CodexSessionStartHookTest
 
 			HookResult malformed = invoke("{", Map.of("PLUGIN_ROOT", plugin.toString()), project);
 			HookResult missingInstallDirectory = invoke("{}", Map.of("CAT_INSTALL_DIR", project.toString()), project);
-			HookResult invalidRule = invoke("{}", Map.of("PLUGIN_ROOT", plugin.toString()), project);
+			HookResult invalidRule = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), project);
 			HookResult oversized = invoke("x".repeat(1_048_577), Map.of("PLUGIN_ROOT", plugin.toString()),
 				project);
 
@@ -400,10 +481,10 @@ public final class CodexSessionStartHookTest
 
 			HookResult invalidProject = invoke(event(project.resolve("missing")),
 				Map.of("PLUGIN_ROOT", plugin.toString()), project);
-			HookResult unsafeRule = invoke("{}", Map.of("PLUGIN_ROOT", plugin.toString()), project);
+			HookResult unsafeRule = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), project);
 			Files.delete(rules.resolve("unsafe.md"));
 			Files.writeString(rules.resolve("large.md"), "x".repeat(1_048_577));
-			HookResult oversizedRule = invoke("{}", Map.of("PLUGIN_ROOT", plugin.toString()), project);
+			HookResult oversizedRule = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), project);
 
 			assertStopped(invalidProject, "invalidProject");
 			assertStopped(unsafeRule, "unsafeRule");
@@ -518,6 +599,40 @@ public final class CodexSessionStartHookTest
 		assert result != null;
 		JsonNode envelope = readResponse(result);
 		return envelope.at("/hookSpecificOutput/additionalContext").asString();
+	}
+
+	/**
+	 * Creates the work directory of another session with a Codex marker that is two days old.
+	 *
+	 * @param project the project
+	 * @param sessionId the other session's ID
+	 * @param configuration the configuration directory that the marker names
+	 * @return the session's work directory
+	 * @throws IOException if the directory cannot be created
+	 */
+	private static Path writeOldMarker(Path project, String sessionId, Path configuration) throws IOException
+	{
+		Path directory = project.resolve(".cat/work").resolve(sessionId);
+		Files.createDirectories(directory.resolve("temp"));
+		Files.writeString(directory.resolve("session.json"), "{\"harness\":\"codex\",\"configuration_directory\":" +
+			jsonString(configuration) + ",\"created_at\":\"" + Instant.now().minus(Duration.ofDays(2)) +
+			"\",\"transcripts\":[\"sessions/**/rollout-*-" + sessionId + ".jsonl\",\"archived_sessions/rollout-*-" +
+			sessionId + ".jsonl\"]}", UTF_8);
+		return directory;
+	}
+
+	/**
+	 * Parses JSON text.
+	 *
+	 * @param text the JSON text
+	 * @return the parsed value
+	 */
+	private static JsonNode readJson(String text)
+	{
+		try (ToolScope scope = new ToolScope())
+		{
+			return scope.json().readTree(text);
+		}
 	}
 
 	/**

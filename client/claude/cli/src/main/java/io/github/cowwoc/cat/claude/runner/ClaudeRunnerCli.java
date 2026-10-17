@@ -7,6 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.Platform;
+import io.github.cowwoc.cat.common.SessionHarness;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.runner.HarnessRunManager;
 import io.github.cowwoc.cat.common.runner.HarnessArtifact;
@@ -15,6 +16,7 @@ import io.github.cowwoc.cat.common.runner.HarnessCapacity;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerBridge;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerMaintenance;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerOptions;
+import io.github.cowwoc.cat.common.runner.HarnessTemporaryRoot;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -80,10 +82,11 @@ public final class ClaudeRunnerCli
 	public static void executeMaintenance(String[] args) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
-		try (ToolScope scope = new ToolScope())
+		Map<String, String> environment = Platform.current().environment(System.getenv());
+		try (ToolScope scope = ToolScope.forSession(Path.of(""), environment, SessionHarness.installed()))
 		{
-			HarnessRunnerMaintenance.execute(args, HARNESS_ID, scope.temporaryWorkRoot(),
-				Platform.current().environment(System.getenv()), System.out);
+			HarnessRunnerMaintenance.execute(args, HARNESS_ID, HarnessTemporaryRoot.from(scope), environment,
+				System.out);
 		}
 	}
 
@@ -106,10 +109,10 @@ public final class ClaudeRunnerCli
 		requireThat(output, "output").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = ToolScope.forSession(Path.of(""), environment, SessionHarness.installed()))
 		{
 			HarnessRunnerOptions options = HarnessRunnerOptions.parse(withoutClaudeOptions(args), "claude",
-				scope.temporaryWorkRoot());
+				HarnessTemporaryRoot.from(scope));
 			ClaudeAgentDefinition agent = loadAgent(options.artifact(), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());

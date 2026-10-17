@@ -1,5 +1,6 @@
 package io.github.cowwoc.cat.common.test;
 
+import static io.github.cowwoc.cat.common.test.SessionHarnesses.HARNESS_A;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -33,7 +34,7 @@ public final class HookScopeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-plugin-"));
-			try (HookScope scope = new HookScope(directory, directory))
+			try (HookScope scope = scope(directory, directory))
 			{
 				requireThat(scope.pluginRoot(), "pluginRoot").isEqualTo(directory.toAbsolutePath().normalize());
 			}
@@ -47,7 +48,7 @@ public final class HookScopeTest
 		expectedExceptionsMessageRegExp = "CAT installation directory is not a directory")
 	public void rejectsInvalidPluginRoot() throws IOException
 	{
-		try (HookScope scope = new HookScope(Path.of("missing-plugin-root"), Path.of("home")))
+		try (HookScope scope = scope(Path.of("missing-plugin-root"), Path.of("home")))
 		{
 			scope.pluginRoot();
 		}
@@ -63,7 +64,7 @@ public final class HookScopeTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory("cat-harness-project-"));
-			try (HookScope scope = new HookScope(plugin, plugin))
+			try (HookScope scope = scope(plugin, plugin))
 			{
 				Path actual = scope.projectDir(scope.json().createObjectNode().put("cwd", harnessDirectory.toString()),
 					Path.of("."));
@@ -82,7 +83,7 @@ public final class HookScopeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-plugin-"));
-			try (HookScope scope = new HookScope(directory, directory))
+			try (HookScope scope = scope(directory, directory))
 			{
 				requireThat(scope.json() == scope.json(), "sameMapper").isTrue();
 			}
@@ -98,7 +99,7 @@ public final class HookScopeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-plugin-"));
-			try (HookScope scope = new HookScope(directory, directory))
+			try (HookScope scope = scope(directory, directory))
 			{
 				requireThat(scope.yaml() == scope.yaml(), "sameMapper").isTrue();
 			}
@@ -118,7 +119,7 @@ public final class HookScopeTest
 			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
 			Map<String, String> environment = Map.of("ROOT", plugin + " ", "USER_HOME", home.toString(),
 				"CAT_INSTALL_DIR", plugin.toString(), "OTHER", "value");
-			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME"))
+			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME", HARNESS_A))
 			{
 				requireThat(scope.pluginRoot(), "pluginRoot").isEqualTo(plugin.toAbsolutePath().normalize());
 				requireThat(scope.userRulesRoot(), "userRulesRoot").
@@ -139,7 +140,7 @@ public final class HookScopeTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
 			Map<String, String> environment = Map.of("ROOT", plugin.toString(), "USER_HOME", plugin.toString(),
 				"CAT_CALLER_LC_ALL", "+C", "CAT_CALLER_LC_CTYPE", "-");
-			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME"))
+			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME", HARNESS_A))
 			{
 				requireThat(scope.pluginRoot(), "pluginRoot").isEqualTo(plugin.toAbsolutePath().normalize());
 			}
@@ -152,7 +153,8 @@ public final class HookScopeTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "Harness ROOT is not set")
 	public void rejectsAnEnvironmentWithoutTheRoot() throws IOException
 	{
-		HookScope.fromEnvironment(Map.of("ROOT", " ", "USER_HOME", "home"), "Harness", "ROOT", "USER_HOME");
+		HookScope.fromEnvironment(Map.of("ROOT", " ", "USER_HOME", "home"), "Harness", "ROOT", "USER_HOME",
+			HARNESS_A);
 	}
 
 	/**
@@ -161,7 +163,7 @@ public final class HookScopeTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "Harness USER_HOME is not set")
 	public void rejectsAnEnvironmentWithoutTheHome() throws IOException
 	{
-		HookScope.fromEnvironment(Map.of("ROOT", "plugin"), "Harness", "ROOT", "USER_HOME");
+		HookScope.fromEnvironment(Map.of("ROOT", "plugin"), "Harness", "ROOT", "USER_HOME", HARNESS_A);
 	}
 
 	/**
@@ -172,7 +174,7 @@ public final class HookScopeTest
 	public void rejectsAConflictingCatVariable() throws IOException
 	{
 		HookScope.fromEnvironment(Map.of("ROOT", "plugin", "USER_HOME", "home", "CAT_INSTALL_DIR", "other"), "Harness",
-			"ROOT", "USER_HOME");
+			"ROOT", "USER_HOME", HARNESS_A);
 	}
 
 	/**
@@ -181,7 +183,7 @@ public final class HookScopeTest
 	@Test
 	public void readsAnEmptyInputAsAnEmptyEvent() throws IOException
 	{
-		try (HookScope scope = new HookScope(Path.of("plugin"), Path.of("home")))
+		try (HookScope scope = scope(Path.of("plugin"), Path.of("home")))
 		{
 			requireThat(scope.readEvent("Event", new ByteArrayInputStream(new byte[0])).isEmpty(), "isEmpty").isTrue();
 		}
@@ -193,7 +195,7 @@ public final class HookScopeTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "Event input is too large")
 	public void rejectsAnOversizedInput() throws IOException
 	{
-		try (HookScope scope = new HookScope(Path.of("plugin"), Path.of("home")))
+		try (HookScope scope = scope(Path.of("plugin"), Path.of("home")))
 		{
 			scope.readEvent("Event", new ByteArrayInputStream(new byte[1_048_577]));
 		}
@@ -205,7 +207,7 @@ public final class HookScopeTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "Event input must be a JSON object")
 	public void rejectsAnInputThatIsNotAnObject() throws IOException
 	{
-		try (HookScope scope = new HookScope(Path.of("plugin"), Path.of("home")))
+		try (HookScope scope = scope(Path.of("plugin"), Path.of("home")))
 		{
 			scope.readEvent("Event", new ByteArrayInputStream("[]".getBytes(UTF_8)));
 		}
@@ -217,7 +219,7 @@ public final class HookScopeTest
 	@Test
 	public void returnsTheSubagentTypeOnlyWhenItIsText() throws IOException
 	{
-		try (HookScope scope = new HookScope(Path.of("plugin"), Path.of("home")))
+		try (HookScope scope = scope(Path.of("plugin"), Path.of("home")))
 		{
 			String named = scope.subagentType(scope.json().readTree("{\"agent_type\":\"reviewer\"}"));
 			String numeric = scope.subagentType(scope.json().readTree("{\"agent_type\":1}"));
@@ -227,5 +229,17 @@ public final class HookScopeTest
 			requireThat(numeric, "numeric").isEmpty();
 			requireThat(absent, "absent").isEmpty();
 		}
+	}
+
+	/**
+	 * Opens a hook scope whose harness keeps its configuration in the user's home directory.
+	 *
+	 * @param pluginRoot the CAT plugin root
+	 * @param userHome the user's home directory
+	 * @return the scope
+	 */
+	private static HookScope scope(Path pluginRoot, Path userHome)
+	{
+		return new HookScope(pluginRoot, userHome, HARNESS_A, userHome);
 	}
 }

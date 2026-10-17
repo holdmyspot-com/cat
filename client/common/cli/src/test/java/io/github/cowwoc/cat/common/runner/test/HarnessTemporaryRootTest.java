@@ -21,12 +21,12 @@ public final class HarnessTemporaryRootTest
 	}
 
 	/**
-	 * Verifies every runner operation defaults beneath the scope-provided CAT temporary root.
+	 * Verifies every runner operation defaults beneath the session's temporary directory.
 	 */
 	@Test
 	public void defaultsBelowCatTemporaryRoot()
 	{
-		Path result = HarnessTemporaryRoot.defaultRunRoot(Path.of("/caller-temp").toAbsolutePath());
+		Path result = HarnessTemporaryRoot.of(Path.of("/caller-temp").toAbsolutePath()).defaultRunRoot();
 
 		requireThat(result, "result").isEqualTo(Path.of("/caller-temp/runner-runs").toAbsolutePath());
 	}

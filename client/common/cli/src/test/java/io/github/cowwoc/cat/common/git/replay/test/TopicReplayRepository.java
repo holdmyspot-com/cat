@@ -1,7 +1,6 @@
 package io.github.cowwoc.cat.common.git.replay.test;
 
 import io.github.cowwoc.cat.common.git.Git;
-import io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -36,7 +35,7 @@ final class TopicReplayRepository
 	static Path invocationDirectory(Path repository, String name) throws IOException
 	{
 		Files.createDirectories(repository.resolve(".cat"));
-		Path root = GitTopicReplayEditor.temporaryRoot(repository);
+		Path root = repository.resolve(".cat/work/temp");
 		Files.createDirectories(root);
 		return Files.createDirectory(root.resolve(name));
 	}

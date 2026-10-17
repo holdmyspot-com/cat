@@ -279,7 +279,7 @@ public final class CodexReadPart
 	 */
 	private static int savedStatus(String path)
 	{
-		Path saved = Path.of(path + ".exit-status");
+		Path saved = Path.of(path + CodexRunPart.EXIT_STATUS_SUFFIX);
 		if (!Files.isRegularFile(saved))
 			return 0;
 		byte[] bytes;

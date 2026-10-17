@@ -7,66 +7,80 @@ import io.github.cowwoc.pouch10.core.Reference;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
- * Owns values and services shared while one CLI tool operation runs.
+ * Owns values and services shared while one CLI tool operation runs, including the work directory of the session
+ * whose tool shell runs the tool. The session is the one that a harness's session variable names, and its directory is
+ * in the nearest enclosing CAT project.
  */
 public final class ToolScope implements AutoCloseable
 {
 	private boolean closed;
-	private final Path catWork;
+	private final Path projectRoot;
+	private final boolean inProject;
+	private final Map<String, String> environment;
+	private final List<SessionHarness> harnesses;
+	private SessionWorkDirectory sessionWorkDirectory;
 	private final Reference<JsonMapper> json = LazyReference.create(() -> JsonMapper.builder().
 		build());
 	private final Reference<YAMLMapper> yaml = LazyReference.create(() -> YAMLMapper.builder().
 		build());
 
 	/**
-	 * Creates an open tool scope.
+	 * Creates an open tool scope without a session.
 	 */
 	public ToolScope()
 	{
-		this(Path.of(""));
+		this(Path.of(""), Map.of(), List.of());
 	}
 
 	/**
-	 * Creates an open tool scope for the project enclosing a tool's working directory.
+	 * Creates an open tool scope for the session whose tool shell runs a tool.
 	 *
 	 * @param workingDirectory the directory from which the tool was invoked
-	 * @return an open tool scope for that project
-	 * @throws NullPointerException if {@code workingDirectory} is {@code null}
+	 * @param environment the tool's environment
+	 * @param harnesses the harnesses whose session variables may name the session, in the order in which they are
+	 *   consulted
+	 * @return an open tool scope
+	 * @throws NullPointerException if any argument is null
 	 */
-	public static ToolScope forWorkingDirectory(Path workingDirectory)
+	public static ToolScope forSession(Path workingDirectory, Map<String, String> environment,
+		List<SessionHarness> harnesses)
 	{
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
-		return new ToolScope(workingDirectory);
+		requireThat(environment, "environment").isNotNull();
+		requireThat(harnesses, "harnesses").isNotNull();
+		return new ToolScope(workingDirectory, environment, harnesses);
 	}
 
 	/**
-	 * Creates an open tool scope for one project directory.
+	 * Creates an open tool scope.
 	 *
 	 * @param workingDirectory the directory from which the tool was invoked
+	 * @param environment the tool's environment
+	 * @param harnesses the harnesses whose session variables may name the session
 	 */
-	ToolScope(Path workingDirectory)
-	{
-		Path projectRoot = projectRoot(workingDirectory);
-		catWork = projectRoot.resolve(".cat/work");
-	}
-
-	/**
-	 * Finds the nearest enclosing CAT project root.
-	 *
-	 * @param workingDirectory the tool's invocation directory
-	 * @return the enclosing CAT project root, or the invocation directory when it is not in a CAT project
-	 */
-	private static Path projectRoot(Path workingDirectory)
+	private ToolScope(Path workingDirectory, Map<String, String> environment, List<SessionHarness> harnesses)
 	{
 		Path current = workingDirectory.toAbsolutePath().normalize();
-		for (Path candidate = current; candidate != null; candidate = candidate.getParent())
+		Path root = null;
+		for (Path candidate = current; candidate != null && root == null; candidate = candidate.getParent())
 			if (Files.isDirectory(candidate.resolve(".cat")))
-				return candidate;
-		return current;
+				root = candidate;
+		this.inProject = root != null;
+		if (root == null)
+			root = current;
+		this.projectRoot = root;
+		this.environment = Map.copyOf(environment);
+		this.harnesses = List.copyOf(harnesses);
 	}
 
 	/**
@@ -94,37 +108,81 @@ public final class ToolScope implements AutoCloseable
 	}
 
 	/**
-	 * Returns the CAT-owned work root for this tool operation.
+	 * Indicates whether a CAT project encloses the tool's working directory.
 	 *
-	 * @return the work root
+	 * @return {@code true} if the working directory or one of its parents holds a {@code .cat} directory
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	public Path catWork()
+	public boolean isInProject()
 	{
 		ensureOpen();
-		return catWork;
+		return inProject;
 	}
 
 	/**
-	 * Returns the CAT-owned root for invocation-local temporary resources.
+	 * Returns the work directory of the session that the first set session variable names, creating it and its marker
+	 * on first use. Without a CAT project, the directory is in the tool's working directory.
 	 *
-	 * @return the CAT work temp directory
+	 * @return the session work directory, or empty when no session variable is set
 	 * @throws IllegalStateException if this scope is closed
+	 * @throws IOException if the session variable is not a UUID in canonical form, if the harness's configuration
+	 *   directory cannot be found, or if the directory or its marker cannot be created
 	 */
-	public Path temporaryWorkRoot()
+	public Optional<SessionWorkDirectory> sessionWorkDirectory() throws IOException
 	{
 		ensureOpen();
-		return catWork.resolve("temp");
+		if (sessionWorkDirectory != null)
+			return Optional.of(sessionWorkDirectory);
+		for (SessionHarness harness : harnesses)
+		{
+			String sessionId = environment.get(harness.sessionVariable());
+			if (sessionId == null || sessionId.isBlank())
+				continue;
+			Path configurationDirectory = harness.configurationDirectory(environment,
+				Platform.current().homeVariable());
+			sessionWorkDirectory = SessionWorkDirectory.open(projectRoot, sessionId.strip(), harness,
+				configurationDirectory, Instant.now(), json());
+			return Optional.of(sessionWorkDirectory);
+		}
+		return Optional.empty();
 	}
 
 	/**
-	 * Returns the CAT-owned root for invocation-local temporary resources.
+	 * Returns the work directory of the session that the first set session variable names, as
+	 * {@link #sessionWorkDirectory()} does, for a tool that cannot run without one.
 	 *
-	 * @return the CAT work temp directory
+	 * @return the session work directory
+	 * @throws IllegalStateException if this scope is closed
+	 * @throws IOException if no session variable is set, with a message that names every session variable, or for any
+	 *   reason that {@link #sessionWorkDirectory()} throws
 	 */
-	public Path catTemp()
+	public SessionWorkDirectory requireSessionWorkDirectory() throws IOException
 	{
-		return temporaryWorkRoot();
+		Optional<SessionWorkDirectory> session = sessionWorkDirectory();
+		if (session.isEmpty())
+			throw new IOException(missingSession());
+		return session.get();
+	}
+
+	/**
+	 * Returns the sentence that reports a tool shell without a session variable.
+	 *
+	 * @return the sentence, which names every session variable that this scope consults
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	public String missingSession()
+	{
+		ensureOpen();
+		List<String> variables = new ArrayList<>();
+		for (SessionHarness harness : harnesses)
+			variables.add(harness.sessionVariable());
+		return switch (variables.size())
+		{
+			case 0 -> "No harness session variable is known";
+			case 1 -> variables.getFirst() + " is not set";
+			case 2 -> "Neither " + variables.getFirst() + " nor " + variables.getLast() + " is set";
+			default -> "None of " + String.join(", ", variables) + " is set";
+		};
 	}
 
 	/**

@@ -1,10 +1,18 @@
 package io.github.cowwoc.cat.common.runner.test;
 
+import static io.github.cowwoc.cat.common.test.SessionHarnesses.HARNESS_A;
+import static io.github.cowwoc.cat.common.test.SessionHarnesses.HARNESS_B;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.runner.HarnessRunnerOptions;
+import io.github.cowwoc.cat.common.runner.HarnessTemporaryRoot;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
@@ -17,6 +25,12 @@ public final class HarnessRunnerOptionsTest
 	 * platform.
 	 */
 	private static final Path ROOT = Path.of("").toAbsolutePath().getRoot();
+	/**
+	 * The temporary root of a command that runs in a harness session whose temporary directory is {@code caller-temp}.
+	 */
+	private static final HarnessTemporaryRoot SESSION = HarnessTemporaryRoot.of(path("caller-temp"));
+	private static final String SESSION_ID = "6b1f7c1e-5d0a-4c55-9a8e-2f6c0f1d2e3a";
+
 	/**
 	 * Creates the test fixture.
 	 */
@@ -48,7 +62,7 @@ public final class HarnessRunnerOptionsTest
 			"--project", absolute("project"), "--run-root", absolute("caller-temp/runs"), "--executable", "/bin/harness",
 			"--model", "test-model", "--effort", "high", "--output", absolute("output"), "--receipt", absolute("receipt"),
 			"--keep-run", "--install-cat"},
-			"harness", path("caller-temp"));
+			"harness", SESSION);
 
 		requireThat(result.artifact(), "artifact").isEqualTo(path("artifact"));
 		requireThat(result.project(), "project").isEqualTo(path("project"));
@@ -70,7 +84,7 @@ public final class HarnessRunnerOptionsTest
 	public void excludesUserRulesWhenRequested()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--install-cat", "--exclude-user-rules"}, "harness", path("caller-temp"));
+			"--install-cat", "--exclude-user-rules"}, "harness", SESSION);
 
 		requireThat(result.installCat(), "installCat").isTrue();
 		requireThat(result.includeUserRules(), "includeUserRules").isFalse();
@@ -85,9 +99,9 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-C21
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--fixtures", absolute("runs/fixtures/trial")}, "harness", path("caller-temp"));
+			"--fixtures", absolute("runs/fixtures/trial")}, "harness", SESSION);
 		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
-			"harness", path("caller-temp"));
+			"harness", SESSION);
 
 		requireThat(result.fixtures(), "fixtures").isEqualTo(path("runs/fixtures/trial"));
 		requireThat(without.fixtures(), "without").isNull();
@@ -103,9 +117,9 @@ public final class HarnessRunnerOptionsTest
 		// Requirement: R-W12
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
 			"--plugin", absolute("campaign/plugins/cat"), "--plugin", absolute("campaign/plugins/tools")}, "harness",
-			path("caller-temp"));
+			SESSION);
 		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
-			"harness", path("caller-temp"));
+			"harness", SESSION);
 
 		requireThat(result.plugins(), "plugins").isEqualTo(List.of(path("campaign/plugins/cat"),
 			path("campaign/plugins/tools")));
@@ -121,7 +135,7 @@ public final class HarnessRunnerOptionsTest
 		// Requirement: R-E24
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
 			"--deny-read", absolute("campaign/campaign.json"), "--deny-read", absolute("campaign/trials")}, "harness",
-			path("caller-temp"));
+			SESSION);
 
 		requireThat(result.deniedReads(),
 			"deniedReads").isEqualTo(List.of(path("campaign/campaign.json"),
@@ -137,7 +151,7 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E24
 		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--deny-read", "campaign.json"},
-			"harness", path("caller-temp"));
+			"harness", SESSION);
 	}
 
 	/**
@@ -148,7 +162,7 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E24
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
-			"harness", path("caller-temp"));
+			"harness", SESSION);
 
 		requireThat(result.deniedReads(), "deniedReads").isEmpty();
 	}
@@ -160,7 +174,7 @@ public final class HarnessRunnerOptionsTest
 	public void defaultsToNoCatInstallation()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
-			"harness", path("caller-temp"));
+			"harness", SESSION);
 
 		requireThat(result.installCat(), "installCat").isFalse();
 	}
@@ -171,7 +185,7 @@ public final class HarnessRunnerOptionsTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsMissingArtifact()
 	{
-		HarnessRunnerOptions.parse(new String[0], "harness", path("caller-temp"));
+		HarnessRunnerOptions.parse(new String[0], "harness", SESSION);
 	}
 
 	/**
@@ -181,7 +195,7 @@ public final class HarnessRunnerOptionsTest
 	public void rejectsIncompleteReceiptEvidence()
 	{
 		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--receipt", absolute("receipt")},
-			"harness", path("caller-temp"));
+			"harness", SESSION);
 	}
 
 	/**
@@ -191,7 +205,7 @@ public final class HarnessRunnerOptionsTest
 	public void rejectsUserRuleExclusionWithoutCat()
 	{
 		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--exclude-user-rules"}, "harness",
-			path("caller-temp"));
+			SESSION);
 	}
 
 	/**
@@ -202,7 +216,7 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E8
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
-			"harness", path("caller-temp"));
+			"harness", SESSION);
 
 		requireThat(result.maximumConcurrency(), "maximumConcurrency").isEqualTo(16);
 	}
@@ -215,9 +229,9 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E8
 		HarnessRunnerOptions lowest = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--max-concurrency", "1"}, "harness", path("caller-temp"));
+			"--max-concurrency", "1"}, "harness", SESSION);
 		HarnessRunnerOptions highest = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--max-concurrency", "16"}, "harness", path("caller-temp"));
+			"--max-concurrency", "16"}, "harness", SESSION);
 
 		requireThat(lowest.maximumConcurrency(), "lowest").isEqualTo(1);
 		requireThat(highest.maximumConcurrency(), "highest").isEqualTo(16);
@@ -231,7 +245,7 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E8
 		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--max-concurrency", "0"}, "harness",
-			path("caller-temp"));
+			SESSION);
 	}
 
 	/**
@@ -242,7 +256,97 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-E8
 		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--max-concurrency", "17"}, "harness",
-			path("caller-temp"));
+			SESSION);
+	}
+
+	/**
+	 * Verifies that without {@code --run-root} the runs go to {@code runner-runs} in the temporary directory of the work
+	 * directory of the session that the session variable names.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void defaultsRunRootToSessionTemp() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-runner-options-"));
+			Files.createDirectories(project.resolve(".cat"));
+			try (ToolScope scope = ToolScope.forSession(project, Map.of(HARNESS_B.sessionVariable(), SESSION_ID,
+				"HOME", project.toString()), List.of(HARNESS_A, HARNESS_B)))
+			{
+				HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact",
+					absolute("artifact")}, "harness", HarnessTemporaryRoot.from(scope));
+
+				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/work").resolve(SESSION_ID).
+					resolve("temp");
+				requireThat(result.runRoot(), "runRoot").isEqualTo(sessionTemp.resolve("runner-runs"));
+				requireThat(sessionTemp, "sessionTemp").isDirectory();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a command line that names {@code --run-root} inside a session leaves the session's work directory
+	 * alone.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void explicitRunRootLeavesSessionAlone() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-runner-options-"));
+			Files.createDirectories(project.resolve(".cat"));
+			try (ToolScope scope = ToolScope.forSession(project, Map.of(HARNESS_B.sessionVariable(), SESSION_ID,
+				"HOME", project.toString()), List.of(HARNESS_A, HARNESS_B)))
+			{
+				HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact",
+					absolute("artifact"), "--run-root", absolute("runs")}, "harness", HarnessTemporaryRoot.from(scope));
+
+				requireThat(result.runRoot(), "runRoot").isEqualTo(path("runs"));
+				requireThat(Files.exists(project.resolve(".cat/work")), "workRootExists").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that without a session variable the command line must name {@code --run-root}, that the refusal names
+	 * both session variables, and that {@code --run-root} selects the runs' directory.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void requiresRunRootWithoutSession() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-runner-options-"));
+			Files.createDirectories(project.resolve(".cat"));
+			try (ToolScope scope = ToolScope.forSession(project, Map.of("HOME", project.toString()),
+				List.of(HARNESS_A, HARNESS_B)))
+			{
+				HarnessTemporaryRoot temporaryRoot = HarnessTemporaryRoot.from(scope);
+				try
+				{
+					HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")}, "harness",
+						temporaryRoot);
+					throw new AssertionError("A command without a session or --run-root chose a run root");
+				}
+				catch (IllegalArgumentException e)
+				{
+					requireThat(e.getMessage(), "message").contains("--run-root").contains(HARNESS_A.sessionVariable()).
+						contains(HARNESS_B.sessionVariable());
+				}
+
+				HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact",
+					absolute("artifact"), "--run-root", absolute("runs")}, "harness", temporaryRoot);
+
+				requireThat(result.runRoot(), "runRoot").isEqualTo(path("runs"));
+				requireThat(Files.exists(project.resolve(".cat/work")), "workRootExists").isFalse();
+			}
+		}
 	}
 
 	/**

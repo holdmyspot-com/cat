@@ -1,10 +1,10 @@
 package io.github.cowwoc.cat.common.git.replay.test;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor;
 import io.github.cowwoc.cat.common.git.replay.Batch;
 import io.github.cowwoc.cat.common.git.replay.BatchManifest;
 import io.github.cowwoc.cat.common.git.replay.DestinationWitness;
-import io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor;
 import io.github.cowwoc.cat.common.git.replay.Output;
 import io.github.cowwoc.cat.common.git.replay.OutputWitness;
 import io.github.cowwoc.cat.common.git.replay.PatchArtifact;
@@ -67,8 +67,9 @@ public final class RecoveryTest
 				"verifiedPatch").isEqualTo(patch);
 			SealedPrefixRecovery.verifyBatchAfter(manifest.batches().getFirst(), FIRST_TREE);
 			SealedPrefixRecovery.verifyOutputAfter(first, witness, FIRST_TREE);
-			requireThat(new GitTopicReplayEditor(directory).affectedSuffix(manifestFile, "output_1"), "affectedSuffix").
-				containsExactly(List.of("output_1", "output_2"), "expectedSuffix");
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(directory, directory);
+			requireThat(editor.affectedSuffix(manifestFile, "output_1"), "affectedSuffix").containsExactly(
+				List.of("output_1", "output_2"), "expectedSuffix");
 		}
 	}
 

@@ -32,4 +32,6 @@ module io.github.cowwoc.cat.common.cli
 	exports io.github.cowwoc.cat.common.secrets to io.github.cowwoc.cat.common.cli.test;
 
 	opens io.github.cowwoc.cat.common.git.replay to tools.jackson.databind;
+
+	uses io.github.cowwoc.cat.common.SessionHarness;
 }

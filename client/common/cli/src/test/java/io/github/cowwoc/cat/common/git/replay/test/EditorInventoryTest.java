@@ -14,7 +14,6 @@ import io.github.cowwoc.cat.common.git.replay.CommandRunner;
 import io.github.cowwoc.cat.common.git.replay.EntryPointFamily;
 import io.github.cowwoc.cat.common.git.replay.EntryPoints;
 import io.github.cowwoc.cat.common.git.replay.ExposedEntryPoint;
-import io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor;
 import io.github.cowwoc.cat.common.git.replay.History;
 import io.github.cowwoc.cat.common.git.replay.ReplayJson;
 import io.github.cowwoc.cat.common.git.replay.ReviewEvidence;
@@ -45,20 +44,17 @@ public final class EditorInventoryTest
 	}
 
 	/**
-	 * Verifies a default replay workspace remains beneath the repository's CAT work root.
+	 * Runs a command that the editor no longer accepts.
 	 *
-	 * @throws IOException if the test workspace cannot be created
+	 * @param args the command and its arguments
+	 * @throws IOException if the command unexpectedly reaches filesystem work
 	 */
-	@Test
-	public void defaultsTemporaryRootToRepositoryCatWork() throws IOException
+	private static void rejectCommand(String... args) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "inventory-"));
-			Files.createDirectory(repository.resolve(".cat"));
-
-			requireThat(GitTopicReplayEditor.temporaryRoot(repository), "temporaryRoot").isEqualTo(
-				repository.resolve(".cat/work/temp"));
+			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "retired-"));
+			ReplayFixtures.editor(repository).execute(args);
 		}
 	}
 
@@ -71,8 +67,7 @@ public final class EditorInventoryTest
 		expectedExceptionsMessageRegExp = "Usage: GitTopicReplayEditor.*")
 	public void rejectsRetiredReviewSourceCommand() throws IOException
 	{
-		GitTopicReplayEditor.main(new String[] {"review-source", "manifest.json", "source", "fold", "output",
-			"evidence"});
+		rejectCommand("review-source", "manifest.json", "source", "fold", "output", "evidence");
 	}
 
 	/**
@@ -124,8 +119,7 @@ public final class EditorInventoryTest
 		expectedExceptionsMessageRegExp = "Usage: GitTopicReplayEditor.*")
 	public void rejectsRetiredSingleSourceReviewCommand() throws IOException
 	{
-		GitTopicReplayEditor.main(new String[] {"record-source-review", "manifest.json", "source", "whole",
-			"counterfactual", "evidence"});
+		rejectCommand("record-source-review", "manifest.json", "source", "whole", "counterfactual", "evidence");
 	}
 
 	/**
@@ -137,7 +131,7 @@ public final class EditorInventoryTest
 		expectedExceptionsMessageRegExp = "Usage: GitTopicReplayEditor.*")
 	public void rejectsReviewEvidenceImport() throws IOException
 	{
-		GitTopicReplayEditor.main(new String[] {"import-review-evidence", "previous.json", "replacement.json"});
+		rejectCommand("import-review-evidence", "previous.json", "replacement.json");
 	}
 
 	/**
@@ -154,7 +148,7 @@ public final class EditorInventoryTest
 			Path manifest = invocationManifest(repository);
 			Files.writeString(manifest, manifestJson());
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			new GitTopicReplayEditor(repository).writeOriginCandidates(manifest, output);
+			ReplayFixtures.editor(repository).writeOriginCandidates(manifest, output);
 
 			JsonNode candidates = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
 

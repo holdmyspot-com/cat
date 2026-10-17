@@ -10,4 +10,6 @@ module io.github.cowwoc.cat.codex.cli
 	exports io.github.cowwoc.cat.codex.optimizer;
 	exports io.github.cowwoc.cat.codex.runner to io.github.cowwoc.cat.codex.cli.test;
 	exports io.github.cowwoc.cat.codex.secrets to io.github.cowwoc.cat.codex.cli.test;
+
+	provides io.github.cowwoc.cat.common.SessionHarness with io.github.cowwoc.cat.codex.CodexSessionHarness;
 }

@@ -5,12 +5,15 @@ import static io.github.cowwoc.cat.codex.CodexPluginInfo.HARNESS_ID;
 import io.github.cowwoc.cat.common.HookScope;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.SessionRules;
+import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Map;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -40,8 +43,13 @@ final class CodexRuleInjectionHook
 	 * Loads rules for one Codex hook event and emits its harness JSON response.
 	 * <p>
 	 * A subagent receives its rules in the response. For SessionStart, the response holds only the guidance on reading
-	 * a file whole and a pointer to a file that holds the session's other rules; a plugin without that guidance sends
-	 * every rule in the response, because the agent would have no instruction on how to read the file whole.
+	 * a file whole and a pointer to the rules file of the session's work directory, which holds the session's other
+	 * rules; a plugin without that guidance sends every rule in the response, because the agent would have no
+	 * instruction on how to read the file whole. SessionStart then removes the work directories of sessions that their
+	 * harness no longer keeps.
+	 * <p>
+	 * A Codex subagent is a thread whose shells receive its own thread ID, the input's {@code agent_id}, so its rules
+	 * name the work directory of that ID rather than its parent's.
 	 *
 	 * @param eventName the Codex hook event name
 	 * @param args the hook command-line arguments
@@ -63,25 +71,32 @@ final class CodexRuleInjectionHook
 					throw new IllegalArgumentException(eventName + " accepts no arguments");
 				JsonNode event = scope.readEvent(eventName, input);
 				Path projectDir = scope.projectDir(event, workingDirectory);
-				Path catTemp = scope.createCatTemp(projectDir);
 				Path pluginRoot = scope.pluginRoot();
 				Path userRulesRoot = scope.userRulesRoot();
 				ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 				String context;
 				if (eventName.equals("SubagentStart"))
 				{
-					context = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID,
-						scope.subagentType(event));
+					String idProperty = "agent_id";
+					if (!event.path(idProperty).isString())
+						idProperty = "session_id";
+					SessionWorkDirectory directory = scope.sessionWorkDirectory(projectDir, event, idProperty);
+					context = directory.insertSessionId(loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir,
+						HARNESS_ID, scope.subagentType(event)));
 				}
 				else
 				{
+					SessionWorkDirectory directory = scope.sessionWorkDirectory(projectDir, event, "session_id");
+					directory.sweep(Instant.now(), error);
 					SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID);
 					if (session.readingGuidance().isEmpty())
-						context = session.rules();
+						context = directory.insertSessionId(session.rules());
 					else
 					{
-						Path rulesFile = CodexSessionContext.write(catTemp, event, session.rules());
-						context = session.readingGuidance() + "\n\n# CAT Rules\n\n" + RULES_FILE_POINTER.formatted(rulesFile);
+						Path rulesFile = directory.rulesFile();
+						Files.writeString(rulesFile, directory.insertSessionId(session.rules()), StandardCharsets.UTF_8);
+						context = directory.insertSessionId(session.readingGuidance()) + "\n\n# CAT Rules\n\n" +
+							RULES_FILE_POINTER.formatted(rulesFile);
 					}
 				}
 				output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
