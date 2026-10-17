@@ -350,7 +350,7 @@ requirement names.
 | WI-84 | Done (commit `453dfacfeb`). The full build passed (2876 tests, 0 failures, 105 s); no test took 1 s or more. Every launcher command, `status` included, needs the host session variable and refuses without it. A campaign of another session is shown by `status` with its owning session; every other command for it, and `start` for its target, is refused with the command that resumes that session. Campaigns under the old `.cat/work/optimizer/` are neither read nor deleted. Live exit, 2026-10-17: WI-71's certification start in a Codex host created its campaign at `.cat/work/<thread-id>/optimizer/<campaign-id>/`, under the host thread's ID, and no `.cat/work/optimizer/` was created. |
 | WI-85 | Done (commit `16feb4b9f1`); the full build passed on the integrated tree (2819 tests, 0 failures, 10 skipped). A certified delivery appends its record to `certifications.json` in the target's test directory, creating it when absent and never changing an earlier record; staging leaves it out; a record's harness is its recorded provider. `status` and a new campaign's proposal list the latest record of each harness with its applicability and the earlier records as history; `status` JSON replaces the top-level `attempt`, `scope` and `applicability` with `latest` and `earlier` (the skill shows only `summary`). A malformed history is refused at its JSON path. Open: WI-71's certified delivery appends its record. |
 | WI-86 | Done (commit `22248dc5c0`); the full build passed in 81 s (2878 tests, 0 failures, 10 skipped; `TestabilityAuditTest.onlyMainReadsEnvironment` 1.03 s, not touched). The proposal names a trial plugin's files by plugin, shows an edited test's `values.json` as a note, generated values without seed or version, and scope cells as test × profile groups; stored derived-source paths are unchanged. Open: WI-71's revised proposal uses the format. |
-| WI-87 | Not started. Open: how CAT treats the directories under `.cat/work/` that sessions wrote before the change (§5 WI-87). |
+| WI-87 | Not started. The user ruled on 2026-10-17 that SessionStart moves every existing session directory from `.cat/work/` to `.cat/sessions/`. |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -2498,23 +2498,22 @@ The riskiest pure code, built first.
   R-L1. Other concepts keep their names, such as a process's working directory and a trial's project. Recorded harness
   output, such as test transcripts and changelog captures, and the §2 rows that report finished work keep the paths
   they recorded.
-- **Existing directories (open, the user's decision):** a `.cat/work/<session-id>/` written before the change holds a
-  session's rules and `CAT_TEMP`, and can hold its campaigns.
-  - **Move (recommended):** SessionStart, at startup or resume, moves its own session's old directory to
-    `.cat/sessions/<session-id>/` when the new one does not exist, and the sweep removes old directories under the same
-    marker and transcript conditions as new ones. A resumed session keeps its campaigns; another live session's
-    directory is never moved under it. The project rule that only plugin installation migrates plugin data cannot
-    apply, because installation does not know the user's projects, so `design.md` records this exception.
-  - **No move:** CAT ignores `.cat/work/<session-id>/`. A campaign started before the change can no longer be run or
-    seen, and the user deletes the old directories.
+- **Existing directories (user ruling, 2026-10-17):** each SessionStart moves every `.cat/work/<session-id>/` that
+  holds a marker to `.cat/sessions/<session-id>/`, whichever session wrote it, so campaigns, rules and temporary files
+  keep their owner. It moves each directory with one atomic rename and leaves it in place when the new path exists or the
+  rename fails, reporting that on standard error; the sweep then treats the new path like any other. A directory
+  without a marker and `.cat/work/temp` stay where they are. The project rule that only plugin installation migrates
+  plugin data cannot apply, because installation does not know the user's projects, so `design.md` records this
+  exception. Cost: a session that started before the change and is still running loses its `CAT_TEMP` path, which
+  its rules state, until it resumes.
 - **Order:** land it before WI-71's revise. The change alters the `CAT_TEMP` path that every trial's rules state, and
   the revise reruns every pilot anyway (`design.md` D80).
 - **Tests:** `SessionDirectoryTest` (the directory, `temp/` and marker under `.cat/sessions/`), `SessionSweepTest`,
   `SessionDirectoryAuditTest` (fails when another main source file spells `.cat/sessions` or `.cat/work`),
   `ClaudeSessionStartHookTest` and `CodexSessionStartHookTest` (the rules name `.cat/sessions/<session-id>/temp`), the
-  exclusion tests of `InventoryScanner`, `Fork` and staging, `FileCampaignStoreTest`, and, with the move, a session's
-  own old directory moved at startup and at resume, an existing new directory left as is, and another session's old
-  directory left in place.
+  exclusion tests of `InventoryScanner`, `Fork` and staging, `FileCampaignStoreTest`, and the move: at startup and at
+  resume, every old directory with a marker moved with its campaigns, one whose new path exists left in both places
+  unchanged, one without a marker and `.cat/work/temp` left in place.
 - **Exit:** unit tests pass; the full build passes; a search of the repository finds the old term and `.cat/work/<`
   only in recorded output and §2 history; a live session in each harness gets rules that name
   `.cat/sessions/<session-id>/temp`, and that directory holds its marker.
