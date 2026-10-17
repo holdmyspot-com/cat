@@ -32,13 +32,13 @@ otherwise applies a default limit. For the meaning and introduction of this Code
 
 CAT runs `post-tool-use` after each shell command, through the `$PLUGIN_ROOT/hooks/post-tool-use.sh` launcher. When
 the agent set `max_output_tokens` on a command that runs `$PLUGIN_ROOT/bin/run-part` or
-`$PLUGIN_ROOT/bin/read-part`, Codex removes lines from the middle of the part, and the part's closing line names the
-next part. The hook then returns a blocking decision whose reason is the part with that line replaced by an instruction
-to print the same part again without the limit; Codex shows the reason to the model in place of the result. When a
-result that Codex did not cut ends with the last part of an output that `run-part` saved, the hook deletes the
-`run-part-*` folder that holds it, unless a part that Codex cut has not yet been printed again uncut. It then returns a
-blocking decision whose reason is the result with its closing line replaced by `[End of output. The output file was
-deleted.]`, which no longer names the deleted file. The launcher passes every other event over without starting Java.
+`$PLUGIN_ROOT/bin/read-part`, Codex removes lines from the middle of the part. The hook then returns a blocking
+decision whose reason is a single line: the output was cut off because the agent set `max_output_tokens`, and the
+`read-part` command that prints the same part again from the saved output, to run without the limit. Codex shows the
+reason to the model in place of the whole result, and the hook deletes nothing. The last part of a saved output ends
+with `[End of <path>. The file was deleted]`. When a result that Codex did not cut ends with that line and `<path>` is
+an output that `run-part` saved, the hook deletes the `run-part-*` folder that holds it and leaves the result
+unchanged. The launcher passes every other event over without starting Java.
 
 ## Windows
 

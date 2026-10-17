@@ -28,13 +28,16 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Prints a file from a given position through its end in parts that Codex shows whole.
+ * Prints output that {@code run-part} saved, from a given position through its end, in parts that Codex shows whole.
  * <p>
  * Each call looks up how many bytes Codex keeps of this call's output and prints as many lines as fit together with
  * the line that ends the part; that line names the command that prints the next part, and the last part ends with
- * {@code [End of <path>]}. A part that more parts follow exits with status 0. The last part exits with the exit status
- * that {@code <path>.exit-status} holds, which {@code run-part} saves for the command whose output {@code <path>}
- * holds, or with 0 when there is no such file. A position is {@code <line>}, or {@code <line>:<byte>} for a part that
+ * {@code [End of <path>. The file was deleted]}. That line tells the agent not to print the output again: the Codex
+ * PostToolUse hook deletes the output's folder once it sees the last part uncut. A part that more parts follow exits
+ * with status 0. The last part exits with the exit status that {@code <path>.exit-status} holds, which
+ * {@code run-part} saves for the command whose output {@code <path>} holds. {@code read-part} refuses every file that
+ * {@code run-part} did not save, and says that a saved output whose folder is gone was deleted after its last part
+ * was read. A position is {@code <line>}, or {@code <line>:<byte>} for a part that
  * starts inside a line too long for one part. Lines are printed as the file holds them, without line numbers; when a
  * part ends inside a line, the line that ends the part says so. {@code read-part} refuses a file that holds a NUL byte,
  * since such a file is binary.
@@ -134,7 +137,7 @@ public final class CodexReadPart
 	 * @param output receives the part
 	 * @param error receives diagnostics
 	 * @return the exit status: 0 for a part that more parts follow, the saved status of the last part, 1 when the file
-	 *   cannot be printed, or 2 for a usage error
+	 *   is not output that {@code run-part} saved, was deleted or cannot be printed, or 2 for a usage error
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static int run(String[] args, CommandShell shell, Path readPart, Map<String, String> environment,
@@ -169,6 +172,19 @@ public final class CodexReadPart
 		catch (InvalidPathException _)
 		{
 			file = null;
+		}
+		if (file != null)
+		{
+			Path folder = file.toAbsolutePath().normalize().getParent();
+			if (folder == null || !CodexRunPart.isOutputFolder(folder, environment))
+				return notSaved(path, error);
+			if (Files.notExists(folder, LinkOption.NOFOLLOW_LINKS))
+			{
+				error.println("read-part: \"" + path + "\" was deleted after its last part was read");
+				return 1;
+			}
+			if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && !CodexRunPart.isSavedOutput(file, environment))
+				return notSaved(path, error);
 		}
 		if (file == null || !Files.isRegularFile(file) || !Files.isReadable(file))
 		{
@@ -207,6 +223,20 @@ public final class CodexReadPart
 			error.println("read-part: " + e.getMessage());
 			return 1;
 		}
+	}
+
+	/**
+	 * Reports a file that {@code run-part} did not save.
+	 *
+	 * @param path the file's path as the agent typed it
+	 * @param error receives the report
+	 * @return the exit status, 1
+	 */
+	private static int notSaved(String path, PrintStream error)
+	{
+		error.println("read-part: \"" + path + "\" is not output that run-part saved, and read-part prints nothing " +
+			"else");
+		return 1;
 	}
 
 	/**
@@ -272,7 +302,7 @@ public final class CodexReadPart
 
 	/**
 	 * Returns the exit status of the last part: the status that {@code run-part} saved for the command whose output
-	 * the file holds, or 0 when it saved none.
+	 * the file holds, or 0 when that status is missing or is not a number.
 	 *
 	 * @param path the file's path
 	 * @return the status
@@ -730,7 +760,7 @@ public final class CodexReadPart
 		 */
 		private byte[] closing()
 		{
-			return ("[End of " + path + "]\n").getBytes(UTF_8);
+			return ("[End of " + path + ". The file was deleted]\n").getBytes(UTF_8);
 		}
 
 		/**

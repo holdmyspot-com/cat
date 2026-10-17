@@ -10,16 +10,19 @@ load bootstrap-helpers
 	runtime="${TEST_ROOT}/generated runtime"
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${runtime}"
 	create_fake_bwrap
-	file="${TEST_ROOT}/café.txt"
+	temporary="${TEST_ROOT}/temp café"
+	mkdir -p "${temporary}/run-part-1"
+	file="${temporary}/run-part-1/output.txt"
 	printf 'first\n' > "${file}"
+	printf '0\n' > "${file}.exit-status"
 
 	run env PATH="${FAKE_BIN}:${PATH}" LC_ALL=C LANG=C "${runtime}/bin/plugin-info"
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == "harness=codex"$'\n'* ]]
 
-	run env -u CODEX_THREAD_ID LC_ALL=C LANG=C "${runtime}/bin/read-part" "${file}"
+	run env -u CODEX_THREAD_ID TMPDIR="${temporary}" LC_ALL=C LANG=C "${runtime}/bin/read-part" "${file}"
 
 	[ "${status}" -eq 0 ]
-	[ "${output}" = "$(printf 'first\n[End of %s]' "${file}")" ]
+	[ "${output}" = "$(printf 'first\n[End of %s. The file was deleted]' "${file}")" ]
 }

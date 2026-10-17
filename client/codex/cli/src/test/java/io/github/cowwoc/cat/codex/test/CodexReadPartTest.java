@@ -19,8 +19,9 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Verifies that {@code read-part} prints a file in parts that fit the output budget of a Codex call, and that following
- * the line that ends each part prints the whole file.
+ * Verifies that {@code read-part} prints output that {@code run-part} saved in parts that fit the output budget of a
+ * Codex call, that following the line that ends each part prints the whole output, and that it refuses every other
+ * file.
  */
 public final class CodexReadPartTest
 {
@@ -49,27 +50,48 @@ public final class CodexReadPartTest
 	}
 
 	/**
-	 * Verifies that a file that fits in one part is printed whole, followed by the line that ends the last part.
+	 * Verifies that a saved output that fits in one part is printed whole, followed by the line that ends the last
+	 * part, which names the output and says that it was deleted.
 	 *
 	 * @throws IOException if the file cannot be written
 	 */
 	@Test
-	public void shortFileEndsWithItsPath() throws IOException
+	public void shortOutputEndsWithItsPath() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path file = cleanup.add(Files.createTempDirectory("read-part-")).resolve("notes.txt");
-			Files.writeString(file, "first\nsecond\n");
+			Path temporary = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path file = savedOutput(temporary, "first\nsecond\n");
 
-			Call call = readPart(Map.of(), file.toString());
+			Call call = readPart(Map.of("TMPDIR", temporary.toString()), file.toString());
 
-			requireThat(call.output(), "output").isEqualTo("first\nsecond\n[End of " + file + "]\n");
+			requireThat(call.output(), "output").isEqualTo("first\nsecond\n" + closing(file));
 			requireThat(call.status(), "status").isEqualTo(0);
 		}
 	}
 
 	/**
-	 * Verifies that the last part exits with the status that the file's {@code .exit-status} file holds.
+	 * Verifies that a saved output in the temporary directory of a CAT session is printed.
+	 *
+	 * @throws IOException if the file cannot be written
+	 */
+	@Test
+	public void sessionOutputIsPrinted() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path file = savedOutput(project.resolve(".cat/sessions/01a147d8-bf56-7283-92b4-12dcaeb53738/temp"), "a\n");
+
+			Call call = readPart(Map.of(), file.toString());
+
+			requireThat(call.output(), "output").isEqualTo("a\n" + closing(file));
+			requireThat(call.status(), "status").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Verifies that the last part exits with the status that the saved output's {@code .exit-status} file holds.
 	 *
 	 * @throws IOException if the file cannot be written
 	 */
@@ -78,14 +100,72 @@ public final class CodexReadPartTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path file = cleanup.add(Files.createTempDirectory("read-part-")).resolve("output.txt");
-			Files.writeString(file, "failed\n");
+			Path temporary = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path file = savedOutput(temporary, "failed\n");
 			Files.writeString(Path.of(file + ".exit-status"), "3\n");
 
-			Call call = readPart(Map.of(), file.toString());
+			Call call = readPart(Map.of("TMPDIR", temporary.toString()), file.toString());
 
-			requireThat(call.output(), "output").isEqualTo("failed\n[End of " + file + "]\n");
+			requireThat(call.output(), "output").isEqualTo("failed\n" + closing(file));
 			requireThat(call.status(), "status").isEqualTo(3);
+		}
+	}
+
+	/**
+	 * Verifies that a file that {@code run-part} did not save is refused: one outside a {@code run-part-*} folder, one
+	 * without the saved exit status beside it, one with another name, and one in a folder that is not a temporary
+	 * directory.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void fileNotSavedByRunPartIsRefused() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path notes = Files.writeString(Files.createDirectory(temporary.resolve("notes")).resolve("output.txt"),
+				"a\n");
+			Files.writeString(Path.of(notes + ".exit-status"), "0\n");
+			Path withoutStatus = savedOutput(temporary, "a\n");
+			Files.delete(Path.of(withoutStatus + ".exit-status"));
+			Path otherName = Files.writeString(savedOutput(temporary, "a\n").resolveSibling("other.txt"), "a\n");
+			Path elsewhere = savedOutput(Files.createDirectory(temporary.resolve("project")), "a\n");
+
+			for (Path file : new Path[]{notes, withoutStatus, otherName, elsewhere})
+			{
+				Call call = readPart(Map.of("TMPDIR", temporary.toString()), file.toString());
+
+				requireThat(call.status(), "status").isEqualTo(1);
+				requireThat(call.output(), "output").isEmpty();
+				requireThat(call.error(), "error").isEqualTo("read-part: \"" + file + "\" is not output that " +
+					"run-part saved, and read-part prints nothing else" + EOL);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a saved output whose folder is gone says that it was deleted after its last part was read.
+	 *
+	 * @throws IOException if the file cannot be written
+	 */
+	@Test
+	public void deletedOutputSaysWhy() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path file = savedOutput(temporary, "a\n");
+			Files.delete(Path.of(file + ".exit-status"));
+			Files.delete(file);
+			Files.delete(file.getParent());
+
+			Call call = readPart(Map.of("TMPDIR", temporary.toString()), file.toString(), "2");
+
+			requireThat(call.status(), "status").isEqualTo(1);
+			requireThat(call.output(), "output").isEmpty();
+			requireThat(call.error(), "error").isEqualTo("read-part: \"" + file + "\" was deleted after its last " +
+				"part was read" + EOL);
 		}
 	}
 
@@ -105,7 +185,6 @@ public final class CodexReadPartTest
 			Path directory = cleanup.add(Files.createTempDirectory("read-part-"));
 			Path codexHome = Files.createDirectory(directory.resolve("codex"));
 			Files.writeString(codexHome.resolve("config.toml"), "model = \"m\"\ntool_output_token_limit = 300\n");
-			Path file = directory.resolve("mixed.txt");
 			ByteArrayOutputStream content = new ByteArrayOutputStream();
 			for (int i = 1; i <= 30; ++i)
 				content.writeBytes(("line " + i + ": \"quoted\" \\ back\ttab\n").getBytes(UTF_8));
@@ -115,8 +194,10 @@ public final class CodexReadPartTest
 			content.writeBytes(("é".repeat(1000) + "\n").getBytes(UTF_8));
 			content.writeBytes(("x".repeat(1500) + "\n").getBytes(UTF_8));
 			content.writeBytes("last\n".getBytes(UTF_8));
+			Path file = savedOutput(directory, "");
 			Files.write(file, content.toByteArray());
-			Map<String, String> environment = Map.of("CODEX_THREAD_ID", "thread", "CODEX_HOME", codexHome.toString());
+			Map<String, String> environment = Map.of("CODEX_THREAD_ID", "thread", "CODEX_HOME", codexHome.toString(),
+				"TMPDIR", directory.toString());
 
 			byte[] printed = readAll(environment, file, 300 * 4 - 512);
 
@@ -138,9 +219,9 @@ public final class CodexReadPartTest
 			Path directory = cleanup.add(Files.createTempDirectory("read-part-"));
 			Path codexHome = Files.createDirectory(directory.resolve("codex"));
 			Files.writeString(codexHome.resolve("config.toml"), "tool_output_token_limit = 300\n");
-			Path file = directory.resolve("wide.txt");
-			Files.writeString(file, "€".repeat(1000) + "\n");
-			Map<String, String> environment = Map.of("CODEX_THREAD_ID", "thread", "CODEX_HOME", codexHome.toString());
+			Path file = savedOutput(directory, "€".repeat(1000) + "\n");
+			Map<String, String> environment = Map.of("CODEX_THREAD_ID", "thread", "CODEX_HOME", codexHome.toString(),
+				"TMPDIR", directory.toString());
 
 			Call call = readPart(environment, file.toString());
 			Matcher footer = NEXT_PART.matcher(call.output());
@@ -163,13 +244,13 @@ public final class CodexReadPartTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path file = cleanup.add(Files.createTempDirectory("read-part-")).resolve("long.txt");
+			Path temporary = cleanup.add(Files.createTempDirectory("read-part-"));
 			String text = "a line of the file\n".repeat(5000);
-			Files.writeString(file, text);
+			Path file = savedOutput(temporary, text);
 
-			Call call = readPart(Map.of(), file.toString());
+			Call call = readPart(Map.of("TMPDIR", temporary.toString()), file.toString());
 
-			requireThat(call.output(), "output").isEqualTo(text + "[End of " + file + "]\n");
+			requireThat(call.output(), "output").isEqualTo(text + closing(file));
 		}
 	}
 
@@ -183,12 +264,12 @@ public final class CodexReadPartTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path file = cleanup.add(Files.createTempDirectory("read-part-")).resolve("notes.txt");
-			Files.writeString(file, "one\ntwo words\nthree\n");
+			Path temporary = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path file = savedOutput(temporary, "one\ntwo words\nthree\n");
 
-			Call call = readPart(Map.of(), file.toString(), "2:5");
+			Call call = readPart(Map.of("TMPDIR", temporary.toString()), file.toString(), "2:5");
 
-			requireThat(call.output(), "output").isEqualTo("words\nthree\n[End of " + file + "]\n");
+			requireThat(call.output(), "output").isEqualTo("words\nthree\n" + closing(file));
 		}
 	}
 
@@ -202,10 +283,10 @@ public final class CodexReadPartTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path file = cleanup.add(Files.createTempDirectory("read-part-")).resolve("notes.txt");
-			Files.writeString(file, "one\n");
+			Path temporary = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path file = savedOutput(temporary, "one\n");
 
-			Call call = readPart(Map.of(), file.toString(), "9");
+			Call call = readPart(Map.of("TMPDIR", temporary.toString()), file.toString(), "9");
 
 			requireThat(call.output(), "output").isEqualTo("[" + file + " ends before position 9]\n");
 			requireThat(call.status(), "status").isEqualTo(0);
@@ -222,12 +303,12 @@ public final class CodexReadPartTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path file = cleanup.add(Files.createTempDirectory("read-part-")).resolve("notes.txt");
-			Files.writeString(file, "one\n");
+			Path temporary = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path file = savedOutput(temporary, "one\n");
 
 			for (String position : new String[]{"0", "x", "1:0", "1:9"})
 			{
-				Call call = readPart(Map.of(), file.toString(), position);
+				Call call = readPart(Map.of("TMPDIR", temporary.toString()), file.toString(), position);
 
 				requireThat(call.status(), "status").isEqualTo(2);
 				requireThat(call.output(), "output").isEmpty();
@@ -250,7 +331,8 @@ public final class CodexReadPartTest
 	}
 
 	/**
-	 * Verifies that a path that names no file suggests the one file of its folder whose name is close to it.
+	 * Verifies that a path in the folder of a saved output that names no file suggests the one file of the folder whose
+	 * name is close to it.
 	 *
 	 * @throws IOException if the folder cannot be written
 	 */
@@ -259,17 +341,17 @@ public final class CodexReadPartTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory("read-part-"));
-			Files.writeString(directory.resolve("notes.txt"), "one\n");
-			Files.writeString(directory.resolve("unrelated-name.md"), "two\n");
-			Path typo = directory.resolve("nots.txt");
+			Path temporary = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path file = savedOutput(temporary, "one\n");
+			Path directory = file.getParent();
+			Path typo = directory.resolve("outpt.txt");
 
-			Call call = readPart(Map.of(), typo.toString(), "4");
+			Call call = readPart(Map.of("TMPDIR", temporary.toString()), typo.toString(), "4");
 
 			requireThat(call.status(), "status").isEqualTo(1);
 			requireThat(call.error(), "error").isEqualTo("read-part: cannot read \"" + typo + "\"" + EOL +
-				"read-part: \"" + directory + "\" holds no such file, but it holds \"notes.txt\". If you meant it, run " +
-				SHELL.command(READ_PART.toString(), directory.resolve("notes.txt").toString(), "4") +
+				"read-part: \"" + directory + "\" holds no such file, but it holds \"output.txt\". If you meant it, " +
+				"run " + SHELL.command(READ_PART.toString(), file.toString(), "4") +
 				" before any other command or your answer." + EOL);
 		}
 	}
@@ -284,16 +366,47 @@ public final class CodexReadPartTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path file = cleanup.add(Files.createTempDirectory("read-part-")).resolve("image.bin");
+			Path temporary = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path file = savedOutput(temporary, "");
 			Files.write(file, new byte[]{'a', 0, 'b'});
 
-			Call call = readPart(Map.of(), file.toString());
+			Call call = readPart(Map.of("TMPDIR", temporary.toString()), file.toString());
 
 			requireThat(call.status(), "status").isEqualTo(1);
 			requireThat(call.output(), "output").isEmpty();
 			requireThat(call.error(), "error").isEqualTo("read-part: \"" + file + "\" holds NUL bytes, so it is " +
 				"binary, not text; inspect it with a tool for its format instead" + EOL);
 		}
+	}
+
+	/**
+	 * Saves output in a {@code run-part-*} folder the way {@code run-part} does, with exit status 0.
+	 *
+	 * @param temporary the temporary directory that holds the folder
+	 * @param content the output
+	 * @return the saved output
+	 * @throws IOException if the folder cannot be created
+	 */
+	private static Path savedOutput(Path temporary, String content) throws IOException
+	{
+		assert temporary != null;
+		assert content != null;
+		Path folder = Files.createTempDirectory(Files.createDirectories(temporary), "run-part-");
+		Path saved = Files.writeString(folder.resolve("output.txt"), content);
+		Files.writeString(Path.of(saved + ".exit-status"), "0\n");
+		return saved;
+	}
+
+	/**
+	 * Returns the line that ends the last part of a saved output.
+	 *
+	 * @param file the saved output
+	 * @return the line
+	 */
+	private static String closing(Path file)
+	{
+		assert file != null;
+		return "[End of " + file + ". The file was deleted]\n";
 	}
 
 	/**
@@ -326,11 +439,10 @@ public final class CodexReadPartTest
 			Call call = readPart(environment, file.toString(), position);
 			requireThat(call.error(), "error").isEmpty();
 			requireThat(shownSize(call.bytes()), "shownSize").isLessThanOrEqualTo(limit);
-			String closing = "[End of " + file + "]\n";
-			if (call.output().endsWith(closing))
+			if (call.output().endsWith(closing(file)))
 			{
 				requireThat(call.status(), "status").isEqualTo(0);
-				printed.write(call.bytes(), 0, call.bytes().length - closing.getBytes(UTF_8).length);
+				printed.write(call.bytes(), 0, call.bytes().length - closing(file).getBytes(UTF_8).length);
 				return printed.toByteArray();
 			}
 			requireThat(call.status(), "status").isEqualTo(0);

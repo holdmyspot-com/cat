@@ -15,6 +15,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -234,6 +235,50 @@ public final class CodexRunPart
 				return Path.of(temporary);
 		}
 		return Path.of(System.getProperty("java.io.tmpdir"));
+	}
+
+	/**
+	 * Indicates whether a folder is named and placed the way {@code run-part} creates the folder of one saved output:
+	 * a {@code run-part-*} folder directly inside a CAT session's temporary directory or directly inside the folder
+	 * that {@link #fallbackFolder(Map)} returns for {@code environment}. The folder need not exist.
+	 *
+	 * @param folder the folder
+	 * @param environment the environment of the JVM
+	 * @return {@code true} if the folder's name and location match
+	 */
+	static boolean isOutputFolder(Path folder, Map<String, String> environment)
+	{
+		Path normalized = folder.toAbsolutePath().normalize();
+		Path name = normalized.getFileName();
+		Path temporary = normalized.getParent();
+		if (name == null || temporary == null || !name.toString().startsWith(FOLDER_PREFIX))
+			return false;
+		return SessionDirectory.isTemporaryDirectory(temporary) ||
+			temporary.equals(fallbackFolder(environment).toAbsolutePath().normalize());
+	}
+
+	/**
+	 * Indicates whether a file is output that {@code run-part} saved: a regular file named {@code output.txt}, with the
+	 * regular file {@code output.txt.exit-status} beside it, in a folder for which
+	 * {@link #isOutputFolder(Path, Map)} holds. Neither file nor their folder may be a symbolic link.
+	 *
+	 * @param file the file
+	 * @param environment the environment of the JVM
+	 * @return {@code true} if {@code run-part} saved the file
+	 */
+	static boolean isSavedOutput(Path file, Map<String, String> environment)
+	{
+		Path normalized = file.toAbsolutePath().normalize();
+		Path name = normalized.getFileName();
+		Path folder = normalized.getParent();
+		if (name == null || folder == null || !name.toString().equals(SAVED_OUTPUT) ||
+			!isOutputFolder(folder, environment))
+		{
+			return false;
+		}
+		return Files.isDirectory(folder, LinkOption.NOFOLLOW_LINKS) &&
+			Files.isRegularFile(normalized, LinkOption.NOFOLLOW_LINKS) &&
+			Files.isRegularFile(folder.resolve(SAVED_OUTPUT + EXIT_STATUS_SUFFIX), LinkOption.NOFOLLOW_LINKS);
 	}
 
 	/**

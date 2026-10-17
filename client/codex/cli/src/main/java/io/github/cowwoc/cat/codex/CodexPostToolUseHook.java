@@ -1,25 +1,19 @@
 package io.github.cowwoc.cat.codex;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.Platform;
-import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.SessionDirectory.Removal;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import tools.jackson.core.JacksonException;
@@ -27,36 +21,26 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Repairs the closing instruction of a {@code run-part} or {@code read-part} result that Codex cut, and deletes the
- * folder of a {@code run-part} output once the agent has seen all of it.
+ * Replaces a {@code run-part} or {@code read-part} result that Codex cut with the command that prints the same part
+ * again, and deletes the folder of a {@code run-part} output once the agent has seen its last part.
  * <p>
  * Both programs print parts that Codex shows whole unless the agent sets {@code max_output_tokens}, in which case Codex
- * removes lines from the middle of the part. The part's closing instruction then names the next part, so following it
- * would skip the removed lines. Codex shows this hook the result after its cut but not the call's
- * {@code max_output_tokens}, so the hook recognizes a cut by Codex's markers. It replaces the closing instruction with
- * one that prints the same part again without the limit, and returns the result as a blocking decision, whose reason
- * Codex shows the model in place of the result.
+ * removes lines from the middle of the part. Codex shows this hook the result after its cut but not the call's
+ * {@code max_output_tokens}, so the hook recognizes a cut by Codex's markers. It returns a blocking decision, whose
+ * reason Codex shows the model in place of the whole result: a line that says the output was cut off because the
+ * agent set {@code max_output_tokens}, and names the {@code read-part} command that prints the same part again from
+ * the saved output. A cut result that does not end with a part's closing line names the agent's command instead. The
+ * hook deletes nothing after a cut, so that the command still finds the saved output.
  * <p>
- * A result that Codex did not cut and that ends with {@code [End of <path>]} shows the agent the last part of a saved
- * output. When {@code <path>} is a file that {@code run-part} saved, the hook deletes the file's folder, unless a part
- * that Codex cut has not yet been printed again uncut: the hook records the position of each cut part in the folder and
- * clears it when that part comes back uncut, so that the repaired instruction still finds the file. Once it deletes the
- * folder, it returns the result as a blocking decision whose closing line says that the agent has read the whole
- * output and that the output file was deleted, without naming it. Output whose last part the agent never reads stays
- * until its session's CAT session directory is removed. Every other result passes unchanged.
+ * A result that Codex did not cut and that ends with {@code [End of <path>. The file was deleted]} shows the agent the
+ * whole last part of a saved output. When {@code <path>} is a file that {@code run-part} saved, the hook deletes the
+ * file's folder and leaves the result unchanged, since that line already tells the agent that the file is gone.
+ * Output whose last part the agent never sees uncut stays until its session's CAT session directory is removed, as
+ * does all output while Codex runs no hooks. Every other result passes unchanged.
  */
 public final class CodexPostToolUseHook
 {
 	private static final String EVENT_NAME = "PostToolUse";
-	/**
-	 * The file, in the folder of a saved output, that holds the positions of the parts that Codex cut, one per line.
-	 */
-	private static final String CUT_POSITIONS = "cut-positions";
-	/**
-	 * The file, in the folder of a saved output, whose presence records that the agent saw the last part uncut while
-	 * a cut part remained.
-	 */
-	private static final String LAST_PART_SEEN = "last-part-seen";
 	private static final int MAXIMUM_EVENT_BYTES = 1_048_576;
 	/**
 	 * Codex's markers of a result whose middle it removed.
@@ -68,13 +52,10 @@ public final class CodexPostToolUseHook
 	private static final Pattern NEXT_PART = Pattern.compile("\n\\[(?:The last line continues at the start of " +
 		"the next part\\. )?More output follows\\. Before any other command or answer, run: (?<command>.+) \\S+]\\s*\\z");
 	/**
-	 * The line that ends the last part: the saved file's path.
+	 * The line that ends the last part, which is the only line of an empty output: the saved file's path.
 	 */
-	private static final Pattern LAST_PART = Pattern.compile("\n\\[End of (?<path>[^\n]+)]\\s*\\z");
-	/**
-	 * Any bracketed line that ends a result.
-	 */
-	private static final Pattern CLOSING_LINE = Pattern.compile("\n\\[[^\n]*]\\s*\\z");
+	private static final Pattern LAST_PART = Pattern.compile("(?:\\A|\n)\\[End of (?<path>[^\n]+)\\. The file was " +
+		"deleted]\\s*\\z");
 	/**
 	 * The program that a command runs, and the folder that holds both programs. The program's path may be quoted, in
 	 * which case it may hold spaces, and on Windows it ends with {@code .cmd}.
@@ -103,14 +84,13 @@ public final class CodexPostToolUseHook
 	/**
 	 * Processes one Codex PostToolUse event. A failure leaves the result unchanged: the hook writes no response and
 	 * reports the failure on {@code error}, because stopping the session would lose more output than the cut did. A
-	 * failure to record a cut part's position is reported on {@code error} after the repaired result. A failure to
-	 * delete a saved output leaves its result unchanged, so the result still names the file, which still exists.
+	 * saved output that cannot be deleted stays until its session's CAT session directory is removed.
 	 *
 	 * @param args a non-null empty command-line argument array
 	 * @param shell the shell that ran the agent's command, and that runs the command that the repaired result names
 	 * @param environment the hook's environment, whose {@code TMPDIR} or {@code TEMP} names the folder in which
 	 *   {@code run-part} saves output outside a session (see {@link CodexRunPart#fallbackFolder(Map)})
-	 * @param removal deletes the folder of a saved output once the agent has seen all of it
+	 * @param removal deletes the folder of a saved output once the agent has seen its last part uncut
 	 * @param input non-null harness hook input
 	 * @param output non-null harness hook output
 	 * @param error non-null diagnostic output
@@ -142,35 +122,18 @@ public final class CodexPostToolUseHook
 			Matcher script = SCRIPT.matcher(command.stringValue());
 			if (!script.find())
 				return;
-			String position = start(shell, command.stringValue(), script);
-			Optional<Path> folder = savedOutput(shell, result.stringValue()).
-				flatMap(saved -> runPartFolder(saved, environment));
 			if (CUT.matcher(result.stringValue()).find())
 			{
-				String repaired = repair(shell, command.stringValue(), result.stringValue(), script, position);
-				output.write(json.writeValueAsBytes(Map.of("decision", "block", "reason", repaired)));
+				String position = start(shell, command.stringValue(), script);
+				String reason = instruction(repeatCommand(shell, command.stringValue(), result.stringValue(), script,
+					position));
+				output.write(json.writeValueAsBytes(Map.of("decision", "block", "reason", reason)));
 				output.write('\n');
-				if (folder.isPresent())
-				{
-					try
-					{
-						recordCut(folder.get(), position);
-					}
-					catch (IOException e)
-					{
-						error.println("CAT " + EVENT_NAME + ": " + e.getMessage());
-					}
-				}
 				return;
 			}
-			boolean lastPart = LAST_PART.matcher(result.stringValue()).find();
-			if (folder.isPresent() && isSeenWhole(folder.get(), position, lastPart))
-			{
-				removal.remove(folder.get());
-				String deleted = deleted(result.stringValue(), lastPart);
-				output.write(json.writeValueAsBytes(Map.of("decision", "block", "reason", deleted)));
-				output.write('\n');
-			}
+			Optional<Path> saved = savedOutput(result.stringValue());
+			if (saved.isPresent() && CodexRunPart.isSavedOutput(saved.get(), environment))
+				removal.remove(saved.get().getParent());
 		}
 		catch (IOException | IllegalArgumentException | JacksonException e)
 		{
@@ -179,102 +142,47 @@ public final class CodexPostToolUseHook
 	}
 
 	/**
-	 * Returns a result whose saved output the hook deleted, with its closing line replaced by one that says the output
-	 * file was deleted: {@code [End of output. The output file was deleted.]} after the last part, or
-	 * {@code [You have now read every part of this output. The output file was deleted.]} after an earlier part.
-	 * Neither names the deleted file, which no longer exists. The first still starts with {@code [End of }, which marks
-	 * the last part for the agent.
-	 *
-	 * @param result the command's result as Codex showed it
-	 * @param lastPart {@code true} if the result is the last part, or {@code false} if it is an earlier part that the
-	 *   agent printed again after the last one
-	 * @return the result with its closing line replaced
-	 */
-	private static String deleted(String result, boolean lastPart)
-	{
-		Matcher closingLine = CLOSING_LINE.matcher(result);
-		String kept;
-		if (closingLine.find())
-			kept = result.substring(0, closingLine.start());
-		else
-			kept = result.stripTrailing();
-		String closing;
-		if (lastPart)
-			closing = "[End of output. The output file was deleted.]";
-		else
-			closing = "[You have now read every part of this output. The output file was deleted.]";
-		return kept + "\n" + closing + "\n";
-	}
-
-	/**
-	 * Returns a cut result of a {@code run-part} or {@code read-part} command with its closing instruction replaced.
-	 * The saved file already holds every line, so the new instruction prints it again from the position at which the
-	 * cut part started, without running the original command a second time. A result without a part's closing line
-	 * instead ends with an instruction to run the agent's command again.
+	 * Returns the command that prints a cut part of a {@code run-part} or {@code read-part} command again. The saved
+	 * file already holds every line, so the command prints it from the position at which the cut part started, without
+	 * running the agent's command a second time. For a result without a part's closing line, it is the agent's command.
 	 *
 	 * @param shell the shell that ran the command
 	 * @param command the shell command that the agent ran
 	 * @param result the command's result as Codex showed it
 	 * @param script the match of the program that the command runs
 	 * @param start the position at which the agent's command started the part that it printed
-	 * @return the repaired result
+	 * @return the command
 	 */
-	private static String repair(CommandShell shell, String command, String result, Matcher script, String start)
+	private static String repeatCommand(CommandShell shell, String command, String result, Matcher script,
+		String start)
 	{
 		Matcher nextPart = NEXT_PART.matcher(result);
 		if (nextPart.find())
-			return result.substring(0, nextPart.start() + 1) + instruction(nextPart.group("command") + " " + start);
+			return nextPart.group("command") + " " + start;
 		Matcher lastPart = LAST_PART.matcher(result);
 		if (lastPart.find())
 		{
-			String folder = group(script, "folder", "quotedFolder");
-			String readPart = folder + shell.launcher("read-part");
-			return result.substring(0, lastPart.start() + 1) +
-				instruction(shell.command(readPart, lastPart.group("path"), start));
+			String readPart = group(script, "folder", "quotedFolder") + shell.launcher("read-part");
+			return shell.command(readPart, lastPart.group("path"), start);
 		}
-		Matcher closingLine = CLOSING_LINE.matcher(result);
-		String kept;
-		if (closingLine.find())
-			kept = result.substring(0, closingLine.start());
-		else
-			kept = result.stripTrailing();
-		return kept + "\n" + instruction(command);
+		return command;
 	}
 
 	/**
-	 * Returns the saved file whose part a result printed, as the part's closing line names it.
+	 * Returns the saved file whose last part a result printed, as the part's closing line names it.
 	 *
-	 * @param shell the shell that ran the command
 	 * @param result the command's result as Codex showed it
-	 * @return the saved file, or empty when the result does not end with a part's closing line that names a valid
-	 *   absolute path
+	 * @return the saved file, or empty when the result does not end with the last part's closing line or that line
+	 *   does not name a valid absolute path
 	 */
-	private static Optional<Path> savedOutput(CommandShell shell, String result)
+	private static Optional<Path> savedOutput(String result)
 	{
-		String text;
 		Matcher lastPart = LAST_PART.matcher(result);
-		if (lastPart.find())
-			text = lastPart.group("path");
-		else
-		{
-			Matcher nextPart = NEXT_PART.matcher(result);
-			if (!nextPart.find())
-				return Optional.empty();
-			String nextCommand = nextPart.group("command");
-			Matcher script = SCRIPT.matcher(nextCommand);
-			if (!script.find())
-				return Optional.empty();
-			Optional<List<String>> words = shell.words(nextCommand.substring(script.start()));
-			if (words.isEmpty() || words.get().size() < 2)
-				return Optional.empty();
-			text = words.get().get(1);
-			// A launcher that cmd.exe runs receives a path that needs quotes inside double quotes
-			if (text.length() >= 2 && text.startsWith("\"") && text.endsWith("\""))
-				text = text.substring(1, text.length() - 1);
-		}
+		if (!lastPart.find())
+			return Optional.empty();
 		try
 		{
-			Path saved = Path.of(text);
+			Path saved = Path.of(lastPart.group("path"));
 			if (!saved.isAbsolute())
 				return Optional.empty();
 			return Optional.of(saved.normalize());
@@ -286,104 +194,6 @@ public final class CodexPostToolUseHook
 	}
 
 	/**
-	 * Returns the folder in which {@code run-part} saved a file.
-	 *
-	 * @param saved the saved file
-	 * @param environment the hook's environment
-	 * @return the file's folder when the file is {@code output.txt} with {@code output.txt.exit-status} beside it, in a
-	 *   {@code run-part-*} folder directly inside a session's temporary directory or the folder that {@code run-part}
-	 *   falls back to; otherwise empty, so that a file that the agent named itself is never deleted
-	 */
-	private static Optional<Path> runPartFolder(Path saved, Map<String, String> environment)
-	{
-		Path name = saved.getFileName();
-		Path folder = saved.getParent();
-		if (name == null || !name.toString().equals(CodexRunPart.SAVED_OUTPUT) || folder == null)
-			return Optional.empty();
-		Path folderName = folder.getFileName();
-		Path temporary = folder.getParent();
-		if (folderName == null || temporary == null || !folderName.toString().startsWith(CodexRunPart.FOLDER_PREFIX))
-			return Optional.empty();
-
-		boolean isTemporary = SessionDirectory.isTemporaryDirectory(temporary) ||
-			temporary.equals(CodexRunPart.fallbackFolder(environment).toAbsolutePath().normalize());
-		Path exitStatus = folder.resolve(CodexRunPart.SAVED_OUTPUT + CodexRunPart.EXIT_STATUS_SUFFIX);
-		if (isTemporary && Files.isDirectory(folder, LinkOption.NOFOLLOW_LINKS) &&
-			Files.isRegularFile(exitStatus, LinkOption.NOFOLLOW_LINKS))
-		{
-			return Optional.of(folder);
-		}
-		return Optional.empty();
-	}
-
-	/**
-	 * Records the position of a part that Codex cut, so that the folder is kept until that part is printed uncut.
-	 *
-	 * @param folder the folder of the saved output
-	 * @param position the part's position
-	 * @throws IOException if the record cannot be written
-	 */
-	private static void recordCut(Path folder, String position) throws IOException
-	{
-		Set<String> positions = cutPositions(folder);
-		if (positions.add(position))
-			Files.write(folder.resolve(CUT_POSITIONS), positions, UTF_8);
-	}
-
-	/**
-	 * Records that the agent saw a part uncut, and indicates whether it has now seen all of the saved output: the last
-	 * part, and every part that Codex cut, uncut.
-	 *
-	 * @param folder the folder of the saved output
-	 * @param position the part's position
-	 * @param lastPart {@code true} if the part is the last one
-	 * @return {@code true} if the folder may be deleted
-	 * @throws IOException if the records cannot be read or written
-	 */
-	private static boolean isSeenWhole(Path folder, String position, boolean lastPart) throws IOException
-	{
-		Path cutRecord = folder.resolve(CUT_POSITIONS);
-		Path endRecord = folder.resolve(LAST_PART_SEEN);
-		Set<String> positions = cutPositions(folder);
-		if (positions.remove(position))
-		{
-			if (positions.isEmpty())
-				Files.delete(cutRecord);
-			else
-				Files.write(cutRecord, positions, UTF_8);
-		}
-		boolean endSeen = lastPart || Files.exists(endRecord, LinkOption.NOFOLLOW_LINKS);
-		if (!endSeen)
-			return false;
-		if (positions.isEmpty())
-			return true;
-		if (lastPart)
-			Files.writeString(endRecord, "", UTF_8);
-		return false;
-	}
-
-	/**
-	 * Returns the recorded positions of the parts that Codex cut.
-	 *
-	 * @param folder the folder of the saved output
-	 * @return the positions, in the order in which they were recorded
-	 * @throws IOException if the record cannot be read
-	 */
-	private static Set<String> cutPositions(Path folder) throws IOException
-	{
-		Path record = folder.resolve(CUT_POSITIONS);
-		if (!Files.isRegularFile(record, LinkOption.NOFOLLOW_LINKS))
-			return new LinkedHashSet<>();
-		Set<String> positions = new LinkedHashSet<>();
-		for (String line : Files.readAllLines(record, UTF_8))
-		{
-			if (!line.isBlank())
-				positions.add(line.strip());
-		}
-		return positions;
-	}
-
-	/**
 	 * Returns the line that tells the model to run a command that shows the cut lines again.
 	 *
 	 * @param command the command
@@ -391,9 +201,8 @@ public final class CodexPostToolUseHook
 	 */
 	private static String instruction(String command)
 	{
-		return "[The output was cut off because you set max_output_tokens. Before doing anything else, run the " +
-			"following command (without setting max_output_tokens) in order to get the correct output: " + command +
-			"]\n";
+		return "[The output was cut off because you set max_output_tokens. Run the following command without " +
+			"max_output_tokens to see it: " + command + "]\n";
 	}
 
 	/**

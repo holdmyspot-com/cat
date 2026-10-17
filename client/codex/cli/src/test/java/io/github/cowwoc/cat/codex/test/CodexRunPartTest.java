@@ -43,7 +43,7 @@ public final class CodexRunPartTest
 	 * The line separator that the shell's commands end their lines with.
 	 */
 	private static final String EOL = System.lineSeparator();
-	private static final Pattern LAST_PART = Pattern.compile("\\[End of (?<path>[^\n]+)]\n\\z");
+	private static final Pattern LAST_PART = Pattern.compile("\\[End of (?<path>[^\n]+)\\. The file was deleted]\n\\z");
 	/**
 	 * A folder that no CAT project contains, so that {@code run-part} saves the output of a command that runs there
 	 * under {@code TMPDIR}.
@@ -83,7 +83,8 @@ public final class CodexRunPartTest
 			requireThat(lastPart.find(), "lastPart").isTrue();
 			Path saved = Path.of(lastPart.group("path"));
 			requireThat(saved.getParent().getParent(), "folder").isEqualTo(temporary);
-			requireThat(call.output(), "output").isEqualTo("out" + EOL + "err" + EOL + "[End of " + saved + "]\n");
+			requireThat(call.output(), "output").isEqualTo("out" + EOL + "err" + EOL + "[End of " + saved +
+				". The file was deleted]\n");
 			requireThat(call.status(), "status").isEqualTo(3);
 			requireThat(Files.readString(Path.of(saved + ".exit-status")), "exitStatus").isEqualTo("3\n");
 		}
@@ -137,7 +138,8 @@ public final class CodexRunPartTest
 			requireThat(saved.getParent().getParent(), "folder").isEqualTo(sessionTemp);
 			requireThat(sessionTemp.resolveSibling("session.json"), "marker").isRegularFile();
 			// pwd prints the folder's real path, which differs where the temporary folder is a symbolic link, as on macOS
-			requireThat(call.output(), "output").isEqualTo(folder.toRealPath() + EOL + "[End of " + saved + "]\n");
+			requireThat(call.output(), "output").isEqualTo(folder.toRealPath() + EOL + "[End of " + saved +
+				". The file was deleted]\n");
 		}
 	}
 
@@ -290,7 +292,7 @@ public final class CodexRunPartTest
 			Matcher lastPart = LAST_PART.matcher(call.output());
 			requireThat(lastPart.find(), "lastPart").withContext(call.error(), "error").isTrue();
 			requireThat(call.output(), "output").isEqualTo(expected + "|" + lastPart.group("path") + EOL +
-				"[End of " + lastPart.group("path") + "]\n");
+				"[End of " + lastPart.group("path") + ". The file was deleted]\n");
 		}
 	}
 
