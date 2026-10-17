@@ -528,6 +528,8 @@ Changes made to `design.md` and this plan during implementation, apart from this
   `prompt.json` (user request and rulings, 2026-10-16). WI-83, WI-84 and WI-85 added with §1, §1.1, §2, §6 and H-17;
   R-W13 added; R-W1, R-L1 and R-M6 reworded. WI-71 needs all three: the session rules that its trials load state
   `CAT_TEMP`, its campaign must start in the new storage, and its delivery writes the new history.
+- WI-83: the Codex PostToolUse hook deletes a `run-part` output once its last part arrives uncut and no cut part
+  awaits a re-read, and only a file that `run-part` saved (user request, 2026-10-16).
 - WI-70's delivery step: the session rules reach Codex through a rules file that the agent reads with `run-part`,
   and `client/bin/read-file` is already retired (`0615af40f`). WI-71: the general-knowledge prompt test is removed
   (`a61c0120c`).
@@ -640,7 +642,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-W10 | Control source: the incumbent's staged source with the target prompt file emptied to zero bytes, each dependent that the contract author lists removed (a file deleted, a hook registration unregistered, or an exact span deleted), and every other prompt file unchanged, the same for every candidate; the proposal lists the target and each dependent with the instruction it serves, and CAT refuses an entry that names the target, a path outside the prompt system and the project-built trial plugins, or a span that does not occur exactly once. | §4.4, §6.1, D71, D72, D78 | WI-65, WI-75, WI-76, WI-81 | U: `StagedSourceTest`, `ProposalTest`, `OptimizerCoreTest` |
 | R-W11 | Delivery writes each confirmed prompt test's values file with every test case of the campaign, and the scenario and fixtures of each created or edited prompt test, on a certified delivery and when the user keeps the incumbent; staging excludes the confirmed prompt test directories; a stopped campaign writes none. | §4.4, §4.7, D60 | WI-67 | U: `DeliveryTest`, `StagedSourceTest`, `DeliveryPlanTest`, `DriverTest`, `CleanupTest`, `OptimizerCoreTest`, `ScenarioTest`, `DeliveredTestTest`, `ProposalSchemaTest` |
 | R-W12 | Trial plugins: `prompt.json` in the target's test directory lists, per harness, the plugins that trials install, each by name with an optional `build` (`command`, `output`); `start` refuses, before creating anything, a target without it or without a key for its harness, naming the file, and a listed plugin without `build` whose name matches a plugin manifest tracked in the project; `start` runs each build command in the optimization worktree and stops, with the exit status and the end of the output, on a failed command, a missing manifest or a different manifest name; a plugin the project does not build is copied from the user's single installed copy; each base is copied into campaign storage once; CAT maps prompt-system directories, or else single files, onto each project-built base by comparing files, lists a participating file that no mapping covers, warns on a mapped file that differs, and refuses a target that would not load in trials; each staged source, the control source included, has a copy of each project-built plugin with its mapped files written over the base; every trial installs exactly the listed plugins and reuses the user's approvals of their hooks; each plugin's name, base identity, build command and mappings are measurement conditions. | §3.1, §4.4, §5, §6.1, D69, D78 | WI-73, WI-81 | U: `PromptConfigurationTest`, `InstalledPluginsTest`, `PluginMappingTest`, `StagedSourceTest`, `ProposalTest`, `ProposalSchemaTest`, `MeasurementIdentityTest`, `OptimizerCoreTest`, `CodexRunnerTest`, `ClaudeRunnerTest`, `CodexSessionsTest`, `ClaudeSessionsTest`; E: WI-71's certification campaign |
-| R-W13 | Per-session work directories: one component, `SessionWorkDirectory`, is the only code that names `.cat/work` or a session directory; it creates `.cat/work/<session-id>/` and its `temp/` (the session's `CAT_TEMP`) on first use and writes a marker naming the harness and its configuration directory, never overwriting one; the session ID is the hook input's `session_id` or the tool shell's `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, in canonical UUID form; the injected rules name the directory that the agent's own commands resolve; SessionStart removes each other session directory whose marker is more than 24 hours old and whose transcript the marker's configuration directory no longer holds (a Codex transcript in `archived_sessions/` counts as held), never one without a marker; CAT neither writes nor deletes `.cat/work/temp`. | D79 | WI-83 | U: `SessionWorkDirectoryTest`, `SessionSweepTest`, `WorkDirectoryAuditTest`, `ClaudeSessionStartHookTest`, `CodexSessionStartHookTest`, `CodexRunPartTest`, `HarnessRunnerOptionsTest`, `CodexRunnerCliTest`, `ToolScopeTest`; E: WI-83's exit check in both harnesses |
+| R-W13 | Per-session work directories: one component, `SessionWorkDirectory`, is the only code that names `.cat/work` or a session directory; it creates `.cat/work/<session-id>/` and its `temp/` (the session's `CAT_TEMP`) on first use and writes a marker naming the harness and its configuration directory, never overwriting one; the session ID is the hook input's `session_id` or the tool shell's `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, in canonical UUID form; the injected rules name the directory that the agent's own commands resolve; SessionStart removes each other session directory whose marker is more than 24 hours old and whose transcript the marker's configuration directory no longer holds (a Codex transcript in `archived_sessions/` counts as held), never one without a marker; CAT neither writes nor deletes `.cat/work/temp`; the Codex PostToolUse hook deletes a `run-part-*` folder that `run-part` saved once its last part arrives uncut and no cut part awaits a re-read. | D79 | WI-83 | U: `SessionWorkDirectoryTest`, `SessionSweepTest`, `WorkDirectoryAuditTest`, `ClaudeSessionStartHookTest`, `CodexSessionStartHookTest`, `CodexRunPartTest`, `HarnessRunnerOptionsTest`, `CodexRunnerCliTest`, `ToolScopeTest`, `CodexPostToolUseHookTest`; E: WI-83's exit check in both harnesses |
 
 ### 3.6 Measurement, contract and lifecycle
 
@@ -2365,6 +2367,16 @@ The riskiest pure code, built first.
   session's rules files; a resume writes them again.
 - **Handoffs:** an agent hands a file to another session by its absolute path. The receiving session reads it in place,
   or moves it into its own session directory to take over its cleanup.
+- **Saved output (user request, 2026-10-16):** the Codex PostToolUse hook deletes a `run-part-*` folder once the agent
+  has seen all of its output. It deletes when a `read-part` or `run-part` result that Codex did not cut ends with
+  `[End of <path>]`, and only when `<path>` is `output.txt` in a `run-part-*` folder directly inside a `temp` directory
+  that `SessionWorkDirectory` provides or that `run-part` falls back to, with `output.txt.exit-status` beside it, so a
+  file that the agent named itself is never deleted. When the hook repairs a cut part, it records the part's position
+  in the folder, and clears it when that part comes back uncut; it does not delete while a recorded position remains,
+  so re-reading a cut part still works. A failed deletion is reported on standard error and leaves the result
+  unchanged. A result whose command the hook cannot read, such as a Code Mode script's, and output whose last part the
+  agent never reads stay until the sweep removes the session's directory. Parts are not deleted one by one: they are
+  ranges of one file that `read-part` sizes at each call.
 - **Rule text:** the injected `CAT_TEMP` statements (`cat-env.md` for Claude; `temporary-directory.md` for Codex on
   POSIX and Windows) name the session's directory, with the session ID filled in by the hook. Update
   `.cat/rules/include/workflow-temporary-resources.md`, the Codex hooks README, and the Javadoc of `HookScope`,
@@ -2384,12 +2396,16 @@ The riskiest pure code, built first.
   and `CodexSessionStartHookTest` (the directory, the marker, the rules file's path, the injected `CAT_TEMP`),
   `CodexRunPartTest` (output in the session's `temp`; the fallback without a variable), `HarnessRunnerOptionsTest` and
   `CodexRunnerCliTest` (the default run root under the session's `temp`; `--run-root` required without a variable),
-  `ToolScopeTest`.
+  `ToolScopeTest`, `CodexPostToolUseHookTest` (an uncut last part deletes its `run-part-*` folder, from `run-part` and
+  from `read-part`; kept: a cut last part, an uncut last part while a cut part's position is recorded until that part
+  is read uncut, a file outside a `run-part-*` folder, one without `output.txt.exit-status`, and a result that is not a
+  last part; a failed deletion reported with the result unchanged).
 - **Exit:** unit tests pass; the full build passes in a session and with both variables unset; in each harness, a live
   session's injected rules name `.cat/work/<session-id>/temp`, that directory and its marker exist, and `run-part` saves
   its output there; a Codex subagent's `run-part` saves into the directory that its injected rules name; with one
   session's transcript moved away and its marker's time set back by more than 24 hours, the next SessionStart in the
-  project removes that session's directory and keeps every other one.
+  project removes that session's directory and keeps every other one; in a live Codex session, a `run-part` command
+  whose output takes three parts leaves no `run-part-*` folder once the agent has read its last part.
 
 ### WI-84 — Campaigns in the session work directory (user ruling, 2026-10-16)
 
