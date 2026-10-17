@@ -228,10 +228,14 @@ public final class PromptTestLocations
 	 * @param scenario a {@value PromptTestFiles#SCENARIO}, normalized and relative to the project
 	 * @return the directories, relative to the project, or an empty set if the file does not exist or its
 	 *   {@code ## Fixtures} section cannot be read
-	 * @throws IOException if the file cannot be read
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code scenario} is absolute
+	 * @throws IOException              if the file cannot be read
 	 */
-	private static Set<Path> sharedFixtures(Path project, Path scenario) throws IOException
+	public static Set<Path> sharedFixtures(Path project, Path scenario) throws IOException
 	{
+		requireThat(project, "project").isNotNull();
+		requireThat(scenario.isAbsolute(), "scenario.isAbsolute()").isFalse();
 		Path file = project.resolve(scenario);
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
 			return Set.of();
