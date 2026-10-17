@@ -5,7 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.CommandLineArguments;
 import io.github.cowwoc.cat.common.Platform;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.Console;
 import java.io.File;
@@ -32,7 +32,7 @@ import java.util.Optional;
  * the command's exit status in {@code <file>.exit-status}, so that whichever call prints the last part,
  * {@code run-part} or {@code read-part}, exits with that status; a part that more parts follow exits with status 0.
  * The output stays inside the project: in a Codex thread, which names its ID in {@code CODEX_THREAD_ID}, it is saved
- * in the temporary folder of the thread's session work directory (see {@link SessionWorkDirectory}) in the nearest CAT
+ * in the temporary folder of the thread's CAT session directory (see {@link SessionDirectory}) in the nearest CAT
  * project that contains the folder that the command runs in. Outside a CAT project, or without
  * {@code CODEX_THREAD_ID}, it is saved in the folder that {@link #fallbackFolder(Map)} returns.
  * <p>
@@ -92,7 +92,7 @@ public final class CodexRunPart
 	 * @param input the command
 	 * @param terminal {@code true} if {@code input} is a terminal, which holds no command
 	 * @param workingDirectory the folder that the command runs in; in a Codex thread, the output is saved in the
-	 *   temporary folder of the thread's session work directory in the nearest CAT project that contains this folder
+	 *   temporary folder of the thread's CAT session directory in the nearest CAT project that contains this folder
 	 * @param shell the shell that runs the command, and that runs the commands that this program prints
 	 * @param readPart the {@code read-part} launcher that the line that ends a part names
 	 * @param overrides the folder of the programs that the command finds before the caller's {@code PATH} when
@@ -195,10 +195,10 @@ public final class CodexRunPart
 	 *
 	 * @param workingDirectory the folder that the command runs in
 	 * @param environment the environment of the JVM
-	 * @return the temporary folder of the Codex thread's session work directory in the nearest CAT project that
+	 * @return the temporary folder of the Codex thread's CAT session directory in the nearest CAT project that
 	 *   contains {@code workingDirectory}; otherwise the folder that {@link #fallbackFolder(Map)} returns
 	 * @throws IOException if {@code CODEX_THREAD_ID} is not a UUID in canonical form, if neither {@code CODEX_HOME} nor
-	 *   the home directory's variable is set, or if the session work directory cannot be created
+	 *   the home directory's variable is set, or if the CAT session directory cannot be created
 	 */
 	private static Path outputFolder(Path workingDirectory, Map<String, String> environment) throws IOException
 	{
@@ -207,7 +207,7 @@ public final class CodexRunPart
 		{
 			if (scope.isInProject())
 			{
-				Optional<SessionWorkDirectory> session = scope.sessionWorkDirectory();
+				Optional<SessionDirectory> session = scope.sessionDirectory();
 				if (session.isPresent())
 					return session.get().temp();
 			}

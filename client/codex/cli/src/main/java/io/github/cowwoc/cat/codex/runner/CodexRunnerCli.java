@@ -118,7 +118,7 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Opens the tool scope of a runner command. Its session work directory, whose temporary directory holds the runs
+	 * Opens the tool scope of a runner command. Its CAT session directory, whose temporary directory holds the runs
 	 * of a command line that names no {@code --run-root}, belongs to the session whose tool shell runs the command, in
 	 * the nearest CAT project.
 	 *

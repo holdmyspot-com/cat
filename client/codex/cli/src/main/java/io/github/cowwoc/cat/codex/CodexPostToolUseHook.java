@@ -4,8 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.Platform;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
-import io.github.cowwoc.cat.common.SessionWorkDirectory.Removal;
+import io.github.cowwoc.cat.common.SessionDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory.Removal;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.io.InputStream;
@@ -43,7 +43,7 @@ import tools.jackson.databind.json.JsonMapper;
  * clears it when that part comes back uncut, so that the repaired instruction still finds the file. Once it deletes the
  * folder, it returns the result as a blocking decision whose closing line says that the agent has read the whole
  * output and that the output file was deleted, without naming it. Output whose last part the agent never reads stays
- * until its session's work directory is removed. Every other result passes unchanged.
+ * until its session's CAT session directory is removed. Every other result passes unchanged.
  */
 public final class CodexPostToolUseHook
 {
@@ -305,7 +305,7 @@ public final class CodexPostToolUseHook
 		if (folderName == null || temporary == null || !folderName.toString().startsWith(CodexRunPart.FOLDER_PREFIX))
 			return Optional.empty();
 
-		boolean isTemporary = SessionWorkDirectory.isTemporaryDirectory(temporary) ||
+		boolean isTemporary = SessionDirectory.isTemporaryDirectory(temporary) ||
 			temporary.equals(CodexRunPart.fallbackFolder(environment).toAbsolutePath().normalize());
 		Path exitStatus = folder.resolve(CodexRunPart.SAVED_OUTPUT + CodexRunPart.EXIT_STATUS_SUFFIX);
 		if (isTemporary && Files.isDirectory(folder, LinkOption.NOFOLLOW_LINKS) &&

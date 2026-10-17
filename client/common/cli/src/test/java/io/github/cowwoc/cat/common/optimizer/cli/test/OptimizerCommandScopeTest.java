@@ -86,7 +86,7 @@ public final class OptimizerCommandScopeTest
 			{
 				Campaign campaign = new Builder().confirmed().build();
 				OptimizerCommandScopeSecrets.access().store(other).replaceSnapshot(campaign);
-				otherHeldOut = OptimizerCommandScopeSecrets.access().sessionWorkDirectory(other).campaigns().
+				otherHeldOut = OptimizerCommandScopeSecrets.access().sessionDirectory(other).campaigns().
 					resolve(campaign.header().id()).resolve("held_out");
 			}
 			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE,
@@ -94,7 +94,7 @@ public final class OptimizerCommandScopeTest
 			{
 				Campaign campaign = new Builder().confirmed().build();
 				OptimizerCommandScopeSecrets.access().store(scope).replaceSnapshot(campaign);
-				Path campaignDirectory = OptimizerCommandScopeSecrets.access().sessionWorkDirectory(scope).campaigns().
+				Path campaignDirectory = OptimizerCommandScopeSecrets.access().sessionDirectory(scope).campaigns().
 					resolve(campaign.header().id());
 
 				requireThat(Set.copyOf(OptimizerCommandScopeSecrets.access().heldOutDirectories(scope)),

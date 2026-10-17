@@ -75,7 +75,7 @@ final class InMemoryForks implements Forks
 
 	/**
 	 * Models the creation result that {@link Fork} records when
-	 * Git does not already ignore CAT's work directory, as verified by its workspace tests.
+	 * Git does not already ignore CAT's session directories, as verified by its workspace tests.
 	 */
 	void addExcludeOnCreate()
 	{

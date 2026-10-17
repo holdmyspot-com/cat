@@ -75,7 +75,7 @@ public final class AuthoringCopyTest
 			requireThat(scan.entries().get(Path.of("ext-dir/x.md")), "externalLink").isEqualTo(file("external x"));
 			requireThat(scan.entries().values().stream().filter(SymbolicLink.class::isInstance).toList(), "links").
 				isEmpty();
-			requireThat(scan.entries().containsKey(Path.of(".cat/work/state.json")), "workDirectory").isFalse();
+			requireThat(scan.entries().containsKey(Path.of(".cat/work/state.json")), "sessionDirectories").isFalse();
 		}
 	}
 
@@ -115,7 +115,7 @@ public final class AuthoringCopyTest
 
 	/**
 	 * Verifies that scanning the effects of a prompt author session that ran on a copy captures the session's edit,
-	 * creation and deletion, and omits CAT's work directory and Git metadata as scanning the copy does.
+	 * creation and deletion, and omits CAT's session directories and Git metadata as scanning the copy does.
 	 *
 	 * @throws IOException if the fixture cannot be created, prepared or scanned
 	 */
@@ -143,7 +143,7 @@ public final class AuthoringCopyTest
 			requireThat(after.root(), "root").isEqualTo(effects);
 			requireThat(after.entries().get(Path.of("prompt.md")), "edited").isEqualTo(file("prompt author edit"));
 			requireThat(after.entries().get(Path.of("rules/c.md")), "created").isEqualTo(file("created"));
-			requireThat(after.entries().containsKey(Path.of(".cat/work/session.json")), "workDirectory").isFalse();
+			requireThat(after.entries().containsKey(Path.of(".cat/work/session.json")), "sessionDirectories").isFalse();
 			requireThat(after.entries().containsKey(Path.of(".git/HEAD")), "gitMetadata").isFalse();
 			requireThat(InventoryDiff.between(before, after).changes().stream().map(PathChange::path).toList(),
 				"changedPaths").isEqualTo(List.of(Path.of("prompt.md"), Path.of("rules/b.md"), Path.of("rules/c.md")));

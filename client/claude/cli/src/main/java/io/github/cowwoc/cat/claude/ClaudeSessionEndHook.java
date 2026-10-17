@@ -13,7 +13,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Deletes the rules files of a session's work directory after Claude ends the session. A resumed session's
+ * Deletes the rules files of a session's CAT session directory after Claude ends the session. A resumed session's
  * SessionStart writes them again; the rest of the directory stays until the sweep removes it.
  */
 public final class ClaudeSessionEndHook
@@ -55,7 +55,7 @@ public final class ClaudeSessionEndHook
 				throw new IllegalArgumentException("SessionEnd accepts no arguments");
 			JsonNode event = scope.readEvent("SessionEnd", input);
 			Path projectDir = ClaudeHookScope.projectDir(scope, event, environment, workingDirectory);
-			scope.sessionWorkDirectory(projectDir, event, "session_id").deleteRulesFiles();
+			scope.sessionDirectory(projectDir, event, "session_id").deleteRulesFiles();
 		}
 		catch (IOException | IllegalArgumentException | JacksonException e)
 		{

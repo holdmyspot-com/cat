@@ -8,7 +8,7 @@ import io.github.cowwoc.cat.claude.ClaudeSessionStartHook;
 import io.github.cowwoc.cat.claude.ClaudeSubagentStartHook;
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.ByteArrayInputStream;
@@ -33,7 +33,7 @@ public final class ClaudeSessionStartHookTest
 {
 	private static final String SESSION_ID = "6b1f7c1e-5d0a-4c55-9a8e-2f6c0f1d2e3a";
 	private static final String CAT_TEMP_RULE = "`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" +
-		SessionWorkDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n";
+		SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n";
 
 	/**
 	 * Verifies Claude receives a short instruction that locates the complete main-agent rules in CAT's temporary root and
@@ -288,12 +288,12 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies the hook creates the session's work directory in the session's own directory, which the injected rules
-	 * name as the project directory, even when an enclosing directory is a CAT project, and that it no longer creates
-	 * the shared temporary directory.
+	 * Verifies the hook creates the session's CAT session directory in the directory that the session runs in, which the
+	 * injected rules name as the project directory, even when an enclosing directory is a CAT project, and that it no
+	 * longer creates the shared temporary directory.
 	 */
 	@Test
-	public void createsWorkDirectoryInSessionDirectory() throws IOException
+	public void createsSessionDirectoryInLaunchDirectory() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -313,14 +313,14 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies SessionStart writes the main agent's rules to the session work directory that the input's
+	 * Verifies SessionStart writes the main agent's rules to the CAT session directory that the input's
 	 * {@code session_id} names, creates its {@code temp} directory and marker, and states that directory as
 	 * {@code CAT_TEMP} in the rules.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void writesRulesToSessionWorkDirectory() throws IOException
+	public void writesRulesToSessionDirectory() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -353,8 +353,9 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies SubagentStart writes a subagent's rules to its own file in the work directory of the parent session,
-	 * whose ID the input's {@code session_id} carries, and states that directory as {@code CAT_TEMP} in the rules.
+	 * Verifies SubagentStart writes a subagent's rules to its own file in the CAT session directory of the parent
+	 * session, whose ID the input's {@code session_id} carries, and states that directory as {@code CAT_TEMP} in the
+	 * rules.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -382,7 +383,7 @@ public final class ClaudeSessionStartHookTest
 
 	/**
 	 * Verifies SessionStart refuses a {@code session_id} that is not a UUID in canonical form without writing rules or a
-	 * work directory.
+	 * CAT session directory.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -404,8 +405,8 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies SessionStart removes the work directory of another session whose marker is older than a day and whose
-	 * transcript the configuration directory no longer holds, and keeps the directory of a session whose transcript
+	 * Verifies SessionStart removes the CAT session directory of another session whose marker is older than a day and
+	 * whose transcript the configuration directory no longer holds, and keeps the directory of a session whose transcript
 	 * remains.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
@@ -610,9 +611,10 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Returns the session ID that names the work directory holding a main agent's rules file or a subagents' directory.
+	 * Returns the session ID that names the CAT session directory holding a main agent's rules file or a subagents'
+	 * directory.
 	 *
-	 * @param file a rules file or the subagents' directory, directly inside a session work directory
+	 * @param file a rules file or the subagents' directory, directly inside a CAT session directory
 	 * @return the session ID
 	 */
 	private static String sessionId(Path file)
@@ -621,12 +623,12 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Creates the work directory of another session with a marker that is two days old.
+	 * Creates the CAT session directory of another session with a marker that is two days old.
 	 *
 	 * @param project the project
 	 * @param sessionId the other session's ID
 	 * @param configuration the configuration directory that the marker names
-	 * @return the session's work directory
+	 * @return the session's CAT session directory
 	 * @throws IOException if the directory cannot be created
 	 */
 	private static Path writeOldMarker(Path project, String sessionId, Path configuration) throws IOException

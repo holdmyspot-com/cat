@@ -6,7 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.HookScope;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import io.github.cowwoc.cat.common.git.replay.GitTopicReplayEditor;
@@ -29,9 +29,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link SessionWorkDirectory}.
+ * Tests {@link SessionDirectory}.
  */
-public final class SessionWorkDirectoryTest
+public final class SessionDirectoryTest
 {
 	private static final String SESSION_ID = "ff46b68a-55dd-4224-89aa-065d419b8827";
 	private static final Instant CREATED = Instant.parse("2026-10-16T12:00:00Z");
@@ -39,7 +39,7 @@ public final class SessionWorkDirectoryTest
 	/**
 	 * Creates a test instance.
 	 */
-	public SessionWorkDirectoryTest()
+	public SessionDirectoryTest()
 	{
 	}
 
@@ -63,7 +63,7 @@ public final class SessionWorkDirectoryTest
 			JsonNode event = json.readTree("{\"session_id\":\"" + SESSION_ID + "\"}");
 			try (HookScope scope = new HookScope(plugin, root.resolve("home"), HARNESS_A, configuration))
 			{
-				SessionWorkDirectory session = scope.sessionWorkDirectory(project, event, "session_id");
+				SessionDirectory session = scope.sessionDirectory(project, event, "session_id");
 
 				Path directory = project.resolve(".cat/work/" + SESSION_ID);
 				requireThat(session.directory(), "directory").isEqualTo(directory);
@@ -106,7 +106,7 @@ public final class SessionWorkDirectoryTest
 					"USERPROFILE", home.toString());
 				try (ToolScope scope = ToolScope.forSession(nested, environment, List.of(HARNESS_A, HARNESS_B)))
 				{
-					SessionWorkDirectory session = scope.sessionWorkDirectory().orElseThrow();
+					SessionDirectory session = scope.sessionDirectory().orElseThrow();
 
 					Path directory = project.resolve(".cat/work/" + variable.getValue());
 					requireThat(session.directory(), "directory").isEqualTo(directory);
@@ -146,7 +146,7 @@ public final class SessionWorkDirectoryTest
 				HARNESS_A.configurationVariable(), configuration.toString());
 			try (ToolScope scope = ToolScope.forSession(project, environment, List.of(HARNESS_A, HARNESS_B)))
 			{
-				SessionWorkDirectory session = scope.sessionWorkDirectory().orElseThrow();
+				SessionDirectory session = scope.sessionDirectory().orElseThrow();
 				JsonNode marker = JsonMapper.builder().build().readTree(Files.readString(session.marker(), UTF_8));
 				requireThat(marker.path("configuration_directory").stringValue(), "configurationDirectory").
 					isEqualTo(configuration.toAbsolutePath().normalize().toString());
@@ -172,7 +172,7 @@ public final class SessionWorkDirectoryTest
 			{
 				try
 				{
-					SessionWorkDirectory.open(project, sessionId, HARNESS_A, project.resolve("configuration"), CREATED,
+					SessionDirectory.open(project, sessionId, HARNESS_A, project.resolve("configuration"), CREATED,
 						json);
 					throw new AssertionError("Accepted session ID: " + sessionId);
 				}
@@ -206,13 +206,13 @@ public final class SessionWorkDirectoryTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
 			Path configuration = project.resolve("configuration");
 			JsonMapper json = JsonMapper.builder().build();
-			List<Callable<SessionWorkDirectory>> uses = new ArrayList<>();
+			List<Callable<SessionDirectory>> uses = new ArrayList<>();
 			for (int index = 0; index < 16; ++index)
 			{
 				Instant created = CREATED.plusSeconds(index);
-				uses.add(() -> SessionWorkDirectory.open(project, SESSION_ID, HARNESS_A, configuration, created, json));
+				uses.add(() -> SessionDirectory.open(project, SESSION_ID, HARNESS_A, configuration, created, json));
 			}
-			for (Future<SessionWorkDirectory> use : executor.invokeAll(uses))
+			for (Future<SessionDirectory> use : executor.invokeAll(uses))
 				use.get();
 
 			Path directory = project.resolve(".cat/work/" + SESSION_ID);
@@ -241,11 +241,11 @@ public final class SessionWorkDirectoryTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
 			JsonMapper json = JsonMapper.builder().build();
-			SessionWorkDirectory first = SessionWorkDirectory.open(project, SESSION_ID, HARNESS_A,
+			SessionDirectory first = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, json);
 			String marker = Files.readString(first.marker(), UTF_8);
 
-			SessionWorkDirectory.open(project, SESSION_ID, HARNESS_B, project.resolve("other"),
+			SessionDirectory.open(project, SESSION_ID, HARNESS_B, project.resolve("other"),
 				CREATED.plusSeconds(3600), json);
 
 			requireThat(Files.readString(first.marker(), UTF_8), "marker").isEqualTo(marker);
@@ -269,10 +269,10 @@ public final class SessionWorkDirectoryTest
 			try (ToolScope scope = ToolScope.forSession(project, Map.of("HOME", project.toString()),
 				List.of(HARNESS_A, HARNESS_B)))
 			{
-				requireThat(scope.sessionWorkDirectory(), "sessionWorkDirectory").isEqualTo(Optional.empty());
+				requireThat(scope.sessionDirectory(), "sessionDirectory").isEqualTo(Optional.empty());
 				try
 				{
-					scope.requireSessionWorkDirectory();
+					scope.requireSessionDirectory();
 					throw new AssertionError("A scope without a session variable returned a session directory");
 				}
 				catch (IOException e)
@@ -286,8 +286,8 @@ public final class SessionWorkDirectoryTest
 	}
 
 	/**
-	 * Verifies the Git replay editor refuses to run without either session variable, naming both, and creates no work
-	 * directory.
+	 * Verifies the Git replay editor refuses to run without either session variable, naming both, and creates no CAT
+	 * session directory.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -349,7 +349,7 @@ public final class SessionWorkDirectoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
-			SessionWorkDirectory session = SessionWorkDirectory.open(project, SESSION_ID, HARNESS_A,
+			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
 
 			requireThat(session.rulesFile(), "rulesFile").isEqualTo(session.directory().resolve("rules.md"));
@@ -359,7 +359,7 @@ public final class SessionWorkDirectoryTest
 			requireThat(session.rulesFileOf(otherSession), "rulesFileOf").
 				isEqualTo(session.directory().resolveSibling(otherSession).resolve("rules.md"));
 			requireThat(Files.exists(session.directory().resolveSibling(otherSession)), "otherSessionExists").isFalse();
-			requireThat(session.insertSessionId("work/" + SessionWorkDirectory.SESSION_ID_DIRECTIVE + "/temp"), "text").
+			requireThat(session.insertSessionId("work/" + SessionDirectory.SESSION_ID_DIRECTIVE + "/temp"), "text").
 				isEqualTo("work/" + SESSION_ID + "/temp");
 		}
 	}
@@ -377,7 +377,7 @@ public final class SessionWorkDirectoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
-			SessionWorkDirectory session = SessionWorkDirectory.open(project, SESSION_ID, HARNESS_A,
+			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
 
 			Path directory = project.toAbsolutePath().normalize().resolve(".cat/work/" + SESSION_ID);
@@ -403,9 +403,9 @@ public final class SessionWorkDirectoryTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
 			JsonMapper json = JsonMapper.builder().build();
 			String other = "01a147d8-bf56-7283-92b4-12dcaeb53738";
-			SessionWorkDirectory otherSession = SessionWorkDirectory.open(project, other, HARNESS_B,
+			SessionDirectory otherSession = SessionDirectory.open(project, other, HARNESS_B,
 				project.resolve("configuration-b"), CREATED, json);
-			SessionWorkDirectory session = SessionWorkDirectory.open(project, SESSION_ID, HARNESS_A,
+			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, json);
 			Files.createDirectories(session.directory().resolveSibling("temp"));
 			Files.createDirectories(session.directory().resolveSibling("optimizer/20261015-0900-abc123"));
@@ -430,7 +430,7 @@ public final class SessionWorkDirectoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
-			SessionWorkDirectory session = SessionWorkDirectory.open(project, SESSION_ID, HARNESS_A,
+			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
 			session.subagentRulesFile("../escape");
 		}

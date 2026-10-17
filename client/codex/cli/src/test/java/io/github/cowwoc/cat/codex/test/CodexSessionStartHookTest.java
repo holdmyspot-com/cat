@@ -6,7 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.codex.CodexSessionStartHook;
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.ByteArrayInputStream;
@@ -30,7 +30,7 @@ import tools.jackson.databind.JsonNode;
 public final class CodexSessionStartHookTest
 {
 	private static final String CAT_TEMP_RULE = "`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" +
-		SessionWorkDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n";
+		SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n";
 
 	/**
 	 * Verifies unconditional rules are injected while path-scoped rules remain lazy.
@@ -212,7 +212,7 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies the hook creates the work directory of the session that the input's {@code session_id} names in the
+	 * Verifies the hook creates the CAT session directory of the session that the input's {@code session_id} names in the
 	 * session's project directory, with its {@code temp} directory, so the agent can create a child directory there
 	 * without first creating its parent, and a marker that records the harness, its configuration directory and where
 	 * the session's transcript is kept. The hook no longer creates the shared temporary directory.
@@ -220,7 +220,7 @@ public final class CodexSessionStartHookTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void createsSessionWorkDirectory() throws IOException
+	public void createsSessionDirectory() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -248,9 +248,9 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies SessionStart removes the work directory of another session whose marker is older than a day and whose
-	 * transcript the configuration directory no longer holds, and keeps the directory of a session whose transcript is
-	 * archived.
+	 * Verifies SessionStart removes the CAT session directory of another session whose marker is older than a day and
+	 * whose transcript the configuration directory no longer holds, and keeps the directory of a session whose transcript
+	 * is archived.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -282,7 +282,8 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies the hook refuses a {@code session_id} that is not a UUID in canonical form and creates no work directory.
+	 * Verifies the hook refuses a {@code session_id} that is not a UUID in canonical form and creates no CAT session
+	 * directory.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -602,12 +603,12 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Creates the work directory of another session with a Codex marker that is two days old.
+	 * Creates the CAT session directory of another session with a Codex marker that is two days old.
 	 *
 	 * @param project the project
 	 * @param sessionId the other session's ID
 	 * @param configuration the configuration directory that the marker names
-	 * @return the session's work directory
+	 * @return the session's CAT session directory
 	 * @throws IOException if the directory cannot be created
 	 */
 	private static Path writeOldMarker(Path project, String sessionId, Path configuration) throws IOException

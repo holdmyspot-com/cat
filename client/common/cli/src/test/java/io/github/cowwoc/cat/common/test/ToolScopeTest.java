@@ -5,7 +5,7 @@ import static io.github.cowwoc.cat.common.test.SessionHarnesses.HARNESS_B;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.SessionHarness;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
@@ -32,22 +32,22 @@ public final class ToolScopeTest
 	}
 
 	/**
-	 * Verifies a scope without a session has no session work directory and names no session variable.
+	 * Verifies a scope without a session has no CAT session directory and names no session variable.
 	 *
-	 * @throws IOException if the session work directory cannot be resolved
+	 * @throws IOException if the CAT session directory cannot be resolved
 	 */
 	@Test
 	public void defaultScopeHasNoSession() throws IOException
 	{
 		try (ToolScope scope = new ToolScope())
 		{
-			requireThat(scope.sessionWorkDirectory(), "sessionWorkDirectory").isEqualTo(Optional.empty());
+			requireThat(scope.sessionDirectory(), "sessionDirectory").isEqualTo(Optional.empty());
 			requireThat(scope.missingSession(), "missingSession").isEqualTo("No harness session variable is known");
 		}
 	}
 
 	/**
-	 * Verifies the session work directory is in the enclosing project root rather than a nested working directory.
+	 * Verifies the CAT session directory is in the enclosing project root rather than a nested working directory.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -64,7 +64,7 @@ public final class ToolScopeTest
 				List.of(HARNESS_A, HARNESS_B)))
 			{
 				requireThat(scope.isInProject(), "isInProject").isTrue();
-				SessionWorkDirectory session = scope.requireSessionWorkDirectory();
+				SessionDirectory session = scope.requireSessionDirectory();
 				requireThat(session.temp(), "temp").isEqualTo(root.toAbsolutePath().normalize().
 					resolve(".cat/work/" + SESSION_ID + "/temp"));
 			}
@@ -72,7 +72,7 @@ public final class ToolScopeTest
 	}
 
 	/**
-	 * Verifies that outside a CAT project the session work directory is in the working directory.
+	 * Verifies that outside a CAT project the CAT session directory is in the working directory.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -86,7 +86,7 @@ public final class ToolScopeTest
 				List.of(HARNESS_A, HARNESS_B)))
 			{
 				requireThat(scope.isInProject(), "isInProject").isFalse();
-				requireThat(scope.requireSessionWorkDirectory().directory(), "directory").
+				requireThat(scope.requireSessionDirectory().directory(), "directory").
 					isEqualTo(root.toAbsolutePath().normalize().resolve(".cat/work/" + SESSION_ID));
 			}
 		}
@@ -109,9 +109,9 @@ public final class ToolScopeTest
 				HARNESS_B.sessionVariable(), OTHER_SESSION_ID, "HOME", root.toString(), "USERPROFILE", root.toString());
 			try (ToolScope scope = ToolScope.forSession(root, environment, List.of(HARNESS_B, HARNESS_A)))
 			{
-				SessionWorkDirectory session = scope.requireSessionWorkDirectory();
+				SessionDirectory session = scope.requireSessionDirectory();
 				requireThat(session.sessionId(), "sessionId").isEqualTo(OTHER_SESSION_ID);
-				requireThat(scope.requireSessionWorkDirectory(), "again").isReferenceEqualTo(session, "session");
+				requireThat(scope.requireSessionDirectory(), "again").isReferenceEqualTo(session, "session");
 			}
 		}
 	}
@@ -130,7 +130,7 @@ public final class ToolScopeTest
 			try (ToolScope scope = ToolScope.forSession(root, environment(HARNESS_A, "session", root),
 				List.of(HARNESS_A)))
 			{
-				scope.sessionWorkDirectory();
+				scope.sessionDirectory();
 				throw new AssertionError("Accepted an invalid session variable");
 			}
 			catch (IOException e)

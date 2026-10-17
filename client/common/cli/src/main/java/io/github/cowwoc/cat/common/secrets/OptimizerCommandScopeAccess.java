@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.secrets;
 
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.optimizer.cli.CommandRefusedException;
 
 import io.github.cowwoc.cat.common.optimizer.cli.OptimizerCommandScope;
@@ -38,7 +38,7 @@ public interface OptimizerCommandScopeAccess
 	Path projectRoot(OptimizerCommandScope scope) throws CommandRefusedException, IOException;
 
 	/**
-	 * Returns the work directory of the host session that runs a scope's command, creating it on first use.
+	 * Returns the CAT session directory of the host session that runs a scope's command, creating it on first use.
 	 *
 	 * @param scope the scope
 	 * @return the directory
@@ -47,7 +47,7 @@ public interface OptimizerCommandScopeAccess
 	 *   names no host session
 	 * @throws IOException if the working directory cannot be resolved or the directory cannot be created
 	 */
-	SessionWorkDirectory sessionWorkDirectory(OptimizerCommandScope scope) throws CommandRefusedException, IOException;
+	SessionDirectory sessionDirectory(OptimizerCommandScope scope) throws CommandRefusedException, IOException;
 
 	/**
 	 * Returns the store of the campaigns of the host session that runs a scope's command.

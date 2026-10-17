@@ -44,7 +44,7 @@ public final class ForkTreeTest
 
 	/**
 	 * Verifies that the recorded inventory holds each file with its content hash and mode, each link with its stored
-	 * destination, and each external file under its absolute path, and omits CAT's work directory.
+	 * destination, and each external file under its absolute path, and omits CAT's session directories.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */

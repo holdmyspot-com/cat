@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Supplies the Claude Code parts of a session work directory.
+ * Supplies the Claude Code parts of a CAT session directory.
  */
 public final class ClaudeSessionHarness
 {

@@ -22,7 +22,7 @@ import java.util.TreeSet;
  * A staged source holds the fork's recorded files, including the participating ignored and external files and the
  * trial fixtures, with the candidate's overlay applied and the paths that the caller excludes left out. Every symbolic
  * link is replaced by a copy of its resolved target, so a trial write through a link reaches only the trial's copy.
- * CAT's work directory is excluded. A staged source is a cache that is rebuilt from the overlay when needed.
+ * CAT's session directories are excluded. A staged source is a cache that is rebuilt from the overlay when needed.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. Concurrent requests for one candidate share one staged source.
  */

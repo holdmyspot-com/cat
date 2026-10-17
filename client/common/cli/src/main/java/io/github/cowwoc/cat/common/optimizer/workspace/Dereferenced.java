@@ -30,8 +30,8 @@ import java.util.TreeSet;
  * its resolved target.
  * <p>
  * The tree is computed over the inventory, without touching the file system. A link to a directory expands to the
- * directory's recorded files, nested links included. Git metadata never appears, and neither does CAT's work
- * directory, because a trial agent must not read other trials or formal assignments.
+ * directory's recorded files, nested links included. Git metadata never appears, and neither do CAT's session
+ * directories, because a trial agent must not read other trials or formal assignments.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */

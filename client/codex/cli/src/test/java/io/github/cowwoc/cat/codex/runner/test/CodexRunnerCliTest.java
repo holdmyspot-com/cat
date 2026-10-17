@@ -25,8 +25,8 @@ public final class CodexRunnerCliTest
 	private static final String THREAD_ID = "01a147d8-bf56-7283-92b4-12dcaeb53738";
 
 	/**
-	 * Verifies that in a Codex thread a runner command keeps its runs in the temporary directory of the thread's work
-	 * directory in the nearest CAT project.
+	 * Verifies that in a Codex thread a runner command keeps its runs in the temporary directory of the thread's CAT
+	 * session directory in the nearest CAT project.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */

@@ -182,12 +182,12 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that CAT's own work directory does not make the base dirty, even when Git does not ignore it yet.
+	 * Verifies that CAT's session directories do not make the base dirty, even when Git does not ignore them yet.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void workDirectoryDoesNotDirtyBase() throws IOException
+	public void sessionDirectoriesDoNotDirtyBase() throws IOException
 	{
 		// Requirement: R-W2
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -203,7 +203,7 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that removing the optimization worktree of a campaign in a session's work directory deletes the
+	 * Verifies that removing the optimization worktree of a campaign in a session's CAT session directory deletes the
 	 * worktree and leaves the repository no record of it.
 	 *
 	 * @throws IOException if the fixture cannot be created
@@ -242,13 +242,13 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that the exclude is appended when Git does not ignore the work directory, so campaign files never make
-	 * the base dirty, and that the fork reports that it added it.
+	 * Verifies that the exclude is appended when Git does not ignore CAT's session directories, so campaign files never
+	 * make the base dirty, and that the fork reports that it added it.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void addsExcludeWhenWorkDirectoryIsNotIgnored() throws IOException
+	public void addsExcludeWhenSessionsAreNotIgnored() throws IOException
 	{
 		// Requirement: R-W1
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -267,8 +267,8 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that the exclude is left alone when Git already ignores the work directory through a pattern other than
-	 * the line that CAT appends.
+	 * Verifies that the exclude is left alone when Git already ignores CAT's session directories through a pattern other
+	 * than the line that CAT appends.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -658,8 +658,8 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that a Git failure while checking whether the work directory is ignored propagates, instead of being
-	 * taken for "not ignored", and that nothing is created or appended. Git cannot check a path beyond a symbolic
+	 * Verifies that a Git failure while checking whether CAT's session directories are ignored propagates, instead of
+	 * being taken for "not ignored", and that nothing is created or appended. Git cannot check a path beyond a symbolic
 	 * link, so an ignored link at {@code .cat} makes the check fail with exit status 128, which the failure names.
 	 *
 	 * @throws IOException if the fixture cannot be created

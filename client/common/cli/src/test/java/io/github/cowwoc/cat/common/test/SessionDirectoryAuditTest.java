@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,12 +12,12 @@ import java.util.stream.Stream;
 import org.testng.annotations.Test;
 
 /**
- * Verifies that {@link SessionWorkDirectory} is the only main source file of the {@code common}, {@code claude} and
+ * Verifies that {@link SessionDirectory} is the only main source file of the {@code common}, {@code claude} and
  * {@code codex} command-line modules that spells CAT's work root, so that every other file takes the work root and the
  * paths inside it from that class. The build passes the {@code client} directory in the {@code cat.client.directory}
  * system property.
  */
-public final class WorkDirectoryAuditTest
+public final class SessionDirectoryAuditTest
 {
 	/**
 	 * The modules, relative to the {@code client} directory, whose main sources the audit scans.
@@ -27,23 +27,23 @@ public final class WorkDirectoryAuditTest
 	 * The only main source file that may spell the work root, relative to the {@code client} directory.
 	 */
 	private static final Path OWNER = Path.of("common/cli/src/main/java/io/github/cowwoc/cat/common/" +
-		"SessionWorkDirectory.java");
+		"SessionDirectory.java");
 
 	/**
 	 * Creates a test instance.
 	 */
-	public WorkDirectoryAuditTest()
+	public SessionDirectoryAuditTest()
 	{
 	}
 
 	/**
-	 * Verifies that no main source file other than {@link SessionWorkDirectory} spells the work root, and that the scan
+	 * Verifies that no main source file other than {@link SessionDirectory} spells the work root, and that the scan
 	 * reads that file.
 	 *
 	 * @throws IOException if a source file cannot be read
 	 */
 	@Test
-	public void onlySessionWorkDirectorySpellsWorkRoot() throws IOException
+	public void onlySessionDirectorySpellsWorkRoot() throws IOException
 	{
 		// Requirement: R-W13
 		Path client = clientDirectory();
@@ -56,12 +56,12 @@ public final class WorkDirectoryAuditTest
 			{
 				if (file.equals(owner))
 					ownerScanned = true;
-				else if (Files.readString(file).contains(SessionWorkDirectory.WORK_ROOT))
+				else if (Files.readString(file).contains(SessionDirectory.ROOT))
 					spelling.add(client.relativize(file));
 			}
 		}
 		requireThat(ownerScanned, "ownerScanned").isTrue();
-		requireThat(Files.readString(owner), "owner").contains(SessionWorkDirectory.WORK_ROOT);
+		requireThat(Files.readString(owner), "owner").contains(SessionDirectory.ROOT);
 		requireThat(spelling, "spelling").isEmpty();
 	}
 

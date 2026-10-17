@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.cli;
 
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.execution.CapCalibrator;
 import io.github.cowwoc.cat.common.optimizer.execution.SliceSettings;
@@ -33,7 +33,7 @@ import java.util.random.RandomGenerator;
  * first needs them, so that a working directory outside a Git repository is refused by the command rather than by the
  * scope's creation.
  * <p>
- * The campaigns and runs of a command live in the work directory of the host session that runs it. The other
+ * The campaigns and runs of a command live in the CAT session directory of the host session that runs it. The other
  * sessions' campaigns are only read.
  */
 public abstract class OptimizerCommandScope implements AutoCloseable
@@ -55,10 +55,10 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 			}
 
 			@Override
-			public SessionWorkDirectory sessionWorkDirectory(OptimizerCommandScope scope)
+			public SessionDirectory sessionDirectory(OptimizerCommandScope scope)
 				throws CommandRefusedException, IOException
 			{
-				return scope.sessionWorkDirectory();
+				return scope.sessionDirectory();
 			}
 
 			@Override
@@ -77,7 +77,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 
 	private boolean closed;
 	private Path projectRoot;
-	private SessionWorkDirectory sessionWorkDirectory;
+	private SessionDirectory sessionDirectory;
 	private CampaignStore store;
 
 	/**
@@ -256,7 +256,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	}
 
 	/**
-	 * Returns the work directory of the host session that runs this command, creating it on first use.
+	 * Returns the CAT session directory of the host session that runs this command, creating it on first use.
 	 *
 	 * @return the directory
 	 * @throws IllegalStateException if this scope is closed
@@ -264,23 +264,23 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 *   names no host session
 	 * @throws IOException if the working directory cannot be resolved or the directory cannot be created
 	 */
-	final SessionWorkDirectory sessionWorkDirectory() throws CommandRefusedException, IOException
+	final SessionDirectory sessionDirectory() throws CommandRefusedException, IOException
 	{
 		ensureOpen();
-		if (sessionWorkDirectory == null)
-			sessionWorkDirectory = openSessionWorkDirectory(projectRoot());
-		return sessionWorkDirectory;
+		if (sessionDirectory == null)
+			sessionDirectory = openSessionDirectory(projectRoot());
+		return sessionDirectory;
 	}
 
 	/**
-	 * Opens the work directory of the host session that runs this command.
+	 * Opens the CAT session directory of the host session that runs this command.
 	 *
 	 * @param projectRoot the project root
 	 * @return the directory
 	 * @throws CommandRefusedException if the environment names no host session
 	 * @throws IOException if the directory cannot be created
 	 */
-	protected abstract SessionWorkDirectory openSessionWorkDirectory(Path projectRoot)
+	protected abstract SessionDirectory openSessionDirectory(Path projectRoot)
 		throws CommandRefusedException, IOException;
 
 	/**
@@ -296,7 +296,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	{
 		ensureOpen();
 		if (store == null)
-			store = new FileCampaignStore(sessionWorkDirectory().campaigns(), json());
+			store = new FileCampaignStore(sessionDirectory().campaigns(), json());
 		return store;
 	}
 
@@ -313,7 +313,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	{
 		try
 		{
-			return sessionWorkDirectory().runRoot(harness().commandName());
+			return sessionDirectory().runRoot(harness().commandName());
 		}
 		catch (CommandRefusedException e)
 		{
@@ -334,7 +334,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 		try
 		{
 			List<Path> directories = new ArrayList<>();
-			for (Path campaigns : sessionWorkDirectory().campaignsBySession().values())
+			for (Path campaigns : sessionDirectory().campaignsBySession().values())
 				directories.addAll(FileCampaignStore.heldOutDirectories(campaigns));
 			return directories;
 		}

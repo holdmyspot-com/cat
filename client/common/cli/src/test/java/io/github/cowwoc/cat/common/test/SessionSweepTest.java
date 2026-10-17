@@ -6,7 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.SessionHarness;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -21,7 +21,7 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests the sweep of {@link SessionWorkDirectory}, which removes the directories of sessions that their harness no
+ * Tests the sweep of {@link SessionDirectory}, which removes the directories of sessions that their harness no
  * longer keeps.
  */
 public final class SessionSweepTest
@@ -54,8 +54,8 @@ public final class SessionSweepTest
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path configuration = Files.createDirectories(root.resolve("configuration/projects/other-project"));
 			Files.writeString(configuration.resolve("unrelated.jsonl"), "{}\n", UTF_8);
-			SessionWorkDirectory gone = open(project, OTHER, HARNESS_A, root.resolve("configuration"), OLD);
-			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, root.resolve("configuration"), OLD);
+			SessionDirectory gone = open(project, OTHER, HARNESS_A, root.resolve("configuration"), OLD);
+			SessionDirectory current = open(project, CURRENT, HARNESS_A, root.resolve("configuration"), OLD);
 			ByteArrayOutputStream error = new ByteArrayOutputStream();
 
 			current.sweep(NOW, new PrintStream(error, true, UTF_8));
@@ -83,8 +83,8 @@ public final class SessionSweepTest
 			Path configuration = Files.createDirectories(root.resolve("configuration-b/sessions/2026/10/14"));
 			Files.writeString(configuration.resolve("rollout-2026-10-14T10-00-00-" + CURRENT + ".jsonl"), "{}\n",
 				UTF_8);
-			SessionWorkDirectory gone = open(project, OTHER, HARNESS_B, root.resolve("configuration-b"), OLD);
-			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, root.resolve("configuration-a"), NOW);
+			SessionDirectory gone = open(project, OTHER, HARNESS_B, root.resolve("configuration-b"), OLD);
+			SessionDirectory current = open(project, CURRENT, HARNESS_A, root.resolve("configuration-a"), NOW);
 
 			current.sweep(NOW, new PrintStream(new ByteArrayOutputStream(), true, UTF_8));
 
@@ -116,10 +116,10 @@ public final class SessionSweepTest
 				".jsonl"));
 			writeTranscript(configurationB.resolve("archived_sessions/rollout-2026-10-14T10-00-00-" + archived +
 				".jsonl"));
-			SessionWorkDirectory keptFlat = open(project, flat, HARNESS_A, configurationA, OLD);
-			SessionWorkDirectory keptNested = open(project, nested, HARNESS_B, configurationB, OLD);
-			SessionWorkDirectory keptArchived = open(project, archived, HARNESS_B, configurationB, OLD);
-			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, configurationA, NOW);
+			SessionDirectory keptFlat = open(project, flat, HARNESS_A, configurationA, OLD);
+			SessionDirectory keptNested = open(project, nested, HARNESS_B, configurationB, OLD);
+			SessionDirectory keptArchived = open(project, archived, HARNESS_B, configurationB, OLD);
+			SessionDirectory current = open(project, CURRENT, HARNESS_A, configurationA, NOW);
 			ByteArrayOutputStream error = new ByteArrayOutputStream();
 
 			current.sweep(NOW, new PrintStream(error, true, UTF_8));
@@ -147,8 +147,8 @@ public final class SessionSweepTest
 			Path target = root.resolve("target-configuration");
 			writeTranscript(target.resolve("projects/-home-user-project/" + OTHER + ".jsonl"));
 			Path link = Files.createSymbolicLink(root.resolve("configuration"), target);
-			SessionWorkDirectory kept = open(project, OTHER, HARNESS_A, link, OLD);
-			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, link, NOW);
+			SessionDirectory kept = open(project, OTHER, HARNESS_A, link, OLD);
+			SessionDirectory current = open(project, CURRENT, HARNESS_A, link, NOW);
 
 			current.sweep(NOW, new PrintStream(new ByteArrayOutputStream(), true, UTF_8));
 
@@ -171,11 +171,11 @@ public final class SessionSweepTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path configuration = root.resolve("configuration");
-			SessionWorkDirectory recent = open(project, OTHER, HARNESS_A, configuration, NOW.minus(Duration.ofHours(23)));
+			SessionDirectory recent = open(project, OTHER, HARNESS_A, configuration, NOW.minus(Duration.ofHours(23)));
 			Path unmarked = Files.createDirectories(recent.directory().resolveSibling(
 				"44444444-4444-4444-8444-444444444444").resolve("temp"));
 			Path legacy = Files.createDirectories(recent.directory().resolveSibling("temp").resolve("old"));
-			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
+			SessionDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
 
 			current.sweep(NOW, new PrintStream(new ByteArrayOutputStream(), true, UTF_8));
 
@@ -201,9 +201,9 @@ public final class SessionSweepTest
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path configuration = root.resolve("configuration");
 			String stuck = "55555555-5555-4555-8555-555555555555";
-			SessionWorkDirectory stuckDirectory = open(project, stuck, HARNESS_A, configuration, OLD);
-			SessionWorkDirectory gone = open(project, OTHER, HARNESS_A, configuration, OLD);
-			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
+			SessionDirectory stuckDirectory = open(project, stuck, HARNESS_A, configuration, OLD);
+			SessionDirectory gone = open(project, OTHER, HARNESS_A, configuration, OLD);
+			SessionDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
 			ByteArrayOutputStream error = new ByteArrayOutputStream();
 
 			current.sweep(NOW, new PrintStream(error, true, UTF_8), (_, _) ->
@@ -237,9 +237,9 @@ public final class SessionSweepTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path configuration = root.resolve("configuration");
-			SessionWorkDirectory gone = open(project, OTHER, HARNESS_A, configuration, OLD);
+			SessionDirectory gone = open(project, OTHER, HARNESS_A, configuration, OLD);
 			Path campaign = Files.createDirectories(gone.campaigns().resolve("20261015-0900-abc123"));
-			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
+			SessionDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
 			List<String> calls = new ArrayList<>();
 			ByteArrayOutputStream error = new ByteArrayOutputStream();
 
@@ -274,11 +274,11 @@ public final class SessionSweepTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-sweep-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path configuration = root.resolve("configuration");
-			SessionWorkDirectory stuck = open(project, OTHER, HARNESS_A, configuration, OLD);
+			SessionDirectory stuck = open(project, OTHER, HARNESS_A, configuration, OLD);
 			Files.createDirectories(stuck.campaigns().resolve("20261015-0900-abc123"));
-			SessionWorkDirectory gone = open(project, "66666666-6666-4666-8666-666666666666", HARNESS_A,
+			SessionDirectory gone = open(project, "66666666-6666-4666-8666-666666666666", HARNESS_A,
 				configuration, OLD);
-			SessionWorkDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
+			SessionDirectory current = open(project, CURRENT, HARNESS_A, configuration, NOW);
 			ByteArrayOutputStream error = new ByteArrayOutputStream();
 
 			current.sweep(NOW, new PrintStream(error, true, UTF_8), (_, _) ->
@@ -294,20 +294,20 @@ public final class SessionSweepTest
 	}
 
 	/**
-	 * Opens a session work directory whose marker records a given creation time.
+	 * Opens a CAT session directory whose marker records a given creation time.
 	 *
 	 * @param project the project
 	 * @param sessionId the session's ID
 	 * @param harness the harness
 	 * @param configuration the harness's configuration directory
 	 * @param created the marker's creation time
-	 * @return the session work directory
+	 * @return the CAT session directory
 	 * @throws IOException if the directory cannot be created
 	 */
-	private static SessionWorkDirectory open(Path project, String sessionId, SessionHarness harness,
+	private static SessionDirectory open(Path project, String sessionId, SessionHarness harness,
 		Path configuration, Instant created) throws IOException
 	{
-		return SessionWorkDirectory.open(project, sessionId, harness, configuration, created,
+		return SessionDirectory.open(project, sessionId, harness, configuration, created,
 			JsonMapper.builder().build());
 	}
 

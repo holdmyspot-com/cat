@@ -38,7 +38,7 @@ public final class InventoryScannerTest
 	/**
 	 * Verifies that a scan records regular files with their content hashes and modes, ignored files, symbolic links with
 	 * their stored destinations, and recorded external files; that it does not descend through a directory link; and
-	 * that it omits the Git metadata directory and CAT's work directory.
+	 * that it omits the Git metadata directory and CAT's session directories.
 	 *
 	 * @throws IOException if the fixture cannot be created or scanned
 	 */

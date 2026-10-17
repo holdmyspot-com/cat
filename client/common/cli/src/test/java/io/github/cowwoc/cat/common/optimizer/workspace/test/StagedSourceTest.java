@@ -53,7 +53,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Verifies that a staged source holds a candidate's files with every link replaced by a copy of its target, excludes
- * CAT's work directory, and is built once and deleted on request.
+ * CAT's session directories, and is built once and deleted on request.
  */
 public final class StagedSourceTest
 {
@@ -201,12 +201,12 @@ public final class StagedSourceTest
 	}
 
 	/**
-	 * Verifies that CAT's work directory is excluded, whether it comes from the project or from an overlay.
+	 * Verifies that CAT's session directories are excluded, whether they come from the project or from an overlay.
 	 *
 	 * @throws IOException if the fixture cannot be created or staged
 	 */
 	@Test
-	public void excludesWorkDirectory() throws IOException
+	public void excludesSessionDirectories() throws IOException
 	{
 		// Requirement: R-W5
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -218,7 +218,7 @@ public final class StagedSourceTest
 
 			Path staged = sources.stage(overlay, Set.of());
 
-			requireThat(Files.exists(staged.resolve(".cat/work")), "workDirectoryExists").isFalse();
+			requireThat(Files.exists(staged.resolve(".cat/work")), "sessionDirectoriesExist").isFalse();
 			requireThat(staged.resolve(".cat/rules/r.md"), "catRule").isRegularFile();
 		}
 	}

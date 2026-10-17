@@ -102,7 +102,7 @@ public final class FileChangesTest
 	}
 
 	/**
-	 * Verifies that Git metadata and CAT's work directory follow the staged-source exclusions.
+	 * Verifies that Git metadata and CAT's session directories follow the staged-source exclusions.
 	 *
 	 * @throws IOException if the fixture cannot be written or compared
 	 */

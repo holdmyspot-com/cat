@@ -18,8 +18,8 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Owns values and services shared for one harness hook invocation, including the work directory of the session that
- * the hook input names.
+ * Owns values and services shared for one harness hook invocation, including the CAT session directory of the session
+ * that the hook input names.
  */
 public final class HookScope implements AutoCloseable
 {
@@ -43,7 +43,7 @@ public final class HookScope implements AutoCloseable
 	 *
 	 * @param pluginRoot a non-null CAT plugin root
 	 * @param userHome the current user's non-null home directory
-	 * @param harness the harness that runs the hook, whose sessions own the session work directories that the hook
+	 * @param harness the harness that runs the hook, whose sessions own the CAT session directories that the hook
 	 *   obtains
 	 * @param configurationDirectory the harness's configuration directory, which a new session marker records
 	 * @throws NullPointerException if any argument is null
@@ -233,21 +233,21 @@ public final class HookScope implements AutoCloseable
 	}
 
 	/**
-	 * Returns the work directory of the session that a hook input names, creating it and its marker on first use. The
-	 * injected rules name its {@code temp/} directory {@code ${CAT_TEMP}}, and the agent creates its temporary
+	 * Returns the CAT session directory of the session that a hook input names, creating it and its marker on first use.
+	 * The injected rules name its {@code temp/} directory {@code ${CAT_TEMP}}, and the agent creates its temporary
 	 * directories inside it.
 	 *
 	 * @param projectDir the session's project directory
 	 * @param event the hook input
 	 * @param property the input's property that holds the session's ID, such as {@code session_id}
-	 * @return the session work directory
+	 * @return the CAT session directory
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code property} is blank
 	 * @throws IllegalStateException if this scope is closed
 	 * @throws IOException if the property is not a UUID in canonical form, or if the directory or its marker cannot be
 	 *   created
 	 */
-	public SessionWorkDirectory sessionWorkDirectory(Path projectDir, JsonNode event, String property)
+	public SessionDirectory sessionDirectory(Path projectDir, JsonNode event, String property)
 		throws IOException
 	{
 		requireThat(projectDir, "projectDir").isNotNull();
@@ -257,7 +257,7 @@ public final class HookScope implements AutoCloseable
 		JsonNode sessionId = event.path(property);
 		if (!sessionId.isString())
 			throw new IOException("The hook input lacks " + property);
-		return SessionWorkDirectory.open(projectDir, sessionId.stringValue(), harness, configurationDirectory,
+		return SessionDirectory.open(projectDir, sessionId.stringValue(), harness, configurationDirectory,
 			Instant.now(), json());
 	}
 

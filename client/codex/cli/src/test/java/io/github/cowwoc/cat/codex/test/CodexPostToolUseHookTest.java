@@ -5,7 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.CodexPostToolUseHook;
 import io.github.cowwoc.cat.codex.CommandShell;
-import io.github.cowwoc.cat.common.SessionWorkDirectory.Removal;
+import io.github.cowwoc.cat.common.SessionDirectory.Removal;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;

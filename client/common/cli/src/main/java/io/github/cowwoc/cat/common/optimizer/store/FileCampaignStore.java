@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.store;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Header;
@@ -25,7 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Stores campaigns in one directory, one campaign per subdirectory {@code <campaign-id>/}: in production, the
- * {@link SessionWorkDirectory#campaigns() campaigns directory} of the session that started them. Another session's
+ * {@link SessionDirectory#campaigns() campaigns directory} of the session that started them. Another session's
  * store is read only. The campaign's {@code held_out} directory holds every file with held-out
  * content: the snapshot in {@code campaign.json}, the proposal in {@code proposal.json}, and one record per logical
  * trial in {@code trials/<sha256 of the trial key>.json}. The delivery journal is {@code delivery.json} in the

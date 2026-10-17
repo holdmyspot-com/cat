@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Harness values that model the two transcript layouts that a session work directory's sweep handles: one transcript
+ * Harness values that model the two transcript layouts that a CAT session directory's sweep handles: one transcript
  * file in any project directory, and transcripts in nested or archived directories.
  */
 public final class SessionHarnesses

@@ -7,7 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.codex.CodexSessionHarness;
 import io.github.cowwoc.cat.codex.optimizer.CodexSessions;
 import io.github.cowwoc.cat.codex.secrets.CodexSessionsSecrets;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.adapter.RunnerSessions;
 import io.github.cowwoc.cat.common.optimizer.adapter.fakes.test.ContractAuthorFixtures;
@@ -358,7 +358,7 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that a development session started for a campaign in a session's work directory runs under that
+	 * Verifies that a development session started for a campaign in a session's CAT session directory runs under that
 	 * session's run root and is denied reading the {@code held_out} directories of the campaigns of every session and
 	 * the session's held-out run root.
 	 *
@@ -368,7 +368,7 @@ public final class CodexSessionsTest
 	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void deniesHeldOutReadsInSessionWorkDirectory()
+	public void deniesHeldOutReadsInSessionDirectory()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -380,7 +380,7 @@ public final class CodexSessionsTest
 			JsonMapper json = JsonMapper.builder().build();
 			String sessionId = "2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b";
 			String otherSessionId = "5a7c9e1b-3d2f-4a6b-8c0e-9f1d3b5a7c2e";
-			SessionWorkDirectory session = SessionWorkDirectory.open(root, sessionId, CodexSessionHarness.HARNESS,
+			SessionDirectory session = SessionDirectory.open(root, sessionId, CodexSessionHarness.HARNESS,
 				root.resolve("configuration"), Instant.EPOCH, json);
 			Path heldOut = Files.createDirectories(session.campaigns().resolve("c1/held_out"));
 			Path otherHeldOut = Files.createDirectories(root.resolve(".cat/work/" + otherSessionId +

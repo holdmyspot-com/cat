@@ -30,10 +30,11 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The work directory of one harness session, {@code .cat/work/<session-id>/} in the session's project, which holds
- * the files that CAT writes for the session. Its {@code temp/} directory is the session's {@code CAT_TEMP}.
+ * The CAT session directory of one harness session, {@code .cat/work/<session-id>/} in the session's project, which
+ * holds the files that CAT writes for the session. Its {@code temp/} directory is the session's {@code CAT_TEMP}.
  * <p>
- * This class is the only code that names the work root or builds a session directory's path. Its first use creates
+ * This class is the only code that names the directory that holds the CAT session directories or builds a CAT session
+ * directory's path. Its first use creates
  * the directory, {@code temp/} and the marker {@code session.json}, which records the harness, the harness's
  * configuration directory, the creation time in UTC and where that configuration directory keeps the session's
  * transcript. A later use keeps the marker. The sweep removes the directories of sessions that their harness no longer
@@ -42,13 +43,13 @@ import tools.jackson.databind.json.JsonMapper;
  * The session's prompt-optimizer campaigns live in {@code optimizer/<campaign-id>/}, and the runs of the nested
  * sessions that they start live below {@code optimizer-runs/}.
  */
-public final class SessionWorkDirectory
+public final class SessionDirectory
 {
 	/**
-	 * The directory, relative to a project, that holds the session work directories and CAT's other work files. Code
-	 * that excludes CAT's work files from a copy, a listing or a Git operation takes the directory from this constant.
+	 * The directory, relative to a project, that holds the CAT session directories. Code that excludes them from a copy,
+	 * a listing or a Git operation takes the directory from this constant.
 	 */
-	public static final String WORK_ROOT = ".cat/work";
+	public static final String ROOT = ".cat/work";
 	/**
 	 * The stand-in that a rule text writes for the session's ID, which {@link #insertSessionId(String)} replaces.
 	 */
@@ -68,14 +69,14 @@ public final class SessionWorkDirectory
 	private final JsonMapper json;
 
 	/**
-	 * Creates a session work directory value.
+	 * Creates a CAT session directory value.
 	 *
 	 * @param projectRoot the session's project, absolute and normalized
 	 * @param directory the session's directory
 	 * @param sessionId the session's ID
 	 * @param json the JSON mapper that reads markers
 	 */
-	private SessionWorkDirectory(Path projectRoot, Path directory, String sessionId, JsonMapper json)
+	private SessionDirectory(Path projectRoot, Path directory, String sessionId, JsonMapper json)
 	{
 		this.projectRoot = projectRoot;
 		this.directory = directory;
@@ -84,8 +85,8 @@ public final class SessionWorkDirectory
 	}
 
 	/**
-	 * Returns a session's work directory, creating the directory, its {@code temp/} directory and its marker when they
-	 * are missing. The marker is written to a temporary file in the directory and then linked into place, so
+	 * Returns a session's CAT session directory, creating the directory, its {@code temp/} directory and its marker when
+	 * they are missing. The marker is written to a temporary file in the directory and then linked into place, so
 	 * concurrent first uses leave one complete marker, and an existing marker is never overwritten.
 	 *
 	 * @param projectRoot the session's project
@@ -94,12 +95,12 @@ public final class SessionWorkDirectory
 	 * @param configurationDirectory the harness's configuration directory
 	 * @param now the current time, which a new marker records
 	 * @param json the JSON mapper that writes and reads markers
-	 * @return the session work directory
+	 * @return the CAT session directory
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if {@code sessionId} is not a UUID in canonical form, or if the directory or marker cannot be
 	 *   created
 	 */
-	public static SessionWorkDirectory open(Path projectRoot, String sessionId, SessionHarness harness,
+	public static SessionDirectory open(Path projectRoot, String sessionId, SessionHarness harness,
 		Path configurationDirectory, Instant now, JsonMapper json) throws IOException
 	{
 		requireThat(projectRoot, "projectRoot").isNotNull();
@@ -110,23 +111,23 @@ public final class SessionWorkDirectory
 		requireThat(json, "json").isNotNull();
 		if (!isSessionId(sessionId))
 			throw new IOException("The session ID is not a UUID in canonical form: " + sessionId);
-		Path directory = workRoot(projectRoot).resolve(sessionId);
+		Path directory = root(projectRoot).resolve(sessionId);
 		Files.createDirectories(directory.resolve(TEMP));
 		Path marker = directory.resolve(MARKER);
 		if (Files.notExists(marker, LinkOption.NOFOLLOW_LINKS))
 			writeMarker(marker, markerContent(sessionId, harness, configurationDirectory, now), json);
-		return new SessionWorkDirectory(projectRoot.toAbsolutePath().normalize(), directory, sessionId, json);
+		return new SessionDirectory(projectRoot.toAbsolutePath().normalize(), directory, sessionId, json);
 	}
 
 	/**
-	 * Returns the work root of a project.
+	 * Returns the directory that holds the CAT session directories of a project.
 	 *
 	 * @param projectRoot the project
-	 * @return the absolute, normalized work root
+	 * @return the absolute, normalized directory
 	 */
-	private static Path workRoot(Path projectRoot)
+	private static Path root(Path projectRoot)
 	{
-		return projectRoot.toAbsolutePath().normalize().resolve(WORK_ROOT);
+		return projectRoot.toAbsolutePath().normalize().resolve(ROOT);
 	}
 
 	/**
@@ -274,9 +275,9 @@ public final class SessionWorkDirectory
 	 * Lists the campaign directory of every session of the project, this session's included, without creating any.
 	 * Only a campaign's own session changes it, so a session uses another session's directory only to read it.
 	 *
-	 * @return the {@link #campaigns()} directory of each session directory in the work root, by session ID in
+	 * @return the {@link #campaigns()} directory of each CAT session directory of the project, by session ID in
 	 *   ascending order, whether or not it exists
-	 * @throws IOException if the work root cannot be listed
+	 * @throws IOException if the directory that holds the CAT session directories cannot be listed
 	 */
 	public SortedMap<String, Path> campaignsBySession() throws IOException
 	{
@@ -287,10 +288,10 @@ public final class SessionWorkDirectory
 	}
 
 	/**
-	 * Lists the session directories in the work root, this session's included.
+	 * Lists the CAT session directories of the project, this session's included.
 	 *
 	 * @return the directories that a session ID names
-	 * @throws IOException if the work root cannot be listed
+	 * @throws IOException if the directory that holds the CAT session directories cannot be listed
 	 */
 	private List<Path> sessionDirectories() throws IOException
 	{
@@ -318,7 +319,7 @@ public final class SessionWorkDirectory
 
 	/**
 	 * Returns the file that holds the rules that the main agent of another session of the same project reads, without
-	 * creating that session's work directory.
+	 * creating that session's CAT session directory.
 	 *
 	 * @param sessionId the harness's ID of the other session, a UUID in canonical form
 	 * @return the file's path
@@ -399,11 +400,11 @@ public final class SessionWorkDirectory
 	}
 
 	/**
-	 * Indicates whether a directory is the temporary directory of a session work directory.
+	 * Indicates whether a directory is the temporary directory of a CAT session directory.
 	 *
 	 * @param candidate the directory
-	 * @return {@code true} if {@code candidate} is {@code temp} directly inside a directory named by a session ID in a
-	 *   project's work root
+	 * @return {@code true} if {@code candidate} is {@code temp} directly inside a CAT session directory, a directory
+	 *   named by a session ID in the directory that holds a project's CAT session directories
 	 * @throws NullPointerException if {@code candidate} is null
 	 */
 	public static boolean isTemporaryDirectory(Path candidate)
@@ -420,7 +421,7 @@ public final class SessionWorkDirectory
 		Path cat = root.getParent();
 		if (cat == null || cat.getParent() == null)
 			return false;
-		return workRoot(cat.getParent()).equals(root);
+		return root(cat.getParent()).equals(root);
 	}
 
 	/**
@@ -480,7 +481,7 @@ public final class SessionWorkDirectory
 			}
 			catch (IOException e)
 			{
-				error.println("CAT kept the session work directory " + session + " because it could not look for the " +
+				error.println("CAT kept the CAT session directory " + session + " because it could not look for the " +
 					"session's transcript: " + e.getMessage());
 				continue;
 			}
@@ -492,7 +493,7 @@ public final class SessionWorkDirectory
 			}
 			catch (IOException e)
 			{
-				error.println("CAT could not remove the session work directory " + session + ": " + e.getMessage());
+				error.println("CAT could not remove the CAT session directory " + session + ": " + e.getMessage());
 			}
 		}
 	}
@@ -518,7 +519,7 @@ public final class SessionWorkDirectory
 		}
 		catch (IOException e)
 		{
-			error.println("CAT kept the session work directory " + session + " because it could not list the " +
+			error.println("CAT kept the CAT session directory " + session + " because it could not list the " +
 				"session's campaigns: " + e.getMessage());
 			return false;
 		}
@@ -530,7 +531,7 @@ public final class SessionWorkDirectory
 			}
 			catch (IOException e)
 			{
-				error.println("CAT kept the session work directory " + session + " because it could not remove the " +
+				error.println("CAT kept the CAT session directory " + session + " because it could not remove the " +
 					"optimization worktree of campaign " + campaign.getFileName() + ": " + e.getMessage());
 				return false;
 			}

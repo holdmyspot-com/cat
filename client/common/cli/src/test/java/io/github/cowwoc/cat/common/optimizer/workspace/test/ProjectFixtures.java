@@ -189,7 +189,7 @@ final class ProjectFixtures
 	/**
 	 * Creates a project that holds ordinary files, a fixture directory, files and a directory that links reach, an
 	 * in-project file link, an in-project directory link, an external file link and an external directory link, plus
-	 * a CAT work directory, and records all of it as a fork tree.
+	 * a CAT session directory, and records all of it as a fork tree.
 	 *
 	 * @param root the directory that owns the fixture
 	 * @return the project and its fork tree

@@ -6,7 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.HookScope;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -61,8 +61,8 @@ final class ClaudeRuleInjectionHook
 			JsonNode event = scope.readEvent(eventName, input);
 			Path projectDir = ClaudeHookScope.projectDir(scope, event, environment, workingDirectory);
 			// A Claude Code subagent's input carries its parent's session_id, and its shells the parent's
-			// CLAUDE_CODE_SESSION_ID, so the subagent shares its parent's session work directory
-			SessionWorkDirectory session = scope.sessionWorkDirectory(projectDir, event, "session_id");
+			// CLAUDE_CODE_SESSION_ID, so the subagent shares its parent's CAT session directory
+			SessionDirectory session = scope.sessionDirectory(projectDir, event, "session_id");
 			Path rulesFile;
 			if (eventName.equals("SubagentStart"))
 				rulesFile = session.subagentRulesFile(agentId(event));

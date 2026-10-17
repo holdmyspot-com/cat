@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.SessionHarness;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.execution.CapCalibrator;
 import io.github.cowwoc.cat.common.optimizer.statistics.CapCalibration;
@@ -23,7 +23,7 @@ import java.util.random.RandomGenerator;
 
 /**
  * The production {@link OptimizerCommandScope} that both harnesses share: real Git forks, the real cap calibration,
- * the system clock, a real process for the harness's version, the JSON mapper and the work directory of the host
+ * the system clock, a real process for the harness's version, the JSON mapper and the CAT session directory of the host
  * session that the process environment names. Each harness's scope adds the sessions and the host interrupt signal
  * that it resolves from the process environment.
  */
@@ -47,7 +47,7 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 	 * Creates an open scope.
 	 *
 	 * @param harness                the harness that runs the launcher
-	 * @param sessionHarness         the parts of the harness's session work directories
+	 * @param sessionHarness         the parts of the harness's CAT session directories
 	 * @param environment            the process environment, whose session variable names the host session
 	 * @param configurationDirectory the host harness's configuration directory
 	 * @param directory              the launcher's working directory, below the project
@@ -112,7 +112,7 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 	}
 
 	/**
-	 * Opens the work directory of the host session that the harness's session variable names.
+	 * Opens the CAT session directory of the host session that the harness's session variable names.
 	 *
 	 * @param projectRoot the project root
 	 * @return the directory
@@ -120,7 +120,7 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 	 * @throws IOException if the session variable does not hold a session ID, or the directory cannot be created
 	 */
 	@Override
-	protected final SessionWorkDirectory openSessionWorkDirectory(Path projectRoot)
+	protected final SessionDirectory openSessionDirectory(Path projectRoot)
 		throws CommandRefusedException, IOException
 	{
 		String sessionId = environment.get(sessionHarness.sessionVariable());
@@ -130,7 +130,7 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 				"runs it, but " + sessionHarness.sessionVariable() + " is not set. Run this command from a tool shell " +
 				"of a " + harness.commandName() + " session.");
 		}
-		return SessionWorkDirectory.open(projectRoot, sessionId.strip(), sessionHarness, configurationDirectory,
+		return SessionDirectory.open(projectRoot, sessionId.strip(), sessionHarness, configurationDirectory,
 			clock().instant(), json());
 	}
 

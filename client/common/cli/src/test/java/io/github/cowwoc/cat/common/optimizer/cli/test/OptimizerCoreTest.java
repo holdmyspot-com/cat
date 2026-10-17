@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.PortablePaths;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.fakes.test.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
@@ -307,7 +307,7 @@ public final class OptimizerCoreTest
 			try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				OTHER_SESSION, project.root()))
 			{
-				OptimizerCommandScopeSecrets.access().sessionWorkDirectory(command);
+				OptimizerCommandScopeSecrets.access().sessionDirectory(command);
 				Map<String, String> before = contents(project.root());
 				OptimizerCore core = new OptimizerCore(command);
 				for (String subject : List.of(project.campaign(), "CLAUDE.md"))
@@ -343,7 +343,7 @@ public final class OptimizerCoreTest
 				try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(harness,
 					OTHER_SESSION, project.root()))
 				{
-					OptimizerCommandScopeSecrets.access().sessionWorkDirectory(command);
+					OptimizerCommandScopeSecrets.access().sessionDirectory(command);
 					Map<String, String> before = contents(project.root());
 					OptimizerCore core = new OptimizerCore(command);
 					String id = project.campaign();
@@ -383,7 +383,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that a campaign stored where campaigns were kept before they moved into session work directories is
+	 * Verifies that a campaign stored where campaigns were kept before they moved into CAT session directories is
 	 * neither found nor deleted.
 	 */
 	@Test
@@ -397,11 +397,11 @@ public final class OptimizerCoreTest
 			Path target = root.resolve("CLAUDE.md");
 			Files.writeString(target, "Be brief.\n");
 			Header header = new Header("campaign-1", root, target, Harness.CLAUDE, Lifecycle.ACTIVE);
-			new FileCampaignStore(root.resolve(SessionWorkDirectory.WORK_ROOT).resolve("optimizer"), JSON).
+			new FileCampaignStore(root.resolve(SessionDirectory.ROOT).resolve("optimizer"), JSON).
 				replaceSnapshot(new Builder().header(header).confirmed().build());
 			try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(Harness.CLAUDE, root))
 			{
-				OptimizerCommandScopeSecrets.access().sessionWorkDirectory(command);
+				OptimizerCommandScopeSecrets.access().sessionDirectory(command);
 				Map<String, String> before = contents(root);
 				OptimizerCore core = new OptimizerCore(command);
 				List<ThrowingCall> calls = List.of(
@@ -584,7 +584,7 @@ public final class OptimizerCoreTest
 			try (TestOptimizerCommandScope<FakeSessionPort> command = new TestOptimizerCommandScope<>(Harness.CLAUDE,
 				root, Set.of(), _ -> sessions))
 			{
-				OptimizerCommandScopeSecrets.access().sessionWorkDirectory(command);
+				OptimizerCommandScopeSecrets.access().sessionDirectory(command);
 				before = contents(root);
 				try
 				{
@@ -878,11 +878,11 @@ public final class OptimizerCoreTest
 		 *
 		 * @return the directory
 		 * @throws CommandRefusedException if the project is not a Git repository
-		 * @throws IOException if the session's work directory cannot be created
+		 * @throws IOException if the session's CAT session directory cannot be created
 		 */
 		Path campaigns() throws CommandRefusedException, IOException
 		{
-			return OptimizerCommandScopeSecrets.access().sessionWorkDirectory(scope).campaigns();
+			return OptimizerCommandScopeSecrets.access().sessionDirectory(scope).campaigns();
 		}
 
 		/**
@@ -891,7 +891,7 @@ public final class OptimizerCoreTest
 		 * @param id the campaign's identifier
 		 * @return the directory
 		 * @throws CommandRefusedException if the project is not a Git repository
-		 * @throws IOException if the session's work directory cannot be created
+		 * @throws IOException if the session's CAT session directory cannot be created
 		 */
 		Path directory(String id) throws CommandRefusedException, IOException
 		{
@@ -1009,10 +1009,10 @@ public final class OptimizerCoreTest
 		};
 		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
 			tracked, clock -> new ScriptedSessions(clock, script));
-		// The host session's work directory exists before any command runs in it
+		// The host session's CAT session directory exists before any command runs in it
 		try
 		{
-			OptimizerCommandScopeSecrets.access().sessionWorkDirectory(command);
+			OptimizerCommandScopeSecrets.access().sessionDirectory(command);
 		}
 		catch (CommandRefusedException e)
 		{
@@ -1745,8 +1745,8 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that the start command emits no notice when the fork boundary reports that Git already ignores the
-	 * work directory. Real Git's ignore check is covered by fork tests.
+	 * Verifies that the start command emits no notice when the fork boundary reports that Git already ignores
+	 * CAT's session directories. Real Git's ignore check is covered by fork tests.
 	 */
 	@Test
 	public void startDoesNotReportExistingExclude() throws Exception

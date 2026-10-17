@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.execution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
@@ -40,7 +40,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link Cleanup} against a test-owned base worktree whose campaigns hold optimization worktrees, and the two run
- * roots of the session work directory that holds the campaigns. The worktrees are directories that {@link FakeForks}
+ * roots of the CAT session directory that holds the campaigns. The worktrees are directories that {@link FakeForks}
  * records instead of Git worktrees, since {@code ForkTest} covers removing a Git worktree.
  * <p>
  * Every test stores two campaigns in the base: the campaign under test and another campaign. Each run root holds a run
@@ -320,7 +320,7 @@ public final class CleanupTest
 	}
 
 	/**
-	 * A base worktree with a session work directory that holds two campaigns and two run roots.
+	 * A base worktree with a CAT session directory that holds two campaigns and two run roots.
 	 *
 	 * @param base the base worktree
 	 * @param campaigns the session's directory that holds the campaigns
@@ -343,7 +343,7 @@ public final class CleanupTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-cleanup-")).toRealPath();
 			Path base = Files.createDirectory(root.resolve("base"));
 			Files.writeString(base.resolve("CLAUDE.md"), "prompt v1\n", UTF_8);
-			SessionWorkDirectory session = SessionWorkDirectory.open(base, SESSION_ID, SessionHarnesses.HARNESS_A,
+			SessionDirectory session = SessionDirectory.open(base, SESSION_ID, SessionHarnesses.HARNESS_A,
 				root.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
 			Path sessionRuns = Files.createDirectories(session.runRoot("claude"));
 			Fixture fixture = new Fixture(base, session.campaigns(), List.of(sessionRuns,

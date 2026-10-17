@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.store.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.test.SessionHarnesses;
 
@@ -1008,7 +1008,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * A campaign is stored in the work directory of its session, as
+	 * A campaign is stored in the CAT session directory of its session, as
 	 * {@code .cat/work/<session-id>/optimizer/<id>/held_out/campaign.json} with a format version, and each logical
 	 * trial as one record file in the same {@code held_out} directory.
 	 *
@@ -1024,7 +1024,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-campaign-layout-"));
-			SessionWorkDirectory session = SessionWorkDirectory.open(project, SESSION_ID, SessionHarnesses.HARNESS_A,
+			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, SessionHarnesses.HARNESS_A,
 				project.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
 			Path campaigns = session.campaigns();
 			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);

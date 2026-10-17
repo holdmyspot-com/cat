@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.ServiceLoader;
 
 /**
- * The parts of a session work directory that depend on the harness whose session owns it. Each harness module supplies
+ * The parts of a CAT session directory that depend on the harness whose session owns it. Each harness module supplies
  * its own value.
  *
  * @param id the harness's identifier, which the session marker records

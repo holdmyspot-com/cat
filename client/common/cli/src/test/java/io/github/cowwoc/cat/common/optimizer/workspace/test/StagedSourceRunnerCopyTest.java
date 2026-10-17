@@ -97,7 +97,7 @@ public final class StagedSourceRunnerCopyTest
 			requireThat(entries.get(Path.of("shared.md")), "externalLink").isEqualTo(file("shared"));
 			requireThat(entries.get(Path.of("ext-dir/x.md")), "externalDirectoryLink").isEqualTo(file("external x"));
 			requireThat(entries.get(Path.of("fixtures/data.txt")), "fixture").isEqualTo(file("fixture data"));
-			requireThat(Files.exists(copy.resolve(".cat/work")), "workDirectory").isFalse();
+			requireThat(Files.exists(copy.resolve(".cat/work")), "sessionDirectories").isFalse();
 		}
 	}
 }

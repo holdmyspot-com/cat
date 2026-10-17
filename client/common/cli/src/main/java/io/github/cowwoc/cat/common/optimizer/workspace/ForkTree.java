@@ -79,8 +79,8 @@ public final class ForkTree
 	 * Copies paths from a project into campaign storage and records them.
 	 * <p>
 	 * The existing targets outside the project that the recorded links reach are recorded too, and so are the targets
-	 * that their links reach in turn. CAT's work directory and Git metadata are never copied. If the recording fails,
-	 * no storage is left behind.
+	 * that their links reach in turn. CAT's session directories and Git metadata are never copied. If the recording
+	 * fails, no storage is left behind.
 	 *
 	 * @param base the project directory
 	 * @param campaign the campaign storage directory, which this method creates if needed
@@ -88,8 +88,8 @@ public final class ForkTree
 	 *   project, or an absolute path outside the project for an external file or directory
 	 * @return the recorded tree
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if a relative path is not normalized or names Git metadata or CAT's work
-	 *   directory, or if an absolute path lies inside {@code base}
+	 * @throws IllegalArgumentException if a relative path is not normalized or names Git metadata or CAT's session
+	 *   directories, or if an absolute path lies inside {@code base}
 	 * @throws WorkspaceException if a path does not exist
 	 * @throws IOException if the files cannot be copied or the campaign already holds a fork tree
 	 */
@@ -295,8 +295,8 @@ public final class ForkTree
 	}
 
 	/**
-	 * Returns the test for the absolute source paths that recording never copies: the project's Git metadata and
-	 * CAT's work directory, which {@link InventoryScanner#isOmitted(Path)} names, and the campaign storage directory.
+	 * Returns the test for the absolute source paths that recording never copies: the project's Git metadata and CAT's
+	 * session directories, which {@link InventoryScanner#isOmitted(Path)} names, and the campaign storage directory.
 	 *
 	 * @param base the normalized project directory
 	 * @param campaign the normalized campaign storage directory
@@ -429,7 +429,7 @@ public final class ForkTree
 		requireThat(path.getName(0).toString(), "path.getName(0)").isNotEqualTo("..");
 		if (InventoryScanner.isOmitted(path))
 		{
-			throw new IllegalArgumentException("The path " + path + " lies in Git metadata or CAT's work directory, " +
+			throw new IllegalArgumentException("The path " + path + " lies in Git metadata or CAT's session directories, " +
 				"which a fork never records.");
 		}
 	}

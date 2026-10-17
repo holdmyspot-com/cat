@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Owns values and services shared while one CLI tool operation runs, including the work directory of the session
+ * Owns values and services shared while one CLI tool operation runs, including the CAT session directory of the session
  * whose tool shell runs the tool. The session is the one that a harness's session variable names, and its directory is
  * in the nearest enclosing CAT project.
  */
@@ -28,7 +28,7 @@ public final class ToolScope implements AutoCloseable
 	private final boolean inProject;
 	private final Map<String, String> environment;
 	private final List<SessionHarness> harnesses;
-	private SessionWorkDirectory sessionWorkDirectory;
+	private SessionDirectory sessionDirectory;
 	private final Reference<JsonMapper> json = LazyReference.create(() -> JsonMapper.builder().
 		build());
 	private final Reference<YAMLMapper> yaml = LazyReference.create(() -> YAMLMapper.builder().
@@ -120,19 +120,19 @@ public final class ToolScope implements AutoCloseable
 	}
 
 	/**
-	 * Returns the work directory of the session that the first set session variable names, creating it and its marker
-	 * on first use. Without a CAT project, the directory is in the tool's working directory.
+	 * Returns the CAT session directory of the session that the first set session variable names, creating it and its
+	 * marker on first use. Without a CAT project, the directory is in the tool's working directory.
 	 *
-	 * @return the session work directory, or empty when no session variable is set
+	 * @return the CAT session directory, or empty when no session variable is set
 	 * @throws IllegalStateException if this scope is closed
 	 * @throws IOException if the session variable is not a UUID in canonical form, if the harness's configuration
 	 *   directory cannot be found, or if the directory or its marker cannot be created
 	 */
-	public Optional<SessionWorkDirectory> sessionWorkDirectory() throws IOException
+	public Optional<SessionDirectory> sessionDirectory() throws IOException
 	{
 		ensureOpen();
-		if (sessionWorkDirectory != null)
-			return Optional.of(sessionWorkDirectory);
+		if (sessionDirectory != null)
+			return Optional.of(sessionDirectory);
 		for (SessionHarness harness : harnesses)
 		{
 			String sessionId = environment.get(harness.sessionVariable());
@@ -140,25 +140,25 @@ public final class ToolScope implements AutoCloseable
 				continue;
 			Path configurationDirectory = harness.configurationDirectory(environment,
 				Platform.current().homeVariable());
-			sessionWorkDirectory = SessionWorkDirectory.open(projectRoot, sessionId.strip(), harness,
+			sessionDirectory = SessionDirectory.open(projectRoot, sessionId.strip(), harness,
 				configurationDirectory, Instant.now(), json());
-			return Optional.of(sessionWorkDirectory);
+			return Optional.of(sessionDirectory);
 		}
 		return Optional.empty();
 	}
 
 	/**
-	 * Returns the work directory of the session that the first set session variable names, as
-	 * {@link #sessionWorkDirectory()} does, for a tool that cannot run without one.
+	 * Returns the CAT session directory of the session that the first set session variable names, as
+	 * {@link #sessionDirectory()} does, for a tool that cannot run without one.
 	 *
-	 * @return the session work directory
+	 * @return the CAT session directory
 	 * @throws IllegalStateException if this scope is closed
 	 * @throws IOException if no session variable is set, with a message that names every session variable, or for any
-	 *   reason that {@link #sessionWorkDirectory()} throws
+	 *   reason that {@link #sessionDirectory()} throws
 	 */
-	public SessionWorkDirectory requireSessionWorkDirectory() throws IOException
+	public SessionDirectory requireSessionDirectory() throws IOException
 	{
-		Optional<SessionWorkDirectory> session = sessionWorkDirectory();
+		Optional<SessionDirectory> session = sessionDirectory();
 		if (session.isEmpty())
 			throw new IOException(missingSession());
 		return session.get();

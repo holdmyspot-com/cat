@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.cli.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.fakes.test.ManualClock;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.cli.HarnessVersion;
@@ -188,9 +188,9 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	}
 
 	@Override
-	protected SessionWorkDirectory openSessionWorkDirectory(Path projectRoot) throws IOException
+	protected SessionDirectory openSessionDirectory(Path projectRoot) throws IOException
 	{
-		return SessionWorkDirectory.open(projectRoot, sessionId, SessionHarnesses.HARNESS_A,
+		return SessionDirectory.open(projectRoot, sessionId, SessionHarnesses.HARNESS_A,
 			directory.resolve("configuration"), clock().instant(), json());
 	}
 

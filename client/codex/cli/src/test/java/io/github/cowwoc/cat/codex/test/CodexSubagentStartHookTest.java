@@ -6,7 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.codex.CodexSubagentStartHook;
 import io.github.cowwoc.cat.common.Platform;
 import io.github.cowwoc.cat.common.ProjectRuleLoader;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.ByteArrayInputStream;
@@ -56,20 +56,20 @@ public final class CodexSubagentStartHookTest
 	}
 
 	/**
-	 * Verifies a subagent's rules state as {@code CAT_TEMP} the work directory that its {@code agent_id} names, which is
-	 * the thread ID that its own shells receive, and that the hook creates that directory and its marker.
+	 * Verifies a subagent's rules state as {@code CAT_TEMP} the CAT session directory that its {@code agent_id} names,
+	 * which is the thread ID that its own shells receive, and that the hook creates that directory and its marker.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void namesSubagentWorkDirectory() throws IOException
+	public void namesSubagentSessionDirectory() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-subagent-start-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/codex")).resolve("cat-env.md"),
-				"`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" + SessionWorkDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n");
+				"`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/work/" + SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n");
 
 			HookResult result = invoke(event(project, "cat:worker"), Map.of("PLUGIN_ROOT", plugin.toString()),
 				Path.of("."));
@@ -85,8 +85,8 @@ public final class CodexSubagentStartHookTest
 	}
 
 	/**
-	 * Verifies that a subagent receives the guidance on reading a file whole followed by a pointer to a rules file in
-	 * the work directory of its {@code agent_id}, which tells it not to read the rules file of the agent that started
+	 * Verifies that a subagent receives the guidance on reading a file whole followed by a pointer to a rules file in the
+	 * CAT session directory of its {@code agent_id}, which tells it not to read the rules file of the agent that started
 	 * it, since that file states the other agent's {@code CAT_TEMP}.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
@@ -102,7 +102,7 @@ public final class CodexSubagentStartHookTest
 			Files.writeString(codexRules.resolve("read-file.md"), "# Reading Command Output\n\nRun `" +
 				ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "/bin/run-part`.\n");
 			Files.writeString(codexRules.resolve("cat-env.md"), "# CAT Environment\n\n`CAT_TEMP` is " +
-				"`${CAT_PROJECT_ROOT}/.cat/work/" + SessionWorkDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n");
+				"`${CAT_PROJECT_ROOT}/.cat/work/" + SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n");
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("guidance.md"),
 				"---\nagents: [\"subagents\"]\n---\nsubagent guidance");
 
@@ -125,8 +125,8 @@ public final class CodexSubagentStartHookTest
 	}
 
 	/**
-	 * Verifies that an input without {@code agent_id} gives the subagent every rule in the response and leaves the
-	 * rules file of the session's main agent unchanged, since the subagent then shares that agent's work directory.
+	 * Verifies that an input without {@code agent_id} gives the subagent every rule in the response and leaves the rules
+	 * file of the session's main agent unchanged, since the subagent then shares that agent's CAT session directory.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */

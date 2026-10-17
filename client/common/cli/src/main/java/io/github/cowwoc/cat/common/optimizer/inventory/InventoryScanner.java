@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.PortableFiles;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
@@ -29,16 +29,16 @@ import java.util.Set;
  * <p>
  * The scan records every regular file with its content hash and mode, every symbolic link with its stored destination,
  * and every other non-directory entry as a special file. Files that Git ignores are recorded too. The scan omits the
- * Git metadata at {@code .git} and CAT's work root ({@link SessionWorkDirectory#WORK_ROOT}), which change on every run.
+ * Git metadata at {@code .git} and CAT's work root ({@link SessionDirectory#ROOT}), which change on every run.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class InventoryScanner
 {
 	/**
-	 * The project paths that every scan omits: Git metadata and CAT's work directory.
+	 * The project paths that every scan omits: Git metadata and CAT's session directories.
 	 */
-	private static final List<Path> OMITTED = List.of(Path.of(".git"), Path.of(SessionWorkDirectory.WORK_ROOT));
+	private static final List<Path> OMITTED = List.of(Path.of(".git"), Path.of(SessionDirectory.ROOT));
 	private static final int BUFFER_SIZE = 8192;
 
 	/**
@@ -122,7 +122,7 @@ public final class InventoryScanner
 
 	/**
 	 * Indicates whether a path lies in the project's Git metadata at {@code .git} or CAT's work root
-	 * ({@link SessionWorkDirectory#WORK_ROOT}), which every scan omits and a fork never records.
+	 * ({@link SessionDirectory#ROOT}), which every scan omits and a fork never records.
 	 *
 	 * @param path a path relative to the project directory, or an absolute path outside it
 	 * @return {@code true} if {@code path} is or lies below an omitted directory

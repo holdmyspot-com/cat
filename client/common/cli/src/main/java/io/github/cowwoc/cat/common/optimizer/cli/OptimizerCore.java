@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.BoundedInput;
 import io.github.cowwoc.cat.common.PluginInfo;
 import io.github.cowwoc.cat.common.PortablePaths;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.CampaignEvent;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
@@ -282,7 +282,7 @@ public final class OptimizerCore implements Core
 				absolute + " is not. Run start with the prompt file to optimize.");
 		}
 		CampaignStore store = scope.store();
-		Registry.Opening opening = Registry.open(headers(), scope.sessionWorkDirectory().sessionId(), root, absolute,
+		Registry.Opening opening = Registry.open(headers(), scope.sessionDirectory().sessionId(), root, absolute,
 			scope.harness());
 		return switch (opening)
 		{
@@ -301,7 +301,7 @@ public final class OptimizerCore implements Core
 	 */
 	private List<Registry.OwnedHeader> headers() throws CommandRefusedException, IOException
 	{
-		SessionWorkDirectory host = scope.sessionWorkDirectory();
+		SessionDirectory host = scope.sessionDirectory();
 		List<Registry.OwnedHeader> headers = new ArrayList<>();
 		for (Header header : scope.store().listHeaders())
 			headers.add(new Registry.OwnedHeader(host.sessionId(), header));
@@ -387,7 +387,7 @@ public final class OptimizerCore implements Core
 		switch (removal)
 		{
 			case Cleanup.Removal.Removed _ -> notices.add("Removed the campaign's files from " +
-				SessionWorkDirectory.WORK_ROOT + "/.");
+				SessionDirectory.ROOT + "/.");
 			case Cleanup.Removal.Failed failed -> notices.add(failed.warning());
 			case Cleanup.Removal.Kept _, Cleanup.Removal.Deferred _ ->
 			{
@@ -402,12 +402,12 @@ public final class OptimizerCore implements Core
 	 * @param owner the campaign and the session that started it
 	 * @return the exception to throw
 	 * @throws CommandRefusedException if the environment names no host session
-	 * @throws IOException if the host session's work directory cannot be opened
+	 * @throws IOException if the host session's CAT session directory cannot be opened
 	 */
 	private CommandRefusedException refused(Registry.OwnedHeader owner) throws CommandRefusedException, IOException
 	{
 		Header header = owner.header();
-		if (!owner.sessionId().equals(scope.sessionWorkDirectory().sessionId()))
+		if (!owner.sessionId().equals(scope.sessionDirectory().sessionId()))
 		{
 			return new CommandRefusedException("Campaign " + header.id() + " for " + header.target() + " " +
 				ownership(owner) + " Use `status " + header.id() + "` to read it from here.");
@@ -515,8 +515,8 @@ public final class OptimizerCore implements Core
 	 * Returns the directory that holds a campaign's files.
 	 *
 	 * @param id the campaign's identifier
-	 * @return the directory, in the work directory of the session that started the campaign
-	 * @throws IOException if the host session's work directory cannot be opened
+	 * @return the directory, in the CAT session directory of the session that started the campaign
+	 * @throws IOException if the host session's CAT session directory cannot be opened
 	 */
 	private Path campaignDirectory(String id) throws IOException
 	{
@@ -528,7 +528,7 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param id the campaign's identifier
 	 * @return the directory
-	 * @throws IOException if the host session's work directory cannot be opened
+	 * @throws IOException if the host session's CAT session directory cannot be opened
 	 */
 	private Path campaignsOf(String id) throws IOException
 	{
@@ -537,7 +537,7 @@ public final class OptimizerCore implements Core
 			return other;
 		try
 		{
-			return scope.sessionWorkDirectory().campaigns();
+			return scope.sessionDirectory().campaigns();
 		}
 		catch (CommandRefusedException e)
 		{
@@ -549,8 +549,8 @@ public final class OptimizerCore implements Core
 	 * Returns the directory that holds a campaign's held-out content.
 	 *
 	 * @param id the campaign's identifier
-	 * @return the directory, in the work directory of the session that started the campaign
-	 * @throws IOException if the host session's work directory cannot be opened
+	 * @return the directory, in the CAT session directory of the session that started the campaign
+	 * @throws IOException if the host session's CAT session directory cannot be opened
 	 */
 	private Path heldOutDirectory(String id) throws IOException
 	{
@@ -561,8 +561,8 @@ public final class OptimizerCore implements Core
 	 * Returns the file whose lock gives one process at a time the right to write a campaign.
 	 *
 	 * @param id the campaign's identifier
-	 * @return the file, in the work directory of the session that started the campaign
-	 * @throws IOException if the host session's work directory cannot be opened
+	 * @return the file, in the CAT session directory of the session that started the campaign
+	 * @throws IOException if the host session's CAT session directory cannot be opened
 	 */
 	private Path lockFile(String id) throws IOException
 	{
@@ -1168,7 +1168,7 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Loads a campaign that another session of the project started, and reads its files from that session's work
+	 * Loads a campaign that another session of the project started, and reads its files from that session's CAT session
 	 * directory for the rest of the command.
 	 *
 	 * @param id the campaign's identifier
@@ -1178,7 +1178,7 @@ public final class OptimizerCore implements Core
 	 */
 	private Optional<SessionCampaign> loadFromOtherSession(String id) throws CommandRefusedException, IOException
 	{
-		SessionWorkDirectory host = scope.sessionWorkDirectory();
+		SessionDirectory host = scope.sessionDirectory();
 		for (Map.Entry<String, Path> session : host.campaignsBySession().entrySet())
 		{
 			if (session.getKey().equals(host.sessionId()))
@@ -1205,7 +1205,7 @@ public final class OptimizerCore implements Core
 	private CommandResult report(Path root, Registry.OwnedHeader owner) throws CommandRefusedException, IOException
 	{
 		String id = owner.header().id();
-		if (owner.sessionId().equals(scope.sessionWorkDirectory().sessionId()))
+		if (owner.sessionId().equals(scope.sessionDirectory().sessionId()))
 			return report(root, require(scope.store(), id, false), null, null);
 		SessionCampaign other = loadFromOtherSession(id).orElseThrow(() ->
 			new IOException("Campaign " + id + " of session " + owner.sessionId() + " was removed while it was read."));
@@ -1616,7 +1616,7 @@ public final class OptimizerCore implements Core
 	 */
 	private Cleanup cleanup() throws CommandRefusedException, IOException
 	{
-		return new Cleanup(scope.projectRoot(), scope.sessionWorkDirectory().campaigns(), scope.forks(),
+		return new Cleanup(scope.projectRoot(), scope.sessionDirectory().campaigns(), scope.forks(),
 			scope.sessions().runRoots(), scope.json());
 	}
 
@@ -1874,7 +1874,7 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param campaign the campaign
 	 * @return the file
-	 * @throws IOException if the host session's work directory cannot be opened
+	 * @throws IOException if the host session's CAT session directory cannot be opened
 	 */
 	private PilotFile pilotFile(Campaign campaign) throws IOException
 	{
@@ -2093,7 +2093,7 @@ public final class OptimizerCore implements Core
 		}
 		Header header = campaign.get().header();
 		if (sameHarness && header.harness() != scope.harness())
-			throw refused(new Registry.OwnedHeader(scope.sessionWorkDirectory().sessionId(), header));
+			throw refused(new Registry.OwnedHeader(scope.sessionDirectory().sessionId(), header));
 		return campaign.get();
 	}
 

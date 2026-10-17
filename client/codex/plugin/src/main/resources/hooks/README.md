@@ -9,22 +9,22 @@ name as syntax, so each command reads the environment variable instead. The laun
 location before it runs CAT's `client/bin/session-start` command.
 
 The hook writes the session's rules to `.cat/work/<session_id>/rules.md` in the session's project directory. That
-directory is the session's work directory: it also holds `temp/`, the session's `CAT_TEMP`, which the rules name, and
-`session.json`, which records the harness, its configuration directory and the directory's creation time. The hook's
-additional context holds only the guidance on reading command output whole, from `rules/codex/read-file.md`, followed
-by an instruction to read that file whole, as that guidance describes, before anything else. The hook then removes the
-work directory of every other session of the project that is more than 24 hours old and whose transcript Codex or
-Claude Code no longer keeps.
+directory is the session's CAT session directory: it also holds `temp/`, the session's `CAT_TEMP`, which the rules
+name, and `session.json`, which records the harness, its configuration directory and the directory's creation time. The
+hook's additional context holds only the guidance on reading command output whole, from `rules/codex/read-file.md`,
+followed by an instruction to read that file whole, as that guidance describes, before anything else. The hook then
+removes the CAT session directory of every other session of the project that is more than 24 hours old and whose
+transcript Codex or Claude Code no longer keeps.
 
-For a `SubagentStart` event, the hook writes the subagent's rules to the `rules.md` of the work directory of the event's
-`agent_id`, the thread ID that Codex gives the subagent's shell commands in `CODEX_THREAD_ID`, so their `CAT_TEMP` names
-that directory. Its additional context holds the same guidance on reading command output whole, followed by an
-instruction to read the subagent's file whole. A subagent that Codex starts with its parent's conversation also receives
-the parent's instruction to read the parent's rules file, the `rules.md` of the event's `session_id`; Codex places the
-subagent's context after it. The subagent cannot see whether its conversation was copied, so the instruction first names
-the parent's file as belonging to the agent that started the subagent and tells it not to read that file. Without
-`agent_id`, the subagent would share its parent's work directory, so the hook returns every rule as additional context
-and leaves the parent's rules file unchanged.
+For a `SubagentStart` event, the hook writes the subagent's rules to the `rules.md` of the CAT session directory of the
+event's `agent_id`, the thread ID that Codex gives the subagent's shell commands in `CODEX_THREAD_ID`, so their
+`CAT_TEMP` names that directory. Its additional context holds the same guidance on reading command output whole,
+followed by an instruction to read the subagent's file whole. A subagent that Codex starts with its parent's
+conversation also receives the parent's instruction to read the parent's rules file, the `rules.md` of the event's
+`session_id`; Codex places the subagent's context after it. The subagent cannot see whether its conversation was
+copied, so the instruction first names the parent's file as belonging to the agent that started the subagent and tells
+it not to read that file. Without `agent_id`, the subagent would share its parent's CAT session directory, so the hook
+returns every rule as additional context and leaves the parent's rules file unchanged.
 
 The command hook sets `additionalContextLimit` to `0`, disabling additional-context spilling for this hook. Codex
 otherwise applies a default limit. For the meaning and introduction of this Codex hook property, see

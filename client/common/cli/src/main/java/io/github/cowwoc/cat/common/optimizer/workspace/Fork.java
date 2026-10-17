@@ -6,7 +6,7 @@ import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
 
 import io.github.cowwoc.cat.common.PortablePaths;
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
@@ -28,17 +28,17 @@ import java.util.Set;
  * A campaign's fork of a base worktree: the recorded prompt system and the detached optimization worktree at the base's
  * {@code HEAD}.
  * <p>
- * Creating a fork requires a clean base worktree, ensures that Git ignores CAT's work directory so that campaign files
- * never make the base dirty, records the files, and adds the optimization worktree. Every Git operation runs through
- * {@link Git}.
+ * Creating a fork requires a clean base worktree, ensures that Git ignores CAT's session directories so that
+ * campaign files never make the base dirty, records the files, and adds the optimization worktree. Every Git operation
+ * runs through {@link Git}.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
 public final class Fork implements ForkView
 {
 	private static final String[] CHECK_IGNORE = {"check-ignore", "--quiet", "--no-index",
-		SessionWorkDirectory.WORK_ROOT + "/probe"};
-	private static final String CLEAN_PATHSPEC_EXCLUDING_WORK = ":(exclude)" + SessionWorkDirectory.WORK_ROOT;
+		SessionDirectory.ROOT + "/probe"};
+	private static final String CLEAN_PATHSPEC_EXCLUDING_SESSIONS = ":(exclude)" + SessionDirectory.ROOT;
 	private final ForkTree recorded;
 	private final ParticipantSelection selection;
 	private final ForkTree tree;
@@ -52,7 +52,7 @@ public final class Fork implements ForkView
 	 * @param recorded every recorded file, including the participants that the selection leaves out
 	 * @param selection the participants recorded after creation that the fork's files hold
 	 * @param worktree the optimization worktree's directory
-	 * @param excludeAdded {@code true} if creating the fork appended CAT's work directory to the local exclude
+	 * @param excludeAdded {@code true} if creating the fork appended CAT's session directories to the local exclude
 	 */
 	private Fork(ForkTree recorded, ParticipantSelection selection, Path worktree, boolean excludeAdded)
 	{
@@ -67,8 +67,8 @@ public final class Fork implements ForkView
 	/**
 	 * Forks a base worktree.
 	 * <p>
-	 * The base must have no staged, unstaged or untracked changes outside CAT's work directory. Otherwise this method
-	 * stops before it creates anything, including the local exclude line.
+	 * The base must have no staged, unstaged or untracked changes outside CAT's session directories. Otherwise this
+	 * method stops before it creates anything, including the local exclude line.
 	 *
 	 * @param base the base worktree, which is the top-level directory of its repository
 	 * @param campaign the campaign storage directory
@@ -92,7 +92,7 @@ public final class Fork implements ForkView
 		Git git = new Git(normalizedBase);
 		Path exclude = requireTopLevel(git, normalizedBase);
 		requireClean(git, normalizedBase);
-		boolean excludeAdded = ensureWorkDirectoryIgnored(git, exclude);
+		boolean excludeAdded = ensureSessionDirectoriesIgnored(git, exclude);
 
 		Set<Path> paths = new HashSet<>(participants);
 		for (Path path : tracked(git))
@@ -334,7 +334,7 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Requires that the base has no staged, unstaged or untracked changes, ignoring CAT's work directory.
+	 * Requires that the base has no staged, unstaged or untracked changes, ignoring CAT's session directories.
 	 *
 	 * @param git the base's Git
 	 * @param base the base worktree
@@ -344,7 +344,7 @@ public final class Fork implements ForkView
 	private static void requireClean(Git git, Path base) throws IOException
 	{
 		List<String> changes = git.lines("status", "--porcelain", "--untracked-files=all", "--", ".",
-			CLEAN_PATHSPEC_EXCLUDING_WORK);
+			CLEAN_PATHSPEC_EXCLUDING_SESSIONS);
 		if (changes.isEmpty())
 			return;
 		throw new WorkspaceException("The base worktree " + base + " has staged, unstaged or untracked changes, so " +
@@ -353,14 +353,14 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Appends CAT's work directory to the repository's local exclude if Git does not already ignore it.
+	 * Appends CAT's session directories to the repository's local exclude if Git does not already ignore them.
 	 *
 	 * @param git the base's Git
 	 * @param exclude the repository's local exclude file
 	 * @return {@code true} if this method appended the line
 	 * @throws IOException if Git fails or the exclude cannot be written
 	 */
-	private static boolean ensureWorkDirectoryIgnored(Git git, Path exclude) throws IOException
+	private static boolean ensureSessionDirectoriesIgnored(Git git, Path exclude) throws IOException
 	{
 		int status = git.status(CHECK_IGNORE);
 		if (status == 0)

@@ -2,7 +2,7 @@ package io.github.cowwoc.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.ToolScope;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -11,9 +11,9 @@ import java.util.Optional;
 
 /**
  * Where a runner command keeps its runs when the command line names no {@code --run-root}: the {@code temp} directory
- * of the work directory of the harness session that runs the command. Outside a harness session there is no such
+ * of the CAT session directory of the harness session that runs the command. Outside a harness session there is no such
  * directory, and the command line must name {@code --run-root}. A command that names {@code --run-root} leaves the
- * session's work directory alone.
+ * session's CAT session directory alone.
  */
 public final class HarnessTemporaryRoot
 {
@@ -35,7 +35,7 @@ public final class HarnessTemporaryRoot
 	/**
 	 * Returns the temporary root of a harness session.
 	 *
-	 * @param sessionTemp the {@code temp} directory of the session's work directory
+	 * @param sessionTemp the {@code temp} directory of the session's CAT session directory
 	 * @return the temporary root
 	 * @throws NullPointerException if {@code sessionTemp} is null
 	 */
@@ -61,8 +61,8 @@ public final class HarnessTemporaryRoot
 	}
 
 	/**
-	 * Returns the temporary root of the harness session that a tool scope belongs to. The session's work directory is
-	 * opened, and created if absent, only when a command needs the default run root.
+	 * Returns the temporary root of the harness session that a tool scope belongs to. The session's CAT session directory
+	 * is opened, and created if absent, only when a command needs the default run root.
 	 *
 	 * @param scope the command's tool scope, which must stay open while the command line is parsed
 	 * @return the temporary root
@@ -72,7 +72,7 @@ public final class HarnessTemporaryRoot
 	public static HarnessTemporaryRoot from(ToolScope scope)
 	{
 		requireThat(scope, "scope").isNotNull();
-		return new HarnessTemporaryRoot(() -> scope.sessionWorkDirectory().map(SessionWorkDirectory::temp),
+		return new HarnessTemporaryRoot(() -> scope.sessionDirectory().map(SessionDirectory::temp),
 			scope.missingSession());
 	}
 
@@ -82,8 +82,8 @@ public final class HarnessTemporaryRoot
 	 * @return {@code runner-runs} in the session's temporary directory
 	 * @throws IllegalArgumentException if there is no harness session, so the command line must name
 	 *   {@code --run-root}
-	 * @throws UncheckedIOException if the session variable is not a UUID in canonical form, or if the session's work
-	 *   directory cannot be created
+	 * @throws UncheckedIOException if the session variable is not a UUID in canonical form, or if the session's CAT
+	 *   session directory cannot be created
 	 */
 	public Path defaultRunRoot()
 	{
@@ -107,7 +107,7 @@ public final class HarnessTemporaryRoot
 	 * @param runRoot the {@code --run-root} value, or {@code null} when the command line names none
 	 * @return the normalized absolute run root
 	 * @throws IllegalArgumentException if {@code runRoot} is null and there is no harness session
-	 * @throws UncheckedIOException if {@code runRoot} is null and the session's work directory cannot be opened
+	 * @throws UncheckedIOException if {@code runRoot} is null and the session's CAT session directory cannot be opened
 	 */
 	Path runRoot(String runRoot)
 	{
@@ -126,7 +126,7 @@ public final class HarnessTemporaryRoot
 		 * Opens the session's temporary directory.
 		 *
 		 * @return the directory, or empty outside a harness session
-		 * @throws IOException if the session's work directory cannot be opened
+		 * @throws IOException if the session's CAT session directory cannot be opened
 		 */
 		Optional<Path> open() throws IOException;
 	}

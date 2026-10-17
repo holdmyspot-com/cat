@@ -1,6 +1,6 @@
 package io.github.cowwoc.cat.common.optimizer.workspace;
 
-import io.github.cowwoc.cat.common.SessionWorkDirectory;
+import io.github.cowwoc.cat.common.SessionDirectory;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
@@ -20,10 +20,10 @@ import java.util.Set;
 public interface ForkView
 {
 	/**
-	 * The line that creating a fork appends to the repository's local exclude when CAT's work directory is not
-	 * already ignored.
+	 * The line that creating a fork appends to the repository's local exclude when CAT's session directories are
+	 * not already ignored.
 	 */
-	String EXCLUDE_ENTRY = "/" + SessionWorkDirectory.WORK_ROOT + "/";
+	String EXCLUDE_ENTRY = "/" + SessionDirectory.ROOT + "/";
 
 	/**
 	 * Returns the recorded files.
@@ -40,7 +40,7 @@ public interface ForkView
 	WorkspacePort workspace();
 
 	/**
-	 * Indicates whether creating this fork appended CAT's work directory to the repository's local exclude.
+	 * Indicates whether creating this fork appended CAT's session directories to the repository's local exclude.
 	 * Opening an existing fork returns {@code false}, so the notice belongs only to the command that created it.
 	 *
 	 * @return {@code true} if creation appended the line

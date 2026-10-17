@@ -2,7 +2,7 @@
 
 # Tests the run-part and read-part launchers in the Codex plugin's bin folder: they start the client's programs from an
 # installed plugin path that contains spaces, run-part saves a command's output in the temporary folder of the Codex
-# thread's session work directory in the project, the line that ends a part names the plugin's read-part, and rg in a
+# thread's CAT session directory in the project, the line that ends a part names the plugin's read-part, and rg in a
 # run-part command keeps the saved output short.
 
 load bootstrap-helpers

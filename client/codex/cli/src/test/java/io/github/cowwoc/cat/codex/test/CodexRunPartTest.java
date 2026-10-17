@@ -110,9 +110,9 @@ public final class CodexRunPartTest
 	}
 
 	/**
-	 * Verifies that a command runs in its folder and that, in a Codex thread, its output is saved in the temporary
-	 * folder of the thread's work directory in the nearest project that contains that folder, so that it stays inside
-	 * the project.
+	 * Verifies that a command runs in its folder and that, in a Codex thread, its output is saved in the temporary folder
+	 * of the thread's CAT session directory in the nearest project that contains that folder, so that it stays inside the
+	 * project.
 	 *
 	 * @throws IOException if the temporary folders cannot be created
 	 */
@@ -143,7 +143,7 @@ public final class CodexRunPartTest
 
 	/**
 	 * Verifies that without {@code CODEX_THREAD_ID} the output is saved under {@code TMPDIR} even inside a CAT project
-	 * that holds the shared temporary folder of earlier releases, and that no work directory is created.
+	 * that holds the shared temporary folder of earlier releases, and that no CAT session directory is created.
 	 *
 	 * @throws IOException if the temporary folders cannot be created
 	 */

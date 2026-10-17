@@ -260,8 +260,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that without {@code --run-root} the runs go to {@code runner-runs} in the temporary directory of the work
-	 * directory of the session that the session variable names.
+	 * Verifies that without {@code --run-root} the runs go to {@code runner-runs} in the temporary directory of the CAT
+	 * session directory of the session that the session variable names.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -288,8 +288,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that a command line that names {@code --run-root} inside a session leaves the session's work directory
-	 * alone.
+	 * Verifies that a command line that names {@code --run-root} inside a session leaves the session's CAT session
+	 * directory alone.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
