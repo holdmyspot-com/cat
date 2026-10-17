@@ -58,5 +58,5 @@ Should either be relocated solely because explanatory comments normally belong a
 ### guidance_selection
 
 - **kind**: effect
-- **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`
+- **description**: The retained events establish that the executor selects `rules/include/documentation/general.md`
   before its first governed action.

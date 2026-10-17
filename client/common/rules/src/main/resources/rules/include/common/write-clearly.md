@@ -10,14 +10,6 @@
 - Keep a status update faithful to its evidence by distinguishing confirmation that the planned action still applies
   from evidence that requires a correction.
 - Distinguish advisory guidance from an enforcement boundary when reporting how a change addresses a failure.
-- Let each documentation site answer the question that its reader brings there, without facts that serve another site.
-<!--
-An explanation for the next Guidance paragraph was placed after the last Design Goal, where it appeared to explain
-that goal instead. This made the comment's subject unclear, so the goal requires placing explanations with their
-actual subject.
--->
-- Let readers identify which code or prose an explanatory comment describes without guessing whether it applies to
-  the preceding or following item.
 
 ## Guidance
 
@@ -52,7 +44,10 @@ affect the reader's decision, name its observable consequence instead of relying
 Define a new term at its first use by saying what it represents, who uses it, and what result it affects, then use it
 consistently. Do not define a term by repeating it or replacing it with another project label. For example, say “a new
 folder containing the copied project that the validator examines” instead of “an integration project.” Do not explain
-ordinary technical terms unless this project gives them a specialized meaning.
+ordinary technical terms unless this project gives them a specialized meaning. When a term names a location by its
+workflow purpose, such as a test project, validation workspace, staging area, or recreation directory, also say whether
+it is new or existing, what it contains or excludes, who uses it next, and what that use proves or produces. A named
+source file or output directory whose contents are already stated beside it needs no second definition.
 
 When a name or description reports a quantity that combines several values, such as a total, count, sum, maximum or
 average, say which values it combines and the scope that bounds it, such as one response, one turn, one session or one
@@ -66,50 +61,8 @@ then define any unfamiliar workflow term and the concrete problem it prevents. F
 is a required release check and that a fresh evidence directory prevents a rerun from replacing an earlier check's
 receipts. Do not present an internal mechanism as an unexplained approval question.
 
-Place a standalone explanatory comment immediately above the code or prose it describes, including any annotations
-belonging to a declaration. Do not separate it from that subject with an unrelated heading, declaration, or paragraph.
-Identify its subject before moving it: a syntax-controlled directive or a clear same-line comment stays where its
-syntax and meaning require. After editing, check that a reader encountering the comment can identify what it explains.
-When an explanatory comment justifies a Design Goal, place it immediately above that goal and state the concrete
-situation that prompted the addition and how the goal addresses it. Do not substitute a generic example, a restatement
-of the goal, or a fabricated incident for the known reason it was added. If that reason is unavailable, do not invent
-one; say what is known and leave the origin unclaimed.
-
-When a source comment explains a local representation of an external actor, resource, or boundary, name both the
-represented role and the concrete value or scope that models it. At a lifecycle transition, identify the actor, the
-resource, the statement or scope that performs the transition, and the resulting effect. For example, explain that the
-scope containing a child process's standard-error output closes that output and thereby delivers EOF to the parent
-consumer; do not leave the reader to infer the process relationship from a pipe type.
-
-Use a product or framework name only when it changes the explained behavior. When an ordinary parent and child process
-would behave the same way, name those generic roles instead.
-
-## Write for Each Site's Goal
-
-Before writing documentation, identify its site, the element or place where the reader meets it, and the question that
-reader brings there. Write what answers that question. Leave out a fact that is true but serves another site, such as
-how a value was checked, where it came from or how earlier code processed it; the site whose goal it serves documents
-it. Mention such a fact only when it changes how the reader at this site must use the element, and then state that
-consequence rather than the history. Carrying another site's concern into this one, even as a single word, makes the
-reader look for a distinction that this site does not have.
-
-The goal of each kind of site:
-
-- A type, module or file: what it represents or is responsible for, and when a reader uses it.
-- A field, property, record component, constant or variable: what one value means, with its unit and the scope it
-  covers.
-- A function, method or constructor: what it does or returns for its caller, and the inputs it accepts, the results it
-  returns and the failures it reports.
-- A parameter: its effect on the result. A return value: each result and when it occurs. An error or exception: the
-  condition that causes it.
-- An inline comment: why the code beside it does something that the code does not make obvious.
-- A message, help text or document section: what its reader needs to complete the task that brought them there.
-
-For example, a method that checks a turn's requests says “Checks that request indices are consecutive and that the turn
-has ended before returning its counts,” while a method that only reads them says “Reads the next conversation portion
-without retaining earlier portions,” not “Reads the next verified portion without retaining earlier portions,” and a
-field that stores their sum says “The selected turn's output tokens, summed over its requests.” A factory that skips the
-check still says so, because its caller must then supply requests in order.
+Use a product, framework, or implementation name only when it changes the explained behavior. When an ordinary parent
+and child process would behave the same way, name those generic roles instead.
 
 ## Prefer the Shortest Complete Response
 
@@ -201,11 +154,6 @@ When reporting an unavailable prerequisite that the reader must restore, name th
 or other resource; the attempted operation and its observed failure; and the smallest recovery action with its actor.
 Do not say that a configuration, permission, or dependency is unavailable without identifying the target the reader
 must inspect or change. Omit a recovery action only when no supported recovery exists, and say that explicitly.
-
-When a term names a location by its workflow purpose, such as a test project, validation workspace, staging area, or
-recreation directory, say at its first use whether it is new or existing, what it contains or excludes, who uses it
-next, and what that use proves or produces. A named source file or output directory whose contents are already stated
-beside it needs no second definition.
 
 ## Write Accurate Status Updates
 

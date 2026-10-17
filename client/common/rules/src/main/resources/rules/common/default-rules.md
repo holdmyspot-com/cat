@@ -83,10 +83,11 @@ operation of the same API takes some of the same inputs, even in another type or
 `../include/common/consistent-parameters.md`.
 
 When writing or editing maintained documentation, including product, legal, API, function, method, command,
-configuration, or user-facing workflow documentation, lazy load `../include/documentation/general.md`.
+configuration, or user-facing workflow documentation, or a source comment, including a comment in a prompt or rule file,
+lazy load `../include/documentation/general.md`.
 
 When declaring a variable outside a function body, such as a field, constant, or module-level variable, or changing the
-value or contents of an existing one, lazy load `../include/documentation/variables.md`.
+value or contents of an existing one, lazy load `../include/documentation/general.md`.
 
 When applying a skill would cause you to ask for permission or confirmation, pause, leave requested work unfinished, or
 diverge from the user's intent, lazy load `../include/common/skill-interruption-reporting.md` before taking that action.

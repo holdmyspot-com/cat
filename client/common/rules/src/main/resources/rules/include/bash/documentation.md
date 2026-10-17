@@ -1,3 +1,8 @@
+---
+depends-on:
+  - ../documentation/general.md
+---
+
 # Bash Documentation and Source Code
 
 ## Design Goals
@@ -10,8 +15,8 @@
 
 Document every Bash function, including internal helpers, with a comment block immediately above its definition. Use one
 concise responsibility sentence, then only the applicable structured sections — `Arguments:`, `Environment:`, `Output:`,
-`Side effects:`, `Errors:`, and `Exit status:`. Describe positional arguments and environment values by semantic role,
-constraint, operational effect, and user-visible purpose, not merely `$1`, `$2`, or a shell variable name. `Output:`
+`Side effects:`, `Errors:`, and `Exit status:`. Document each environment value that a function reads as one of its
+inputs, like a positional argument, and never identify an input only as `$1`, `$2`, or a shell variable name. `Output:`
 describes data written to standard output; `Exit status:` describes the numeric result. Use ordinary `# ` comment lines.
 A blank `#` line may separate the description and distinct structured sections, but do not add empty `#` wrapper lines
 before or after the block.

@@ -10,9 +10,6 @@ depends-on:
 
 - Apply Java-specific Javadoc coverage, tags, placement, and syntax without duplicating the language-neutral
   documentation contract.
-- Make every documented condition immediately recognizable as one the caller can test.
-- Let a caller learn from a method's Javadoc every result it can receive, what each means and when it occurs, without
-  reading the implementation.
 
 ## Guidance
 
@@ -20,9 +17,7 @@ Write class, record, method, and constructor Javadoc using the multi-line form, 
 sentence. Do not put complete Javadoc on one line.
 
 Document every class, record, explicitly declared constructor, and method, including non-public members. An `@Override`
-method needs Javadoc only when it changes the inherited contract or adds important implementation details. When asked
-only to document existing code, do not add a constructor, method, field, or other executable declaration merely to
-create another documentation target.
+method needs Javadoc only when it changes the inherited contract or adds important implementation details.
 
 Do not add Javadoc consisting only of `{@inheritDoc}`. An overriding method inherits its documentation by default.
 Write new Javadoc only when it supplies caller-relevant information that the inherited contract does not already state.
@@ -31,28 +26,11 @@ Document every parameter with `@param` and every return value with `@return`. Pl
 a record declaration and repeat them on an explicit or compact canonical constructor. Put construction-contract tags
 such as `@throws` only on that constructor, not on the record declaration.
 
-When a field, method, record or enum exists to report a condition, begin its summary description with “Indicates
-whether”, not “Returns whether” or a bare “Whether”. Begin the `@param` description of a record component that reports a
-condition with “indicates whether” or “{@code true} if”, not a bare “whether”. A condition is a value that answers one
-yes-or-no question or picks one of two alternatives, whatever its type. Name the observable state that makes the answer
-yes, or that selects each alternative. A method that performs an action and also returns whether it succeeded reports an
-outcome, not a condition: begin its summary with the action, and describe the outcome in `@return`. Do not describe a
-policy consequence that the method does not itself decide; document that consequence at the caller or in the separately
-named operation that makes the decision.
-
-An `@param` description must state its parameter's observable effect. When that effect selects a fixed caller-visible
-value, boundary, policy, or ordering, name the exact selected behavior rather than a generic feature or action.
-
-In `@return`, state each result a caller can receive that has a different meaning, such as an empty, null, sentinel or
-boundary value besides the ordinary result, with the condition that produces it. For a boolean, the condition that makes
-it `true` is enough. When those results do not fit in a short `@return`, summarize them there and describe each result
-and its condition in the method's main description.
+When the results that `@return` must describe do not fit in a short `@return`, summarize them there and describe each
+result and its condition in the method's main description.
 
 Use `<p>` alone on its own Javadoc line immediately after the preceding paragraph; do not insert a blank Javadoc line
 before or after it, and do not use a closing `</p>` tag.
 Import every class referenced by `{@link}` or `{@linkplain}` and use its simple name in the tag.
 
-Describe semantic constraints in `@param`, such as a non-blank identifier. Document with `@throws` every deterministic,
-externally observable exception that callers can trigger through documented inputs or required state. In `@throws`,
-reference parameter names using `{@code parameterName}`. Use plural wording when one predicate governs two or more
-parameters, and singular wording only when it governs one parameter or each parameter has a distinct predicate.
+Use `@throws` for each documented exception, and reference parameter names in it using `{@code parameterName}`.
