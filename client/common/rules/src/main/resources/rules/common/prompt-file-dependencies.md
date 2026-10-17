@@ -26,8 +26,11 @@ depends-on:
 ```
 
 Each `depends-on` value is the rendered path to another direct rule, relative to the declaring rule. For example, a rule
-in a harness directory can use `../common/terms.md` to depend on a common rule. The rule injector reads this metadata,
-injects every listed prerequisite before the dependent rule, and does not inject the frontmatter itself.
+in a harness directory can use `../common/terms.md` to depend on a common rule. The frontmatter itself is never
+injected. For a rule injected at session start, the injector only places each listed prerequisite before the dependent
+rule; it does not add a rule, so the prerequisite must itself be an injected rule, or injection fails. For a lazy-loaded
+rule, the build turns the list into an injected instruction to lazy load each prerequisite first, and the agent loads
+the prerequisites only by following that instruction.
 
 This rule governs authoring injector metadata, not reader-facing workflow behavior. Keep it path-scoped to rule source
 files and do not route it from an eager default rule. The injector consumes a rule's `depends-on` frontmatter while it
