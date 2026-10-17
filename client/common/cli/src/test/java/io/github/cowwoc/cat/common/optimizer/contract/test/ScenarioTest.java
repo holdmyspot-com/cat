@@ -390,38 +390,20 @@ public final class ScenarioTest
 	}
 
 	/**
-	 * Verifies that the fixture patterns are read from code spans, inline or as nested items, and that a scenario
-	 * without a {@code ## Fixtures} section copies its own {@code fixtures/} directory.
-	 *
-	 * @throws ScenarioFormatException if the scenario is refused
+	 * Verifies that a {@code ## Fixtures} section is refused as an unknown section, because a prompt test's
+	 * {@code workspace/} directory places files in each trial's workspace.
 	 */
 	@Test
-	public void readsFixturePatterns() throws ScenarioFormatException
+	public void refusesFixturesSection()
 	{
-		// Requirement: R-C21
-		requireThat(Scenario.fixturePatterns(VARIABLES + TURN + ASSERTIONS), "default").
-			isEqualTo(List.of("fixtures/**"));
-		String inline = VARIABLES + """
+		String withFixtures = VARIABLES + """
 
 			## Fixtures
 
-			- **patterns**: `fixtures/**`, `../fixtures/{AGENTS.md,docs/glossary.md}`
+			- **patterns**: `fixtures/**`
 
 			""" + TURN + ASSERTIONS;
-		requireThat(Scenario.fixturePatterns(inline), "inline").
-			isEqualTo(List.of("fixtures/**", "../fixtures/{AGENTS.md,docs/glossary.md}"));
-		requireThat(Scenario.parse(inline), "parsed").isEqualTo(Scenario.parse(VARIABLES + TURN + ASSERTIONS));
-		String nested = VARIABLES + """
-
-			## Fixtures
-
-			- **patterns**:
-			  - `fixtures/**`
-			  - `../fixtures/docs/\\{\\{notes\\}\\}`
-
-			""" + TURN + ASSERTIONS;
-		requireThat(Scenario.fixturePatterns(nested), "nested").
-			isEqualTo(List.of("fixtures/**", "../fixtures/docs/\\{\\{notes\\}\\}"));
+		requireThat(refusal(withFixtures), "refusal").contains("## Fixtures");
 	}
 
 	/**
@@ -469,8 +451,6 @@ public final class ScenarioTest
 			startsWith("Line 3:").contains("key-value");
 		requireThat(refusal(VARIABLES + "The notes file name.\n" + TURN + ASSERTIONS), "afterPair").
 			startsWith("Line 4:");
-		requireThat(refusal(VARIABLES + "## Fixtures\n\nfixtures/**\n" + TURN + ASSERTIONS), "fixturesProse").
-			startsWith("Line 6:");
 		requireThat(refusal(VARIABLES + TURN + """
 			## Assertions
 
@@ -531,8 +511,6 @@ public final class ScenarioTest
 			- **timeout**: 5
 			- **description**: The reply summarizes the notes.
 			"""), "assertion").startsWith("Line 12:").contains("timeout");
-		requireThat(refusal(VARIABLES + "## Fixtures\n\n- **files**: `fixtures/**`\n" + TURN + ASSERTIONS),
-			"fixtures").startsWith("Line 6:").contains("files");
 	}
 
 	/**
@@ -744,31 +722,6 @@ public final class ScenarioTest
 	}
 
 	/**
-	 * Verifies that a fixture pattern outside a code span, without a {@code fixtures} directory, with a glob before
-	 * that directory, with nothing after it or with an absolute path is refused at its line, as is a
-	 * {@code patterns} key without a pattern.
-	 */
-	@Test
-	public void refusesMalformedPatterns()
-	{
-		// Requirement: R-C21
-		String start = VARIABLES + "## Fixtures\n\n";
-		String end = "\n" + TURN + ASSERTIONS;
-		requireThat(refusal(start + "- **patterns**: fixtures/**\n" + end), "outsideCodeSpan").
-			startsWith("Line 6:").contains("code span");
-		requireThat(refusal(start + "- **patterns**: `docs/**`\n" + end), "noFixtures").startsWith("Line 6:").
-			contains("fixtures");
-		requireThat(refusal(start + "- **patterns**: `*/fixtures/**`\n" + end), "globBeforeFixtures").
-			startsWith("Line 6:");
-		requireThat(refusal(start + "- **patterns**: `fixtures`\n" + end), "nothingAfter").startsWith("Line 6:");
-		requireThat(refusal(start + "- **patterns**: `/tests/fixtures/**`\n" + end), "absolute").
-			startsWith("Line 6:");
-		requireThat(refusal(start + "- **patterns**:\n" + end), "none").startsWith("Line 6:");
-		requireThat(refusal(start + "- **patterns**:\n  - fixtures/**\n" + end), "nestedOutsideCodeSpan").
-			startsWith("Line 7:");
-	}
-
-	/**
 	 * Verifies that a rendered scenario parses back into the same variables, turns and assertions, including a
 	 * description that spans several lines, numbered turns, a turn that holds a heading or a key-value line, and a
 	 * {@code tool} that holds backticks.
@@ -851,25 +804,19 @@ public final class ScenarioTest
 	}
 
 	/**
-	 * Verifies that rewriting a recorded scenario file keeps its title, the text before its first section, its design
-	 * goals and its fixture patterns, wherever they lie, appends the given patterns, and replaces every other section
-	 * with the rendered scenario.
+	 * Verifies that rewriting a recorded scenario file keeps its title, the text before its first section and its
+	 * design goals, wherever they lie, and replaces every other section with the rendered scenario.
 	 *
 	 * @throws ScenarioFormatException if the recorded file or the written file is refused
 	 */
 	@Test
-	public void rewriteKeepsPreambleAndPatterns() throws ScenarioFormatException
+	public void rewriteKeepsPreambleAndGoals() throws ScenarioFormatException
 	{
 		// Requirement: R-W11
 		String recorded = """
 			# Release notes
 
 			Written for the 2.0 release.
-
-			## Fixtures
-
-			- **patterns**:
-			  - `../fixtures/**`
 
 			## Variables
 
@@ -907,22 +854,11 @@ public final class ScenarioTest
 
 			""" + VARIABLES + "\n";
 		Scenario scenario = single();
-		String file = scenario.rewrite(recorded, List.of());
-		requireThat(file, "file").isEqualTo(head + """
-			## Fixtures
-
-			- **patterns**: `../fixtures/**`
-
-			""" + TURN + "\n" + ASSERTIONS);
+		String file = scenario.rewrite(recorded);
+		requireThat(file, "file").isEqualTo(head + TURN + "\n" + ASSERTIONS);
 		requireThat(Scenario.parse(file), "parsed").isEqualTo(scenario);
 
-		String appended = scenario.rewrite(recorded, List.of("fixtures/**"));
-		requireThat(Scenario.fixturePatterns(appended), "appended").isEqualTo(List.of("../fixtures/**", "fixtures/**"));
-
-		String withoutSection = scenario.rewrite(VARIABLES + TURN + ASSERTIONS, List.of("fixtures/a\\{b\\}.md"));
-		requireThat(Scenario.fixturePatterns(withoutSection), "withoutSection").
-			isEqualTo(List.of("fixtures/**", "fixtures/a\\{b\\}.md"));
-		requireThat(scenario.rewrite(VARIABLES + TURN + ASSERTIONS, List.of()), "default").
+		requireThat(scenario.rewrite(VARIABLES + TURN + ASSERTIONS), "default").
 			isEqualTo(VARIABLES + "\n" + TURN + "\n" + ASSERTIONS);
 	}
 

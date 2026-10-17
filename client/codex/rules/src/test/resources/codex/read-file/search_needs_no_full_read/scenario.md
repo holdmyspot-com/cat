@@ -16,10 +16,6 @@
   what callers must change, such as "The exporter now stops with an error unless each call passes an explicit
   destination."
 
-## Fixtures
-
-- **patterns**: `../fixtures/docs/\{\{notes\}\}`
-
 ## Scenario
 
 Which component did release {{release}} improve, according to `docs/{{notes}}`? Answer with the component only. Do not

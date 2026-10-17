@@ -23,7 +23,6 @@ import java.util.regex.Pattern;
 final class ScenarioParser
 {
 	private static final String VARIABLES = "Variables";
-	private static final String FIXTURES = "Fixtures";
 	private static final String SCENARIO = "Scenario";
 	private static final String EXPECTED_BEHAVIOR = "Expected Behavior";
 	private static final String ASSERTIONS = "Assertions";
@@ -31,9 +30,8 @@ final class ScenarioParser
 	/**
 	 * The level-2 sections that a scenario may have.
 	 */
-	private static final Set<String> SECTIONS = Set.of(DESIGN_GOALS, VARIABLES, FIXTURES, SCENARIO,
-		EXPECTED_BEHAVIOR, ASSERTIONS);
-	private static final String PATTERNS = "patterns";
+	private static final Set<String> SECTIONS = Set.of(DESIGN_GOALS, VARIABLES, SCENARIO, EXPECTED_BEHAVIOR,
+		ASSERTIONS);
 	private static final String KIND = "kind";
 	private static final String TOOL = "tool";
 	private static final String ON_TOOL_FAILURE = "on_tool_failure";
@@ -156,8 +154,6 @@ final class ScenarioParser
 				throw new ScenarioFormatException(location + "The scenario has no ## " + name + " section");
 		}
 		List<VariableDeclaration> variables = variables(sections.get(VARIABLES));
-		if (sections.containsKey(FIXTURES))
-			patterns(sections.get(FIXTURES));
 		Set<String> names = new HashSet<>();
 		for (VariableDeclaration variable : variables)
 			names.add(variable.name());
@@ -180,37 +176,6 @@ final class ScenarioParser
 			// Every rule of the constructor is checked above with its line
 			throw new AssertionError("A checked scenario was refused", e);
 		}
-	}
-
-	/**
-	 * Returns the fixture patterns, without checking the other sections.
-	 *
-	 * @return the patterns of the {@code ## Fixtures} section, or {@value FixturePattern#DEFAULT} alone if the content
-	 *         has no such section
-	 * @throws ScenarioFormatException if a section is unknown or repeated, a title follows a section, or the
-	 *                                 {@code ## Fixtures} section is malformed
-	 */
-	List<String> fixturePatterns() throws ScenarioFormatException
-	{
-		List<String> declared = declaredPatterns();
-		if (declared.isEmpty())
-			return List.of(FixturePattern.DEFAULT);
-		return declared;
-	}
-
-	/**
-	 * Returns the fixture patterns that the {@code ## Fixtures} section declares, without checking the other sections.
-	 *
-	 * @return the patterns, or an empty list if the content has no {@code ## Fixtures} section
-	 * @throws ScenarioFormatException if a section is unknown or repeated, a title follows a section, or the
-	 *                                 {@code ## Fixtures} section is malformed
-	 */
-	List<String> declaredPatterns() throws ScenarioFormatException
-	{
-		Section section = sections().get(FIXTURES);
-		if (section == null)
-			return List.of();
-		return patterns(section);
 	}
 
 	/**
@@ -276,7 +241,7 @@ final class ScenarioParser
 				if (!SECTIONS.contains(name))
 				{
 					throw error(i, "the section ## " + name + " is not part of the scenario format. Sections: ## Design " +
-						"Goals, ## Variables, ## Fixtures, ## Scenario, ## Expected Behavior and ## Assertions");
+						"Goals, ## Variables, ## Scenario, ## Expected Behavior and ## Assertions");
 				}
 				if (sections.containsKey(name) || name.equals(current))
 					throw error(i, "the section ## " + name + " appears twice");
@@ -325,94 +290,6 @@ final class ScenarioParser
 			variables.add(new VariableDeclaration(name, pair.value()));
 		}
 		return variables;
-	}
-
-	/**
-	 * Parses the fixture patterns, written as code spans separated by commas or as nested items that each hold one.
-	 *
-	 * @param section the {@code ## Fixtures} section
-	 * @return the patterns, in order
-	 * @throws ScenarioFormatException if the section holds prose, a key other than {@code patterns}, or no pattern, or
-	 *                                 a pattern is malformed
-	 */
-	private List<String> patterns(Section section) throws ScenarioFormatException
-	{
-		List<Pair> pairs = pairs(section.heading() + 1, section.end(), "the ## Fixtures section holds only " +
-			"key-value pairs, such as - **patterns**: `fixtures/**`");
-		requireKeys(pairs, Set.of(PATTERNS), PATTERNS);
-		Pair pair = find(pairs, PATTERNS);
-		if (pair == null)
-			throw error(section.heading(), "the ## Fixtures section has no - **patterns**: pair");
-
-		List<String> patterns = new ArrayList<>();
-		if (firstValue(pair).isEmpty())
-		{
-			for (int i = pair.line() + 1; i < pair.end(); ++i)
-			{
-				String line = lines.get(i);
-				if (line.isBlank())
-					continue;
-				String nested = line.substring(INDENT.length());
-				List<String> spans = List.of();
-				if (nested.startsWith("- "))
-					spans = codeSpans(i, nested.substring("- ".length()));
-				if (spans.size() != 1)
-				{
-					throw error(i, "a nested pattern must be a list item that holds one code span, such as " +
-						"- `fixtures/**`");
-				}
-				patterns.add(pattern(i, spans.getFirst()));
-			}
-		}
-		else
-		{
-			for (String span : codeSpans(pair.line(), pair.value()))
-				patterns.add(pattern(pair.line(), span));
-		}
-		if (patterns.isEmpty())
-			throw error(pair.line(), "the key patterns names no pattern, such as `fixtures/**`");
-		return patterns;
-	}
-
-	/**
-	 * Reads code spans separated by commas.
-	 *
-	 * @param index the index of the line that holds them
-	 * @param text  the text
-	 * @return the content of each span, in order
-	 * @throws ScenarioFormatException if {@code text} holds anything other than code spans separated by commas
-	 */
-	private List<String> codeSpans(int index, String text) throws ScenarioFormatException
-	{
-		try
-		{
-			return CodeSpan.parseList(text);
-		}
-		catch (IllegalArgumentException e)
-		{
-			throw error(index, e.getMessage());
-		}
-	}
-
-	/**
-	 * Validates a fixture pattern.
-	 *
-	 * @param index   the index of the line that holds it
-	 * @param pattern the pattern
-	 * @return {@code pattern}
-	 * @throws ScenarioFormatException if the pattern is malformed
-	 */
-	private String pattern(int index, String pattern) throws ScenarioFormatException
-	{
-		try
-		{
-			FixturePattern.parse(pattern);
-		}
-		catch (IllegalArgumentException e)
-		{
-			throw error(index, e.getMessage());
-		}
-		return pattern;
 	}
 
 	/**
@@ -491,20 +368,6 @@ final class ScenarioParser
 				return pair;
 		}
 		return null;
-	}
-
-	/**
-	 * Returns the part of a pair's value on its key's line.
-	 *
-	 * @param pair the pair
-	 * @return the text after the key's colon, stripped
-	 */
-	private String firstValue(Pair pair)
-	{
-		Matcher item = ITEM.matcher(lines.get(pair.line()));
-		if (!item.matches())
-			throw new AssertionError("A pair's line is not an item: " + lines.get(pair.line()));
-		return item.group(2).strip();
 	}
 
 	/**

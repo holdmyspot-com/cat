@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.Fixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.ProjectLink;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
@@ -20,7 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.StringJoiner;
 import java.util.stream.Stream;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -75,13 +75,13 @@ public final class FixturesTest
 		Path directory = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 			"prompt-test"));
 		Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
-		Path fixtures = Files.createDirectories(directory.resolve("fixtures/docs"));
+		Path fixtures = Files.createDirectories(directory.resolve("workspace/docs"));
 		Files.writeString(fixtures.resolve("{{notes}}"), """
 			{{before}}
 			Release 4.2 was published on {{expected_outcome}}.
 			Deploy with ${{ github.token }} and {{undeclared}}.
 			""");
-		Files.write(directory.resolve("fixtures/logo.png"), BINARY);
+		Files.write(directory.resolve("workspace/logo.png"), BINARY);
 		return directory;
 	}
 
@@ -183,128 +183,212 @@ public final class FixturesTest
 	}
 
 	/**
-	 * Returns a scenario that copies the files of the given fixture patterns.
+	 * Creates a project whose test root holds shared files beside a prompt test. The prompt test's {@code workspace/}
+	 * holds a file of its own and links to a shared file, a shared directory, a project file and a project directory.
 	 *
-	 * @param patterns the patterns, each written as a code span
-	 * @return the scenario
-	 */
-	private static String withPatterns(String... patterns)
-	{
-		StringJoiner spans = new StringJoiner(", ");
-		for (String pattern : patterns)
-			spans.add("`" + pattern + "`");
-		return "## Fixtures\n\n- **patterns**: " + spans + "\n\n" + SCENARIO;
-	}
-
-	/**
-	 * Creates a test root that holds a guidance directory with shared fixtures and a prompt test below it with its own
-	 * fixtures, and a {@code fixtures/} directory outside the test root.
-	 *
-	 * @param cleanup removes the directories
-	 * @return the test root
+	 * @param cleanup removes the project
+	 * @return the project directory
 	 * @throws IOException if a file cannot be written
 	 */
-	private static Path sharedFixtures(TemporaryDirectories cleanup) throws IOException
+	private static Path linkedProject(TemporaryDirectories cleanup) throws IOException
 	{
-		Path outside = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
-			"test-root"));
-		Files.createDirectories(outside.resolve("fixtures"));
-		Files.writeString(outside.resolve("fixtures/outside.md"), "Not a fixture");
-		Path root = Files.createDirectories(outside.resolve("tests"));
-		Path guidance = Files.createDirectories(root.resolve("guidance"));
-		Files.createDirectories(guidance.resolve("fixtures/docs"));
-		Files.writeString(guidance.resolve("fixtures/AGENTS.md"), "Published on {{expected_outcome}}");
-		Files.writeString(guidance.resolve("fixtures/docs/{{notes}}"), "{{before}}\nFrom the guidance");
-		Files.writeString(guidance.resolve("fixtures/docs/glossary.md"), "Not named");
-		Path directory = Files.createDirectories(guidance.resolve("case"));
-		Files.createDirectories(directory.resolve("fixtures/docs"));
-		Files.writeString(directory.resolve("fixtures/docs/{{notes}}"), "{{before}}\nFrom the case");
-		Files.writeString(directory.resolve("fixtures/own.md"), "Own");
-		return root;
+		Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")), "project"));
+		Files.createDirectories(project.resolve("src"));
+		Files.writeString(project.resolve("src/Main.java"), "class Main {}");
+		Files.createDirectories(project.resolve("docs/guide"));
+		Files.writeString(project.resolve("docs/guide/intro.md"), "Intro to {{notes}}");
+		Path logs = Files.createDirectories(project.resolve(".cat/tests/guidance/shared/logs"));
+		Files.writeString(logs.resolveSibling("AGENTS.md"), "Published on {{expected_outcome}}");
+		Files.writeString(logs.resolve("{{notes}}"), "{{before}}\nShared");
+		Path directory = Files.createDirectories(project.resolve(".cat/tests/guidance/case"));
+		Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+		Path workspace = Files.createDirectories(directory.resolve(PromptTestFiles.WORKSPACE));
+		Files.writeString(workspace.resolve("own.md"), "Own");
+		link(workspace.resolve("AGENTS.md"), "../../shared/AGENTS.md");
+		link(workspace.resolve("logs"), "../../shared/logs");
+		Files.createDirectories(workspace.resolve("src"));
+		link(workspace.resolve("src/Main.java"), "../../../../../../src/Main.java");
+		link(workspace.resolve("guide"), "../../../../../docs/guide");
+		return project;
 	}
 
 	/**
-	 * Verifies that a prompt test copies the files that its fixture patterns name, in list order, so that the later
-	 * pattern's file replaces an earlier one at the same workspace path, and that a shared file it does not name is
-	 * not copied.
+	 * Creates a symbolic link.
+	 *
+	 * @param link   the link
+	 * @param target the target, relative to the link's directory
+	 * @throws IOException if the link cannot be created
+	 */
+	private static void link(Path link, String target) throws IOException
+	{
+		Files.createSymbolicLink(link, Path.of(target));
+	}
+
+	/**
+	 * Returns the directory of the prompt test that {@link #linkedProject(TemporaryDirectories)} creates.
+	 *
+	 * @param project the project
+	 * @return the prompt test directory
+	 */
+	private static Path linkedTest(Path project)
+	{
+		return project.resolve(".cat/tests/guidance/case");
+	}
+
+	/**
+	 * Verifies that a prompt test's {@code workspace/} files and the test-root files that its links reach are its
+	 * fixtures at their paths below {@code workspace/}, that a link to a project file or directory outside the test root
+	 * is a project link, and that copying the fixtures replaces placeholders in the shared files.
 	 *
 	 * @throws IOException             if a file cannot be written or read
 	 * @throws ScenarioFormatException if the prompt test is refused
 	 */
 	@Test
-	public void copiesPatternsInListOrder() throws IOException, ScenarioFormatException
+	public void readsWorkspaceLinks() throws IOException, ScenarioFormatException
 	{
-		// Requirement: R-C21
+		// Requirement: R-C21, R-W15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = sharedFixtures(cleanup);
-			Path directory = root.resolve("guidance/case");
-			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO),
-				withPatterns("fixtures/**", "../fixtures/{AGENTS.md,docs/\\{\\{notes\\}\\}}"));
-
-			PromptTestFiles files = PromptTestFiles.read(json, root, root, directory);
+			Path project = linkedProject(cleanup);
+			Path root = project.resolve(".cat/tests");
+			PromptTestFiles files = PromptTestFiles.read(json, project, root, linkedTest(project));
 			requireThat(files.fixtures(), "fixtures").isEqualTo(List.of(
 				new PromptTestFiles.Fixture("AGENTS.md", true, Set.of()),
-				new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of("before")),
+				new PromptTestFiles.Fixture("logs/{{notes}}", true, Set.of("before")),
 				new PromptTestFiles.Fixture("own.md", true, Set.of())));
+			requireThat(files.source(files.fixtures().get(1)), "shared").
+				isEqualTo(root.resolve("guidance/shared/logs/{{notes}}"));
+			requireThat(files.projectLinks(), "projectLinks").isEqualTo(List.of(
+				new ProjectLink("guide", Path.of("docs/guide")),
+				new ProjectLink("src/Main.java", Path.of("src/Main.java"))));
+
 			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
 			Fixtures.copy(files, testCase("notes.md"), workspace);
-			requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "docs/notes.md", "own.md"));
+			requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "logs/notes.md", "own.md"));
 			requireThat(Files.readString(workspace.resolve("AGENTS.md")), "agents").
 				isEqualTo("Published on 2025-03-04");
-			requireThat(Files.readString(workspace.resolve("docs/notes.md")), "notes").endsWith("\nFrom the guidance");
+			requireThat(Files.readString(workspace.resolve("logs/notes.md")), "notes").endsWith("\nShared");
 
-			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO),
-				withPatterns("../fixtures/{AGENTS.md,docs/\\{\\{notes\\}\\}}", "fixtures/**"));
-			Path reversed = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
-				"workspace"));
-			Fixtures.copy(PromptTestFiles.read(json, root, root, directory), testCase("notes.md"), reversed);
-			requireThat(Files.readString(reversed.resolve("docs/notes.md")), "reversed").endsWith("\nFrom the case");
+			Path bare = Files.createDirectories(root.resolve("guidance/bare"));
+			Files.writeString(bare.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+			PromptTestFiles none = PromptTestFiles.read(json, project, root, bare);
+			requireThat(none.fixtures(), "noFixtures").isEmpty();
+			requireThat(none.projectLinks(), "noProjectLinks").isEmpty();
 		}
 	}
 
 	/**
-	 * Verifies that a fixture pattern that leaves the test root, and one that matches no file, are refused, while a
-	 * prompt test without a {@code ## Fixtures} section and without a {@code fixtures/} directory has no fixtures.
+	 * Verifies that a link of a prompt test in a draft directory resolves at the test's path relative to the project:
+	 * a target that the draft directory holds is read from it, and any other target from the project.
 	 *
 	 * @throws IOException             if a file cannot be written or read
-	 * @throws ScenarioFormatException if a valid prompt test is refused
+	 * @throws ScenarioFormatException if the prompt test is refused
 	 */
 	@Test
-	public void refusesEscapingAndUnmatchedPatterns() throws IOException, ScenarioFormatException
+	public void draftLinksResolveDraftFirst() throws IOException, ScenarioFormatException
 	{
-		// Requirement: R-C21
+		// Requirement: R-W15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = sharedFixtures(cleanup);
-			Path directory = root.resolve("guidance/case");
-			Path scenario = directory.resolve(PromptTestFiles.SCENARIO);
-			Files.writeString(scenario, withPatterns("fixtures/**", "../../../fixtures/**"));
-			try
-			{
-				PromptTestFiles.read(json, root, root, directory);
-				throw new AssertionError("A pattern outside the test root was accepted");
-			}
-			catch (ScenarioFormatException e)
-			{
-				requireThat(e.getMessage(), "outsideRoot").contains("../../../fixtures/**").contains("test root");
-			}
+			Path project = linkedProject(cleanup);
+			Path draft = project.resolve("cat-draft");
+			Path directory = Files.createDirectories(draft.resolve(".cat/tests/guidance/case"));
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+			Path workspace = Files.createDirectories(directory.resolve(PromptTestFiles.WORKSPACE));
+			link(workspace.resolve("AGENTS.md"), "../../shared/AGENTS.md");
+			link(workspace.resolve("logs"), "../../shared/logs");
+			Path drafted = Files.createDirectories(draft.resolve(".cat/tests/guidance/shared")).resolve("AGENTS.md");
+			Files.writeString(drafted, "Drafted on {{expected_outcome}}");
 
-			Files.writeString(scenario, withPatterns("fixtures/**", "../fixtures/missing.md"));
-			try
-			{
-				PromptTestFiles.read(json, root, root, directory);
-				throw new AssertionError("A pattern that matches no file was accepted");
-			}
-			catch (ScenarioFormatException e)
-			{
-				requireThat(e.getMessage(), "matchesNothing").contains("../fixtures/missing.md").contains("no file");
-			}
+			PromptTestFiles files = PromptTestFiles.readScenario(project, draft, draft.resolve(".cat/tests"),
+				directory);
 
-			Path bare = Files.createDirectories(root.resolve("guidance/bare"));
-			Files.writeString(bare.resolve(PromptTestFiles.SCENARIO), SCENARIO);
-			requireThat(PromptTestFiles.read(json, root, root, bare).fixtures(), "bare").isEmpty();
+			requireThat(files.fixtures().stream().map(PromptTestFiles.Fixture::path).toList(), "fixtures").
+				isEqualTo(List.of("AGENTS.md", "logs/{{notes}}"));
+			requireThat(files.source(files.fixtures().get(0)), "fromDraft").isEqualTo(drafted);
+			requireThat(files.source(files.fixtures().get(1)), "fromProject").
+				isEqualTo(project.resolve(".cat/tests/guidance/shared/logs/{{notes}}"));
+		}
+	}
+
+	/**
+	 * Verifies that a link is refused when it is absolute, its target is missing or lies outside the project, its
+	 * target directory holds it, it forms a cycle, or it reaches a prompt test directory.
+	 *
+	 * @throws IOException if a file cannot be written or read
+	 */
+	@Test
+	public void refusesBadLinks() throws IOException
+	{
+		// Requirement: R-W15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = linkedProject(cleanup);
+			Path workspace = linkedTest(project).resolve(PromptTestFiles.WORKSPACE);
+			Files.createSymbolicLink(workspace.resolve("absolute"), project.resolve("src/Main.java"));
+			requireRefused(project, "workspace/absolute: ", "absolute");
+			Files.delete(workspace.resolve("absolute"));
+
+			link(workspace.resolve("missing"), "../../shared/none.md");
+			requireRefused(project, "workspace/missing: ", "does not exist");
+			Files.delete(workspace.resolve("missing"));
+
+			Files.writeString(project.resolveSibling(project.getFileName() + "-outside.md"), "Outside");
+			link(workspace.resolve("outside"), "../../../../../../" + project.getFileName() + "-outside.md");
+			requireRefused(project, "workspace/outside: ", "outside the project");
+			Files.delete(workspace.resolve("outside"));
+			Files.delete(project.resolveSibling(project.getFileName() + "-outside.md"));
+
+			Path shared = project.resolve(".cat/tests/guidance/shared");
+			link(shared.resolve("logs/up"), "..");
+			requireRefused(project, "shared/logs/up: ", "holds the link");
+			Files.delete(shared.resolve("logs/up"));
+
+			Files.createDirectories(shared.resolve("a"));
+			Files.createDirectories(shared.resolve("b"));
+			link(shared.resolve("a/to-b"), "../b");
+			link(shared.resolve("b/to-a"), "../a");
+			link(workspace.resolve("a"), "../../shared/a");
+			requireRefused(project, "shared/b/to-a: ", "cycle");
+			Files.delete(workspace.resolve("a"));
+
+			Path other = Files.createDirectories(project.resolve(".cat/tests/guidance/other"));
+			Files.writeString(other.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+			Files.writeString(other.resolve("notes.md"), "Another test's file");
+			link(workspace.resolve("other.md"), "../../other/notes.md");
+			requireRefused(project, "workspace/other.md: ", "prompt test");
+			Files.delete(workspace.resolve("other.md"));
+
+			link(workspace.resolve("all"), "../../../guidance");
+			requireRefused(project, "workspace/all: ", "holds the link");
+			Files.delete(workspace.resolve("all"));
+
+			Path nested = Files.createDirectories(shared.resolve("nested/inner"));
+			Files.writeString(nested.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+			link(workspace.resolve("nested"), "../../shared/nested");
+			requireRefused(project, "workspace/nested: ", "prompt test");
+		}
+	}
+
+	/**
+	 * Requires that reading the prompt test of {@link #linkedProject(TemporaryDirectories)} is refused.
+	 *
+	 * @param project  the project
+	 * @param path     text that the message names the refused file with
+	 * @param reason   text that the message gives as the reason
+	 * @throws IOException if a file cannot be read
+	 */
+	private void requireRefused(Path project, String path, String reason) throws IOException
+	{
+		try
+		{
+			PromptTestFiles.read(json, project, project.resolve(".cat/tests"), linkedTest(project));
+			throw new AssertionError("A bad link was accepted: " + path);
+		}
+		catch (ScenarioFormatException e)
+		{
+			requireThat(e.getMessage(), "message").contains(path).contains(reason);
 		}
 	}
 
@@ -463,16 +547,18 @@ public final class FixturesTest
 				requireThat(e.getMessage(), "malformed").startsWith(".cat/tests/guidance/case/scenario.md: ");
 			}
 
-			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), withPatterns("../fixtures/missing.md"));
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+			Files.createDirectories(directory.resolve(PromptTestFiles.WORKSPACE));
+			link(directory.resolve("workspace/missing.md"), "../../missing.md");
 			try
 			{
 				PromptTestFiles.readScenario(project, root, directory);
-				throw new AssertionError("A pattern that matches no file was accepted");
+				throw new AssertionError("A link to a missing file was accepted");
 			}
 			catch (ScenarioFormatException e)
 			{
-				requireThat(e.getMessage(), "matchesNothing").
-					startsWith(".cat/tests/guidance/case/scenario.md: the fixture pattern ");
+				requireThat(e.getMessage(), "missing").
+					startsWith(".cat/tests/guidance/case/workspace/missing.md: ");
 			}
 		}
 	}

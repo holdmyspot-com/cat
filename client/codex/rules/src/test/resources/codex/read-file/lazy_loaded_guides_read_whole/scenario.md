@@ -16,11 +16,6 @@
 - **sign_off**: The team name that `docs/style-guide.md` requires as every reply's last line after `-- `, such as
   `Release Desk`
 
-## Fixtures
-
-- **patterns**: `../fixtures/AGENTS.md`, `../fixtures/docs/glossary.md`, `../fixtures/docs/release-notes.md`,
-  `../fixtures/docs/style-guide.md`
-
 ## Scenario
 
 A customer asks: "Does release {{release}} change anything for me?" Draft the reply from `docs/release-notes.md`. Do

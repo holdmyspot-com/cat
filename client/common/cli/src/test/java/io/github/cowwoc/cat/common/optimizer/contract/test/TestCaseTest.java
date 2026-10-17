@@ -16,6 +16,7 @@ import org.testng.annotations.Test;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,8 +58,25 @@ public final class TestCaseTest
 		fixtures.add(new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of("before")));
 		fixtures.add(new PromptTestFiles.Fixture("logo.png", false, Set.of()));
 		fixtures.addAll(List.of(extraFixtures));
-		return new PromptTestFiles(Path.of("/project/tests").toAbsolutePath(),
-			Path.of("/project/tests/case").toAbsolutePath(), scenario, List.of("fixtures/**"), fixtures, List.of());
+		Path directory = Path.of("/project/tests/case").toAbsolutePath();
+		return new PromptTestFiles(directory.getParent(), directory, scenario, fixtures, sources(directory, fixtures),
+			List.of(), List.of());
+	}
+
+	/**
+	 * Returns the file that each fixture of a prompt test is copied from: its file in the test's
+	 * {@code workspace/} directory.
+	 *
+	 * @param directory the prompt test directory
+	 * @param fixtures  the fixtures
+	 * @return each file, by the fixture's path
+	 */
+	private static Map<String, Path> sources(Path directory, List<PromptTestFiles.Fixture> fixtures)
+	{
+		Map<String, Path> sources = new HashMap<>();
+		for (PromptTestFiles.Fixture fixture : fixtures)
+			sources.put(fixture.path(), directory.resolve("workspace").resolve(fixture.path()));
+		return sources;
 	}
 
 	/**
@@ -172,8 +190,9 @@ public final class TestCaseTest
 		PromptTestFiles files = promptTest();
 		requireThat(files.problems(testCase(LOGS, LOGS)).toString(), "turnAndName").contains("notes");
 
-		PromptTestFiles unused = new PromptTestFiles(files.root(), files.directory(), files.scenario(),
-			files.patterns(), List.of(new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of())), List.of());
+		List<PromptTestFiles.Fixture> fixtures = List.of(new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of()));
+		PromptTestFiles unused = new PromptTestFiles(files.root(), files.directory(), files.scenario(), fixtures,
+			sources(files.directory(), fixtures), List.of(), List.of());
 		requireThat(unused.problems(testCase(new TestValue.Text("a.md"), LOGS)).toString(), "unused").
 			contains("before");
 	}

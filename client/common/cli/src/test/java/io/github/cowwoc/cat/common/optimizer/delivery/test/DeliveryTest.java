@@ -850,61 +850,39 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * An edited prompt test's fixture that a shared {@code fixtures/} directory supplies unchanged stays shared:
-	 * delivery does not copy it into the prompt test's own {@code fixtures/}. A fixture whose content differs is
-	 * written there, and delivery appends a fixture pattern so that the copy replaces the shared file:
-	 * {@code fixtures/**} when no pattern names the prompt test's own {@code fixtures/}, or a pattern naming the copy
-	 * alone when a later pattern would still replace it.
+	 * An edited prompt test's fixtures are written to its own {@code workspace/} directory: a fixture whose content
+	 * differs replaces the recorded file, and one that the recorded file already holds stays as recorded.
 	 *
-	 * @throws IOException             if the fixture or delivery fails
-	 * @throws ScenarioFormatException if a written file cannot be read back
+	 * @throws IOException if the fixture or delivery fails
 	 */
 	@Test
-	public void sharedFixtureStaysShared() throws IOException, ScenarioFormatException
+	public void editedTestWritesOwnWorkspace() throws IOException
 	{
 		// Requirement: R-W11, R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path sharedNotes = TESTS.resolve("fixtures/docs/{{notes}}");
-			Path sharedAgents = TESTS.resolve("fixtures/AGENTS.md");
+			Path workspace = EDITED_SCENARIO.resolveSibling(PromptTestFiles.WORKSPACE);
+			Path notesFile = workspace.resolve("docs/{{notes}}");
+			Path agentsFile = workspace.resolve("AGENTS.md");
 			String notes = "Release {{notes}} fixes the installer.\n";
-			Path ownPatternScenario = TESTS.resolve("release_notes").resolve(PromptTestFiles.SCENARIO);
-			String ownPatternRecorded = RECORDED_SCENARIO + "\n## Fixtures\n\n- **patterns**: `fixtures/**`, " +
-				"`../fixtures/{AGENTS.md,docs/**}`\n";
-			Path sharedOnlyScenario = TESTS.resolve("release_dates").resolve(PromptTestFiles.SCENARIO);
-			String sharedOnlyRecorded = RECORDED_SCENARIO + "\n## Fixtures\n\n- **patterns**: `../fixtures/**`\n";
 			Fixture fixture = Fixture.create(cleanup).
-				commit(sharedNotes, notes.getBytes(UTF_8)).
-				commit(sharedAgents, "Reply briefly.\n".getBytes(UTF_8)).
-				commit(ownPatternScenario, ownPatternRecorded.getBytes(UTF_8)).
-				commit(sharedOnlyScenario, sharedOnlyRecorded.getBytes(UTF_8));
+				commit(notesFile, notes.getBytes(UTF_8)).
+				commit(agentsFile, "Reply briefly.\n".getBytes(UTF_8)).
+				commit(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
 			Overlay candidate = fixture.candidate();
 			List<FixtureFile> fixtures = List.of(new FixtureFile("AGENTS.md", "Reply in one sentence.\n"),
 				new FixtureFile("docs/{{notes}}", notes));
-			DeliveredTest ownPattern = withFixtures(promptTest("release_notes", false), fixtures);
-			DeliveredTest sharedOnly = withFixtures(promptTest("release_dates", false), fixtures);
+			DeliveredTest test = withFixtures(promptTest("release_notes", false), fixtures);
 
 			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
-				Map.of(sharedNotes, content(notes), sharedAgents, content("Reply briefly.\n"), ownPatternScenario,
-					content(ownPatternRecorded), sharedOnlyScenario, content(sharedOnlyRecorded))).
+				Map.of(notesFile, content(notes), agentsFile, content("Reply briefly.\n"), EDITED_SCENARIO,
+					content(RECORDED_SCENARIO))).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
-					RECORD, List.of(ownPattern, sharedOnly));
+					RECORD, List.of(test));
 
 			requireDelivered(result);
-			for (DeliveredTest test : List.of(ownPattern, sharedOnly))
-			{
-				Path own = fixture.resolve(test.location().directory().resolve(PromptTestFiles.FIXTURES));
-				requireThat(read(own.resolve("AGENTS.md")), "agents").withContext(test.id(), "id").
-					isEqualTo("Reply in one sentence.\n");
-				requireThat(Files.notExists(own.resolve("docs")), "notesAreShared").withContext(test.id(), "id").
-					isTrue();
-			}
-			requireThat(read(fixture.resolve(sharedNotes)), "sharedNotes").isEqualTo(notes);
-			requireThat(read(fixture.resolve(sharedAgents)), "sharedAgents").isEqualTo("Reply briefly.\n");
-			requireThat(Scenario.fixturePatterns(read(fixture.resolve(ownPatternScenario))), "ownPattern").
-				isEqualTo(List.of("fixtures/**", "../fixtures/{AGENTS.md,docs/**}", "fixtures/AGENTS.md"));
-			requireThat(Scenario.fixturePatterns(read(fixture.resolve(sharedOnlyScenario))), "sharedOnly").
-				isEqualTo(List.of("../fixtures/**", "fixtures/**"));
+			requireThat(read(fixture.resolve(agentsFile)), "agents").isEqualTo("Reply in one sentence.\n");
+			requireThat(read(fixture.resolve(notesFile)), "notes").isEqualTo(notes);
 		}
 	}
 
@@ -924,7 +902,7 @@ public final class DeliveryTest
 	/**
 	 * A prompt test that the contract author wrote as files in its draft directory is delivered as the draft holds it:
 	 * at its directory there, with the draft's {@value PromptTestFiles#SCENARIO} unchanged and each fixture at its file
-	 * in the draft, even one that a pattern selects from a shared {@code fixtures/} directory. A recorded test's
+	 * in the draft, even one that a link reaches in a shared directory. A recorded test's
 	 * directory is edited, and any other directory is created.
 	 *
 	 * @throws IOException             if the fixture or delivery fails
@@ -936,13 +914,12 @@ public final class DeliveryTest
 		// Requirement: R-C26
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.") +
-				"\n## Fixtures\n\n- **patterns**: `fixtures/**`, `../fixtures/**`\n";
+			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.");
 			String createdScenario = RECORDED_SCENARIO.replace("# Release notes", "# Release dates");
 			FixtureFile shared = new FixtureFile("docs/{{file}}", "Release {{file}} fixes the installer.\n",
-				PortablePaths.text(TESTS.resolve("fixtures/docs/{{file}}")));
+				PortablePaths.text(TESTS.resolve("shared/docs/{{file}}")));
 			FixtureFile own = new FixtureFile("AGENTS.md", "Reply in one sentence.\n",
-				PortablePaths.text(TESTS.resolve("release_dates/fixtures/AGENTS.md")));
+				PortablePaths.text(TESTS.resolve("release_dates/workspace/AGENTS.md")));
 			Contract fixtureContract = ContractFixtures.contract();
 			PromptTest first = fixtureContract.tests().getFirst();
 			PromptTest second = fixtureContract.tests().get(1);
@@ -972,7 +949,7 @@ public final class DeliveryTest
 			requireThat(read(fixture.resolve(TESTS.resolve("release_dates").resolve(PromptTestFiles.SCENARIO))),
 				"createdScenario").isEqualTo(createdScenario);
 			requireThat(read(fixture.resolve(Path.of(shared.source()))), "shared").isEqualTo(shared.content());
-			requireThat(Files.notExists(fixture.resolve(EDITED_SCENARIO.resolveSibling(PromptTestFiles.FIXTURES))),
+			requireThat(Files.notExists(fixture.resolve(EDITED_SCENARIO.resolveSibling(PromptTestFiles.WORKSPACE))),
 				"noOwnCopy").isTrue();
 			requireThat(read(fixture.resolve(Path.of(own.source()))), "own").isEqualTo(own.content());
 			try (Reader in = Files.newBufferedReader(fixture.resolve(EDITED_SCENARIO.resolveSibling(ValuesFile.NAME)),
@@ -1216,7 +1193,7 @@ public final class DeliveryTest
 		}
 		for (FixtureFile file : test.fixtures())
 		{
-			requireThat(read(directory.resolve(PromptTestFiles.FIXTURES).resolve(file.path())), "fixture").
+			requireThat(read(directory.resolve(PromptTestFiles.WORKSPACE).resolve(file.path())), "fixture").
 				withContext(test.id(), "id").isEqualTo(file.content());
 		}
 	}

@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
-import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
+import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
@@ -27,16 +27,17 @@ import java.util.stream.Stream;
 
 /**
  * The directory in which a contract author writes the prompt tests of its proposal as files, each at its path relative
- * to the project: the prompt test's {@value PromptTestFiles#SCENARIO}, its {@value PromptTestFiles#FIXTURES}
- * directory and its values file, and the shared fixtures that its patterns select.
+ * to the project: the prompt test's {@value PromptTestFiles#SCENARIO}, its {@value PromptTestFiles#WORKSPACE}
+ * directory and its values file, and the files and directories of a test root that the symbolic links of its
+ * {@value PromptTestFiles#WORKSPACE} directory reach.
  * <p>
  * Before a contract author session, CAT seeds a new draft directory with the recorded prompt tests of the target, or
  * copies the latest proposal's draft directory for a revision, or copies one prompt test for a test revision. When
  * the session ends with a valid proposal, CAT stores the draft directory in the campaign's held-out directory, because
  * its values files hold the expected outcomes of both parts.
  * <p>
- * Only directories and regular files are copied; a symbolic link is left out, so that a copy never reads or writes
- * outside the directory it copies.
+ * Only directories, regular files and symbolic links are copied. A copied link keeps its target text and is never
+ * followed, so that a copy never reads or writes outside the directory it copies.
  */
 public final class DraftDirectory
 {
@@ -191,7 +192,8 @@ public final class DraftDirectory
 
 	/**
 	 * Copies the recorded prompt tests of the target into a new draft directory, each at its directory as
-	 * {@link #testDirectories(RegressionScenarios)} returns it, with the shared fixtures that its patterns select.
+	 * {@link #testDirectories(RegressionScenarios)} returns it, with the files and directories of a test root that its
+	 * links reach.
 	 *
 	 * @param scenarios the recorded scenarios of the target
 	 * @param draft     the draft directory, which need not exist
@@ -236,7 +238,9 @@ public final class DraftDirectory
 	}
 
 	/**
-	 * Copies one prompt test into a draft directory: its directory and the shared fixtures that its patterns select.
+	 * Copies one prompt test into a draft directory: its directory and the files and directories of a test root that the
+	 * links of its {@value PromptTestFiles#WORKSPACE} directory reach. A link that is refused, or whose target
+	 * {@code source} does not hold, adds nothing: checking the draft directory reports it.
 	 *
 	 * @param source        the directory that holds the prompt test at its path, such as the project or another
 	 *                      draft directory
@@ -252,9 +256,8 @@ public final class DraftDirectory
 		requireThat(testDirectory.isAbsolute(), "testDirectory.isAbsolute()").isFalse();
 		requireThat(draft, "draft").isNotNull();
 		copyTree(source.resolve(testDirectory), draft.resolve(testDirectory));
-		Path scenario = testDirectory.normalize().resolve(PromptTestFiles.SCENARIO);
-		for (Path shared : PromptTestLocations.sharedFixtures(source, scenario))
-			copyTree(source.resolve(shared), draft.resolve(shared));
+		for (Path shared : linkedTargets(source, testDirectory))
+			copyEntry(source.resolve(shared), draft.resolve(shared));
 	}
 
 	/**
@@ -284,7 +287,7 @@ public final class DraftDirectory
 
 	/**
 	 * Returns the files that copying a prompt test into a test revision's draft directory places outside the test's
-	 * directory: the files of the shared fixtures that its patterns select.
+	 * directory: the files of a test root that the links of its {@value PromptTestFiles#WORKSPACE} directory reach.
 	 *
 	 * @param stored        the stored draft directory that holds the prompt test
 	 * @param testDirectory the prompt test's directory, relative to {@code stored}
@@ -298,12 +301,11 @@ public final class DraftDirectory
 		requireThat(stored, "stored").isNotNull();
 		requireThat(testDirectory.isAbsolute(), "testDirectory.isAbsolute()").isFalse();
 		Map<Path, Sha256> files = new TreeMap<>();
-		Path scenario = testDirectory.normalize().resolve(PromptTestFiles.SCENARIO);
-		for (Path shared : PromptTestLocations.sharedFixtures(stored, scenario))
+		for (Path shared : linkedTargets(stored, testDirectory))
 		{
 			for (Path file : regularFiles(stored.resolve(shared)))
 			{
-				Path path = shared.resolve(file);
+				Path path = shared.resolve(file.toString()).normalize();
 				if (!path.startsWith(testDirectory))
 					files.put(path, Sha256.of(Files.readAllBytes(stored.resolve(path))));
 			}
@@ -350,14 +352,37 @@ public final class DraftDirectory
 	}
 
 	/**
-	 * Returns the regular files below a directory.
+	 * Returns the files and directories of a test root that the links of a prompt test reach in a tree.
 	 *
-	 * @param directory the directory, which need not exist
-	 * @return each file, relative to {@code directory}
+	 * @param tree          the directory that holds the prompt test at its path relative to the project
+	 * @param testDirectory the prompt test's directory, relative to {@code tree}
+	 * @return the targets, relative to {@code tree}, or an empty set if a link is refused or its target is missing from
+	 *   {@code tree}
+	 * @throws IOException if a file cannot be read
+	 */
+	private static Set<Path> linkedTargets(Path tree, Path testDirectory) throws IOException
+	{
+		try
+		{
+			return PromptTestFiles.linkedTargets(tree, tree, testDirectory);
+		}
+		catch (ScenarioFormatException _)
+		{
+			return Set.of();
+		}
+	}
+
+	/**
+	 * Returns the regular files at or below a path.
+	 *
+	 * @param directory the regular file or directory, which need not exist
+	 * @return each file, relative to {@code directory}; an empty path names {@code directory} itself
 	 * @throws IOException if the directory cannot be read
 	 */
 	private static List<Path> regularFiles(Path directory) throws IOException
 	{
+		if (Files.isRegularFile(directory, LinkOption.NOFOLLOW_LINKS))
+			return List.of(Path.of(""));
 		if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS))
 			return List.of();
 		try (Stream<Path> walk = Files.walk(directory))
@@ -368,7 +393,29 @@ public final class DraftDirectory
 	}
 
 	/**
-	 * Copies the directories and regular files below a directory, keeping a file that the target already holds.
+	 * Copies a regular file, or the directories, regular files and links below a directory, keeping a file that the
+	 * target already holds.
+	 *
+	 * @param source the regular file or directory to copy, which need not exist
+	 * @param target the copy
+	 * @throws IOException if a file cannot be read or written
+	 */
+	private static void copyEntry(Path source, Path target) throws IOException
+	{
+		if (Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS))
+		{
+			if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS))
+			{
+				Files.createDirectories(target.getParent());
+				Files.copy(source, target);
+			}
+			return;
+		}
+		copyTree(source, target);
+	}
+
+	/**
+	 * Copies the directories, regular files and links below a directory, keeping a file that the target already holds.
 	 *
 	 * @param source the directory to copy, which need not exist
 	 * @param target the copy
@@ -380,8 +427,8 @@ public final class DraftDirectory
 	}
 
 	/**
-	 * Copies the directories and regular files below a directory, keeping a file that the target already holds and
-	 * leaving out the paths that a filter selects.
+	 * Copies the directories, regular files and links below a directory, keeping a file that the target already holds
+	 * and leaving out the paths that a filter selects. A link is copied as a link with the same target text.
 	 *
 	 * @param source the directory to copy, which need not exist
 	 * @param target the copy
@@ -406,8 +453,11 @@ public final class DraftDirectory
 			Path copy = target.resolve(source.relativize(path).toString());
 			if (attributes.isDirectory())
 				Files.createDirectories(copy);
-			else if (attributes.isRegularFile() && !Files.exists(copy, LinkOption.NOFOLLOW_LINKS))
-				Files.copy(path, copy);
+			else if ((attributes.isRegularFile() || attributes.isSymbolicLink()) &&
+				!Files.exists(copy, LinkOption.NOFOLLOW_LINKS))
+			{
+				Files.copy(path, copy, LinkOption.NOFOLLOW_LINKS);
+			}
 		}
 	}
 

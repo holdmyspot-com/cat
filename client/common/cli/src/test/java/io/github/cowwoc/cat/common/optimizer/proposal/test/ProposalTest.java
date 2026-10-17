@@ -2128,7 +2128,7 @@ public final class ProposalTest
 			- **description**: The summary keeps the {{tone}} tone.
 			""");
 		String content = "Release 4.296 renamed the exporter.\n";
-		Path fixtures = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/fixtures/notes"));
+		Path fixtures = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/notes"));
 		Files.writeString(fixtures.resolve("{{tone}}.md"), content, UTF_8);
 		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
@@ -2139,7 +2139,7 @@ public final class ProposalTest
 			PROFILES, SALT);
 
 		FixtureFile notes = new FixtureFile("notes/{{tone}}.md", content,
-			".cat/tests/CLAUDE/formatting/fixtures/notes/{{tone}}.md");
+			".cat/tests/CLAUDE/formatting/workspace/notes/{{tone}}.md");
 		requireThat(derived.contract().findTest("formatting").orElseThrow().fixtures(), "formatting").
 			isEqualTo(List.of(notes));
 		requireThat(derived.contract().findTest("safety").orElseThrow().fixtures(), "safety").isEmpty();

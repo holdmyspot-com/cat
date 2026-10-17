@@ -2,14 +2,12 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.StringJoiner;
 
 /**
  * A prompt test's {@code scenario.md}: the variables that its test cases give values, the user turns, the expected
@@ -156,32 +154,10 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 	 */
 	public String render()
 	{
-		return render(List.of(FixturePattern.DEFAULT));
-	}
-
-	/**
-	 * Returns the sections of a {@code scenario.md} that reads back as this scenario and selects fixtures by a list of
-	 * patterns.
-	 *
-	 * @param patterns the fixture patterns; a {@code ## Fixtures} section is written unless they are
-	 *                 {@value FixturePattern#DEFAULT} alone
-	 * @return the sections, ending with a line break
-	 * @throws IllegalArgumentException if the text would read back differently
-	 */
-	private String render(List<String> patterns)
-	{
 		StringBuilder text = new StringBuilder(256);
 		text.append("## Variables\n\n");
 		for (VariableDeclaration variable : variables)
 			appendPair(text, variable.name(), variable.description());
-
-		if (!patterns.equals(List.of(FixturePattern.DEFAULT)))
-		{
-			StringJoiner spans = new StringJoiner(", ");
-			for (String pattern : patterns)
-				spans.add(CodeSpan.render(pattern));
-			text.append("\n## Fixtures\n\n- **patterns**: ").append(spans).append('\n');
-		}
 
 		text.append("\n## Scenario\n\n");
 		if (turns.size() == 1)
@@ -218,17 +194,15 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 
 		String rendered = text.toString();
 		Scenario parsed;
-		List<String> parsedPatterns;
 		try
 		{
 			parsed = parse(rendered);
-			parsedPatterns = fixturePatterns(rendered);
 		}
 		catch (ScenarioFormatException e)
 		{
 			throw new IllegalArgumentException("The scenario cannot be written as a scenario.md: " + e.getMessage(), e);
 		}
-		if (!parsed.equals(this) || !parsedPatterns.equals(patterns))
+		if (!parsed.equals(this))
 		{
 			throw new IllegalArgumentException("The scenario cannot be written as a scenario.md, because it would " +
 				"read back differently:\n" + rendered);
@@ -302,48 +276,23 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 
 	/**
 	 * Returns a recorded {@code scenario.md} rewritten for this scenario: the text before its first section, such as
-	 * its title, its {@code ## Design Goals} section and its fixture patterns are kept, the given patterns are appended
-	 * to them, and the rendered sections replace the others.
+	 * its title, and its {@code ## Design Goals} section are kept, and the rendered sections replace the others.
 	 *
 	 * @param recorded the content of the recorded file
-	 * @param appended the fixture patterns to append, in order
 	 * @return the file's new content
-	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws NullPointerException     if {@code recorded} is null
 	 * @throws ScenarioFormatException  if {@code recorded} has a section that the scenario format does not define, a
-	 *                                  repeated section, a title after a section, or a malformed {@code ## Fixtures}
-	 *                                  section
-	 * @throws IllegalArgumentException if an appended pattern is malformed, or the file would read back differently
+	 *                                  repeated section or a title after a section
+	 * @throws IllegalArgumentException if the file would read back differently
 	 */
-	public String rewrite(String recorded, List<String> appended) throws ScenarioFormatException
+	public String rewrite(String recorded) throws ScenarioFormatException
 	{
 		requireThat(recorded, "recorded").isNotNull();
-		requireThat(appended, "appended").isNotNull();
-		for (String pattern : appended)
-			FixturePattern.parse(pattern);
 		ScenarioParser parser = new ScenarioParser("", recorded);
-		List<String> patterns = new ArrayList<>(parser.fixturePatterns());
-		patterns.addAll(appended);
-		String file = parser.titleAndDesignGoals() + render(patterns);
+		String file = parser.titleAndDesignGoals() + render();
 		if (!readsBack(file))
 			throw new IllegalArgumentException("The rewritten scenario.md would read back differently:\n" + file);
 		return file;
-	}
-
-	/**
-	 * Returns the fixture patterns of a {@code scenario.md}, reading only its {@code ## Fixtures} section.
-	 *
-	 * @param content the file's content
-	 * @return the patterns, in order, or {@value FixturePattern#DEFAULT} alone if the file has no
-	 *         {@code ## Fixtures} section
-	 * @throws NullPointerException    if {@code content} is null
-	 * @throws ScenarioFormatException if a section is unknown or repeated, a title follows a section, or the
-	 *                                 {@code ## Fixtures} section is malformed; the message starts with the line it
-	 *                                 concerns
-	 */
-	public static List<String> fixturePatterns(String content) throws ScenarioFormatException
-	{
-		requireThat(content, "content").isNotNull();
-		return new ScenarioParser("", content).fixturePatterns();
 	}
 
 	/**

@@ -575,8 +575,8 @@ public final class ProposalCheck
 		{
 			Set<Path> trees = new TreeSet<>();
 			trees.add(directory);
-			trees.addAll(PromptTestLocations.sharedFixtures(project, directory.resolve(PromptTestFiles.SCENARIO)));
-			trees.addAll(PromptTestLocations.sharedFixtures(draft, directory.resolve(PromptTestFiles.SCENARIO)));
+			trees.addAll(linkedTargets(project, project, directory));
+			trees.addAll(linkedTargets(project, draft, directory));
 			for (Path tree : trees)
 			{
 				for (Path file : files(project, tree))
@@ -588,7 +588,7 @@ public final class ProposalCheck
 		}
 		Set<Path> drafted = new TreeSet<>();
 		drafted.add(directory);
-		drafted.addAll(PromptTestLocations.sharedFixtures(draft, directory.resolve(PromptTestFiles.SCENARIO)));
+		drafted.addAll(linkedTargets(project, draft, directory));
 		for (Path tree : drafted)
 			paths.addAll(files(draft, tree));
 
@@ -607,35 +607,68 @@ public final class ProposalCheck
 	}
 
 	/**
-	 * Returns the regular files below a directory.
+	 * Returns the files and directories of a test root that the links of a prompt test reach in a tree.
+	 *
+	 * @param project   the project
+	 * @param tree      the directory that holds the prompt test at its path relative to the project: the project or a
+	 *                  draft directory
+	 * @param directory the prompt test's directory, relative to the project
+	 * @return the targets, relative to the project, or an empty set if a link is refused, which checking the prompt
+	 *   test reports
+	 * @throws IOException if a file cannot be read
+	 */
+	private static Set<Path> linkedTargets(Path project, Path tree, Path directory) throws IOException
+	{
+		try
+		{
+			return PromptTestFiles.linkedTargets(project, tree, directory);
+		}
+		catch (ScenarioFormatException _)
+		{
+			return Set.of();
+		}
+	}
+
+	/**
+	 * Returns the regular files and symbolic links at or below a path.
 	 *
 	 * @param root      the directory that {@code directory} is relative to
-	 * @param directory the directory, relative to {@code root}
-	 * @return each file, relative to {@code root}, or an empty list if the directory does not exist
+	 * @param directory the regular file or directory, relative to {@code root}
+	 * @return each file, relative to {@code root}, or an empty list if nothing exists at the path
 	 * @throws IOException if the directory cannot be read
 	 */
 	private static List<Path> files(Path root, Path directory) throws IOException
 	{
 		Path absolute = root.resolve(directory);
+		if (Files.isRegularFile(absolute, LinkOption.NOFOLLOW_LINKS))
+			return List.of(directory);
 		if (!Files.isDirectory(absolute, LinkOption.NOFOLLOW_LINKS))
 			return List.of();
 		try (Stream<Path> walk = Files.walk(absolute))
 		{
-			return walk.filter(file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)).
-				map(root::relativize).toList();
+			return walk.filter(file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) ||
+				Files.isSymbolicLink(file)).map(root::relativize).toList();
 		}
 	}
 
 	/**
-	 * Reads a regular file.
+	 * Reads a regular file or a symbolic link.
 	 *
 	 * @param file the file, or {@code null}
-	 * @return the content, or {@code null} if {@code file} is null or not a regular file
+	 * @return the content of a regular file, the text {@code symbolic link to } followed by the target of a link, or
+	 *   {@code null} if {@code file} is null or neither
 	 * @throws IOException if the file cannot be read
 	 */
 	private static FileContent content(Path file) throws IOException
 	{
-		if (file == null || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+		if (file == null)
+			return null;
+		if (Files.isSymbolicLink(file))
+		{
+			String target = PortablePaths.text(Files.readSymbolicLink(file));
+			return new FileContent(("symbolic link to " + target).getBytes(UTF_8));
+		}
+		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
 			return null;
 		return new FileContent(Files.readAllBytes(file));
 	}
@@ -798,7 +831,7 @@ public final class ProposalCheck
 			try
 			{
 				Path root = draft.resolve(PromptTestLocations.rootOf(directory).orElseThrow());
-				files = PromptTestFiles.readScenario(project, root, testDirectory);
+				files = PromptTestFiles.readScenario(project, draft, root, testDirectory);
 				content = Files.readString(scenarioFile, UTF_8);
 			}
 			catch (ScenarioFormatException e)
@@ -1108,10 +1141,16 @@ public final class ProposalCheck
 				if (!fixture.text())
 					continue;
 				Path source = files.source(fixture);
+				// A link's target that the draft directory does not hold is read from the project
+				Path relative;
+				if (source.startsWith(draft))
+					relative = draft.relativize(source);
+				else
+					relative = project.relativize(source);
 				try
 				{
 					textFixtures.add(new FixtureFile(fixture.path(), Files.readString(source, UTF_8),
-						PortablePaths.text(draft.relativize(source))));
+						PortablePaths.text(relative)));
 				}
 				catch (IllegalArgumentException e)
 				{

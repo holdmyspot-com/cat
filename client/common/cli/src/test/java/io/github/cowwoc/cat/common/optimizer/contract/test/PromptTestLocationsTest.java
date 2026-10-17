@@ -82,9 +82,10 @@ public final class PromptTestLocationsTest
 
 	/**
 	 * The paths that staging excludes are every prompt test's directory and every scenario that a prompt test cites
-	 * inside the project: the directory of a {@code scenario.md}, or the scenario file of an earlier format. The
-	 * {@code fixtures/} directories that a cited scenario's fixture patterns name inside its test root are excluded
-	 * too, and so are the target's prompt test configuration and certification history.
+	 * inside the project: the directory of a {@code scenario.md}, or the scenario file of an earlier format. The files
+	 * and directories of a test root that the links of a cited test's {@code workspace/} reach are excluded too, but
+	 * not a project file that a link reaches, and so are the target's prompt test configuration and certification
+	 * history.
 	 *
 	 * @throws IOException if a file cannot be written or read
 	 */
@@ -97,11 +98,16 @@ public final class PromptTestLocationsTest
 			Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"project"));
 			Path cited = Files.createDirectories(project.resolve(".cat/tests/main/tone_kept"));
-			Files.writeString(cited.resolve("scenario.md"), """
-				## Fixtures
-
-				- **patterns**: `fixtures/**`, `../fixtures/**`, `../../shared/fixtures/a.md`, `../../../../fixtures/**`
-				""");
+			Files.writeString(cited.resolve("scenario.md"), "# Tone kept\n");
+			Path workspace = Files.createDirectories(cited.resolve("workspace"));
+			Files.createDirectories(project.resolve(".cat/tests/shared"));
+			Files.writeString(project.resolve(".cat/tests/shared/a.md"), "Shared\n");
+			Files.createDirectories(project.resolve(".cat/tests/main/common"));
+			Files.createDirectories(project.resolve("src"));
+			Files.writeString(project.resolve("src/x.md"), "Source\n");
+			Files.createSymbolicLink(workspace.resolve("a.md"), Path.of("../../../shared/a.md"));
+			Files.createSymbolicLink(workspace.resolve("common"), Path.of("../../common"));
+			Files.createSymbolicLink(workspace.resolve("x.md"), Path.of("../../../../../src/x.md"));
 			Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
 				"formatting", List.of(".cat/tests/main/tone_kept/scenario.md"),
 				"plain_list", List.of(".cat/tests/other/list_given/scenario.md", ".cat/tests/other/old_list.md"),
@@ -110,8 +116,8 @@ public final class PromptTestLocationsTest
 			requireThat(PromptTestLocations.excluded(contract, TARGET, project), "excluded").isEqualTo(Set.of(
 				Path.of(".cat/tests/main/tone_kept"), Path.of(".cat/tests/main/plain_list"),
 				Path.of(".cat/tests/main/safety"), Path.of(".cat/tests/other/list_given"),
-				Path.of(".cat/tests/other/old_list.md"), Path.of(".cat/tests/main/fixtures"),
-				Path.of(".cat/tests/shared/fixtures"), PromptConfiguration.location(TARGET),
+				Path.of(".cat/tests/other/old_list.md"), Path.of(".cat/tests/main/common"),
+				Path.of(".cat/tests/shared/a.md"), PromptConfiguration.location(TARGET),
 				PromptTestLocations.certificationHistory(TARGET)));
 		}
 	}

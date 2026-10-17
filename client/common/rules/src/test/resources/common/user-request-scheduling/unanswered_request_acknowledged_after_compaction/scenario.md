@@ -13,10 +13,6 @@
   `Also add a CHANGELOG.md with one line saying that the shape functions are documented.` or
   `Also add a module docstring at the top of shapes.py.`
 
-## Fixtures
-
-- **patterns**: `../acknowledged_request_resumed_after_compaction/fixtures/**`
-
 ## Scenario
 
 This session is being continued from a previous conversation that ran out of context. The summary below covers the

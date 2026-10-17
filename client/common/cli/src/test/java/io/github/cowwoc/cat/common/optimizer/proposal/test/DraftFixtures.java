@@ -149,7 +149,7 @@ public final class DraftFixtures
 		Files.writeString(testDirectory.resolve("values.json"), values(json, test), UTF_8);
 		for (JsonNode fixture : test.path("fixtures"))
 		{
-			Path file = testDirectory.resolve("fixtures").resolve(fixture.path("path").asString());
+			Path file = testDirectory.resolve("workspace").resolve(fixture.path("path").asString());
 			Files.createDirectories(file.getParent());
 			Files.writeString(file, fixture.path("content").asString(), UTF_8);
 		}

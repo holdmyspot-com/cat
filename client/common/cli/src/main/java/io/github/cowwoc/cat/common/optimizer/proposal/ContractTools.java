@@ -10,6 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Fixtures;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.Split;
@@ -320,7 +321,9 @@ public final class ContractTools
 		String location = PortablePaths.text(session.project().relativize(valuesFile));
 		try
 		{
-			files = PromptTestFiles.readScenario(session.project(), session.draft(), test);
+			Path relative = session.draft().relativize(test);
+			Path root = session.draft().resolve(PromptTestLocations.rootOf(relative).orElse(relative));
+			files = PromptTestFiles.readScenario(session.project(), session.draft(), root, test);
 			try (BufferedReader in = Files.newBufferedReader(valuesFile, UTF_8))
 			{
 				testCases = ValuesFile.readDraft(json, in, location);

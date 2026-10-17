@@ -14,10 +14,6 @@
   what callers must change, such as "The exporter now stops with an error unless each call passes an explicit
   destination."
 
-## Fixtures
-
-- **patterns**: `../fixtures/docs/\{\{notes\}\}`
-
 ## Scenario
 
 Read `docs/{{notes}}` in full and tell me which release, if any, requires callers to change their code, and what they

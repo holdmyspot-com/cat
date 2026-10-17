@@ -274,8 +274,8 @@ public final class RegressionScenariosTest
 				- **kind**: effect
 				- **description**: The reply summarizes the notes.
 				""");
-			Files.createDirectories(current.resolve("fixtures"));
-			Files.writeString(current.resolve("fixtures/{{notes}}"), "Release 4.2 shipped.");
+			Files.createDirectories(current.resolve("workspace"));
+			Files.writeString(current.resolve("workspace/{{notes}}"), "Release 4.2 shipped.");
 			Files.writeString(current.resolve("values.json"), """
 				{"format_version": 1, "test_cases": [{"values": {"notes": "a.md"}, "expected_outcome": "4.2"}]}
 				""");
@@ -295,16 +295,16 @@ public final class RegressionScenariosTest
 			requireThat(files.scenario().turns(), "turns").isEqualTo(List.of("Summarize `{{notes}}`."));
 			requireThat(files.fixtures().size(), "fixtures.size()").isEqualTo(1);
 			requireThat(files.testCases().size(), "testCases.size()").isEqualTo(1);
-			String source = "plugin/src/test/resources/common/reading/whole_file_read/fixtures/{{notes}}";
+			String source = "plugin/src/test/resources/common/reading/whole_file_read/workspace/{{notes}}";
 			requireThat(texts, "texts").isEqualTo(List.of(new FixtureFile("{{notes}}", "Release 4.2 shipped.",
 				source)));
 		}
 	}
 
 	/**
-	 * Verifies that the contract author receives, with a prompt test, the text fixtures that its fixture patterns name
-	 * in shared {@code fixtures/} directories, each with the file that it is copied from, that a test citing the prompt
-	 * test twice receives each once, and that a prompt test without a {@code ## Fixtures} section receives none of the
+	 * Verifies that the contract author receives, with a prompt test, the text fixtures that the links of its
+	 * {@code workspace/} reach in shared directories, each with the file that it is copied from, that a test citing the
+	 * prompt test twice receives each once, and that a prompt test without a {@code workspace/} receives none of the
 	 * files that its ancestors hold.
 	 *
 	 * @throws IOException if the scenario tree cannot be created or read
@@ -324,12 +324,12 @@ public final class RegressionScenariosTest
 			Files.writeString(rules.resolve("wording.md"), "Be brief.");
 			for (Path tests : List.of(root.resolve("plugin/src/test/resources"), root.resolve(".cat/tests")))
 			{
-				Files.createDirectories(tests.resolve("fixtures"));
-				Files.writeString(tests.resolve("fixtures/shared.md"), "Shared by every guidance.");
+				Files.createDirectories(tests.resolve("shared"));
+				Files.writeString(tests.resolve("shared/shared.md"), "Shared by every guidance.");
 			}
 			Path reading = root.resolve("plugin/src/test/resources/common/reading");
-			Files.createDirectories(reading.resolve("fixtures"));
-			Files.writeString(reading.resolve("fixtures/AGENTS.md"), "Shared by the reading tests.");
+			Files.createDirectories(reading.resolve("shared"));
+			Files.writeString(reading.resolve("shared/AGENTS.md"), "Shared by the reading tests.");
 			String scenario = """
 				## Variables
 
@@ -347,8 +347,10 @@ public final class RegressionScenariosTest
 				- **description**: The reply summarizes the topic.
 				""";
 			Path wholeFileRead = Files.createDirectories(reading.resolve("whole_file_read"));
-			Files.writeString(wholeFileRead.resolve("scenario.md"), "## Fixtures\n\n- **patterns**: " +
-				"`../fixtures/**`, `../../../fixtures/shared.md`\n\n" + scenario);
+			Files.writeString(wholeFileRead.resolve("scenario.md"), scenario);
+			Path workspace = Files.createDirectories(wholeFileRead.resolve("workspace"));
+			Files.createSymbolicLink(workspace.resolve("AGENTS.md"), Path.of("../../shared/AGENTS.md"));
+			Files.createSymbolicLink(workspace.resolve("shared.md"), Path.of("../../../../shared/shared.md"));
 			Path briefReply = Files.createDirectories(root.resolve(".cat/tests/wording/brief_reply"));
 			Files.writeString(briefReply.resolve("scenario.md"), scenario);
 
@@ -365,9 +367,9 @@ public final class RegressionScenariosTest
 				else
 				{
 					expected = List.of(new FixtureFile("AGENTS.md", "Shared by the reading tests.",
-							"plugin/src/test/resources/common/reading/fixtures/AGENTS.md"),
+							"plugin/src/test/resources/common/reading/shared/AGENTS.md"),
 						new FixtureFile("shared.md", "Shared by every guidance.",
-							"plugin/src/test/resources/fixtures/shared.md"));
+							"plugin/src/test/resources/shared/shared.md"));
 				}
 				requireThat(texts, "texts").withContext(regression.citation(), "citation").isEqualTo(expected);
 				requireThat(read.recordedFixtures(List.of(regression.citation(), regression.citation())),

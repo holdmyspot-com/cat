@@ -96,21 +96,17 @@ public record DeliveredTest(String id, Location location, Scenario scenario, Str
 	 *
 	 * @param recorded the content of the {@value PromptTestFiles#SCENARIO} recorded in this test's directory, or null
 	 *                 if there is none
-	 * @param appended the fixture patterns that delivery appends to the recorded file's patterns, in order; a new file
-	 *                 selects only its own {@code fixtures} directory
 	 * @return the file's content
-	 * @throws NullPointerException if {@code appended} is null
 	 */
-	public String scenarioFile(String recorded, List<String> appended)
+	public String scenarioFile(String recorded)
 	{
-		requireThat(appended, "appended").isNotNull();
 		if (draft.isPresent())
 			return draft.get();
 		if (!location.created() && recorded != null)
 		{
 			try
 			{
-				return scenario.rewrite(recorded, appended);
+				return scenario.rewrite(recorded);
 			}
 			catch (ScenarioFormatException _)
 			{

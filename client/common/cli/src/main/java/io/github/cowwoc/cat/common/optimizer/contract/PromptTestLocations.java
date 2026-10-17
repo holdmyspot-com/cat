@@ -3,13 +3,10 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -203,18 +200,19 @@ public final class PromptTestLocations
 	/**
 	 * Returns the paths that staging leaves out of a candidate so that a trial cannot read the prompt tests: the
 	 * directory of each prompt test and each regression scenario that a prompt test cites inside the project, which is
-	 * the directory of a {@value PromptTestFiles#SCENARIO} or the file of a scenario in an earlier format, and each
-	 * {@value PromptTestFiles#FIXTURES} directory inside the test root that a cited {@value PromptTestFiles#SCENARIO}'s
-	 * fixture patterns name, the target's prompt test configuration, which names the trial plugins, and the target's
-	 * certification history, which holds the results of earlier certifications.
+	 * the directory of a {@value PromptTestFiles#SCENARIO} or the file of a scenario in an earlier format, each file or
+	 * directory inside a test root that a symbolic link in a cited prompt test's {@value PromptTestFiles#WORKSPACE}
+	 * reaches, each recorded file that a prompt test's fixture was copied from outside its directory, the target's
+	 * prompt test configuration, which names the trial plugins, and the target's certification history, which holds
+	 * the results of earlier certifications.
 	 *
 	 * @param contract the contract
 	 * @param target   the campaign target, relative to the project
-	 * @param project  the project directory, which the cited scenarios are read from
+	 * @param project  the project directory, which the cited prompt tests are read from
 	 * @return the excluded paths, relative to the project
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code target} is absolute
-	 * @throws IOException              if a cited {@value PromptTestFiles#SCENARIO} cannot be read
+	 * @throws IOException              if a cited prompt test cannot be read
 	 */
 	public static Set<Path> excluded(Contract contract, Path target, Path project) throws IOException
 	{
@@ -226,6 +224,11 @@ public final class PromptTestLocations
 		excluded.add(certificationHistory(target));
 		for (PromptTest test : contract.tests())
 		{
+			for (FixtureFile fixture : test.fixtures())
+			{
+				if (!fixture.source().isEmpty() && !Path.of(fixture.source()).isAbsolute())
+					excluded.add(Path.of(fixture.source()).normalize());
+			}
 			for (String citation : test.regressionScenarios())
 			{
 				Path scenario = Path.of(citation).normalize();
@@ -234,7 +237,7 @@ public final class PromptTestLocations
 				if (scenario.getFileName().toString().equals(PromptTestFiles.SCENARIO) && scenario.getParent() != null)
 				{
 					excluded.add(scenario.getParent());
-					excluded.addAll(sharedFixtures(project, scenario));
+					excluded.addAll(linkedTargets(project, scenario.getParent()));
 				}
 				else
 					excluded.add(scenario);
@@ -244,45 +247,23 @@ public final class PromptTestLocations
 	}
 
 	/**
-	 * Returns the {@value PromptTestFiles#FIXTURES} directories outside a scenario's directory that its fixture
-	 * patterns name inside its test root.
+	 * Returns the files and directories inside a test root that the links of a prompt test of the project reach.
 	 *
-	 * @param project  the project directory
-	 * @param scenario a {@value PromptTestFiles#SCENARIO}, normalized and relative to the project
-	 * @return the directories, relative to the project, or an empty set if the file does not exist or its
-	 *   {@code ## Fixtures} section cannot be read
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code scenario} is absolute
-	 * @throws IOException              if the file cannot be read
+	 * @param project   the project directory
+	 * @param directory the prompt test directory, normalized and relative to the project
+	 * @return the targets, relative to the project, or an empty set if a link is refused, which reading the prompt test
+	 *   reports
+	 * @throws IOException if a file cannot be read
 	 */
-	public static Set<Path> sharedFixtures(Path project, Path scenario) throws IOException
+	private static Set<Path> linkedTargets(Path project, Path directory) throws IOException
 	{
-		requireThat(project, "project").isNotNull();
-		requireThat(scenario.isAbsolute(), "scenario.isAbsolute()").isFalse();
-		Path file = project.resolve(scenario);
-		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
-			return Set.of();
-		List<String> patterns;
 		try
 		{
-			patterns = Scenario.fixturePatterns(Files.readString(file));
+			return PromptTestFiles.linkedTargets(project, project, directory);
 		}
 		catch (ScenarioFormatException _)
 		{
-			// Reading the prompt test reports the malformed section; staging leaves out the scenario's directory alone
 			return Set.of();
 		}
-		Path directory = scenario.getParent();
-		Optional<Path> testRoot = rootOf(directory);
-		if (testRoot.isEmpty())
-			return Set.of();
-		Set<Path> shared = new LinkedHashSet<>();
-		for (String pattern : patterns)
-		{
-			Path base = FixturePattern.parse(pattern).base(directory);
-			if (base.startsWith(testRoot.get()) && !base.startsWith(directory))
-				shared.add(base);
-		}
-		return shared;
 	}
 }
