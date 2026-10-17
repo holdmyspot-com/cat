@@ -5,10 +5,14 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.codex.CodexPostToolUseHook;
 import io.github.cowwoc.cat.codex.CommandShell;
+import io.github.cowwoc.cat.common.SessionWorkDirectory.Removal;
+import io.github.cowwoc.cat.common.TemporaryDirectories;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -25,6 +29,10 @@ public final class CodexPostToolUseHookTest
 		"doing anything else, run the following command (without setting max_output_tokens) in order to get the " +
 		"correct output: ";
 	private static final JsonMapper JSON = JsonMapper.builder().build();
+	/**
+	 * A Codex thread ID in canonical form.
+	 */
+	private static final String SESSION_ID = "01a147d8-bf56-7283-92b4-12dcaeb53738";
 
 	/**
 	 * Creates a test instance.
@@ -201,7 +209,247 @@ public final class CodexPostToolUseHookTest
 	}
 
 	/**
-	 * Runs the hook on a Bash PostToolUse event.
+	 * Verifies that a {@code run-part} result whose only part Codex did not cut deletes the folder of the saved output
+	 * in the session's temporary directory, and passes unchanged.
+	 *
+	 * @throws IOException if the test folders cannot be used
+	 */
+	@Test
+	public void deletesAfterLastPartOfRunPart() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
+			Path saved = savedOutput(project.resolve(".cat/work").resolve(SESSION_ID).resolve("temp"), true);
+
+			HookResult hook = invoke(CommandShell.POSIX, BIN + "run-part <<'EOF'\nls\nEOF",
+				"a\n[End of " + saved + "]\n", Map.of());
+
+			requireThat(hook.output(), "output").isEmpty();
+			requireThat(hook.error(), "error").isEmpty();
+			requireThat(Files.exists(saved.getParent()), "folderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a {@code read-part} result that prints the last part uncut deletes the folder of the saved output
+	 * in the temporary folder that {@code run-part} falls back to outside a session.
+	 *
+	 * @throws IOException if the test folders cannot be used
+	 */
+	@Test
+	public void deletesAfterLastPartOfReadPart() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
+			Path saved = savedOutput(temporary, true);
+
+			HookResult hook = invoke(CommandShell.POSIX, readPart(saved, "40"), "z\n[End of " + saved + "]\n",
+				Map.of("TMPDIR", temporary.toString()));
+
+			requireThat(hook.output(), "output").isEmpty();
+			requireThat(hook.error(), "error").isEmpty();
+			requireThat(Files.exists(saved.getParent()), "folderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a last part that Codex cut keeps the saved output, which its repaired result prints again.
+	 *
+	 * @throws IOException if the test folders cannot be used
+	 */
+	@Test
+	public void keepsAfterCutLastPart() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
+			Path saved = savedOutput(temporary, true);
+
+			HookResult hook = invoke(CommandShell.POSIX, readPart(saved, "40"),
+				"…9 tokens truncated…\nz\n[End of " + saved + "]\n", Map.of("TMPDIR", temporary.toString()));
+
+			requireThat(reason(hook), "reason").endsWith(INSTRUCTION + readPart(saved, "40") + "]\n");
+			requireThat(saved, "saved").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that after Codex cut a part, an uncut last part keeps the saved output until the cut part is printed
+	 * again uncut, which then deletes it.
+	 *
+	 * @throws IOException if the test folders cannot be used
+	 */
+	@Test
+	public void keepsWhileCutPartIsRecorded() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
+			Path saved = savedOutput(temporary, true);
+			Map<String, String> environment = Map.of("TMPDIR", temporary.toString());
+			String nextPart = "\n[More output follows. Before any other command or answer, run: " +
+				readPart(saved, "91") + "]\n";
+
+			HookResult cut = invoke(CommandShell.POSIX, readPart(saved, "40"), "…120 tokens truncated…" + nextPart,
+				environment);
+			HookResult last = invoke(CommandShell.POSIX, readPart(saved, "91"), "z\n[End of " + saved + "]\n",
+				environment);
+			requireThat(reason(cut), "cutReason").endsWith(INSTRUCTION + readPart(saved, "40") + "]\n");
+			requireThat(last.output(), "lastOutput").isEmpty();
+			requireThat(saved, "savedAfterLastPart").isRegularFile();
+
+			HookResult repeated = invoke(CommandShell.POSIX, readPart(saved, "40"), "line 40" + nextPart, environment);
+			requireThat(repeated.output(), "repeatedOutput").isEmpty();
+			requireThat(repeated.error(), "repeatedError").isEmpty();
+			requireThat(Files.exists(saved.getParent()), "folderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that an uncut last part of a file that is not directly inside a {@code run-part-*} folder keeps the
+	 * file.
+	 *
+	 * @throws IOException if the test folders cannot be used
+	 */
+	@Test
+	public void keepsFileOutsideRunPartFolder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
+			Path folder = Files.createDirectories(temporary.resolve("notes"));
+			Path saved = Files.writeString(folder.resolve("output.txt"), "z\n");
+			Files.writeString(folder.resolve("output.txt.exit-status"), "0\n");
+
+			HookResult hook = invoke(CommandShell.POSIX, readPart(saved, "1"), "z\n[End of " + saved + "]\n",
+				Map.of("TMPDIR", temporary.toString()));
+
+			requireThat(hook.output(), "output").isEmpty();
+			requireThat(saved, "saved").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that an uncut last part of an {@code output.txt} without {@code output.txt.exit-status} beside it keeps
+	 * the file, which {@code run-part} did not save.
+	 *
+	 * @throws IOException if the test folders cannot be used
+	 */
+	@Test
+	public void keepsOutputWithoutExitStatus() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
+			Path saved = savedOutput(temporary, false);
+
+			HookResult hook = invoke(CommandShell.POSIX, readPart(saved, "1"), "z\n[End of " + saved + "]\n",
+				Map.of("TMPDIR", temporary.toString()));
+
+			requireThat(hook.output(), "output").isEmpty();
+			requireThat(saved, "saved").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that an uncut part that more parts follow keeps the saved output.
+	 *
+	 * @throws IOException if the test folders cannot be used
+	 */
+	@Test
+	public void keepsAfterPartThatMoreFollow() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
+			Path saved = savedOutput(temporary, true);
+
+			HookResult hook = invoke(CommandShell.POSIX, BIN + "run-part <<'EOF'\nls\nEOF",
+				"a\n[More output follows. Before any other command or answer, run: " + readPart(saved, "2") + "]\n",
+				Map.of("TMPDIR", temporary.toString()));
+
+			requireThat(hook.output(), "output").isEmpty();
+			requireThat(saved, "saved").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that a deletion that fails is reported on standard error and leaves the result unchanged.
+	 *
+	 * @throws IOException if the test folders cannot be used
+	 */
+	@Test
+	public void reportsFailedDeletion() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
+			Path saved = savedOutput(temporary, true);
+			byte[] event = event(readPart(saved, "1"), "z\n[End of " + saved + "]\n");
+
+			HookResult hook = invoke(CommandShell.POSIX, new ByteArrayInputStream(event),
+				Map.of("TMPDIR", temporary.toString()), directory ->
+				{
+					throw new IOException("Cannot delete " + directory);
+				});
+
+			requireThat(hook.output(), "output").isEmpty();
+			requireThat(hook.error(), "error").startsWith("CAT PostToolUse: ").contains("Cannot delete");
+			requireThat(saved, "saved").isRegularFile();
+		}
+	}
+
+	/**
+	 * Creates the folder of a saved output the way {@code run-part} does.
+	 *
+	 * @param temporary the temporary directory that holds the folder
+	 * @param exitStatus {@code true} to save the command's exit status beside the output
+	 * @return the saved output
+	 * @throws IOException if the folder cannot be created
+	 */
+	private static Path savedOutput(Path temporary, boolean exitStatus) throws IOException
+	{
+		assert temporary != null;
+		Path folder = Files.createTempDirectory(Files.createDirectories(temporary), "run-part-");
+		Path saved = Files.writeString(folder.resolve("output.txt"), "a\nz\n");
+		if (exitStatus)
+			Files.writeString(folder.resolve("output.txt.exit-status"), "0\n");
+		return saved.toAbsolutePath().normalize();
+	}
+
+	/**
+	 * Returns the {@code read-part} command that prints a part of a saved output.
+	 *
+	 * @param saved the saved output
+	 * @param position the part's position
+	 * @return the command
+	 */
+	private static String readPart(Path saved, String position)
+	{
+		assert saved != null;
+		assert position != null;
+		return CommandShell.POSIX.command(BIN + "read-part", saved.toString(), position);
+	}
+
+	/**
+	 * Returns a Bash PostToolUse event.
+	 *
+	 * @param command the shell command that the agent ran
+	 * @param result the command's result as Codex showed it
+	 * @return the event
+	 */
+	private static byte[] event(String command, String result)
+	{
+		assert command != null;
+		assert result != null;
+		return JSON.writeValueAsBytes(Map.of("hook_event_name", "PostToolUse", "tool_name", "Bash",
+			"tool_input", Map.of("command", command), "tool_response", result));
+	}
+
+	/**
+	 * Runs the hook on a Bash PostToolUse event in an environment without a temporary folder variable.
 	 *
 	 * @param shell the shell that ran the command
 	 * @param command the shell command that the agent ran
@@ -210,15 +458,27 @@ public final class CodexPostToolUseHookTest
 	 */
 	private static HookResult invoke(CommandShell shell, String command, String result)
 	{
-		assert command != null;
-		assert result != null;
-		byte[] event = JSON.writeValueAsBytes(Map.of("hook_event_name", "PostToolUse", "tool_name", "Bash",
-			"tool_input", Map.of("command", command), "tool_response", result));
-		return invoke(shell, new ByteArrayInputStream(event));
+		return invoke(shell, command, result, Map.of());
 	}
 
 	/**
-	 * Runs the hook on an event.
+	 * Runs the hook on a Bash PostToolUse event.
+	 *
+	 * @param shell the shell that ran the command
+	 * @param command the shell command that the agent ran
+	 * @param result the command's result as Codex showed it
+	 * @param environment the hook's environment
+	 * @return the captured streams
+	 */
+	private static HookResult invoke(CommandShell shell, String command, String result,
+		Map<String, String> environment)
+	{
+		return invoke(shell, new ByteArrayInputStream(event(command, result)), environment,
+			TemporaryDirectories::deleteRecursively);
+	}
+
+	/**
+	 * Runs the hook on an event in an environment without a temporary folder variable.
 	 *
 	 * @param shell the shell that ran the event's command
 	 * @param input the event
@@ -226,10 +486,26 @@ public final class CodexPostToolUseHookTest
 	 */
 	private static HookResult invoke(CommandShell shell, ByteArrayInputStream input)
 	{
+		return invoke(shell, input, Map.of(), TemporaryDirectories::deleteRecursively);
+	}
+
+	/**
+	 * Runs the hook on an event.
+	 *
+	 * @param shell the shell that ran the event's command
+	 * @param input the event
+	 * @param environment the hook's environment
+	 * @param removal deletes the folder of a saved output
+	 * @return the captured streams
+	 */
+	private static HookResult invoke(CommandShell shell, ByteArrayInputStream input, Map<String, String> environment,
+		Removal removal)
+	{
 		assert input != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		CodexPostToolUseHook.run(new String[0], shell, input, output, new PrintStream(error, true, UTF_8));
+		CodexPostToolUseHook.run(new String[0], shell, environment, removal, input, output,
+			new PrintStream(error, true, UTF_8));
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 
