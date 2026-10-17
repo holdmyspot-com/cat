@@ -73,7 +73,7 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		requireThat(identity, "identity").isNotNull();
 		for (Path file : promptFiles.keySet())
 		{
-			requireThat(file.isAbsolute(), "promptFiles.isAbsolute(" + file + ")").isFalse();
+			requireThat(file.isAbsolute(), "promptFiles.isAbsolute(file)").withContext(file, "file").isFalse();
 			requireThat(file.toString(), "promptFiles").isNotEmpty();
 		}
 		cells = List.copyOf(cells);

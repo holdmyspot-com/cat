@@ -81,6 +81,26 @@ public final class InventoryScannerTest
 	}
 
 	/**
+	 * Verifies that a scan records a file whose name contains whitespace and a non-ASCII letter.
+	 *
+	 * @throws IOException if the fixture cannot be created or scanned
+	 */
+	@Test
+	public void recordsNameWithWhitespace() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-inventory-project-"));
+			writeFile(project.resolve("logs/archivé 2.log"), "archived", READ_WRITE);
+
+			FileInventory inventory = InventoryScanner.scan(project, Set.of());
+
+			requireThat(inventory.entries(), "entries").isEqualTo(Map.of(Path.of("logs/archivé 2.log"),
+				file("archived")));
+		}
+	}
+
+	/**
 	 * Verifies that a recorded external path that no longer exists is absent from the inventory.
 	 *
 	 * @throws IOException if the fixture cannot be created or scanned

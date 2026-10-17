@@ -45,12 +45,12 @@ public record PilotTrial(Map<String, String> values, String expectedOutcome, Map
 		for (Map.Entry<String, String> value : values.entrySet())
 		{
 			requireThat(value.getKey(), "values.key").isNotNull();
-			requireThat(value.getValue(), "values.get(" + value.getKey() + ")").isNotNull();
+			requireThat(value.getValue(), "values.get(name)").withContext(value.getKey(), "name").isNotNull();
 		}
 		for (Map.Entry<String, Boolean> assertion : assertions.entrySet())
 		{
 			requireThat(assertion.getKey(), "assertions.key").isNotNull();
-			requireThat(assertion.getValue(), "assertions.get(" + assertion.getKey() + ")").isNotNull();
+			requireThat(assertion.getValue(), "assertions.get(name)").withContext(assertion.getKey(), "name").isNotNull();
 		}
 	}
 }

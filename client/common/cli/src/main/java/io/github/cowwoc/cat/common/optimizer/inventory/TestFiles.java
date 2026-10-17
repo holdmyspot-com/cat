@@ -35,10 +35,11 @@ public record TestFiles(Map<Path, FileContent> files, Set<Path> createdDirectori
 		files = Map.copyOf(files);
 		createdDirectories = Set.copyOf(createdDirectories);
 		for (Path path : files.keySet())
-			requireThat(path.isAbsolute(), "files.isAbsolute(" + path + ")").isFalse();
+			requireThat(path.isAbsolute(), "files.isAbsolute(path)").withContext(path, "path").isFalse();
 		for (Path directory : createdDirectories)
 		{
-			requireThat(directory.isAbsolute(), "createdDirectories.isAbsolute(" + directory + ")").isFalse();
+			requireThat(directory.isAbsolute(), "createdDirectories.isAbsolute(directory)").
+				withContext(directory, "directory").isFalse();
 			if (files.keySet().stream().noneMatch(path -> path.startsWith(directory)))
 			{
 				throw new IllegalArgumentException("The created directory " + directory + " holds none of the files: " +

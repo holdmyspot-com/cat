@@ -130,7 +130,7 @@ public final class DeliveryPlan
 		requireThat(additionalFiles, "additionalFiles").isNotNull();
 		requireProjectChanges(candidate);
 		for (Path path : additionalFiles.keySet())
-			requireThat(path.isAbsolute(), "additionalFiles.isAbsolute(" + path + ")").isFalse();
+			requireThat(path.isAbsolute(), "additionalFiles.isAbsolute(path)").withContext(path, "path").isFalse();
 		FileInventory fork = candidate.fork();
 		Map<Path, OverlayEntry> overlay = candidate.entries();
 		Map<Path, FileContent> additions = new TreeMap<>(additionalFiles);

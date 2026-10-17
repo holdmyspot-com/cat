@@ -38,7 +38,7 @@ public record TestCase(Map<String, TestValue> values, String expectedOutcome)
 		for (Map.Entry<String, TestValue> entry : values.entrySet())
 		{
 			requireThat(entry.getKey(), "name").matches(Identifier.SNAKE_CASE);
-			requireThat(entry.getValue(), "values.get(" + entry.getKey() + ")").isNotNull();
+			requireThat(entry.getValue(), "values.get(name)").withContext(entry.getKey(), "name").isNotNull();
 		}
 		values = Collections.unmodifiableMap(new LinkedHashMap<>(values));
 	}

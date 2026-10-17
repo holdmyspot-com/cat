@@ -110,7 +110,7 @@ public final class PromptTemplate
 		for (Map.Entry<String, String> entry : values.entrySet())
 		{
 			requireThat(entry.getKey(), "values.key").isNotNull();
-			requireThat(entry.getValue(), "values.get(" + entry.getKey() + ")").isNotNull();
+			requireThat(entry.getValue(), "values.get(name)").withContext(entry.getKey(), "name").isNotNull();
 			requireThat(text, "text").contains(placeholder(entry.getKey()));
 		}
 		StringBuilder prompt = new StringBuilder(text.length());

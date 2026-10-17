@@ -54,7 +54,7 @@ public final class FileInventory
 			requireInventoryPath(path, "path");
 			if (path.isAbsolute())
 				requireThat(path.startsWith(root), "path.startsWith(root)").isFalse();
-			requireThat(entry.getValue(), "entries.get(" + path + ")").isNotNull();
+			requireThat(entry.getValue(), "entries.get(path)").withContext(path, "path").isNotNull();
 			sorted.put(path, entry.getValue());
 		}
 		this.root = root;
