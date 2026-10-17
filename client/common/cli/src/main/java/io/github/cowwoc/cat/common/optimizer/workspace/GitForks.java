@@ -3,6 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -29,6 +30,12 @@ public final class GitForks implements Forks
 	public Set<Path> tracked(Path base) throws IOException
 	{
 		return Fork.tracked(base);
+	}
+
+	@Override
+	public String diff(Path base, List<Path> paths) throws IOException
+	{
+		return Fork.diff(base, paths);
 	}
 
 	@Override

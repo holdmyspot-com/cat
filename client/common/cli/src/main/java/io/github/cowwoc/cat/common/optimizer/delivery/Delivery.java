@@ -4,9 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.PortableFiles;
-import io.github.cowwoc.cat.common.PortablePaths;
-import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
@@ -44,6 +41,7 @@ import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
 import io.github.cowwoc.cat.common.optimizer.store.CampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.CertificationHistoryJson;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
+import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -98,6 +96,7 @@ public final class Delivery
 	private static final String TEMPORARY_SUFFIX = ".cat-delivery";
 	private final CampaignStore store;
 	private final WorkspacePort workspace;
+	private final Forks forks;
 	private final JsonMapper json;
 	private final CertificationHistoryJson historyCodec;
 	private final Consumer<DeliveryChange> afterWrite;
@@ -107,12 +106,13 @@ public final class Delivery
 	 *
 	 * @param store the store that holds the campaign's delivery journal
 	 * @param workspace the optimization worktree
+	 * @param forks compares the delivered paths with the base worktree's {@code HEAD}
 	 * @param json the JSON mapper that reads and writes the certification history
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Delivery(CampaignStore store, WorkspacePort workspace, JsonMapper json)
+	public Delivery(CampaignStore store, WorkspacePort workspace, Forks forks, JsonMapper json)
 	{
-		this(store, workspace, json, _ ->
+		this(store, workspace, forks, json, _ ->
 		{
 		});
 	}
@@ -122,20 +122,23 @@ public final class Delivery
 	 *
 	 * @param store the store that holds the campaign's delivery journal
 	 * @param workspace the optimization worktree
+	 * @param forks compares the delivered paths with the base worktree's {@code HEAD}
 	 * @param json the JSON mapper that reads and writes the certification history
 	 * @param afterWrite receives each change after its target is written and before the journal records it; an
 	 *   exception that it throws stops the delivery at that point, as a crash would
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Delivery(CampaignStore store, WorkspacePort workspace, JsonMapper json,
+	public Delivery(CampaignStore store, WorkspacePort workspace, Forks forks, JsonMapper json,
 		Consumer<DeliveryChange> afterWrite)
 	{
 		requireThat(store, "store").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
+		requireThat(forks, "forks").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(afterWrite, "afterWrite").isNotNull();
 		this.store = store;
 		this.workspace = workspace;
+		this.forks = forks;
 		this.json = json;
 		this.historyCodec = new CertificationHistoryJson(json);
 		this.afterWrite = afterWrite;
@@ -647,7 +650,7 @@ public final class Delivery
 	 * @return the delivered result, or {@link VerificationFailed} if a target does not hold the candidate's state
 	 * @throws IOException if a file cannot be read or Git fails
 	 */
-	private static DeliveryResult verify(Outcome label, Overlay selected, DeliveryJournal journal,
+	private DeliveryResult verify(Outcome label, Overlay selected, DeliveryJournal journal,
 		Set<Path> externalPaths, Set<Path> promptSources) throws IOException
 	{
 		Path base = selected.fork().root();
@@ -675,58 +678,6 @@ public final class Delivery
 		else
 			applicability = new Applicability(Applicability.Status.HISTORICAL, true, List.of());
 		return new Delivered(label, applicability, changedPromptSources, baseOnlyChanges, journal.changes(),
-			diff(base, journal.changes()));
-	}
-
-	/**
-	 * Returns the Git diff of the delivered project paths against the base worktree's {@code HEAD}, including created
-	 * files. A temporary index inside the Git directory marks the created files as intended additions, so the user's
-	 * index stays untouched.
-	 *
-	 * @param base the base worktree
-	 * @param changes the delivered changes
-	 * @return the diff, or an empty string if no delivered path differs from {@code HEAD}
-	 * @throws IOException if Git fails
-	 */
-	private static String diff(Path base, List<DeliveryChange> changes) throws IOException
-	{
-		List<String> targets = new ArrayList<>();
-		List<String> existing = new ArrayList<>();
-		for (DeliveryChange change : changes)
-		{
-			targets.add(PortablePaths.text(change.target()));
-			if (change.postimage().isPresent())
-				existing.add(PortablePaths.text(change.target()));
-		}
-		if (targets.isEmpty())
-			return "";
-		Git git = new Git(base);
-		Path gitDirectory = Path.of(git.run("rev-parse", "--absolute-git-dir").strip());
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path index = cleanup.add(Files.createTempDirectory(gitDirectory, "cat-delivery-")).resolve("index");
-			git.lines(index, "read-tree", "HEAD");
-			if (!existing.isEmpty())
-				git.lines(index, arguments(List.of("add", "--intent-to-add", "--force", "--"), existing));
-			List<String> lines = git.lines(index, arguments(List.of("diff", "--no-color", "--no-ext-diff", "HEAD",
-				"--"), targets));
-			if (lines.isEmpty())
-				return "";
-			return String.join("\n", lines) + "\n";
-		}
-	}
-
-	/**
-	 * Concatenates a Git command and its paths.
-	 *
-	 * @param command the subcommand and options
-	 * @param paths the paths
-	 * @return the arguments
-	 */
-	private static String[] arguments(List<String> command, List<String> paths)
-	{
-		List<String> arguments = new ArrayList<>(command);
-		arguments.addAll(paths);
-		return arguments.toArray(String[]::new);
+			forks.diff(base, journal.changes().stream().map(DeliveryChange::target).toList()));
 	}
 }

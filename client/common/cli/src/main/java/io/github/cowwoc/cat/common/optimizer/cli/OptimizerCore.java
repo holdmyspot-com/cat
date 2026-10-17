@@ -2163,7 +2163,7 @@ public final class OptimizerCore implements Core
 		return new DriverContext(store, scope.sessions(), fork.workspace(), scope.interrupts(), scope.clock(),
 			new FileCandidateOverlays(directory, inventory, fork::version, scope.json()), judge, triage, promptAuthor,
 			values,
-			new Delivery(store, fork.workspace(), scope.json())::deliver, scope.calibrator(),
+			new Delivery(store, fork.workspace(), scope.forks(), scope.json())::deliver, scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(scope.sessions(), scope.json()), authority,
 			promptSources, environment(inventory::entry), lockFile(campaign.header().id()), scope.random(),
 			scope.sliceSettings(), scope.json());

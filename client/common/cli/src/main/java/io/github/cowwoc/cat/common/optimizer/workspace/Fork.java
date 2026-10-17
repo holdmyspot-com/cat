@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
@@ -130,6 +131,61 @@ public final class Fork implements ForkView
 	{
 		requireThat(base, "base").isNotNull();
 		return tracked(new Git(base.toAbsolutePath().normalize()));
+	}
+
+	/**
+	 * Returns the Git diff of paths in a worktree against its {@code HEAD}, including files that {@code HEAD} lacks. A
+	 * temporary index inside the Git directory marks each path that exists as an intended addition, so the worktree's
+	 * index stays untouched.
+	 *
+	 * @param base the worktree
+	 * @param paths the paths to compare, relative to {@code base}
+	 * @return the diff, or an empty string if no path differs from {@code HEAD}
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if Git fails
+	 */
+	public static String diff(Path base, List<Path> paths) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		requireThat(paths, "paths").isNotNull();
+		List<String> targets = new ArrayList<>();
+		List<String> existing = new ArrayList<>();
+		for (Path path : paths)
+		{
+			targets.add(PortablePaths.text(path));
+			if (Files.exists(base.resolve(path), LinkOption.NOFOLLOW_LINKS))
+				existing.add(PortablePaths.text(path));
+		}
+		if (targets.isEmpty())
+			return "";
+		Git git = new Git(base);
+		Path gitDirectory = Path.of(git.run("rev-parse", "--absolute-git-dir").strip());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path index = cleanup.add(Files.createTempDirectory(gitDirectory, "cat-delivery-")).resolve("index");
+			git.lines(index, "read-tree", "HEAD");
+			if (!existing.isEmpty())
+				git.lines(index, arguments(List.of("add", "--intent-to-add", "--force", "--"), existing));
+			List<String> lines = git.lines(index, arguments(List.of("diff", "--no-color", "--no-ext-diff", "HEAD",
+				"--"), targets));
+			if (lines.isEmpty())
+				return "";
+			return String.join("\n", lines) + "\n";
+		}
+	}
+
+	/**
+	 * Concatenates a Git command and its paths.
+	 *
+	 * @param command the subcommand and options
+	 * @param paths the paths
+	 * @return the arguments
+	 */
+	private static String[] arguments(List<String> command, List<String> paths)
+	{
+		List<String> arguments = new ArrayList<>(command);
+		arguments.addAll(paths);
+		return arguments.toArray(String[]::new);
 	}
 
 	/**

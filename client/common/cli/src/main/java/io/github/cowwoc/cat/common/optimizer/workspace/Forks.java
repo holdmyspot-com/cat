@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.workspace;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -31,6 +32,17 @@ public interface Forks
 	 * @throws IOException if Git fails
 	 */
 	Set<Path> tracked(Path base) throws IOException;
+
+	/**
+	 * Returns the Git diff of paths in a project against its {@code HEAD}, including files that {@code HEAD} lacks.
+	 * The project's index is left unchanged.
+	 *
+	 * @param base the base worktree
+	 * @param paths the paths to compare, relative to {@code base}
+	 * @return the diff, or an empty string if no path differs from {@code HEAD}
+	 * @throws IOException if Git fails
+	 */
+	String diff(Path base, List<Path> paths) throws IOException;
 
 	/**
 	 * Opens the fork that a campaign holds.

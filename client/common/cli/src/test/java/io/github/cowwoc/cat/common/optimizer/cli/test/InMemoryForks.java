@@ -159,6 +159,17 @@ final class InMemoryForks implements Forks
 		return tracked;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The project has no {@code HEAD}, so no path differs from it.
+	 */
+	@Override
+	public String diff(Path base, List<Path> paths)
+	{
+		return "";
+	}
+
 	@Override
 	public ForkView open(Path base, Path campaign) throws IOException
 	{

@@ -5,7 +5,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
 import io.github.cowwoc.cat.common.optimizer.campaign.Candidate;
@@ -22,7 +21,6 @@ import io.github.cowwoc.cat.common.optimizer.execution.Cleanup;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.workspace.ForkView;
 import io.github.cowwoc.cat.common.optimizer.workspace.Forks;
-import io.github.cowwoc.cat.common.optimizer.workspace.GitForks;
 import io.github.cowwoc.cat.common.test.SessionHarnesses;
 
 import java.io.IOException;
@@ -30,7 +28,7 @@ import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,8 +39,9 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link Cleanup} against a test-owned base worktree, which is a real Git repository whose campaigns hold real
- * optimization worktrees, and the two run roots of the session work directory that holds the campaigns.
+ * Tests {@link Cleanup} against a test-owned base worktree whose campaigns hold optimization worktrees, and the two run
+ * roots of the session work directory that holds the campaigns. The worktrees are directories that {@link FakeForks}
+ * records instead of Git worktrees, since {@code ForkTest} covers removing a Git worktree.
  * <p>
  * Every test stores two campaigns in the base: the campaign under test and another campaign. Each run root holds a run
  * of each campaign, identified by a project path below that campaign's directory, and a run whose manifest is
@@ -323,14 +322,15 @@ public final class CleanupTest
 	/**
 	 * A base worktree with a session work directory that holds two campaigns and two run roots.
 	 *
-	 * @param base the base worktree, a Git repository
+	 * @param base the base worktree
 	 * @param campaigns the session's directory that holds the campaigns
 	 * @param runRoots the session's run root and held-out run root
+	 * @param forks the campaigns' optimization worktrees
 	 */
-	private record Fixture(Path base, Path campaigns, List<Path> runRoots)
+	private record Fixture(Path base, Path campaigns, List<Path> runRoots, FakeForks forks)
 	{
 		/**
-		 * Creates the base worktree with one commit, the other campaign with its worktree and runs, and the run roots.
+		 * Creates the base worktree, the other campaign with its worktree and runs, and the run roots.
 		 *
 		 * @param cleanup the scope that deletes the fixture
 		 * @return the fixture
@@ -338,21 +338,16 @@ public final class CleanupTest
 		 */
 		static Fixture create(TemporaryDirectories cleanup) throws IOException
 		{
-			// Git lists worktrees by their real paths, and the optimizer resolves the base worktree to its real path, so
-			// the fixture does too; the temporary folder can be a symbolic link, as on macOS
+			// The optimizer resolves the base worktree to its real path, so the fixture does too; the temporary folder can
+			// be a symbolic link, as on macOS
 			Path root = cleanup.add(Files.createTempDirectory("cat-cleanup-")).toRealPath();
 			Path base = Files.createDirectory(root.resolve("base"));
 			Files.writeString(base.resolve("CLAUDE.md"), "prompt v1\n", UTF_8);
-			Git git = new Git(base);
-			git.run("init", "--quiet");
-			git.run("add", "--all");
-			git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
-				"commit", "--quiet", "--no-verify", "--message", "Fork point");
 			SessionWorkDirectory session = SessionWorkDirectory.open(base, SESSION_ID, SessionHarnesses.HARNESS_A,
 				root.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
 			Path sessionRuns = Files.createDirectories(session.runRoot("claude"));
 			Fixture fixture = new Fixture(base, session.campaigns(), List.of(sessionRuns,
-				Files.createDirectories(sessionRuns.resolveSibling("claude-held_out"))));
+				Files.createDirectories(sessionRuns.resolveSibling("claude-held_out"))), new FakeForks());
 			fixture.store(new Builder().header(fixture.header(OTHER, Lifecycle.ACTIVE)));
 			for (Path runRoot : fixture.runRoots())
 			{
@@ -401,7 +396,7 @@ public final class CleanupTest
 			String id = built.header().id();
 			Path directory = directory(id);
 			if (forked)
-				new GitForks().create(base, directory, Set.of());
+				forks.fork(base, directory);
 			for (Path runRoot : runRoots)
 			{
 				Path run = Files.createDirectories(runRoot.resolve("claude/run-" + id));
@@ -449,7 +444,7 @@ public final class CleanupTest
 		 */
 		Cleanup cleanup(Consumer<Cleanup.Step> beforeStep)
 		{
-			return new Cleanup(base, campaigns, new GitForks(), runRoots, JSON, beforeStep);
+			return new Cleanup(base, campaigns, forks, runRoots, JSON, beforeStep);
 		}
 
 		/**
@@ -464,28 +459,10 @@ public final class CleanupTest
 		}
 
 		/**
-		 * Returns the directories of the base repository's worktrees, as Git lists them.
-		 *
-		 * @return the directories
-		 * @throws IOException if Git fails
-		 */
-		List<Path> worktrees() throws IOException
-		{
-			String prefix = "worktree ";
-			List<Path> directories = new ArrayList<>();
-			for (String line : new Git(base).lines("worktree", "list", "--porcelain"))
-			{
-				if (line.startsWith(prefix))
-					directories.add(Path.of(line.substring(prefix.length())));
-			}
-			return directories;
-		}
-
-		/**
 		 * Requires every file of {@link #CAMPAIGN} to be removed, and every file of {@link #OTHER} and the malformed
 		 * runs to remain.
 		 *
-		 * @throws IOException if Git fails
+		 * @throws IOException if a directory cannot be listed
 		 */
 		void requireRemoved() throws IOException
 		{
@@ -495,7 +472,7 @@ public final class CleanupTest
 				requireThat(Files.notExists(runRoot.resolve("claude/run-" + CAMPAIGN)), "runIsAbsent").
 					withContext(runRoot, "runRoot").isTrue();
 			}
-			List<Path> worktrees = worktrees();
+			Set<Path> worktrees = forks.worktrees();
 			requireThat(worktrees.stream().noneMatch(worktree -> worktree.startsWith(directory(CAMPAIGN))),
 				"campaignWorktreeIsAbsent").withContext(worktrees, "worktrees").isTrue();
 			try (Stream<Path> entries = Files.list(directory(CAMPAIGN).getParent()))
@@ -510,7 +487,7 @@ public final class CleanupTest
 		 * Requires every file of both campaigns and the malformed runs to remain.
 		 *
 		 * @param context the case that the check belongs to
-		 * @throws IOException if Git fails
+		 * @throws IOException if a file's type cannot be read
 		 */
 		void requireKept(String context) throws IOException
 		{
@@ -523,17 +500,17 @@ public final class CleanupTest
 				requireThat(runRoot.resolve("claude/run-" + CAMPAIGN + "/run.json"), "run").
 					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
 			}
-			requireOtherKept(context, worktrees());
+			requireOtherKept(context, forks.worktrees());
 		}
 
 		/**
 		 * Requires every file of {@link #OTHER} and the malformed runs to remain.
 		 *
 		 * @param context the case that the check belongs to
-		 * @param worktrees the directories of the base repository's worktrees, as Git lists them
+		 * @param worktrees the optimization worktrees that the forks hold
 		 * @throws IOException if a file's type cannot be read
 		 */
-		void requireOtherKept(String context, List<Path> worktrees) throws IOException
+		void requireOtherKept(String context, Set<Path> worktrees) throws IOException
 		{
 			requireThat(directory(OTHER).resolve("held_out/campaign.json"), "otherSnapshot").
 				withContext(context, "context").isRegularFile();
@@ -552,35 +529,125 @@ public final class CleanupTest
 	}
 
 	/**
-	 * Real Git forks whose removal of one optimization worktree is denied, as a file system that refuses the
-	 * deletion would.
+	 * Forks whose optimization worktrees are directories that the fake records instead of Git worktrees. Removing a
+	 * worktree deletes its directory and its record, and removing one that does not exist does nothing, as
+	 * {@link Forks#remove(Path, Path)} documents. {@link Cleanup} only removes worktrees, so the fake creates them
+	 * through {@link #fork(Path, Path)} and refuses the other operations.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is not thread-safe.
+	 */
+	private static final class FakeForks implements Forks
+	{
+		/**
+		 * The optimization worktree of each campaign that the fake forked and has not removed.
+		 */
+		private final Set<Path> worktrees = new HashSet<>();
+
+		/**
+		 * Creates forks that hold no worktree.
+		 */
+		FakeForks()
+		{
+		}
+
+		/**
+		 * Gives a campaign an optimization worktree that holds the base's {@code CLAUDE.md}.
+		 *
+		 * @param base the base worktree
+		 * @param campaign the campaign storage directory
+		 * @throws IOException if the worktree cannot be created
+		 */
+		void fork(Path base, Path campaign) throws IOException
+		{
+			Path worktree = Files.createDirectories(campaign.resolve("worktree"));
+			Files.copy(base.resolve("CLAUDE.md"), worktree.resolve("CLAUDE.md"));
+			worktrees.add(worktree);
+		}
+
+		/**
+		 * Returns the optimization worktrees that the fake holds.
+		 *
+		 * @return the worktrees' directories
+		 */
+		Set<Path> worktrees()
+		{
+			return Set.copyOf(worktrees);
+		}
+
+		@Override
+		public ForkView create(Path base, Path campaign, Set<Path> participants)
+		{
+			throw new UnsupportedOperationException("Cleanup never forks a project");
+		}
+
+		@Override
+		public Set<Path> tracked(Path base)
+		{
+			throw new UnsupportedOperationException("Cleanup never lists tracked files");
+		}
+
+		@Override
+		public String diff(Path base, List<Path> paths)
+		{
+			throw new UnsupportedOperationException("Cleanup never compares files with HEAD");
+		}
+
+		@Override
+		public ForkView open(Path base, Path campaign)
+		{
+			throw new UnsupportedOperationException("Cleanup never opens a fork");
+		}
+
+		@Override
+		public boolean exists(Path campaign)
+		{
+			return worktrees.contains(campaign.resolve("worktree"));
+		}
+
+		@Override
+		public void remove(Path base, Path campaign) throws IOException
+		{
+			Path worktree = campaign.resolve("worktree");
+			TemporaryDirectories.deleteRecursively(worktree);
+			worktrees.remove(worktree);
+		}
+	}
+
+	/**
+	 * Forks whose removal of one optimization worktree is denied, as a file system that refuses the deletion would.
 	 *
 	 * @param denied the worktree whose removal fails
 	 */
 	private record DenyingForks(Path denied) implements Forks
 	{
 		@Override
-		public ForkView create(Path base, Path campaign, Set<Path> participants) throws IOException
+		public ForkView create(Path base, Path campaign, Set<Path> participants)
 		{
-			return new GitForks().create(base, campaign, participants);
+			throw new UnsupportedOperationException("Cleanup never forks a project");
 		}
 
 		@Override
-		public ForkView open(Path base, Path campaign) throws IOException
+		public ForkView open(Path base, Path campaign)
 		{
-			return new GitForks().open(base, campaign);
+			throw new UnsupportedOperationException("Cleanup never opens a fork");
 		}
 
 		@Override
 		public boolean exists(Path campaign)
 		{
-			return new GitForks().exists(campaign);
+			throw new UnsupportedOperationException("Cleanup never checks for a fork");
 		}
 
 		@Override
-		public Set<Path> tracked(Path base) throws IOException
+		public Set<Path> tracked(Path base)
 		{
-			return new GitForks().tracked(base);
+			throw new UnsupportedOperationException("Cleanup never lists tracked files");
+		}
+
+		@Override
+		public String diff(Path base, List<Path> paths)
+		{
+			throw new UnsupportedOperationException("Cleanup never compares files with HEAD");
 		}
 
 		@Override

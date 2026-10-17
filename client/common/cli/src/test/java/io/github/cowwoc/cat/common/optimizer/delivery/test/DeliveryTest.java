@@ -55,6 +55,7 @@ import io.github.cowwoc.cat.common.optimizer.store.CertificationHistoryJson;
 import io.github.cowwoc.cat.common.optimizer.store.DeliveryJournal;
 import io.github.cowwoc.cat.common.optimizer.store.FileCampaignStore;
 import io.github.cowwoc.cat.common.optimizer.store.test.InMemoryCampaignStore;
+import io.github.cowwoc.cat.common.optimizer.workspace.GitForks;
 import io.github.cowwoc.cat.common.test.FileTrees;
 
 import java.io.IOException;
@@ -421,7 +422,7 @@ public final class DeliveryTest
 			Overlay working = kept.write(Path.of("rules/main.md"), content("main v3\n"), READ_WRITE);
 			FakeWorkspacePort workspace = new FakeWorkspacePort(fixture.root().resolve("workspace"),
 				working.snapshot());
-			Delivery delivery = new Delivery(new InMemoryCampaignStore(), workspace, JSON, NO_HOOK);
+			Delivery delivery = new Delivery(new InMemoryCampaignStore(), workspace, new GitForks(), JSON, NO_HOOK);
 
 			DeliveryResult result = delivery.deliver(CAMPAIGN,
 				new DeliveryRequest(new Candidate(1, kept.identity()), 1, Outcome.IMPROVED_NOT_CERTIFIED),
@@ -487,7 +488,7 @@ public final class DeliveryTest
 				new FileInventory(fixture.base(), files));
 			CampaignStore store = new InMemoryCampaignStore();
 
-			DeliveryResult result = new Delivery(store, workspace, JSON, NO_HOOK).deliver(CAMPAIGN,
+			DeliveryResult result = new Delivery(store, workspace, new GitForks(), JSON, NO_HOOK).deliver(CAMPAIGN,
 				request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(), RECORD,
 				List.of());
 
@@ -1463,7 +1464,7 @@ public final class DeliveryTest
 			FakeWorkspacePort workspace = new FakeWorkspacePort(root.resolve("workspace"), working.snapshot());
 			for (Map.Entry<Path, FileContent> file : recorded.entrySet())
 				workspace.supplyFile(file.getKey(), file.getValue());
-			return new Delivery(store, workspace, JSON, afterWrite);
+			return new Delivery(store, workspace, new GitForks(), JSON, afterWrite);
 		}
 
 		/**

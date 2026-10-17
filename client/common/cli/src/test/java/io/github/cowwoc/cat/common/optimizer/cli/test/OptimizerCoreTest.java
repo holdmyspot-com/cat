@@ -7,7 +7,6 @@ import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.SessionWorkDirectory;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.fakes.test.ManualClock;
-import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.campaign.Applicability;
 import io.github.cowwoc.cat.common.optimizer.campaign.Campaign;
@@ -897,23 +896,6 @@ public final class OptimizerCoreTest
 		Path directory(String id) throws CommandRefusedException, IOException
 		{
 			return campaigns().resolve(id);
-		}
-
-		/**
-		 * Replaces the project's placeholder Git directory with a repository whose one commit holds the tracked
-		 * prompt. Delivery diffs the delivered paths against the project's {@code HEAD}, so a test that delivers needs
-		 * one.
-		 *
-		 * @throws IOException if Git fails
-		 */
-		void commitPrompt() throws IOException
-		{
-			Files.delete(root.resolve(".git"));
-			Git git = new Git(root);
-			git.run("init", "--quiet");
-			git.run("add", "CLAUDE.md");
-			git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
-				"commit", "--quiet", "--no-verify", "--message", "Fork point");
 		}
 
 		/**
@@ -3686,7 +3668,6 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}));
-			repository.commitPrompt();
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			Campaign started = repository.load(id);
 			Campaign built = new Builder().header(started.header()).confirmed().working(1).
@@ -3798,7 +3779,6 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}));
-			repository.commitPrompt();
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			String target = Files.readString(repository.root().resolve("CLAUDE.md"), StandardCharsets.UTF_8);
