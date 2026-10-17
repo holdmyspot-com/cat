@@ -344,13 +344,7 @@ public final class ProposalSchema
 		for (PromptTest test : contract.tests())
 			write(test, tests.addObject());
 		write(contract.profiles(), root.putObject(TRIAL_PROFILES));
-		JudgeProfile judge = contract.judge();
-		ObjectNode judgeNode = root.putObject("judge");
-		write(judge.profile(), judgeNode);
-		judgeNode.put("prompt", judge.prompt());
-		judgeNode.put("rubric", judge.rubric());
-		judgeNode.put("decision_rule", judge.decisionRule());
-		judgeNode.set("result_schema", json.readTree(judge.resultSchema()));
+		write(contract.judge(), root.putObject("judge"));
 		ArrayNode ignoredPaths = root.putObject("fixtures").putArray("ignored_paths");
 		contract.fixtures().ignoredPaths().forEach(ignoredPaths::add);
 		ArrayNode limitations = root.putArray("limitations");
@@ -362,16 +356,15 @@ public final class ProposalSchema
 	}
 
 	/**
-	 * Writes one prompt test of a contract with the requirements that it checks and the dependents of the target
-	 * prompt file: everything
-	 * that decides how its trials run and how they are decided, apart from the judge fields that CAT supplies to every
-	 * contract.
+	 * Writes one prompt test of a contract with the requirements that it checks, the judge and the dependents of the
+	 * target prompt file: everything that decides how its trials run and how they are decided.
 	 *
 	 * @param contract the contract
 	 * @param test a prompt test of {@code contract}
 	 * @return the JSON text: an object whose {@code test} holds the prompt test as the proposal schema writes it,
-	 *   whose {@code requirements} holds, in contract order, each requirement that the test checks, and whose
-	 *   {@code dependents}, present only when the contract lists dependents, holds them
+	 *   whose {@code requirements} holds, in contract order, each requirement that the test checks, whose
+	 *   {@code judge} holds the judge, and whose {@code dependents}, present only when the contract lists dependents,
+	 *   holds them
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public String toJson(Contract contract, PromptTest test)
@@ -386,8 +379,24 @@ public final class ProposalSchema
 			if (test.requirementIds().contains(requirement.id()))
 				write(requirement, requirements.addObject());
 		}
+		write(contract.judge(), root.putObject("judge"));
 		writeDependents(contract, root);
 		return json.writeValueAsString(root);
+	}
+
+	/**
+	 * Writes a judge.
+	 *
+	 * @param judge the judge
+	 * @param node the object that receives the judge's properties
+	 */
+	private void write(JudgeProfile judge, ObjectNode node)
+	{
+		write(judge.profile(), node);
+		node.put("prompt", judge.prompt());
+		node.put("rubric", judge.rubric());
+		node.put("decision_rule", judge.decisionRule());
+		node.set("result_schema", json.readTree(judge.resultSchema()));
 	}
 
 	/**

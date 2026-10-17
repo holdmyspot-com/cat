@@ -464,6 +464,38 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * A stored pilot whose test, cell and control source are unchanged runs again once a revision changes the judge's
+	 * rubric, because its trials were decided by the earlier rubric.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void rerunsPilotAfterRubricChange() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-rubric"));
+			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
+				run(contract, List.of(), control(), Set.of(), Map.of(), new SplittableRandom(16));
+			JudgeProfile judge = contract.judge();
+			Contract revised = new Contract(contract.requirements(), contract.tests(), contract.profiles(),
+				new JudgeProfile(judge.profile(), judge.prompt(), judge.rubric() + " Capitalization is harmless.",
+					judge.decisionRule(), judge.resultSchema()), contract.fixtures(), contract.limitations(),
+				contract.minimumPassRate(), contract.salt());
+			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+
+			pilot(sessions, workspace(directory), 4).
+				run(revised, List.of(), control(), Set.of(), first, new SplittableRandom(17));
+
+			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trials").
+				isEqualTo(GuardPilot.TRIALS * first.size());
+		}
+	}
+
+	/**
 	 * Each control trial installs the copy of every trial plugin that belongs to the staged control source, in
 	 * configuration order.
 	 *

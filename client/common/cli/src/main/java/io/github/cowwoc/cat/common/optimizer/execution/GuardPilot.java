@@ -118,12 +118,13 @@ public final class GuardPilot
 
 	/**
 	 * Returns the identity of a prompt test's definition: the test and the requirements that it checks, which the
-	 * trials and the judge receive, and the dependents of the target that control trials remove.
+	 * trials and the judge receive, the judge that decides its trials, and the dependents of the target that control
+	 * trials remove.
 	 *
 	 * @param contract the proposed contract
 	 * @param test a prompt test of {@code contract}
 	 * @return the identity, which changes whenever the scenario, the test cases, the assertions, a checked
-	 *   requirement or a dependent changes
+	 *   requirement, the judge or a dependent changes
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Sha256 definition(Contract contract, PromptTest test)
