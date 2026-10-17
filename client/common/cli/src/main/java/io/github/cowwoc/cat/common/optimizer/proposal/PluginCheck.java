@@ -6,6 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 /**
  * What CAT finds when it checks a campaign's trial plugins against the project before a proposal.
@@ -19,14 +20,17 @@ import java.util.List;
  * @param productionOnly the files that load in the user's sessions of the harness but not in trials, in loading order
  * @param unapprovedHooks the trial plugins' hooks that trials do not run because the user has not approved them in the
  *   harness, each as its plugin, event and command
+ * @param baseDirectories the absolute directory of each trial plugin's base copy, by the plugin's name; the proposal
+ *   names a file inside one of them by the plugin and the file's path inside the plugin
  */
 public record PluginCheck(List<TrialPlugin> plugins, List<Path> uncovered, List<PluginMapping.Difference> differing,
-	List<String> productionOnly, List<String> unapprovedHooks)
+	List<String> productionOnly, List<String> unapprovedHooks, Map<String, Path> baseDirectories)
 {
 	/**
 	 * The check of a campaign whose trials install no plugin and load what production loads.
 	 */
-	public static final PluginCheck NONE = new PluginCheck(List.of(), List.of(), List.of(), List.of(), List.of());
+	public static final PluginCheck NONE = new PluginCheck(List.of(), List.of(), List.of(), List.of(), List.of(),
+		Map.of());
 
 	/**
 	 * Creates a check.
@@ -38,6 +42,8 @@ public record PluginCheck(List<TrialPlugin> plugins, List<Path> uncovered, List<
 	 *   order
 	 * @param unapprovedHooks the trial plugins' hooks that trials do not run because the user has not approved them in
 	 *   the harness, each as its plugin, event and command
+	 * @param baseDirectories the absolute directory of each trial plugin's base copy, by the plugin's name; the
+	 *   proposal names a file inside one of them by the plugin and the file's path inside the plugin
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public PluginCheck
@@ -48,5 +54,6 @@ public record PluginCheck(List<TrialPlugin> plugins, List<Path> uncovered, List<
 		differing = List.copyOf(differing);
 		productionOnly = List.copyOf(productionOnly);
 		unapprovedHooks = List.copyOf(unapprovedHooks);
+		baseDirectories = Map.copyOf(baseDirectories);
 	}
 }

@@ -675,10 +675,36 @@ public final class OptimizerCoreTest
 		 */
 		private final Map<String, List<Path>> installed = new HashMap<>();
 
+		/**
+		 * The files, relative to each trial plugin's base copy, that {@link #loadedSources(Path, List)} also returns as
+		 * loading in trials, each named by its absolute path in the base copy.
+		 */
+		private volatile List<Path> pluginSources = List.of();
+
 		@Override
 		public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
 		{
-			return new LoadedSources(derivedSources, derivedSources, List.of());
+			List<DerivedSource> trials = new ArrayList<>(derivedSources);
+			for (PluginBase base : plugins)
+			{
+				Path directory = base.directory().toAbsolutePath().normalize();
+				for (Path source : pluginSources)
+				{
+					trials.add(new DerivedSource(directory.resolve(source).toString(),
+						"CAT injects this rule into every session"));
+				}
+			}
+			return new LoadedSources(derivedSources, trials, List.of());
+		}
+
+		/**
+		 * Sets the files that load in trials from each trial plugin's base copy.
+		 *
+		 * @param sources the files, relative to the base copy
+		 */
+		void setPluginSources(List<Path> sources)
+		{
+			pluginSources = List.copyOf(sources);
 		}
 
 		@Override
@@ -2536,6 +2562,51 @@ public final class OptimizerCoreTest
 			exit "$2"
 			""");
 		requireThat(script.toFile().setExecutable(true, false), "executable").isTrue();
+	}
+
+	/**
+	 * Verifies that the proposal shows a derived source that loads from a trial plugin's base copy by the plugin's
+	 * name and its path inside the plugin, while the stored proposal keeps its absolute path, which a resumed campaign
+	 * reads back and shows the same way.
+	 *
+	 * @throws CommandRefusedException if a command is refused
+	 * @throws IOException if a file cannot be read or written
+	 * @throws InterruptedException if the thread is interrupted while a command waits for a session
+	 */
+	@Test
+	public void showsPluginSourceAndStoresItsPath()
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), buildProgram()));
+			Path root = repository.root();
+			writeBuildProgram(root);
+			configure(root, buildConfiguration("cat", 0, "out"));
+			Path rule = Path.of("rules/common/default-rules.md");
+			repository.sessions().setPluginSources(List.of(rule));
+			String shown = "\n- trial plugin `cat`: `rules/common/default-rules.md`: CAT injects this rule into every " +
+				"session\n";
+
+			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
+			String id = started.status().campaignId();
+			JsonNode stored = JSON.readTree(Files.readString(repository.directory(id).
+				resolve("held_out/proposal.json")));
+			List<String> storedPaths = new ArrayList<>();
+			for (JsonNode source : stored.get("derived_sources"))
+				storedPaths.add(source.get("path").asString());
+			String absolute = storedPaths.stream().filter(path -> path.endsWith(rule.getFileName().toString())).
+				findFirst().orElseThrow();
+			requireThat(Path.of(absolute).isAbsolute(), "isAbsolute").isTrue();
+			requireThat(Path.of(absolute).endsWith(rule), "endsWith").isTrue();
+			requireThat(started.proposal(), "started").contains(shown).doesNotContain(absolute);
+
+			repository.sessions().setPluginSources(List.of());
+			String resumed = repository.core().start(Path.of("CLAUDE.md")).proposal();
+			requireThat(resumed, "resumed").contains(shown).doesNotContain(absolute);
+		}
 	}
 
 	/**

@@ -24,6 +24,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
+import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
 import io.github.cowwoc.cat.common.optimizer.contract.VariableDeclaration;
 import io.github.cowwoc.cat.common.optimizer.delivery.DeliveredTest;
 import io.github.cowwoc.cat.common.optimizer.execution.PilotResult;
@@ -34,14 +35,21 @@ import io.github.cowwoc.cat.common.optimizer.report.RemainingWork;
 import io.github.cowwoc.cat.common.optimizer.statistics.SignificanceLevel;
 import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 
+import java.io.File;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.StringJoiner;
+import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -55,6 +63,10 @@ public final class Markdown
 	 * The initial capacity of the text, which fits a proposal with a few tests without growing.
 	 */
 	private static final int INITIAL_CAPACITY = 16 * 1024;
+	/**
+	 * Text in backticks, such as a file that a derived source's rule names.
+	 */
+	private static final Pattern QUOTED = Pattern.compile("`([^`]+)`");
 	private final DerivedProposal derived;
 	private final Contract contract;
 	private final LinkReport links;
@@ -202,8 +214,46 @@ public final class Markdown
 		if (derived.derivedSources().isEmpty())
 			text.append("- none\n");
 		for (DerivedSource source : derived.derivedSources())
-			text.append("- ").append(source.path()).append(": ").append(source.rule()).append('\n');
+		{
+			text.append("- ").append(pluginFile(source.path()).orElse(source.path())).append(": ").
+				append(withPluginFiles(source.rule())).append('\n');
+		}
 		text.append('\n').append(Proposal.DERIVED_LOADING_LIMIT).append('\n');
+	}
+
+	/**
+	 * Names a file inside a trial plugin's base copy by the plugin and the file's path inside the plugin, which is
+	 * shorter than the absolute path and stays the same across campaigns.
+	 *
+	 * @param path a file's path as a derived source records it
+	 * @return text such as {@code trial plugin `cat`: `rules/x.md`}, or empty if the path does not lie inside the
+	 *   base copy of a trial plugin
+	 */
+	private Optional<String> pluginFile(String path)
+	{
+		for (Map.Entry<String, Path> entry : plugin.baseDirectories().entrySet())
+		{
+			String prefix = entry.getValue().toAbsolutePath().normalize() + File.separator;
+			if (path.startsWith(prefix))
+			{
+				String relative = path.substring(prefix.length()).replace(File.separatorChar, '/');
+				return Optional.of("trial plugin `" + entry.getKey() + "`: `" + relative + "`");
+			}
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Names each file that a derived source's rule quotes and that lies inside a trial plugin's base copy by the
+	 * plugin and the file's path inside the plugin.
+	 *
+	 * @param rule the rule that loads a derived source
+	 * @return the rule with each such quoted path replaced
+	 */
+	private String withPluginFiles(String rule)
+	{
+		return QUOTED.matcher(rule).replaceAll(quoted ->
+			Matcher.quoteReplacement(pluginFile(quoted.group(1)).orElse(quoted.group())));
 	}
 
 	/**
@@ -309,13 +359,21 @@ public final class Markdown
 			case EDITED ->
 			{
 				text.append("- Files: recorded at `").append(directory).append("` and edited; delivery rewrites them " +
-					"with these changes:\n");
+					"with these changes:\n\n");
 				String diff = change.diff();
-				String fence = "`".repeat(Math.max(3, longestBacktickRun(diff) + 1));
-				text.append("\n    ").append(fence).append("diff\n");
-				for (String line : diff.substring(0, diff.length() - 1).split("\n", -1))
-					text.append("    ").append(line).append('\n');
-				text.append("    ").append(fence).append("\n\n");
+				if (!diff.isEmpty())
+				{
+					String fence = "`".repeat(Math.max(3, longestBacktickRun(diff) + 1));
+					text.append("    ").append(fence).append("diff\n");
+					for (String line : diff.substring(0, diff.length() - 1).split("\n", -1))
+						text.append("    ").append(line).append('\n');
+					text.append("    ").append(fence).append("\n\n");
+				}
+				if (change.valuesChanged())
+				{
+					text.append("    `").append(ValuesFile.NAME).append("` changes; its values are the test cases " +
+						"listed below.\n\n");
+				}
 			}
 		}
 	}
@@ -360,14 +418,21 @@ public final class Markdown
 	 * Returns a test case's value as the proposal shows it.
 	 *
 	 * @param value the value
-	 * @return the quoted text of a text value, or the call of a generated value
+	 * @return the quoted text of a text value, or the call of a generated value with its parameters but without the
+	 *   seed and version that only rebuild its bytes, such as {@code log_lines(count 420)}
 	 */
 	private static String value(TestValue value)
 	{
 		return switch (value)
 		{
 			case TestValue.Text text -> quote(text.text());
-			case TestValue.Generated generated -> generated.describe();
+			case TestValue.Generated generated ->
+			{
+				StringJoiner call = new StringJoiner(", ", generated.generator() + "(", ")");
+				for (Map.Entry<String, Long> parameter : new TreeMap<>(generated.parameters()).entrySet())
+					call.add(parameter.getKey() + " " + parameter.getValue());
+				yield call.toString();
+			}
 		};
 	}
 
@@ -805,10 +870,10 @@ public final class Markdown
 		Contract scoped = preview.contract();
 		text.append("\n### `").append(scope.id()).append("`: ").append(scope.summary()).append("\n\n").
 			append("Cells: ").append(describeCells(CellTier.scopeCells(scoped))).append('\n');
-		List<String> weakest = new ArrayList<>();
+		List<Cell> weakest = new ArrayList<>();
 		for (PromptTest test : scoped.tests())
-			weakest.add("`" + test.id() + "`: `" + CellTier.weakestCell(scoped, test.id()).id() + "`");
-		text.append("Weakest cells: ").append(String.join("; ", weakest)).append("\n\n");
+			weakest.add(CellTier.weakestCell(scoped, test.id()));
+		text.append("Weakest cells: ").append(cellGroups(weakest)).append("\n\n");
 		RemainingWork remaining = RemainingWork.of(preview);
 		int trials = remaining.total();
 		text.append("At least ").append(2 * trials).append(" nested sessions remain if every trial passes: ").
@@ -834,43 +899,62 @@ public final class Markdown
 	}
 
 	/**
-	 * Names cells compactly: a test with several cells, all of them present, as every cell of the test, and
-	 * each other cell by its identifier, with the cell count when there is more than one cell.
+	 * Names cells compactly by {@link #cellGroups(List) groups}, with the cell count when there is more than one
+	 * cell.
 	 *
-	 * @param group the cells
+	 * @param cells the cells
 	 * @return the description
 	 */
-	private String describeCells(List<Cell> group)
+	private static String describeCells(List<Cell> cells)
 	{
-		Map<String, Integer> cellsByTest = new HashMap<>();
-		for (Cell cell : contract.cells())
-			cellsByTest.merge(cell.testId(), 1, Integer::sum);
-		Map<String, List<Cell>> groupByTest = new LinkedHashMap<>();
-		for (Cell cell : group)
-			groupByTest.computeIfAbsent(cell.testId(), _ -> new ArrayList<>()).add(cell);
-		List<String> whole = new ArrayList<>();
-		List<String> single = new ArrayList<>();
-		for (Map.Entry<String, List<Cell>> entry : groupByTest.entrySet())
-		{
-			int size = entry.getValue().size();
-			if (size > 1 && size == cellsByTest.get(entry.getKey()))
-				whole.add("`" + entry.getKey() + "`");
-			else
-			{
-				for (Cell cell : entry.getValue())
-					single.add("`" + cell.id() + "`");
-			}
-		}
-		List<String> names = new ArrayList<>();
-		if (whole.size() == 1)
-			names.add("every cell of test " + whole.getFirst());
-		else if (whole.size() > 1)
-			names.add("every cell of tests " + String.join(", ", whole));
-		names.addAll(single);
-		String description = String.join(", ", names);
-		if (group.size() > 1)
-			description += " (" + group.size() + " cells)";
+		String description = cellGroups(cells);
+		if (cells.size() > 1)
+			description += " (" + cells.size() + " cells)";
 		return description;
+	}
+
+	/**
+	 * Names cells exactly as groups of tests and profiles, each group holding every pairing of its tests with its
+	 * profiles, such as {@code tests `a`, `b` × profiles `big/high`, `small/high`}. The tests whose cells have the
+	 * same set of profiles form one group. The groups are in the order of their first cell, and the tests and
+	 * profiles of a group are in the order of their first cell.
+	 *
+	 * @param cells the cells
+	 * @return the groups, separated by semicolons
+	 */
+	private static String cellGroups(List<Cell> cells)
+	{
+		Map<String, Set<String>> profilesByTest = new LinkedHashMap<>();
+		for (Cell cell : cells)
+			profilesByTest.computeIfAbsent(cell.testId(), _ -> new LinkedHashSet<>()).add(cell.profile().label());
+		// Set equality ignores order, so tests whose profiles appear in different orders still share a group
+		Map<Set<String>, List<String>> testsByProfiles = new LinkedHashMap<>();
+		for (Map.Entry<String, Set<String>> entry : profilesByTest.entrySet())
+			testsByProfiles.computeIfAbsent(entry.getValue(), _ -> new ArrayList<>()).add(entry.getKey());
+		StringJoiner groups = new StringJoiner("; ");
+		for (Map.Entry<Set<String>, List<String>> entry : testsByProfiles.entrySet())
+		{
+			groups.add(quotedList("test", entry.getValue()) + " × " +
+				quotedList("profile", List.copyOf(entry.getKey())));
+		}
+		return groups.toString();
+	}
+
+	/**
+	 * Names values of one kind, each in backticks.
+	 *
+	 * @param kind the singular name of the kind
+	 * @param values the values
+	 * @return text such as {@code test `a`} or {@code tests `a`, `b`}
+	 */
+	private static String quotedList(String kind, List<String> values)
+	{
+		StringJoiner list = new StringJoiner("`, `", "`", "`");
+		for (String value : values)
+			list.add(value);
+		if (values.size() == 1)
+			return kind + " " + list;
+		return kind + "s " + list;
 	}
 
 	/**

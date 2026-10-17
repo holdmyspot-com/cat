@@ -2,14 +2,18 @@ package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
+
 /**
  * How a prompt test in a draft directory relates to the prompt tests that the project records.
  *
  * @param kind whether the prompt test is recorded unchanged, created, or recorded and edited
- * @param diff the unified difference from the recorded files to the draft's files, or an empty string unless
- *   {@code kind} is {@link Kind#EDITED}
+ * @param diff the unified difference from the recorded files to the draft's files other than the test's
+ *   {@value ValuesFile#NAME}, or an empty string unless {@code kind} is {@link Kind#EDITED}
+ * @param valuesChanged {@code true} if the draft changes the test's {@value ValuesFile#NAME}, whose values are the
+ *   test's test cases
  */
-public record DraftChange(Kind kind, String diff)
+public record DraftChange(Kind kind, String diff, boolean valuesChanged)
 {
 	/**
 	 * How a prompt test in a draft directory relates to the recorded prompt tests.
@@ -34,15 +38,20 @@ public record DraftChange(Kind kind, String diff)
 	 * Creates a change.
 	 *
 	 * @param kind whether the prompt test is recorded unchanged, created, or recorded and edited
-	 * @param diff the unified difference from the recorded files to the draft's files, or an empty string unless
-	 *   {@code kind} is {@link Kind#EDITED}
+	 * @param diff the unified difference from the recorded files to the draft's files other than the test's
+	 *   {@value ValuesFile#NAME}, or an empty string unless {@code kind} is {@link Kind#EDITED}
+	 * @param valuesChanged {@code true} if the draft changes the test's {@value ValuesFile#NAME}, whose values are
+	 *   the test's test cases
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code diff} is empty for an edited prompt test or not empty for another
+	 * @throws IllegalArgumentException if {@code kind} is {@link Kind#EDITED} while {@code diff} is empty and
+	 *   {@code valuesChanged} is {@code false}, or another kind while {@code diff} is not empty or
+	 *   {@code valuesChanged} is {@code true}
 	 */
 	public DraftChange
 	{
 		requireThat(kind, "kind").isNotNull();
 		requireThat(diff, "diff").isNotNull();
-		requireThat(diff.isEmpty(), "diff.isEmpty()").isEqualTo(kind != Kind.EDITED);
+		boolean hasChanges = !diff.isEmpty() || valuesChanged;
+		requireThat(hasChanges, "hasChanges").isEqualTo(kind == Kind.EDITED);
 	}
 }

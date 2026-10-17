@@ -71,6 +71,7 @@ import io.github.cowwoc.cat.common.optimizer.workspace.LinkReport;
 import io.github.cowwoc.cat.common.secrets.PromptTemplateSecrets;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -995,7 +996,8 @@ public final class ProposalTest
 		requireThat(proposal.render(), "render").contains("## Certification scope").
 			contains("At least " + 2 * trials + " nested sessions remain if every trial passes: " + trials +
 				" trials, each with one trial session and one judge session.").
-			contains("- `formatting`, `plain_list`, `safety` (3 cells): commit gate ");
+			contains("\n- tests `formatting`, `plain_list`, `safety` × profile `test-model/high` (3 cells): commit " +
+				"gate ");
 	}
 
 	/**
@@ -1026,13 +1028,15 @@ public final class ProposalTest
 			contains("### `latest_versions`: every cell of each model family's latest version").
 			doesNotContain("### `described`").
 			contains("To certify other cells, describe them in revision feedback").
-			contains("Cells: `" + ContractFixtures.SMALL_CELL + "`, `" + ContractFixtures.PLAIN_SMALL_CELL +
-				"`, `safety` (3 cells)").
-			contains("Weakest cells: `formatting`: `" + ContractFixtures.SMALL_CELL + "`; `plain_list`: `" +
-				ContractFixtures.PLAIN_SMALL_CELL + "`; `safety`: `safety`").
+			contains("\nCells: tests `formatting`, `plain_list` × profile `small/high`; test `safety` × profile " +
+				"`big/high` (3 cells)\n").
+			contains("\nWeakest cells: tests `formatting`, `plain_list` × profile `small/high`; test `safety` × " +
+				"profile `big/high`\n").
 			contains("At least " + 2 * weakest + " nested sessions remain if every trial passes: " + weakest +
 				" trials").
-			contains("Cells: every cell of tests `formatting`, `plain_list`, `safety` (5 cells)").
+			contains("\nCells: tests `formatting`, `plain_list` × profiles `big/high`, `small/high`; test `safety` " +
+				"× profile `big/high` (5 cells)\n").
+			doesNotContain("every cell of test").
 			contains("At least " + 2 * latest + " nested sessions remain if every trial passes: " + latest +
 				" trials");
 		requireThat(text.indexOf("### `weakest_cell`"), "order").isLessThan(text.indexOf("### `latest_versions`"));
@@ -1109,18 +1113,12 @@ public final class ProposalTest
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		String text = proposal.render();
-		String bigFormatting = "formatting@" + ContractFixtures.BIG.model() + "/" + ContractFixtures.BIG.effort();
-		String bigSafety = "safety@" + ContractFixtures.BIG.model() + "/" + ContractFixtures.BIG.effort();
-		String smallSafety = "safety@" + ContractFixtures.SMALL.model() + "/" + ContractFixtures.SMALL.effort();
 		requireThat(text, "text").
 			contains("Capability ranking, most capable first (the user's revision feedback): small, big").
-			contains("Weakest cells: `formatting`: `" + bigFormatting + "`; `plain_list`: `" +
-				ContractFixtures.PLAIN_BIG_CELL + "`; `safety`: `" + bigSafety + "`").
+			contains("\nWeakest cells: tests `formatting`, `plain_list`, `safety` × profile `big/high`\n").
 			contains("### `described`: the cells that you described in revision feedback").
-			contains("Cells: `" + ContractFixtures.SMALL_CELL + "`, `" + ContractFixtures.PLAIN_SMALL_CELL + "`, `" +
-				smallSafety + "` (3 cells)").
-			contains("Weakest cells: `formatting`: `" + ContractFixtures.SMALL_CELL + "`; `plain_list`: `" +
-				ContractFixtures.PLAIN_SMALL_CELL + "`; `safety`: `" + smallSafety + "`");
+			contains("\nCells: tests `formatting`, `plain_list`, `safety` × profile `small/high` (3 cells)\n").
+			contains("\nWeakest cells: tests `formatting`, `plain_list`, `safety` × profile `small/high`\n");
 		requireThat(proposal.isConfirmable(CertificationScope.DESCRIBED), "describedConfirmable").isTrue();
 
 		String outside = changedDerivation(output -> output.putArray("certification_profiles").addObject().
@@ -1176,6 +1174,44 @@ public final class ProposalTest
 		requireThat(proposal.contract().limitations(), "limitations").
 			isEqualTo(List.of("Only the English prompts are covered.", Proposal.DERIVED_LOADING_LIMIT,
 				Proposal.CONTROL_SOURCE_LIMIT));
+	}
+
+	/**
+	 * Verifies that a derived source inside a trial plugin's base copy, and a referrer inside it that a source's rule
+	 * names, are shown by the plugin's name and the path inside the plugin, while a project file keeps its path
+	 * relative to the project and a file outside both keeps its absolute path.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void showsPluginSourcesByPlugin() throws InvalidProposalException
+	{
+		Path base = Path.of("/campaign/plugins/base-a").toAbsolutePath();
+		Path defaultRules = base.resolve("rules/common/default-rules.md");
+		Path lazy = base.resolve("rules/include/lazy.md");
+		// A directory whose name extends the base's name lies outside the base
+		Path sibling = Path.of("/campaign/plugins/base-ab/rules/other.md").toAbsolutePath();
+		List<DerivedSource> sources = List.of(
+			new DerivedSource(defaultRules.toString(), "CAT injects this rule into every session"),
+			new DerivedSource(lazy.toString(), "`" + defaultRules + "` tells the agent to load this file"),
+			new DerivedSource(".cat/rules/common/project.md", "CAT injects this rule into every session"),
+			new DerivedSource(sibling.toString(), "`" + sibling + "` includes this file, which CAT injects with it"));
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT).withDerivedSources(sources);
+		PluginCheck check = new PluginCheck(List.of(builtPlugin()), List.of(), List.of(), List.of(), List.of(),
+			Map.of("cat", base));
+
+		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), check).render();
+
+		requireThat(text, "text").
+			contains("\n- trial plugin `cat`: `rules/common/default-rules.md`: CAT injects this rule into every " +
+				"session\n").
+			contains("\n- trial plugin `cat`: `rules/include/lazy.md`: trial plugin `cat`: " +
+				"`rules/common/default-rules.md` tells the agent to load this file\n").
+			contains("\n- .cat/rules/common/project.md: CAT injects this rule into every session\n").
+			contains("\n- " + sibling + ": `" + sibling + "` includes this file, which CAT injects with it\n").
+			doesNotContain(base + File.separator);
 	}
 
 	/**
@@ -1405,7 +1441,7 @@ public final class ProposalTest
 		PluginCheck check = new PluginCheck(List.of(builtPlugin(), installedPlugin()),
 			List.of(Path.of("docs/extra.md")), List.of(new PluginMapping.Difference("cat",
 				Path.of("source/rules/read-file.md"), Path.of("rules/codex/read-file.md"))),
-			List.of("/home/user/.codex/AGENTS.md"), List.of());
+			List.of("/home/user/.codex/AGENTS.md"), List.of(), Map.of());
 
 		String text = pluginProposal(check).render();
 		String none = pluginProposal(PluginCheck.NONE).render();
@@ -1481,9 +1517,9 @@ public final class ProposalTest
 	public void listsUnapprovedPluginHooks() throws InvalidProposalException
 	{
 		Proposal unapproved = pluginProposal(new PluginCheck(List.of(builtPlugin()), List.of(), List.of(), List.of(),
-			List.of("cat SessionStart `./log.sh`", "cat PostToolUse `./check.sh`")));
+			List.of("cat SessionStart `./log.sh`", "cat PostToolUse `./check.sh`"), Map.of()));
 		Proposal approved = pluginProposal(new PluginCheck(List.of(builtPlugin()), List.of(), List.of(), List.of(),
-			List.of()));
+			List.of(), Map.of()));
 
 		requireThat(unapproved.contract().limitations(), "unapproved").contains(
 			"Trials do not run these hooks of the trial plugins, because the user has not approved them in " +
@@ -1651,7 +1687,8 @@ public final class ProposalTest
 			contains("tests formatting, plain_list (2 cells each, named `<test>@<profile>`): big/high, small/high").
 			contains("test safety (1 cell, named by the test): big/high").
 			contains("Minimum trials by cell:").
-			contains("Cells: every cell of tests `formatting`, `plain_list`, `safety` (5 cells)");
+			contains("\nCells: tests `formatting`, `plain_list` × profiles `big/high`, `small/high`; test `safety` " +
+				"× profile `big/high` (5 cells)\n");
 	}
 
 	/**
@@ -1676,9 +1713,10 @@ public final class ProposalTest
 		requireThat(text, "text").
 			contains("  - tests formatting, plain_list, safety (3 cells each, named `<test>@<profile>`): big/high, " +
 				"big/low, small/high").
-			contains("Cells: every cell of tests `formatting`, `plain_list`, `safety` (9 cells)").
-			contains("- `formatting@big/high`, `formatting@big/low`, `plain_list@big/high`, `plain_list@big/low`, " +
-				"`safety@big/high`, `safety@big/low` (6 cells): baseline 50, next attempt 93");
+			contains("\nCells: tests `formatting`, `plain_list`, `safety` × profiles `big/high`, `big/low`, " +
+				"`small/high` (9 cells)\n").
+			contains("\n- tests `formatting`, `plain_list`, `safety` × profiles `big/high`, `big/low` (6 cells): " +
+				"baseline 50, next attempt 93\n");
 	}
 
 	/**
@@ -1926,7 +1964,8 @@ public final class ProposalTest
 	/**
 	 * Verifies that the proposal shows how each prompt test's files relate to the recorded ones: created by the
 	 * contract author, recorded and unchanged, or recorded and edited, an edit being shown as a difference from the
-	 * recorded files.
+	 * recorded files that leaves out the test's values file and says instead that the file holds the listed test
+	 * cases.
 	 *
 	 * @throws IOException              if a file cannot be written
 	 * @throws InvalidProposalException if a proposal is rejected
@@ -1968,14 +2007,21 @@ public final class ProposalTest
 				"` and edited; delivery rewrites them with these changes:\n\n    ```diff\n    --- a/" + citation +
 				"\n    +++ b/" + citation + "\n").
 			contains("\n    +### Turn 2\n").contains("\n    -### keeps_tone\n").
-			contains("+++ b/.cat/tests/CLAUDE/formatting/values.json\n").
+			contains("\n    ```\n\n    `values.json` changes; its values are the test cases listed below.\n\n").
+			doesNotContain("formatting/values.json").
 			contains("- Files: created by the contract author; delivery writes `" +
 				Path.of(".cat/tests/CLAUDE/safety") + "`\n");
 
 		Map<String, DraftChange> changes = new LinkedHashMap<>(edited.changes());
-		changes.put("formatting", new DraftChange(DraftChange.Kind.RECORDED, ""));
+		changes.put("formatting", new DraftChange(DraftChange.Kind.RECORDED, "", false));
 		requireThat(render(edited.withDraft(edited.draft(), changes)), "unchanged").
 			contains("- Files: recorded at `" + Path.of(".cat/tests/CLAUDE/formatting") + "`, unchanged\n");
+
+		changes.put("formatting", new DraftChange(DraftChange.Kind.EDITED, "", true));
+		requireThat(render(edited.withDraft(edited.draft(), changes)), "valuesOnly").
+			contains("- Files: recorded at `" + Path.of(".cat/tests/CLAUDE/formatting") + "` and edited; delivery " +
+				"rewrites them with these changes:\n\n    `values.json` changes; its values are the test cases listed " +
+				"below.\n\n");
 	}
 
 	/**
@@ -2490,7 +2536,7 @@ public final class ProposalTest
 			    ````
 
 			""").matches("(?s).*`tone` = \"a formal\", `audience` = \"an expert\", `before` = " +
-			"log_lines\\(version 1, seed -?\\d+, count 3\\); expected outcome.*");
+			"log_lines\\(count 3\\); expected outcome.*");
 	}
 
 	/**

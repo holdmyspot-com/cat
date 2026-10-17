@@ -525,14 +525,20 @@ public final class ProposalCheck
 				RecordedTest recordedTest = recorded.get(directory);
 				if (recordedTest == null)
 				{
-					changes.put(test.id(), new DraftChange(DraftChange.Kind.CREATED, ""));
+					changes.put(test.id(), new DraftChange(DraftChange.Kind.CREATED, "", false));
 					continue;
 				}
 				List<FileDelta> deltas = deltas(recordedTest, draft, project);
 				if (deltas.isEmpty())
-					changes.put(test.id(), new DraftChange(DraftChange.Kind.RECORDED, ""));
-				else
-					changes.put(test.id(), new DraftChange(DraftChange.Kind.EDITED, UnifiedDiff.of(deltas)));
+				{
+					changes.put(test.id(), new DraftChange(DraftChange.Kind.RECORDED, "", false));
+					continue;
+				}
+				// The proposal lists the values file's test cases, so a difference of the file would repeat them
+				Path valuesFile = directory.resolve(ValuesFile.NAME);
+				List<FileDelta> shown = deltas.stream().filter(delta -> !delta.path().equals(valuesFile)).toList();
+				changes.put(test.id(), new DraftChange(DraftChange.Kind.EDITED, UnifiedDiff.of(shown),
+					shown.size() < deltas.size()));
 			}
 		}
 		catch (IOException e)

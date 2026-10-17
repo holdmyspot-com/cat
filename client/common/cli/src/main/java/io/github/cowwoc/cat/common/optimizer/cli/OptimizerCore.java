@@ -1978,9 +1978,11 @@ public final class OptimizerCore implements Core
 		LoadedSources loaded = scope.sessions().loadedSources(root, bases);
 		Map<String, FileInventory> baseFiles = new HashMap<>();
 		List<String> hooks = new ArrayList<>();
+		Map<String, Path> baseDirectories = new HashMap<>();
 		for (PluginBase base : bases)
 		{
 			String name = base.plugin().name();
+			baseDirectories.put(name, base.directory());
 			if (base.plugin().isProjectBuilt())
 				baseFiles.put(name, InventoryScanner.scan(base.directory(), Set.of()));
 			for (String hook : scope.sessions().unapprovedHooks(base.directory()))
@@ -1988,7 +1990,8 @@ public final class OptimizerCore implements Core
 		}
 		PluginMapping.Coverage coverage = PluginMapping.check(inventory, promptFiles,
 			loadsFromProject(root, bases, promptFiles), plugins, baseFiles);
-		return new PluginCheck(plugins, coverage.uncovered(), coverage.differing(), loaded.productionOnly(), hooks);
+		return new PluginCheck(plugins, coverage.uncovered(), coverage.differing(), loaded.productionOnly(), hooks,
+			baseDirectories);
 	}
 
 	/**
