@@ -18,7 +18,8 @@ Claude Code no longer keeps.
 
 For a `SubagentStart` event, the hook returns the subagent's rules as additional context. Their `CAT_TEMP` names the
 work directory of the event's `agent_id`, the thread ID that Codex gives the subagent's shell commands in
-`CODEX_THREAD_ID`.
+`CODEX_THREAD_ID`. A subagent that Codex starts with its parent's conversation also receives the parent's instruction
+to read the parent's rules file, so the rules begin by telling the subagent not to read that file.
 
 The command hook sets `additionalContextLimit` to `0`, disabling additional-context spilling for this hook. Codex
 otherwise applies a default limit. For the meaning and introduction of this Codex hook property, see

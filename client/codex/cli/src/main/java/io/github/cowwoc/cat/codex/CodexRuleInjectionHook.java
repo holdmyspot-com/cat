@@ -33,6 +33,15 @@ final class CodexRuleInjectionHook
 		"list its headings, or read only part of it: guidance that you skip still applies.";
 
 	/**
+	 * Precedes a subagent's rules. A subagent that receives the conversation of the agent that started it also receives
+	 * that agent's pointer to its rules file, whose rules can differ, such as in the directory that {@code CAT_TEMP}
+	 * names.
+	 */
+	private static final String SUBAGENT_PREFACE = "The CAT rules below are yours. Earlier messages in this " +
+		"conversation may come from the agent that started you and name a file of CAT rules for that agent; do not " +
+		"read that file, because its rules, such as the directory that `CAT_TEMP` names, differ from yours.\n\n";
+
+	/**
 	 * Prevents instantiation.
 	 */
 	private CodexRuleInjectionHook()
@@ -49,7 +58,8 @@ final class CodexRuleInjectionHook
 	 * harness no longer keeps.
 	 * <p>
 	 * A Codex subagent is a thread whose shells receive its own thread ID, the input's {@code agent_id}, so its rules
-	 * name the work directory of that ID rather than its parent's.
+	 * name the work directory of that ID rather than its parent's, and begin by telling it not to read a rules file that
+	 * its parent's messages name.
 	 *
 	 * @param eventName the Codex hook event name
 	 * @param args the hook command-line arguments
@@ -81,8 +91,8 @@ final class CodexRuleInjectionHook
 					if (!event.path(idProperty).isString())
 						idProperty = "session_id";
 					SessionWorkDirectory directory = scope.sessionWorkDirectory(projectDir, event, idProperty);
-					context = directory.insertSessionId(loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir,
-						HARNESS_ID, scope.subagentType(event)));
+					context = SUBAGENT_PREFACE + directory.insertSessionId(loader.loadForSubagent(pluginRoot, userRulesRoot,
+						projectDir, HARNESS_ID, scope.subagentType(event)));
 				}
 				else
 				{

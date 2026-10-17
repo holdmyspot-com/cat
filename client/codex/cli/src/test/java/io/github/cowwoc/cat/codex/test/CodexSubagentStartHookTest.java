@@ -84,6 +84,30 @@ public final class CodexSubagentStartHookTest
 	}
 
 	/**
+	 * Verifies a subagent's rules begin by telling it not to read a rules file that a message inherited from the agent
+	 * that started it names, since that file states the other agent's {@code CAT_TEMP}.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void disownsInheritedRulesFile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-subagent-start-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("guidance.md"),
+				"subagent guidance");
+
+			String context = context(invoke(event(project, "cat:worker"), Map.of("PLUGIN_ROOT", plugin.toString()),
+				Path.of(".")));
+
+			requireThat(context, "context").startsWith("The CAT rules below are yours.").
+				contains("do not read that file").contains("subagent guidance");
+		}
+	}
+
+	/**
 	 * Returns a SubagentStart input of a subagent in a project directory.
 	 *
 	 * @param cwd the subagent's working directory
