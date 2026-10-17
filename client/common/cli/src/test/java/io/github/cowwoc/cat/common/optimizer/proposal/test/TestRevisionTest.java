@@ -225,7 +225,7 @@ public final class TestRevisionTest
 			FORMATTING + "/scenario.md", FORMATTING + "/values.json")));
 		requireThat(context.revision().orElseThrow().test(), "test").isEqualTo("formatting");
 		requireThat(request.turns().getFirst(), "turn").contains(context.draft()).contains(context.proposalFile()).
-			contains("/opt/cat/bin/prompt-optimizer").contains(contextFile(project).getFileName().toString());
+			contains(ContractToolSessions.LAUNCHER.toString()).contains(contextFile(project).getFileName().toString());
 	}
 
 	/**

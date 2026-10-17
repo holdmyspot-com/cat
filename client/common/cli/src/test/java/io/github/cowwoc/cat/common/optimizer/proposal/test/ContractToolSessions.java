@@ -48,7 +48,7 @@ public final class ContractToolSessions
 	/**
 	 * The launcher that provides the contract tools.
 	 */
-	private static final Path LAUNCHER = Path.of("/opt/cat/bin/prompt-optimizer").toAbsolutePath();
+	public static final Path LAUNCHER = Path.of("/opt/cat/bin/prompt-optimizer").toAbsolutePath();
 	/**
 	 * The profile that the contract author's sessions run with.
 	 */
