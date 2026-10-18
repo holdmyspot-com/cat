@@ -71,6 +71,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.AuthorityWarning;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.Limit;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.RateLimitWindow;
@@ -882,7 +883,8 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
-	 * Returns a delivery journal that deletes, edits and creates one file each.
+	 * Returns a delivery journal that deletes, edits and creates one file each, replaces a link with a file, and
+	 * creates a link where nothing exists and where a file exists.
 	 *
 	 * @param candidate the name whose digest identifies the delivered candidate
 	 * @param applied the number of leading changes known to be applied
@@ -899,7 +901,13 @@ public abstract class CampaignStoreContract
 			new DeliveryChange.Edit(1, Path.of("rules/shared.md"), new RegularFile(original.hash(), readWrite),
 				new FileContent("edited\n".getBytes(UTF_8)), readWrite),
 			new DeliveryChange.Create(2, Path.of("rules/new.sh"), new FileContent(new byte[]{0, 1, 2, -1}),
-				executable));
+				executable),
+			new DeliveryChange.Edit(3, Path.of("tests/a/workspace/notes.md"),
+				new SymbolicLink(Path.of("../../shared/notes.md")), new FileContent("notes\n".getBytes(UTF_8)), readWrite),
+			new DeliveryChange.WriteLink(4, Path.of("tests/a/workspace/latest.md"), Optional.empty(),
+				Path.of("docs/latest.md")),
+			new DeliveryChange.WriteLink(5, Path.of("tests/a/workspace/guide.md"),
+				Optional.of(new RegularFile(original.hash(), readWrite)), Path.of("../../shared/guide.md")));
 		return new DeliveryJournal(Builder.snapshot(candidate), changes, applied);
 	}
 

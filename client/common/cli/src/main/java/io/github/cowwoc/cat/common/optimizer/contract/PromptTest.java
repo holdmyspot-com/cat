@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * One kind of trial that checks one or more requirements through its assertions. A trial passes when it passes every
@@ -57,17 +59,25 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	/**
 	 * A prompt test's directory in the contract author's draft directory.
 	 *
-	 * @param directory the directory, relative to the draft directory, which is also its path relative to the project
-	 * @param scenario  the content of the {@value PromptTestFiles#SCENARIO} that it holds
+	 * @param directory   the directory, relative to the draft directory, which is also its path relative to the
+	 *                    project
+	 * @param scenario    the content of the {@value PromptTestFiles#SCENARIO} that it holds
+	 * @param copiedLinks the target of each link of its {@value PromptTestFiles#WORKSPACE} directory whose target lies
+	 *                    outside that directory, so that trials receive a copy of the target, by the link's path
+	 *                    relative to {@value PromptTestFiles#WORKSPACE}; each target is relative to the link's
+	 *                    directory, and paths and targets have {@code /} separators
 	 */
-	public record Draft(Path directory, String scenario)
+	public record Draft(Path directory, String scenario, Map<String, String> copiedLinks)
 	{
 		/**
 		 * Creates a draft directory of a prompt test.
 		 *
-		 * @param directory the directory, relative to the draft directory, which is also its path relative to the
-		 *                  project
-		 * @param scenario  the content of the {@value PromptTestFiles#SCENARIO} that it holds
+		 * @param directory   the directory, relative to the draft directory, which is also its path relative to the
+		 *                    project
+		 * @param scenario    the content of the {@value PromptTestFiles#SCENARIO} that it holds
+		 * @param copiedLinks the target of each link of its {@value PromptTestFiles#WORKSPACE} directory whose target
+		 *                    lies outside that directory, by the link's path relative to
+		 *                    {@value PromptTestFiles#WORKSPACE}
 		 * @throws NullPointerException     if any of the arguments are null
 		 * @throws IllegalArgumentException if {@code directory} is absolute, empty or not normalized or
 		 *                                  leaves the draft directory, or {@code scenario} is blank
@@ -80,6 +90,23 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 			requireThat(directory.normalize(), "directory.normalize()").isEqualTo(directory, "directory");
 			requireThat(directory.startsWith(".."), "directory.startsWith(\"..\")").isFalse();
 			requireThat(scenario, "scenario").isNotBlank();
+			copiedLinks = Collections.unmodifiableMap(new TreeMap<>(copiedLinks));
+		}
+
+		/**
+		 * Creates a draft directory of a prompt test whose {@value PromptTestFiles#WORKSPACE} directory has no link
+		 * whose target lies outside it.
+		 *
+		 * @param directory the directory, relative to the draft directory, which is also its path relative to the
+		 *                  project
+		 * @param scenario  the content of the {@value PromptTestFiles#SCENARIO} that it holds
+		 * @throws NullPointerException     if any of the arguments are null
+		 * @throws IllegalArgumentException if {@code directory} is absolute, empty or not normalized or
+		 *                                  leaves the draft directory, or {@code scenario} is blank
+		 */
+		public Draft(Path directory, String scenario)
+		{
+			this(directory, scenario, Map.of());
 		}
 	}
 

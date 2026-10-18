@@ -892,6 +892,16 @@ public final class ProposalCheck
 			ObjectNode draftNode = test.putObject("draft");
 			draftNode.put("directory", PortablePaths.text(directory));
 			draftNode.put("scenario", content);
+			if (!files.copiedLinks().isEmpty())
+			{
+				ArrayNode links = draftNode.putArray(ProposalSchema.COPIED_LINKS);
+				for (Map.Entry<String, String> link : files.copiedLinks().entrySet())
+				{
+					ObjectNode linkNode = links.addObject();
+					linkNode.put("path", link.getKey());
+					linkNode.put("target", link.getValue());
+				}
+			}
 			ArrayNode variables = test.putArray("variables");
 			for (VariableDeclaration variable : scenario.variables())
 			{

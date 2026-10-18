@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -29,15 +30,18 @@ import tools.jackson.databind.json.JsonMapper;
  * A prompt test directory: its {@code scenario.md}, the files and links of its {@value #WORKSPACE} directory and the
  * test cases of its values file.
  *
- * @param root      the test root, which holds the prompt test directory or is that directory
- * @param directory the prompt test directory
- * @param scenario  the parsed scenario
- * @param fixtures  the fixture files, sorted by path
- * @param sources   the file that each fixture is copied from, by the fixture's path
- * @param testCases the test cases of the values file, or an empty list if the directory has none
+ * @param root        the test root, which holds the prompt test directory or is that directory
+ * @param directory   the prompt test directory
+ * @param scenario    the parsed scenario
+ * @param fixtures    the fixture files, sorted by path
+ * @param sources     the file that each fixture is copied from, by the fixture's path
+ * @param copiedLinks the target of each link of {@value #WORKSPACE} whose target lies outside it, so that trials
+ *                    receive a copy of the target, by the link's path relative to {@value #WORKSPACE}; each target is
+ *                    relative to the link's directory, and paths and targets have {@code /} separators
+ * @param testCases   the test cases of the values file, or an empty list if the directory has none
  */
 public record PromptTestFiles(Path root, Path directory, Scenario scenario, List<PromptTestFiles.Fixture> fixtures,
-	Map<String, Path> sources, List<TestCase> testCases)
+	Map<String, Path> sources, Map<String, String> copiedLinks, List<TestCase> testCases)
 {
 	/**
 	 * The scenario's file name.
@@ -112,12 +116,14 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	/**
 	 * Creates the files of a prompt test.
 	 *
-	 * @param root      the test root, which holds the prompt test directory or is that directory
-	 * @param directory the prompt test directory
-	 * @param scenario  the parsed scenario
-	 * @param fixtures  the fixture files, sorted by path
-	 * @param sources   the file that each fixture is copied from, by the fixture's path
-	 * @param testCases the test cases of the values file, or an empty list if the directory has none
+	 * @param root        the test root, which holds the prompt test directory or is that directory
+	 * @param directory   the prompt test directory
+	 * @param scenario    the parsed scenario
+	 * @param fixtures    the fixture files, sorted by path
+	 * @param sources     the file that each fixture is copied from, by the fixture's path
+	 * @param copiedLinks the target of each link of {@value #WORKSPACE} whose target lies outside it, by the link's
+	 *                    path relative to {@value #WORKSPACE}
+	 * @param testCases   the test cases of the values file, or an empty list if the directory has none
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or {@code sources}
 	 *                                  does not name exactly the fixtures' paths
@@ -136,6 +142,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		for (Fixture fixture : fixtures)
 			paths.add(fixture.path());
 		requireThat(sources.keySet(), "sources.keySet()").isEqualTo(paths, "paths");
+		copiedLinks = Collections.unmodifiableMap(new TreeMap<>(copiedLinks));
 		testCases = List.copyOf(testCases);
 	}
 
@@ -181,7 +188,8 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 					" is not valid for the prompt test: " + String.join("; ", problems));
 			}
 		}
-		return new PromptTestFiles(root, directory, files.scenario(), files.fixtures(), files.sources(), testCases);
+		return new PromptTestFiles(root, directory, files.scenario(), files.fixtures(), files.sources(),
+			files.copiedLinks(), testCases);
 	}
 
 	/**
@@ -247,7 +255,8 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 
 		WorkspaceReader reader = new WorkspaceReader(project, tree, root, declared);
 		reader.read(directory);
-		return new PromptTestFiles(root, directory, scenario, reader.fixtures(), reader.sources(), List.of());
+		return new PromptTestFiles(root, directory, scenario, reader.fixtures(), reader.sources(), reader.copiedLinks(),
+			List.of());
 	}
 
 	/**

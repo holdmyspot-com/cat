@@ -14,8 +14,12 @@ import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Create;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Delete;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Edit;
+import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.WriteLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 
 import java.nio.file.Path;
@@ -24,6 +28,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import tools.jackson.databind.JsonNode;
@@ -35,7 +40,8 @@ import tools.jackson.databind.node.ObjectNode;
  * Converts a {@link DeliveryJournal} to and from a JSON tree.
  * <p>
  * The document starts with {@code format_version}. Keys are snake_case, kinds are written by name, modes in
- * {@code rwxr-xr-x} form, and file bytes in Base64.
+ * {@code rwxr-xr-x} form, file bytes in Base64, and link targets with {@code /} separators. A {@code before} state is
+ * a regular file's {@code content_hash} and {@code permissions}, or a symbolic link's {@code link_target}.
  * <p>
  * Reading reports a document that does not describe a valid journal with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}.
@@ -109,6 +115,12 @@ final class DeliveryJournalJson
 				node.put("kind", "delete");
 				node.set("before", writeFile(delete.before()));
 			}
+			case WriteLink link ->
+			{
+				node.put("kind", "write_link");
+				link.before().ifPresent(before -> node.set("before", writeFile(before)));
+				node.put("link_target", PortablePaths.text(link.linkTarget()));
+			}
 		}
 		return node;
 	}
@@ -127,16 +139,26 @@ final class DeliveryJournalJson
 	}
 
 	/**
-	 * Converts a regular-file state to a document.
+	 * Converts the state of a regular file or symbolic link to a document.
 	 *
-	 * @param file the file's state
+	 * @param file the state
 	 * @return the document
+	 * @throws IllegalArgumentException if {@code file} is a special file
 	 */
-	private ObjectNode writeFile(RegularFile file)
+	private ObjectNode writeFile(FileEntry file)
 	{
 		ObjectNode node = json.createObjectNode();
-		node.put("content_hash", file.contentHash().hex());
-		node.put("permissions", PosixFilePermissions.toString(file.permissions()));
+		switch (file)
+		{
+			case RegularFile regular ->
+			{
+				node.put("content_hash", regular.contentHash().hex());
+				node.put("permissions", PosixFilePermissions.toString(regular.permissions()));
+			}
+			case SymbolicLink link -> node.put("link_target", PortablePaths.text(link.target()));
+			case SpecialFile _ -> throw new IllegalArgumentException("A change's before state is a special " +
+				"file");
+		}
 		return node;
 	}
 
@@ -173,11 +195,33 @@ final class DeliveryJournalJson
 		return switch (kind)
 		{
 			case "create" -> new Create(sequence, target, content(node), permissions(node, "permissions"));
-			case "edit" -> new Edit(sequence, target, readFile(field(node, "before")), content(node),
+			case "edit" -> new Edit(sequence, target, readEntry(field(node, "before")), content(node),
 				permissions(node, "permissions"));
 			case "delete" -> new Delete(sequence, target, readFile(field(node, "before")));
-			default -> throw new IllegalArgumentException("kind: must be create, edit or delete, but was " + kind);
+			case "write_link" ->
+			{
+				Optional<FileEntry> before = Optional.empty();
+				if (node.has("before"))
+					before = Optional.of(readEntry(field(node, "before")));
+				yield new WriteLink(sequence, target, before, Path.of(text(node, "link_target")));
+			}
+			default -> throw new IllegalArgumentException("kind: must be create, edit, delete or write_link, but was " +
+				kind);
 		};
+	}
+
+	/**
+	 * Converts a document to the state of a regular file or symbolic link.
+	 *
+	 * @param node the document
+	 * @return the state
+	 */
+	private static FileEntry readEntry(JsonNode node)
+	{
+		requireObject(node, "before");
+		if (node.has("link_target"))
+			return new SymbolicLink(Path.of(text(node, "link_target")));
+		return readFile(node);
 	}
 
 	/**

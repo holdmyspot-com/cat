@@ -3,6 +3,8 @@ package io.github.cowwoc.cat.common.optimizer.inventory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -10,7 +12,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * One file change in a conflict-free {@link DeliveryPlan}.
+ * One file or link change in a conflict-free {@link DeliveryPlan}.
  * <p>
  * Each change records the live state its target must have before it is applied ({@link #preimage()}) and the state
  * it leaves ({@link #postimage()}). Before applying a change, delivery compares the live target with both: a target
@@ -36,16 +38,16 @@ public sealed interface DeliveryChange
 	/**
 	 * Returns the state the target must have before the change.
 	 *
-	 * @return the regular file, or empty if the target must not exist
+	 * @return the regular file or symbolic link, or empty if the target must not exist
 	 */
-	Optional<RegularFile> preimage();
+	Optional<FileEntry> preimage();
 
 	/**
 	 * Returns the state the target has after the change.
 	 *
-	 * @return the regular file, or empty if the target does not exist
+	 * @return the regular file or symbolic link, or empty if the target does not exist
 	 */
-	Optional<RegularFile> postimage();
+	Optional<FileEntry> postimage();
 
 	/**
 	 * Creates a file where none exists.
@@ -77,58 +79,58 @@ public sealed interface DeliveryChange
 		}
 
 		@Override
-		public Optional<RegularFile> preimage()
+		public Optional<FileEntry> preimage()
 		{
 			return Optional.empty();
 		}
 
 		@Override
-		public Optional<RegularFile> postimage()
+		public Optional<FileEntry> postimage()
 		{
 			return Optional.of(new RegularFile(content.hash(), permissions));
 		}
 	}
 
 	/**
-	 * Replaces the content of an existing file.
+	 * Replaces the content of an existing file, or replaces a symbolic link with a file.
 	 *
 	 * @param sequence the zero-based position in the plan
-	 * @param target the resolved path of the file
-	 * @param before the file that the target holds when delivery is planned
+	 * @param target the resolved path of the file, or the path of the link
+	 * @param before the regular file or symbolic link that the target holds when delivery is planned
 	 * @param content the file's new bytes
 	 * @param permissions the file's new mode
 	 */
-	record Edit(int sequence, Path target, RegularFile before, FileContent content,
+	record Edit(int sequence, Path target, FileEntry before, FileContent content,
 		Set<PosixFilePermission> permissions) implements DeliveryChange
 	{
 		/**
 		 * Creates a change.
 		 *
 		 * @param sequence the zero-based position in the plan
-		 * @param target the resolved path of the file
-		 * @param before the file that the target holds when delivery is planned
+		 * @param target the resolved path of the file, or the path of the link
+		 * @param before the regular file or symbolic link that the target holds when delivery is planned
 		 * @param content the file's new bytes
 		 * @param permissions the file's new mode
 		 * @throws NullPointerException if any of the arguments are null
-		 * @throws IllegalArgumentException if {@code sequence} is negative
+		 * @throws IllegalArgumentException if {@code sequence} is negative or {@code before} is a {@link SpecialFile}
 		 */
 		public Edit
 		{
 			requireThat(sequence, "sequence").isNotNegative();
 			requireThat(target, "target").isNotNull();
-			requireThat(before, "before").isNotNull();
+			requireThat(before, "before").isNotNull().isNotInstanceOf(SpecialFile.class);
 			requireThat(content, "content").isNotNull();
 			permissions = Set.copyOf(permissions);
 		}
 
 		@Override
-		public Optional<RegularFile> preimage()
+		public Optional<FileEntry> preimage()
 		{
 			return Optional.of(before);
 		}
 
 		@Override
-		public Optional<RegularFile> postimage()
+		public Optional<FileEntry> postimage()
 		{
 			return Optional.of(new RegularFile(content.hash(), permissions));
 		}
@@ -160,15 +162,63 @@ public sealed interface DeliveryChange
 		}
 
 		@Override
-		public Optional<RegularFile> preimage()
+		public Optional<FileEntry> preimage()
 		{
 			return Optional.of(before);
 		}
 
 		@Override
-		public Optional<RegularFile> postimage()
+		public Optional<FileEntry> postimage()
 		{
 			return Optional.empty();
+		}
+	}
+
+	/**
+	 * Creates a symbolic link, replacing the regular file or symbolic link that the target holds, if any.
+	 *
+	 * @param sequence   the zero-based position in the plan
+	 * @param target     the path of the link, relative to the project directory
+	 * @param before     the regular file or symbolic link that the target holds when delivery is planned, or empty if
+	 *                   the target must not exist
+	 * @param linkTarget the link's target, relative to the link's directory
+	 */
+	record WriteLink(int sequence, Path target, Optional<FileEntry> before, Path linkTarget)
+		implements DeliveryChange
+	{
+		/**
+		 * Creates a change.
+		 *
+		 * @param sequence   the zero-based position in the plan
+		 * @param target     the path of the link, relative to the project directory
+		 * @param before     the regular file or symbolic link that the target holds when delivery is planned, or empty
+		 *                   if the target must not exist
+		 * @param linkTarget the link's target, relative to the link's directory
+		 * @throws NullPointerException     if any of the arguments are null
+		 * @throws IllegalArgumentException if {@code sequence} is negative, {@code before} holds a {@link SpecialFile}
+		 *                                  or {@code linkTarget} is absolute
+		 */
+		public WriteLink
+		{
+			requireThat(sequence, "sequence").isNotNegative();
+			requireThat(target, "target").isNotNull();
+			requireThat(before, "before").isNotNull();
+			if (before.isPresent())
+				requireThat(before.get(), "before").isNotInstanceOf(SpecialFile.class);
+			requireThat(linkTarget, "linkTarget").isNotNull();
+			requireThat(linkTarget.isAbsolute(), "linkTarget.isAbsolute()").isFalse();
+		}
+
+		@Override
+		public Optional<FileEntry> preimage()
+		{
+			return before;
+		}
+
+		@Override
+		public Optional<FileEntry> postimage()
+		{
+			return Optional.of(new SymbolicLink(linkTarget));
 		}
 	}
 }

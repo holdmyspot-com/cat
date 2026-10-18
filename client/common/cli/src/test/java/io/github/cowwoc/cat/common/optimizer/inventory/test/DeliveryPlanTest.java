@@ -11,6 +11,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Create;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Delete;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Edit;
+import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.WriteLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict.Kind;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict;
@@ -230,6 +231,65 @@ public final class DeliveryPlanTest
 				Path.of(".cat/tests/main/kept/values.json")),
 			new DeliveryConflict(Kind.STRUCTURAL_COLLISION, Path.of(".cat/tests/main/created"),
 				Path.of(".cat/tests/main/created/notes.md"))));
+		requireThat(plan.changes(), "changes").isEmpty();
+	}
+
+	/**
+	 * Verifies that a test link that the fork records with the same target is left alone, that a test file replaces
+	 * a link that the fork records, and that a test link replaces a recorded file or is created where nothing exists.
+	 */
+	@Test
+	public void testLinksReplacePaths()
+	{
+		FileInventory fork = inventory(Map.of(
+			"t/w/a.md", file("a"),
+			"t/w/same.md", link("a.md"),
+			"t/w/old.md", link("../../s/old.md"),
+			"t/w/guide.md", file("g")));
+		TestFiles tests = new TestFiles(Map.of(Path.of("t/w/old.md"), content("O")),
+			Map.of(Path.of("t/w/same.md"), Path.of("a.md"),
+				Path.of("t/w/guide.md"), Path.of("../../s/guide.md"),
+				Path.of("t/w/new.md"), Path.of("a.md")),
+			Set.of());
+
+		DeliveryPlan plan = DeliveryPlan.of(Overlay.of(fork), fork, tests, Map.of());
+
+		requireThat(plan.conflicts(), "conflicts").isEmpty();
+		requireThat(plan.changes(), "changes").isEqualTo(List.of(
+			new Edit(0, Path.of("t/w/old.md"), link("../../s/old.md"), content("O"), READ_WRITE),
+			new WriteLink(1, Path.of("t/w/guide.md"), Optional.of(file("g")), Path.of("../../s/guide.md")),
+			new WriteLink(2, Path.of("t/w/new.md"), Optional.empty(), Path.of("a.md"))));
+	}
+
+	/**
+	 * Verifies that a test link, or a test file where the fork records a link, conflicts when the base changed what
+	 * the fork recorded at its path, when its directory resolves through a link, or when the base created a file at its
+	 * path.
+	 */
+	@Test
+	public void testLinksConflict()
+	{
+		FileInventory fork = inventory(Map.of(
+			"t/w/moved.md", link("x.md"),
+			"t/w/dropped.md", link("x.md"),
+			"t/d", link("w")));
+		FileInventory current = inventory(Map.of(
+			"t/w/moved.md", link("y.md"),
+			"t/w/taken.md", file("t"),
+			"t/d", link("w")));
+		TestFiles tests = new TestFiles(Map.of(Path.of("t/w/dropped.md"), content("D")),
+			Map.of(Path.of("t/w/moved.md"), Path.of("z.md"),
+				Path.of("t/d/n.md"), Path.of("../w/x.md"),
+				Path.of("t/w/taken.md"), Path.of("x.md")),
+			Set.of());
+
+		DeliveryPlan plan = DeliveryPlan.of(Overlay.of(fork), current, tests, Map.of());
+
+		requireThat(plan.conflicts(), "conflicts").isEqualTo(List.of(
+			new DeliveryConflict(Kind.BOTH_CHANGED, Path.of("t/w/dropped.md"), Path.of("t/w/dropped.md")),
+			new DeliveryConflict(Kind.TARGET_IDENTITY_MISMATCH, Path.of("t/d/n.md"), Path.of("t/d")),
+			new DeliveryConflict(Kind.BOTH_CHANGED, Path.of("t/w/moved.md"), Path.of("t/w/moved.md")),
+			new DeliveryConflict(Kind.STRUCTURAL_COLLISION, Path.of("t/w/taken.md"), Path.of("t/w/taken.md"))));
 		requireThat(plan.changes(), "changes").isEmpty();
 	}
 

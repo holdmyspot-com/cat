@@ -66,6 +66,11 @@ final class WorkspaceReader
 	 * The files and directories inside a test root that links reach, relative to the project.
 	 */
 	private final Set<Path> linkedTargets = new LinkedHashSet<>();
+	/**
+	 * The target of each link of the prompt test's own {@value PromptTestFiles#WORKSPACE} whose target lies outside
+	 * it, by the link's path below {@value PromptTestFiles#WORKSPACE}, with {@code /} separators.
+	 */
+	private final Map<String, String> copiedLinks = new TreeMap<>();
 
 	/**
 	 * Creates a reader.
@@ -131,6 +136,18 @@ final class WorkspaceReader
 	}
 
 	/**
+	 * Returns the target of each link of the prompt test's own {@value PromptTestFiles#WORKSPACE} whose target lies
+	 * outside it, so that the link's fixtures are copies of what it reaches.
+	 *
+	 * @return each target, relative to the link's directory, by the link's path below
+	 *   {@value PromptTestFiles#WORKSPACE}; paths and targets have {@code /} separators
+	 */
+	Map<String, String> copiedLinks()
+	{
+		return Map.copyOf(copiedLinks);
+	}
+
+	/**
 	 * Returns the files and directories inside a test root that links reach.
 	 *
 	 * @return the targets, relative to the project, in the order that they were reached
@@ -175,8 +192,13 @@ final class WorkspaceReader
 				walk(entry, entryRelative, path, expanding, origin);
 			else if (attributes.isSymbolicLink())
 			{
-				if (origin != null || !addInternalLink(entry, entryRelative, path))
+				if (origin != null)
 					resolve(entry, entryRelative, path, expanding);
+				else if (!addInternalLink(entry, entryRelative, path))
+				{
+					resolve(entry, entryRelative, path, expanding);
+					copiedLinks.put(path, PortablePaths.text(Files.readSymbolicLink(entry)));
+				}
 			}
 			else if (!attributes.isRegularFile())
 				throw problem(entry, "a workspace file must be a regular file, a directory or a symbolic link");

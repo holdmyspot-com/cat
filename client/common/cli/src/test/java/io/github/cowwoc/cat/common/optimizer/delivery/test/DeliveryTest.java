@@ -961,6 +961,68 @@ public final class DeliveryTest
 	}
 
 	/**
+	 * A prompt test that the contract author wrote as files in its draft directory keeps the links of its
+	 * {@value PromptTestFiles#WORKSPACE} directory: a link to another entry of the directory and a link to a shared
+	 * file are delivered as links with their targets, and a file that the draft holds where the recorded test has a
+	 * link replaces the link without changing the link's target.
+	 *
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test
+	public void deliversLinksOfDraftTests() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path sharedGuide = TESTS.resolve("shared/docs/guide.md");
+			Path editedWorkspace = EDITED_SCENARIO.resolveSibling(PromptTestFiles.WORKSPACE);
+			Path createdWorkspace = TESTS.resolve("release_dates").resolve(PromptTestFiles.WORKSPACE);
+			Fixture fixture = Fixture.create(cleanup).
+				commit(sharedGuide, "Guide\n".getBytes(UTF_8)).
+				link(editedWorkspace.resolve("notes.md"), "../../shared/docs/guide.md").
+				commit(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
+			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.");
+			String createdScenario = RECORDED_SCENARIO.replace("# Release notes", "# Release dates");
+			FixtureFile notes = new FixtureFile("notes.md", "Edited guide\n",
+				PortablePaths.text(editedWorkspace.resolve("notes.md")));
+			FixtureFile agents = new FixtureFile("AGENTS.md", "Reply briefly.\n",
+				PortablePaths.text(createdWorkspace.resolve("AGENTS.md")));
+			FixtureFile guide = new FixtureFile("guide.md", "Guide\n", PortablePaths.text(sharedGuide));
+			FixtureFile latest = new FixtureFile("latest.md", "AGENTS.md",
+				PortablePaths.text(createdWorkspace.resolve("latest.md")), true);
+			Contract fixtureContract = ContractFixtures.contract();
+			List<PromptTest> promptTests = new ArrayList<>(fixtureContract.tests());
+			promptTests.set(0, withDraft(fixtureContract.tests().getFirst(), List.of(PortablePaths.text(EDITED_SCENARIO)),
+				List.of(notes), new PromptTest.Draft(EDITED_SCENARIO.getParent(), editedScenario, Map.of())));
+			promptTests.set(1, withDraft(fixtureContract.tests().get(1), List.of(), List.of(agents, guide, latest),
+				new PromptTest.Draft(TESTS.resolve("release_dates"), createdScenario,
+					Map.of("guide.md", "../../shared/docs/guide.md"))));
+			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
+				fixtureContract.judge(), fixtureContract.fixtures(), fixtureContract.limitations(),
+				fixtureContract.minimumPassRate(), fixtureContract.salt());
+			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
+				subList(0, 2);
+
+			Overlay candidate = fixture.candidate();
+			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
+				recordedScenario()).
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD, tests);
+
+			requireDelivered(result);
+			Path ownNotes = fixture.resolve(editedWorkspace.resolve("notes.md"));
+			requireThat(Files.isSymbolicLink(ownNotes), "notesIsLink").isFalse();
+			requireThat(read(ownNotes), "notes").isEqualTo(notes.content());
+			requireThat(read(fixture.resolve(sharedGuide)), "sharedGuide").isEqualTo("Guide\n");
+			requireThat(Files.readSymbolicLink(fixture.resolve(createdWorkspace.resolve("latest.md"))), "latest").
+				isEqualTo(Path.of("AGENTS.md"));
+			requireThat(Files.readSymbolicLink(fixture.resolve(createdWorkspace.resolve("guide.md"))), "guide").
+				isEqualTo(Path.of("../../shared/docs/guide.md"));
+			requireThat(read(fixture.resolve(createdWorkspace.resolve("guide.md"))), "throughGuide").
+				isEqualTo("Guide\n");
+		}
+	}
+
+	/**
 	 * Returns a prompt test that the contract author wrote as files in its draft directory.
 	 *
 	 * @param test                a prompt test
@@ -1361,6 +1423,26 @@ public final class DeliveryTest
 			Path file = base.resolve(path);
 			Files.createDirectories(file.getParent());
 			Files.write(file, bytes);
+			Git git = new Git(base);
+			git.run("add", "--all");
+			git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
+				"commit", "--quiet", "--no-verify", "--message", "Earlier certification");
+			return new Fixture(root, base, external, InventoryScanner.scan(base, Set.of(external)));
+		}
+
+		/**
+		 * Commits a symbolic link to the base worktree and records the fork again.
+		 *
+		 * @param path   the link's path, relative to the base worktree
+		 * @param target the link's target, relative to the link's directory
+		 * @return the fixture whose fork holds the link
+		 * @throws IOException if the link cannot be created or committed
+		 */
+		Fixture link(Path path, String target) throws IOException
+		{
+			Path file = base.resolve(path);
+			Files.createDirectories(file.getParent());
+			Files.createSymbolicLink(file, Path.of(target));
 			Git git = new Git(base);
 			git.run("add", "--all");
 			git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",

@@ -871,7 +871,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				List<String> kinds = new ArrayList<>();
 				for (JsonNode change : document.get("changes"))
 					kinds.add(change.get("kind").asString());
-				requireThat(kinds, "kinds").isEqualTo(List.of("delete", "edit", "create"));
+				requireThat(kinds, "kinds").isEqualTo(List.of("delete", "edit", "create", "edit", "write_link", "write_link"));
 			}
 		}
 	}

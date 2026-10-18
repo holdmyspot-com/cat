@@ -37,9 +37,13 @@ import java.util.Set;
  * @param draft       the {@value PromptTestFiles#SCENARIO} that the contract author wrote in the prompt test's draft
  *                    directory, which delivery writes as it is, or empty for a prompt test that the contract author
  *                    wrote into the proposal itself
+ * @param copiedLinks the target of each link of the draft directory's {@value PromptTestFiles#WORKSPACE} whose target
+ *                    lies outside it, by the link's path relative to {@value PromptTestFiles#WORKSPACE}; each target
+ *                    is relative to the link's directory, and paths and targets have {@code /} separators. Empty
+ *                    without a draft directory.
  */
 public record DeliveredTest(String id, Location location, Scenario scenario, String designGoals,
-	List<TestCase> testCases, List<FixtureFile> fixtures, Optional<String> draft)
+	List<TestCase> testCases, List<FixtureFile> fixtures, Optional<String> draft, Map<String, String> copiedLinks)
 {
 	/**
 	 * Creates a delivered test that the contract author wrote into the proposal itself.
@@ -57,7 +61,7 @@ public record DeliveredTest(String id, Location location, Scenario scenario, Str
 	public DeliveredTest(String id, Location location, Scenario scenario, String designGoals,
 		List<TestCase> testCases, List<FixtureFile> fixtures)
 	{
-		this(id, location, scenario, designGoals, testCases, fixtures, Optional.empty());
+		this(id, location, scenario, designGoals, testCases, fixtures, Optional.empty(), Map.of());
 	}
 
 	/**
@@ -72,9 +76,12 @@ public record DeliveredTest(String id, Location location, Scenario scenario, Str
 	 *                    draft directory, each names its file there
 	 * @param draft       the {@value PromptTestFiles#SCENARIO} that the contract author wrote in the prompt test's draft
 	 *                    directory, or empty for a prompt test that the contract author wrote into the proposal itself
+	 * @param copiedLinks the target of each link of the draft directory's {@value PromptTestFiles#WORKSPACE} whose
+	 *                    target lies outside it, by the link's path relative to {@value PromptTestFiles#WORKSPACE};
+	 *                    empty without a draft directory
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code id} is blank, {@code designGoals} is blank or {@code testCases} is
-	 *                                  empty
+	 * @throws IllegalArgumentException if {@code id} is blank, {@code designGoals} is blank, {@code testCases} is
+	 *                                  empty, or {@code copiedLinks} is not empty without a draft
 	 */
 	public DeliveredTest
 	{
@@ -87,6 +94,9 @@ public record DeliveredTest(String id, Location location, Scenario scenario, Str
 		requireThat(fixtures, "fixtures").isNotNull();
 		fixtures = List.copyOf(fixtures);
 		requireThat(draft, "draft").isNotNull();
+		copiedLinks = Map.copyOf(copiedLinks);
+		if (draft.isEmpty())
+			requireThat(copiedLinks, "copiedLinks").isEmpty();
 	}
 
 	/**
@@ -140,15 +150,17 @@ public record DeliveredTest(String id, Location location, Scenario scenario, Str
 				testCases.add(addedTestCase.testCase());
 			Location location = locations.get(test.id());
 			Optional<String> draft = Optional.empty();
+			Map<String, String> copiedLinks = Map.of();
 			if (test.draft().isPresent())
 			{
 				Path directory = test.draft().get().directory();
 				String recorded = PortablePaths.text(directory.resolve(PromptTestFiles.SCENARIO));
 				location = new Location(directory, !test.regressionScenarios().contains(recorded));
 				draft = Optional.of(test.draft().get().scenario());
+				copiedLinks = test.draft().get().copiedLinks();
 			}
 			tests.add(new DeliveredTest(test.id(), location, test.scenario(), test.expectedBehaviour(),
-				List.copyOf(testCases), test.fixtures(), draft));
+				List.copyOf(testCases), test.fixtures(), draft, copiedLinks));
 		}
 		return tests;
 	}

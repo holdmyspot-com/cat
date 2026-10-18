@@ -342,6 +342,12 @@ public final class FixturesTest
 					new PromptTestFiles.Fixture("a", false, Set.of(), Optional.of("b")),
 					new PromptTestFiles.Fixture("docs/up.md", false, Set.of(), Optional.of("../own.md")),
 					new PromptTestFiles.Fixture("latest", false, Set.of(), Optional.of("logs/{{notes}}"))));
+			requireThat(files.copiedLinks(), "copiedLinks").isEqualTo(Map.of(
+				"AGENTS.md", "../../shared/AGENTS.md",
+				"b", "../../shared/AGENTS.md",
+				"guide", "../../../../../docs/guide",
+				"logs", "../../shared/logs",
+				"src/Main.java", "../../../../../../src/Main.java"));
 
 			Path trial = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));

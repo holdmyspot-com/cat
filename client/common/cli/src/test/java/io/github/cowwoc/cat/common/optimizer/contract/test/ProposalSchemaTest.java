@@ -1056,6 +1056,31 @@ public final class ProposalSchemaTest
 	}
 
 	/**
+	 * Verifies that the links of a draft prompt test's workspace directory whose targets lie outside it survive the
+	 * stored contract with their targets.
+	 *
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	@Test
+	public void draftKeepsCopiedLinks() throws InvalidProposalException
+	{
+		ObjectNode draft = json.createObjectNode();
+		draft.put("directory", ".cat/tests/formatting/notes");
+		draft.put("scenario", "# Formatting\n\nThe draft's scenario.\n");
+		ArrayNode links = draft.putArray("copied_links");
+		links.addObject().put("path", "AGENTS.md").put("target", "../../shared/AGENTS.md");
+		links.addObject().put("path", "docs/guide").put("target", "../../../../docs/guide");
+		Contract contract = schema().parse(changed(new String[]{"tests", "0", "draft"}, draft));
+
+		requireThat(contract.tests().getFirst().draft().orElseThrow().copiedLinks(), "copiedLinks").isEqualTo(Map.of(
+			"AGENTS.md", "../../shared/AGENTS.md",
+			"docs/guide", "../../../../docs/guide"));
+		requireThat(json.readTree(schema().toJson(contract)).get("tests").get(0).get("draft"), "draft").
+			isEqualTo(draft);
+		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
+	}
+
+	/**
 	 * Returns a valid proposal file: the valid proposal without the fields that CAT computes, with each prompt test
 	 * narrowed to its directory and the fields that belong to the contract.
 	 *

@@ -99,7 +99,20 @@
 						"required": ["directory", "scenario"],
 						"properties": {
 							"directory": {"description": "The directory relative to the draft directory, which is also its path relative to the project, using / as the separator.", "type": "string", "pattern": "\\S"},
-							"scenario": {"type": "string", "pattern": "\\S"}
+							"scenario": {"type": "string", "pattern": "\\S"},
+							"copied_links": {
+								"description": "Each link of the test's workspace directory whose target lies outside that directory, which trials receive as a copy of the target and delivery writes as the link. CAT copies them from the draft.",
+								"type": "array",
+								"items": {
+									"type": "object",
+									"additionalProperties": false,
+									"required": ["path", "target"],
+									"properties": {
+										"path": {"description": "The link's path relative to the workspace directory, using / as the separator.", "type": "string", "pattern": "\\S"},
+										"target": {"description": "The link's target relative to the link's directory, using / as the separator.", "type": "string", "pattern": "\\S"}
+									}
+								}
+							}
 						}
 					},
 					"variables": {

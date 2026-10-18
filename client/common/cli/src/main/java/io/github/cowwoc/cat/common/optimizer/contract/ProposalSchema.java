@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +60,11 @@ public final class ProposalSchema
 	 * which CAT copies from the draft rather than the contract author writes.
 	 */
 	private static final String DRAFT = "draft";
+	/**
+	 * The property of a test's {@value #DRAFT} that holds the links of its workspace directory whose targets lie
+	 * outside that directory, each with its path and target, which delivery writes as links.
+	 */
+	public static final String COPIED_LINKS = "copied_links";
 	/**
 	 * The property of a test that holds the test cases that an earlier campaign committed, which CAT reads rather than
 	 * the contract author writes.
@@ -542,6 +548,17 @@ public final class ProposalSchema
 			ObjectNode draftNode = node.putObject(DRAFT);
 			draftNode.put("directory", PortablePaths.text(draft.directory()));
 			draftNode.put("scenario", draft.scenario());
+			// A draft without such links keeps the identity that it had before the property existed
+			if (!draft.copiedLinks().isEmpty())
+			{
+				ArrayNode links = draftNode.putArray(COPIED_LINKS);
+				for (Map.Entry<String, String> link : draft.copiedLinks().entrySet())
+				{
+					ObjectNode linkNode = links.addObject();
+					linkNode.put("path", link.getKey());
+					linkNode.put("target", link.getValue());
+				}
+			}
 		});
 		ArrayNode fixtures = node.putArray("fixtures");
 		ArrayNode recorded = null;
@@ -837,7 +854,13 @@ public final class ProposalSchema
 				return null;
 			List<TestCase> committed = committedTestCases;
 			Optional<PromptTest.Draft> draft = Optional.ofNullable(node.get(DRAFT)).map(draftNode ->
-				new PromptTest.Draft(Path.of(text(draftNode, "directory")), text(draftNode, "scenario")));
+			{
+				Map<String, String> copiedLinks = new HashMap<>();
+				for (JsonNode link : draftNode.path(COPIED_LINKS))
+					copiedLinks.put(text(link, "path"), text(link, "target"));
+				return new PromptTest.Draft(Path.of(text(draftNode, "directory")), text(draftNode, "scenario"),
+					copiedLinks);
+			});
 			PromptTest test = attempt(location, () -> new PromptTest(text(node, "id"),
 				new RiskRank(node.get("risk_rank").asInt()), strings(node.get("requirement_ids")),
 				strings(node.get("absent_triggers")), text(node, "applicability"), strings(node.get("turns")),

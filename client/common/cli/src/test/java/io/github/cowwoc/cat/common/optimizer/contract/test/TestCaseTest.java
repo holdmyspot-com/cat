@@ -60,7 +60,7 @@ public final class TestCaseTest
 		fixtures.addAll(List.of(extraFixtures));
 		Path directory = Path.of("/project/tests/case").toAbsolutePath();
 		return new PromptTestFiles(directory.getParent(), directory, scenario, fixtures, sources(directory, fixtures),
-			List.of());
+			Map.of(), List.of());
 	}
 
 	/**
@@ -192,7 +192,7 @@ public final class TestCaseTest
 
 		List<PromptTestFiles.Fixture> fixtures = List.of(new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of()));
 		PromptTestFiles unused = new PromptTestFiles(files.root(), files.directory(), files.scenario(), fixtures,
-			sources(files.directory(), fixtures), List.of());
+			sources(files.directory(), fixtures), Map.of(), List.of());
 		requireThat(unused.problems(testCase(new TestValue.Text("a.md"), LOGS)).toString(), "unused").
 			contains("before");
 	}

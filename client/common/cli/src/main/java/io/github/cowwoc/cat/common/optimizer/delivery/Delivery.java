@@ -22,11 +22,13 @@ import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Create;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Delete;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Edit;
+import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.WriteLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryPlan;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileInventory;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryDiff;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
@@ -245,9 +247,9 @@ public final class Delivery
 			DeliveryChange change = journal.changes().get(i);
 			Path file = base.resolve(change.target());
 			Optional<FileEntry> live = liveState(file);
-			if (!live.equals(change.postimage().map(FileEntry.class::cast)))
+			if (!live.equals(change.postimage()))
 			{
-				if (!live.equals(change.preimage().map(FileEntry.class::cast)))
+				if (!live.equals(change.preimage()))
 					return new ConcurrentEdit(change, i);
 				apply(change, file);
 				afterWrite.accept(change);
@@ -282,12 +284,13 @@ public final class Delivery
 	}
 
 	/**
-	 * Returns the files that write the prompt tests: each test's values file, its regression scenario and its workspace
-	 * files. A test that the contract author wrote as files in its draft directory is written as the draft holds it:
-	 * its {@value PromptTestFiles#SCENARIO} unchanged and each fixture at the file that it was read from, which may be
-	 * the target of a link.
+	 * Returns the files and links that write the prompt tests: each test's values file, its regression scenario and its
+	 * workspace files. A test that the contract author wrote as files in its draft directory is written as the draft
+	 * holds it: its {@value PromptTestFiles#SCENARIO} unchanged, each link fixture as a link at the path that it was
+	 * read from, each link to a file outside {@value PromptTestFiles#WORKSPACE} as that link, and each other fixture at
+	 * the file that it was read from, which may be the target of such a link.
 	 * <p>
-	 * A test that the contract author wrote into the proposal itself has its fixture files under
+	 * A test that the contract author wrote into the proposal itself has its fixture files and links under
 	 * {@value PromptTestFiles#WORKSPACE}. A test that delivery creates gets a new scenario titled with its identifier.
 	 * A test that edits a recorded scenario keeps that scenario's title and design goals; a recorded scenario that does
 	 * not follow the scenario format is replaced as a created one would be. A fixture whose recorded file holds the
@@ -301,6 +304,7 @@ public final class Delivery
 	private TestFiles testFiles(Overlay selected, List<DeliveredTest> tests) throws IOException
 	{
 		Map<Path, FileContent> files = new HashMap<>();
+		Map<Path, Path> links = new HashMap<>();
 		Set<Path> createdDirectories = new LinkedHashSet<>();
 		for (DeliveredTest test : tests)
 		{
@@ -318,16 +322,18 @@ public final class Delivery
 				// The draft holds every file of the test where delivery writes it
 				for (FixtureFile fixture : test.fixtures())
 				{
-					// Delivery writes files only
-					if (fixture.link())
-						continue;
 					Path file;
 					if (fixture.source().isEmpty())
 						file = own.resolve(fixture.path());
 					else
 						file = Path.of(fixture.source());
-					files.put(file, new FileContent(fixture.content().getBytes(UTF_8)));
+					if (fixture.link())
+						links.put(file, Path.of(fixture.content()));
+					else
+						files.put(file, new FileContent(fixture.content().getBytes(UTF_8)));
 				}
+				for (Entry<String, String> link : test.copiedLinks().entrySet())
+					links.put(own.resolve(link.getKey()), Path.of(link.getValue()));
 				files.put(scenarioPath, new FileContent(test.draft().get().getBytes(UTF_8)));
 				continue;
 			}
@@ -340,10 +346,13 @@ public final class Delivery
 			}
 			for (FixtureFile fixture : test.fixtures())
 			{
-				if (fixture.link())
-					continue;
-				byte[] content = fixture.content().getBytes(UTF_8);
 				Path file = own.resolve(fixture.path());
+				if (fixture.link())
+				{
+					links.put(file, Path.of(fixture.content()));
+					continue;
+				}
+				byte[] content = fixture.content().getBytes(UTF_8);
 				if (recorded != null)
 				{
 					Optional<FileContent> before = workspace.readFile(selected, file);
@@ -355,7 +364,7 @@ public final class Delivery
 			String scenario = test.scenarioFile(recorded);
 			files.put(scenarioPath, new FileContent(scenario.getBytes(UTF_8)));
 		}
-		return new TestFiles(files, createdDirectories);
+		return new TestFiles(files, links, createdDirectories);
 	}
 
 	/**
@@ -449,7 +458,8 @@ public final class Delivery
 	 * Returns the live state of a target, read without following symbolic links.
 	 *
 	 * @param file the target
-	 * @return the regular file, a {@link SpecialFile} for any other kind of file, or empty if nothing exists there
+	 * @return the regular file or symbolic link, a {@link SpecialFile} for any other kind of file, or empty if nothing
+	 *   exists there
 	 * @throws IOException if the target cannot be read
 	 */
 	private static Optional<FileEntry> liveState(Path file) throws IOException
@@ -463,6 +473,8 @@ public final class Delivery
 		{
 			return Optional.empty();
 		}
+		if (attributes.isSymbolicLink())
+			return Optional.of(new SymbolicLink(Files.readSymbolicLink(file)));
 		if (!attributes.isRegularFile())
 			return Optional.of(new SpecialFile());
 		return Optional.of(new RegularFile(Sha256.of(Files.readAllBytes(file)), PortableFiles.mode(file)));
@@ -485,6 +497,11 @@ public final class Delivery
 				replace(file, create.content(), create.permissions());
 			}
 			case Edit edit -> replace(file, edit.content(), edit.permissions());
+			case WriteLink link ->
+			{
+				Files.createDirectories(file.getParent());
+				replaceWithLink(file, link.linkTarget());
+			}
 			case Delete _ ->
 			{
 				Files.delete(file);
@@ -511,6 +528,24 @@ public final class Delivery
 			StandardOpenOption.WRITE);
 		force(temporary);
 		PortableFiles.setMode(temporary, permissions);
+		PortableFiles.replace(temporary, file);
+		PortableFiles.forceDirectory(file.getParent());
+	}
+
+	/**
+	 * Replaces a path with a symbolic link atomically: the link is created as a temporary sibling and renamed over the
+	 * path. A crash leaves either the old path or the new link; the next delivery run replaces a leftover temporary
+	 * link.
+	 *
+	 * @param file       the path
+	 * @param linkTarget the link's target, relative to the link's directory
+	 * @throws IOException if the link cannot be created
+	 */
+	private static void replaceWithLink(Path file, Path linkTarget) throws IOException
+	{
+		Path temporary = file.resolveSibling("." + file.getFileName() + TEMPORARY_SUFFIX);
+		Files.deleteIfExists(temporary);
+		Files.createSymbolicLink(temporary, linkTarget);
 		PortableFiles.replace(temporary, file);
 		PortableFiles.forceDirectory(file.getParent());
 	}
@@ -547,7 +582,7 @@ public final class Delivery
 		List<Path> mismatched = new ArrayList<>();
 		for (DeliveryChange change : journal.changes())
 		{
-			if (!liveState(base.resolve(change.target())).equals(change.postimage().map(FileEntry.class::cast)))
+			if (!liveState(base.resolve(change.target())).equals(change.postimage()))
 				mismatched.add(change.target());
 		}
 		if (!mismatched.isEmpty())

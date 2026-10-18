@@ -5,8 +5,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Create;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Delete;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Edit;
+import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.WriteLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict.Kind;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
+import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.OverlayEntry.Write;
 
@@ -41,8 +43,10 @@ import java.util.TreeSet;
  * Changes made outside the candidate to other paths, including read-only external participants, survive delivery
  * and are reported.
  * <p>
- * A plan may also write test files, which are planned against the fork baseline like the candidate's own files and
- * applied after them. A test file whose content the fork already records is left alone.
+ * A plan may also write test files and links, which are planned against the fork baseline like the candidate's own
+ * files and applied after them. A test file whose content the fork already records, or a test link that the fork
+ * already records with the same target, is left alone. A test link, or a test file where the fork records a link,
+ * replaces the path itself rather than what it points to.
  * <p>
  * A plan may also write other files that are not part of the candidate, such as a certification record. Such a file
  * replaces whatever regular file the current state holds at its path, and conflicts only if the candidate also writes
@@ -108,8 +112,11 @@ public final class DeliveryPlan
 	/**
 	 * Plans the delivery of a candidate together with test files and other files that are not part of it. The test
 	 * files are planned against the fork baseline, as the candidate's files are: a file that the fork records with the
-	 * same content is left alone, and any other conflicts as a candidate's file would. A directory that the plan
-	 * creates conflicts with anything already at or inside it.
+	 * same content is left alone, and any other conflicts as a candidate's file would. A test link that the fork
+	 * records with the same target is left alone. Any other test link, and a test file where the fork records a link,
+	 * replaces the path: it conflicts if its directory does not resolve to itself, the current state changed what the
+	 * fork recorded there, or the current structure collides with it. A directory that the plan creates conflicts with
+	 * anything already at or inside it.
 	 *
 	 * @param candidate the candidate, whose fork is the baseline
 	 * @param current a fresh scan of the base worktree and of the same external paths as the fork
@@ -144,6 +151,12 @@ public final class DeliveryPlan
 				testFiles.put(entry.getKey(), entry.getValue());
 			}
 		}
+		Map<Path, Path> testLinks = new TreeMap<>();
+		for (Entry<Path, Path> entry : tests.links().entrySet())
+		{
+			if (!fork.entry(entry.getKey()).equals(Optional.of(new SymbolicLink(entry.getValue()))))
+				testLinks.put(entry.getKey(), entry.getValue());
+		}
 
 		List<DeliveryConflict> conflicts = new ArrayList<>();
 		for (Path target : overlay.keySet())
@@ -152,8 +165,17 @@ public final class DeliveryPlan
 		{
 			if (overlay.containsKey(target))
 				conflicts.add(new DeliveryConflict(Kind.BOTH_CHANGED, target, target));
+			else if (fork.entry(target).orElse(null) instanceof SymbolicLink)
+				conflicts.addAll(replacementConflictsOf(target, fork, current));
 			else
 				conflicts.addAll(conflictsOf(target, fork, current));
+		}
+		for (Path target : testLinks.keySet())
+		{
+			if (overlay.containsKey(target))
+				conflicts.add(new DeliveryConflict(Kind.BOTH_CHANGED, target, target));
+			else
+				conflicts.addAll(replacementConflictsOf(target, fork, current));
 		}
 		for (Path directory : new TreeSet<>(tests.createdDirectories()))
 		{
@@ -162,7 +184,7 @@ public final class DeliveryPlan
 		}
 		for (Path target : additions.keySet())
 		{
-			if (testFiles.containsKey(target))
+			if (testFiles.containsKey(target) || testLinks.containsKey(target))
 				conflicts.add(new DeliveryConflict(Kind.BOTH_CHANGED, target, target));
 			else
 				conflicts.addAll(additionConflictsOf(target, overlay, current));
@@ -174,6 +196,8 @@ public final class DeliveryPlan
 			changes = changesOf(overlay, fork);
 			for (Entry<Path, FileContent> entry : testFiles.entrySet())
 				changes.add(testFileOf(changes.size(), entry.getKey(), entry.getValue(), fork));
+			for (Entry<Path, Path> entry : testLinks.entrySet())
+				changes.add(new WriteLink(changes.size(), entry.getKey(), fork.entry(entry.getKey()), entry.getValue()));
 			for (Entry<Path, FileContent> entry : additions.entrySet())
 				changes.add(additionOf(changes.size(), entry.getKey(), entry.getValue(), current));
 		}
@@ -183,8 +207,8 @@ public final class DeliveryPlan
 		List<Path> baseOnlyChanges = new ArrayList<>();
 		for (Path path : paths)
 		{
-			if (!overlay.containsKey(path) && !testFiles.containsKey(path) && !additions.containsKey(path) &&
-				!Objects.equals(fork.entry(path), current.entry(path)))
+			if (!overlay.containsKey(path) && !testFiles.containsKey(path) && !testLinks.containsKey(path) &&
+				!additions.containsKey(path) && !Objects.equals(fork.entry(path), current.entry(path)))
 			{
 				baseOnlyChanges.add(path);
 			}
@@ -230,7 +254,8 @@ public final class DeliveryPlan
 
 	/**
 	 * Returns the change that writes a test file: an edit of the regular file that the fork records at its path,
-	 * keeping that file's mode, or else the creation of a new file.
+	 * keeping that file's mode, the replacement of the symbolic link that the fork records there, or else the creation
+	 * of a new file.
 	 *
 	 * @param sequence the change's position in the plan
 	 * @param target the file's path
@@ -241,9 +266,54 @@ public final class DeliveryPlan
 	private static DeliveryChange testFileOf(int sequence, Path target, FileContent content, FileInventory fork)
 	{
 		// A conflict-free plan holds nothing but the recorded regular file, or nothing, at the target
-		if (fork.entry(target).orElse(null) instanceof RegularFile before)
-			return new Edit(sequence, target, before, content, before.permissions());
-		return new Create(sequence, target, content, NEW_FILE_PERMISSIONS);
+		return switch (fork.entry(target).orElse(null))
+		{
+			case RegularFile before -> new Edit(sequence, target, before, content, before.permissions());
+			case SymbolicLink before -> new Edit(sequence, target, before, content, NEW_FILE_PERMISSIONS);
+			case null, default -> new Create(sequence, target, content, NEW_FILE_PERMISSIONS);
+		};
+	}
+
+	/**
+	 * Returns the conflicts that block a test link, or a test file where the fork records a link. The plan replaces
+	 * the path itself rather than what it points to, so only the path's directory must resolve to itself.
+	 *
+	 * @param target the path
+	 * @param fork the files recorded at the fork
+	 * @param current the current files
+	 * @return the conflicts, empty if the path can be replaced
+	 */
+	private static List<DeliveryConflict> replacementConflictsOf(Path target, FileInventory fork,
+		FileInventory current)
+	{
+		Path directory = target.getParent();
+		if (directory != null)
+		{
+			for (FileInventory inventory : List.of(fork, current))
+			{
+				if (!inventory.resolve(directory).equals(Optional.of(directory)))
+				{
+					return List.of(new DeliveryConflict(Kind.TARGET_IDENTITY_MISMATCH, target,
+						inventory.firstLinkPrefix(directory).orElse(directory)));
+				}
+			}
+		}
+
+		Optional<FileEntry> recorded = fork.entry(target);
+		Optional<FileEntry> live = current.entry(target);
+		if (recorded.isEmpty())
+		{
+			if (live.isPresent())
+				return List.of(new DeliveryConflict(Kind.STRUCTURAL_COLLISION, target, target));
+			return structuralCollision(target, current).
+				map(path -> List.of(new DeliveryConflict(Kind.STRUCTURAL_COLLISION, target, path))).
+				orElse(List.of());
+		}
+		if (recorded.get() instanceof SpecialFile)
+			return List.of(new DeliveryConflict(Kind.STRUCTURAL_COLLISION, target, target));
+		if (live.equals(recorded))
+			return List.of();
+		return List.of(new DeliveryConflict(Kind.BOTH_CHANGED, target, target));
 	}
 
 	/**
