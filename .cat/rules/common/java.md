@@ -37,6 +37,10 @@ When defining CLI or hook output and error behavior, lazy load `../include/cli-o
 When designing classes, interfaces, scopes, constructors, builders, method visibility, entrypoint classes, or
 business-logic boundaries, lazy load `../include/java-class-design.md`.
 
+When deciding whether a Java class is thread-safe, adding or removing synchronization or thread-safe types such as
+concurrent collections, atomics, or locks, or writing or editing a class's thread-safety documentation, lazy load
+`../include/java-class-design/thread-safety.md`.
+
 When designing or changing a pouch scope, its lifetime, owned dependencies, child scopes, or resource ownership, lazy
 load `../include/pouch.md`.
 
