@@ -9,8 +9,5 @@
 # Maven build output.
 **/target/
 
-# Disposable CAT-generated files.
+# CAT session-specific files
 .cat/sessions/
-# Earlier versions of CAT kept these files in .cat/work/. SessionStart moves the session directories out but leaves
-# .cat/work/temp, which earlier sessions used as their temporary directory.
-.cat/work/
