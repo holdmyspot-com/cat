@@ -153,6 +153,10 @@ task is not such a plan.
 Before designing or changing a component, API, collaborator, integration boundary, construction path, or test-support
 boundary, lazy load `../include/class-design.md` to preserve its caller-visible guarantees and focused responsibilities.
 
+When defining or changing a method's parameters, adding a call that passes a method the same value as its other calls,
+reviewing or auditing a class, or noticing that every call made on an instance passes a method parameter equal values,
+lazy load `../include/class-design/constructor-parameters.md`.
+
 When creating, moving, or renaming a top-level implementation or test type, lazy load
 `../include/common/type-organization.md`.
 
