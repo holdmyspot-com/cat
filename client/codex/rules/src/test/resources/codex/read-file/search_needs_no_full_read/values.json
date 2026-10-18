@@ -1,0 +1,172 @@
+{
+  "format_version" : 1,
+  "test_cases" : [ {
+    "values" : {
+      "notes" : "release-notes.md",
+      "release" : "4.1",
+      "component" : "report builder",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : -7173214980977678991,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "report builder"
+  }, {
+    "values" : {
+      "notes" : "lookup_2.md",
+      "release" : "4.2",
+      "component" : "importer",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : 6109101951269350161,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "importer"
+  }, {
+    "values" : {
+      "notes" : "lookup_3.md",
+      "release" : "4.3",
+      "component" : "validator",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : -7945116157449775680,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "validator"
+  }, {
+    "values" : {
+      "notes" : "lookup_4.md",
+      "release" : "4.4",
+      "component" : "uploader",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : 7344453895984323379,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "uploader"
+  }, {
+    "values" : {
+      "notes" : "lookup_5.md",
+      "release" : "4.5",
+      "component" : "retry policy",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : 8581763846490441097,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "retry policy"
+  }, {
+    "values" : {
+      "notes" : "lookup_6.md",
+      "release" : "4.6",
+      "component" : "parser",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : 6402137450189704963,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "parser"
+  }, {
+    "values" : {
+      "notes" : "lookup_7.md",
+      "release" : "4.7",
+      "component" : "logging",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : 8661935168763486746,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "logging"
+  }, {
+    "values" : {
+      "notes" : "lookup_8.md",
+      "release" : "4.8",
+      "component" : "cache",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : -1503342335007568194,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "cache"
+  }, {
+    "values" : {
+      "notes" : "lookup_9.md",
+      "release" : "4.9",
+      "component" : "exporter",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : 4142591245019723436,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "exporter"
+  }, {
+    "values" : {
+      "notes" : "lookup_10.md",
+      "release" : "4.10",
+      "component" : "CLI",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : -1485138050054212554,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "CLI"
+  }, {
+    "values" : {
+      "notes" : "lookup_11.md",
+      "release" : "4.11",
+      "component" : "configuration loader",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : -203297063159246020,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "configuration loader"
+  }, {
+    "values" : {
+      "notes" : "lookup_12.md",
+      "release" : "4.12",
+      "component" : "scheduler",
+      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+      "before" : {
+        "generator" : "markdown_sections",
+        "version" : 1,
+        "seed" : -2870621794833225851,
+        "count" : 144
+      }
+    },
+    "expected_outcome" : "scheduler"
+  } ]
+}

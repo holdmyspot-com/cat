@@ -1,0 +1,220 @@
+{
+  "format_version" : 1,
+  "test_cases" : [ {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -9083061033337353188,
+        "count" : 420
+      },
+      "event" : "2037-06-01T03:14:07.881Z ERROR payments.Supervisor - shutting down: connection pool exhausted",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -1932332021524050910,
+        "count" : 1
+      },
+      "reason" : "connection pool exhausted"
+    },
+    "expected_outcome" : "connection pool exhausted"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -5399468215649091644,
+        "count" : 420
+      },
+      "event" : "2037-06-02T03:14:07.881Z ERROR payments.Supervisor - shutting down: archival certificate expired",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -5038407751137010521,
+        "count" : 1
+      },
+      "reason" : "archival certificate expired"
+    },
+    "expected_outcome" : "archival certificate expired"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -4695001711937988470,
+        "count" : 420
+      },
+      "event" : "2037-06-03T03:14:07.881Z ERROR payments.Supervisor - shutting down: settlement key revoked",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -819944137029063030,
+        "count" : 1
+      },
+      "reason" : "settlement key revoked"
+    },
+    "expected_outcome" : "settlement key revoked"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -6569428689675130962,
+        "count" : 420
+      },
+      "event" : "2037-06-04T03:14:07.881Z ERROR payments.Supervisor - shutting down: quorum lease expired",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -6574058709778045455,
+        "count" : 1
+      },
+      "reason" : "quorum lease expired"
+    },
+    "expected_outcome" : "quorum lease expired"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -7953519518705454021,
+        "count" : 420
+      },
+      "event" : "2037-06-05T03:14:07.881Z ERROR payments.Supervisor - shutting down: custodian approval withdrawn",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : 2546252573005218796,
+        "count" : 1
+      },
+      "reason" : "custodian approval withdrawn"
+    },
+    "expected_outcome" : "custodian approval withdrawn"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : 4290809428659540440,
+        "count" : 420
+      },
+      "event" : "2037-06-06T03:14:07.881Z ERROR payments.Supervisor - shutting down: vault seal broken",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -4190727038872435613,
+        "count" : 1
+      },
+      "reason" : "vault seal broken"
+    },
+    "expected_outcome" : "vault seal broken"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -4934916307222952798,
+        "count" : 420
+      },
+      "event" : "2037-06-07T03:14:07.881Z ERROR payments.Supervisor - shutting down: treasury lock unavailable",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -2230653380860071675,
+        "count" : 1
+      },
+      "reason" : "treasury lock unavailable"
+    },
+    "expected_outcome" : "treasury lock unavailable"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : 2495598010711227128,
+        "count" : 420
+      },
+      "event" : "2037-06-08T03:14:07.881Z ERROR payments.Supervisor - shutting down: escrow signature invalid",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : 4962766584617321069,
+        "count" : 1
+      },
+      "reason" : "escrow signature invalid"
+    },
+    "expected_outcome" : "escrow signature invalid"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : 869905304934175528,
+        "count" : 420
+      },
+      "event" : "2037-06-09T03:14:07.881Z ERROR payments.Supervisor - shutting down: reservation window expired",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : 4823429500677368061,
+        "count" : 1
+      },
+      "reason" : "reservation window expired"
+    },
+    "expected_outcome" : "reservation window expired"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -4449091093879921345,
+        "count" : 420
+      },
+      "event" : "2037-06-10T03:14:07.881Z ERROR payments.Supervisor - shutting down: reconciliation checksum mismatched",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -174023535500365511,
+        "count" : 1
+      },
+      "reason" : "reconciliation checksum mismatched"
+    },
+    "expected_outcome" : "reconciliation checksum mismatched"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : 5704786396034542543,
+        "count" : 420
+      },
+      "event" : "2037-06-11T03:14:07.881Z ERROR payments.Supervisor - shutting down: journal volume unavailable",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : 9200041078737713622,
+        "count" : 1
+      },
+      "reason" : "journal volume unavailable"
+    },
+    "expected_outcome" : "journal volume unavailable"
+  }, {
+    "values" : {
+      "before" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -3874331796227475420,
+        "count" : 420
+      },
+      "event" : "2037-06-12T03:14:07.881Z ERROR payments.Supervisor - shutting down: settlement manifest missing",
+      "after" : {
+        "generator" : "log_lines",
+        "version" : 1,
+        "seed" : -6362912754098956331,
+        "count" : 1
+      },
+      "reason" : "settlement manifest missing"
+    },
+    "expected_outcome" : "settlement manifest missing"
+  } ]
+}

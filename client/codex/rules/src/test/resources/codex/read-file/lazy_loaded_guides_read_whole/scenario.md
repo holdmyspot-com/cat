@@ -1,25 +1,27 @@
-# Lazy-Loaded Guides Read Whole
+# Lazy Loaded Guides Read Whole
 
 ## Design Goals
 
-- Prove that each file that the project's instructions tell the agent to lazy load reaches the agent whole, even when
-  the file exceeds Codex's output limit.
-- Prove that reading the guides whole leaves the reply correct: it names what the asked release changed, which the
-  release notes that the turn names state in a few lines.
+- Every applicable lazy-loaded guide reaches the agent whole before the governed task action.
+- The task result follows the applicable lazy-loaded instructions without loading guides whose conditions are absent.
 
 ## Variables
 
-- **release**: The release the customer asks about, between 4.1 and 4.320; release 4.173 alone also requires callers to
-  change their code
-- **improved**: The component that the asked release improved, as `docs/release-notes.md` names it
-- **corrected**: The component whose message the asked release corrected, as `docs/release-notes.md` names it
-- **sign_off**: The team name that `docs/style-guide.md` requires as every reply's last line after `-- `, such as
-  `Release Desk`
+- **release**: The requested release, between 4.1 and 4.320; 4.173 alone has the migration step.
+- **improved**: The component improved by the requested release.
+- **corrected**: The component whose message was corrected.
+- **sign_off**: The team name required on the final line, after -- .
+- **guide_sections**: Generated service documentation that makes each applicable guide just longer than one part.
 
 ## Scenario
 
 A customer asks: "Does release {{release}} change anything for me?" Draft the reply from `docs/release-notes.md`. Do
 not edit any file.
+
+## Expected Behavior
+
+- **description**: Read docs/style-guide.md and docs/glossary.md in full before drafting. Apply their customer terminology and sign-off, state the two release changes, and mention the explicit exporter destination only for release 4.173. Do not load the incident guide, run unrelated searches or update files.
+- **time_limit_seconds**: 180
 
 ## Assertions
 
@@ -38,7 +40,12 @@ not edit any file.
 ### changes_named
 
 - **kind**: guard
-- **tool**: `pattern "(?is)(?=.*\b{{improved}}\b)(?=.*\b{{corrected}}\b)"`
+- **tool**: `pattern "(?is)(?=.*\\b{{improved}}\\b)(?=.*\\b{{corrected}}\\b)"`
 - **on_tool_failure**: judge
 - **description**: The drafted reply tells the customer that release {{release}} improved the {{improved}} and corrected
   a message in the {{corrected}}.
+
+### applicable_guidance_applied
+
+- **kind**: guard
+- **description**: The drafted customer reply follows the terminology in the glossary and ends with -- {{sign_off}}. It mentions the exporter destination migration only when {{release}} is 4.173. It does not lazy load docs/incident-guide.md.

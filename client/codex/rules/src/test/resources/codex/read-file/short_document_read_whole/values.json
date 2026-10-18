@@ -1,0 +1,102 @@
+{
+  "format_version": 1,
+  "test_cases": [
+    {
+      "values": {
+        "notes": "review_1.md",
+        "owner": "Mina",
+        "decision": "approved for violet rollout"
+      },
+      "expected_outcome": "Mina: approved for violet rollout"
+    },
+    {
+      "values": {
+        "notes": "review_2.md",
+        "owner": "Ivo",
+        "decision": "approved for amber rollout"
+      },
+      "expected_outcome": "Ivo: approved for amber rollout"
+    },
+    {
+      "values": {
+        "notes": "review_3.md",
+        "owner": "Zara",
+        "decision": "approved for jade rollout"
+      },
+      "expected_outcome": "Zara: approved for jade rollout"
+    },
+    {
+      "values": {
+        "notes": "review_4.md",
+        "owner": "Niko",
+        "decision": "approved for cobalt rollout"
+      },
+      "expected_outcome": "Niko: approved for cobalt rollout"
+    },
+    {
+      "values": {
+        "notes": "review_5.md",
+        "owner": "Elena",
+        "decision": "approved for saffron rollout"
+      },
+      "expected_outcome": "Elena: approved for saffron rollout"
+    },
+    {
+      "values": {
+        "notes": "review_6.md",
+        "owner": "Luca",
+        "decision": "approved for indigo rollout"
+      },
+      "expected_outcome": "Luca: approved for indigo rollout"
+    },
+    {
+      "values": {
+        "notes": "review_7.md",
+        "owner": "Sora",
+        "decision": "approved for coral rollout"
+      },
+      "expected_outcome": "Sora: approved for coral rollout"
+    },
+    {
+      "values": {
+        "notes": "review_8.md",
+        "owner": "Tariq",
+        "decision": "approved for ochre rollout"
+      },
+      "expected_outcome": "Tariq: approved for ochre rollout"
+    },
+    {
+      "values": {
+        "notes": "review_9.md",
+        "owner": "Noor",
+        "decision": "approved for crimson rollout"
+      },
+      "expected_outcome": "Noor: approved for crimson rollout"
+    },
+    {
+      "values": {
+        "notes": "review_10.md",
+        "owner": "Asha",
+        "decision": "approved for ivory rollout"
+      },
+      "expected_outcome": "Asha: approved for ivory rollout"
+    },
+    {
+      "values": {
+        "notes": "review_11.md",
+        "owner": "Enzo",
+        "decision": "approved for silver rollout"
+      },
+      "expected_outcome": "Enzo: approved for silver rollout"
+    },
+    {
+      "values": {
+        "notes": "review_12.md",
+        "owner": "Lea",
+        "decision": "approved for copper rollout"
+      },
+      "expected_outcome": "Lea: approved for copper rollout"
+    }
+  ]
+}
+

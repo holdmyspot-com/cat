@@ -1,0 +1,101 @@
+{
+  "format_version": 1,
+  "test_cases": [
+    {
+      "values": {
+        "notes": "ledger_1.md",
+        "entry": "Delivery approved by Mina.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Mina."
+      },
+      "expected_outcome": "Delivery approved by Mina."
+    },
+    {
+      "values": {
+        "notes": "ledger_2.md",
+        "entry": "Delivery approved by Ivo.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Ivo."
+      },
+      "expected_outcome": "Delivery approved by Ivo."
+    },
+    {
+      "values": {
+        "notes": "ledger_3.md",
+        "entry": "Delivery approved by Zara.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Zara."
+      },
+      "expected_outcome": "Delivery approved by Zara."
+    },
+    {
+      "values": {
+        "notes": "ledger_4.md",
+        "entry": "Delivery approved by Niko.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Niko."
+      },
+      "expected_outcome": "Delivery approved by Niko."
+    },
+    {
+      "values": {
+        "notes": "ledger_5.md",
+        "entry": "Delivery approved by Elena.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Elena."
+      },
+      "expected_outcome": "Delivery approved by Elena."
+    },
+    {
+      "values": {
+        "notes": "ledger_6.md",
+        "entry": "Delivery approved by Luca.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Luca."
+      },
+      "expected_outcome": "Delivery approved by Luca."
+    },
+    {
+      "values": {
+        "notes": "ledger_7.md",
+        "entry": "Delivery approved by Sora.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Sora."
+      },
+      "expected_outcome": "Delivery approved by Sora."
+    },
+    {
+      "values": {
+        "notes": "ledger_8.md",
+        "entry": "Delivery approved by Tariq.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Tariq."
+      },
+      "expected_outcome": "Delivery approved by Tariq."
+    },
+    {
+      "values": {
+        "notes": "ledger_9.md",
+        "entry": "Delivery approved by Noor.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Noor."
+      },
+      "expected_outcome": "Delivery approved by Noor."
+    },
+    {
+      "values": {
+        "notes": "ledger_10.md",
+        "entry": "Delivery approved by Asha.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Asha."
+      },
+      "expected_outcome": "Delivery approved by Asha."
+    },
+    {
+      "values": {
+        "notes": "ledger_11.md",
+        "entry": "Delivery approved by Enzo.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Enzo."
+      },
+      "expected_outcome": "Delivery approved by Enzo."
+    },
+    {
+      "values": {
+        "notes": "ledger_12.md",
+        "entry": "Delivery approved by Lea.",
+        "file_text": "Release ledger\nEntries:\nDelivery approved by Lea."
+      },
+      "expected_outcome": "Delivery approved by Lea."
+    }
+  ]
+}

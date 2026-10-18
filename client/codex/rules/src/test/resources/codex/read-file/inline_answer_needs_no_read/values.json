@@ -1,0 +1,78 @@
+{
+  "format_version": 1,
+  "test_cases": [
+    {
+      "values": {
+        "label": "parcel_violet"
+      },
+      "expected_outcome": "parcel_violet"
+    },
+    {
+      "values": {
+        "label": "parcel_amber"
+      },
+      "expected_outcome": "parcel_amber"
+    },
+    {
+      "values": {
+        "label": "parcel_jade"
+      },
+      "expected_outcome": "parcel_jade"
+    },
+    {
+      "values": {
+        "label": "parcel_cobalt"
+      },
+      "expected_outcome": "parcel_cobalt"
+    },
+    {
+      "values": {
+        "label": "parcel_saffron"
+      },
+      "expected_outcome": "parcel_saffron"
+    },
+    {
+      "values": {
+        "label": "parcel_indigo"
+      },
+      "expected_outcome": "parcel_indigo"
+    },
+    {
+      "values": {
+        "label": "parcel_coral"
+      },
+      "expected_outcome": "parcel_coral"
+    },
+    {
+      "values": {
+        "label": "parcel_ochre"
+      },
+      "expected_outcome": "parcel_ochre"
+    },
+    {
+      "values": {
+        "label": "parcel_crimson"
+      },
+      "expected_outcome": "parcel_crimson"
+    },
+    {
+      "values": {
+        "label": "parcel_ivory"
+      },
+      "expected_outcome": "parcel_ivory"
+    },
+    {
+      "values": {
+        "label": "parcel_silver"
+      },
+      "expected_outcome": "parcel_silver"
+    },
+    {
+      "values": {
+        "label": "parcel_copper"
+      },
+      "expected_outcome": "parcel_copper"
+    }
+  ]
+}
+

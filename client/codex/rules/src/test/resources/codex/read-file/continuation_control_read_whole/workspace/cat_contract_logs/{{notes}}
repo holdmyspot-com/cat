@@ -1,0 +1,4 @@
+# Archive intake
+{{before}}
+2037-01-01T00:00:02Z archive supervisor - archival verdict: {{record}}
+2037-01-01T00:00:03Z archive supervisor - archival identifier: "{{entry}}"

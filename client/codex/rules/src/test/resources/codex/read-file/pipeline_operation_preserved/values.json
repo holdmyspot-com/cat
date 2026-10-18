@@ -1,0 +1,102 @@
+{
+  "format_version": 1,
+  "test_cases": [
+    {
+      "values": {
+        "notes": "parcel 1.txt",
+        "tag": "dispatch_violet",
+        "replacement": "DISPATCH_VIOLET"
+      },
+      "expected_outcome": "DISPATCH_VIOLET"
+    },
+    {
+      "values": {
+        "notes": "parcel 2.txt",
+        "tag": "dispatch_amber",
+        "replacement": "DISPATCH_AMBER"
+      },
+      "expected_outcome": "DISPATCH_AMBER"
+    },
+    {
+      "values": {
+        "notes": "parcel 3.txt",
+        "tag": "dispatch_jade",
+        "replacement": "DISPATCH_JADE"
+      },
+      "expected_outcome": "DISPATCH_JADE"
+    },
+    {
+      "values": {
+        "notes": "parcel 4.txt",
+        "tag": "dispatch_cobalt",
+        "replacement": "DISPATCH_COBALT"
+      },
+      "expected_outcome": "DISPATCH_COBALT"
+    },
+    {
+      "values": {
+        "notes": "parcel 5.txt",
+        "tag": "dispatch_saffron",
+        "replacement": "DISPATCH_SAFFRON"
+      },
+      "expected_outcome": "DISPATCH_SAFFRON"
+    },
+    {
+      "values": {
+        "notes": "parcel 6.txt",
+        "tag": "dispatch_indigo",
+        "replacement": "DISPATCH_INDIGO"
+      },
+      "expected_outcome": "DISPATCH_INDIGO"
+    },
+    {
+      "values": {
+        "notes": "parcel 7.txt",
+        "tag": "dispatch_coral",
+        "replacement": "DISPATCH_CORAL"
+      },
+      "expected_outcome": "DISPATCH_CORAL"
+    },
+    {
+      "values": {
+        "notes": "parcel 8.txt",
+        "tag": "dispatch_ochre",
+        "replacement": "DISPATCH_OCHRE"
+      },
+      "expected_outcome": "DISPATCH_OCHRE"
+    },
+    {
+      "values": {
+        "notes": "parcel 9.txt",
+        "tag": "dispatch_crimson",
+        "replacement": "DISPATCH_CRIMSON"
+      },
+      "expected_outcome": "DISPATCH_CRIMSON"
+    },
+    {
+      "values": {
+        "notes": "parcel 10.txt",
+        "tag": "dispatch_ivory",
+        "replacement": "DISPATCH_IVORY"
+      },
+      "expected_outcome": "DISPATCH_IVORY"
+    },
+    {
+      "values": {
+        "notes": "parcel 11.txt",
+        "tag": "dispatch_silver",
+        "replacement": "DISPATCH_SILVER"
+      },
+      "expected_outcome": "DISPATCH_SILVER"
+    },
+    {
+      "values": {
+        "notes": "parcel 12.txt",
+        "tag": "dispatch_copper",
+        "replacement": "DISPATCH_COPPER"
+      },
+      "expected_outcome": "DISPATCH_COPPER"
+    }
+  ]
+}
+

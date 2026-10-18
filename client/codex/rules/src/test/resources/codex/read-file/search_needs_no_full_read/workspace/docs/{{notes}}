@@ -1,1 +1,11 @@
-../../../shared/docs/{{notes}}
+# Release Notes
+
+{{before}}
+## Release {{release}}
+
+- Improved the {{component}} so repeated runs finish sooner on large inputs.
+
+## Release 4.296
+
+- {{change}}
+

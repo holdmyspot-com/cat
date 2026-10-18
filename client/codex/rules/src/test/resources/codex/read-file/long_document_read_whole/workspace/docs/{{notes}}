@@ -1,1 +1,7 @@
-../../../shared/docs/{{notes}}
+# Release Notes
+
+{{before}}
+## Release 4.296
+
+- {{change}}
+
