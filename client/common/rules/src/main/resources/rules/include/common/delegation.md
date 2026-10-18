@@ -15,7 +15,7 @@
      a launch receipt as a launch failure. -->
 - Ensure a required delegate launch uses its documented direct operation and receipt before any wait, recovery, or
   status conclusion, so an unrelated tool result cannot be mistaken for a launch attempt.
-- Make continued observation of a live delegate responsive without repeatedly polling it at a fixed short interval.
+- Wait for a live delegate by blocking until it returns, rather than observing it at intervals.
 
 ## Guidance
 
@@ -84,10 +84,9 @@ same live `exec` result. Never use `exec`, an `exec`-wait operation, an invented
 tool catalog as a launch fallback; those actions neither launch nor diagnose a delegate. An error from another
 operation does not establish launch failure: correct the selected operation and obtain its own invocation receipt.
 
-When waiting for a live delegate, begin with a 30-second observation interval. After each timed-out observation with no
-new delegate state, double the next interval, up to five minutes. Reset the interval to 30 seconds only after an
-observable delegate update or a new delegate operation. A terminal result ends waiting immediately; an observation
-timeout does not establish failure or authorize restart.
+When waiting for a live delegate, lazy load `external-waits.md` and block on the delegate's wait operation until it
+returns. A wait operation that times out before the delegate returns does not establish failure or authorize a restart;
+wait on the same delegate again.
 
 After the task contract is ready and the state is `ready-to-launch`, make the documented direct spawn call as the next
 delegation action. Do not make a placeholder, probing, or preparatory call in place of that transition. A result that

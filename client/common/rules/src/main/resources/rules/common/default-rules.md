@@ -244,6 +244,9 @@ observable progress and calibrate estimates from current-task history.
 When starting, waiting for, or resuming an external command, harness, or tool session, lazy load
 `../include/common/execution-lifecycle.md` to retain its terminal outcome.
 
+When your next action waits for a state change that something else produces, such as a hosted build finishing, a
+background process exiting or a subagent returning, lazy load `../include/common/external-waits.md`.
+
 When creating, regenerating, materially revising, reviewing, or auditing a prompt, rule, or another artifact with
 declared goals or contracts, lazy load `../include/common/contract-design.md` to preserve, reconcile, cover, and compact
 its obligations.

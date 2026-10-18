@@ -16,8 +16,9 @@
 When a supported execution tool can allocate a PTY or another session-bound channel, use it for an operation that may
 outlast one tool result. Immediately retain the returned session identifier in the caller's live workflow state. When
 an execution tool yields a live process session instead of a terminal exit result, the caller still owns that process.
-Repeatedly wait or poll that same session until it returns a terminal exit result. A per-poll wait limit is a reporting
-opportunity, not permission to end the task, declare the process unavailable, or replace it with a detached child.
+Wait on that same session until it returns a terminal exit result. A wait limit that passes first is neither a
+reporting opportunity nor permission to end the task, declare the process unavailable, or replace it with a detached
+child; wait on the same session again.
 Before returning control, inspect both the session's terminal result and the workflow's terminal record. A short,
 synchronous command that already returns its terminal result does not need a PTY merely to satisfy this rule.
 
