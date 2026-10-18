@@ -26,12 +26,14 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
+import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptConfiguration;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptConfigurationException;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
@@ -1027,7 +1029,7 @@ public final class OptimizerCore implements Core
 		CertificationScope certificationScope = campaign.contract().profiles().scope();
 		if (!proposal.isConfirmable(certificationScope))
 			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
-		requireParticipantsHeld(root, fork, revised);
+		requireParticipantsHeld(root, fork, revised, trialSelection(root, campaign, revised, plugin));
 		// The stored proposal changes only once nothing blocks confirming it, so it stays the confirmed contract's
 		new ProposalFile(heldOutDirectory(campaign.header().id()), scope.json()).write(revised,
 			stored.profiles());
@@ -1291,11 +1293,11 @@ public final class OptimizerCore implements Core
 			// A revision after confirmation runs on the files that its presentation recorded beside the fork's
 			if (loaded.isConfirmed())
 				fork = fork.including(participants(root, derived).existing());
-			Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(loaded).read(),
-				pluginCheck(root, loaded, fork));
+			PluginCheck plugin = pluginCheck(root, loaded, fork);
+			Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(loaded).read(), plugin);
 			if (!proposal.isConfirmable(certificationScope))
 				throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
-			requireParticipantsHeld(root, fork, derived);
+			requireParticipantsHeld(root, fork, derived, trialSelection(root, loaded, derived, plugin));
 			List<CampaignEvent> events = new ArrayList<>(moveOnto(loaded, fork));
 			events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
 			return apply(root, loaded, events);
@@ -1309,12 +1311,22 @@ public final class OptimizerCore implements Core
 	 * @param root the project root
 	 * @param fork the fork that the confirmed contract runs on
 	 * @param derived the proposal that the user confirms
-	 * @throws CommandRefusedException if a fixture does not exist, the fork lacks a file that the proposal needs, or a
-	 *   fixture file of a prompt test would replace a file of the fork
+	 * @param selection the files of the candidate that every trial receives
+	 * @throws CommandRefusedException if a fixture does not exist, the fork lacks a file that the proposal needs, a
+	 *   fixture file of a prompt test would replace a file of the fork, or a fixture file is a copy of a file that
+	 *   every trial receives
 	 */
-	private static void requireParticipantsHeld(Path root, ForkView fork, DerivedProposal derived)
-		throws CommandRefusedException
+	private static void requireParticipantsHeld(Path root, ForkView fork, DerivedProposal derived,
+		SourceSelection selection) throws CommandRefusedException
 	{
+		Set<String> promptCopies = promptFileCopies(derived.contract(), selection);
+		if (!promptCopies.isEmpty())
+		{
+			throw new CommandRefusedException("These fixture files of the proposal's prompt tests are copies of files " +
+				"that every trial already receives from its candidate, so each copy would stand in for the " +
+				"candidate's version: " + String.join("; ", promptCopies) + ". Run `revise` with feedback that " +
+				"removes these links from the tests' " + PromptTestFiles.WORKSPACE + "/ directories.");
+		}
 		Set<String> collisions = fixtureCollisions(fork.inventory(), derived.contract());
 		if (!collisions.isEmpty())
 		{
@@ -1334,6 +1346,32 @@ public final class OptimizerCore implements Core
 		throw new CommandRefusedException("These files appeared after CAT presented the proposal, so its guard pilot " +
 			"did not see them: " + unheld + ". Run `start` for the same target again so that CAT presents the " +
 			"proposal with them.");
+	}
+
+	/**
+	 * Returns the fixture files of a contract's prompt tests that are copies of a file that every trial receives from
+	 * its candidate. A file of a test root is never one, because trials do not receive the test roots.
+	 *
+	 * @param contract the contract
+	 * @param selection the files of the candidate that every trial receives
+	 * @return one description of each copy, naming its prompt test, path and source
+	 */
+	private static Set<String> promptFileCopies(Contract contract, SourceSelection selection)
+	{
+		Set<String> copies = new TreeSet<>();
+		for (PromptTest test : contract.tests())
+		{
+			for (FixtureFile fixture : test.fixtures())
+			{
+				if (fixture.source().isEmpty())
+					continue;
+				Path source = Path.of(fixture.source()).normalize();
+				if (source.isAbsolute() || PromptTestLocations.rootOf(source).isPresent() || !selection.selects(source))
+					continue;
+				copies.add("`" + test.id() + "` copies `" + fixture.source() + "` to `" + fixture.path() + "`");
+			}
+		}
+		return copies;
 	}
 
 	/**
@@ -1845,12 +1883,25 @@ public final class OptimizerCore implements Core
 		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(campaign), schema,
 			scope.json(), campaign.ceiling());
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
-		SourceSelection selection = TrialSelection.base(scope.harness(), promptSources(root, campaign, derived),
-			Set.copyOf(scope.loaderConfiguration()), derived.contract(), plugin.plugins());
 		Map<String, PilotResult> pilots = pilot.run(derived.contract(), plugin.plugins(), control, excluded,
-			selection, file.read(), scope.random());
+			trialSelection(root, campaign, derived, plugin), file.read(), scope.random());
 		file.write(pilots);
 		return pilots;
+	}
+
+	/**
+	 * Returns the files of a candidate that every trial of a proposal receives.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param derived the proposal
+	 * @param plugin the check of the campaign's trial plugins
+	 * @return the selection
+	 */
+	private SourceSelection trialSelection(Path root, Campaign campaign, DerivedProposal derived, PluginCheck plugin)
+	{
+		return TrialSelection.base(scope.harness(), promptSources(root, campaign, derived),
+			Set.copyOf(scope.loaderConfiguration()), derived.contract(), plugin.plugins());
 	}
 
 	/**

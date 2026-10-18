@@ -102,6 +102,7 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -1065,6 +1066,7 @@ public final class OptimizerCoreTest
 		try
 		{
 			Path effects = Files.createTempDirectory(scratch, "contract-author-");
+			copyProject(request.source(), effects);
 			request.files().write(effects);
 			ContractContext context = ContractContext.read(JSON, effects.resolve(ContractContext.name(request.source())));
 			Map<String, Path> recorded = new HashMap<>();
@@ -1088,6 +1090,28 @@ public final class OptimizerCoreTest
 		catch (IOException e)
 		{
 			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Copies the project that a session works in to the session's project copy, as the session runner does.
+	 *
+	 * @param source  the project that the session works in
+	 * @param effects the session's project copy
+	 * @throws IOException if a file cannot be read or written
+	 */
+	private static void copyProject(Path source, Path effects) throws IOException
+	{
+		try (Stream<Path> paths = Files.walk(source))
+		{
+			for (Path path : paths.toList())
+			{
+				Path copy = effects.resolve(source.relativize(path).toString());
+				if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+					Files.createDirectories(copy);
+				else
+					Files.copy(path, copy, LinkOption.NOFOLLOW_LINKS);
+			}
 		}
 	}
 
@@ -3966,6 +3990,51 @@ public final class OptimizerCoreTest
 			{
 				requireThat(Files.readString(snapshot), "campaignJson").isEqualTo(before);
 			}
+		}
+	}
+
+	/**
+	 * Verifies that confirmation is refused when a recorded prompt test's {@code workspace/} links to a prompt file under
+	 * another name, whose frozen copy would stand in for the candidate's version that every trial receives, and that the
+	 * refusal names the linked file.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException for the expected confirmation refusal
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test(expectedExceptions = CommandRefusedException.class,
+		expectedExceptionsMessageRegExp = ".*every trial.*`formatting` copies `CLAUDE\\.md` to " +
+			"`docs/guide\\.md`.*")
+	public void confirmRefusesLinkToPromptFile() throws IOException, CommandRefusedException, InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(output -> ((ObjectNode) output.get("tests").
+				get(0)).putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md")));
+			Path test = Files.createDirectories(repository.root().resolve(".cat/tests/CLAUDE/formatting"));
+			Files.writeString(test.resolve("scenario.md"), """
+				# Formatting
+
+				## Variables
+
+				- **tone**: The tone of the summary.
+
+				## Scenario
+
+				Summarize the notes in {{tone}} style.
+
+				## Assertions
+
+				### keeps_tone
+
+				- **kind**: effect
+				- **description**: The summary keeps the {{tone}} tone.
+				""");
+			Path workspace = Files.createDirectories(test.resolve("workspace/docs"));
+			Files.createSymbolicLink(workspace.resolve("guide.md"), Path.of("../../../../../../CLAUDE.md"));
+
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
 }
