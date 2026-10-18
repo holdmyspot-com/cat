@@ -181,7 +181,7 @@ public final class SliceTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test(dataProvider = "cutoff")
-	public void timeLimitCutsOffAdmission(Duration elapsed, boolean admitted) throws IOException, InterruptedException
+	public void timeLimitCutsOffAdmission(Duration elapsed, boolean admitted) throws IOException
 	{
 		// Requirement: R-E9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -214,7 +214,7 @@ public final class SliceTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void measuredDurationsExtendAdmission() throws IOException, InterruptedException
+	public void measuredDurationsExtendAdmission() throws IOException
 	{
 		// Requirement: R-E9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -248,7 +248,7 @@ public final class SliceTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void graceCancelsRemainder() throws IOException, InterruptedException
+	public void graceCancelsRemainder() throws IOException
 	{
 		// Requirement: R-E9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -309,8 +309,7 @@ public final class SliceTest
 				context.interrupts(), context.clock(), context.overlays(), context.judge(), context.triage(),
 				context.promptAuthor(), context.values(), context.deliverer(), context.calibrator(),
 				context.terminator(), context.leftoverRuns(), context.authority(), context.promptSources(),
-				context.environment(), context.lockFile(), context.session(), context.random(), context.settings(),
-				context.json());
+				context.environment(), context.lockFile(), context.random(), context.settings(), context.json());
 			try (ExecutorService executor = Executors.newSingleThreadExecutor())
 			{
 				Future<SliceResult> slice = executor.submit(() ->

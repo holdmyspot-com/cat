@@ -108,10 +108,8 @@ public interface Core
 	 *   the campaign does not exist, the other harness started it, it has no proposal to confirm, or the proposal
 	 *   cannot be confirmed with {@code scope}
 	 * @throws IOException if the store or the workspace fails
-	 * @throws InterruptedException if the thread is interrupted while it waits for the campaign's lock
 	 */
-	CommandResult confirm(String campaign, CertificationScope scope)
-		throws CommandRefusedException, IOException, InterruptedException;
+	CommandResult confirm(String campaign, CertificationScope scope) throws CommandRefusedException, IOException;
 
 	/**
 	 * Regenerates the proposal from the user's feedback.
@@ -166,7 +164,6 @@ public interface Core
 	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, or it is not
 	 *   active
 	 * @throws IOException if the store or the workspace fails
-	 * @throws InterruptedException if the thread is interrupted while it waits for the campaign's lock
 	 */
-	CommandResult cancel(String campaign) throws CommandRefusedException, IOException, InterruptedException;
+	CommandResult cancel(String campaign) throws CommandRefusedException, IOException;
 }

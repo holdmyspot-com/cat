@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.execution.CampaignLock;
-import io.github.cowwoc.cat.common.optimizer.execution.LockHolder;
 import io.github.cowwoc.cat.common.optimizer.execution.fixture.test.FaultingFileChannel;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -13,16 +12,9 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-
-import tools.jackson.databind.json.JsonMapper;
 
 import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.WRITE;
@@ -32,8 +24,6 @@ import static java.nio.file.StandardOpenOption.WRITE;
  */
 public final class CampaignLockTest
 {
-	private static final String SESSION = "session-1";
-	private static final JsonMapper JSON = JsonMapper.builder().build();
 	/**
 	 * Creates the test.
 	 */
@@ -102,108 +92,6 @@ public final class CampaignLockTest
 				requireThat(CampaignLock.tryAcquire(directory.resolve("lock")), "whileHeldThroughAlias").isEmpty();
 			}
 		}
-	}
-
-	/**
-	 * Verifies that while a driver of one host session holds the lock, a driver of another session reports the
-	 * campaign busy without waiting.
-	 *
-	 * @throws IOException if the test directory cannot be used
-	 * @throws InterruptedException if the thread is interrupted
-	 */
-	@Test(timeOut = 10_000)
-	public void otherSessionIsBusy() throws IOException, InterruptedException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path file = cleanup.add(Files.createTempDirectory("lock")).resolve("campaigns/campaign-1/lock");
-			try (CampaignLock _ = CampaignLock.acquire(file, LockHolder.current(SESSION), JSON).orElseThrow())
-			{
-				requireThat(CampaignLock.acquire(file, LockHolder.current("session-2"), JSON), "second").isEmpty();
-			}
-		}
-	}
-
-	/**
-	 * Verifies that while a driver of the same host session holds the lock, and its process did not start the
-	 * caller's, a second driver waits for the lock and takes it once the holder releases it. A host session runs
-	 * one command after another, so its earlier command ends unless the host lost track of it.
-	 *
-	 * @throws IOException if the test directory cannot be used
-	 * @throws InterruptedException if the thread is interrupted
-	 * @throws ExecutionException if the waiting driver fails
-	 * @throws TimeoutException if the waiting driver does not take the lock
-	 */
-	@Test(timeOut = 10_000)
-	public void sameSessionWaitsForHolder()
-		throws IOException, InterruptedException, ExecutionException, TimeoutException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path file = cleanup.add(Files.createTempDirectory("lock")).resolve("campaigns/campaign-1/lock");
-			// The process identifier is reused by a process that started at another time, so it is not an ancestor
-			LockHolder earlierCommand = new LockHolder(SESSION, ProcessHandle.current().pid(), Instant.EPOCH);
-			CompletableFuture<Optional<CampaignLock>> second = new CompletableFuture<>();
-			try (CampaignLock _ = CampaignLock.acquire(file, earlierCommand, JSON).orElseThrow())
-			{
-				Thread waiter = Thread.ofPlatform().start(() ->
-				{
-					try
-					{
-						second.complete(CampaignLock.acquire(file, LockHolder.current(SESSION), JSON));
-					}
-					catch (IOException | InterruptedException | RuntimeException e)
-					{
-						second.completeExceptionally(e);
-					}
-				});
-				while (waiter.getState() != Thread.State.WAITING && !second.isDone())
-					Thread.onSpinWait();
-				requireThat(second.isDone(), "doneWhileHeld").isFalse();
-			}
-
-			Optional<CampaignLock> acquired = second.get(5, TimeUnit.SECONDS);
-			requireThat(acquired, "acquired").isPresent();
-			acquired.get().close();
-		}
-	}
-
-	/**
-	 * Verifies that a driver fails at once, instead of waiting, when the lock's holder is its own process or one that
-	 * started it. That holder ends only after the driver does, so waiting for it would never end.
-	 *
-	 * @param holder returns the holder's process
-	 * @throws IOException if the test directory cannot be used
-	 * @throws InterruptedException if the thread is interrupted
-	 */
-	@Test(dataProvider = "ancestors", timeOut = 10_000, expectedExceptions = IllegalStateException.class)
-	public void ancestorHolderFailsAtOnce(ProcessHandle holder) throws IOException, InterruptedException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path file = cleanup.add(Files.createTempDirectory("lock")).resolve("campaigns/campaign-1/lock");
-			LockHolder ancestor = new LockHolder(SESSION, holder.pid(), holder.info().startInstant().orElse(null));
-			try (CampaignLock _ = CampaignLock.acquire(file, ancestor, JSON).orElseThrow())
-			{
-				CampaignLock.acquire(file, LockHolder.current(SESSION), JSON);
-			}
-		}
-	}
-
-	/**
-	 * Supplies the current process and the process that started it.
-	 *
-	 * @return the processes
-	 */
-	@DataProvider
-	public Object[][] ancestors()
-	{
-		ProcessHandle current = ProcessHandle.current();
-		return new Object[][]
-		{
-			{current},
-			{current.parent().orElseThrow()}
-		};
 	}
 
 	/**

@@ -38,7 +38,7 @@ public final class ConflictPauseTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void pausesAndDiscardsPromptAuthorEdits() throws IOException, InterruptedException
+	public void pausesAndDiscardsPromptAuthorEdits() throws IOException
 	{
 		// Requirement: R-D13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -92,7 +92,7 @@ public final class ConflictPauseTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test(dataProvider = "workingCandidates")
-	public void suppliesCampaignEdits(int working) throws IOException, InterruptedException
+	public void suppliesCampaignEdits(int working) throws IOException
 	{
 		// Requirement: R-D13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())

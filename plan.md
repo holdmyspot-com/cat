@@ -632,7 +632,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E6 | Throttling at 80% utilization, holds only on rejection, rejection backoff of 1, 2, 4 … up to 30 minutes, per-trial records, no evasion features. | §3.5 | WI-3, WI-8 | U: `ThrottleTest`; E: rate-limit state in the per-trial records of E1 per harness |
 | R-E7 | Authentication warning for a subscription login, including the minimum session count. | §3.5 | WI-8, WI-10 | U: `ProposalTest`; E: E1 login classification per harness |
 | R-E8 | Shared harness capacity is an injected per-harness instance, acquired by both runner CLIs and per optimizer session, with `tryAcquire` and an injected pause. | §3.6 | WI-5 | U: `HarnessCapacityTest`; E: E8 |
-| R-E9 | Slices: status kinds, admission cutoff from the 90th-percentile duration or the time limit, 1-minute grace, cancellation of the remainder, `busy` for a second driver of another host session, a wait for one of the same session, and an immediate failure when the holder is the driver's own process or an ancestor. | §3.7 | WI-9 | U: `SliceTest`, `CampaignLockTest`, `DriverTest` |
+| R-E9 | Slices: status kinds, admission cutoff from the 90th-percentile duration or the time limit, 1-minute grace, cancellation of the remainder, `busy` for a second driver. | §3.7 | WI-9 | U: `SliceTest` |
 | R-E10 | Interrupts: the Codex rollout watcher stops within 15 seconds; the Claude transcript backstop; Claude kill recovery. | §3.8 | WI-8, WI-9 | U: `RolloutInterruptSignalTest`, `TranscriptInterruptSignalTest`, `DriverTest`; E: E2 per harness |
 | R-E11 | Reconciliation runs first in every `run`: adopts recorded outcomes, reruns started trials that have no outcome, checks the worktree, and terminates the recorded processes of runs that an earlier driver left running, under the run root and the held-out run root, never those of a live driver. | §3.8 | WI-9, WI-39 | U: `ReconciliationTest`, `LeftoverRunsTest` |
 | R-E12 | Minimum remaining trials by the §3.9 formulas for the development and formal phases, the development minimum summing over every development cell, inside the certification scope or not; token statistics; no totals or time estimates. | §3.9 | WI-12, WI-44 | U: `RemainingWorkTest` |
@@ -932,9 +932,9 @@ The riskiest pure code, built first.
 - **`SliceRunner`:** the only class that blocks on real time. It waits on the event queue until the next deadline and
   is covered by one focused threaded test.
 - **Also:** reconciliation (including terminating the recorded `ownerPid` and `harnessPid` of runs left by an earlier
-  driver, `design.md` §3.8 and H20), the campaign write lock (an injected path; a second driver of another host
-  session gets `busy`, one of the same session waits), the slice cutoff and grace period, the pauses for measurement
-  change and unowned change, the edit-or-continue pause, and the safe-checkpoint handling for revision.
+  driver, `design.md` §3.8 and H20), the campaign write lock (an injected path; a second driver gets `busy`), the slice
+  cutoff and grace period, the pauses for measurement change and unowned change, the edit-or-continue pause, and the
+  safe-checkpoint handling for revision.
 - **Closes:** R-D2, R-D3 (driver side), R-D9, the driver side of R-F6, R-E1, R-E2, R-E5, R-E9, R-E10, R-E11, R-M3,
   the driver side of R-M5, R-C2, R-L3 and R-W7 (checkpoints).
 - **Tests:**
@@ -2762,8 +2762,7 @@ Use-case traces that `DriverTest` must cover, each as one test that starts from 
    logical trial.
 9. **Unowned change:** an unowned worktree change pauses until the user decides.
 10. **Revision during formal:** a revision requested mid-attempt waits for drain; the stopped attempt never resumes.
-11. **Busy:** a second driver of another host session receives `busy`; one of the same host session waits for the
-    lock.
+11. **Busy:** a second driver receives `busy`.
 12. **Keep improvement:** a certification attempt reaches its cap with one category proven better and the others
     certified or at 100 or more outcomes. CAT pauses with `keep improvement`, `optimize further` and `stop`; after a
     restart the choice is still pending; `keep improvement` requests delivery of that attempt's snapshot, labelled

@@ -1275,7 +1275,7 @@ public final class OptimizerCore implements Core
 
 	@Override
 	public CommandResult confirm(String campaign, CertificationScope certificationScope)
-		throws CommandRefusedException, IOException, InterruptedException
+		throws CommandRefusedException, IOException
 	{
 		if (certificationScope == null)
 		{
@@ -1610,7 +1610,7 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult cancel(String campaign) throws CommandRefusedException, IOException, InterruptedException
+	public CommandResult cancel(String campaign) throws CommandRefusedException, IOException
 	{
 		return withCleanup(_ ->
 		{
@@ -1640,13 +1640,11 @@ public final class OptimizerCore implements Core
 	 * @param campaign the campaign
 	 * @param events the events
 	 * @return the campaign's status after the events
-	 * @throws CommandRefusedException if another session's process runs the campaign or the campaign does not accept an
-	 *   event
+	 * @throws CommandRefusedException if another process runs the campaign or the campaign does not accept an event
 	 * @throws IOException if the store or the workspace fails
-	 * @throws InterruptedException if the thread is interrupted while it waits for the campaign's lock
 	 */
 	private CommandResult apply(Path root, Campaign campaign, List<CampaignEvent> events)
-		throws CommandRefusedException, IOException, InterruptedException
+		throws CommandRefusedException, IOException
 	{
 		String id = campaign.header().id();
 		DriverContext context = context(root, campaign);
@@ -2194,8 +2192,8 @@ public final class OptimizerCore implements Core
 			values,
 			new Delivery(store, fork.workspace(), scope.forks(), scope.json())::deliver, scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(scope.sessions(), scope.json()), authority,
-			promptSources, environment(inventory::entry), lockFile(campaign.header().id()),
-			scope.sessionDirectory().sessionId(), scope.random(), scope.sliceSettings(), scope.json());
+			promptSources, environment(inventory::entry), lockFile(campaign.header().id()), scope.random(),
+			scope.sliceSettings(), scope.json());
 	}
 
 	/**

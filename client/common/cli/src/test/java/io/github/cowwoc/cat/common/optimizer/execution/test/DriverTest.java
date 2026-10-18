@@ -185,7 +185,7 @@ public final class DriverTest
 	// Requirement: R-M4
 	// Requirement: R-E18
 	@Test
-	public void statusComparesObservedTrials() throws IOException, InterruptedException
+	public void statusComparesObservedTrials() throws IOException
 	{
 		Map<MeasurementCondition, String> conditions = new EnumMap<>(MeasurementCondition.class);
 		conditions.putAll(Builder.confirmedIdentity(DriverHarness.MODEL).values());
@@ -245,7 +245,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-M5
 	@Test
-	public void firstObservationDetectsChanges() throws IOException, InterruptedException
+	public void firstObservationDetectsChanges() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -299,7 +299,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-M5
 	@Test
-	public void judgeSessionModelIsNotRecorded() throws IOException, InterruptedException
+	public void judgeSessionModelIsNotRecorded() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -338,7 +338,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-M5
 	@Test
-	public void judgeVersionChangePauses() throws IOException, InterruptedException
+	public void judgeVersionChangePauses() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -364,7 +364,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-M5
 	@Test
-	public void catVersionChangeDoesNotPause() throws IOException, InterruptedException
+	public void catVersionChangeDoesNotPause() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -397,7 +397,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-E12
 	@Test
-	public void statusRetainsFinishedSessionUsage() throws IOException, InterruptedException
+	public void statusRetainsFinishedSessionUsage() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -410,7 +410,7 @@ public final class DriverTest
 				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), original.authority(), original.promptSources(), original.environment(),
-				original.lockFile(), original.session(), original.random(), original.settings(), original.json());
+				original.lockFile(), original.random(), original.settings(), original.json());
 			Map<SessionRole, List<TokenUsage>> expected = new EnumMap<>(SessionRole.class);
 			harness.trials(_ -> withUsage(harness.failed(), SessionRole.TRIAL, expected));
 			AtomicInteger judgments = new AtomicInteger();
@@ -442,7 +442,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-E12
 	@Test
-	public void statusOmitsAbsentSessionUsage() throws IOException, InterruptedException
+	public void statusOmitsAbsentSessionUsage() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -466,7 +466,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-E12
 	@Test
-	public void statusOmitsSomeSessionUsage() throws IOException, InterruptedException
+	public void statusOmitsSomeSessionUsage() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -523,7 +523,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-D3
 	@Test
-	public void weakAuthorsWaitForDevelopment() throws IOException, InterruptedException
+	public void weakAuthorsWaitForDevelopment() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -578,7 +578,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void blockingFailureFailsFast() throws IOException, InterruptedException
+	public void blockingFailureFailsFast() throws IOException
 	{
 		// Requirement: R-D16
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -621,7 +621,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void passingTrialDeletesProjectCopies() throws IOException, InterruptedException
+	public void passingTrialDeletesProjectCopies() throws IOException
 	{
 		// Requirement: R-W14
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -653,7 +653,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void failedTrialKeepsProjectCopies() throws IOException, InterruptedException
+	public void failedTrialKeepsProjectCopies() throws IOException
 	{
 		// Requirement: R-W14
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -686,7 +686,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void promptAuthorIsGivenTheFailedTrialSection() throws IOException, InterruptedException
+	public void promptAuthorIsGivenTheFailedTrialSection() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -737,7 +737,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void promptAuthorGetsNoUnretainedTrialSection() throws IOException, InterruptedException
+	public void promptAuthorGetsNoUnretainedTrialSection() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -806,7 +806,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void invalidTriageCountsAsBlocking() throws IOException, InterruptedException
+	public void invalidTriageCountsAsBlocking() throws IOException
 	{
 		// Requirement: R-D16
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -847,7 +847,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void triageRateLimit() throws IOException, InterruptedException
+	public void triageRateLimit() throws IOException
 	{
 		// Requirement: R-D16
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -899,7 +899,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-D3
 	@Test
-	public void weakRoundSelectsBestThenRunsSequentially() throws IOException, InterruptedException
+	public void weakRoundSelectsBestThenRunsSequentially() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1005,7 +1005,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void weakRoundRestartsTargetedRuns() throws IOException, InterruptedException
+	public void weakRoundRestartsTargetedRuns() throws IOException
 	{
 		// Requirement: R-D12
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1054,8 +1054,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-D12
 	@Test(dataProvider = "workingReferenceVerdicts")
-	public void weakRoundSharesWorkingReference(Verdict referenceVerdict, boolean accepted)
-		throws IOException, InterruptedException
+	public void weakRoundSharesWorkingReference(Verdict referenceVerdict, boolean accepted) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1120,7 +1119,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-D12
 	@Test
-	public void weakRoundResumesOneWorkingReference() throws IOException, InterruptedException
+	public void weakRoundResumesOneWorkingReference() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1205,7 +1204,7 @@ public final class DriverTest
 	// Requirement: R-D14
 	// Requirement: R-D3
 	@Test
-	public void sequentialApproachSurvivesRestart() throws IOException, InterruptedException
+	public void sequentialApproachSurvivesRestart() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1241,7 +1240,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-D3
 	@Test
-	public void approachContinuesFromEarlierRound() throws IOException, InterruptedException
+	public void approachContinuesFromEarlierRound() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1274,7 +1273,7 @@ public final class DriverTest
 	// Requirement: R-D11
 	// Requirement: R-D3
 	@Test
-	public void partialFixBecomesWorkingCandidate() throws IOException, InterruptedException
+	public void partialFixBecomesWorkingCandidate() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1330,7 +1329,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-D3
 	@Test
-	public void extendedPromotionResumes() throws IOException, InterruptedException
+	public void extendedPromotionResumes() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1378,7 +1377,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-D15
 	@Test
-	public void partialFixRevertsAndResumes() throws IOException, InterruptedException
+	public void partialFixRevertsAndResumes() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1445,7 +1444,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void failingCandidateStopsAtReviewCheckpoint() throws IOException, InterruptedException
+	public void failingCandidateStopsAtReviewCheckpoint() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1481,7 +1480,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void promotedAttemptKeepsOnlyNeededHunks() throws IOException, InterruptedException
+	public void promotedAttemptKeepsOnlyNeededHunks() throws IOException
 	{
 		// Requirement: R-D11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1512,7 +1511,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be read or written
 	 */
 	@Test
-	public void uncitedHunkRetainedAndRetried() throws IOException, InterruptedException
+	public void uncitedHunkRetainedAndRetried() throws IOException
 	{
 		// Requirement: R-D10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1552,7 +1551,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void resumesMinimalityAfterRestart() throws IOException, InterruptedException
+	public void resumesMinimalityAfterRestart() throws IOException
 	{
 		// Requirement: R-D11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1587,7 +1586,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void unknownCitationRetainedAndRetried() throws IOException, InterruptedException
+	public void unknownCitationRetainedAndRetried() throws IOException
 	{
 		// Requirement: R-D10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1627,7 +1626,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void rejectedAttemptRetainedWithoutCandidate() throws IOException, InterruptedException
+	public void rejectedAttemptRetainedWithoutCandidate() throws IOException
 	{
 		// Requirement: R-D10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1672,7 +1671,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void notGuidanceEditProducesNoCandidate() throws IOException, InterruptedException
+	public void notGuidanceEditProducesNoCandidate() throws IOException
 	{
 		// Requirement: R-D10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1712,7 +1711,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void noEditRetainsRoundDiagnosis() throws IOException, InterruptedException
+	public void noEditRetainsRoundDiagnosis() throws IOException
 	{
 		// Requirement: R-D10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1747,7 +1746,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void testDefectRequestsRevision() throws IOException, InterruptedException
+	public void testDefectRequestsRevision() throws IOException
 	{
 		// Requirement: R-D10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1781,7 +1780,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void failedRoundResumesSampling() throws IOException, InterruptedException
+	public void failedRoundResumesSampling() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1891,7 +1890,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void nothingRunsBeforeConfirmation() throws IOException, InterruptedException
+	public void nothingRunsBeforeConfirmation() throws IOException
 	{
 		// Requirement: R-C2
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1922,7 +1921,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void commitControlsTheEmptiedIncumbent() throws IOException, InterruptedException
+	public void commitControlsTheEmptiedIncumbent() throws IOException
 	{
 		// Requirement: R-E1
 		// Requirement: R-F7
@@ -1953,7 +1952,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void commitRemovesDependents() throws IOException, InterruptedException
+	public void commitRemovesDependents() throws IOException
 	{
 		// Requirement: R-W10
 		Path script = Path.of("bin/repair.sh");
@@ -2010,7 +2009,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void certify() throws IOException, InterruptedException
+	public void certify() throws IOException
 	{
 		// Requirement: R-E1
 		Contract contract = ContractFixtures.contract();
@@ -2061,7 +2060,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void certifyWaitsForIncumbentComparisons() throws IOException, InterruptedException
+	public void certifyWaitsForIncumbentComparisons() throws IOException
 	{
 		// Requirement: R-E1
 		// Requirement: R-F8
@@ -2120,7 +2119,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void certifyWithImpliedComparisons() throws IOException, InterruptedException
+	public void certifyWithImpliedComparisons() throws IOException
 	{
 		// Requirement: R-E1
 		// Requirement: R-F9
@@ -2164,7 +2163,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void keptIncumbentDeliversPromptTests() throws IOException, InterruptedException
+	public void keptIncumbentDeliversPromptTests() throws IOException
 	{
 		// Requirement: R-W11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2192,7 +2191,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void stoppedCampaignDeliversNothing() throws IOException, InterruptedException
+	public void stoppedCampaignDeliversNothing() throws IOException
 	{
 		// Requirement: R-W11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2311,7 +2310,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void editAfterFailure() throws IOException, InterruptedException
+	public void editAfterFailure() throws IOException
 	{
 		// Requirement: R-D2
 		// Requirement: R-D3
@@ -2364,7 +2363,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void continueAfterFailure() throws IOException, InterruptedException
+	public void continueAfterFailure() throws IOException
 	{
 		// Requirement: R-D2
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2402,7 +2401,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void outOfOrderCompletion() throws IOException, InterruptedException
+	public void outOfOrderCompletion() throws IOException
 	{
 		// Requirement: R-E5
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2486,7 +2485,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void crashAfterOutcome() throws IOException, InterruptedException
+	public void crashAfterOutcome() throws IOException
 	{
 		// Requirement: R-E1
 		// Requirement: R-E11
@@ -2534,7 +2533,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void crashAfterAssignment() throws IOException, InterruptedException
+	public void crashAfterAssignment() throws IOException
 	{
 		// Requirement: R-E1
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2582,7 +2581,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void hostInterrupt() throws IOException, InterruptedException
+	public void hostInterrupt() throws IOException
 	{
 		// Requirement: R-E10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2618,7 +2617,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void inconclusive() throws IOException, InterruptedException
+	public void inconclusive() throws IOException
 	{
 		// Requirement: R-E5
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2652,7 +2651,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void rateLimit() throws IOException, InterruptedException
+	public void rateLimit() throws IOException
 	{
 		// Requirement: R-E2
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2700,7 +2699,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-E6
 	@Test
-	public void completedTrialRecordsSession() throws IOException, InterruptedException
+	public void completedTrialRecordsSession() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -2740,7 +2739,7 @@ public final class DriverTest
 	 */
 	// Requirement: R-E6
 	@Test
-	public void rateLimitedTrialRecordsSession() throws IOException, InterruptedException
+	public void rateLimitedTrialRecordsSession() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -2787,7 +2786,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void judgeRateLimit() throws IOException, InterruptedException
+	public void judgeRateLimit() throws IOException
 	{
 		// Requirement: R-E2
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2833,7 +2832,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void refusedTrialRerunsAfterHold() throws IOException, InterruptedException
+	public void refusedTrialRerunsAfterHold() throws IOException
 	{
 		// Requirement: R-E2
 		// Requirement: R-E8
@@ -2878,7 +2877,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void refusalAfterLongestHoldPauses() throws IOException, InterruptedException
+	public void refusalAfterLongestHoldPauses() throws IOException
 	{
 		// Requirement: R-E8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2910,7 +2909,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void refusedJudgeReruns() throws IOException, InterruptedException
+	public void refusedJudgeReruns() throws IOException
 	{
 		// Requirement: R-E2
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2955,7 +2954,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void refusedPromptAuthorReruns() throws IOException, InterruptedException
+	public void refusedPromptAuthorReruns() throws IOException
 	{
 		// Requirement: R-E2
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2998,7 +2997,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void unownedChange() throws IOException, InterruptedException
+	public void unownedChange() throws IOException
 	{
 		// Requirement: R-W7
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -3036,7 +3035,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void revisionDuringFormal() throws IOException, InterruptedException
+	public void revisionDuringFormal() throws IOException
 	{
 		// Requirement: R-L3
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -3112,8 +3111,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * While one driver holds a campaign, a driver of another host session changes nothing and reports the campaign
-	 * busy.
+	 * While one driver holds a campaign, a second one changes nothing and reports the campaign busy.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
@@ -3128,10 +3126,9 @@ public final class DriverTest
 				developing().build());
 			try (Driver _ = harness.open())
 			{
-				DriverContext other = harness.context("session-2");
-				requireThat(Driver.open(other, DriverHarness.CAMPAIGN).isEmpty(), "isEmpty").isTrue();
+				requireThat(Driver.open(harness.context(), DriverHarness.CAMPAIGN).isEmpty(), "isEmpty").isTrue();
 				Campaign before = harness.campaign();
-				SliceResult result = SliceRunner.run(other, DriverHarness.CAMPAIGN,
+				SliceResult result = SliceRunner.run(harness.context(), DriverHarness.CAMPAIGN,
 					List.of(new CampaignEvent.Cancel()));
 				requireThat(result.status().status(), "status").isEqualTo(new ReportStatus.Active(Status.BUSY));
 				requireThat(harness.campaign(), "campaign").isEqualTo(before);
@@ -3149,7 +3146,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void keepImprovement() throws IOException, InterruptedException
+	public void keepImprovement() throws IOException
 	{
 		// Requirement: R-F6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -3193,7 +3190,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void bestCandidateSoFar() throws IOException, InterruptedException
+	public void bestCandidateSoFar() throws IOException
 	{
 		// Requirement: R-F6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -3260,7 +3257,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void measurementChangeDuringFormal() throws IOException, InterruptedException
+	public void measurementChangeDuringFormal() throws IOException
 	{
 		// Requirement: R-M5
 		// Requirement: R-M3
@@ -3338,7 +3335,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void commitWaitsForEachProfileCell() throws IOException, InterruptedException
+	public void commitWaitsForEachProfileCell() throws IOException
 	{
 		// Requirement: R-C11
 		// Requirement: R-E17
@@ -3382,7 +3379,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void cellsRunUnderTheirProfiles() throws IOException, InterruptedException
+	public void cellsRunUnderTheirProfiles() throws IOException
 	{
 		// Requirement: R-C11
 		// Requirement: R-E17
@@ -3473,7 +3470,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void trialsStageBaseSelection() throws IOException, InterruptedException
+	public void trialsStageBaseSelection() throws IOException
 	{
 		// Requirement: R-W15
 		TrialPlugin plugin = builtPlugin();
@@ -3513,7 +3510,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void trialsInstallTrialPlugins() throws IOException, InterruptedException
+	public void trialsInstallTrialPlugins() throws IOException
 	{
 		// Requirement: R-W12
 		TrialPlugin plugin = builtPlugin();
@@ -3551,7 +3548,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void controlTrialsRemovePluginDependents() throws IOException, InterruptedException
+	public void controlTrialsRemovePluginDependents() throws IOException
 	{
 		// Requirement: R-W10
 		TrialPlugin plugin = builtPlugin();
@@ -3615,7 +3612,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void developmentSamplesWeakestCells() throws IOException, InterruptedException
+	public void developmentSamplesWeakestCells() throws IOException
 	{
 		// Requirement: R-E19
 		Contract contract = TierFixtures.tieredContract();
@@ -3646,7 +3643,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void developmentCellsGrowOnFormalFailure() throws IOException, InterruptedException
+	public void developmentCellsGrowOnFormalFailure() throws IOException
 	{
 		// Requirement: R-E19
 		// Requirement: R-E3
@@ -3699,7 +3696,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void commitWaitsForTheFailedCell() throws IOException, InterruptedException
+	public void commitWaitsForTheFailedCell() throws IOException
 	{
 		// Requirement: R-E19
 		// Requirement: R-E3
@@ -3739,7 +3736,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void codexReproducesUnderAToolOutputLimit() throws IOException, InterruptedException
+	public void codexReproducesUnderAToolOutputLimit() throws IOException
 	{
 		// Requirement: R-C19
 		Contract contract = TierFixtures.tieredContract();
@@ -3808,7 +3805,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void weakestFailureOpensNoStrongerCell() throws IOException, InterruptedException
+	public void weakestFailureOpensNoStrongerCell() throws IOException
 	{
 		// Requirement: R-E23
 		Contract contract = TierFixtures.tieredContract();
@@ -3850,7 +3847,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void heldOutTestCasesStayOutOfDevelopment() throws IOException, InterruptedException
+	public void heldOutTestCasesStayOutOfDevelopment() throws IOException
 	{
 		// Requirement: R-C16
 		// Requirement: R-D9
@@ -3977,7 +3974,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void failedAttemptReproducesBeforeDevelopment() throws IOException, InterruptedException
+	public void failedAttemptReproducesBeforeDevelopment() throws IOException
 	{
 		// Requirement: R-C19
 		// Requirement: R-C17
@@ -4120,7 +4117,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void unreproducedValuesAreReplaced() throws IOException, InterruptedException
+	public void unreproducedValuesAreReplaced() throws IOException
 	{
 		// Requirement: R-C19
 		Contract contract = ContractFixtures.contract();
@@ -4194,7 +4191,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void stressReproductionAddsADevelopmentCell() throws IOException, InterruptedException
+	public void stressReproductionAddsADevelopmentCell() throws IOException
 	{
 		// Requirement: R-C19
 		Contract contract = TierFixtures.tieredContract();
@@ -4240,7 +4237,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void unreproducedGroupPauses() throws IOException, InterruptedException
+	public void unreproducedGroupPauses() throws IOException
 	{
 		// Requirement: R-C19
 		Contract contract = ContractFixtures.contract();
@@ -4283,7 +4280,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void addedTestCaseFailureReachesPromptAuthor() throws IOException, InterruptedException
+	public void addedTestCaseFailureReachesPromptAuthor() throws IOException
 	{
 		// Requirement: R-C17
 		String target = "the shared drive";
@@ -4320,7 +4317,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void rejectedValuesStopTheSlice() throws IOException, InterruptedException
+	public void rejectedValuesStopTheSlice() throws IOException
 	{
 		// Requirement: R-C19
 		// Requirement: R-C17
@@ -4567,7 +4564,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void failedCheckRunsNoJudge() throws IOException, InterruptedException
+	public void failedCheckRunsNoJudge() throws IOException
 	{
 		// Requirement: R-E21
 		// Requirement: R-C9
@@ -4634,7 +4631,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void failureRecordsFailedAssertions() throws IOException, InterruptedException
+	public void failureRecordsFailedAssertions() throws IOException
 	{
 		// Requirement: R-D9
 		// Requirement: R-C9
@@ -4682,7 +4679,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void passingChecksRunTheJudge() throws IOException, InterruptedException
+	public void passingChecksRunTheJudge() throws IOException
 	{
 		// Requirement: R-E21
 		// Requirement: R-C8
@@ -4755,7 +4752,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void judgeReceivesEvidenceSection() throws IOException, InterruptedException
+	public void judgeReceivesEvidenceSection() throws IOException
 	{
 		// Requirement: R-E21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -4792,7 +4789,7 @@ public final class DriverTest
 	 * @throws IOException if the fixture cannot be stored or read
 	 */
 	@Test
-	public void storedPathPromptKeepsItsEvidenceContract() throws IOException, InterruptedException
+	public void storedPathPromptKeepsItsEvidenceContract() throws IOException
 	{
 		// Requirement: R-E21
 		Contract fixture = ContractFixtures.contract();
@@ -4859,7 +4856,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void recordedToolsDecideTrial() throws IOException, InterruptedException
+	public void recordedToolsDecideTrial() throws IOException
 	{
 		// Requirement: R-C9
 		MappedAssertion used = new MappedAssertion(new Assertion("runs_true", AssertionKind.EFFECT, "tool-used Bash",
@@ -4904,7 +4901,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void failedToolLeftToJudge() throws IOException, InterruptedException
+	public void failedToolLeftToJudge() throws IOException
 	{
 		// Requirement: R-C9
 		// Requirement: R-C5
@@ -4949,7 +4946,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void promptSourcesChangeDuringFormal() throws IOException, InterruptedException
+	public void promptSourcesChangeDuringFormal() throws IOException
 	{
 		// Requirement: R-M5
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -4981,7 +4978,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void loaderChangeOffersRestoreOrNewCampaign() throws IOException, InterruptedException
+	public void loaderChangeOffersRestoreOrNewCampaign() throws IOException
 	{
 		// Requirement: R-M3
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5010,7 +5007,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void promptAuthorBriefDuringFormal() throws IOException, InterruptedException
+	public void promptAuthorBriefDuringFormal() throws IOException
 	{
 		// Requirement: R-D9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5046,7 +5043,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void forbiddenPromptAuthorAttempt() throws IOException, InterruptedException
+	public void forbiddenPromptAuthorAttempt() throws IOException
 	{
 		// Requirement: R-W7
 		// Requirement: R-D3
@@ -5105,7 +5102,7 @@ public final class DriverTest
 	 */
 	@Test(dataProvider = "interruptFailures", expectedExceptions = IOException.class,
 		expectedExceptionsMessageRegExp = "The interrupt request failed")
-	public void cleansCopyAfterInterruptFailure(boolean rejectTrials) throws IOException, InterruptedException
+	public void cleansCopyAfterInterruptFailure(boolean rejectTrials) throws IOException
 	{
 		// Requirement: R-E9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5119,7 +5116,7 @@ public final class DriverTest
 				original.clock(), original.overlays(), original.judge(), original.triage(), original.promptAuthor(),
 				original.values(), original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
 				original.authority(), original.promptSources(), original.environment(), original.lockFile(),
-				original.session(), original.random(), original.settings(), original.json());
+				original.random(), original.settings(), original.json());
 			try (Driver driver = Driver.open(failing, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				driver.step();
@@ -5258,7 +5255,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void authorityWarningTrace() throws IOException, InterruptedException
+	public void authorityWarningTrace() throws IOException
 	{
 		// Requirement: R-W4
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5372,7 +5369,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void promptAuthorIsGivenTheAnsweredWarnings() throws IOException, InterruptedException
+	public void promptAuthorIsGivenTheAnsweredWarnings() throws IOException
 	{
 		// Requirement: R-W4
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5399,7 +5396,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void malformedPromptAuthorReport() throws IOException, InterruptedException
+	public void malformedPromptAuthorReport() throws IOException
 	{
 		// Requirement: R-W4
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5428,7 +5425,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void permittedNeededEditChangesNothing() throws IOException, InterruptedException
+	public void permittedNeededEditChangesNothing() throws IOException
 	{
 		// Requirement: R-W4
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5453,7 +5450,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void linkTargetEditBecomesCandidate() throws IOException, InterruptedException
+	public void linkTargetEditBecomesCandidate() throws IOException
 	{
 		// Requirement: R-W4
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5471,7 +5468,7 @@ public final class DriverTest
 				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), new Authority(Set.of(DriverHarness.PROMPT, Path.of("docs")), Set.of(), fork),
-				original.promptSources(), original.environment(), original.lockFile(), original.session(), original.random(),
+				original.promptSources(), original.environment(), original.lockFile(), original.random(),
 				original.settings(), original.json());
 			// The working candidate already changed the handbook, so its bytes come from the overlay
 			Sha256 working = Builder.snapshot("candidate-1");
@@ -5496,7 +5493,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void infrastructureFailuresPause() throws IOException, InterruptedException
+	public void infrastructureFailuresPause() throws IOException
 	{
 		// Requirement: R-E2
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5564,7 +5561,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test(dataProvider = "judgeVerdicts")
-	public void adoptsJudgmentJson(Verdict verdict) throws IOException, InterruptedException
+	public void adoptsJudgmentJson(Verdict verdict) throws IOException
 	{
 		// Requirement: R-E13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5608,7 +5605,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void invalidVerdictRerunsJudge() throws IOException, InterruptedException
+	public void invalidVerdictRerunsJudge() throws IOException
 	{
 		// Requirement: R-E2
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -5711,7 +5708,7 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test(dataProvider = "stoppedDeliveries")
-	public void deliveryStopsForUserDirection(DeliveryResult stopped) throws IOException, InterruptedException
+	public void deliveryStopsForUserDirection(DeliveryResult stopped) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{

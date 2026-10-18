@@ -1025,15 +1025,9 @@ The driver therefore runs as a foreground command in time-bounded **slices**:
   deadline. Before 5 trials have completed, CAT uses the prompt test's time limit instead.
 - In-flight trials may finish within a 1-minute grace period. CAT then cancels the remainder, which rerun later as the
   same logical trials, and exits.
-- Statuses are `running` (call again), `awaiting-user` (a decision with concrete choices), `busy` (a driver of another
-  host session holds the campaign) or a terminal outcome. The skill loops on `running` and shows progress after each
-  slice.
-- One driver writes to a campaign at a time. The driver records its host session and process next to the campaign's
-  lock. A second driver of another host session, or one that finds no record, returns `busy` immediately. A second
-  driver of the same host session waits for the lock and then runs its slice: a host session runs one command after
-  another, so the earlier command is still running only because the agent lost track of it, for example after
-  context compaction. If the holder is the second driver's own process or one that started it, waiting would never
-  end, so the second driver fails at once.
+- Statuses are `running` (call again), `awaiting-user` (a decision with concrete choices), `busy` (another driver holds
+  the campaign) or a terminal outcome. The skill loops on `running` and shows progress after each slice.
+- One driver writes to a campaign at a time. A second `run` returns `busy` immediately instead of waiting.
 
 ### 3.8 Interruption and crash consistency
 

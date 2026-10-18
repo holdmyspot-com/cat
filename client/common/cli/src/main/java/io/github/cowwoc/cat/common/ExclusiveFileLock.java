@@ -3,13 +3,12 @@ package io.github.cowwoc.cat.common;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.io.IOException;
-import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Path;
 import java.util.Optional;
-import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -26,10 +25,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class ExclusiveFileLock implements AutoCloseable
 {
 	/**
-	 * The files that this JVM has locked or is locking, keyed by {@link #keyOf(Path)}. Access is synchronized on the
-	 * set, which is notified whenever a key leaves it.
+	 * The files that this JVM has locked or is locking, keyed by {@link #keyOf(Path)}.
 	 */
-	private static final Set<Path> HELD = new HashSet<>();
+	private static final Set<Path> HELD = ConcurrentHashMap.newKeySet();
 	private final Path key;
 	private final FileChannel channel;
 	private final FileLock lock;
@@ -66,11 +64,8 @@ public final class ExclusiveFileLock implements AutoCloseable
 		requireThat(file, "file").isNotNull();
 		requireThat(opener, "opener").isNotNull();
 		Path key = keyOf(file);
-		synchronized (HELD)
-		{
-			if (!HELD.add(key))
-				return Optional.empty();
-		}
+		if (!HELD.add(key))
+			return Optional.empty();
 
 		FileChannel channel;
 		try
@@ -79,7 +74,7 @@ public final class ExclusiveFileLock implements AutoCloseable
 		}
 		catch (IOException | RuntimeException e)
 		{
-			release(key);
+			HELD.remove(key);
 			throw e;
 		}
 
@@ -101,7 +96,7 @@ public final class ExclusiveFileLock implements AutoCloseable
 			}
 			finally
 			{
-				release(key);
+				HELD.remove(key);
 			}
 			throw e;
 		}
@@ -113,82 +108,9 @@ public final class ExclusiveFileLock implements AutoCloseable
 		}
 		finally
 		{
-			release(key);
+			HELD.remove(key);
 		}
 		return Optional.empty();
-	}
-
-	/**
-	 * Locks a file, waiting while this JVM or another process holds a lock on it.
-	 * <p>
-	 * The file is not opened while this JVM holds or is taking a lock on it. The opened channel is closed unless the
-	 * returned lock holds it.
-	 *
-	 * @param file the lock file. Its directory must exist.
-	 * @param opener opens the file
-	 * @return the lock
-	 * @throws NullPointerException if {@code file} or {@code opener} are null
-	 * @throws IOException if the file's directory cannot be resolved, or the file cannot be opened, locked or closed.
-	 *   An interrupt while another process holds the lock closes the channel and throws
-	 *   {@link ClosedByInterruptException}.
-	 * @throws InterruptedException if the thread is interrupted while this JVM holds the lock
-	 */
-	public static ExclusiveFileLock lock(Path file, LockFileOpener opener) throws IOException, InterruptedException
-	{
-		requireThat(file, "file").isNotNull();
-		requireThat(opener, "opener").isNotNull();
-		Path key = keyOf(file);
-		synchronized (HELD)
-		{
-			while (!HELD.add(key))
-				HELD.wait();
-		}
-
-		FileChannel channel;
-		try
-		{
-			channel = opener.open(file);
-		}
-		catch (IOException | RuntimeException e)
-		{
-			release(key);
-			throw e;
-		}
-
-		try
-		{
-			return new ExclusiveFileLock(key, channel, channel.lock());
-		}
-		catch (IOException | RuntimeException e)
-		{
-			try
-			{
-				channel.close();
-			}
-			catch (IOException | RuntimeException suppressed)
-			{
-				e.addSuppressed(suppressed);
-			}
-			finally
-			{
-				release(key);
-			}
-			throw e;
-		}
-	}
-
-	/**
-	 * Removes a file from the registry and wakes the threads that wait to lock a file.
-	 *
-	 * @param key the file's registry key
-	 */
-	private static void release(Path key)
-	{
-		synchronized (HELD)
-		{
-			HELD.remove(key);
-			HELD.notifyAll();
-		}
 	}
 
 	/**
@@ -234,7 +156,7 @@ public final class ExclusiveFileLock implements AutoCloseable
 		}
 		finally
 		{
-			release(key);
+			HELD.remove(key);
 		}
 	}
 }

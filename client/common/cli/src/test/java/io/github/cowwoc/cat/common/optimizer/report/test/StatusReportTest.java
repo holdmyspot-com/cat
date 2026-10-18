@@ -519,7 +519,7 @@ public final class StatusReportTest
 	 * @throws IOException if the fixture cannot be used
 	 */
 	@Test
-	public void reportsSnapshotSizesAndTrialTokens() throws IOException, InterruptedException
+	public void reportsSnapshotSizesAndTrialTokens() throws IOException
 	{
 		// Requirement: R-E18
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
