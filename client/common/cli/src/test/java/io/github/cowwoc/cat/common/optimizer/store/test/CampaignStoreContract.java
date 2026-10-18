@@ -907,7 +907,9 @@ public abstract class CampaignStoreContract
 			new DeliveryChange.WriteLink(4, Path.of("tests/a/workspace/latest.md"), Optional.empty(),
 				Path.of("docs/latest.md")),
 			new DeliveryChange.WriteLink(5, Path.of("tests/a/workspace/guide.md"),
-				Optional.of(new RegularFile(original.hash(), readWrite)), Path.of("../../shared/guide.md")));
+				Optional.of(new RegularFile(original.hash(), readWrite)), Path.of("../../shared/guide.md")),
+			new DeliveryChange.ReplaceLinkWithDirectory(6, Path.of("tests/a/workspace/logs"),
+				new SymbolicLink(Path.of("../../shared/logs"))));
 		return new DeliveryJournal(Builder.snapshot(candidate), changes, applied);
 	}
 

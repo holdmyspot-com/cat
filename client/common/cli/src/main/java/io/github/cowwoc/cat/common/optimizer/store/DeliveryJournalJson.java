@@ -14,6 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Create;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Delete;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Edit;
+import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.ReplaceLinkWithDirectory;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.WriteLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry;
@@ -121,6 +122,11 @@ final class DeliveryJournalJson
 				link.before().ifPresent(before -> node.set("before", writeFile(before)));
 				node.put("link_target", PortablePaths.text(link.linkTarget()));
 			}
+			case ReplaceLinkWithDirectory directory ->
+			{
+				node.put("kind", "replace_link_with_directory");
+				node.set("before", writeFile(directory.before()));
+			}
 		}
 		return node;
 	}
@@ -205,8 +211,10 @@ final class DeliveryJournalJson
 					before = Optional.of(readEntry(field(node, "before")));
 				yield new WriteLink(sequence, target, before, Path.of(text(node, "link_target")));
 			}
-			default -> throw new IllegalArgumentException("kind: must be create, edit, delete or write_link, but was " +
-				kind);
+			case "replace_link_with_directory" -> new ReplaceLinkWithDirectory(sequence, target,
+				readLink(field(node, "before")));
+			default -> throw new IllegalArgumentException("kind: must be create, edit, delete, write_link or " +
+				"replace_link_with_directory, but was " + kind);
 		};
 	}
 
@@ -222,6 +230,18 @@ final class DeliveryJournalJson
 		if (node.has("link_target"))
 			return new SymbolicLink(Path.of(text(node, "link_target")));
 		return readFile(node);
+	}
+
+	/**
+	 * Converts a document to a symbolic-link state.
+	 *
+	 * @param node the document
+	 * @return the link's state
+	 */
+	private static SymbolicLink readLink(JsonNode node)
+	{
+		requireObject(node, "before");
+		return new SymbolicLink(Path.of(text(node, "link_target")));
 	}
 
 	/**

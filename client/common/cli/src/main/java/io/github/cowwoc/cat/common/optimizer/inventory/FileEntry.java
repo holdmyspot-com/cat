@@ -12,7 +12,7 @@ import java.util.Set;
  * <p>
  * Directories have no entry; an inventory records the files and links inside them.
  */
-public sealed interface FileEntry
+public sealed interface FileEntry extends PathState
 {
 	/**
 	 * A regular file.

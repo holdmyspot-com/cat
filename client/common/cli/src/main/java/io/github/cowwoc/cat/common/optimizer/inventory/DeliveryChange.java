@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SpecialFile;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
+import io.github.cowwoc.cat.common.optimizer.inventory.PathState.Directory;
 
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -12,7 +13,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * One file or link change in a conflict-free {@link DeliveryPlan}.
+ * One file, link or directory change in a conflict-free {@link DeliveryPlan}.
  * <p>
  * Each change records the live state its target must have before it is applied ({@link #preimage()}) and the state
  * it leaves ({@link #postimage()}). Before applying a change, delivery compares the live target with both: a target
@@ -40,14 +41,14 @@ public sealed interface DeliveryChange
 	 *
 	 * @return the regular file or symbolic link, or empty if the target must not exist
 	 */
-	Optional<FileEntry> preimage();
+	Optional<PathState> preimage();
 
 	/**
 	 * Returns the state the target has after the change.
 	 *
-	 * @return the regular file or symbolic link, or empty if the target does not exist
+	 * @return the regular file, symbolic link or directory, or empty if the target does not exist
 	 */
-	Optional<FileEntry> postimage();
+	Optional<PathState> postimage();
 
 	/**
 	 * Creates a file where none exists.
@@ -79,13 +80,13 @@ public sealed interface DeliveryChange
 		}
 
 		@Override
-		public Optional<FileEntry> preimage()
+		public Optional<PathState> preimage()
 		{
 			return Optional.empty();
 		}
 
 		@Override
-		public Optional<FileEntry> postimage()
+		public Optional<PathState> postimage()
 		{
 			return Optional.of(new RegularFile(content.hash(), permissions));
 		}
@@ -124,13 +125,13 @@ public sealed interface DeliveryChange
 		}
 
 		@Override
-		public Optional<FileEntry> preimage()
+		public Optional<PathState> preimage()
 		{
 			return Optional.of(before);
 		}
 
 		@Override
-		public Optional<FileEntry> postimage()
+		public Optional<PathState> postimage()
 		{
 			return Optional.of(new RegularFile(content.hash(), permissions));
 		}
@@ -162,13 +163,13 @@ public sealed interface DeliveryChange
 		}
 
 		@Override
-		public Optional<FileEntry> preimage()
+		public Optional<PathState> preimage()
 		{
 			return Optional.of(before);
 		}
 
 		@Override
-		public Optional<FileEntry> postimage()
+		public Optional<PathState> postimage()
 		{
 			return Optional.empty();
 		}
@@ -210,15 +211,56 @@ public sealed interface DeliveryChange
 		}
 
 		@Override
-		public Optional<FileEntry> preimage()
+		public Optional<PathState> preimage()
 		{
-			return before;
+			return before.map(PathState.class::cast);
 		}
 
 		@Override
-		public Optional<FileEntry> postimage()
+		public Optional<PathState> postimage()
 		{
 			return Optional.of(new SymbolicLink(linkTarget));
+		}
+	}
+
+	/**
+	 * Replaces a symbolic link with an empty directory, which later changes of the plan fill.
+	 * <p>
+	 * The link is deleted before the directory is created, so a crash in between leaves neither and stops the next
+	 * delivery run.
+	 *
+	 * @param sequence the zero-based position in the plan
+	 * @param target   the path of the link, relative to the project directory
+	 * @param before   the symbolic link that the target holds when delivery is planned
+	 */
+	record ReplaceLinkWithDirectory(int sequence, Path target, SymbolicLink before) implements DeliveryChange
+	{
+		/**
+		 * Creates a change.
+		 *
+		 * @param sequence the zero-based position in the plan
+		 * @param target   the path of the link, relative to the project directory
+		 * @param before   the symbolic link that the target holds when delivery is planned
+		 * @throws NullPointerException     if any of the arguments are null
+		 * @throws IllegalArgumentException if {@code sequence} is negative
+		 */
+		public ReplaceLinkWithDirectory
+		{
+			requireThat(sequence, "sequence").isNotNegative();
+			requireThat(target, "target").isNotNull();
+			requireThat(before, "before").isNotNull();
+		}
+
+		@Override
+		public Optional<PathState> preimage()
+		{
+			return Optional.of(before);
+		}
+
+		@Override
+		public Optional<PathState> postimage()
+		{
+			return Optional.of(new Directory());
 		}
 	}
 }

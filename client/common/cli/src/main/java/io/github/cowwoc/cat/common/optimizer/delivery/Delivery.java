@@ -22,6 +22,7 @@ import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Create;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Delete;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Edit;
+import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.ReplaceLinkWithDirectory;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.WriteLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryPlan;
 import io.github.cowwoc.cat.common.optimizer.inventory.FileContent;
@@ -34,6 +35,8 @@ import io.github.cowwoc.cat.common.optimizer.inventory.InventoryDiff;
 import io.github.cowwoc.cat.common.optimizer.inventory.InventoryScanner;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.PathChange;
+import io.github.cowwoc.cat.common.optimizer.inventory.PathState;
+import io.github.cowwoc.cat.common.optimizer.inventory.PathState.Directory;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
 import io.github.cowwoc.cat.common.optimizer.inventory.TestFiles;
 import io.github.cowwoc.cat.common.optimizer.port.WorkspacePort;
@@ -246,7 +249,7 @@ public final class Delivery
 		{
 			DeliveryChange change = journal.changes().get(i);
 			Path file = base.resolve(change.target());
-			Optional<FileEntry> live = liveState(file);
+			Optional<PathState> live = liveState(file);
 			if (!live.equals(change.postimage()))
 			{
 				if (!live.equals(change.preimage()))
@@ -287,8 +290,12 @@ public final class Delivery
 	 * Returns the files and links that write the prompt tests: each test's values file, its regression scenario and its
 	 * workspace files. A test that the contract author wrote as files in its draft directory is written as the draft
 	 * holds it: its {@value PromptTestFiles#SCENARIO} unchanged, each link fixture as a link at the path that it was
-	 * read from, each link to a file outside {@value PromptTestFiles#WORKSPACE} as that link, and each other fixture at
-	 * the file that it was read from, which may be the target of such a link.
+	 * read from, each link that leads outside {@value PromptTestFiles#WORKSPACE} as that link, and each other fixture
+	 * at the file that it was read from, which may be the target of such a link.
+	 * <p>
+	 * Other prompt tests may read the file that such a link reaches, so a draft that changes a file that the fork
+	 * records there leaves that file alone. Instead, the link becomes a copy that holds the change, and a link to a
+	 * directory becomes a directory of copies of every fixture below it.
 	 * <p>
 	 * A test that the contract author wrote into the proposal itself has its fixture files and links under
 	 * {@value PromptTestFiles#WORKSPACE}. A test that delivery creates gets a new scenario titled with its identifier.
@@ -306,6 +313,7 @@ public final class Delivery
 		Map<Path, FileContent> files = new HashMap<>();
 		Map<Path, Path> links = new HashMap<>();
 		Set<Path> createdDirectories = new LinkedHashSet<>();
+		Set<Path> expandedLinks = new HashSet<>();
 		for (DeliveredTest test : tests)
 		{
 			Path directory = test.location().directory();
@@ -320,11 +328,13 @@ public final class Delivery
 			if (test.draft().isPresent())
 			{
 				// The draft holds every file of the test where delivery writes it
+				Set<Path> copied = copiedLinksOf(test, selected.fork());
 				for (FixtureFile fixture : test.fixtures())
 				{
+					Path path = Path.of(fixture.path());
 					Path file;
-					if (fixture.source().isEmpty())
-						file = own.resolve(fixture.path());
+					if (copied.stream().anyMatch(path::startsWith) || fixture.source().isEmpty())
+						file = own.resolve(path);
 					else
 						file = Path.of(fixture.source());
 					if (fixture.link())
@@ -333,7 +343,16 @@ public final class Delivery
 						files.put(file, new FileContent(fixture.content().getBytes(UTF_8)));
 				}
 				for (Entry<String, String> link : test.copiedLinks().entrySet())
-					links.put(own.resolve(link.getKey()), Path.of(link.getValue()));
+				{
+					Path path = Path.of(link.getKey());
+					if (!copied.contains(path))
+						links.put(own.resolve(path), Path.of(link.getValue()));
+					else if (selected.fork().entry(own.resolve(path)).orElse(null) instanceof SymbolicLink &&
+						!files.containsKey(own.resolve(path)))
+					{
+						expandedLinks.add(own.resolve(path));
+					}
+				}
 				files.put(scenarioPath, new FileContent(test.draft().get().getBytes(UTF_8)));
 				continue;
 			}
@@ -364,7 +383,38 @@ public final class Delivery
 			String scenario = test.scenarioFile(recorded);
 			files.put(scenarioPath, new FileContent(scenario.getBytes(UTF_8)));
 		}
-		return new TestFiles(files, links, createdDirectories);
+		return new TestFiles(files, links, createdDirectories, expandedLinks);
+	}
+
+	/**
+	 * Returns the links of a draft that delivery writes as copies: each link that leads outside
+	 * {@value PromptTestFiles#WORKSPACE} to a file, or to a directory holding a file, that the fork records with other
+	 * content than the draft's fixture.
+	 *
+	 * @param test a prompt test that the contract author wrote as files in its draft directory
+	 * @param fork the files recorded at the fork
+	 * @return the links' paths, relative to the test's {@value PromptTestFiles#WORKSPACE} directory
+	 */
+	private static Set<Path> copiedLinksOf(DeliveredTest test, FileInventory fork)
+	{
+		Set<Path> copied = new HashSet<>();
+		for (FixtureFile fixture : test.fixtures())
+		{
+			if (fixture.link() || fixture.source().isEmpty())
+				continue;
+			if (!(fork.entry(Path.of(fixture.source())).orElse(null) instanceof RegularFile recorded) ||
+				recorded.contentHash().equals(Sha256.of(fixture.content().getBytes(UTF_8))))
+			{
+				continue;
+			}
+			Path path = Path.of(fixture.path());
+			for (String link : test.copiedLinks().keySet())
+			{
+				if (path.startsWith(link))
+					copied.add(Path.of(link));
+			}
+		}
+		return copied;
 	}
 
 	/**
@@ -458,11 +508,11 @@ public final class Delivery
 	 * Returns the live state of a target, read without following symbolic links.
 	 *
 	 * @param file the target
-	 * @return the regular file or symbolic link, a {@link SpecialFile} for any other kind of file, or empty if nothing
-	 *   exists there
+	 * @return the regular file, symbolic link or directory, a {@link SpecialFile} for any other kind of file, or empty
+	 *   if nothing exists there
 	 * @throws IOException if the target cannot be read
 	 */
-	private static Optional<FileEntry> liveState(Path file) throws IOException
+	private static Optional<PathState> liveState(Path file) throws IOException
 	{
 		BasicFileAttributes attributes;
 		try
@@ -475,6 +525,8 @@ public final class Delivery
 		}
 		if (attributes.isSymbolicLink())
 			return Optional.of(new SymbolicLink(Files.readSymbolicLink(file)));
+		if (attributes.isDirectory())
+			return Optional.of(new Directory());
 		if (!attributes.isRegularFile())
 			return Optional.of(new SpecialFile());
 		return Optional.of(new RegularFile(Sha256.of(Files.readAllBytes(file)), PortableFiles.mode(file)));
@@ -505,6 +557,12 @@ public final class Delivery
 			case Delete _ ->
 			{
 				Files.delete(file);
+				PortableFiles.forceDirectory(file.getParent());
+			}
+			case ReplaceLinkWithDirectory _ ->
+			{
+				Files.delete(file);
+				Files.createDirectory(file);
 				PortableFiles.forceDirectory(file.getParent());
 			}
 		}

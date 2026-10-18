@@ -11,6 +11,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Create;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Delete;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.Edit;
+import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.ReplaceLinkWithDirectory;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange.WriteLink;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryChange;
 import io.github.cowwoc.cat.common.optimizer.inventory.DeliveryConflict.Kind;
@@ -259,6 +260,56 @@ public final class DeliveryPlanTest
 			new Edit(0, Path.of("t/w/old.md"), link("../../s/old.md"), content("O"), READ_WRITE),
 			new WriteLink(1, Path.of("t/w/guide.md"), Optional.of(file("g")), Path.of("../../s/guide.md")),
 			new WriteLink(2, Path.of("t/w/new.md"), Optional.empty(), Path.of("a.md"))));
+	}
+
+	/**
+	 * Verifies that a link that the tests expand is replaced with a directory before the test files below it are
+	 * created there, although the directory that the link reaches is not the link's.
+	 */
+	@Test
+	public void expandedLinksBecomeDirectories()
+	{
+		FileInventory fork = inventory(Map.of(
+			"s/logs/a.log", file("a"),
+			"t/w/logs", link("../../s/logs")));
+		TestFiles tests = new TestFiles(Map.of(
+			Path.of("t/w/logs/a.log"), content("A"),
+			Path.of("t/w/logs/b.log"), content("b")),
+			Map.of(), Set.of(), Set.of(Path.of("t/w/logs")));
+
+		DeliveryPlan plan = DeliveryPlan.of(Overlay.of(fork), fork, tests, Map.of());
+
+		requireThat(plan.conflicts(), "conflicts").isEmpty();
+		requireThat(plan.changes(), "changes").isEqualTo(List.of(
+			new ReplaceLinkWithDirectory(0, Path.of("t/w/logs"), link("../../s/logs")),
+			new Create(1, Path.of("t/w/logs/a.log"), content("A"), READ_WRITE),
+			new Create(2, Path.of("t/w/logs/b.log"), content("b"), READ_WRITE)));
+	}
+
+	/**
+	 * Verifies that a link that the tests expand conflicts when the fork records no link at its path or the base
+	 * retargeted it, and that the files below it add no conflicts of their own.
+	 */
+	@Test
+	public void expandedLinksConflict()
+	{
+		FileInventory fork = inventory(Map.of(
+			"t/w/moved", link("../../s/logs"),
+			"t/w/plain.md", file("p")));
+		FileInventory current = inventory(Map.of(
+			"t/w/moved", link("../../s/other"),
+			"t/w/plain.md", file("p")));
+		TestFiles tests = new TestFiles(Map.of(
+			Path.of("t/w/moved/a.log"), content("A"),
+			Path.of("t/w/plain.md/a.log"), content("A")),
+			Map.of(), Set.of(), Set.of(Path.of("t/w/moved"), Path.of("t/w/plain.md")));
+
+		DeliveryPlan plan = DeliveryPlan.of(Overlay.of(fork), current, tests, Map.of());
+
+		requireThat(plan.conflicts(), "conflicts").isEqualTo(List.of(
+			new DeliveryConflict(Kind.BOTH_CHANGED, Path.of("t/w/moved"), Path.of("t/w/moved")),
+			new DeliveryConflict(Kind.STRUCTURAL_COLLISION, Path.of("t/w/plain.md"), Path.of("t/w/plain.md"))));
+		requireThat(plan.changes(), "changes").isEmpty();
 	}
 
 	/**

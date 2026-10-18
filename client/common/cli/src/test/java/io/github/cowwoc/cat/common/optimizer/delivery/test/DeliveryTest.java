@@ -902,8 +902,8 @@ public final class DeliveryTest
 	/**
 	 * A prompt test that the contract author wrote as files in its draft directory is delivered as the draft holds it:
 	 * at its directory there, with the draft's {@value PromptTestFiles#SCENARIO} unchanged and each fixture at its file
-	 * in the draft, even one that a link reaches in a shared directory. A recorded test's
-	 * directory is edited, and any other directory is created.
+	 * in the draft, even a new one that a link reaches in a shared directory. A recorded test's directory is edited,
+	 * and any other directory is created.
 	 *
 	 * @throws IOException             if the fixture or delivery fails
 	 * @throws ScenarioFormatException if a delivered values file cannot be read back
@@ -1019,6 +1019,64 @@ public final class DeliveryTest
 				isEqualTo(Path.of("../../shared/docs/guide.md"));
 			requireThat(read(fixture.resolve(createdWorkspace.resolve("guide.md"))), "throughGuide").
 				isEqualTo("Guide\n");
+		}
+	}
+
+	/**
+	 * A shared file that the draft of a prompt test changes is delivered as a copy in that test's
+	 * {@value PromptTestFiles#WORKSPACE} directory, so the shared file that other prompt tests read stays as it was: a
+	 * link to a changed file becomes the changed file, and a link to a directory that holds a changed file becomes a
+	 * directory of copies of the files that the test reads through it.
+	 *
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test
+	public void deliversChangedSharedFilesAsCopies() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path shared = TESTS.resolve("shared");
+			Path workspace = EDITED_SCENARIO.resolveSibling(PromptTestFiles.WORKSPACE);
+			Fixture fixture = Fixture.create(cleanup).
+				commit(shared.resolve("AGENTS.md"), "Reply in one sentence.\n".getBytes(UTF_8)).
+				commit(shared.resolve("logs/a.log"), "a1\n".getBytes(UTF_8)).
+				commit(shared.resolve("logs/b.log"), "b1\n".getBytes(UTF_8)).
+				link(workspace.resolve("AGENTS.md"), "../../shared/AGENTS.md").
+				link(workspace.resolve("logs"), "../../shared/logs").
+				commit(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
+			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.");
+			List<FixtureFile> fixtures = List.of(
+				new FixtureFile("AGENTS.md", "Reply in two sentences.\n", PortablePaths.text(shared.resolve("AGENTS.md"))),
+				new FixtureFile("logs/a.log", "a2\n", PortablePaths.text(shared.resolve("logs/a.log"))),
+				new FixtureFile("logs/b.log", "b1\n", PortablePaths.text(shared.resolve("logs/b.log"))));
+			Contract fixtureContract = ContractFixtures.contract();
+			List<PromptTest> promptTests = new ArrayList<>(fixtureContract.tests());
+			promptTests.set(0, withDraft(fixtureContract.tests().getFirst(), List.of(PortablePaths.text(EDITED_SCENARIO)),
+				fixtures, new PromptTest.Draft(EDITED_SCENARIO.getParent(), editedScenario,
+					Map.of("AGENTS.md", "../../shared/AGENTS.md", "logs", "../../shared/logs"))));
+			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
+				fixtureContract.judge(), fixtureContract.fixtures(), fixtureContract.limitations(),
+				fixtureContract.minimumPassRate(), fixtureContract.salt());
+			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
+				subList(0, 1);
+
+			Overlay candidate = fixture.candidate();
+			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
+				recordedScenario()).
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD, tests);
+
+			requireDelivered(result);
+			requireThat(read(fixture.resolve(shared.resolve("AGENTS.md"))), "sharedAgents").
+				isEqualTo("Reply in one sentence.\n");
+			requireThat(read(fixture.resolve(shared.resolve("logs/a.log"))), "sharedA").isEqualTo("a1\n");
+			Path agents = fixture.resolve(workspace.resolve("AGENTS.md"));
+			requireThat(Files.isSymbolicLink(agents), "agentsIsLink").isFalse();
+			requireThat(read(agents), "agents").isEqualTo("Reply in two sentences.\n");
+			Path logs = fixture.resolve(workspace.resolve("logs"));
+			requireThat(Files.isSymbolicLink(logs), "logsIsLink").isFalse();
+			requireThat(read(logs.resolve("a.log")), "a").isEqualTo("a2\n");
+			requireThat(read(logs.resolve("b.log")), "b").isEqualTo("b1\n");
 		}
 	}
 
