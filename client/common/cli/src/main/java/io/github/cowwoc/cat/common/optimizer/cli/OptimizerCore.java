@@ -1313,8 +1313,8 @@ public final class OptimizerCore implements Core
 	 * @param derived the proposal that the user confirms
 	 * @param selection the files of the candidate that every trial receives
 	 * @throws CommandRefusedException if a fixture does not exist, the fork lacks a file that the proposal needs, a
-	 *   fixture file of a prompt test would replace a file of the fork, or a fixture file is a copy of a file that
-	 *   every trial receives
+	 *   fixture file of a prompt test would replace a file of the fork that every trial receives, or a fixture file is
+	 *   a copy of a file that every trial receives
 	 */
 	private static void requireParticipantsHeld(Path root, ForkView fork, DerivedProposal derived,
 		SourceSelection selection) throws CommandRefusedException
@@ -1327,7 +1327,7 @@ public final class OptimizerCore implements Core
 				"candidate's version: " + String.join("; ", promptCopies) + ". Run `revise` with feedback that " +
 				"removes these links from the tests' " + PromptTestFiles.WORKSPACE + "/ directories.");
 		}
-		Set<String> collisions = fixtureCollisions(fork.inventory(), derived.contract());
+		Set<String> collisions = fixtureCollisions(fork.inventory(), derived.contract(), selection);
 		if (!collisions.isEmpty())
 		{
 			throw new CommandRefusedException("These fixture files of the proposal's prompt tests collide with " +
@@ -1375,14 +1375,15 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns the fixture files of a contract's prompt tests that would replace a file of the fork, or that need a
-	 * directory where the fork holds a file.
+	 * Returns the fixture files of a contract's prompt tests that would replace a file of the fork that every trial
+	 * receives, or that need a directory where every trial receives a file.
 	 *
 	 * @param inventory the files of the fork
 	 * @param contract the contract
+	 * @param selection the files of the candidate that every trial receives
 	 * @return the colliding paths of every test case, relative to the workspace root
 	 */
-	private static Set<String> fixtureCollisions(FileInventory inventory, Contract contract)
+	private static Set<String> fixtureCollisions(FileInventory inventory, Contract contract, SourceSelection selection)
 	{
 		Set<String> collisions = new TreeSet<>();
 		for (PromptTest test : contract.tests())
@@ -1392,9 +1393,9 @@ public final class OptimizerCore implements Core
 				for (String target : test.fixtureTargets(testCase).keySet())
 				{
 					Path path = Path.of(target);
-					boolean collides = inventory.holds(path);
+					boolean collides = selection.selects(path) && inventory.holds(path);
 					for (Path parent = path.getParent(); parent != null && !collides; parent = parent.getParent())
-						collides = inventory.entry(parent).isPresent();
+						collides = selection.selects(parent) && inventory.entry(parent).isPresent();
 					if (collides)
 						collisions.add(target);
 				}

@@ -4037,4 +4037,51 @@ public final class OptimizerCoreTest
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
+
+	/**
+	 * Verifies that a recorded prompt test whose {@code workspace/} links to a project file at the file's own path is
+	 * confirmed, because trials do not receive that project file, so its copy replaces nothing.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project cannot start or confirm a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void confirmAcceptsLinkToProjectFileAtItsPath() throws IOException, CommandRefusedException,
+		InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(output -> ((ObjectNode) output.get("tests").
+				get(0)).putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md")),
+				Set.of(Path.of("CLAUDE.md"), Path.of("docs/guide.md")));
+			Files.createDirectories(repository.root().resolve("docs"));
+			Files.writeString(repository.root().resolve("docs/guide.md"), "Ship on Fridays.\n");
+			Path test = Files.createDirectories(repository.root().resolve(".cat/tests/CLAUDE/formatting"));
+			Files.writeString(test.resolve("scenario.md"), """
+				# Formatting
+
+				## Variables
+
+				- **tone**: The tone of the summary.
+
+				## Scenario
+
+				Summarize the guide in {{tone}} style.
+
+				## Assertions
+
+				### keeps_tone
+
+				- **kind**: effect
+				- **description**: The summary keeps the {{tone}} tone.
+				""");
+			Path workspace = Files.createDirectories(test.resolve("workspace/docs"));
+			Files.createSymbolicLink(workspace.resolve("guide.md"), Path.of("../../../../../../docs/guide.md"));
+
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
+		}
+	}
 }
