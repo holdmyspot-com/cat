@@ -51,8 +51,8 @@ final class ThreeWayPatches
 				"directory: " + patchFile);
 		}
 		String beforeTree = git.lines("rev-parse", targetTree + "^{tree}").getFirst();
-		Path index = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".index");
-		Path sourcePatch = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".patch");
+		Path index = manifests.createTemporaryFile(manifestFile, ".index");
+		Path sourcePatch = manifests.createTemporaryFile(manifestFile, ".patch");
 		try
 		{
 			Files.deleteIfExists(index);

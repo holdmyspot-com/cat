@@ -51,7 +51,7 @@ public final class PatchApplication
 	 */
 	String apply(Path manifestFile, Path patchFile, String beforeTree) throws IOException
 	{
-		Path index = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".index");
+		Path index = manifests.createTemporaryFile(manifestFile, ".index");
 		try
 		{
 			Files.deleteIfExists(index);
@@ -79,7 +79,7 @@ public final class PatchApplication
 			resolveDeclaredSourcePatch(manifestFile, reconstruction);
 			return;
 		}
-		Path index = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".index");
+		Path index = manifests.createTemporaryFile(manifestFile, ".index");
 		try
 		{
 			Files.deleteIfExists(index);
@@ -140,7 +140,7 @@ public final class PatchApplication
 	void verifyBatchReconstruction(Path manifestFile, SourceReconstruction reconstruction, Map<String, Batch> batches)
 		throws IOException
 	{
-		Path index = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".index");
+		Path index = manifests.createTemporaryFile(manifestFile, ".index");
 		try
 		{
 			Files.deleteIfExists(index);

@@ -68,7 +68,7 @@ public final class ReplayExecution
 	 */
 	private String applyOutputs(Path manifestFile, BatchManifest manifest) throws IOException
 	{
-		Path index = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".index");
+		Path index = manifests.createTemporaryFile(manifestFile, ".index");
 		try
 		{
 			Files.deleteIfExists(index);

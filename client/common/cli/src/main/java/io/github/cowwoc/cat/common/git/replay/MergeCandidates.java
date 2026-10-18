@@ -58,9 +58,9 @@ final class MergeCandidates
 		{
 			throw new IOException("Topic-replay merge candidate must be new and below the manifest directory: " + outputFile);
 		}
-		Path earlierFile = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".earlier");
-		Path parentFile = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".parent");
-		Path sourceFile = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".source");
+		Path earlierFile = manifests.createTemporaryFile(manifestFile, ".earlier");
+		Path parentFile = manifests.createTemporaryFile(manifestFile, ".parent");
+		Path sourceFile = manifests.createTemporaryFile(manifestFile, ".source");
 		try
 		{
 			Files.write(earlierFile, git.bytes("show", targetTree + ":" + path));

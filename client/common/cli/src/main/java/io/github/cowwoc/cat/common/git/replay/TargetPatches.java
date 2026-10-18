@@ -73,7 +73,7 @@ final class TargetPatches
 				"directory: " + replacementFile);
 		}
 		String beforeTree = git.lines("rev-parse", targetTree + "^{tree}").getFirst();
-		Path index = manifests.createTemporaryFile(manifestFile, "git-topic-replay-", ".index");
+		Path index = manifests.createTemporaryFile(manifestFile, ".index");
 		try
 		{
 			Files.deleteIfExists(index);

@@ -110,7 +110,7 @@ public final class SemanticEvidence
 	CandidateUniverseEvidence verifyCandidateUniverse(Path manifestFile, BatchManifest manifest) throws IOException
 	{
 		CandidateUniverse reviewer = reviewEvidence.readCandidateUniverse(
-			reviewEvidence.independentCandidateUniverseFile(manifestFile), "topic reviewer");
+			reviewEvidence.independentCandidateUniverseFile(manifestFile));
 		reviewEvidence.validateIndependentReviewAttestation(manifestFile, manifest, reviewer, patches);
 		if (reviewer.reviewer() == null || reviewer.reviewer().isBlank())
 			throw new IOException("Topic-replay topic-reviewer candidate universe requires a non-blank reviewer identity");
@@ -123,9 +123,9 @@ public final class SemanticEvidence
 		Set<String> reviewerCandidates = reviewEvidence.validateCandidateUniverse(requirements, reviewer,
 			reviewEvidence.independentCandidateUniverseFile(manifestFile));
 		ActionResultMatrix reviewerMatrix = reviewEvidence.validateActionResultMatrix(
-			reviewEvidence.actionResultMatrixFile(manifestFile, "independent"), reviewerCandidates, "topic reviewer");
-		Path discoveryPasses = reviewEvidence.candidateDiscoveryPassesFile(manifestFile, "independent");
-		reviewEvidence.validateCandidateDiscoveryPasses(discoveryPasses, reviewerCandidates, "topic reviewer");
+			reviewEvidence.actionResultMatrixFile(manifestFile), reviewerCandidates);
+		Path discoveryPasses = reviewEvidence.candidateDiscoveryPassesFile(manifestFile);
+		reviewEvidence.validateCandidateDiscoveryPasses(discoveryPasses, reviewerCandidates);
 		return new CandidateUniverseEvidence(reviewerCandidates, reviewerMatrix);
 	}
 

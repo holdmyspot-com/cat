@@ -22,6 +22,10 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class ReviewEvidence
 {
+	/**
+	 * The reviewer that owns the candidate universe, as diagnostics name it.
+	 */
+	private static final String REVIEWER_ROLE = "topic reviewer";
 	private final JsonMapper json;
 
 	/**
@@ -68,29 +72,25 @@ public final class ReviewEvidence
 	}
 
 	/**
-	 * Returns the reviewer-authored observable-behavior matrix for one candidate universe.
+	 * Returns the reviewer-authored observable-behavior matrix of the independent candidate universe.
 	 *
 	 * @param manifestFile the topic-replay manifest
-	 * @param reviewer the candidate-universe owner
 	 * @return the matrix file beside the manifest
 	 */
-	Path actionResultMatrixFile(Path manifestFile, String reviewer)
+	Path actionResultMatrixFile(Path manifestFile)
 	{
-		return manifestFile.resolveSibling(manifestFile.getFileName() + "." + reviewer +
-			"-action-result-matrix.json");
+		return manifestFile.resolveSibling(manifestFile.getFileName() + ".independent-action-result-matrix.json");
 	}
 
 	/**
-	 * Returns the reviewer-owned evidence that candidate discovery reached a fixed point.
+	 * Returns the reviewer-owned evidence that discovery of the independent candidate universe reached a fixed point.
 	 *
 	 * @param manifestFile the topic-replay manifest
-	 * @param reviewer the candidate-universe owner
 	 * @return the discovery-pass file beside the manifest
 	 */
-	Path candidateDiscoveryPassesFile(Path manifestFile, String reviewer)
+	Path candidateDiscoveryPassesFile(Path manifestFile)
 	{
-		return manifestFile.resolveSibling(manifestFile.getFileName() + "." + reviewer +
-			"-candidate-discovery-passes.json");
+		return manifestFile.resolveSibling(manifestFile.getFileName() + ".independent-candidate-discovery-passes.json");
 	}
 
 	/**
@@ -331,8 +331,8 @@ public final class ReviewEvidence
 			attestation.rawDiffHandoff().isBlank() || !attestation.candidateUniverseSha256().matches("[0-9a-f]{64}") ||
 			!attestation.candidateUniverseSha256().equals(patches.sha256(independentCandidateUniverseFile(manifestFile))) ||
 			!attestation.actionResultMatrixSha256().matches("[0-9a-f]{64}") ||
-			!attestation.actionResultMatrixSha256().equals(patches.sha256(actionResultMatrixFile(manifestFile,
-				"independent"))) || !attestation.unprimed())
+			!attestation.actionResultMatrixSha256().equals(patches.sha256(actionResultMatrixFile(manifestFile))) ||
+			!attestation.unprimed())
 		{
 			throw new IOException("Topic-replay independent-review attestation must bind the reviewer, captured range, " +
 				"workflow revision, raw-diff handoff, immutable independent evidence, and unprimed review: " + file);
@@ -398,17 +398,19 @@ public final class ReviewEvidence
 	 * Reads one independent reviewer candidate-universe artifact.
 	 *
 	 * @param file the candidate-universe file
-	 * @param role the required reviewer role used in diagnostics
 	 * @return the parsed reviewer inventory
 	 * @throws IOException if the inventory is absent or malformed
 	 */
-	CandidateUniverse readCandidateUniverse(Path file, String role) throws IOException
+	CandidateUniverse readCandidateUniverse(Path file) throws IOException
 	{
 		if (!Files.isRegularFile(file))
-			throw new IOException("Topic-replay requires a " + role + " candidate universe: " + file);
+			throw new IOException("Topic-replay requires a " + REVIEWER_ROLE + " candidate universe: " + file);
 		CandidateUniverse universe = json.readValue(file.toFile(), CandidateUniverse.class);
 		if (universe == null || universe.candidates() == null || universe.candidates().isEmpty())
-			throw new IOException("Topic-replay " + role + " candidate universe must contain behavior candidates: " + file);
+		{
+			throw new IOException("Topic-replay " + REVIEWER_ROLE + " candidate universe must contain behavior candidates: " +
+				file);
+		}
 		return universe;
 	}
 
@@ -417,18 +419,17 @@ public final class ReviewEvidence
 	 *
 	 * @param file the reviewer-authored discovery-pass evidence
 	 * @param candidateIds the reviewer's complete candidate universe
-	 * @param reviewer the reviewer role used in diagnostics
 	 * @throws IOException if a pass omits a candidate or the review lacks a terminal empty pass
 	 */
-	public void validateCandidateDiscoveryPasses(Path file, Set<String> candidateIds, String reviewer) throws IOException
+	public void validateCandidateDiscoveryPasses(Path file, Set<String> candidateIds) throws IOException
 	{
 		if (!Files.isRegularFile(file))
-			throw new IOException("Topic-replay requires " + reviewer + " candidate-discovery passes: " + file);
+			throw new IOException("Topic-replay requires " + REVIEWER_ROLE + " candidate-discovery passes: " + file);
 		CandidateDiscoveryPasses evidence = json.readValue(file.toFile(), CandidateDiscoveryPasses.class);
 		if (evidence == null || evidence.passes() == null || evidence.passes().size() < 2)
 		{
-			throw new IOException("Topic-replay " + reviewer + " discovery evidence requires an initial and terminal pass: " +
-				file);
+			throw new IOException("Topic-replay " + REVIEWER_ROLE + " discovery evidence requires an initial and terminal " +
+				"pass: " + file);
 		}
 		for (int index = 0; index < evidence.passes().size(); ++index)
 		{
@@ -438,16 +439,16 @@ public final class ReviewEvidence
 					id -> id == null || id.isBlank()) || pass.newCandidateIds().stream().anyMatch(id ->
 					id == null || id.isBlank()))
 			{
-				throw new IOException("Every " + reviewer + " candidate-discovery pass must have its number and non-blank " +
-					"examined and newly found candidates: " + file);
+				throw new IOException("Every " + REVIEWER_ROLE + " candidate-discovery pass must have its number and " +
+					"non-blank examined and newly found candidates: " + file);
 			}
 		}
 		CandidateDiscoveryPass terminal = evidence.passes().getLast();
 		if (!new HashSet<>(terminal.examinedCandidateIds()).equals(candidateIds) ||
 			terminal.examinedCandidateIds().size() != candidateIds.size() || !terminal.newCandidateIds().isEmpty())
 		{
-			throw new IOException("Topic-replay " + reviewer + " discovery evidence must end with a complete pass that " +
-				"finds no new candidate: " + file);
+			throw new IOException("Topic-replay " + REVIEWER_ROLE + " discovery evidence must end with a complete pass " +
+				"that finds no new candidate: " + file);
 		}
 	}
 
@@ -457,18 +458,19 @@ public final class ReviewEvidence
 	 *
 	 * @param file the reviewer-authored matrix
 	 * @param candidateIds the captured candidate identifiers
-	 * @param reviewer the reviewer role used in diagnostics
 	 * @return the validated matrix
 	 * @throws IOException if the matrix omits a candidate or pairwise decision
 	 */
-	public ActionResultMatrix validateActionResultMatrix(Path file, Set<String> candidateIds, String reviewer)
-		throws IOException
+	public ActionResultMatrix validateActionResultMatrix(Path file, Set<String> candidateIds) throws IOException
 	{
 		if (!Files.isRegularFile(file))
-			throw new IOException("Topic-replay requires a " + reviewer + " action-result matrix: " + file);
+			throw new IOException("Topic-replay requires a " + REVIEWER_ROLE + " action-result matrix: " + file);
 		ActionResultMatrix matrix = json.readValue(file.toFile(), ActionResultMatrix.class);
 		if (matrix == null || matrix.rows() == null || matrix.pairs() == null)
-			throw new IOException("Topic-replay " + reviewer + " action-result matrix must contain rows and pairs: " + file);
+		{
+			throw new IOException("Topic-replay " + REVIEWER_ROLE + " action-result matrix must contain rows and pairs: " +
+				file);
+		}
 		Set<String> rows = new HashSet<>();
 		Set<String> behaviors = new HashSet<>();
 		for (ActionResultRow row : matrix.rows())
@@ -480,12 +482,15 @@ public final class ReviewEvidence
 				row.requiredArtifacts() == null || row.requiredArtifacts().isEmpty() ||
 				row.deferredArtifacts() == null || !rows.add(row.candidateId()) || !behaviors.add(row.observableBehavior()))
 			{
-				throw new IOException("Every " + reviewer + " action-result row requires one candidate, distinct observable " +
-					"behavior, result, acceptance check, required artifacts, and deferred-artifact list: " + file);
+				throw new IOException("Every " + REVIEWER_ROLE + " action-result row requires one candidate, distinct " +
+					"observable behavior, result, acceptance check, required artifacts, and deferred-artifact list: " + file);
 			}
 		}
 		if (!rows.equals(candidateIds))
-			throw new IOException("Topic-replay " + reviewer + " action-result matrix must cover every candidate: " + file);
+		{
+			throw new IOException("Topic-replay " + REVIEWER_ROLE + " action-result matrix must cover every candidate: " +
+				file);
+		}
 		Set<String> pairs = new HashSet<>();
 		for (ActionPairAssessment assessment : matrix.pairs())
 		{
@@ -501,15 +506,15 @@ public final class ReviewEvidence
 				(assessment.disposition().equals("separate") && assessment.missingPrerequisite() != null) ||
 				!pairs.add(candidatePairKey(assessment.firstCandidateId(), assessment.secondCandidateId())))
 			{
-				throw new IOException("Every " + reviewer + " action-result pair requires two distinct candidates, a " +
+				throw new IOException("Every " + REVIEWER_ROLE + " action-result pair requires two distinct candidates, a " +
 					"separate-or-combined decision, removal result, split-enabling artifacts, and a missing prerequisite only " +
 					"when combined: " + file);
 			}
 		}
 		int expectedPairs = candidateIds.size() * (candidateIds.size() - 1) / 2;
 		if (pairs.size() != expectedPairs)
-			throw new IOException("Topic-replay " + reviewer + " action-result matrix must assess every candidate pair: " +
-				file);
+			throw new IOException("Topic-replay " + REVIEWER_ROLE + " action-result matrix must assess every candidate " +
+				"pair: " + file);
 		return matrix;
 	}
 
@@ -596,7 +601,7 @@ public final class ReviewEvidence
 				throw new IOException("Every semantic candidate must cite a source-neutral reviewer discovery record: " +
 					artifactFile);
 			}
-			verifyCandidateGroupIsCombined(reviewerIds, evidence.reviewerMatrix(), "topic reviewer", artifactFile);
+			verifyCandidateGroupIsCombined(reviewerIds, evidence.reviewerMatrix(), artifactFile);
 			citedReviewer.addAll(reviewerIds);
 		}
 		if (!citedReviewer.equals(evidence.reviewerCandidates()))
@@ -679,9 +684,9 @@ public final class ReviewEvidence
 					SemanticCandidate firstCandidate = outputCandidates.get(first);
 					SemanticCandidate secondCandidate = outputCandidates.get(second);
 					String reviewerFirst = reviewerCandidateId(firstCandidate, evidence.reviewerCandidates(),
-						"topic reviewer", artifactFile);
+						artifactFile);
 					String reviewerSecond = reviewerCandidateId(secondCandidate, evidence.reviewerCandidates(),
-						"topic reviewer", artifactFile);
+						artifactFile);
 					if (!actionPairDisposition(evidence.reviewerMatrix(), reviewerFirst, reviewerSecond).equals("combined"))
 					{
 						throw new IOException("Semantic candidates may share one output only when the topic-reviewer " +
@@ -698,12 +703,11 @@ public final class ReviewEvidence
 	 *
 	 * @param candidateIds reviewer behaviors retained by one downstream candidate
 	 * @param matrix the reviewer's pairwise behavior decisions
-	 * @param reviewer reviewer role used in diagnostics
 	 * @param artifactFile downstream candidate artifact
 	 * @throws IOException if the candidate combines a reviewer-approved separate pair
 	 */
-	private void verifyCandidateGroupIsCombined(Set<String> candidateIds, ActionResultMatrix matrix,
-		String reviewer, Path artifactFile) throws IOException
+	private void verifyCandidateGroupIsCombined(Set<String> candidateIds, ActionResultMatrix matrix, Path artifactFile)
+		throws IOException
 	{
 		List<String> ids = candidateIds.stream().sorted().toList();
 		for (int first = 0; first < ids.size(); ++first)
@@ -712,7 +716,7 @@ public final class ReviewEvidence
 			{
 				if (!actionPairDisposition(matrix, ids.get(first), ids.get(second)).equals("combined"))
 				{
-					throw new IOException("Topic-replay " + reviewer + " candidate decisions may not be collapsed by " +
+					throw new IOException("Topic-replay " + REVIEWER_ROLE + " candidate decisions may not be collapsed by " +
 						"reconciliation or a semantic candidate unless their pair is combined: " + ids.get(first) + " and " +
 						ids.get(second) + " in " + artifactFile);
 				}
@@ -725,18 +729,17 @@ public final class ReviewEvidence
 	 *
 	 * @param candidate final candidate
 	 * @param reviewerCandidates candidate identifiers owned by one reviewer
-	 * @param reviewer reviewer role used in diagnostics
 	 * @param artifactFile final candidate artifact
 	 * @return the cited reviewer candidate identifier
 	 * @throws IOException if the final candidate cites anything other than one reviewer behavior
 	 */
-	private String reviewerCandidateId(SemanticCandidate candidate, Set<String> reviewerCandidates, String reviewer,
-		Path artifactFile) throws IOException
+	private String reviewerCandidateId(SemanticCandidate candidate, Set<String> reviewerCandidates, Path artifactFile)
+		throws IOException
 	{
 		List<String> ids = candidate.candidateUniverseIds().stream().filter(reviewerCandidates::contains).toList();
 		if (ids.size() != 1)
 		{
-			throw new IOException("Each semantic candidate must cite exactly one " + reviewer +
+			throw new IOException("Each semantic candidate must cite exactly one " + REVIEWER_ROLE +
 				" observable-behavior row: " + artifactFile);
 		}
 		return ids.getFirst();

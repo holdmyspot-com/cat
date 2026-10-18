@@ -43,7 +43,7 @@ public final class ManifestStoreTest
 
 			try
 			{
-				store.createTemporaryFile(externalManifest, "git-topic-replay-", ".index");
+				store.createTemporaryFile(externalManifest, ".index");
 				throw new AssertionError("Expected manifest outside the CAT work temp directory to be rejected");
 			}
 			catch (IOException e)

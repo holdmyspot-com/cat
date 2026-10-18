@@ -112,7 +112,7 @@ public final class ReviewEvidenceTest
 				""");
 
 			new ReviewEvidence(ReplayJson.newMapper()).validateCandidateDiscoveryPasses(evidence,
-				Set.of("candidate_a"), "topic reviewer");
+				Set.of("candidate_a"));
 		}
 	}
 
@@ -138,7 +138,7 @@ public final class ReviewEvidenceTest
 				""");
 
 			new ReviewEvidence(ReplayJson.newMapper()).validateActionResultMatrix(matrix,
-				Set.of("candidate_a", "candidate_b"), "topic reviewer");
+				Set.of("candidate_a", "candidate_b"));
 		}
 	}
 

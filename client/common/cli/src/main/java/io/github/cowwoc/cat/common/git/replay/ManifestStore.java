@@ -19,6 +19,10 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ManifestStore<T extends ManifestStore.Manifest>
 {
 	public static final int BATCH_MANIFEST_VERSION = 5;
+	/**
+	 * The start of the name of every temporary file that a replay operation creates.
+	 */
+	private static final String TEMPORARY_FILE_PREFIX = "git-topic-replay-";
 	private final Path temporaryRoot;
 	private final JsonMapper json;
 	private final Class<T> manifestType;
@@ -62,16 +66,15 @@ public final class ManifestStore<T extends ManifestStore.Manifest>
 	 * Creates one temporary file for a manifest-owned replay operation.
 	 *
 	 * @param manifestFile the manifest that owns the current operation
-	 * @param prefix the filename prefix
 	 * @param suffix the filename suffix
 	 * @return the new temporary file below the CAT-work temporary root
 	 * @throws IOException if the manifest lies outside CAT work or the file cannot be created
 	 */
-	public Path createTemporaryFile(Path manifestFile, String prefix, String suffix) throws IOException
+	public Path createTemporaryFile(Path manifestFile, String suffix) throws IOException
 	{
 		requireTemporaryManifest(manifestFile);
 		Files.createDirectories(temporaryRoot);
-		return Files.createTempFile(temporaryRoot, prefix, suffix);
+		return Files.createTempFile(temporaryRoot, TEMPORARY_FILE_PREFIX, suffix);
 	}
 
 	/**
