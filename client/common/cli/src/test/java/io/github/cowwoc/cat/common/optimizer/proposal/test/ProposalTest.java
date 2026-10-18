@@ -2104,7 +2104,7 @@ public final class ProposalTest
 	 * @throws InvalidProposalException if the proposal is rejected
 	 */
 	@Test
-	public void recordedTestKeepsItsFixtures() throws IOException, InvalidProposalException
+	public void recordedTestKeepsItsWorkspaceFiles() throws IOException, InvalidProposalException
 	{
 		// Requirement: R-C26
 		Path project = recordedProject("""
@@ -2127,8 +2127,8 @@ public final class ProposalTest
 			- **description**: The summary keeps the {{tone}} tone.
 			""");
 		String content = "Release 4.296 renamed the exporter.\n";
-		Path fixtures = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/notes"));
-		Files.writeString(fixtures.resolve("{{tone}}.md"), content, UTF_8);
+		Path notesDirectory = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/notes"));
+		Files.writeString(notesDirectory.resolve("{{tone}}.md"), content, UTF_8);
 		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
@@ -2148,8 +2148,8 @@ public final class ProposalTest
 
 	/**
 	 * Verifies that a recorded prompt test whose {@code workspace/} links to a project file outside every test root
-	 * receives that file as a fixture, both when the contract author's session ends and when the stored proposal is
-	 * read again after the session's project copy is gone.
+	 * receives that file as a workspace file, both when the contract author's session ends and when the stored proposal
+	 * is read again after the session's project copy is gone.
 	 *
 	 * @throws IOException              if a file cannot be written
 	 * @throws InvalidProposalException if the proposal is rejected
@@ -2205,8 +2205,8 @@ public final class ProposalTest
 
 	/**
 	 * Verifies that a recorded prompt test whose {@code workspace/} holds a link to another of its entries receives
-	 * that link as a link fixture, both when the contract author's session ends and when the stored proposal is read
-	 * again, and that the proposal shows the link's target.
+	 * that link as a workspace file that is a link, both when the contract author's session ends and when the stored
+	 * proposal is read again, and that the proposal shows the link's target.
 	 *
 	 * @throws IOException              if a file cannot be written
 	 * @throws InvalidProposalException if the proposal is rejected
@@ -2612,13 +2612,13 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that the proposal shows each fixture file as the contract author wrote it, in a fence longer than any
+	 * Verifies that the proposal shows each workspace file as the contract author wrote it, in a fence longer than any
 	 * backtick run of its content, and shows a generated value as its call rather than as quoted text.
 	 *
 	 * @throws InvalidProposalException if the output is rejected
 	 */
 	@Test
-	public void rendersFixturesAndGeneratorCalls() throws InvalidProposalException
+	public void rendersWorkspaceFilesAndGeneratorCalls() throws InvalidProposalException
 	{
 		// Requirement: R-C21
 		String text = rendered(changedDerivation(proposal ->

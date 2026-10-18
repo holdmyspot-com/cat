@@ -64,7 +64,7 @@ public final class TestWorkspacesTest
 	}
 
 	/**
-	 * Creates a prompt test directory with a text fixture, a binary fixture and the given extra files.
+	 * Creates a prompt test directory with a text workspace file, a binary workspace file and the given extra files.
 	 *
 	 * @param cleanup removes the directory
 	 * @return the prompt test directory
@@ -75,8 +75,8 @@ public final class TestWorkspacesTest
 		Path directory = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 			"prompt-test"));
 		Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
-		Path fixtures = Files.createDirectories(directory.resolve("workspace/docs"));
-		Files.writeString(fixtures.resolve("{{notes}}"), """
+		Path docs = Files.createDirectories(directory.resolve("workspace/docs"));
+		Files.writeString(docs.resolve("{{notes}}"), """
 			{{before}}
 			Release 4.2 was published on {{expected_outcome}}.
 			Deploy with ${{ github.token }} and {{undeclared}}.
@@ -136,7 +136,7 @@ public final class TestWorkspacesTest
 	 * @throws ScenarioFormatException if the prompt test is refused
 	 */
 	@Test
-	public void readsFixtures() throws IOException, ScenarioFormatException
+	public void readsWorkspaceFiles() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -337,7 +337,7 @@ public final class TestWorkspacesTest
 
 			PromptTestFiles files = PromptTestFiles.read(json, project, project.resolve(".cat/tests"),
 				linkedTest(project));
-			requireThat(files.workspaceFiles().stream().filter(fixture -> fixture.link().isPresent()).toList(), "links").
+			requireThat(files.workspaceFiles().stream().filter(file -> file.link().isPresent()).toList(), "links").
 				isEqualTo(List.of(
 					new PromptTestFiles.WorkspaceEntry("a", false, Set.of(), Optional.of("b")),
 					new PromptTestFiles.WorkspaceEntry("docs/up.md", false, Set.of(), Optional.of("../own.md")),
@@ -462,7 +462,8 @@ public final class TestWorkspacesTest
 	}
 
 	/**
-	 * Verifies that a fixture whose path exists in the workspace as a file is refused before any fixture is written.
+	 * Verifies that a workspace file whose path exists in the workspace as a file is refused before any workspace file
+	 * is written.
 	 *
 	 * @throws IOException             if a file cannot be written or read
 	 * @throws ScenarioFormatException if the prompt test is refused
@@ -481,7 +482,7 @@ public final class TestWorkspacesTest
 			try
 			{
 				TestWorkspaces.copy(files, testCase("notes.md"), workspace);
-				throw new AssertionError("A colliding fixture was copied");
+				throw new AssertionError("A colliding workspace file was copied");
 			}
 			catch (FileAlreadyExistsException e)
 			{
@@ -492,11 +493,11 @@ public final class TestWorkspacesTest
 
 			Files.delete(workspace.resolve("docs/notes.md"));
 			Files.delete(workspace.resolve("docs"));
-			Files.writeString(workspace.resolve("docs"), "A file named like the fixture's directory");
+			Files.writeString(workspace.resolve("docs"), "A file named like the workspace file's directory");
 			try
 			{
 				TestWorkspaces.copy(files, testCase("notes.md"), workspace);
-				throw new AssertionError("A fixture below a file was copied");
+				throw new AssertionError("A workspace file below a file was copied");
 			}
 			catch (FileAlreadyExistsException e)
 			{
@@ -507,7 +508,7 @@ public final class TestWorkspacesTest
 	}
 
 	/**
-	 * Verifies that a test case whose value is not a valid file name is refused before any fixture is written.
+	 * Verifies that a test case whose value is not a valid file name is refused before any workspace file is written.
 	 *
 	 * @throws IOException             if a file cannot be written or read
 	 * @throws ScenarioFormatException if the prompt test is refused
@@ -602,7 +603,7 @@ public final class TestWorkspacesTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory("cat-fixtures-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-workspace-"));
 			Path root = Files.createDirectories(project.resolve(".cat/tests"));
 			Path directory = Files.createDirectories(root.resolve("guidance/case"));
 			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), "not a scenario\n");

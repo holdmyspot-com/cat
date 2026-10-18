@@ -267,14 +267,14 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Verifies that a contract author's test may write fixture files and give a variable a generator call, which CAT
+	 * Verifies that a contract author's test may write workspace files and give a variable a generator call, which CAT
 	 * completes with the generator's version and a distinct seed for each test case, and that the completed contract
 	 * reads back unchanged. A call that the stored form holds without its seed is refused.
 	 *
 	 * @throws InvalidProposalException if the proposal is rejected
 	 */
 	@Test
-	public void readsFixturesAndGeneratorCalls() throws InvalidProposalException
+	public void readsWorkspaceFilesAndGeneratorCalls() throws InvalidProposalException
 	{
 		// Requirement: R-C21
 		ObjectNode proposal = (ObjectNode) json.readTree(ContractFixtures.resource("valid-proposal.json"));
@@ -321,7 +321,7 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Verifies that the stored contract keeps a recorded fixture that is a link as a link, and reads it back.
+	 * Verifies that the stored contract keeps a recorded workspace file that is a link as a link, and reads it back.
 	 *
 	 * @throws InvalidProposalException if the proposal is rejected
 	 */
@@ -357,7 +357,7 @@ public final class ProposalSchemaTest
 	 * @throws InvalidProposalException if the proposal is rejected
 	 */
 	@Test
-	public void addsRecordedFixtures() throws InvalidProposalException
+	public void addsRecordedWorkspaceFiles() throws InvalidProposalException
 	{
 		ObjectNode proposal = (ObjectNode) json.readTree(ContractFixtures.resource("valid-proposal.json"));
 		proposal.remove(List.of("salt", "trial_profiles"));

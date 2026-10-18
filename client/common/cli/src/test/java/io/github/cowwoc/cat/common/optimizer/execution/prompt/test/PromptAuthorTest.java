@@ -226,17 +226,17 @@ public final class PromptAuthorTest
 	}
 
 	/**
-	 * Verifies that the prompt author receives each fixture that CAT copied from a recorded scenario as its path and the
-	 * file that it was copied from, without its content, and each fixture that a contract author wrote with its
-	 * content.
+	 * Verifies that the prompt author receives each workspace file that CAT copied from a recorded scenario as its path
+	 * and the file that it was copied from, without its content, and each workspace file that a contract author wrote
+	 * with its content.
 	 */
 	@Test
-	public void requestOmitsRecordedFixtureContent()
+	public void requestOmitsRecordedWorkspaceFileContent()
 	{
 		WorkspaceFile recorded = new WorkspaceFile("notes.md", "Release 4.296 renamed the exporter.\n",
 			"plugin/src/test/resources/fixtures/notes.md");
 		WorkspaceFile written = new WorkspaceFile("todo.md", "Clean up {{target}}.\n");
-		Contract contract = ContractFixtures.withFixtures(ContractFixtures.contract(), "safety",
+		Contract contract = ContractFixtures.withWorkspaceFiles(ContractFixtures.contract(), "safety",
 			List.of(recorded, written));
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION, contract,

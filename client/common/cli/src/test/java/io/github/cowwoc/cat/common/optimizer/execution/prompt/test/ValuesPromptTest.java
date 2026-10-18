@@ -136,15 +136,16 @@ public final class ValuesPromptTest
 	}
 
 	/**
-	 * Verifies that the contract author receives each fixture that CAT copied from a recorded scenario with its content
-	 * and the file that it was copied from, since the session works outside the project and cannot read that file.
+	 * Verifies that the contract author receives each workspace file that CAT copied from a recorded scenario with its
+	 * content and the file that it was copied from, since the session works outside the project and cannot read that
+	 * file.
 	 */
 	@Test
-	public void requestShowsRecordedFixtureContent()
+	public void requestShowsRecordedWorkspaceFileContent()
 	{
 		WorkspaceFile recorded = new WorkspaceFile("notes.md", "Release 4.296 renamed the exporter.\n",
 			"plugin/src/test/resources/fixtures/notes.md");
-		Contract contract = ContractFixtures.withFixtures(ContractFixtures.contract(), TEST, List.of(recorded));
+		Contract contract = ContractFixtures.withWorkspaceFiles(ContractFixtures.contract(), TEST, List.of(recorded));
 
 		String turn = values.request(contract, KNOWN, GROUP).turns().getFirst();
 
@@ -245,8 +246,8 @@ public final class ValuesPromptTest
 	}
 
 	/**
-	 * Verifies that a generated value is rejected for a variable that a turn names, because only fixture contents may
-	 * hold a generated value.
+	 * Verifies that a generated value is rejected for a variable that a turn names, because only workspace file contents
+	 * may hold a generated value.
 	 */
 	@Test
 	public void rejectsGeneratedValueInTurn()

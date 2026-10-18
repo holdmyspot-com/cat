@@ -203,25 +203,25 @@ public final class ContractFixtures
 	}
 
 	/**
-	 * Returns a contract in which one prompt test writes fixtures.
+	 * Returns a contract in which one prompt test writes workspace files.
 	 *
 	 * @param contract the contract
-	 * @param testId the identifier of the prompt test that receives the fixtures
-	 * @param fixtures the fixtures
-	 * @return the contract with the fixtures
+	 * @param testId the identifier of the prompt test that receives the workspace files
+	 * @param files the workspace files
+	 * @return the contract with the workspace files
 	 */
-	public static Contract withFixtures(Contract contract, String testId, List<WorkspaceFile> fixtures)
+	public static Contract withWorkspaceFiles(Contract contract, String testId, List<WorkspaceFile> files)
 	{
 		List<PromptTest> tests = new ArrayList<>();
 		for (PromptTest test : contract.tests())
 		{
-			List<WorkspaceFile> testFixtures = test.workspaceFiles();
+			List<WorkspaceFile> testFiles = test.workspaceFiles();
 			if (test.id().equals(testId))
-				testFixtures = fixtures;
+				testFiles = files;
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
-				test.assertions(), test.regressionScenarios(), testFixtures));
+				test.assertions(), test.regressionScenarios(), testFiles));
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
