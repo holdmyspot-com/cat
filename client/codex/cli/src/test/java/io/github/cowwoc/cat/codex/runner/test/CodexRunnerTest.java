@@ -359,10 +359,10 @@ public final class CodexRunnerTest
 		Path root = Path.of("/runs");
 		Path project = Path.of("/runs/codex/run-1/project");
 		Path home = Path.of("/runs/codex/run-1/home");
-		String note = "The denied reads protect other sessions' projects in /runs. They do not apply to your project " +
-			"/runs/codex/run-1/project, your working directory, or to anything under it, nor to " +
-			"/runs/codex/run-1/home: you have full read and write access to both. Your project's files are not in " +
-			"your context; read one with a shell command whenever a task needs it.";
+		String note = "The denied reads protect other sessions' projects in " + root + ". They do not apply to your " +
+			"project " + project + ", your working directory, or to anything under it, nor to " + home + ": you have " +
+			"full read and write access to both. Your project's files are not in your context; read one with a shell " +
+			"command whenever a task needs it.";
 
 		requireThat(CodexRunner.developerInstructions(root, project, home, ""), "withoutAgent").isEqualTo(note);
 		requireThat(CodexRunner.developerInstructions(root, project, home, "Review the plan."), "withAgent").
