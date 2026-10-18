@@ -19,6 +19,11 @@ the diagnostic is gone and the capability that suppression would have removed st
 correct code still calls for a correction when a reasonable change makes the code clear to the check; a correction that
 takes more code than the suppression is not a reason to suppress.
 
+Decide each finding from its own cause. An existing suppression of the same check elsewhere in the project shows only
+that someone contained that diagnostic there; it is neither a convention to follow nor evidence that this finding is a
+false positive. Before calling a finding a false positive, establish the fact it disputes at the flagged code, such as
+which object closes the reported resource and when.
+
 Suppress only when no in-scope change can correct the cause, such as when it lies in generated, vendored, or
 third-party code outside the authorized scope, or when the user explicitly chooses that trade-off. Then suppress at the
 narrowest scope available, one statement or member and one named check, state the reason beside the suppression, and

@@ -198,9 +198,10 @@ Before invoking an operation that can modify multiple artifacts or whose actual 
 `../include/common/failure-prevention.md` to use its transactional snapshot, scope-validation, conditional-rollback,
 and acceptance procedure.
 
-Before suppressing a warning, lint or static-analysis finding, or other diagnostic, or before disabling, excluding,
-or relaxing a check, lazy load `../include/common/diagnostic-suppression.md` to correct the underlying problem when an
-in-scope change can.
+When a compiler, linter, or static-analysis check reports a warning or finding, lazy load
+`../include/common/diagnostic-suppression.md` before choosing how to resolve it, including before searching the project
+for how it handled the same finding. Also lazy load it before suppressing any other diagnostic, or before disabling,
+excluding, or relaxing a check.
 
 When editing source code or configuration, lazy load `../include/common/semantic-blank-lines.md` to make independently
 nameable stages and groups easy to scan.
