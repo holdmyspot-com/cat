@@ -80,6 +80,10 @@ public final class DriverHarness
 	 */
 	public static final String CAMPAIGN = "campaign-1";
 	/**
+	 * The identifier of the host session whose commands run the drivers that the harness opens.
+	 */
+	public static final String SESSION = "session-1";
+	/**
 	 * When each test starts.
 	 */
 	public static final Instant START = Instant.parse("2026-10-01T12:00:00Z");
@@ -243,6 +247,17 @@ public final class DriverHarness
 	 */
 	public DriverContext context()
 	{
+		return context(SESSION);
+	}
+
+	/**
+	 * Returns the context of a driver whose command a given host session runs.
+	 *
+	 * @param session the identifier of the host session
+	 * @return the context
+	 */
+	public DriverContext context(String session)
+	{
 		Map<MeasurementCondition, String> environment = new EnumMap<>(MeasurementCondition.class);
 		environment.putAll(Builder.OBSERVED.values());
 		environment.remove(MeasurementCondition.MODEL);
@@ -253,7 +268,8 @@ public final class DriverHarness
 			judge, triage, promptAuthor, values, deliverer, calibrator, terminator,
 			new LeftoverRuns(sessions, JsonMapper.builder().build()),
 			new Authority(Set.of(PROMPT), Set.of(), fork), Set.of(PROMPT),
-			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json);
+			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), session, new Random(7), settings,
+			json);
 	}
 
 	/**
@@ -261,8 +277,9 @@ public final class DriverHarness
 	 *
 	 * @return the driver
 	 * @throws IOException if the driver cannot be opened
+	 * @throws InterruptedException if the thread is interrupted while it waits for the campaign's lock
 	 */
-	public Driver open() throws IOException
+	public Driver open() throws IOException, InterruptedException
 	{
 		return Driver.open(context(), CAMPAIGN).orElseThrow();
 	}

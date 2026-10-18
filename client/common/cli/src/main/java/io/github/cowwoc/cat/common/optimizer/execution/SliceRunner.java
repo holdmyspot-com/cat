@@ -26,8 +26,9 @@ public final class SliceRunner
 	}
 
 	/**
-	 * Applies the user's commands to a campaign, then advances it until the slice stops. If another driver holds the
-	 * campaign's lock, nothing is applied and the result reports the campaign as busy.
+	 * Applies the user's commands to a campaign, then advances it until the slice stops. If a driver of another host
+	 * session holds the campaign's lock, nothing is applied and the result reports the campaign as busy. If a driver of
+	 * the same host session holds it, the slice starts once that driver releases it.
 	 *
 	 * @param context the driver's context
 	 * @param campaignId the campaign's identifier
@@ -36,7 +37,8 @@ public final class SliceRunner
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code campaignId} is blank, the store holds no campaign with the identifier,
 	 *   or a command is not a user's command or names something that the campaign does not offer
-	 * @throws IllegalStateException if the campaign's state does not permit a command
+	 * @throws IllegalStateException if the campaign's state does not permit a command, or a driver of the same host
+	 *   session holds the campaign's lock in the current process or in a process that started it
 	 * @throws IOException if the store, the workspace or a session cannot be read or written
 	 * @throws InterruptedException if the thread is interrupted while waiting
 	 */

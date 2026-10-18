@@ -185,21 +185,29 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Takes a campaign's write lock and reconciles the campaign.
+	 * <p>
+	 * While a driver of the same host session holds the lock, this method waits for it, unless that driver runs in the
+	 * current process or in one that started it (see {@link CampaignLock#acquire}).
 	 *
 	 * @param context the driver's context
 	 * @param campaignId the campaign's identifier
-	 * @return the driver, or empty if another driver holds the campaign's lock
+	 * @return the driver, or empty if a driver of another host session holds the campaign's lock
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code campaignId} is blank or the store holds no campaign with that
 	 *   identifier
+	 * @throws IllegalStateException if a driver of the same host session holds the campaign's lock in the current
+	 *   process or in a process that started it
 	 * @throws IOException if the store, the lock file, the worktree or the run records cannot be read or written, or
 	 *   the harness's credential file exists but cannot be read
+	 * @throws InterruptedException if the thread is interrupted while it waits for the campaign's lock
 	 */
-	public static Optional<Driver> open(DriverContext context, String campaignId) throws IOException
+	public static Optional<Driver> open(DriverContext context, String campaignId)
+		throws IOException, InterruptedException
 	{
 		requireThat(context, "context").isNotNull();
 		requireThat(campaignId, "campaignId").isNotBlank();
-		Optional<CampaignLock> lock = CampaignLock.tryAcquire(context.lockFile());
+		Optional<CampaignLock> lock = CampaignLock.acquire(context.lockFile(), LockHolder.current(context.session()),
+			context.json());
 		if (lock.isEmpty())
 			return Optional.empty();
 		return Optional.of(open(context, campaignId, lock.get()));

@@ -47,6 +47,8 @@ import tools.jackson.databind.json.JsonMapper;
  *   {@link MeasurementCondition#TOOL_OUTPUT_LIMIT} or {@link MeasurementCondition#PROMPT_SOURCES}, which only sessions
  *   observe
  * @param lockFile the campaign's write-lock file
+ * @param session the identifier of the host session whose command runs the driver. While a driver of the same session
+ *   holds the campaign's lock, the driver waits for it instead of reporting the campaign busy.
  * @param random the source of the certification trial stream's seed when a candidate is committed
  * @param settings the time limits of one bounded driver run (a slice)
  * @param json reads and writes the hook configurations that control trials remove dependents from
@@ -55,7 +57,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
 	TriageProtocol triage, PromptAuthorProtocol promptAuthor, ValuesProtocol values, Deliverer deliverer,
 	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverRuns leftoverRuns, Authority authority,
-	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, RandomGenerator random,
+	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, String session, RandomGenerator random,
 	SliceSettings settings, JsonMapper json)
 {
 	/**
@@ -82,11 +84,14 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	 * @param promptSources the in-project prompt sources, relative to the project
 	 * @param environment the measurement conditions that the driver observes outside trials
 	 * @param lockFile the campaign's write-lock file
+	 * @param session the identifier of the host session whose command runs the driver. While a driver of the same
+	 *   session holds the campaign's lock, the driver waits for it instead of reporting the campaign busy.
 	 * @param random the source of the certification trial stream's seed when a candidate is committed
 	 * @param settings the time limits of one bounded driver run (a slice)
 	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code environment} records a condition that only sessions observe
+	 * @throws IllegalArgumentException if {@code session} is blank, or {@code environment} records a condition that
+	 *   only sessions observe
 	 */
 	public DriverContext
 	{
@@ -111,6 +116,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 			doesNotContainAny(Set.of(MeasurementCondition.MODEL, MeasurementCondition.REASONING,
 				MeasurementCondition.TOOL_OUTPUT_LIMIT, MeasurementCondition.PROMPT_SOURCES));
 		requireThat(lockFile, "lockFile").isNotNull();
+		requireThat(session, "session").isNotBlank();
 		requireThat(random, "random").isNotNull();
 		requireThat(settings, "settings").isNotNull();
 		requireThat(json, "json").isNotNull();

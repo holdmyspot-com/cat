@@ -124,7 +124,7 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void afterAssignmentRecord() throws IOException
+	public void afterAssignmentRecord() throws IOException, InterruptedException
 	{
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -150,7 +150,7 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void startedWithoutOutcome() throws IOException
+	public void startedWithoutOutcome() throws IOException, InterruptedException
 	{
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -179,7 +179,7 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void outcomeRecordedNotAdopted() throws IOException
+	public void outcomeRecordedNotAdopted() throws IOException, InterruptedException
 	{
 		// Requirement: R-E11
 		// Requirement: R-E1
@@ -212,7 +212,7 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void afterAdoption() throws IOException
+	public void afterAdoption() throws IOException, InterruptedException
 	{
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -238,7 +238,7 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void outOfOrderRecords() throws IOException
+	public void outOfOrderRecords() throws IOException, InterruptedException
 	{
 		// Requirement: R-E11
 		// Requirement: R-E5
@@ -279,8 +279,9 @@ public final class ReconciliationTest
 	 * @param directory a directory that the test owns
 	 * @return the harness after the crash, whose store no longer crashes
 	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted while it waits for the campaign's lock
 	 */
-	private static DriverHarness crashAtPromotion(Path directory) throws IOException
+	private static DriverHarness crashAtPromotion(Path directory) throws IOException, InterruptedException
 	{
 		DriverHarness harness = new DriverHarness(directory, developing().build());
 		Sha256 first = Builder.snapshot("candidate-1");
@@ -319,7 +320,7 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void promotionMaterializedBeforeSnapshot() throws IOException
+	public void promotionMaterializedBeforeSnapshot() throws IOException, InterruptedException
 	{
 		// Requirement: R-E11
 		// Requirement: R-W7
@@ -351,7 +352,7 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void promotionRecordedBeforeWorktree() throws IOException
+	public void promotionRecordedBeforeWorktree() throws IOException, InterruptedException
 	{
 		// Requirement: R-E11
 		// Requirement: R-W7
@@ -378,7 +379,7 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void worktreeMatches() throws IOException
+	public void worktreeMatches() throws IOException, InterruptedException
 	{
 		// Requirement: R-W7
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -400,7 +401,7 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void worktreeUnownedChange() throws IOException
+	public void worktreeUnownedChange() throws IOException, InterruptedException
 	{
 		// Requirement: R-W7
 		// Requirement: R-E11
@@ -429,7 +430,7 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void requestsLeftoverRunTermination() throws IOException
+	public void requestsLeftoverRunTermination() throws IOException, InterruptedException
 	{
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
