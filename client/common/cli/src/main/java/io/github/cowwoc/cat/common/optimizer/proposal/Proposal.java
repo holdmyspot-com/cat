@@ -133,7 +133,7 @@ public final class Proposal
 	 * @param derived the contract author's proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
 	 *   requested
-	 * @param links the symbolic links of the prompt system and the staged ignored files
+	 * @param links the symbolic links of the prompt system
 	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param calibrator calibrates the caps of the first certification attempts
@@ -154,7 +154,7 @@ public final class Proposal
 	 * @param derived the contract author's proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
 	 *   requested
-	 * @param links the symbolic links of the prompt system and the staged ignored files
+	 * @param links the symbolic links of the prompt system
 	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param calibrator calibrates the caps of the first certification attempts
@@ -178,7 +178,7 @@ public final class Proposal
 	 * @param derived the contract author's proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
 	 *   requested
-	 * @param links the symbolic links of the prompt system and the staged ignored files
+	 * @param links the symbolic links of the prompt system
 	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param calibrator calibrates the caps of the first certification attempts
@@ -205,7 +205,7 @@ public final class Proposal
 	 * @param derived the contract author's proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
 	 *   requested
-	 * @param links the symbolic links of the prompt system and the staged ignored files
+	 * @param links the symbolic links of the prompt system
 	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param calibrator calibrates the caps of the first certification attempts
@@ -233,7 +233,7 @@ public final class Proposal
 	 * @param derived the contract author's proposal
 	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
 	 *   requested
-	 * @param links the symbolic links of the prompt system and the staged ignored files
+	 * @param links the symbolic links of the prompt system
 	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
 	 * @param login how the host's harness account is billed
 	 * @param calibrator calibrates the caps of the first certification attempts
@@ -272,7 +272,7 @@ public final class Proposal
 		if (!plugin.unapprovedHooks().isEmpty())
 			limitations.add(pluginHooksLimit(plugin.unapprovedHooks()));
 		Contract contract = new Contract(proposed.requirements(), proposed.tests(), proposed.profiles(),
-			proposed.judge(), proposed.ignoredFiles(), limitations, proposed.minimumPassRate(), proposed.salt(),
+			proposed.judge(), limitations, proposed.minimumPassRate(), proposed.salt(),
 			proposed.dependents());
 		Map<CertificationScope, Campaign> previews = new LinkedHashMap<>();
 		if (contract.profiles().unranked().isEmpty())

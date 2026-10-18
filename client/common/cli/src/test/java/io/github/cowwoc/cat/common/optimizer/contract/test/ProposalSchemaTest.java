@@ -229,14 +229,13 @@ public final class ProposalSchemaTest
 		Contract contract = schema().parse(ContractFixtures.resource("valid-proposal.json"));
 		Contract fixture = ContractFixtures.contract();
 		Contract expected = new Contract(fixture.requirements(), fixture.tests(), fixture.profiles(),
-			frozenJudge(), fixture.ignoredFiles(), fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+			frozenJudge(), fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
 
 		requireThat(contract, "contract").isEqualTo(expected);
 		requireThat(contract.requirements().get(1).source(), "source").isEqualTo("rules/safety.md");
 		PromptTest styled = contract.tests().get(0);
 		requireThat(styled.timeLimit().toSeconds(), "timeLimitSeconds").isEqualTo(300L);
 		requireThat(styled.turns().size(), "turns.size()").isEqualTo(2);
-		requireThat(contract.ignoredFiles().paths(), "ignoredPaths").isEqualTo(List.of(".env.example"));
 	}
 
 	/**
@@ -469,7 +468,7 @@ public final class ProposalSchemaTest
 		for (JsonNode name : schema.get("required"))
 			required.add(name.asString());
 		requireThat(required, "required").isEqualTo(
-			Set.of("requirements", "tests", "trial_profiles", "judge", "ignored_files", "limitations",
+			Set.of("requirements", "tests", "trial_profiles", "judge", "limitations",
 				"minimum_pass_rate", "salt"));
 	}
 
@@ -517,8 +516,6 @@ public final class ProposalSchemaTest
 				{"test case expected outcome", new String[]{"tests", "0", "test_cases", "0",
 					"expected_outcome"}},
 				{"judge", new String[]{"judge"}},
-				{"ignored files", new String[]{"ignored_files"}},
-				{"ignored paths", new String[]{"ignored_files", "paths"}},
 				{"limitations", new String[]{"limitations"}},
 				{"salt", new String[]{"salt"}}
 			};
@@ -813,8 +810,7 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Verifies that a time limit that is not a positive whole number of seconds, an unknown rank and a path that
-	 * leaves the project are rejected.
+	 * Verifies that a time limit that is not a positive whole number of seconds and an unknown rank are rejected.
 	 */
 	@Test
 	public void rejectsInvalidScalars()
@@ -829,10 +825,22 @@ public final class ProposalSchemaTest
 		rejection(integer(rank, 0));
 		rejection(integer(rank, -1));
 		rejection(number(rank, 1.5));
-		String[] ignored = {"ignored_files", "paths"};
-		rejection(changed(ignored, json.createArrayNode().add("../outside")));
-		rejection(changed(ignored, json.createArrayNode().add("/etc/passwd")));
-		rejection(changed(ignored, json.createArrayNode().add("a").add("a")));
+	}
+
+	/**
+	 * Verifies that a proposal that lists ignored files is rejected, because a trial receives a file outside the prompt
+	 * system only through a link in its prompt test's workspace.
+	 */
+	@Test
+	public void rejectsIgnoredFiles()
+	{
+		// Requirement: R-C1
+		ObjectNode ignoredFiles = json.createObjectNode();
+		ignoredFiles.putArray("paths").add(".env.example");
+
+		InvalidProposalException e = rejection(changed(new String[]{"ignored_files"}, ignoredFiles));
+
+		requireThat(e.problems(), "problems").contains("$.ignored_files: unexpected property");
 	}
 
 	/**

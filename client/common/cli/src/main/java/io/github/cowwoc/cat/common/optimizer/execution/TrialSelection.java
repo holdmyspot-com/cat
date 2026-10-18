@@ -33,7 +33,7 @@ public final class TrialSelection
 	 * configuration, the project rules, the harness's instruction files in any directory and its top-level project
 	 * directories, the project files that plugin mappings write into trial plugins and the in-project dependents. A
 	 * trial's project holds no other file of the candidate; a prompt test links any other file that its trials need,
-	 * such as one of the contract's ignored files.
+	 * such as an ignored file.
 	 *
 	 * @param harness the harness that runs the trials
 	 * @param promptSources the in-project prompt files and directories, relative to the project

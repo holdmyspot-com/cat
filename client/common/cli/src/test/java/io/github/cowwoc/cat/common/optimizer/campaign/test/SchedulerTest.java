@@ -503,7 +503,7 @@ public final class SchedulerTest
 				test.assertions(), test.regressionScenarios(), List.of()));
 		}
 		return new Contract(fixture.requirements(), tests,
-			ContractFixtures.profiles(fixture.requirements(), tests), fixture.judge(), fixture.ignoredFiles(),
+			ContractFixtures.profiles(fixture.requirements(), tests), fixture.judge(),
 			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
 	}
 

@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Every symbolic link that a proposal finds in the prompt system or in the staged ignored files: the link path, its
+ * Every symbolic link that a proposal finds in the prompt system: the link path, its
  * resolved target, whether the target lies inside the project, its edit authority, and whether the link can be staged.
  * <p>
  * A link cycle and a link to a missing target block confirmation until the user resolves them.
@@ -46,7 +46,7 @@ public final class LinkReport
 	/**
 	 * Reports the links in an inventory.
 	 *
-	 * @param inventory the fork's inventory, which covers the prompt system and the staged ignored files
+	 * @param inventory the fork's inventory, which covers the prompt system
 	 * @param authority the edit authority that decides each target's limit
 	 * @return the report
 	 * @throws NullPointerException if any of the arguments are null

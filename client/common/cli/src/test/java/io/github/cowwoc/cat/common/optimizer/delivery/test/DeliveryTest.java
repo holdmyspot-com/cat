@@ -929,7 +929,7 @@ public final class DeliveryTest
 			promptTests.set(1, withDraft(second, List.of(), List.of(own),
 				new PromptTest.Draft(TESTS.resolve("release_dates"), createdScenario)));
 			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
-				fixtureContract.judge(), fixtureContract.ignoredFiles(), fixtureContract.limitations(),
+				fixtureContract.judge(), fixtureContract.limitations(),
 				fixtureContract.minimumPassRate(), fixtureContract.salt());
 
 			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
@@ -997,7 +997,7 @@ public final class DeliveryTest
 				new PromptTest.Draft(TESTS.resolve("release_dates"), createdScenario,
 					Map.of("guide.md", "../../shared/docs/guide.md"))));
 			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
-				fixtureContract.judge(), fixtureContract.ignoredFiles(), fixtureContract.limitations(),
+				fixtureContract.judge(), fixtureContract.limitations(),
 				fixtureContract.minimumPassRate(), fixtureContract.salt());
 			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
 				subList(0, 2);
@@ -1055,7 +1055,7 @@ public final class DeliveryTest
 				workspaceFiles, new PromptTest.Draft(EDITED_SCENARIO.getParent(), editedScenario,
 					Map.of("AGENTS.md", "../../shared/AGENTS.md", "logs", "../../shared/logs"))));
 			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
-				fixtureContract.judge(), fixtureContract.ignoredFiles(), fixtureContract.limitations(),
+				fixtureContract.judge(), fixtureContract.limitations(),
 				fixtureContract.minimumPassRate(), fixtureContract.salt());
 			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
 				subList(0, 1);

@@ -221,7 +221,7 @@ public final class PromptAuthorTest
 		requireThat(counts.get("safety").get("failures").asInt(), "failures").isEqualTo(2);
 		JsonNode shown = json.readTree(section(turn, "The confirmed contract", "\n\nThe edits that this campaign"));
 		JsonNode confirmed = json.readTree(schema.toJson(contract));
-		for (String property : List.of("requirements", "trial_profiles", "judge", "ignored_files", "limitations"))
+		for (String property : List.of("requirements", "trial_profiles", "judge", "limitations"))
 			requireThat(shown.get(property), property).isEqualTo(confirmed.get(property));
 	}
 

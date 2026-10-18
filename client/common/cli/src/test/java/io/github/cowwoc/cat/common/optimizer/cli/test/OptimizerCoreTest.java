@@ -737,6 +737,26 @@ public final class OptimizerCoreTest
 		}
 
 		/**
+		 * Returns the prompt files that {@link #loadedSources(Path, List)} returns.
+		 *
+		 * @return the files
+		 */
+		List<DerivedSource> derivedSources()
+		{
+			return derivedSources;
+		}
+
+		/**
+		 * Sets the prompt files that {@link #loadedSources(Path, List)} returns.
+		 *
+		 * @param sources the files
+		 */
+		void derivedSources(List<DerivedSource> sources)
+		{
+			derivedSources = List.copyOf(sources);
+		}
+
+		/**
 		 * Adds prompt files to those that {@link #loadedSources(Path, List)} returns.
 		 *
 		 * @param sources the files
@@ -1248,8 +1268,8 @@ public final class OptimizerCoreTest
 				requireThat(trial.part(), "part").isEqualTo(Part.DEVELOPMENT);
 				requireThat(Files.readString(trial.source().resolve("CLAUDE.md")), "controlPrompt").isEmpty();
 			}
-			requireThat(result.proposal(), "proposal").isNotNull().contains(".env.example").
-				contains("\n## Guard pilot\n").contains("- `asks_before_deleting` (guard): 20 of 20 passed (100%)");
+			requireThat(result.proposal(), "proposal").isNotNull().contains("\n## Guard pilot\n").
+				contains("- `asks_before_deleting` (guard): 20 of 20 passed (100%)");
 			requireThat(result.proposal().split("20 trials decided, 0 failed runs\\.", -1).length, "decidedPilots").
 				isEqualTo(4);
 			requireThat(result.status().tokens().roles().keySet(), "tokens").doesNotContain(SessionRole.TRIAL).
@@ -2239,11 +2259,10 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code confirm} freezes the contract, and that the fixture under an ignored path, which the fork
-	 * records, is staged with the incumbent afterwards.
+	 * Verifies that {@code confirm} freezes the contract and that the incumbent's prompt is staged afterwards.
 	 */
 	@Test
-	public void confirmFreezesContractAndRecordsFixtures() throws Exception
+	public void confirmFreezesContract() throws Exception
 	{
 		// Requirement: R-W2
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -2255,13 +2274,11 @@ public final class OptimizerCoreTest
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			Campaign campaign = repository.load(id);
 			requireThat(campaign.isConfirmed(), "confirmed").isTrue();
-			requireThat(campaign.contract().ignoredFiles().paths(), "ignoredFiles").isEqualTo(List.of(".env.example"));
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
 				repository.scope().json()).require(campaign.incumbent().snapshot());
 			fork.workspace().stage(incumbent, Set.of());
-			requireThat(incumbent.snapshot().entries().keySet(), "stagedFiles").contains(Path.of(".env.example")).
-				contains(Path.of("CLAUDE.md"));
+			requireThat(incumbent.snapshot().entries().keySet(), "stagedFiles").contains(Path.of("CLAUDE.md"));
 		}
 	}
 
@@ -2687,44 +2704,12 @@ public final class OptimizerCoreTest
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			requireThat(fork.inventory().entries().keySet(), "held").contains(Path.of("extra.local.md")).
-				contains(outside).contains(Path.of(".env.example"));
+				contains(outside).doesNotContain(Path.of(".env.example"));
 			Campaign campaign = repository.load(id);
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
 				repository.scope().json()).require(campaign.incumbent().snapshot());
 			requireThat(incumbent.snapshot().entries().keySet(), "stagedFiles").contains(Path.of("extra.local.md")).
 				contains(outside);
-		}
-	}
-
-	/**
-	 * Verifies that {@code confirm} refuses a fixture that does not exist, naming it, and writes nothing.
-	 */
-	@Test
-	public void confirmRefusesMissingFixture() throws Exception
-	{
-		// Requirement: R-W2
-		try (TemporaryDirectories scope = new TemporaryDirectories())
-		{
-			Repository repository = repository(scope, _ -> derivation(output ->
-			{
-				ArrayNode paths = (ArrayNode) output.get("ignored_files").get("paths");
-				paths.add("missing/fixture.txt");
-			}));
-			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Path snapshot = repository.directory(id).resolve("held_out/campaign.json");
-			String before = Files.readString(snapshot);
-			CommandRefusedException refusal = null;
-			try
-			{
-				repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
-			}
-			catch (CommandRefusedException e)
-			{
-				refusal = e;
-			}
-			requireThat(refusal, "refusal").isNotNull();
-			requireThat(refusal.getMessage(), "message").contains("missing/fixture.txt");
-			requireThat(Files.readString(snapshot), "campaignJson").isEqualTo(before);
 		}
 	}
 
@@ -2761,7 +2746,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that the guard pilot, which runs before confirmation, does not give its trials the proposal's ignored
+	 * Verifies that the guard pilot, which runs before confirmation, does not give its trials the project's ignored
 	 * files, which reach a trial only through a link in its prompt test's workspace, and that a revision after
 	 * confirmation reuses every pilot because the control trials see the same files.
 	 */
@@ -2789,11 +2774,11 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that presenting a proposal records its ignored files in the fork before the guard pilot runs, so that
-	 * confirmation records nothing more.
+	 * Verifies that presenting a proposal records its derived sources that Git ignores in the fork before the guard
+	 * pilot runs, so that confirmation records nothing more.
 	 */
 	@Test
-	public void presentingRecordsIgnoredFiles() throws Exception
+	public void presentingRecordsDerivedSources() throws Exception
 	{
 		// Requirement: R-W2
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -2801,9 +2786,11 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}));
+			repository.sessions().addDerivedSources(List.of(new DerivedSource("extra.local.md",
+				"The harness loads the file by convention.")));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
-			requireThat(fork.inventory().entries().keySet(), "held").contains(Path.of(".env.example"));
+			requireThat(fork.inventory().entries().keySet(), "held").contains(Path.of("extra.local.md"));
 			List<Set<Path>> selections = repository.forks().selections();
 
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
@@ -2813,56 +2800,58 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that an ignored file that a revision before confirmation drops leaves the fork, so that the confirmed
-	 * incumbent does not hold it.
+	 * Verifies that a derived source that Git ignores and that a revision before confirmation no longer lists leaves
+	 * the fork, so that the confirmed incumbent does not hold it.
 	 */
 	@Test
-	public void revisionLeavesOutDroppedIgnoredFile() throws Exception
+	public void revisionLeavesOutDroppedDerivedSource() throws Exception
 	{
 		// Requirement: R-W2
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
-			Repository repository = repository(scope, session -> derivation(output ->
+			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
-				if (session > 0)
-					((ArrayNode) output.get("ignored_files").get("paths")).removeAll();
 			}));
+			List<DerivedSource> initial = repository.sessions().derivedSources();
+			repository.sessions().addDerivedSources(List.of(new DerivedSource("extra.local.md",
+				"The harness loads the file by convention.")));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.sessions().derivedSources(initial);
 
-			repository.core().revise(id, "drop the ignored file");
+			repository.core().revise(id, "drop the local rules");
 
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
 				repository.scope().json()).require(repository.load(id).incumbent().snapshot());
 			requireThat(incumbent.snapshot().entries().keySet(), "incumbentFiles").
-				doesNotContain(Path.of(".env.example"));
+				doesNotContain(Path.of("extra.local.md"));
 		}
 	}
 
 	/**
-	 * Verifies that a revision after confirmation that lists an ignored file the fork does not hold records it and
+	 * Verifies that a revision after confirmation that lists a derived source the fork does not hold records it and
 	 * reruns its guard pilot, leaves the campaign's incumbent alone until the user confirms, and that confirming moves
 	 * the incumbent onto the larger fork in a new lineage.
 	 */
 	@Test
-	public void confirmedRevisionRecordsNewIgnoredFile() throws Exception
+	public void confirmedRevisionRecordsNewDerivedSource() throws Exception
 	{
 		// Requirement: R-W2
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
-			Repository repository = repository(scope, session -> derivation(output ->
+			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
-				if (session > 0)
-					((ArrayNode) output.get("ignored_files").get("paths")).add("late.example");
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			Sha256 confirmed = repository.load(id).incumbent().snapshot();
-			Files.writeString(repository.root().resolve("late.example"), "LATE=fixture\n");
+			Files.writeString(repository.root().resolve("late.local.md"), "Late rules.\n");
+			repository.sessions().addDerivedSources(List.of(new DerivedSource("late.local.md",
+				"The harness loads the file by convention.")));
 			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
 
-			CommandResult revised = repository.core().revise(id, "cover the late ignored file");
+			CommandResult revised = repository.core().revise(id, "cover the late local rules");
 
 			requireThat(revised.proposal(), "proposal").contains("\n## Guard pilot\n");
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
@@ -2878,8 +2867,8 @@ public final class OptimizerCoreTest
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
 				repository.scope().json()).require(campaign.incumbent().snapshot());
-			requireThat(incumbent.snapshot().entries().keySet(), "incumbentFiles").contains(Path.of("late.example")).
-				contains(Path.of(".env.example"));
+			requireThat(incumbent.snapshot().entries().keySet(), "incumbentFiles").contains(Path.of("late.local.md")).
+				contains(Path.of("CLAUDE.md"));
 		}
 	}
 

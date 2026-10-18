@@ -20,7 +20,6 @@ import java.util.Set;
  * @param tests every prompt test, in the order used to break otherwise equal allocation choices
  * @param profiles the trial profiles and the cells, which are the statistical units
  * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
- * @param ignoredFiles the ignored files that trials need
  * @param limitations the material interactions and conditions that the contract does not cover
  * @param minimumPassRate the minimum pass rate {@code p_min}: a cell certifies only when its pass probability is proven
  *   to exceed it
@@ -30,7 +29,7 @@ import java.util.Set;
  *   trials remove
  */
 public record Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles,
-	JudgeProfile judge, IgnoredFiles ignoredFiles, List<String> limitations, BigDecimal minimumPassRate, long salt,
+	JudgeProfile judge, List<String> limitations, BigDecimal minimumPassRate, long salt,
 	List<Dependent> dependents)
 {
 	/**
@@ -57,8 +56,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 * @param tests every prompt test, in the order used to break otherwise equal allocation choices
 	 * @param profiles the trial profiles and the cells, which are the statistical units
 	 * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
-	 * @param ignoredFiles the ignored files that trials need
-	 * @param limitations the material interactions and conditions that the contract does not cover
+		 * @param limitations the material interactions and conditions that the contract does not cover
 	 * @param minimumPassRate the minimum pass rate {@code p_min}: a cell certifies only when its pass probability is
 	 *   proven to exceed it
 	 * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are
@@ -67,9 +65,9 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 * @throws IllegalArgumentException if the canonical constructor rejects the values
 	 */
 	public Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles, JudgeProfile judge,
-		IgnoredFiles ignoredFiles, List<String> limitations, BigDecimal minimumPassRate, long salt)
+		List<String> limitations, BigDecimal minimumPassRate, long salt)
 	{
-		this(requirements, tests, profiles, judge, ignoredFiles, limitations, minimumPassRate, salt, List.of());
+		this(requirements, tests, profiles, judge, limitations, minimumPassRate, salt, List.of());
 	}
 
 	/**
@@ -79,8 +77,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 * @param tests every prompt test, in the order used to break otherwise equal allocation choices
 	 * @param profiles the trial profiles and the cells, which are the statistical units
 	 * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
-	 * @param ignoredFiles the ignored files that trials need
-	 * @param limitations the material interactions and conditions that the contract does not cover
+		 * @param limitations the material interactions and conditions that the contract does not cover
 	 * @param minimumPassRate the minimum pass rate {@code p_min}: a cell certifies only when its pass probability is
 	 *   proven to exceed it
 	 * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are
@@ -103,7 +100,6 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		requireThat(tests, "tests").isNotEmpty();
 		requireThat(profiles, "profiles").isNotNull();
 		requireThat(judge, "judge").isNotNull();
-		requireThat(ignoredFiles, "ignoredFiles").isNotNull();
 		requireThat(limitations, "limitations").isNotNull();
 		requireThat(dependents, "dependents").isNotNull();
 		requireThat(minimumPassRate, "minimumPassRate").
@@ -216,7 +212,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 */
 	public Contract withScope(CertificationScope scope)
 	{
-		return new Contract(requirements, tests, profiles.withScope(scope), judge, ignoredFiles, limitations,
+		return new Contract(requirements, tests, profiles.withScope(scope), judge, limitations,
 			minimumPassRate, salt, dependents);
 	}
 

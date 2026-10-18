@@ -4,7 +4,7 @@
 	"description": "Every requirement, prompt test, trial profile, cell, variable, judge profile field and workspace file that the proposal presents to the user. Lists hold the items themselves; a count or summary never stands in for them.",
 	"type": "object",
 	"additionalProperties": false,
-	"required": ["requirements", "tests", "trial_profiles", "judge", "ignored_files", "limitations", "minimum_pass_rate", "salt"],
+	"required": ["requirements", "tests", "trial_profiles", "judge", "limitations", "minimum_pass_rate", "salt"],
 	"$defs": {
 		"assertion": {
 			"description": "One statement that a compliant trial satisfies. CAT adds the assertion expected_outcome, which the judge decides, to every test: the reply's result matches the test case's expected outcome.",
@@ -240,15 +240,6 @@
 				"rubric": {"description": "What the judge checks, in a trial's text, file effects and tool effects, for each assertion that no built-in tool decides, including expected_outcome.", "type": "string", "pattern": "\\S"},
 				"decision_rule": {"description": "How the judge turns its findings into a pass or a failure of each assertion that it decides. The judge cannot override a built-in tool that decided its assertion.", "type": "string", "pattern": "\\S"},
 				"result_schema": {"description": "The JSON schema that a judge result must satisfy.", "type": "object"}
-			}
-		},
-		"ignored_files": {
-			"description": "The ignored files that trials need.",
-			"type": "object",
-			"additionalProperties": false,
-			"required": ["paths"],
-			"properties": {
-				"paths": {"description": "Project-relative paths, using / as the separator. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}}
 			}
 		},
 		"limitations": {

@@ -107,7 +107,7 @@ public final class SliceTest
 				test.regressionScenarios(), List.of()));
 		}
 		return new Contract(contract.requirements(), tests,
-			ContractFixtures.profiles(contract.requirements(), tests), contract.judge(), contract.ignoredFiles(),
+			ContractFixtures.profiles(contract.requirements(), tests), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
 	}
 

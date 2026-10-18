@@ -121,10 +121,10 @@ path below `workspace/`, and no other file of the project. CAT writes those file
 placeholders in each one's path and content. Each is a workspace file: use one when a turn needs a file whose content
 the test case decides, or a file of the project that the turn works on.
 
-- To give a trial a file or directory that lies elsewhere in the project, put a symbolic link in `workspace/` whose
-  target, relative to the link's directory, is that file or directory. The trial receives a copy of the target at the
-  link's path. Write the target as it resolves from the test's path in the project: a target that the draft directory
-  does not hold is read from the project.
+- To give a trial a file or directory that lies elsewhere in the project, including one that Git ignores, put a
+  symbolic link in `workspace/` whose target, relative to the link's directory, is that file or directory. The trial
+  receives a copy of the target at the link's path. Write the target as it resolves from the test's path in the
+  project: a target that the draft directory does not hold is read from the project.
 - To share a file among several tests, put it in the test root outside every test's directory, and link it from the
   `workspace/` of each test that needs it.
 - A link whose target is another file or directory of the same `workspace/` stays a link in the trial, so the turn sees

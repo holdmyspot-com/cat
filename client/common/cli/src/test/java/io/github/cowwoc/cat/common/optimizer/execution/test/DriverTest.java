@@ -4527,7 +4527,7 @@ public final class DriverTest
 				test.regressionScenarios(), List.of()));
 		}
 		return new Contract(fixture.requirements(), tests,
-			ContractFixtures.profiles(fixture.requirements(), tests), fixture.judge(), fixture.ignoredFiles(),
+			ContractFixtures.profiles(fixture.requirements(), tests), fixture.judge(),
 			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
 	}
 
@@ -4799,7 +4799,7 @@ public final class DriverTest
 		JudgeProfile paths = new JudgeProfile(judge.profile(), "{{responses}} {{effects}} {{transcript}}",
 			judge.rubric(), judge.decisionRule(), judge.resultSchema());
 		Contract contract = new Contract(fixture.requirements(), fixture.tests(), fixture.profiles(), paths,
-			fixture.ignoredFiles(), fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
 		Campaign original = new Builder().confirmed(contract, 1).working(1).readyBaseline().build();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -5359,7 +5359,7 @@ public final class DriverTest
 		// Only safety exercises the authority warning; separate certification and cell tests cover formatting
 		List<PromptTest> tests = List.of(fixture.findTest("safety").orElseThrow());
 		Contract contract = new Contract(requirements, tests, ContractFixtures.profiles(requirements, tests),
-			fixture.judge(), fixture.ignoredFiles(), fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+			fixture.judge(), fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
 		return new Builder().confirmed(contract, 1).working(1).readyBaseline().development("safety", 50, 1).
 			failure(Builder.testCase("safety", "logs")).round(new Round(Map.of("safety", 0))).build();
 	}

@@ -324,7 +324,7 @@ public final class ProposalTest
 		Contract fixture = ContractFixtures.contract();
 		return new Contract(fixture.requirements(), fixture.tests(), fixture.profiles(),
 			judge.profile("The response follows the requirement.", "Pass only if every rubric item holds."),
-			fixture.ignoredFiles(), fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
 	}
 
 	/**
@@ -344,7 +344,7 @@ public final class ProposalTest
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
 				test.assertions(), test.regressionScenarios(), test.workspaceFiles()));
 		}
-		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.ignoredFiles(),
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
 	}
 
@@ -886,7 +886,6 @@ public final class ProposalTest
 		requireThat(text, "text").contains("Rubric: " + contract.judge().rubric()).
 			contains("Decision rule: " + contract.judge().decisionRule()).
 			contains("Role profile: " + ROLE.label()).
-			contains("- .env.example\n").
 			contains("Only the English prompts are covered.");
 	}
 

@@ -1018,9 +1018,9 @@ public final class OptimizerCore implements Core
 		DerivedProposal revised, ProposalFile.Stored stored, List<TestRevision> revisions)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
-		Participants participants = participants(root, revised);
+		Set<Path> participants = participants(root, revised);
 		if (!unheld(fork, participants).isEmpty())
-			fork = fork.extend(root, participants.existing());
+			fork = fork.extend(root, participants);
 		PluginCheck plugin = pluginCheck(root, campaign, fork);
 		Map<String, PilotResult> pilots = pilot(root, campaign, fork, revised, plugin);
 		// The proposal previews its confirmation, which needs the campaign that awaits the revised contract
@@ -1292,7 +1292,7 @@ public final class OptimizerCore implements Core
 				"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
 			// A revision after confirmation runs on the files that its presentation recorded beside the fork's
 			if (loaded.isConfirmed())
-				fork = fork.including(participants(root, derived).existing());
+				fork = fork.including(participants(root, derived));
 			PluginCheck plugin = pluginCheck(root, loaded, fork);
 			Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(loaded).read(), plugin);
 			if (!proposal.isConfirmable(certificationScope))
@@ -1305,16 +1305,16 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Requires that the fork holds the ignored files and derived prompt sources of the proposal that the user
-	 * confirms, which presenting the proposal recorded, so that trials never read a live file.
+	 * Requires that the fork holds the derived prompt sources of the proposal that the user confirms, which presenting
+	 * the proposal recorded, so that trials never read a live file.
 	 *
 	 * @param root the project root
 	 * @param fork the fork that the confirmed contract runs on
 	 * @param derived the proposal that the user confirms
 	 * @param selection the files of the candidate that every trial receives
-	 * @throws CommandRefusedException if an ignored file does not exist, the fork lacks a file that the proposal needs, a
-	 *   workspace file of a prompt test would replace a file of the fork that every trial receives, or a workspace file
-	 *   is a copy of a file that every trial receives
+	 * @throws CommandRefusedException if the fork lacks a file that the proposal needs, a workspace file of a prompt
+	 *   test would replace a file of the fork that every trial receives, or a workspace file is a copy of a file that
+	 *   every trial receives
 	 */
 	private static void requireParticipantsHeld(Path root, ForkView fork, DerivedProposal derived,
 		SourceSelection selection) throws CommandRefusedException
@@ -1334,13 +1334,7 @@ public final class OptimizerCore implements Core
 				"project files, so the trials could not receive them: " + String.join(", ", collisions) + ". Run " +
 				"`revise` with feedback that asks for other paths.");
 		}
-		Participants participants = participants(root, derived);
-		if (!participants.missingIgnoredFiles().isEmpty())
-		{
-			throw new CommandRefusedException("These ignored files do not exist in the project, so the trials " +
-				"could not see them: " + String.join(", ", participants.missingIgnoredFiles()));
-		}
-		String unheld = unheld(fork, participants);
+		String unheld = unheld(fork, participants(root, derived));
 		if (unheld.isEmpty())
 			return;
 		throw new CommandRefusedException("These files appeared after CAT presented the proposal, so its guard pilot " +
@@ -1451,51 +1445,29 @@ public final class OptimizerCore implements Core
 	 * @param participants the proposal's participants
 	 * @return the participants, separated by commas, or an empty string if the fork holds them all
 	 */
-	private static String unheld(ForkView fork, Participants participants)
+	private static String unheld(ForkView fork, Set<Path> participants)
 	{
 		FileInventory held = fork.inventory();
-		return participants.existing().stream().filter(path -> !held.holds(path)).map(Path::toString).
+		return participants.stream().filter(path -> !held.holds(path)).map(Path::toString).
 			collect(Collectors.joining(", "));
 	}
 
 	/**
-	 * The files beyond the prompt system that a proposal's trials need.
-	 *
-	 * @param existing the existing ignored files and derived prompt sources, named as the fork names participants
-	 * @param missingIgnoredFiles the ignored files that do not exist in the project
-	 */
-	private record Participants(Set<Path> existing, List<String> missingIgnoredFiles)
-	{
-	}
-
-	/**
-	 * Returns the ignored files and derived prompt sources of a proposal.
+	 * Returns the derived prompt sources of a proposal that exist.
 	 *
 	 * @param root the project root
 	 * @param derived the contract author's proposal
-	 * @return the files
+	 * @return the sources, named as the fork names participants
 	 */
-	private static Participants participants(Path root, DerivedProposal derived)
+	private static Set<Path> participants(Path root, DerivedProposal derived)
 	{
 		Set<Path> existing = new LinkedHashSet<>();
-		List<String> missing = new ArrayList<>();
-		for (String ignored : derived.contract().ignoredFiles().paths())
-		{
-			Path path = Path.of(ignored);
-			if (InventoryScanner.isOmitted(path) ||
-				Files.notExists(root.resolve(path), LinkOption.NOFOLLOW_LINKS))
-			{
-				missing.add(ignored);
-			}
-			else
-				existing.add(path);
-		}
 		for (Path source : derivedPaths(root, derived))
 		{
 			if (Files.exists(root.resolve(source), LinkOption.NOFOLLOW_LINKS))
 				existing.add(source);
 		}
-		return new Participants(existing, missing);
+		return existing;
 	}
 
 	/**
@@ -1817,11 +1789,10 @@ public final class OptimizerCore implements Core
 	/**
 	 * Runs the guard pilot of a proposal, reusing the stored pilot of each prompt test that it still describes, then
 	 * presents the proposal with the pilot's results. The pilot's control trials install the campaign's trial
-	 * plugins. The fork first
-	 * records the proposal's ignored files and derived prompt sources, so the pilot's trials see the files that formal
-	 * trials will see. Before confirmation, the fork also leaves out those that an earlier proposal needed and this one
-	 * does not. After confirmation, nothing leaves the fork, and the campaign stays on its current fork until the user
-	 * confirms the revision.
+	 * plugins. The fork first records the proposal's derived prompt sources, so the pilot's trials see the files that
+	 * formal trials will see. Before confirmation, the fork also leaves out those that an earlier proposal needed and
+	 * this one does not. After confirmation, nothing leaves the fork, and the campaign stays on its current fork until
+	 * the user confirms the revision.
 	 *
 	 * @param root the project root
 	 * @param store the store
@@ -1837,16 +1808,16 @@ public final class OptimizerCore implements Core
 		DerivedProposal derived)
 		throws IOException, InterruptedException
 	{
-		Participants participants = participants(root, derived);
+		Set<Path> participants = participants(root, derived);
 		if (campaign.isConfirmed())
 		{
 			// The confirmed campaign keeps its fork until the user confirms the revision that needs a larger one
 			if (!unheld(fork, participants).isEmpty())
-				fork = fork.extend(root, participants.existing());
+				fork = fork.extend(root, participants);
 		}
 		else
 		{
-			ForkView selected = fork.selectParticipants(root, participants.existing());
+			ForkView selected = fork.selectParticipants(root, participants);
 			if (!selected.inventory().equals(fork.inventory()))
 				campaign = rebind(store, campaign, selected.inventory());
 			fork = selected;
@@ -1864,7 +1835,7 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
-	 * @param fork the fork that holds the proposal's ignored files and derived prompt sources
+	 * @param fork the fork that holds the proposal's derived prompt sources
 	 * @param derived the proposal
 	 * @param plugin the check of the campaign's trial plugins
 	 * @return the pilot of each prompt test, by prompt test, or none if control trials cannot remove the dependents

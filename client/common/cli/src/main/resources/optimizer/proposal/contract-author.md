@@ -121,9 +121,8 @@ results. A guard assertion whose rate is below the minimum pass rate is a warnin
 are what make an agent pass it, or change the test's test cases when they are too hard to pass without the prompts.
 Otherwise keep it unchanged; the user decides whether the agent really fails it without the prompts.
 
-### Ignored files and limitations
+### Limitations
 
-- `ignored_files.paths`: the project-relative paths of ignored files that trials need, using `/` as the separator.
 - `limitations`: every known limitation of the contract, such as an obligation that no test covers.
 
 ### Recorded prompt tests

@@ -317,9 +317,6 @@
 			}
 		}
 	},
-	"ignored_files": {
-		"paths": [".env.example"]
-	},
 	"limitations": ["Only the English prompts are covered."],
 	"minimum_pass_rate": 0.95,
 	"salt": 272275

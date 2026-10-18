@@ -16,7 +16,6 @@ import io.github.cowwoc.cat.common.optimizer.contract.RiskRank;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
-import io.github.cowwoc.cat.common.optimizer.contract.IgnoredFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.contract.VariableDeclaration;
@@ -178,7 +177,7 @@ public final class ContractFixtures
 		}
 		else
 			profiles = profiles(requirements, tests);
-		return new Contract(requirements, tests, profiles, judge(), new IgnoredFiles(List.of(".env.example")),
+		return new Contract(requirements, tests, profiles, judge(),
 			List.of("Only the English prompts are covered."), Contract.DEFAULT_MINIMUM_PASS_RATE, SALT);
 	}
 
@@ -199,7 +198,7 @@ public final class ContractFixtures
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
 				test.assertions(), citations.getOrDefault(test.id(), List.of()), List.of()));
 		}
-		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.ignoredFiles(),
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
 	}
 
@@ -224,7 +223,7 @@ public final class ContractFixtures
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
 				test.assertions(), test.regressionScenarios(), testFixtures));
 		}
-		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.ignoredFiles(),
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
 	}
 
@@ -238,7 +237,7 @@ public final class ContractFixtures
 	public static Contract withDependents(Contract contract, List<Dependent> dependents)
 	{
 		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), contract.judge(),
-			contract.ignoredFiles(), contract.limitations(), contract.minimumPassRate(), contract.salt(), dependents);
+			contract.limitations(), contract.minimumPassRate(), contract.salt(), dependents);
 	}
 
 	/**

@@ -239,11 +239,6 @@
 			"type": "object"
 		}
 	},
-	"ignored_files": {
-		"paths": [
-			".env.example"
-		]
-	},
 	"minimum_pass_rate": 0.95,
 	"limitations": [
 		"Only the English prompts are covered."

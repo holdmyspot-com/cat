@@ -152,7 +152,6 @@ public final class Markdown
 		controlSource();
 		trialPlugins();
 		guardPilot();
-		ignoredFiles();
 		procedure();
 		symbolicLinks();
 		authentication();
@@ -580,19 +579,6 @@ public final class Markdown
 	}
 
 	/**
-	 * Lists the ignored paths that trials need.
-	 */
-	private void ignoredFiles()
-	{
-		heading("Ignored files");
-		text.append("Ignored paths that are copied into every trial:\n\n");
-		if (contract.ignoredFiles().paths().isEmpty())
-			text.append("- none\n");
-		for (String path : contract.ignoredFiles().paths())
-			text.append("- ").append(path).append('\n');
-	}
-
-	/**
 	 * States the statistical procedure.
 	 */
 	private void procedure()
@@ -766,7 +752,7 @@ public final class Markdown
 		heading("Symbolic links");
 		if (links.entries().isEmpty())
 		{
-			text.append("No symbolic link was found in the prompt system or the staged ignored files.\n");
+			text.append("No symbolic link was found in the prompt system.\n");
 			return;
 		}
 		for (LinkReport.Entry entry : links.entries())

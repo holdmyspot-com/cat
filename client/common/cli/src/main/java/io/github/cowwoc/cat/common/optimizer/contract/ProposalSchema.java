@@ -352,8 +352,6 @@ public final class ProposalSchema
 			write(test, tests.addObject());
 		write(contract.profiles(), root.putObject(TRIAL_PROFILES));
 		write(contract.judge(), root.putObject("judge"));
-		ArrayNode ignoredPaths = root.putObject("ignored_files").putArray("paths");
-		contract.ignoredFiles().paths().forEach(ignoredPaths::add);
 		ArrayNode limitations = root.putArray("limitations");
 		contract.limitations().forEach(limitations::add);
 		root.put("minimum_pass_rate", contract.minimumPassRate());
@@ -687,8 +685,6 @@ public final class ProposalSchema
 			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(profile(judgeNode),
 				text(judgeNode, "prompt"), text(judgeNode, "rubric"), text(judgeNode, "decision_rule"),
 				judgeNode.get("result_schema").toString()));
-			IgnoredFiles workspaceFiles = attempt("$.ignored_files", () -> new IgnoredFiles(
-				strings(root.get("ignored_files").get("paths"))));
 			List<Dependent> dependents = List.of();
 			JsonNode dependentsNode = root.get(DEPENDENTS);
 			if (dependentsNode != null && !dependentsNode.isNull())
@@ -711,7 +707,7 @@ public final class ProposalSchema
 			else
 				contractSalt = salt;
 			List<Dependent> contractDependents = dependents;
-			return attempt("$", () -> new Contract(requirements, tests, profiles, judge, workspaceFiles,
+			return attempt("$", () -> new Contract(requirements, tests, profiles, judge,
 				strings(root.get("limitations")), root.get("minimum_pass_rate").decimalValue(), contractSalt,
 				contractDependents));
 		}

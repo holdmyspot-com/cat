@@ -157,7 +157,7 @@ public final class TierFixtures
 			fixture.findTest("safety").orElseThrow());
 		TrialProfiles profiles = TrialProfiles.compute(inventory, ranking,
 			List.of(new ProfileBinding(safetySource, safety)), List.of(), described, fixture.requirements(), tests);
-		return new Contract(fixture.requirements(), tests, profiles, fixture.judge(), fixture.ignoredFiles(),
+		return new Contract(fixture.requirements(), tests, profiles, fixture.judge(),
 			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
 	}
 
