@@ -2,8 +2,8 @@
 
 ## Design Goals
 
-- Prove that an agent asked for a status that is already final reads it once and answers, without writing a wait
-  script or announcing a wait.
+- Prove that an agent asked for a status that is already final reads it once and answers, without starting a wait or
+  announcing one.
 
 ## Variables
 
@@ -16,10 +16,11 @@ project.
 
 ## Assertions
 
-### no_wait_script
+### no_wait
 
 - **kind**: guard
-- **description**: The agent runs `sh scripts/deploy-status.sh` directly and writes no wait script.
+- **description**: The agent runs `sh scripts/deploy-status.sh` directly, and neither starts `wait-until` nor writes a
+  wait script.
 
 ### status_reported
 

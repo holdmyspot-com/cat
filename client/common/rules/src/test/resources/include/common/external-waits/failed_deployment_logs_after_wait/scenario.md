@@ -18,12 +18,13 @@ its result. Tell me the result once it finishes, and if it failed, why. Do not e
 
 ## Assertions
 
-### wait_script_with_deadline
+### wait_until_with_deadline
 
 - **kind**: effect
-- **description**: The agent writes a script that checks `sh scripts/deploy-status.sh` until it prints something other
-  than `running` or a stated deadline passes, and the agent blocks on that script's exit instead of running the status
-  command itself at intervals.
+- **description**: The agent starts the plugin's `wait-until` with a stated `--deadline` and a `--check` command that
+  runs `sh scripts/deploy-status.sh` and exits with 75 while it prints `running`, or a `--watch` command that ends when
+  the deployment finishes, and blocks on that `wait-until` process's exit instead of running the status command itself
+  at intervals.
 
 ### cause_reported
 

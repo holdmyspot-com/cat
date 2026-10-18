@@ -448,7 +448,9 @@ public final class DistributionMain
 			new JlinkImageBuilder.Launcher("subagent-start", "io.github.cowwoc.cat.claude.cli",
 				"io.github.cowwoc.cat.claude.ClaudeSubagentStartHook"),
 			new JlinkImageBuilder.Launcher("prompt-optimizer", "io.github.cowwoc.cat.claude.cli",
-				"io.github.cowwoc.cat.claude.optimizer.ClaudePromptOptimizer")));
+				"io.github.cowwoc.cat.claude.optimizer.ClaudePromptOptimizer"),
+			new JlinkImageBuilder.Launcher("wait-until", "io.github.cowwoc.cat.claude.cli",
+				"io.github.cowwoc.cat.claude.ClaudeWaitUntil")));
 	}
 
 	/**
@@ -459,7 +461,8 @@ public final class DistributionMain
 	 */
 	static Set<String> claudeAgentLaunchers()
 	{
-		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "claude-runner");
+		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "claude-runner",
+			"wait-until");
 	}
 
 	/**
@@ -487,7 +490,9 @@ public final class DistributionMain
 			new JlinkImageBuilder.Launcher("read-part", "io.github.cowwoc.cat.codex.cli",
 				"io.github.cowwoc.cat.codex.CodexReadPart"),
 			new JlinkImageBuilder.Launcher("prompt-optimizer", "io.github.cowwoc.cat.codex.cli",
-				"io.github.cowwoc.cat.codex.optimizer.CodexPromptOptimizer")));
+				"io.github.cowwoc.cat.codex.optimizer.CodexPromptOptimizer"),
+			new JlinkImageBuilder.Launcher("wait-until", "io.github.cowwoc.cat.codex.cli",
+				"io.github.cowwoc.cat.codex.CodexWaitUntil")));
 	}
 
 	/**
@@ -497,7 +502,8 @@ public final class DistributionMain
 	 */
 	static Set<String> codexAgentLaunchers()
 	{
-		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "run-part", "read-part");
+		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "run-part", "read-part",
+			"wait-until");
 	}
 
 	/**

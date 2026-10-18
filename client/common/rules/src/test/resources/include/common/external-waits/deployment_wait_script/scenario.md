@@ -1,9 +1,9 @@
-# Deployment wait script
+# Deployment wait
 
 ## Design Goals
 
-- Prove that an agent that must wait for a deployment it does not run writes a wait script with a deadline, blocks on
-  that script's exit, and sends no interval status reports, then reports the deployment's result.
+- Prove that an agent that must wait for a deployment it does not run starts `wait-until` with a deadline, blocks on
+  its exit, and sends no interval status reports, then reports the deployment's result.
 
 ## Variables
 
@@ -18,12 +18,13 @@ its result. Tell me the result once it finishes. Do not edit any file in the pro
 
 ## Assertions
 
-### wait_script_with_deadline
+### wait_until_with_deadline
 
 - **kind**: effect
-- **description**: The agent writes a script that checks `sh scripts/deploy-status.sh` until it prints something other
-  than `running` or a stated deadline passes, and the agent blocks on that script's exit instead of running the status
-  command itself at intervals.
+- **description**: The agent starts the plugin's `wait-until` with a stated `--deadline` and a `--check` command that
+  runs `sh scripts/deploy-status.sh` and exits with 75 while it prints `running`, or a `--watch` command that ends when
+  the deployment finishes, and blocks on that `wait-until` process's exit instead of running the status command itself
+  at intervals.
 
 ### no_interval_reports
 
