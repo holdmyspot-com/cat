@@ -22,9 +22,8 @@ import java.util.stream.Stream;
 
 /**
  * Reads the {@value PromptTestFiles#WORKSPACE} directory of one prompt test, replacing each symbolic link by its
- * target. A file of the directory, or a file of the test root that a link reaches, becomes a fixture at its path below
- * {@value PromptTestFiles#WORKSPACE}; a link to a file or directory of the project outside every test root becomes a
- * project link.
+ * target. A file of the directory, or a file of the project that a link reaches, becomes a fixture at its path below
+ * {@value PromptTestFiles#WORKSPACE}.
  * <p>
  * The prompt test may lie in a draft directory, which holds files at their paths relative to the project. A link
  * resolves at the path where it lies relative to the draft directory: a target that the draft directory holds is read
@@ -56,10 +55,6 @@ final class WorkspaceReader
 	 * The file that each fixture is copied from, by the fixture's path.
 	 */
 	private final Map<String, Path> sources = new TreeMap<>();
-	/**
-	 * The project links read so far, by path.
-	 */
-	private final Map<String, ProjectLink> projectLinks = new TreeMap<>();
 	/**
 	 * The files and directories inside a test root that links reach, relative to the project.
 	 */
@@ -125,16 +120,6 @@ final class WorkspaceReader
 	Map<String, Path> sources()
 	{
 		return Map.copyOf(sources);
-	}
-
-	/**
-	 * Returns the project links.
-	 *
-	 * @return the links, sorted by path
-	 */
-	List<ProjectLink> projectLinks()
-	{
-		return List.copyOf(projectLinks.values());
 	}
 
 	/**
@@ -248,12 +233,8 @@ final class WorkspaceReader
 					"that leads back to it");
 			}
 			requireOutsidePromptTests(location, target);
-			if (!isInTestRoot(target))
-			{
-				projectLinks.put(workspacePath, new ProjectLink(workspacePath, target));
-				return;
-			}
-			linkedTargets.add(target);
+			if (isInTestRoot(target))
+				linkedTargets.add(target);
 			BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class,
 				LinkOption.NOFOLLOW_LINKS);
 			if (attributes.isDirectory())

@@ -249,6 +249,8 @@ public final class ProposalCheck
 	 * Validates a stored proposal file and its stored draft directory again.
 	 *
 	 * @param proposalFile    the proposal file, which this method changes
+	 * @param project         the user's project, which holds every target of a prompt test's link that the draft
+	 *                        directory does not, and which problems name files relative to
 	 * @param draft           the stored draft directory
 	 * @param observedSources the prompt sources that the harness reported loading in the contract author session
 	 * @param profiles        the profile inventory, its shipped capability ranking and the bindings that CAT read
@@ -261,11 +263,12 @@ public final class ProposalCheck
 	 *                                  apart from a new prompt test whose directory the project holds by now
 	 * @throws UncheckedIOException     if a file cannot be read
 	 */
-	public DerivedProposal restore(ObjectNode proposalFile, Path draft, String observedSources,
+	public DerivedProposal restore(ObjectNode proposalFile, Path project, Path draft, String observedSources,
 		ProfileEvidence profiles, long salt) throws InvalidProposalException
 	{
+		requireThat(project, "project").isNotNull();
 		requireThat(draft, "draft").isNotNull();
-		return check(proposalFile, draft, draft, observedSources, profiles, salt, false, Map.of());
+		return check(proposalFile, project, draft, observedSources, profiles, salt, false, Map.of());
 	}
 
 	/**

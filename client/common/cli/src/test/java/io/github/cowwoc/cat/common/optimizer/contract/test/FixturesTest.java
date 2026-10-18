@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.Fixtures;
-import io.github.cowwoc.cat.common.optimizer.contract.ProjectLink;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
@@ -236,9 +235,9 @@ public final class FixturesTest
 	}
 
 	/**
-	 * Verifies that a prompt test's {@code workspace/} files and the test-root files that its links reach are its
-	 * fixtures at their paths below {@code workspace/}, that a link to a project file or directory outside the test root
-	 * is a project link, and that copying the fixtures replaces placeholders in the shared files.
+	 * Verifies that a prompt test's {@code workspace/} files and the files that its links reach, inside or outside the
+	 * test root, are its fixtures at their paths below {@code workspace/}, and that copying the fixtures replaces
+	 * placeholders in the linked files.
 	 *
 	 * @throws IOException             if a file cannot be written or read
 	 * @throws ScenarioFormatException if the prompt test is refused
@@ -254,27 +253,29 @@ public final class FixturesTest
 			PromptTestFiles files = PromptTestFiles.read(json, project, root, linkedTest(project));
 			requireThat(files.fixtures(), "fixtures").isEqualTo(List.of(
 				new PromptTestFiles.Fixture("AGENTS.md", true, Set.of()),
+				new PromptTestFiles.Fixture("guide/intro.md", true, Set.of("notes")),
 				new PromptTestFiles.Fixture("logs/{{notes}}", true, Set.of("before")),
-				new PromptTestFiles.Fixture("own.md", true, Set.of())));
-			requireThat(files.source(files.fixtures().get(1)), "shared").
+				new PromptTestFiles.Fixture("own.md", true, Set.of()),
+				new PromptTestFiles.Fixture("src/Main.java", true, Set.of())));
+			requireThat(files.source(files.fixtures().get(2)), "shared").
 				isEqualTo(root.resolve("guidance/shared/logs/{{notes}}"));
-			requireThat(files.projectLinks(), "projectLinks").isEqualTo(List.of(
-				new ProjectLink("guide", Path.of("docs/guide")),
-				new ProjectLink("src/Main.java", Path.of("src/Main.java"))));
+			requireThat(files.source(files.fixtures().get(1)), "project").
+				isEqualTo(project.resolve("docs/guide/intro.md"));
 
 			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
 			Fixtures.copy(files, testCase("notes.md"), workspace);
-			requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "logs/notes.md", "own.md"));
+			requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "guide/intro.md", "logs/notes.md",
+				"own.md", "src/Main.java"));
 			requireThat(Files.readString(workspace.resolve("AGENTS.md")), "agents").
 				isEqualTo("Published on 2025-03-04");
+			requireThat(Files.readString(workspace.resolve("guide/intro.md")), "intro").isEqualTo("Intro to notes.md");
 			requireThat(Files.readString(workspace.resolve("logs/notes.md")), "notes").endsWith("\nShared");
 
 			Path bare = Files.createDirectories(root.resolve("guidance/bare"));
 			Files.writeString(bare.resolve(PromptTestFiles.SCENARIO), SCENARIO);
 			PromptTestFiles none = PromptTestFiles.read(json, project, root, bare);
 			requireThat(none.fixtures(), "noFixtures").isEmpty();
-			requireThat(none.projectLinks(), "noProjectLinks").isEmpty();
 		}
 	}
 

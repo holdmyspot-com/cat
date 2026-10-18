@@ -29,16 +29,15 @@ import tools.jackson.databind.json.JsonMapper;
  * A prompt test directory: its {@code scenario.md}, the files and links of its {@value #WORKSPACE} directory and the
  * test cases of its values file.
  *
- * @param root         the test root, which holds the prompt test directory or is that directory
- * @param directory    the prompt test directory
- * @param scenario     the parsed scenario
- * @param fixtures     the fixture files, sorted by path
- * @param sources      the file that each fixture is copied from, by the fixture's path
- * @param projectLinks the links to project files outside every test root, sorted by path
- * @param testCases    the test cases of the values file, or an empty list if the directory has none
+ * @param root      the test root, which holds the prompt test directory or is that directory
+ * @param directory the prompt test directory
+ * @param scenario  the parsed scenario
+ * @param fixtures  the fixture files, sorted by path
+ * @param sources   the file that each fixture is copied from, by the fixture's path
+ * @param testCases the test cases of the values file, or an empty list if the directory has none
  */
 public record PromptTestFiles(Path root, Path directory, Scenario scenario, List<PromptTestFiles.Fixture> fixtures,
-	Map<String, Path> sources, List<ProjectLink> projectLinks, List<TestCase> testCases)
+	Map<String, Path> sources, List<TestCase> testCases)
 {
 	/**
 	 * The scenario's file name.
@@ -54,7 +53,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	private static final String RESERVED_CHARACTERS = "/\\:*?\"<>|";
 
 	/**
-	 * One file that each trial's workspace receives: a file of {@value #WORKSPACE} or a test-root file that a link there
+	 * One file that each trial's workspace receives: a file of {@value #WORKSPACE} or a project file that a link there
 	 * reaches.
 	 *
 	 * @param path         the path relative to {@value #WORKSPACE}, with {@code /} separators, which may contain
@@ -88,13 +87,12 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	/**
 	 * Creates the files of a prompt test.
 	 *
-	 * @param root         the test root, which holds the prompt test directory or is that directory
-	 * @param directory    the prompt test directory
-	 * @param scenario     the parsed scenario
-	 * @param fixtures     the fixture files, sorted by path
-	 * @param sources      the file that each fixture is copied from, by the fixture's path
-	 * @param projectLinks the links to project files outside every test root, sorted by path
-	 * @param testCases    the test cases of the values file, or an empty list if the directory has none
+	 * @param root      the test root, which holds the prompt test directory or is that directory
+	 * @param directory the prompt test directory
+	 * @param scenario  the parsed scenario
+	 * @param fixtures  the fixture files, sorted by path
+	 * @param sources   the file that each fixture is copied from, by the fixture's path
+	 * @param testCases the test cases of the values file, or an empty list if the directory has none
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or {@code sources}
 	 *                                  does not name exactly the fixtures' paths
@@ -113,16 +111,14 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		for (Fixture fixture : fixtures)
 			paths.add(fixture.path());
 		requireThat(sources.keySet(), "sources.keySet()").isEqualTo(paths, "paths");
-		projectLinks = List.copyOf(projectLinks);
 		testCases = List.copyOf(testCases);
 	}
 
 	/**
 	 * Reads a prompt test directory of the project.
 	 * <p>
-	 * The prompt test's fixtures are the files of its {@value #WORKSPACE} directory and the test-root files that its
-	 * symbolic links reach, each at its path below {@value #WORKSPACE}. A link to a file or directory of the project
-	 * outside every test root is a project link.
+	 * The prompt test's fixtures are the files of its {@value #WORKSPACE} directory and the project files that its
+	 * symbolic links reach, each at its path below {@value #WORKSPACE}.
 	 *
 	 * @param json      the JSON mapper that reads the values file
 	 * @param project   the directory that problems name files relative to, with {@code /} between names
@@ -160,8 +156,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 					" is not valid for the prompt test: " + String.join("; ", problems));
 			}
 		}
-		return new PromptTestFiles(root, directory, files.scenario(), files.fixtures(), files.sources(),
-			files.projectLinks(), testCases);
+		return new PromptTestFiles(root, directory, files.scenario(), files.fixtures(), files.sources(), testCases);
 	}
 
 	/**
@@ -227,8 +222,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 
 		WorkspaceReader reader = new WorkspaceReader(project, tree, root, declared);
 		reader.read(directory);
-		return new PromptTestFiles(root, directory, scenario, reader.fixtures(), reader.sources(),
-			reader.projectLinks(), List.of());
+		return new PromptTestFiles(root, directory, scenario, reader.fixtures(), reader.sources(), List.of());
 	}
 
 	/**
@@ -335,7 +329,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	 *
 	 * @param declared the names of the prompt test's variables
 	 * @param inText   the variables that its turns, assertion statements and assertions' {@code tool} values name
-	 * @param fixtures its fixtures
+	 * @param fixtures  its fixtures
 	 * @param testCase the test case
 	 * @return the problems, or an empty list if the test case is valid
 	 */
@@ -459,7 +453,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	/**
 	 * Replaces the placeholders of every fixture's path.
 	 *
-	 * @param fixtures the fixtures
+	 * @param fixtures  the fixtures
 	 * @param testCase the test case
 	 * @return each fixture's path relative to the workspace root, in fixture order
 	 */

@@ -2148,6 +2148,63 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that a recorded prompt test whose {@code workspace/} links to a project file outside every test root
+	 * receives that file as a fixture, both when the contract author's session ends and when the stored proposal is
+	 * read again after the session's project copy is gone.
+	 *
+	 * @throws IOException              if a file cannot be written
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	@Test
+	public void storedProposalReadsLinkedProjectFiles() throws IOException, InvalidProposalException
+	{
+		Path project = recordedProject("""
+			# Formatting
+
+			## Variables
+
+			- **tone**: The tone of the summary.
+
+			## Scenario
+
+			Summarize the handbook in {{tone}} style.
+
+			## Assertions
+
+			### keeps_tone
+
+			- **kind**: effect
+			- **description**: The summary keeps the {{tone}} tone.
+			""");
+		String content = "Ship on Fridays.\n";
+		Path docs = Files.createDirectories(project.resolve("docs"));
+		Files.writeString(docs.resolve("handbook.md"), content, UTF_8);
+		Path workspace = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/docs"));
+		Files.createSymbolicLink(workspace.resolve("handbook.md"), Path.of("../../../../../../docs/handbook.md"));
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
+			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
+		ContractAuthorProtocol author = contractAuthor(scenarios);
+
+		// The session's project copy is a copy of the whole project, so it holds the linked file too
+		Path initialProject = directories.add(Files.createTempDirectory("contract-author-initial-"));
+		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
+		author.request(project, PROFILES, List.of(), SALT).files().write(effects);
+		Files.createDirectories(effects.resolve("docs"));
+		Files.copy(docs.resolve("handbook.md"), effects.resolve("docs/handbook.md"));
+		write(effects, initialProject, output, Path.of("CLAUDE.md"), DraftDirectory.testDirectories(scenarios));
+		DerivedProposal derived = author.proposal(session(effects, initialProject, "The proposal is in " +
+			OutputFile.name(initialProject) + "."), project, PROFILES, SALT);
+		DerivedProposal stored = author.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES, SALT);
+
+		FixtureFile handbook = new FixtureFile("docs/handbook.md", content, "docs/handbook.md");
+		requireThat(derived.contract().findTest("formatting").orElseThrow().fixtures(), "derived").
+			isEqualTo(List.of(handbook));
+		requireThat(stored.contract().findTest("formatting").orElseThrow().fixtures(), "stored").
+			isEqualTo(List.of(handbook));
+	}
+
+	/**
 	 * Returns the recorded scenarios of a prompt system whose target is the {@code rules} directory: a scenario of each
 	 * of two target prompt files, one of which no requirement names, and a scenario of guidance outside the target.
 	 *

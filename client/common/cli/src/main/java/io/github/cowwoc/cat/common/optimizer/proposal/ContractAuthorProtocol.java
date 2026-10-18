@@ -618,8 +618,8 @@ public final class ContractAuthorProtocol
 	 *   derived sources, which the caller restores from the stored proposal
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws InvalidProposalException if {@code derivation} is not exactly one JSON object or the proposal breaks a
-	 *                                  rule that {@link ProposalCheck#restore(ObjectNode, Path, String,
-	 *                                  ProfileEvidence, long)} lists
+	 *                                  rule that {@link ProposalCheck#restore(ObjectNode, Path, Path,
+	 *                                  String, ProfileEvidence, long)} lists
 	 * @throws UncheckedIOException     if a file cannot be read
 	 */
 	public DerivedProposal proposal(String derivation, Path draft, String observedSources, ProfileEvidence profiles,
@@ -629,8 +629,8 @@ public final class ContractAuthorProtocol
 		requireThat(draft, "draft").isNotNull();
 		requireThat(observedSources, "observedSources").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
-		DerivedProposal derived = check.restore(outputFile.parse(derivation, "the stored proposal"), draft,
-			observedSources, profiles, salt);
+		DerivedProposal derived = check.restore(outputFile.parse(derivation, "the stored proposal"),
+			scenarios.project(), draft, observedSources, profiles, salt);
 		return derived.withDraft(draft, check.changes(derived.contract(), draft, scenarios.project()));
 	}
 
