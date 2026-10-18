@@ -14,6 +14,8 @@ depends-on:
   the same kind without reading the code that uses it.
 - Keep a type's name accurate after its responsibility changes, so readers do not infer an earlier or narrower job from
   a name that no longer describes the current one.
+- Make the names of related functions and methods use the same words for the behavior they share and matched words for
+  the part that differs, so a reader can tell from the names alone how their behavior differs.
 
 ## Guidance
 
@@ -48,6 +50,41 @@ role.
 For a function or method, distinguish one that returns an already-known value from one that searches for a value,
 chooses among candidates, converts input, makes a value canonical, checks a condition, creates something, or removes
 something. Use equally specific names for other distinct behaviors.
+
+For a function or method, write the plain-language statement before proposing a name, in the terms that its contract
+and domain already use: what it accepts, where it looks, how it selects when several candidates qualify, and what it
+returns or changes, including its result when nothing qualifies. Derive candidate names from that complete statement
+rather than by extending the current name. Revising an existing name one distinction at a time keeps a term that the
+contract does not use and leaves each remaining hidden distinction for another revision.
+
+The statement is not a template for the name. Sort the inputs by role: those that locate the data, those that change
+which result is selected, and those the callable only checks. Then note what the enclosing type, the parameter types,
+and the arguments already tell a caller. Keep a distinction in the name only when a reader of a call site who sees the
+arguments would otherwise infer a different scope, selection, or result. An input that only locates data or is only
+checked does not need a word in the name, and neither does a failure result that the verb already implies.
+
+Compare a concise candidate with a more explicit one by reading each in an actual call site. Reject a candidate that
+suggests a different scope, selection rule, or result, or that drops a distinction the call site needs. Read each
+remaining candidate in order: every qualifier must attach to the word it modifies, and the verb's apparent object must
+be what the callable returns or changes. Choose among the candidates that remain under the Clear Writing naming
+criteria.
+
+Name related functions and methods together. Use the same words in the same order for the behavior they share, and
+matched words of one kind for the part that differs, such as `First` and `Last` for two positions in one order rather
+than `First` and `Latest`.
+
+For example, two methods of a transcript reader take a transcript and a prompt ID, find the turns recorded for that
+prompt, and return the ID of the record that starts the first or the last of those turns, or null when there is none.
+A further agent ID argument is only checked against the transcript. The methods are `findFirstTurnStartIdForPrompt` and
+`findLastTurnStartIdForPrompt`:
+
+- `findFirstTurnStartId` reads as the transcript's first turn, even beside the prompt ID argument.
+- `findFirstPromptTurnStartId` can mean the turn of the transcript's first prompt.
+- `findPromptFirstTurnStartId` reads as a search for a prompt.
+- `findLatestTurnStartIdForPrompt` suggests the most recent turn by time rather than the last by position.
+
+The agent ID and the null result add no word to either name. A simple accessor needs no added qualifier: an order's
+`getId()` returns a known value whose meaning the owning type supplies, so `getOrderId()` only repeats the type.
 
 When a callable's behavior depends on a local representation of an external actor, resource, or boundary, name the
 represented semantic target rather than only the local mechanism. In particular, a name for a lifecycle transition must
