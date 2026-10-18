@@ -2,10 +2,12 @@
 
 ## Design Goals
 
-- Give each Java class a thread-safety contract that matches its intended concurrent use, with state types that keep
+- Give each Java type a thread-safety contract that matches its intended concurrent use, with state types that keep
   that contract and no thread-safe types added only as speculative protection.
-- Let a caller learn from a class's documentation whether it may use the class concurrently and which state the class
-  protects, including how long the class keeps any mutable argument that the caller must then not change.
+- Let a caller learn from a type's documentation whether it may use the type concurrently and which state the type
+  protects, including how long the type keeps any mutable argument that the caller must then not change.
+- Let a caller that holds an interface or abstract class rely on its documented thread safety of implementations: every
+  implementation meets it, and it claims only what the type can guarantee.
 
 ## Guidance
 
@@ -22,17 +24,33 @@ therefore needs no synchronization or copy merely to protect an argument that it
 a mutable argument after the call without copying it, document that it keeps the argument, so callers know how long
 they must not change it.
 
-Document thread safety only for classes intended to provide that contract. State the observable guarantee, such as
-whether callers may invoke public operations concurrently and what consistency or visibility they can rely on—not
-synchronization, cache, or race-handling mechanisms. An undocumented class is assumed not thread-safe.
+Document thread safety only for types intended to provide that contract. State that the type is thread-safe and any
+other guarantee that callers can observe, such as what consistency or visibility they can rely on. Do not mention
+whether the type is immutable or how it achieves thread safety, such as through synchronization, caching, or race
+handling: those are implementation choices. An undocumented type is assumed not thread-safe.
+
+An interface or abstract class may document that its implementations are thread-safe. A sealed type, whose permitted
+implementations are all known, may state it as a fact: “Implementations are thread-safe.” A type that other code can
+implement or extend may only state it as a requirement, “Implementations must be thread-safe.”, because it cannot vouch
+for implementations it does not know. Every implementation of a type that documents either statement must be
+thread-safe; the thread-safe types and synchronization it needs for that are required, not speculative.
 
 ```java
 /**
- * Immutable configuration holder.
+ * Holds the application's configuration.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class Config
+{
+}
+
+/**
+ * Handles one kind of request.
+ * <p>
+ * <b>Thread Safety:</b> Implementations must be thread-safe.
+ */
+public interface RequestHandler
 {
 }
 ```
