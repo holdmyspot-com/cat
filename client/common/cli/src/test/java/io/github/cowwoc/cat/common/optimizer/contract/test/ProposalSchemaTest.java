@@ -7,7 +7,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
@@ -229,14 +229,14 @@ public final class ProposalSchemaTest
 		Contract contract = schema().parse(ContractFixtures.resource("valid-proposal.json"));
 		Contract fixture = ContractFixtures.contract();
 		Contract expected = new Contract(fixture.requirements(), fixture.tests(), fixture.profiles(),
-			frozenJudge(), fixture.fixtures(), fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+			frozenJudge(), fixture.ignoredFiles(), fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
 
 		requireThat(contract, "contract").isEqualTo(expected);
 		requireThat(contract.requirements().get(1).source(), "source").isEqualTo("rules/safety.md");
 		PromptTest styled = contract.tests().get(0);
 		requireThat(styled.timeLimit().toSeconds(), "timeLimitSeconds").isEqualTo(300L);
 		requireThat(styled.turns().size(), "turns.size()").isEqualTo(2);
-		requireThat(contract.fixtures().ignoredPaths(), "ignoredPaths").isEqualTo(List.of(".env.example"));
+		requireThat(contract.ignoredFiles().paths(), "ignoredPaths").isEqualTo(List.of(".env.example"));
 	}
 
 	/**
@@ -283,7 +283,7 @@ public final class ProposalSchemaTest
 		for (JsonNode testNode : proposal.get("tests"))
 			((ObjectNode) testNode).remove("committed_test_cases");
 		ObjectNode test = (ObjectNode) proposal.get("tests").get(0);
-		test.withArray("fixtures").addObject().put("path", "notes/{{tone}}.md").
+		test.withArray("workspace_files").addObject().put("path", "notes/{{tone}}.md").
 			put("content", "{{before}}\nWrite for {{audience}} readers.\n");
 		test.withArray("variables").addObject().put("name", "before").
 			put("description", "Log lines before the notes.");
@@ -298,7 +298,7 @@ public final class ProposalSchemaTest
 			new SplittableRandom(3), Map.of(), Map.of());
 
 		PromptTest parsed = contract.tests().getFirst();
-		requireThat(parsed.fixtures(), "fixtures").isEqualTo(List.of(new FixtureFile("notes/{{tone}}.md",
+		requireThat(parsed.workspaceFiles(), "workspaceFiles").isEqualTo(List.of(new WorkspaceFile("notes/{{tone}}.md",
 			"{{before}}\nWrite for {{audience}} readers.\n")));
 		Set<Long> seeds = new HashSet<>();
 		for (TestCase testCase : parsed.testCases())
@@ -333,27 +333,27 @@ public final class ProposalSchemaTest
 		proposal.remove(List.of("salt", "trial_profiles"));
 		for (JsonNode testNode : proposal.get("tests"))
 			((ObjectNode) testNode).remove("committed_test_cases");
-		FixtureFile glossary = new FixtureFile("docs/glossary.md", "A glossary.\n",
+		WorkspaceFile glossary = new WorkspaceFile("docs/glossary.md", "A glossary.\n",
 			".cat/tests/CLAUDE/formatting/workspace/docs/glossary.md");
-		FixtureFile link = new FixtureFile("glossary.md", "docs/glossary.md",
+		WorkspaceFile link = new WorkspaceFile("glossary.md", "docs/glossary.md",
 			".cat/tests/CLAUDE/formatting/workspace/glossary.md", true);
-		Map<String, List<FixtureFile>> recordedByTest = Map.of("formatting", List.of(glossary, link));
+		Map<String, List<WorkspaceFile>> recordedByTest = Map.of("formatting", List.of(glossary, link));
 
 		Contract contract = schema().parse(json.writeValueAsString(proposal), ContractFixtures::profiles,
 			ContractFixtures.SALT, new SplittableRandom(3), Map.of(), recordedByTest);
 
-		requireThat(contract.tests().getFirst().fixtures(), "fixtures").isEqualTo(List.of(glossary, link));
+		requireThat(contract.tests().getFirst().workspaceFiles(), "workspaceFiles").isEqualTo(List.of(glossary, link));
 		JsonNode stored = json.readTree(schema().toJson(contract));
-		requireThat(stored.get("tests").get(0).get("recorded_fixtures").get(1), "link").isEqualTo(
+		requireThat(stored.get("tests").get(0).get("recorded_workspace_files").get(1), "link").isEqualTo(
 			json.createObjectNode().put("path", link.path()).put("content", link.content()).
 				put("source", link.source()).put("link", true));
 		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
 	}
 
 	/**
-	 * Verifies that CAT adds to a prompt test the fixtures of the recorded scenarios that it cites, before the fixtures
-	 * that the contract author wrote, that the stored contract keeps each with the file that CAT copied it from, and
-	 * that the contract author can neither write them nor write another fixture at one's path.
+	 * Verifies that CAT adds to a prompt test the workspace files of the recorded scenarios that it cites, before the
+	 * workspace files that the contract author wrote, that the stored contract keeps each with the file that CAT copied
+	 * it from, and that the contract author can neither write them nor write another workspace file at one's path.
 	 *
 	 * @throws InvalidProposalException if the proposal is rejected
 	 */
@@ -364,48 +364,50 @@ public final class ProposalSchemaTest
 		proposal.remove(List.of("salt", "trial_profiles"));
 		for (JsonNode testNode : proposal.get("tests"))
 			((ObjectNode) testNode).remove("committed_test_cases");
-		FixtureFile written = new FixtureFile("notes/{{tone}}.md", "Write for {{audience}} readers.\n");
-		((ObjectNode) proposal.get("tests").get(0)).withArray("fixtures").addObject().put("path", written.path()).
+		WorkspaceFile written = new WorkspaceFile("notes/{{tone}}.md", "Write for {{audience}} readers.\n");
+		((ObjectNode) proposal.get("tests").get(0)).withArray("workspace_files").addObject().put("path", written.path()).
 			put("content", written.content());
-		FixtureFile recorded = new FixtureFile("docs/glossary.md", "A glossary.\n",
+		WorkspaceFile recorded = new WorkspaceFile("docs/glossary.md", "A glossary.\n",
 			"plugin/src/test/resources/fixtures/docs/glossary.md");
-		Map<String, List<FixtureFile>> recordedByTest = Map.of("formatting", List.of(recorded));
+		Map<String, List<WorkspaceFile>> recordedByTest = Map.of("formatting", List.of(recorded));
 
 		Contract contract = schema().parse(json.writeValueAsString(proposal), ContractFixtures::profiles,
 			ContractFixtures.SALT, new SplittableRandom(3), Map.of(), recordedByTest);
 
-		requireThat(contract.tests().getFirst().fixtures(), "fixtures").isEqualTo(List.of(recorded, written));
-		requireThat(contract.tests().get(1).fixtures(), "plain_list.fixtures").isEmpty();
+		requireThat(contract.tests().getFirst().workspaceFiles(), "workspaceFiles").isEqualTo(List.of(recorded, written));
+		requireThat(contract.tests().get(1).workspaceFiles(), "plain_list.workspaceFiles").isEmpty();
 		JsonNode stored = json.readTree(schema().toJson(contract));
 		JsonNode storedTest = stored.get("tests").get(0);
-		requireThat(storedTest.get("recorded_fixtures"), "recorded_fixtures").isEqualTo(json.createArrayNode().
-			add(json.createObjectNode().put("path", recorded.path()).put("content", recorded.content()).
-				put("source", recorded.source())));
-		requireThat(storedTest.get("fixtures").size(), "fixtures.size()").isEqualTo(1);
-		requireThat(stored.get("tests").get(1).has("recorded_fixtures"), "plain_list.hasRecordedFixtures").isFalse();
+		requireThat(storedTest.get("recorded_workspace_files"), "recorded_workspace_files").isEqualTo(
+			json.createArrayNode().add(json.createObjectNode().put("path", recorded.path()).
+				put("content", recorded.content()).put("source", recorded.source())));
+		requireThat(storedTest.get("workspace_files").size(), "workspaceFiles.size()").isEqualTo(1);
+		requireThat(stored.get("tests").get(1).has("recorded_workspace_files"), "plain_list.hasRecordedWorkspaceFiles").
+			isFalse();
 		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
 
 		ObjectNode copied = proposal.deepCopy();
-		((ObjectNode) copied.get("tests").get(0)).set("recorded_fixtures", storedTest.get("recorded_fixtures"));
+		((ObjectNode) copied.get("tests").get(0)).set("recorded_workspace_files",
+			storedTest.get("recorded_workspace_files"));
 		requireThat(String.join(" | ", derivationRejection(copied, recordedByTest).problems()), "copied").
-			contains("recorded_fixtures");
+			contains("recorded_workspace_files");
 
 		ObjectNode colliding = proposal.deepCopy();
-		((ObjectNode) colliding.get("tests").get(0)).withArray("fixtures").addObject().put("path", recorded.path()).
+		((ObjectNode) colliding.get("tests").get(0)).withArray("workspace_files").addObject().put("path", recorded.path()).
 			put("content", "Another glossary.\n");
 		requireThat(String.join(" | ", derivationRejection(colliding, recordedByTest).problems()), "colliding").
-			contains("$.tests[0].fixtures[1]").contains(recorded.source());
+			contains("$.tests[0].workspace_files[1]").contains(recorded.source());
 	}
 
 	/**
 	 * Parses contract author output that must be rejected.
 	 *
 	 * @param output   the contract author's output
-	 * @param recorded the fixtures of the cited recorded scenarios, by prompt test identifier
+	 * @param recorded the workspace files of the cited recorded scenarios, by prompt test identifier
 	 * @return the rejection
 	 * @throws AssertionError if the output is accepted
 	 */
-	private InvalidProposalException derivationRejection(ObjectNode output, Map<String, List<FixtureFile>> recorded)
+	private InvalidProposalException derivationRejection(ObjectNode output, Map<String, List<WorkspaceFile>> recorded)
 	{
 		try
 		{
@@ -467,7 +469,7 @@ public final class ProposalSchemaTest
 		for (JsonNode name : schema.get("required"))
 			required.add(name.asString());
 		requireThat(required, "required").isEqualTo(
-			Set.of("requirements", "tests", "trial_profiles", "judge", "fixtures", "limitations",
+			Set.of("requirements", "tests", "trial_profiles", "judge", "ignored_files", "limitations",
 				"minimum_pass_rate", "salt"));
 	}
 
@@ -515,8 +517,8 @@ public final class ProposalSchemaTest
 				{"test case expected outcome", new String[]{"tests", "0", "test_cases", "0",
 					"expected_outcome"}},
 				{"judge", new String[]{"judge"}},
-				{"fixtures", new String[]{"fixtures"}},
-				{"ignored paths", new String[]{"fixtures", "ignored_paths"}},
+				{"ignored files", new String[]{"ignored_files"}},
+				{"ignored paths", new String[]{"ignored_files", "paths"}},
 				{"limitations", new String[]{"limitations"}},
 				{"salt", new String[]{"salt"}}
 			};
@@ -827,7 +829,7 @@ public final class ProposalSchemaTest
 		rejection(integer(rank, 0));
 		rejection(integer(rank, -1));
 		rejection(number(rank, 1.5));
-		String[] ignored = {"fixtures", "ignored_paths"};
+		String[] ignored = {"ignored_files", "paths"};
 		rejection(changed(ignored, json.createArrayNode().add("../outside")));
 		rejection(changed(ignored, json.createArrayNode().add("/etc/passwd")));
 		rejection(changed(ignored, json.createArrayNode().add("a").add("a")));

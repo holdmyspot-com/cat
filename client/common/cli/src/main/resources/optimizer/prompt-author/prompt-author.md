@@ -61,8 +61,8 @@ the profile's `model/effort` (the contract's `trial_profiles.cells` lists each o
 The confirmed contract, as JSON. Formal trials draw held-out test cases that are withheld from you, so each test's
 `test_cases` lists only its development test cases. Each test's `assertions` are the statements that a trial must
 satisfy; CAT adds to every test the assertion `expected_outcome`, which the judge decides by comparing the reply's
-result with the test case's expected outcome. A test's `recorded_fixtures`, when present, names each file that CAT
-copies into a trial's workspace from a recorded scenario by its `path` and the `source` file that holds its content:
+result with the test case's expected outcome. A test's `recorded_workspace_files`, when present, names each file that
+CAT copies into a trial's workspace from a recorded scenario by its `path` and the `source` file that holds its content:
 
 {{contract}}
 

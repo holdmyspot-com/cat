@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFiles;
-import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TestWorkspace;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 
 import java.nio.file.Path;
@@ -29,7 +29,7 @@ import java.util.Optional;
  *   profile for the contract author, judge and prompt author. An empty dimension starts the session without
  *   selecting it.
  * @param files the files that the workspace receives on top of {@code source} before the first turn: a trial's
- *   fixtures, or the contract author's draft directory; {@link WorkspaceFixtures#NONE} for every other session
+ *   workspace files, or the contract author's draft directory; {@link TestWorkspace#NONE} for every other session
  * @param plugins the plugin directories that a trial installs, and no other plugin; empty for every other session
  * @param followUp chooses at most one turn to send after the last of {@code turns}, from the replies so far; that
  *   turn gets a time limit of its own as long as {@code timeLimit}. Empty to end the session after {@code turns}.
@@ -56,7 +56,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 		Duration timeLimit, TrialProfile profile)
 	{
-		this(role, part, source, turns, readOnly, timeLimit, profile, WorkspaceFixtures.NONE);
+		this(role, part, source, turns, readOnly, timeLimit, profile, TestWorkspace.NONE);
 	}
 
 	/**

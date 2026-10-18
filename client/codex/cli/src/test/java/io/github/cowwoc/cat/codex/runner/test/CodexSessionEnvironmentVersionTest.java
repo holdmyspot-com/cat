@@ -65,7 +65,7 @@ public final class CodexSessionEnvironmentVersionTest
 			HarnessRun run = manager.create("codex");
 			manager.snapshotProject(run);
 			Files.writeString(run.directory().resolve("home/auth.json"), "{}");
-			Files.createDirectories(root.resolve("runs/fixtures"));
+			Files.createDirectories(root.resolve("runs/workspaces"));
 			Files.writeString(source, """
 				openai_base_url = "http://localhost:2455/backend-api/codex"
 				forced_login_method = "api"

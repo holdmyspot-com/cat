@@ -2255,7 +2255,7 @@ public final class OptimizerCoreTest
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			Campaign campaign = repository.load(id);
 			requireThat(campaign.isConfirmed(), "confirmed").isTrue();
-			requireThat(campaign.contract().fixtures().ignoredPaths(), "fixtures").isEqualTo(List.of(".env.example"));
+			requireThat(campaign.contract().ignoredFiles().paths(), "ignoredFiles").isEqualTo(List.of(".env.example"));
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
 				repository.scope().json()).require(campaign.incumbent().snapshot());
@@ -2707,7 +2707,7 @@ public final class OptimizerCoreTest
 		{
 			Repository repository = repository(scope, _ -> derivation(output ->
 			{
-				ArrayNode paths = (ArrayNode) output.get("fixtures").get("ignored_paths");
+				ArrayNode paths = (ArrayNode) output.get("ignored_files").get("paths");
 				paths.add("missing/fixture.txt");
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
@@ -2761,7 +2761,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that the guard pilot, which runs before confirmation, stages the proposal's trial fixtures, and that a
+	 * Verifies that the guard pilot, which runs before confirmation, stages the proposal's ignored files, and that a
 	 * revision after confirmation reuses every pilot because the control trials see the same files.
 	 */
 	@Test
@@ -2789,7 +2789,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that presenting a proposal records its trial fixtures in the fork before the guard pilot runs, so that
+	 * Verifies that presenting a proposal records its ignored files in the fork before the guard pilot runs, so that
 	 * confirmation records nothing more.
 	 */
 	@Test
@@ -2825,19 +2825,19 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, session -> derivation(output ->
 			{
 				if (session > 0)
-					((ArrayNode) output.get("fixtures").get("ignored_paths")).removeAll();
+					((ArrayNode) output.get("ignored_files").get("paths")).removeAll();
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
 
-			repository.core().revise(id, "drop the fixture");
+			repository.core().revise(id, "drop the ignored file");
 
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
 			List<SessionRequest> rerun = trials.subList(pilotTrials, trials.size());
 			requireThat(rerun, "rerun").isNotEmpty();
 			for (SessionRequest trial : rerun)
 			{
-				requireThat(Files.exists(trial.source().resolve(".env.example")), "pilotFixture").isFalse();
+				requireThat(Files.exists(trial.source().resolve(".env.example")), "pilotIgnoredFile").isFalse();
 			}
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
@@ -2862,7 +2862,7 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, session -> derivation(output ->
 			{
 				if (session > 0)
-					((ArrayNode) output.get("fixtures").get("ignored_paths")).add("late.example");
+					((ArrayNode) output.get("ignored_files").get("paths")).add("late.example");
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
@@ -2870,7 +2870,7 @@ public final class OptimizerCoreTest
 			Files.writeString(repository.root().resolve("late.example"), "LATE=fixture\n");
 			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
 
-			CommandResult revised = repository.core().revise(id, "cover the late fixture");
+			CommandResult revised = repository.core().revise(id, "cover the late ignored file");
 
 			requireThat(revised.proposal(), "proposal").contains("\n## Guard pilot\n");
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
@@ -2878,7 +2878,7 @@ public final class OptimizerCoreTest
 			requireThat(rerun, "rerun").isNotEmpty();
 			for (SessionRequest trial : rerun)
 			{
-				requireThat(Files.readString(trial.source().resolve("late.example")), "pilotFixture").
+				requireThat(Files.readString(trial.source().resolve("late.example")), "pilotIgnoredFile").
 					isEqualTo("LATE=fixture\n");
 			}
 			requireThat(repository.load(id).incumbent().snapshot(), "unconfirmedIncumbent").isEqualTo(confirmed);

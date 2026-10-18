@@ -554,7 +554,7 @@ public final class GuardPilotTest
 			JudgeProfile judge = contract.judge();
 			Contract revised = new Contract(contract.requirements(), contract.tests(), contract.profiles(),
 				new JudgeProfile(judge.profile(), judge.prompt(), judge.rubric() + " Capitalization is harmless.",
-					judge.decisionRule(), judge.resultSchema()), contract.fixtures(), contract.limitations(),
+					judge.decisionRule(), judge.resultSchema()), contract.ignoredFiles(), contract.limitations(),
 				contract.minimumPassRate(), contract.salt());
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
 
@@ -789,7 +789,7 @@ public final class GuardPilotTest
 			}
 			tests.add(test);
 		}
-		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.fixtures(),
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.ignoredFiles(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
 	}
 

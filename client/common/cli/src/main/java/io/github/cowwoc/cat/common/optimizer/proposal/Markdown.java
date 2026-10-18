@@ -14,7 +14,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
@@ -152,7 +152,7 @@ public final class Markdown
 		controlSource();
 		trialPlugins();
 		guardPilot();
-		fixtures();
+		ignoredFiles();
 		procedure();
 		symbolicLinks();
 		authentication();
@@ -327,7 +327,7 @@ public final class Markdown
 			for (VariableDeclaration variable : test.variables())
 				text.append("  - `").append(variable.name()).append("`: ").append(variable.description()).append('\n');
 		}
-		fixtures(test);
+		workspaceFiles(test);
 		testCases(test);
 		if (test.uncoveredInteractions().isEmpty())
 			text.append("- Interactions this test cannot cover: none\n");
@@ -385,33 +385,33 @@ public final class Markdown
 	 *
 	 * @param test the prompt test
 	 */
-	private void fixtures(PromptTest test)
+	private void workspaceFiles(PromptTest test)
 	{
-		if (test.fixtures().isEmpty())
+		if (test.workspaceFiles().isEmpty())
 		{
-			text.append("- Fixtures: none\n");
+			text.append("- Workspace files: none\n");
 			return;
 		}
 		DraftChange change = derived.changes().get(test.id());
 		boolean created = change != null && change.kind() == DraftChange.Kind.CREATED;
-		text.append("- Fixtures, written into each trial's workspace with each test case's values:\n");
-		for (FixtureFile fixture : test.fixtures())
+		text.append("- Workspace files, written into each trial's workspace with each test case's values:\n");
+		for (WorkspaceFile workspaceFile : test.workspaceFiles())
 		{
-			if (fixture.link())
+			if (workspaceFile.link())
 			{
-				text.append("  - `").append(fixture.path()).append("`, a link to `").append(fixture.content()).
+				text.append("  - `").append(workspaceFile.path()).append("`, a link to `").append(workspaceFile.content()).
 					append("`\n");
 				continue;
 			}
-			if (!fixture.source().isEmpty() && !created)
+			if (!workspaceFile.source().isEmpty() && !created)
 			{
-				text.append("  - `").append(fixture.path()).append("`, copied from `").append(fixture.source()).
+				text.append("  - `").append(workspaceFile.path()).append("`, copied from `").append(workspaceFile.source()).
 					append("`\n");
 				continue;
 			}
-			String fence = "`".repeat(Math.max(3, longestBacktickRun(fixture.content()) + 1));
-			text.append("  - `").append(fixture.path()).append("`:\n\n    ").append(fence).append('\n');
-			String content = fixture.content();
+			String fence = "`".repeat(Math.max(3, longestBacktickRun(workspaceFile.content()) + 1));
+			text.append("  - `").append(workspaceFile.path()).append("`:\n\n    ").append(fence).append('\n');
+			String content = workspaceFile.content();
 			if (content.endsWith("\n"))
 				content = content.substring(0, content.length() - 1);
 			for (String line : content.split("\n", -1))
@@ -582,13 +582,13 @@ public final class Markdown
 	/**
 	 * Lists the ignored paths that trials need.
 	 */
-	private void fixtures()
+	private void ignoredFiles()
 	{
-		heading("Trial fixtures");
+		heading("Ignored files");
 		text.append("Ignored paths that are copied into every trial:\n\n");
-		if (contract.fixtures().ignoredPaths().isEmpty())
+		if (contract.ignoredFiles().paths().isEmpty())
 			text.append("- none\n");
-		for (String path : contract.fixtures().ignoredPaths())
+		for (String path : contract.ignoredFiles().paths())
 			text.append("- ").append(path).append('\n');
 	}
 
@@ -766,7 +766,7 @@ public final class Markdown
 		heading("Symbolic links");
 		if (links.entries().isEmpty())
 		{
-			text.append("No symbolic link was found in the prompt system or the staged fixtures.\n");
+			text.append("No symbolic link was found in the prompt system or the staged ignored files.\n");
 			return;
 		}
 		for (LinkReport.Entry entry : links.entries())

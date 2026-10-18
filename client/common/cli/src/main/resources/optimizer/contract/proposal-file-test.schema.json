@@ -1,5 +1,5 @@
 {
-	"description": "A prompt test of the proposal: its directory in the draft directory and what the contract says about it. The scenario, fixtures and test cases live in the directory's files, not here.",
+	"description": "A prompt test of the proposal: its directory in the draft directory and what the contract says about it. The scenario, workspace files and test cases live in the directory's files, not here.",
 	"type": "object",
 	"additionalProperties": false,
 	"required": ["directory", "risk_rank", "requirement_ids", "absent_triggers", "applicability", "assertions", "uncovered_interactions"],

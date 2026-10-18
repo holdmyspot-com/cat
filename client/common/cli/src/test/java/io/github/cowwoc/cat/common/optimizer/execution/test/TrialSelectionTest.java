@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.IgnoredFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.test.ContractFixtures;
 import io.github.cowwoc.cat.common.optimizer.execution.TrialSelection;
@@ -32,7 +32,7 @@ public final class TrialSelectionTest
 	/**
 	 * Verifies that the base selection holds the prompt sources, the harness's project files, the in-project loader
 	 * configuration, CAT's project directory, the files that plugin mappings cover, the in-project dependents and the
-	 * ignored fixtures, and leaves out the project's other files.
+	 * ignored files, and leaves out the project's other files.
 	 */
 	@Test
 	public void baseHoldsOnlyThePromptSystem()
@@ -40,7 +40,7 @@ public final class TrialSelectionTest
 		// Requirement: R-W15
 		Contract base = ContractFixtures.contract();
 		Contract contract = ContractFixtures.withDependents(new Contract(base.requirements(), base.tests(),
-				base.profiles(), base.judge(), new TrialFixtures(List.of("build/generated.md")), base.limitations(),
+				base.profiles(), base.judge(), new IgnoredFiles(List.of("build/generated.md")), base.limitations(),
 				base.minimumPassRate(), base.salt(), base.dependents()),
 			List.of(new Dependent(Dependent.Location.PROJECT, "", Path.of("scripts/repair.sh"),
 				new Dependent.WholeFile(), "Repairs a file.")));

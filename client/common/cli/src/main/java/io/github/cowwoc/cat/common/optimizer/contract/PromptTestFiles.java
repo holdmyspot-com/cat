@@ -30,18 +30,19 @@ import tools.jackson.databind.json.JsonMapper;
  * A prompt test directory: its {@code scenario.md}, the files and links of its {@value #WORKSPACE} directory and the
  * test cases of its values file.
  *
- * @param root        the test root, which holds the prompt test directory or is that directory
- * @param directory   the prompt test directory
- * @param scenario    the parsed scenario
- * @param fixtures    the fixture files, sorted by path
- * @param sources     the file that each fixture is copied from, by the fixture's path
- * @param copiedLinks the target of each link of {@value #WORKSPACE} whose target lies outside it, so that trials
- *                    receive a copy of the target, by the link's path relative to {@value #WORKSPACE}; each target is
- *                    relative to the link's directory, and paths and targets have {@code /} separators
- * @param testCases   the test cases of the values file, or an empty list if the directory has none
+ * @param root           the test root, which holds the prompt test directory or is that directory
+ * @param directory      the prompt test directory
+ * @param scenario       the parsed scenario
+ * @param workspaceFiles the workspace files, sorted by path
+ * @param sources        the file that each workspace file is copied from, by the workspace file's path
+ * @param copiedLinks    the target of each link of {@value #WORKSPACE} whose target lies outside it, so that trials
+ *                       receive a copy of the target, by the link's path relative to {@value #WORKSPACE}; each target
+ *                       is relative to the link's directory, and paths and targets have {@code /} separators
+ * @param testCases      the test cases of the values file, or an empty list if the directory has none
  */
-public record PromptTestFiles(Path root, Path directory, Scenario scenario, List<PromptTestFiles.Fixture> fixtures,
-	Map<String, Path> sources, Map<String, String> copiedLinks, List<TestCase> testCases)
+public record PromptTestFiles(Path root, Path directory, Scenario scenario,
+	List<PromptTestFiles.WorkspaceEntry> workspaceFiles, Map<String, Path> sources, Map<String, String> copiedLinks,
+	List<TestCase> testCases)
 {
 	/**
 	 * The scenario's file name.
@@ -68,10 +69,10 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	 * @param link         the link's target relative to the link's directory, with {@code /} separators, which may
 	 *                     contain placeholders; empty if the entry is a file
 	 */
-	public record Fixture(String path, boolean text, Set<String> contentNames, Optional<String> link)
+	public record WorkspaceEntry(String path, boolean text, Set<String> contentNames, Optional<String> link)
 	{
 		/**
-		 * Creates a fixture.
+		 * Creates a workspace file.
 		 *
 		 * @param path         the path relative to {@value #WORKSPACE}, with {@code /} separators
 		 * @param text         {@code true} if the content is valid UTF-8
@@ -82,7 +83,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		 *                                  {@code text} is {@code false}, {@code text} is {@code true} for a link, or
 		 *                                  {@code link} is blank
 		 */
-		public Fixture
+		public WorkspaceEntry
 		{
 			requireThat(path, "path").isNotBlank();
 			requireThat(contentNames, "contentNames").isNotNull();
@@ -98,7 +99,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		}
 
 		/**
-		 * Creates a fixture for a file.
+		 * Creates a workspace file for a file.
 		 *
 		 * @param path         the path relative to {@value #WORKSPACE}, with {@code /} separators
 		 * @param text         {@code true} if the content is valid UTF-8
@@ -107,7 +108,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		 * @throws IllegalArgumentException if {@code path} is blank, or {@code contentNames} is not empty when
 		 *                                  {@code text} is {@code false}
 		 */
-		public Fixture(String path, boolean text, Set<String> contentNames)
+		public WorkspaceEntry(String path, boolean text, Set<String> contentNames)
 		{
 			this(path, text, contentNames, Optional.empty());
 		}
@@ -116,17 +117,17 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	/**
 	 * Creates the files of a prompt test.
 	 *
-	 * @param root        the test root, which holds the prompt test directory or is that directory
-	 * @param directory   the prompt test directory
-	 * @param scenario    the parsed scenario
-	 * @param fixtures    the fixture files, sorted by path
-	 * @param sources     the file that each fixture is copied from, by the fixture's path
-	 * @param copiedLinks the target of each link of {@value #WORKSPACE} whose target lies outside it, by the link's
-	 *                    path relative to {@value #WORKSPACE}
-	 * @param testCases   the test cases of the values file, or an empty list if the directory has none
+	 * @param root           the test root, which holds the prompt test directory or is that directory
+	 * @param directory      the prompt test directory
+	 * @param scenario       the parsed scenario
+	 * @param workspaceFiles the workspace files, sorted by path
+	 * @param sources        the file that each workspace file is copied from, by the workspace file's path
+	 * @param copiedLinks    the target of each link of {@value #WORKSPACE} whose target lies outside it, by the link's
+	 *                       path relative to {@value #WORKSPACE}
+	 * @param testCases      the test cases of the values file, or an empty list if the directory has none
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or {@code sources}
-	 *                                  does not name exactly the fixtures' paths
+	 *                                  does not name exactly the workspace files' paths
 	 */
 	public PromptTestFiles
 	{
@@ -136,11 +137,11 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 			throw new IllegalArgumentException("directory must lie at or below root.\nroot: " + root +
 				"\ndirectory: " + directory);
 		requireThat(scenario, "scenario").isNotNull();
-		fixtures = List.copyOf(fixtures);
+		workspaceFiles = List.copyOf(workspaceFiles);
 		sources = Map.copyOf(sources);
 		Set<String> paths = new HashSet<>();
-		for (Fixture fixture : fixtures)
-			paths.add(fixture.path());
+		for (WorkspaceEntry workspaceFile : workspaceFiles)
+			paths.add(workspaceFile.path());
 		requireThat(sources.keySet(), "sources.keySet()").isEqualTo(paths, "paths");
 		copiedLinks = Collections.unmodifiableMap(new TreeMap<>(copiedLinks));
 		testCases = List.copyOf(testCases);
@@ -149,7 +150,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	/**
 	 * Reads a prompt test directory of the project.
 	 * <p>
-	 * The prompt test's fixtures are the files of its {@value #WORKSPACE} directory and the project files that its
+	 * The prompt test's workspace files are the files of its {@value #WORKSPACE} directory and the project files that its
 	 * symbolic links reach, each at its path below {@value #WORKSPACE}.
 	 *
 	 * @param json      the JSON mapper that reads the values file
@@ -188,7 +189,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 					" is not valid for the prompt test: " + String.join("; ", problems));
 			}
 		}
-		return new PromptTestFiles(root, directory, files.scenario(), files.fixtures(), files.sources(),
+		return new PromptTestFiles(root, directory, files.scenario(), files.workspaceFiles(), files.sources(),
 			files.copiedLinks(), testCases);
 	}
 
@@ -255,8 +256,8 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 
 		WorkspaceReader reader = new WorkspaceReader(project, tree, root, declared);
 		reader.read(directory);
-		return new PromptTestFiles(root, directory, scenario, reader.fixtures(), reader.sources(), reader.copiedLinks(),
-			List.of());
+		return new PromptTestFiles(root, directory, scenario, reader.workspaceFiles(), reader.sources(),
+			reader.copiedLinks(), List.of());
 	}
 
 	/**
@@ -306,19 +307,22 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	}
 
 	/**
-	 * Returns the file that a fixture is copied from.
+	 * Returns the file that a workspace file is copied from.
 	 *
-	 * @param fixture one of this prompt test's fixtures
+	 * @param workspaceFile one of this prompt test's workspace files
 	 * @return the file
-	 * @throws NullPointerException     if {@code fixture} is null
-	 * @throws IllegalArgumentException if {@code fixture} is not one of this prompt test's fixtures
+	 * @throws NullPointerException     if {@code workspaceFile} is null
+	 * @throws IllegalArgumentException if {@code workspaceFile} is not one of this prompt test's workspace files
 	 */
-	public Path source(Fixture fixture)
+	public Path source(WorkspaceEntry workspaceFile)
 	{
-		requireThat(fixture, "fixture").isNotNull();
-		if (!fixtures.contains(fixture))
-			throw new IllegalArgumentException("The fixture is not one of this prompt test's: " + fixture.path());
-		return sources.get(fixture.path());
+		requireThat(workspaceFile, "workspaceFile").isNotNull();
+		if (!workspaceFiles.contains(workspaceFile))
+		{
+			throw new IllegalArgumentException("The workspace file is not one of this prompt test's: " +
+				workspaceFile.path());
+		}
+		return sources.get(workspaceFile.path());
 	}
 
 	/**
@@ -355,19 +359,19 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		Set<String> declared = new LinkedHashSet<>();
 		for (VariableDeclaration variable : scenario.variables())
 			declared.add(variable.name());
-		return problems(declared, scenario.namedInText(), fixtures, testCase);
+		return problems(declared, scenario.namedInText(), workspaceFiles, testCase);
 	}
 
 	/**
 	 * Returns why a test case is not valid for a prompt test.
 	 *
-	 * @param declared the names of the prompt test's variables
-	 * @param inText   the variables that its turns, assertion statements and assertions' {@code tool} values name
-	 * @param fixtures  its fixtures
-	 * @param testCase the test case
+	 * @param declared       the names of the prompt test's variables
+	 * @param inText         the variables that its turns, assertion statements and assertions' {@code tool} values name
+	 * @param workspaceFiles its workspace files
+	 * @param testCase       the test case
 	 * @return the problems, or an empty list if the test case is valid
 	 */
-	static List<String> problems(Set<String> declared, Set<String> inText, List<Fixture> fixtures,
+	static List<String> problems(Set<String> declared, Set<String> inText, List<WorkspaceEntry> workspaceFiles,
 		TestCase testCase)
 	{
 		List<String> problems = new ArrayList<>();
@@ -384,11 +388,11 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 
 		Set<String> inNames = new HashSet<>();
 		Set<String> inContents = new HashSet<>();
-		for (Fixture fixture : fixtures)
+		for (WorkspaceEntry workspaceFile : workspaceFiles)
 		{
-			inNames.addAll(Placeholders.scenarioNames(fixture.path()));
-			fixture.link().ifPresent(link -> inNames.addAll(Placeholders.scenarioNames(link)));
-			inContents.addAll(fixture.contentNames());
+			inNames.addAll(Placeholders.scenarioNames(workspaceFile.path()));
+			workspaceFile.link().ifPresent(link -> inNames.addAll(Placeholders.scenarioNames(link)));
+			inContents.addAll(workspaceFile.contentNames());
 		}
 		for (Map.Entry<String, TestValue> entry : testCase.values().entrySet())
 		{
@@ -398,15 +402,15 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 			if (inText.contains(name))
 			{
 				problems.add("the generated value of " + name + " appears in the scenario's text, but a generated " +
-					"value may appear only in fixture contents");
+					"value may appear only in workspace file contents");
 			}
 			if (inNames.contains(name))
 			{
-				problems.add("the generated value of " + name + " appears in a fixture's name, but a generated value " +
-					"may appear only in fixture contents");
+				problems.add("the generated value of " + name + " appears in a workspace file's name, but a generated value " +
+					"may appear only in workspace file contents");
 			}
 			if (!inContents.contains(name))
-				problems.add("the generated value of " + name + " appears in no fixture's content");
+				problems.add("the generated value of " + name + " appears in no workspace file's content");
 		}
 		for (String name : inNames)
 		{
@@ -415,7 +419,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 				String segmentProblem = segmentProblem(text.text());
 				if (segmentProblem != null)
 				{
-					problems.add("the value '" + text.text() + "' of " + name + " appears in a fixture's name, but it " +
+					problems.add("the value '" + text.text() + "' of " + name + " appears in a workspace file's name, but it " +
 						segmentProblem);
 				}
 			}
@@ -423,7 +427,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		if (!problems.isEmpty())
 			return problems;
 
-		Map<Fixture, String> targets = substitute(fixtures, testCase);
+		Map<WorkspaceEntry, String> targets = substitute(workspaceFiles, testCase);
 		for (String target : targets.values())
 		{
 			for (String segment : target.split("/", -1))
@@ -431,17 +435,17 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 				String segmentProblem = segmentProblem(segment);
 				if (segmentProblem != null)
 				{
-					problems.add("the fixture path '" + target + "' has the segment '" + segment + "', which " +
+					problems.add("the workspace file path '" + target + "' has the segment '" + segment + "', which " +
 						segmentProblem);
 				}
 			}
 		}
 		Map<String, String> textByName = textByName(testCase.values(), testCase.expectedOutcome());
-		for (Fixture fixture : fixtures)
+		for (WorkspaceEntry workspaceFile : workspaceFiles)
 		{
-			if (fixture.link().isEmpty())
+			if (workspaceFile.link().isEmpty())
 				continue;
-			String link = Placeholders.fillScenario(fixture.link().get(), textByName);
+			String link = Placeholders.fillScenario(workspaceFile.link().get(), textByName);
 			for (String segment : link.split("/", -1))
 			{
 				if (segment.equals(".."))
@@ -449,31 +453,31 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 				String segmentProblem = segmentProblem(segment);
 				if (segmentProblem != null)
 				{
-					problems.add("the target '" + link + "' of the link " + fixture.path() + " has the segment '" +
+					problems.add("the target '" + link + "' of the link " + workspaceFile.path() + " has the segment '" +
 						segment + "', which " + segmentProblem);
 				}
 			}
 		}
-		Map<String, String> fixtureByTarget = new HashMap<>();
-		for (Map.Entry<Fixture, String> entry : targets.entrySet())
+		Map<String, String> workspaceFileByTarget = new HashMap<>();
+		for (Map.Entry<WorkspaceEntry, String> entry : targets.entrySet())
 		{
-			String earlier = fixtureByTarget.putIfAbsent(entry.getValue(), entry.getKey().path());
+			String earlier = workspaceFileByTarget.putIfAbsent(entry.getValue(), entry.getKey().path());
 			if (earlier != null)
 			{
-				problems.add("the fixtures " + earlier + " and " + entry.getKey().path() + " both land at " +
+				problems.add("the workspace files " + earlier + " and " + entry.getKey().path() + " both land at " +
 					entry.getValue());
 			}
 		}
-		for (String target : fixtureByTarget.keySet())
+		for (String target : workspaceFileByTarget.keySet())
 		{
 			for (int slash = target.indexOf('/'); slash != -1; slash = target.indexOf('/', slash + 1))
 			{
 				String parent = target.substring(0, slash);
-				String file = fixtureByTarget.get(parent);
+				String file = workspaceFileByTarget.get(parent);
 				if (file != null)
 				{
-					problems.add("the fixture " + file + " lands at " + parent + ", which the fixture " +
-						fixtureByTarget.get(target) + " needs as a directory");
+					problems.add("the workspace file " + file + " lands at " + parent + ", which the workspace file " +
+						workspaceFileByTarget.get(target) + " needs as a directory");
 				}
 			}
 		}
@@ -504,23 +508,23 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	}
 
 	/**
-	 * Replaces the placeholders of every fixture's path.
+	 * Replaces the placeholders of every workspace file's path.
 	 *
-	 * @param fixtures  the fixtures
-	 * @param testCase the test case
-	 * @return each fixture's path relative to the workspace root, in fixture order
+	 * @param workspaceFiles the workspace files
+	 * @param testCase       the test case
+	 * @return each workspace file's path relative to the workspace root, in workspace file order
 	 */
-	static Map<Fixture, String> substitute(List<Fixture> fixtures, TestCase testCase)
+	static Map<WorkspaceEntry, String> substitute(List<WorkspaceEntry> workspaceFiles, TestCase testCase)
 	{
 		Map<String, String> textByName = textByName(testCase.values(), testCase.expectedOutcome());
-		Map<Fixture, String> targets = new LinkedHashMap<>();
-		for (Fixture fixture : fixtures)
-			targets.put(fixture, Placeholders.fillScenario(fixture.path(), textByName));
+		Map<WorkspaceEntry, String> targets = new LinkedHashMap<>();
+		for (WorkspaceEntry workspaceFile : workspaceFiles)
+			targets.put(workspaceFile, Placeholders.fillScenario(workspaceFile.path(), textByName));
 		return targets;
 	}
 
 	/**
-	 * Returns the text that replaces each placeholder of a fixture's path or link target.
+	 * Returns the text that replaces each placeholder of a workspace file's path or link target.
 	 *
 	 * @param values          a test case's value of each variable, by name
 	 * @param expectedOutcome the test case's expected outcome
@@ -539,14 +543,15 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	}
 
 	/**
-	 * Returns where each fixture lands in a trial's workspace for a test case.
+	 * Returns where each workspace file lands in a trial's workspace for a test case.
 	 *
 	 * @param testCase a valid test case
-	 * @return each fixture's path relative to the workspace root, with {@code /} separators, in fixture order
+	 * @return each workspace file's path relative to the workspace root, with {@code /} separators, in the order of the
+	 *   workspace files
 	 * @throws NullPointerException     if {@code testCase} is null
 	 * @throws IllegalArgumentException if {@link #problems(TestCase)} rejects the test case
 	 */
-	public Map<Fixture, String> targets(TestCase testCase)
+	public Map<WorkspaceEntry, String> targets(TestCase testCase)
 	{
 		List<String> problems = problems(testCase);
 		if (!problems.isEmpty())
@@ -554,6 +559,6 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 			throw new IllegalArgumentException("The test case is not valid for the prompt test: " +
 				String.join("; ", problems));
 		}
-		return Collections.unmodifiableMap(substitute(fixtures, testCase));
+		return Collections.unmodifiableMap(substitute(workspaceFiles, testCase));
 	}
 }

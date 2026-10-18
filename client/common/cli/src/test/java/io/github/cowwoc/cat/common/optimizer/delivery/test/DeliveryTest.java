@@ -22,7 +22,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Assertion;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations.Location;
@@ -850,7 +850,7 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * An edited prompt test's fixtures are written to its own {@code workspace/} directory: a fixture whose content
+	 * An edited prompt test's workspace files are written to its own {@code workspace/} directory: a file whose content
 	 * differs replaces the recorded file, and one that the recorded file already holds stays as recorded.
 	 *
 	 * @throws IOException if the fixture or delivery fails
@@ -870,9 +870,9 @@ public final class DeliveryTest
 				commit(agentsFile, "Reply briefly.\n".getBytes(UTF_8)).
 				commit(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
 			Overlay candidate = fixture.candidate();
-			List<FixtureFile> fixtures = List.of(new FixtureFile("AGENTS.md", "Reply in one sentence.\n"),
-				new FixtureFile("docs/{{notes}}", notes));
-			DeliveredTest test = withFixtures(promptTest("release_notes", false), fixtures);
+			List<WorkspaceFile> workspaceFiles = List.of(new WorkspaceFile("AGENTS.md", "Reply in one sentence.\n"),
+				new WorkspaceFile("docs/{{notes}}", notes));
+			DeliveredTest test = withWorkspaceFiles(promptTest("release_notes", false), workspaceFiles);
 
 			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
 				Map.of(notesFile, content(notes), agentsFile, content("Reply briefly.\n"), EDITED_SCENARIO,
@@ -887,16 +887,16 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * Returns a prompt test with other fixtures.
+	 * Returns a prompt test with other workspace files.
 	 *
-	 * @param test     the prompt test
-	 * @param fixtures the fixtures
-	 * @return the prompt test with {@code fixtures}
+	 * @param test           the prompt test
+	 * @param workspaceFiles the workspace files
+	 * @return the prompt test with {@code workspaceFiles}
 	 */
-	private static DeliveredTest withFixtures(DeliveredTest test, List<FixtureFile> fixtures)
+	private static DeliveredTest withWorkspaceFiles(DeliveredTest test, List<WorkspaceFile> workspaceFiles)
 	{
 		return new DeliveredTest(test.id(), test.location(), test.scenario(), test.designGoals(), test.testCases(),
-			fixtures);
+			workspaceFiles);
 	}
 
 	/**
@@ -916,9 +916,9 @@ public final class DeliveryTest
 		{
 			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.");
 			String createdScenario = RECORDED_SCENARIO.replace("# Release notes", "# Release dates");
-			FixtureFile shared = new FixtureFile("docs/{{file}}", "Release {{file}} fixes the installer.\n",
+			WorkspaceFile shared = new WorkspaceFile("docs/{{file}}", "Release {{file}} fixes the installer.\n",
 				PortablePaths.text(TESTS.resolve("shared/docs/{{file}}")));
-			FixtureFile own = new FixtureFile("AGENTS.md", "Reply in one sentence.\n",
+			WorkspaceFile own = new WorkspaceFile("AGENTS.md", "Reply in one sentence.\n",
 				PortablePaths.text(TESTS.resolve("release_dates/workspace/AGENTS.md")));
 			Contract fixtureContract = ContractFixtures.contract();
 			PromptTest first = fixtureContract.tests().getFirst();
@@ -929,7 +929,7 @@ public final class DeliveryTest
 			promptTests.set(1, withDraft(second, List.of(), List.of(own),
 				new PromptTest.Draft(TESTS.resolve("release_dates"), createdScenario)));
 			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
-				fixtureContract.judge(), fixtureContract.fixtures(), fixtureContract.limitations(),
+				fixtureContract.judge(), fixtureContract.ignoredFiles(), fixtureContract.limitations(),
 				fixtureContract.minimumPassRate(), fixtureContract.salt());
 
 			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
@@ -982,12 +982,12 @@ public final class DeliveryTest
 				commit(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
 			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.");
 			String createdScenario = RECORDED_SCENARIO.replace("# Release notes", "# Release dates");
-			FixtureFile notes = new FixtureFile("notes.md", "Edited guide\n",
+			WorkspaceFile notes = new WorkspaceFile("notes.md", "Edited guide\n",
 				PortablePaths.text(editedWorkspace.resolve("notes.md")));
-			FixtureFile agents = new FixtureFile("AGENTS.md", "Reply briefly.\n",
+			WorkspaceFile agents = new WorkspaceFile("AGENTS.md", "Reply briefly.\n",
 				PortablePaths.text(createdWorkspace.resolve("AGENTS.md")));
-			FixtureFile guide = new FixtureFile("guide.md", "Guide\n", PortablePaths.text(sharedGuide));
-			FixtureFile latest = new FixtureFile("latest.md", "AGENTS.md",
+			WorkspaceFile guide = new WorkspaceFile("guide.md", "Guide\n", PortablePaths.text(sharedGuide));
+			WorkspaceFile latest = new WorkspaceFile("latest.md", "AGENTS.md",
 				PortablePaths.text(createdWorkspace.resolve("latest.md")), true);
 			Contract fixtureContract = ContractFixtures.contract();
 			List<PromptTest> promptTests = new ArrayList<>(fixtureContract.tests());
@@ -997,7 +997,7 @@ public final class DeliveryTest
 				new PromptTest.Draft(TESTS.resolve("release_dates"), createdScenario,
 					Map.of("guide.md", "../../shared/docs/guide.md"))));
 			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
-				fixtureContract.judge(), fixtureContract.fixtures(), fixtureContract.limitations(),
+				fixtureContract.judge(), fixtureContract.ignoredFiles(), fixtureContract.limitations(),
 				fixtureContract.minimumPassRate(), fixtureContract.salt());
 			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
 				subList(0, 2);
@@ -1045,17 +1045,17 @@ public final class DeliveryTest
 				link(workspace.resolve("logs"), "../../shared/logs").
 				commit(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
 			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.");
-			List<FixtureFile> fixtures = List.of(
-				new FixtureFile("AGENTS.md", "Reply in two sentences.\n", PortablePaths.text(shared.resolve("AGENTS.md"))),
-				new FixtureFile("logs/a.log", "a2\n", PortablePaths.text(shared.resolve("logs/a.log"))),
-				new FixtureFile("logs/b.log", "b1\n", PortablePaths.text(shared.resolve("logs/b.log"))));
+			List<WorkspaceFile> workspaceFiles = List.of(
+				new WorkspaceFile("AGENTS.md", "Reply in two sentences.\n", PortablePaths.text(shared.resolve("AGENTS.md"))),
+				new WorkspaceFile("logs/a.log", "a2\n", PortablePaths.text(shared.resolve("logs/a.log"))),
+				new WorkspaceFile("logs/b.log", "b1\n", PortablePaths.text(shared.resolve("logs/b.log"))));
 			Contract fixtureContract = ContractFixtures.contract();
 			List<PromptTest> promptTests = new ArrayList<>(fixtureContract.tests());
 			promptTests.set(0, withDraft(fixtureContract.tests().getFirst(), List.of(PortablePaths.text(EDITED_SCENARIO)),
-				fixtures, new PromptTest.Draft(EDITED_SCENARIO.getParent(), editedScenario,
+				workspaceFiles, new PromptTest.Draft(EDITED_SCENARIO.getParent(), editedScenario,
 					Map.of("AGENTS.md", "../../shared/AGENTS.md", "logs", "../../shared/logs"))));
 			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
-				fixtureContract.judge(), fixtureContract.fixtures(), fixtureContract.limitations(),
+				fixtureContract.judge(), fixtureContract.ignoredFiles(), fixtureContract.limitations(),
 				fixtureContract.minimumPassRate(), fixtureContract.salt());
 			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
 				subList(0, 1);
@@ -1085,17 +1085,17 @@ public final class DeliveryTest
 	 *
 	 * @param test                a prompt test
 	 * @param regressionScenarios the recorded scenarios that the test keeps
-	 * @param fixtures            the test's fixtures, each naming its file in the draft directory
+	 * @param workspaceFiles      the test's workspace files, each naming its file in the draft directory
 	 * @param draft               the test's directory in the draft directory
 	 * @return {@code test} with the draft
 	 */
-	private static PromptTest withDraft(PromptTest test, List<String> regressionScenarios, List<FixtureFile> fixtures,
-		PromptTest.Draft draft)
+	private static PromptTest withDraft(PromptTest test, List<String> regressionScenarios,
+		List<WorkspaceFile> workspaceFiles, PromptTest.Draft draft)
 	{
 		return new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 			test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(), test.uncoveredInteractions(),
 			test.variables(), test.committedTestCases(), test.testCases(), test.assertions(), regressionScenarios,
-			fixtures, Optional.of(draft));
+			workspaceFiles, Optional.of(draft));
 	}
 
 	/**
@@ -1278,7 +1278,7 @@ public final class DeliveryTest
 		return new DeliveredTest(id, new Location(TESTS.resolve(id), created), scenario, DESIGN_GOALS, List.of(
 			ContractFixtures.testCase("summary_given", Map.of("notes", "2.0.md")),
 			ContractFixtures.testCase("summary_given", Map.of("notes", "2.1.md"))),
-			List.of(new FixtureFile("docs/{{notes}}", "Release {{notes}} fixes the installer.\n")));
+			List.of(new WorkspaceFile("docs/{{notes}}", "Release {{notes}} fixes the installer.\n")));
 	}
 
 	/**
@@ -1311,7 +1311,7 @@ public final class DeliveryTest
 			requireThat(ValuesFile.read(JSON, in, ValuesFile.NAME), "testCases").withContext(test.id(), "id").
 				isEqualTo(test.testCases());
 		}
-		for (FixtureFile file : test.fixtures())
+		for (WorkspaceFile file : test.workspaceFiles())
 		{
 			requireThat(read(directory.resolve(PromptTestFiles.WORKSPACE).resolve(file.path())), "fixture").
 				withContext(test.id(), "id").isEqualTo(file.content());

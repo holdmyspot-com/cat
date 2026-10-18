@@ -10,7 +10,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.BuiltInTool;
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.ExpectedBehavior;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
@@ -62,11 +62,11 @@ import tools.jackson.databind.node.ObjectNode;
  * Validates a contract author's proposal file together with the prompt tests of its draft directory, and builds the
  * contract that they describe.
  * <p>
- * The proposal file names each prompt test by its directory in the draft directory. The prompt test's turns,
- * variables, expected behavior, time limit and assertions come from its {@value PromptTestFiles#SCENARIO}, its test
- * cases from its {@value ValuesFile#NAME} and its fixtures from the files that its patterns select. A recorded prompt
- * test of the target keeps its directory and receives the test cases that earlier campaigns committed; a new one lies
- * directly in the target's test directory and is named by its identifier.
+ * The proposal file names each prompt test by its directory in the draft directory. The prompt test's turns, variables,
+ * expected behavior, time limit and assertions come from its {@value PromptTestFiles#SCENARIO}, its test cases from its
+ * {@value ValuesFile#NAME} and its workspace files from the files that its patterns select. A recorded prompt test of
+ * the target keeps its directory and receives the test cases that earlier campaigns committed; a new one lies directly
+ * in the target's test directory and is named by its identifier.
  * <p>
  * Every problem names the file and line, or the JSON path of the proposal file, that it concerns. The session end, the
  * restoring of a stored proposal and the contract author's {@code contract check} all validate through this class.
@@ -349,7 +349,7 @@ public final class ProposalCheck
 			contract = schema.parse(json.writeValueAsString(assembled.proposal()), (requirements, tests) ->
 					TrialProfiles.compute(profiles.inventory(), ranking, profiles.bindingsOf(requirements),
 						restriction, described, requirements, tests), salt, new SplittableRandom(salt),
-				assembled.committed(), assembled.fixtures());
+				assembled.committed(), assembled.workspaceFiles());
 			problems.addAll(unreportedExitStatuses(contract));
 			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
 			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
@@ -694,7 +694,7 @@ public final class ProposalCheck
 		 */
 		private final Map<Integer, TestFiles> testFiles = new HashMap<>();
 		private final Map<String, List<TestCase>> committed = new HashMap<>();
-		private final Map<String, List<FixtureFile>> fixtures = new HashMap<>();
+		private final Map<String, List<WorkspaceFile>> workspaceFiles = new HashMap<>();
 		private ObjectNode proposal;
 
 		/**
@@ -737,14 +737,14 @@ public final class ProposalCheck
 		}
 
 		/**
-		 * Returns the text fixtures of each prompt test, each with its file in the draft directory as its source, which
-		 * is also the file that delivery writes.
+		 * Returns the text workspace files of each prompt test, each with its file in the draft directory as its source,
+		 * which is also the file that delivery writes.
 		 *
-		 * @return the fixtures, by prompt test identifier
+		 * @return the workspace files, by prompt test identifier
 		 */
-		Map<String, List<FixtureFile>> fixtures()
+		Map<String, List<WorkspaceFile>> workspaceFiles()
 		{
-			return fixtures;
+			return workspaceFiles;
 		}
 
 		/**
@@ -869,10 +869,10 @@ public final class ProposalCheck
 			ArrayNode assertions = assertions(item, location, scenario, filesOfTest);
 			if (testCases == null || assertions == null)
 				return null;
-			Optional<List<FixtureFile>> readFixtures = textFixtures(files);
-			if (readFixtures.isEmpty())
+			Optional<List<WorkspaceFile>> readWorkspaceFiles = textWorkspaceFiles(files);
+			if (readWorkspaceFiles.isEmpty())
 				return null;
-			List<FixtureFile> textFixtures = readFixtures.get();
+			List<WorkspaceFile> textWorkspaceFiles = readWorkspaceFiles.get();
 
 			ObjectNode test = json.createObjectNode();
 			test.put("id", id);
@@ -909,25 +909,25 @@ public final class ProposalCheck
 				variableNode.put("name", variable.name());
 				variableNode.put("description", variable.description());
 			}
-			test.putArray("fixtures");
+			test.putArray("workspace_files");
 			test.set("test_cases", testCases);
 			test.set("assertions", assertions);
 
 			if (!committedTestCases.isEmpty())
 				committed.put(id, committedTestCases);
-			if (!textFixtures.isEmpty())
-				fixtures.put(id, textFixtures);
+			if (!textWorkspaceFiles.isEmpty())
+				workspaceFiles.put(id, textWorkspaceFiles);
 			testFiles.put(index, filesOfTest);
 			return test;
 		}
 
 		/**
 		 * Returns a prompt test whose completed form the caller supplied, in the form that the other tests take: its
-		 * committed test cases and its fixtures, which come from files, move to {@link #committed()} and
-		 * {@link #fixtures()}.
+		 * committed test cases and its workspace files, which come from files, move to {@link #committed()} and
+		 * {@link #workspaceFiles()}.
 		 *
 		 * @param completed the prompt test in the form that a completed proposal holds it
-		 * @return the prompt test without its committed test cases and fixtures
+		 * @return the prompt test without its committed test cases and workspace files
 		 */
 		private ObjectNode fixedTest(ObjectNode completed)
 		{
@@ -941,18 +941,19 @@ public final class ProposalCheck
 			}
 			if (!committedTestCases.isEmpty())
 				committed.put(id, committedTestCases);
-			List<FixtureFile> testFixtures = new ArrayList<>();
-			JsonNode recordedFixtures = test.remove(ProposalSchema.RECORDED_FIXTURES);
-			if (recordedFixtures != null)
+			List<WorkspaceFile> testWorkspaceFiles = new ArrayList<>();
+			JsonNode recordedWorkspaceFiles = test.remove(ProposalSchema.RECORDED_WORKSPACE_FILES);
+			if (recordedWorkspaceFiles != null)
 			{
-				for (JsonNode fixture : recordedFixtures)
+				for (JsonNode workspaceFile : recordedWorkspaceFiles)
 				{
-					testFixtures.add(new FixtureFile(fixture.get("path").asString(), fixture.get("content").asString(),
-						fixture.get("source").asString(), fixture.path("link").asBoolean(false)));
+					testWorkspaceFiles.add(new WorkspaceFile(workspaceFile.get("path").asString(),
+						workspaceFile.get("content").asString(), workspaceFile.get("source").asString(),
+						workspaceFile.path("link").asBoolean(false)));
 				}
 			}
-			if (!testFixtures.isEmpty())
-				fixtures.put(id, testFixtures);
+			if (!testWorkspaceFiles.isEmpty())
+				workspaceFiles.put(id, testWorkspaceFiles);
 			return test;
 		}
 
@@ -1140,20 +1141,20 @@ public final class ProposalCheck
 		}
 
 		/**
-		 * Reads a prompt test's fixtures that are text files or links.
+		 * Reads a prompt test's workspace files that are text files or links.
 		 *
 		 * @param files the prompt test's files
-		 * @return the fixtures, each with its file or link relative to the draft directory as its source, or empty if a
-		 *   problem was added
+		 * @return the workspace files, each with its file or link relative to the draft directory as its source, or empty
+		 *   if a problem was added
 		 */
-		private Optional<List<FixtureFile>> textFixtures(PromptTestFiles files)
+		private Optional<List<WorkspaceFile>> textWorkspaceFiles(PromptTestFiles files)
 		{
-			List<FixtureFile> textFixtures = new ArrayList<>();
-			for (PromptTestFiles.Fixture fixture : files.fixtures())
+			List<WorkspaceFile> textWorkspaceFiles = new ArrayList<>();
+			for (PromptTestFiles.WorkspaceEntry workspaceFile : files.workspaceFiles())
 			{
-				if (!fixture.text() && fixture.link().isEmpty())
+				if (!workspaceFile.text() && workspaceFile.link().isEmpty())
 					continue;
-				Path source = files.source(fixture);
+				Path source = files.source(workspaceFile);
 				// A link's target that the draft directory does not hold is read from the project
 				Path relative;
 				if (source.startsWith(draft))
@@ -1162,14 +1163,14 @@ public final class ProposalCheck
 					relative = project.relativize(source);
 				try
 				{
-					if (fixture.link().isPresent())
+					if (workspaceFile.link().isPresent())
 					{
-						textFixtures.add(new FixtureFile(fixture.path(), fixture.link().get(), PortablePaths.text(relative),
-							true));
+						textWorkspaceFiles.add(new WorkspaceFile(workspaceFile.path(), workspaceFile.link().get(),
+							PortablePaths.text(relative), true));
 					}
 					else
 					{
-						textFixtures.add(new FixtureFile(fixture.path(), Files.readString(source, UTF_8),
+						textWorkspaceFiles.add(new WorkspaceFile(workspaceFile.path(), Files.readString(source, UTF_8),
 							PortablePaths.text(relative)));
 					}
 				}
@@ -1183,7 +1184,7 @@ public final class ProposalCheck
 					throw new UncheckedIOException(e);
 				}
 			}
-			return Optional.of(textFixtures);
+			return Optional.of(textWorkspaceFiles);
 		}
 
 		/**

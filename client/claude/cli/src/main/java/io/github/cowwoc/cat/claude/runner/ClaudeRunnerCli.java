@@ -152,7 +152,7 @@ public final class ClaudeRunnerCli
 		try (HarnessCapacity.Permit _ = capacity.acquire())
 		{
 			HarnessRunStarter starter = () -> new ClaudeRunner().start(
-				options.artifact(), options.project(), options.fixtures(), options.plugins(), manager, options.executable(),
+				options.artifact(), options.project(), options.workspace(), options.plugins(), manager, options.executable(),
 				environment,
 				options.model(),
 				options.effort(), agent, options.installCat(), options.includeUserRules(), readOnlyEvidence,

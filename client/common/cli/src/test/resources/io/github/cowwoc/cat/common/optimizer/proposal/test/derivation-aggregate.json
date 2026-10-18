@@ -11,8 +11,8 @@
 		"rubric": "The response follows the requirement.",
 		"decision_rule": "Pass only if every rubric item holds."
 	},
-	"fixtures": {
-		"ignored_paths": []
+	"ignored_files": {
+		"paths": []
 	},
 	"minimum_pass_rate": 0.95,
 	"limitations": [],

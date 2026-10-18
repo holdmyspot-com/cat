@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.git.Git;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.proposal.RegressionScenarios;
 
@@ -240,9 +240,9 @@ public final class RegressionScenariosTest
 	}
 
 	/**
-	 * Verifies that a prompt test directory in the current format is read with its scenario, fixtures and committed
-	 * test cases, and that a scenario in an earlier format is kept for conversion with the reason it does not parse;
-	 * each text fixture keeps the file that it is read from.
+	 * Verifies that a prompt test directory in the current format is read with its scenario, workspace files and
+	 * committed test cases, and that a scenario in an earlier format is kept for conversion with the reason it does not
+	 * parse; each text fixture keeps the file that it is read from.
 	 *
 	 * @throws IOException if the scenario tree cannot be created or read
 	 */
@@ -294,16 +294,16 @@ public final class RegressionScenariosTest
 			if (!(found.get(1).format() instanceof RegressionScenarios.Current(PromptTestFiles files, var texts)))
 				throw new AssertionError("Not the current format: " + found.get(1).format());
 			requireThat(files.scenario().turns(), "turns").isEqualTo(List.of("Summarize `{{notes}}`."));
-			requireThat(files.fixtures().size(), "fixtures.size()").isEqualTo(1);
+			requireThat(files.workspaceFiles().size(), "workspaceFiles.size()").isEqualTo(1);
 			requireThat(files.testCases().size(), "testCases.size()").isEqualTo(1);
 			String source = "plugin/src/test/resources/common/reading/whole_file_read/workspace/{{notes}}";
-			requireThat(texts, "texts").isEqualTo(List.of(new FixtureFile("{{notes}}", "Release 4.2 shipped.",
+			requireThat(texts, "texts").isEqualTo(List.of(new WorkspaceFile("{{notes}}", "Release 4.2 shipped.",
 				source)));
 		}
 	}
 
 	/**
-	 * Verifies that the contract author receives, with a prompt test, the text fixtures that the links of its
+	 * Verifies that the contract author receives, with a prompt test, the text workspace files that the links of its
 	 * {@code workspace/} reach in shared directories, each with the file that it is copied from, that a test citing the
 	 * prompt test twice receives each once, and that a prompt test without a {@code workspace/} receives none of the
 	 * files that its ancestors hold.
@@ -362,19 +362,19 @@ public final class RegressionScenariosTest
 			{
 				if (!(regression.format() instanceof RegressionScenarios.Current(PromptTestFiles _, var texts)))
 					throw new AssertionError("Not the current format: " + regression.format());
-				List<FixtureFile> expected;
+				List<WorkspaceFile> expected;
 				if (regression.citation().startsWith(".cat/tests/"))
 					expected = List.of();
 				else
 				{
-					expected = List.of(new FixtureFile("AGENTS.md", "Shared by the reading tests.",
+					expected = List.of(new WorkspaceFile("AGENTS.md", "Shared by the reading tests.",
 							"plugin/src/test/resources/common/reading/shared/AGENTS.md"),
-						new FixtureFile("shared.md", "Shared by every guidance.",
+						new WorkspaceFile("shared.md", "Shared by every guidance.",
 							"plugin/src/test/resources/shared/shared.md"));
 				}
 				requireThat(texts, "texts").withContext(regression.citation(), "citation").isEqualTo(expected);
-				requireThat(read.recordedFixtures(List.of(regression.citation(), regression.citation())),
-					"recordedFixtures").withContext(regression.citation(), "citation").isEqualTo(expected);
+				requireThat(read.recordedWorkspaceFiles(List.of(regression.citation(), regression.citation())),
+					"recordedWorkspaceFiles").withContext(regression.citation(), "citation").isEqualTo(expected);
 			}
 		}
 	}
@@ -440,7 +440,7 @@ public final class RegressionScenariosTest
 				contains("core.symlinks").contains("Developer Mode");
 			if (!(found.get(1).format() instanceof RegressionScenarios.Current(PromptTestFiles _, var texts)))
 				throw new AssertionError("Not the current format: " + found.get(1).format());
-			requireThat(texts, "texts").isEqualTo(List.of(new FixtureFile("AGENTS.md", "Shared by the reading tests.",
+			requireThat(texts, "texts").isEqualTo(List.of(new WorkspaceFile("AGENTS.md", "Shared by the reading tests.",
 				"plugin/src/test/resources/common/reading/shared/AGENTS.md")));
 		}
 	}

@@ -23,7 +23,7 @@ import java.util.List;
  * @param includeUserRules indicates whether CAT copies the parent's personal rules into the isolated harness home
  * @param maximumConcurrency the shared CAT harness capacity ceiling
  * @param deniedReads the files and directories that the harness sandbox denies the session reading
- * @param fixtures the optional directory whose files are copied into the project on top of {@code project}, refusing
+ * @param workspace the optional directory whose files are copied into the project on top of {@code project}, refusing
  *   any path that the project holds already
  * @param plugins the trial plugins, plugin directories that are installed into the isolated harness home under their
  *   manifests' names, beside CAT when {@code installCat} is also set
@@ -31,7 +31,7 @@ import java.util.List;
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String executable, String model,
 	String effort,
 	Path output, boolean keepRun, Path receipt, boolean installCat, boolean includeUserRules, int maximumConcurrency,
-	List<Path> deniedReads, Path fixtures, List<Path> plugins)
+	List<Path> deniedReads, Path workspace, List<Path> plugins)
 {
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -134,8 +134,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.receipt = Path.of(value);
 			else if (option.equals("--deny-read"))
 				options.deniedReads.add(Path.of(value));
-			else if (option.equals("--fixtures"))
-				options.fixtures = Path.of(value);
+			else if (option.equals("--workspace"))
+				options.workspace = Path.of(value);
 			else if (option.equals("--plugin"))
 				options.plugins.add(Path.of(value));
 			else
@@ -151,7 +151,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
 			options.keepRun, options.receipt, options.installCat, options.includeUserRules, options.maximumConcurrency,
-			options.deniedReads, options.fixtures, options.plugins);
+			options.deniedReads, options.workspace, options.plugins);
 	}
 
 	/**
@@ -166,7 +166,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		return "Usage: " + launcherName + " --artifact <path> [--project <path>] [--run-root <path>] " +
 			"[--executable <path>] [--model <name>] [--effort <level>] [--output <path>] [--keep-run] [--receipt <path>] " +
 			"[--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] [--deny-read <path>]... " +
-			"[--fixtures <path>] [--plugin <path>]...";
+			"[--workspace <path>] [--plugin <path>]...";
 	}
 
 	/**
@@ -185,11 +185,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param includeUserRules whether CAT copies the parent's personal rules into the isolated harness home
 	 * @param maximumConcurrency the shared CAT harness capacity ceiling
 	 * @param deniedReads the files and directories that the harness sandbox denies the session reading
-	 * @param fixtures the optional directory whose files are copied into the project on top of {@code project}
+	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
 	 * @param plugins the trial plugins, plugin directories that are installed into the isolated harness home under
 	 *   their manifests' names
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt} and
-	 *   {@code fixtures}
+	 *   {@code workspace}
 	 * @throws IllegalArgumentException if {@code executable} is blank, or {@code runRoot} or an element of
 	 *   {@code deniedReads} is not absolute
 	 */
@@ -226,7 +226,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private boolean installCat;
 		private boolean includeUserRules = true;
 		private final List<Path> deniedReads = new ArrayList<>();
-		private Path fixtures;
+		private Path workspace;
 		private final List<Path> plugins = new ArrayList<>();
 	}
 }

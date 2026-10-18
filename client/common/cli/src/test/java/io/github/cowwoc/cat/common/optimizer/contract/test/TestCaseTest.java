@@ -42,40 +42,40 @@ public final class TestCaseTest
 	}
 
 	/**
-	 * Returns a prompt test whose turn names {@code notes}, with a fixture {@code docs/{{notes}}} whose content names
-	 * {@code before}, and a binary fixture.
+	 * Returns a prompt test whose turn names {@code notes}, with a workspace file {@code docs/{{notes}}} whose content
+	 * names {@code before}, and a binary workspace file.
 	 *
-	 * @param extraFixtures more fixtures
+	 * @param extraFiles more workspace files
 	 * @return the prompt test's files
 	 */
-	private static PromptTestFiles promptTest(PromptTestFiles.Fixture... extraFixtures)
+	private static PromptTestFiles promptTest(PromptTestFiles.WorkspaceEntry... extraFiles)
 	{
 		Scenario scenario = new Scenario(List.of(new VariableDeclaration("notes", "The notes file name"),
 			new VariableDeclaration("before", "Log text before the entry")),
 			List.of("When was it published? See `docs/{{notes}}`."),
 			List.of(new Assertion("answer_given", AssertionKind.GUARD, null, "The reply states {{expected_outcome}}.")));
-		List<PromptTestFiles.Fixture> fixtures = new ArrayList<>();
-		fixtures.add(new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of("before")));
-		fixtures.add(new PromptTestFiles.Fixture("logo.png", false, Set.of()));
-		fixtures.addAll(List.of(extraFixtures));
+		List<PromptTestFiles.WorkspaceEntry> entries = new ArrayList<>();
+		entries.add(new PromptTestFiles.WorkspaceEntry("docs/{{notes}}", true, Set.of("before")));
+		entries.add(new PromptTestFiles.WorkspaceEntry("logo.png", false, Set.of()));
+		entries.addAll(List.of(extraFiles));
 		Path directory = Path.of("/project/tests/case").toAbsolutePath();
-		return new PromptTestFiles(directory.getParent(), directory, scenario, fixtures, sources(directory, fixtures),
+		return new PromptTestFiles(directory.getParent(), directory, scenario, entries, sources(directory, entries),
 			Map.of(), List.of());
 	}
 
 	/**
-	 * Returns the file that each fixture of a prompt test is copied from: its file in the test's
+	 * Returns the file that each workspace file of a prompt test is copied from: its file in the test's
 	 * {@code workspace/} directory.
 	 *
 	 * @param directory the prompt test directory
-	 * @param fixtures  the fixtures
-	 * @return each file, by the fixture's path
+	 * @param entries   the workspace files
+	 * @return each file, by the workspace file's path
 	 */
-	private static Map<String, Path> sources(Path directory, List<PromptTestFiles.Fixture> fixtures)
+	private static Map<String, Path> sources(Path directory, List<PromptTestFiles.WorkspaceEntry> entries)
 	{
 		Map<String, Path> sources = new HashMap<>();
-		for (PromptTestFiles.Fixture fixture : fixtures)
-			sources.put(fixture.path(), directory.resolve("workspace").resolve(fixture.path()));
+		for (PromptTestFiles.WorkspaceEntry entry : entries)
+			sources.put(entry.path(), directory.resolve("workspace").resolve(entry.path()));
 		return sources;
 	}
 
@@ -153,7 +153,8 @@ public final class TestCaseTest
 	}
 
 	/**
-	 * Verifies that a test case with text values and a generated value used only in fixture contents is valid.
+	 * Verifies that a test case with text values and a generated value used only in the contents of workspace files is
+	 * valid.
 	 */
 	@Test
 	public void acceptsGeneratedValueInFixtureContents()
@@ -180,8 +181,8 @@ public final class TestCaseTest
 	}
 
 	/**
-	 * Verifies that a generated value is refused in a turn, in a fixture's name and where no fixture's content uses
-	 * it.
+	 * Verifies that a generated value is refused in a turn, in a workspace file's name and where no workspace file's
+	 * content uses it.
 	 */
 	@Test
 	public void refusesGeneratedValueOutsideContents()
@@ -190,15 +191,16 @@ public final class TestCaseTest
 		PromptTestFiles files = promptTest();
 		requireThat(files.problems(testCase(LOGS, LOGS)).toString(), "turnAndName").contains("notes");
 
-		List<PromptTestFiles.Fixture> fixtures = List.of(new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of()));
-		PromptTestFiles unused = new PromptTestFiles(files.root(), files.directory(), files.scenario(), fixtures,
-			sources(files.directory(), fixtures), Map.of(), List.of());
+		List<PromptTestFiles.WorkspaceEntry> entries = List.of(new PromptTestFiles.WorkspaceEntry("docs/{{notes}}", true,
+			Set.of()));
+		PromptTestFiles unused = new PromptTestFiles(files.root(), files.directory(), files.scenario(), entries,
+			sources(files.directory(), entries), Map.of(), List.of());
 		requireThat(unused.problems(testCase(new TestValue.Text("a.md"), LOGS)).toString(), "unused").
 			contains("before");
 	}
 
 	/**
-	 * Verifies that a value used in a fixture's name must be one valid file name segment.
+	 * Verifies that a value used in a workspace file's name must be one valid file name segment.
 	 */
 	@Test
 	public void refusesInvalidFileNameValue()
@@ -215,32 +217,32 @@ public final class TestCaseTest
 	}
 
 	/**
-	 * Verifies that two fixtures that a test case's values give the same path, or a file and a directory of the same
-	 * path, are refused.
+	 * Verifies that two workspace files that a test case's values give the same path, or a file and a directory of the
+	 * same path, are refused.
 	 */
 	@Test
 	public void refusesFixtureCollision()
 	{
 		// Requirement: R-C21
-		PromptTestFiles same = promptTest(new PromptTestFiles.Fixture("docs/notes.md", true, Set.of()));
+		PromptTestFiles same = promptTest(new PromptTestFiles.WorkspaceEntry("docs/notes.md", true, Set.of()));
 		requireThat(same.problems(testCase(new TestValue.Text("notes.md"), LOGS)).toString(), "same").
 			contains("docs/notes.md");
-		PromptTestFiles nested = promptTest(new PromptTestFiles.Fixture("docs/notes.md/inner.txt", true, Set.of()));
+		PromptTestFiles nested = promptTest(new PromptTestFiles.WorkspaceEntry("docs/notes.md/inner.txt", true, Set.of()));
 		requireThat(nested.problems(testCase(new TestValue.Text("notes.md"), LOGS)).toString(), "nested").
 			contains("docs/notes.md");
 		requireThat(same.problems(testCase(new TestValue.Text("other.md"), LOGS)), "distinct").isEmpty();
 	}
 
 	/**
-	 * Verifies that each fixture's workspace path replaces its placeholders.
+	 * Verifies that each workspace file's path replaces its placeholders.
 	 */
 	@Test
 	public void targetsReplaceNamePlaceholders()
 	{
 		// Requirement: R-C21
 		PromptTestFiles files = promptTest();
-		Map<PromptTestFiles.Fixture, String> targets = files.targets(testCase(new TestValue.Text("v2.md"), LOGS));
-		requireThat(targets, "targets").isEqualTo(Map.of(files.fixtures().get(0), "docs/v2.md",
-			files.fixtures().get(1), "logo.png"));
+		Map<PromptTestFiles.WorkspaceEntry, String> targets = files.targets(testCase(new TestValue.Text("v2.md"), LOGS));
+		requireThat(targets, "targets").isEqualTo(Map.of(files.workspaceFiles().get(0), "docs/v2.md",
+			files.workspaceFiles().get(1), "logo.png"));
 	}
 }

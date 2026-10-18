@@ -128,7 +128,7 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Returns the directory that holds every run and the fixtures of every run.
+	 * Returns the directory that holds every run and the workspace files of every run.
 	 *
 	 * @return the absolute, normalized run root
 	 */
@@ -414,22 +414,21 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Copies fixture files into the project of an owned run, on top of the files that
-	 * {@link #copyProject(Path, HarnessRun)} copied. Nothing is replaced: a fixture whose path exists in the project
-	 * already is refused.
+	 * Copies workspace files into the project of an owned run, on top of the files that {@link #copyProject(Path,
+	 * HarnessRun)} copied. Nothing is replaced: a workspace file whose path exists in the project already is refused.
 	 *
-	 * @param source the directory that holds the fixtures at their paths relative to the project root
+	 * @param source the directory that holds the workspace files at their paths relative to the project root
 	 * @param run the owned run
-	 * @throws IOException if the source is not a real directory, contains symbolic links, a fixture's path exists in the
-	 *   project already, or copying fails
+	 * @throws IOException if the source is not a real directory, contains symbolic links, a workspace file's path exists
+	 *   in the project already, or copying fails
 	 */
-	public void copyFixtures(Path source, HarnessRun run) throws IOException
+	public void copyWorkspace(Path source, HarnessRun run) throws IOException
 	{
 		requireThat(source, "source").isNotNull();
 		requireThat(run, "run").isNotNull();
 		Path normalized = source.toAbsolutePath().normalize();
 		if (Files.isSymbolicLink(normalized) || !Files.isDirectory(normalized, NOFOLLOW_LINKS))
-			throw new IOException("Fixture source is not a real directory");
+			throw new IOException("Workspace source is not a real directory");
 		Path destination = run.directory().resolve("project");
 		Files.walkFileTree(normalized, new SimpleFileVisitor<>()
 		{
@@ -438,10 +437,10 @@ public final class HarnessRunManager
 				throws IOException
 			{
 				if (Files.isSymbolicLink(directory))
-					throw new IOException("Fixtures contain a symbolic-link directory");
+					throw new IOException("Workspace files contain a symbolic-link directory");
 				Path target = destination.resolve(normalized.relativize(directory));
 				if (Files.isSymbolicLink(target))
-					throw new IOException("The project holds a symbolic link where a fixture directory goes: " + target);
+					throw new IOException("The project holds a symbolic link where a workspace directory goes: " + target);
 				Files.createDirectories(target);
 				return CONTINUE;
 			}
@@ -451,8 +450,8 @@ public final class HarnessRunManager
 				throws IOException
 			{
 				if (Files.isSymbolicLink(file))
-					throw new IOException("Fixtures contain a symbolic-link file");
-				// Without REPLACE_EXISTING, a fixture that collides with a project file is refused
+					throw new IOException("Workspace files contain a symbolic-link file");
+				// Without REPLACE_EXISTING, a workspace file that collides with a project file is refused
 				Files.copy(file, destination.resolve(normalized.relativize(file)));
 				return CONTINUE;
 			}
@@ -460,11 +459,11 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Returns the existing files and directories under the run root that a harness session must not read: all of
-	 * them except the files and directories that the session uses, their contents, and the directories that contain
-	 * them. The session therefore cannot read another run, the fixtures of any run, or the runner's records of its own
-	 * run. A file or directory that is created after this method returns, such as the directory of a run that starts
-	 * later, is not included.
+	 * Returns the existing files and directories under the run root that a harness session must not read: all of them
+	 * except the files and directories that the session uses, their contents, and the directories that contain them. The
+	 * session therefore cannot read another run, the workspace files of any run, or the runner's records of its own run.
+	 * A file or directory that is created after this method returns, such as the directory of a run that starts later, is
+	 * not included.
 	 *
 	 * @param accessible the files and directories that the session reads or writes; those outside the run root are
 	 *   ignored

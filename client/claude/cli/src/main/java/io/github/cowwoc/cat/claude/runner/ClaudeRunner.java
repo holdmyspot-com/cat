@@ -113,7 +113,7 @@ public final class ClaudeRunner
 	 *
 	 * @param artifact the complete Claude artifact
 	 * @param project the validator project
-	 * @param fixtures the optional directory whose files are copied into the project on top of {@code project}
+	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
 	 * @param trialPlugins the trial plugins, each installed into the isolated home from the marketplace that bears its
 	 *   manifest's name, beside CAT when {@code installCat} is set
 	 * @param manager the run manager
@@ -129,7 +129,7 @@ public final class ClaudeRunner
 	 * @return the live run session
 	 * @throws IOException if startup fails
 	 */
-	HarnessRunSession start(Path artifact, Path project, Path fixtures, List<Path> trialPlugins,
+	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, boolean includeUserRules, List<Path> readOnlyEvidence,
 		List<Path> deniedReads) throws IOException
@@ -152,8 +152,8 @@ public final class ClaudeRunner
 		{
 			ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());
 			manager.copyProject(project, run);
-			if (fixtures != null)
-				manager.copyFixtures(fixtures, run);
+			if (workspace != null)
+				manager.copyWorkspace(workspace, run);
 			manager.snapshotProject(run);
 			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment);
 			Path hostConfiguration = claudeConfigDirectory(environment);
@@ -246,7 +246,7 @@ public final class ClaudeRunner
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
 	 * file and directory under the run root except the session's project, home, Claude temporary directory and
 	 * evidence, and the login that the runner copied into the session's home. The session therefore cannot read the
-	 * runner's records of its own run or of any other run, the fixtures of any run, or the login.
+	 * runner's records of its own run or of any other run, the workspace files of any run, or the login.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run

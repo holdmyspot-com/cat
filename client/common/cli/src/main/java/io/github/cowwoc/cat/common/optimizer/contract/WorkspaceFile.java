@@ -10,18 +10,18 @@ import java.util.List;
  * A text file or link that a prompt test places in each trial's workspace: a file that the contract author wrote, or
  * a file or link of a recorded scenario that the test cites, which CAT copies from the scenario's file.
  *
- * @param path    the path relative to the workspace root, with {@code /} separators, which may contain
- *                {@code {{name}}} placeholders
+ * @param path    the path relative to the workspace root, with {@code /} separators, which may contain {@code {{name}}}
+ *                placeholders
  * @param content the UTF-8 content of a file, or the target of a link relative to the link's directory with {@code /}
  *                separators; either may contain {@code {{name}}} placeholders
  * @param source  the recorded file or link that CAT copied the content from, relative to the project when it lies
- *                inside it, or empty if the contract author wrote the fixture
- * @param link    {@code true} if the fixture is a link to another entry of the workspace
+ *                inside it, or empty if the contract author wrote the workspace file
+ * @param link    {@code true} if the workspace file is a link to another entry of the workspace
  */
-public record FixtureFile(String path, String content, String source, boolean link)
+public record WorkspaceFile(String path, String content, String source, boolean link)
 {
 	/**
-	 * Creates a fixture file that the contract author wrote.
+	 * Creates a workspace file that the contract author wrote.
 	 *
 	 * @param path    the path relative to the workspace root, with {@code /} separators, which may contain
 	 *                {@code {{name}}} placeholders
@@ -31,39 +31,39 @@ public record FixtureFile(String path, String content, String source, boolean li
 	 *                                  has an empty, {@code .} or {@code ..} segment, or lies in the workspace's
 	 *                                  {@code .git} directory
 	 */
-	public FixtureFile(String path, String content)
+	public WorkspaceFile(String path, String content)
 	{
 		this(path, content, "", false);
 	}
 
 	/**
-	 * Creates a fixture file that is not a link.
+	 * Creates a workspace file that is not a link.
 	 *
 	 * @param path    the path relative to the workspace root, with {@code /} separators, which may contain
 	 *                {@code {{name}}} placeholders
 	 * @param content the UTF-8 content, which may contain {@code {{name}}} placeholders
-	 * @param source  the recorded file that CAT copied the content from, relative to the project when it lies inside
-	 *                it, or empty if the contract author wrote the fixture
+	 * @param source  the recorded file that CAT copied the content from, relative to the project when it lies inside it,
+	 *                or empty if the contract author wrote the workspace file
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code path} is blank, starts or ends with {@code /}, contains {@code \},
 	 *                                  has an empty, {@code .} or {@code ..} segment, or lies in the workspace's
 	 *                                  {@code .git} directory
 	 */
-	public FixtureFile(String path, String content, String source)
+	public WorkspaceFile(String path, String content, String source)
 	{
 		this(path, content, source, false);
 	}
 
 	/**
-	 * Creates a fixture file or link.
+	 * Creates a workspace file or link.
 	 *
 	 * @param path    the path relative to the workspace root, with {@code /} separators, which may contain
 	 *                {@code {{name}}} placeholders
-	 * @param content the UTF-8 content of a file, or the target of a link relative to the link's directory with
-	 *                {@code /} separators; either may contain {@code {{name}}} placeholders
+	 * @param content the UTF-8 content of a file, or the target of a link relative to the link's directory with {@code /}
+	 *                separators; either may contain {@code {{name}}} placeholders
 	 * @param source  the recorded file or link that CAT copied the content from, relative to the project when it lies
-	 *                inside it, or empty if the contract author wrote the fixture
-	 * @param link    {@code true} if the fixture is a link to another entry of the workspace
+	 *                inside it, or empty if the contract author wrote the workspace file
+	 * @param link    {@code true} if the workspace file is a link to another entry of the workspace
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code path} is blank, starts or ends with {@code /}, contains {@code \},
 	 *                                  has an empty, {@code .} or {@code ..} segment, or lies in the workspace's
@@ -71,27 +71,27 @@ public record FixtureFile(String path, String content, String source, boolean li
 	 *                                  or {@code .} segment, or does not name an entry of the workspace outside its
 	 *                                  {@code .git} directory
 	 */
-	public FixtureFile
+	public WorkspaceFile
 	{
 		requireThat(path, "path").isNotBlank();
 		requireThat(content, "content").isNotNull();
 		requireThat(source, "source").isNotNull();
 		if (path.indexOf('\\') != -1)
 		{
-			throw new IllegalArgumentException("The fixture path '" + path + "' contains '\\'. Separate directories " +
+			throw new IllegalArgumentException("The workspace file path '" + path + "' contains '\\'. Separate directories " +
 				"with '/'.");
 		}
 		for (String segment : path.split("/", -1))
 		{
 			if (segment.isEmpty() || segment.equals(".") || segment.equals(".."))
 			{
-				throw new IllegalArgumentException("The fixture path '" + path + "' must be relative to the workspace " +
+				throw new IllegalArgumentException("The workspace file path '" + path + "' must be relative to the workspace " +
 					"root, with no empty, '.' or '..' segment");
 			}
 		}
 		if (path.equals(".git") || path.startsWith(".git/"))
 		{
-			throw new IllegalArgumentException("The fixture path '" + path + "' lies in the workspace's .git " +
+			throw new IllegalArgumentException("The workspace file path '" + path + "' lies in the workspace's .git " +
 				"directory, which CAT creates");
 		}
 		if (link)
@@ -110,7 +110,7 @@ public record FixtureFile(String path, String content, String source, boolean li
 	{
 		if (target.indexOf('\\') != -1)
 		{
-			throw new IllegalArgumentException("The target '" + target + "' of the fixture link '" + path +
+			throw new IllegalArgumentException("The target '" + target + "' of the workspace link '" + path +
 				"' contains '\\'. Separate directories with '/'.");
 		}
 		Deque<String> resolved = new ArrayDeque<>(List.of(path.split("/", -1)));
@@ -119,20 +119,20 @@ public record FixtureFile(String path, String content, String source, boolean li
 		{
 			if (segment.isEmpty() || segment.equals("."))
 			{
-				throw new IllegalArgumentException("The target '" + target + "' of the fixture link '" + path +
+				throw new IllegalArgumentException("The target '" + target + "' of the workspace link '" + path +
 					"' must be relative to the link's directory, with no empty or '.' segment");
 			}
 			if (!segment.equals(".."))
 				resolved.addLast(segment);
 			else if (resolved.pollLast() == null)
 			{
-				throw new IllegalArgumentException("The target '" + target + "' of the fixture link '" + path +
+				throw new IllegalArgumentException("The target '" + target + "' of the workspace link '" + path +
 					"' lies outside the workspace");
 			}
 		}
 		if (resolved.isEmpty() || resolved.getFirst().equals(".git"))
 		{
-			throw new IllegalArgumentException("The target '" + target + "' of the fixture link '" + path +
+			throw new IllegalArgumentException("The target '" + target + "' of the workspace link '" + path +
 				"' is the workspace root or lies in its .git directory");
 		}
 	}

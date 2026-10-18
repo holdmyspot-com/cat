@@ -354,7 +354,7 @@ public final class ValuesPrompt implements ValuesProtocol
 			TestCase testCase = new TestCase(values, expectedOutcome);
 			try
 			{
-				test.fixtureTargets(testCase);
+				test.workspaceTargets(testCase);
 			}
 			catch (IllegalArgumentException e)
 			{

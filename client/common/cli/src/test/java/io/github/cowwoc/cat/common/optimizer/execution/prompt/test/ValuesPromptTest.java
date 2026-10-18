@@ -9,7 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TriedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.ValueGenerator;
@@ -142,7 +142,7 @@ public final class ValuesPromptTest
 	@Test
 	public void requestShowsRecordedFixtureContent()
 	{
-		FixtureFile recorded = new FixtureFile("notes.md", "Release 4.296 renamed the exporter.\n",
+		WorkspaceFile recorded = new WorkspaceFile("notes.md", "Release 4.296 renamed the exporter.\n",
 			"plugin/src/test/resources/fixtures/notes.md");
 		Contract contract = ContractFixtures.withFixtures(ContractFixtures.contract(), TEST, List.of(recorded));
 
@@ -150,7 +150,7 @@ public final class ValuesPromptTest
 
 		JsonNode test = json.readTree(section(turn, "The failure group, as JSON", "\n\n### How to write")).
 			get("test");
-		requireThat(test.get("recorded_fixtures"), "recorded_fixtures").isEqualTo(json.createArrayNode().
+		requireThat(test.get("recorded_workspace_files"), "recorded_workspace_files").isEqualTo(json.createArrayNode().
 			add(json.createObjectNode().put("path", recorded.path()).put("content", recorded.content()).
 				put("source", recorded.source())));
 	}

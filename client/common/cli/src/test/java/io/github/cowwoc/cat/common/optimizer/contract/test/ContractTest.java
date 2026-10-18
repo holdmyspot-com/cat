@@ -128,7 +128,7 @@ public final class ContractTest
 		List<Requirement> requirements = new ArrayList<>(ContractFixtures.contract().requirements());
 		Contract original = ContractFixtures.contract();
 		Contract contract = new Contract(requirements, original.tests(), original.profiles(), original.judge(),
-			original.fixtures(), original.limitations(), original.minimumPassRate(), original.salt());
+			original.ignoredFiles(), original.limitations(), original.minimumPassRate(), original.salt());
 
 		requirements.clear();
 
@@ -163,19 +163,19 @@ public final class ContractTest
 			List.of("Hello."), Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(),
 			List.of(COMPLIES), List.of(), List.of());
 		List<Runnable> inconsistent = List.of(
-			() -> new Contract(List.of(r1, r1), valid.tests(), valid.profiles(), valid.judge(), valid.fixtures(),
+			() -> new Contract(List.of(r1, r1), valid.tests(), valid.profiles(), valid.judge(), valid.ignoredFiles(),
 				valid.limitations(), valid.minimumPassRate(), valid.salt()),
 			() -> new Contract(valid.requirements(), List.of(formatting, formatting), cells(formatting),
-				valid.judge(), valid.fixtures(), valid.limitations(), valid.minimumPassRate(), valid.salt()),
+				valid.judge(), valid.ignoredFiles(), valid.limitations(), valid.minimumPassRate(), valid.salt()),
 			() -> new Contract(valid.requirements(), List.of(formatting, safety, orphaned),
-				cells(formatting, safety, orphaned), valid.judge(), valid.fixtures(), valid.limitations(),
+				cells(formatting, safety, orphaned), valid.judge(), valid.ignoredFiles(), valid.limitations(),
 				valid.minimumPassRate(), valid.salt()),
 			() -> new Contract(valid.requirements(), List.of(formatting, safety, duplicate),
-				cells(formatting, safety, duplicate), valid.judge(), valid.fixtures(), valid.limitations(),
+				cells(formatting, safety, duplicate), valid.judge(), valid.ignoredFiles(), valid.limitations(),
 				valid.minimumPassRate(), valid.salt()),
-			() -> new Contract(List.of(), valid.tests(), valid.profiles(), valid.judge(), valid.fixtures(),
+			() -> new Contract(List.of(), valid.tests(), valid.profiles(), valid.judge(), valid.ignoredFiles(),
 				valid.limitations(), valid.minimumPassRate(), valid.salt()),
-			() -> new Contract(valid.requirements(), List.of(), valid.profiles(), valid.judge(), valid.fixtures(),
+			() -> new Contract(valid.requirements(), List.of(), valid.profiles(), valid.judge(), valid.ignoredFiles(),
 				valid.limitations(), valid.minimumPassRate(), valid.salt()));
 		for (Runnable build : inconsistent)
 		{
@@ -501,9 +501,9 @@ public final class ContractTest
 			formatting.regressionScenarios(), List.of());
 		List<Runnable> inconsistent = List.of(
 			() -> new Contract(valid.requirements(), valid.tests(), cells(formatting), valid.judge(),
-				valid.fixtures(), valid.limitations(), valid.minimumPassRate(), valid.salt()),
+				valid.ignoredFiles(), valid.limitations(), valid.minimumPassRate(), valid.salt()),
 			() -> new Contract(valid.requirements(), valid.tests(), cells(formatting, safety, extra),
-				valid.judge(), valid.fixtures(), valid.limitations(), valid.minimumPassRate(), valid.salt()));
+				valid.judge(), valid.ignoredFiles(), valid.limitations(), valid.minimumPassRate(), valid.salt()));
 		for (Runnable build : inconsistent)
 		{
 			boolean rejected = false;
@@ -546,14 +546,14 @@ public final class ContractTest
 		for (String rate : List.of("0.80", "0.8", "0.95", "0.99", "0.950"))
 		{
 			Contract contract = new Contract(valid.requirements(), valid.tests(), valid.profiles(), valid.judge(),
-				valid.fixtures(), valid.limitations(), new BigDecimal(rate), valid.salt());
+				valid.ignoredFiles(), valid.limitations(), new BigDecimal(rate), valid.salt());
 			requireThat(contract.minimumPassRate().compareTo(new BigDecimal(rate)), rate).isEqualTo(0);
 		}
 		for (String rate : List.of("0.79", "0.995", "1.00", "0.955"))
 		{
 			try
 			{
-				new Contract(valid.requirements(), valid.tests(), valid.profiles(), valid.judge(), valid.fixtures(),
+				new Contract(valid.requirements(), valid.tests(), valid.profiles(), valid.judge(), valid.ignoredFiles(),
 					valid.limitations(), new BigDecimal(rate), valid.salt());
 				throw new AssertionError("A minimum pass rate of " + rate + " was accepted");
 			}

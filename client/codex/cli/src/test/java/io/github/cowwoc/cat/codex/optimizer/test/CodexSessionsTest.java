@@ -17,7 +17,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ToolCall;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
-import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TestWorkspace;
 import io.github.cowwoc.cat.common.optimizer.port.HookRegistration;
 import io.github.cowwoc.cat.common.optimizer.port.HostLogin;
 import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
@@ -176,7 +176,7 @@ public final class CodexSessionsTest
 				plugins = List.of(tools, cat);
 
 			SessionResult result = await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
-				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, WorkspaceFixtures.NONE, plugins)));
+				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, plugins)));
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
@@ -189,7 +189,7 @@ public final class CodexSessionsTest
 				requireThat(options.lastIndexOf("--plugin"), "lastPlugin").isEqualTo(0);
 
 				requireThat(await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, WorkspaceFixtures.NONE, List.of(tools)))), "withoutCat").
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(tools)))), "withoutCat").
 					isInstanceOf(SessionResult.Completed.class);
 				requireThat(arguments.getLast(), "withoutCatOptions").doesNotContain("--install-cat");
 				requireThat(ScriptedHarness.optionValue(arguments.getLast(), "--artifact"), "withoutCatArtifact").
@@ -303,7 +303,7 @@ public final class CodexSessionsTest
 
 	/**
 	 * Verifies that a contract author session receives its draft directory and the context file of the contract tools
-	 * as the fixtures that the runner copies into the session's project, and that the runner denies the session
+	 * as the workspace files that the runner copies into the session's project, and that the runner denies the session
 	 * reading only the held-out locations, so that the session may run the launcher and write the draft and the
 	 * proposal file in its project.
 	 *
@@ -332,7 +332,7 @@ public final class CodexSessionsTest
 			{
 				arguments.add(options);
 				received.add(ContractAuthorFixtures.regularFiles(Path.of(ScriptedHarness.optionValue(options,
-					"--fixtures"))));
+					"--workspace"))));
 				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
 					List.of(Turn.replies("ok")), input, output);
 			});

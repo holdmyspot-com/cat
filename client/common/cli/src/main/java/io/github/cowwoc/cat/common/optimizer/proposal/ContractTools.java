@@ -6,7 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.contract.Cell;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.Fixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TestWorkspaces;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
@@ -46,12 +46,12 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The contract tools that a contract author session runs through the launcher while it writes the proposal file and
- * the draft directory: {@code contract check} and {@code contract fixtures}.
+ * the draft directory: {@code contract check} and {@code contract workspace}.
  * <p>
  * Both read the context file that CAT wrote into the session's project, the proposal file and the draft directory,
  * and nothing in the campaign's held-out directory. They validate with a salt of {@code 0}, so the seeds that they give
  * the generator calls that state none differ from the seeds that CAT gives those calls when the session ends. Only
- * {@code contract fixtures} writes, and only below the output directory that it receives.
+ * {@code contract workspace} writes, and only below the output directory that it receives.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -127,7 +127,7 @@ public final class ContractTools
 
 	/**
 	 * Writes the workspace files of one test case of a prompt test in the draft directory into a new directory: the
-	 * fixtures that the test's patterns select, with the test case's values in place of the placeholders and its
+	 * workspace files that the test's patterns select, with the test case's values in place of the placeholders and its
 	 * generator calls expanded. Prints each file's path, size in bytes and line count, and how its size compares with
 	 * the tool-output limit of each trial profile of the prompt test. Those are the profiles of the test's cells if
 	 * the proposal passes {@link #check(Path, PrintStream) contract check}, and every profile of the inventory
@@ -144,7 +144,7 @@ public final class ContractTools
 	 * @throws IOException          if the context file cannot be read or is not a context file, or a file cannot be
 	 *                              read or written
 	 */
-	public int fixtures(Path contextFile, Path testDirectory, int testCase, Path output, PrintStream out)
+	public int workspace(Path contextFile, Path testDirectory, int testCase, Path output, PrintStream out)
 		throws IOException
 	{
 		requireThat(testDirectory, "testDirectory").isNotNull();
@@ -173,16 +173,16 @@ public final class ContractTools
 		Optional<Expansion> expansion = expansion(session, test, testCase, problems);
 		if (expansion.isEmpty())
 		{
-			out.println("`contract fixtures` wrote nothing:");
+			out.println("`contract workspace` wrote nothing:");
 			for (String problem : problems)
 				out.println("- " + problem);
 			return 1;
 		}
 		PromptTestFiles files = expansion.get().files();
 		TestCase values = expansion.get().testCase();
-		Map<PromptTestFiles.Fixture, String> targets = files.targets(values);
+		Map<PromptTestFiles.WorkspaceEntry, String> targets = files.targets(values);
 		Files.createDirectory(target);
-		Fixtures.copy(files, values, target);
+		TestWorkspaces.copy(files, values, target);
 
 		out.println("Wrote the workspace files of test case " + testCase + " of `" +
 			PortablePaths.text(directory) + "` to `" + output + "`.");

@@ -9,7 +9,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.CertificationHistory;
 import io.github.cowwoc.cat.common.optimizer.campaign.CertificationRecord;
 import io.github.cowwoc.cat.common.optimizer.campaign.DeliveryRequest;
 import io.github.cowwoc.cat.common.optimizer.campaign.Outcome;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
 import io.github.cowwoc.cat.common.optimizer.contract.ValuesFile;
@@ -289,18 +289,18 @@ public final class Delivery
 	/**
 	 * Returns the files and links that write the prompt tests: each test's values file, its regression scenario and its
 	 * workspace files. A test that the contract author wrote as files in its draft directory is written as the draft
-	 * holds it: its {@value PromptTestFiles#SCENARIO} unchanged, each link fixture as a link at the path that it was
-	 * read from, each link that leads outside {@value PromptTestFiles#WORKSPACE} as that link, and each other fixture
-	 * at the file that it was read from, which may be the target of such a link.
+	 * holds it: its {@value PromptTestFiles#SCENARIO} unchanged, each workspace link as a link at the path that it was
+	 * read from, each link that leads outside {@value PromptTestFiles#WORKSPACE} as that link, and each other workspace
+	 * file at the file that it was read from, which may be the target of such a link.
 	 * <p>
 	 * Other prompt tests may read the file that such a link reaches, so a draft that changes a file that the fork
 	 * records there leaves that file alone. Instead, the link becomes a copy that holds the change, and a link to a
-	 * directory becomes a directory of copies of every fixture below it.
+	 * directory becomes a directory of copies of every workspace file below it.
 	 * <p>
-	 * A test that the contract author wrote into the proposal itself has its fixture files and links under
-	 * {@value PromptTestFiles#WORKSPACE}. A test that delivery creates gets a new scenario titled with its identifier.
-	 * A test that edits a recorded scenario keeps that scenario's title and design goals; a recorded scenario that does
-	 * not follow the scenario format is replaced as a created one would be. A fixture whose recorded file holds the
+	 * A test that the contract author wrote into the proposal itself has its workspace files and links under
+	 * {@value PromptTestFiles#WORKSPACE}. A test that delivery creates gets a new scenario titled with its identifier. A
+	 * test that edits a recorded scenario keeps that scenario's title and design goals; a recorded scenario that does not
+	 * follow the scenario format is replaced as a created one would be. A workspace file whose recorded file holds the
 	 * same bytes is not written, and recorded files that the test no longer names are kept.
 	 *
 	 * @param selected the delivered overlay, whose recorded files the edited scenarios start from
@@ -329,18 +329,18 @@ public final class Delivery
 			{
 				// The draft holds every file of the test where delivery writes it
 				Set<Path> copied = copiedLinksOf(test, selected.fork());
-				for (FixtureFile fixture : test.fixtures())
+				for (WorkspaceFile workspaceFile : test.workspaceFiles())
 				{
-					Path path = Path.of(fixture.path());
+					Path path = Path.of(workspaceFile.path());
 					Path file;
-					if (copied.stream().anyMatch(path::startsWith) || fixture.source().isEmpty())
+					if (copied.stream().anyMatch(path::startsWith) || workspaceFile.source().isEmpty())
 						file = own.resolve(path);
 					else
-						file = Path.of(fixture.source());
-					if (fixture.link())
-						links.put(file, Path.of(fixture.content()));
+						file = Path.of(workspaceFile.source());
+					if (workspaceFile.link())
+						links.put(file, Path.of(workspaceFile.content()));
 					else
-						files.put(file, new FileContent(fixture.content().getBytes(UTF_8)));
+						files.put(file, new FileContent(workspaceFile.content().getBytes(UTF_8)));
 				}
 				for (Entry<String, String> link : test.copiedLinks().entrySet())
 				{
@@ -363,15 +363,15 @@ public final class Delivery
 				recorded = workspace.readFile(selected, scenarioPath).map(file -> new String(file.bytes(), UTF_8)).
 					orElse(null);
 			}
-			for (FixtureFile fixture : test.fixtures())
+			for (WorkspaceFile workspaceFile : test.workspaceFiles())
 			{
-				Path file = own.resolve(fixture.path());
-				if (fixture.link())
+				Path file = own.resolve(workspaceFile.path());
+				if (workspaceFile.link())
 				{
-					links.put(file, Path.of(fixture.content()));
+					links.put(file, Path.of(workspaceFile.content()));
 					continue;
 				}
-				byte[] content = fixture.content().getBytes(UTF_8);
+				byte[] content = workspaceFile.content().getBytes(UTF_8);
 				if (recorded != null)
 				{
 					Optional<FileContent> before = workspace.readFile(selected, file);
@@ -389,7 +389,7 @@ public final class Delivery
 	/**
 	 * Returns the links of a draft that delivery writes as copies: each link that leads outside
 	 * {@value PromptTestFiles#WORKSPACE} to a file, or to a directory holding a file, that the fork records with other
-	 * content than the draft's fixture.
+	 * content than the draft's workspace file.
 	 *
 	 * @param test a prompt test that the contract author wrote as files in its draft directory
 	 * @param fork the files recorded at the fork
@@ -398,16 +398,16 @@ public final class Delivery
 	private static Set<Path> copiedLinksOf(DeliveredTest test, FileInventory fork)
 	{
 		Set<Path> copied = new HashSet<>();
-		for (FixtureFile fixture : test.fixtures())
+		for (WorkspaceFile workspaceFile : test.workspaceFiles())
 		{
-			if (fixture.link() || fixture.source().isEmpty())
+			if (workspaceFile.link() || workspaceFile.source().isEmpty())
 				continue;
-			if (!(fork.entry(Path.of(fixture.source())).orElse(null) instanceof RegularFile recorded) ||
-				recorded.contentHash().equals(Sha256.of(fixture.content().getBytes(UTF_8))))
+			if (!(fork.entry(Path.of(workspaceFile.source())).orElse(null) instanceof RegularFile recorded) ||
+				recorded.contentHash().equals(Sha256.of(workspaceFile.content().getBytes(UTF_8))))
 			{
 				continue;
 			}
-			Path path = Path.of(fixture.path());
+			Path path = Path.of(workspaceFile.path());
 			for (String link : test.copiedLinks().keySet())
 			{
 				if (path.startsWith(link))

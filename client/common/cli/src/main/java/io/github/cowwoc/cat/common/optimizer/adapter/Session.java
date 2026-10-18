@@ -253,12 +253,12 @@ final class Session implements SessionHandle
 	private void serve()
 	{
 		IOException problem = null;
-		Path fixtures = null;
+		Path workspace = null;
 		// Closing the sink releases the run's transcript
 		try (sink)
 		{
-			fixtures = writeFixtures();
-			sessions.bridge().serve(arguments(fixtures), feed, sink);
+			workspace = writeWorkspace();
+			sessions.bridge().serve(arguments(workspace), feed, sink);
 		}
 		catch (IOException e)
 		{
@@ -270,11 +270,11 @@ final class Session implements SessionHandle
 		}
 		finally
 		{
-			if (fixtures != null)
+			if (workspace != null)
 			{
 				try
 				{
-					TemporaryDirectories.deleteRecursively(fixtures);
+					TemporaryDirectories.deleteRecursively(workspace);
 				}
 				catch (IOException e)
 				{
@@ -287,18 +287,18 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Writes the files that the session's workspace receives, a trial's fixtures or the contract author's draft
-	 * directory, to a new directory under the run root of the session's part, so that the fixtures of a held-out test
-	 * case stay in a held-out location.
+	 * Writes the files that the session's workspace receives, a trial's workspace files or the contract author's draft
+	 * directory, to a new directory under the run root of the session's part, so that the workspace files of a held-out
+	 * test case stay in a held-out location.
 	 *
 	 * @return the directory, or {@code null} if the session receives no files
 	 * @throws IOException if the files cannot be written
 	 */
-	private Path writeFixtures() throws IOException
+	private Path writeWorkspace() throws IOException
 	{
 		if (request.files().isEmpty())
 			return null;
-		Path directory = Files.createDirectories(runRoot().resolve("fixtures")).resolve(UUID.randomUUID().toString());
+		Path directory = Files.createDirectories(runRoot().resolve("workspaces")).resolve(UUID.randomUUID().toString());
 		Files.createDirectory(directory);
 		try
 		{
@@ -535,11 +535,11 @@ final class Session implements SessionHandle
 	 * Builds the runner's command-line options. A trial installs exactly the request's plugins: the first one whose
 	 * manifest name is CAT's is installed as CAT, and each other one as a plugin. Other sessions install no plugin.
 	 *
-	 * @param fixtures the directory that holds the trial's fixtures, or {@code null} if there are none
+	 * @param workspace the directory that holds the trial's workspace files, or {@code null} if there are none
 	 * @return the options
 	 * @throws IOException if the held-out locations cannot be created or listed
 	 */
-	private List<String> arguments(Path fixtures) throws IOException
+	private List<String> arguments(Path workspace) throws IOException
 	{
 		List<String> arguments = new ArrayList<>();
 		Path artifact = settings.artifact();
@@ -567,8 +567,8 @@ final class Session implements SessionHandle
 			arguments.addAll(List.of("--tool-output-token-limit", String.valueOf(profile.toolOutputTokenLimit())));
 		if (installCat)
 			arguments.add("--install-cat");
-		if (fixtures != null)
-			arguments.addAll(List.of("--fixtures", fixtures.toString()));
+		if (workspace != null)
+			arguments.addAll(List.of("--workspace", workspace.toString()));
 		arguments.addAll(sessions.readOnlyArguments(request.readOnly()));
 		List<Path> heldOut = sessions.heldOutLocations();
 		if (request.part() == Part.DEVELOPMENT)

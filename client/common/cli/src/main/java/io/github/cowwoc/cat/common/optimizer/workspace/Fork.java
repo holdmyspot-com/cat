@@ -72,7 +72,7 @@ public final class Fork implements ForkView
 	 *
 	 * @param base the base worktree, which is the top-level directory of its repository
 	 * @param campaign the campaign storage directory
-	 * @param participants ignored paths and trial fixtures relative to {@code base}, and absolute paths outside it, that
+	 * @param participants ignored paths and ignored files relative to {@code base}, and absolute paths outside it, that
 	 *   take part in the campaign; tracked files, and the existing targets outside {@code base} that recorded links
 	 *   reach, always take part
 	 * @return the fork

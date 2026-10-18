@@ -20,7 +20,8 @@ import java.util.regex.Pattern;
  * service, such as a level-2 heading {@code ## Settings for the indexer} followed by a paragraph of four sentences.
  * <p>
  * Each section looks real by itself; the sections as a whole mean nothing. Every section has the same number of lines
- * and a length within documented bounds, so that a contract author can size a fixture from the number of sections.
+ * and a length within documented bounds, so that a contract author can size a workspace file from the number of
+ * sections.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */

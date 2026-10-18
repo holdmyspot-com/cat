@@ -572,7 +572,7 @@ public final class HarnessRunManagerTest
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void fixturesKeepProjectFiles() throws IOException
+	public void workspaceKeepsProjectFiles() throws IOException
 	{
 		// Requirement: R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -582,23 +582,23 @@ public final class HarnessRunManagerTest
 				"cat-run-root-"));
 			Path project = Files.createDirectories(root.resolve("project/docs"));
 			Files.writeString(project.resolve("guide.md"), "project guide");
-			Path fixtures = Files.createDirectories(root.resolve("fixtures/docs"));
-			Files.writeString(fixtures.resolve("notes.md"), "fixture notes");
+			Path workspaces = Files.createDirectories(root.resolve("workspaces/docs"));
+			Files.writeString(workspaces.resolve("notes.md"), "fixture notes");
 			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
 			manager.copyProject(root.resolve("project"), run);
 
-			manager.copyFixtures(root.resolve("fixtures"), run);
+			manager.copyWorkspace(root.resolve("workspaces"), run);
 
 			Path copy = run.directory().resolve("project");
 			requireThat(Files.readString(copy.resolve("docs/notes.md")), "fixture").isEqualTo("fixture notes");
 			requireThat(Files.readString(copy.resolve("docs/guide.md")), "projectFile").isEqualTo("project guide");
 
-			Files.writeString(fixtures.resolve("guide.md"), "fixture guide");
-			Files.delete(fixtures.resolve("notes.md"));
+			Files.writeString(workspaces.resolve("guide.md"), "fixture guide");
+			Files.delete(workspaces.resolve("notes.md"));
 			try
 			{
-				manager.copyFixtures(root.resolve("fixtures"), run);
+				manager.copyWorkspace(root.resolve("workspaces"), run);
 				throw new AssertionError("A fixture replaced a project file");
 			}
 			catch (IOException e)
@@ -610,8 +610,8 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies that the snapshot of a run's project holds the copied files and fixtures, and keeps them as they were
-	 * when the project changes afterward.
+	 * Verifies that the snapshot of a run's project holds the copied files and workspace files, and keeps them as they
+	 * were when the project changes afterward.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -625,12 +625,12 @@ public final class HarnessRunManagerTest
 				"cat-run-root-"));
 			Path project = Files.createDirectories(root.resolve("project/docs"));
 			Files.writeString(project.resolve("guide.md"), "project guide");
-			Path fixtures = Files.createDirectories(root.resolve("fixtures/docs"));
-			Files.writeString(fixtures.resolve("notes.md"), "fixture notes");
+			Path workspaces = Files.createDirectories(root.resolve("workspaces/docs"));
+			Files.writeString(workspaces.resolve("notes.md"), "fixture notes");
 			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
 			manager.copyProject(root.resolve("project"), run);
-			manager.copyFixtures(root.resolve("fixtures"), run);
+			manager.copyWorkspace(root.resolve("workspaces"), run);
 
 			manager.snapshotProject(run);
 
@@ -700,7 +700,7 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies that a session is denied reading every other entry under the run root, including other runs, fixtures
+	 * Verifies that a session is denied reading every other entry under the run root, including other runs, workspaces
 	 * and the records of its own run, but not the paths that it uses, the paths inside them, or the directories that
 	 * contain them.
 	 *
@@ -721,7 +721,7 @@ public final class HarnessRunManagerTest
 			Path artifacts = Files.createDirectories(run.directory().resolve("artifacts"));
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 			Path evidenceProject = Files.createDirectories(evidence.directory().resolve("project"));
-			Path fixtures = Files.createDirectories(root.resolve("fixtures"));
+			Path workspaces = Files.createDirectories(root.resolve("workspaces"));
 			Path otherHarness = Files.createDirectories(root.resolve("other-harness"));
 			Path outside = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()), "cat-outside-"));
@@ -734,7 +734,7 @@ public final class HarnessRunManagerTest
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(artifacts,
 				run.directory().resolve("run.json"), run.directory().resolve(".lock"), other.directory(), evidenceProject,
 				evidence.directory().resolve("home"), evidence.directory().resolve("run.json"),
-				evidence.directory().resolve(".lock"), fixtures, otherHarness));
+				evidence.directory().resolve(".lock"), workspaces, otherHarness));
 		}
 	}
 

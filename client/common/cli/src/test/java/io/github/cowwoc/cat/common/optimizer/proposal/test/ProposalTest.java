@@ -21,7 +21,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
@@ -324,7 +324,7 @@ public final class ProposalTest
 		Contract fixture = ContractFixtures.contract();
 		return new Contract(fixture.requirements(), fixture.tests(), fixture.profiles(),
 			judge.profile("The response follows the requirement.", "Pass only if every rubric item holds."),
-			fixture.fixtures(), fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+			fixture.ignoredFiles(), fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
 	}
 
 	/**
@@ -342,9 +342,9 @@ public final class ProposalTest
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
-				test.assertions(), test.regressionScenarios(), test.fixtures()));
+				test.assertions(), test.regressionScenarios(), test.workspaceFiles()));
 		}
-		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.fixtures(),
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.ignoredFiles(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
 	}
 
@@ -1502,7 +1502,7 @@ public final class ProposalTest
 				"`hooks/hooks.json` of the trial plugin `cat`\n").
 			contains("the draft directory `" + DraftDirectory.name(PROMPT_SYSTEM) + "`").
 			contains("the proposal file `" + OutputFile.name(PROMPT_SYSTEM) + "`").
-			contains("`" + LAUNCHER + " contract fixtures ");
+			contains("`" + LAUNCHER + " contract workspace ");
 		requireThat(none, "none").contains("with the file that\n  registers it:\n\nnone\n\n");
 	}
 
@@ -2098,8 +2098,8 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that a recorded prompt test keeps the fixtures of its directory, that no other test receives them, and
-	 * that the proposal names the file of a recorded test's fixture rather than showing its content.
+	 * Verifies that a recorded prompt test keeps the workspace files of its directory, that no other test receives them,
+	 * and that the proposal names the file of a recorded test's workspace file rather than showing its content.
 	 *
 	 * @throws IOException              if a file cannot be written
 	 * @throws InvalidProposalException if the proposal is rejected
@@ -2138,11 +2138,11 @@ public final class ProposalTest
 		DerivedProposal derived = author.proposal(recordedSession(author, project, output), project,
 			PROFILES, SALT);
 
-		FixtureFile notes = new FixtureFile("notes/{{tone}}.md", content,
+		WorkspaceFile notes = new WorkspaceFile("notes/{{tone}}.md", content,
 			".cat/tests/CLAUDE/formatting/workspace/notes/{{tone}}.md");
-		requireThat(derived.contract().findTest("formatting").orElseThrow().fixtures(), "formatting").
+		requireThat(derived.contract().findTest("formatting").orElseThrow().workspaceFiles(), "formatting").
 			isEqualTo(List.of(notes));
-		requireThat(derived.contract().findTest("safety").orElseThrow().fixtures(), "safety").isEmpty();
+		requireThat(derived.contract().findTest("safety").orElseThrow().workspaceFiles(), "safety").isEmpty();
 		requireThat(render(derived), "rendered").contains("  - `notes/{{tone}}.md`, copied from `" +
 			notes.source() + "`\n").doesNotContain(content);
 	}
@@ -2197,10 +2197,10 @@ public final class ProposalTest
 			OutputFile.name(initialProject) + "."), project, PROFILES, SALT);
 		DerivedProposal stored = author.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES, SALT);
 
-		FixtureFile handbook = new FixtureFile("docs/handbook.md", content, "docs/handbook.md");
-		requireThat(derived.contract().findTest("formatting").orElseThrow().fixtures(), "derived").
+		WorkspaceFile handbook = new WorkspaceFile("docs/handbook.md", content, "docs/handbook.md");
+		requireThat(derived.contract().findTest("formatting").orElseThrow().workspaceFiles(), "derived").
 			isEqualTo(List.of(handbook));
-		requireThat(stored.contract().findTest("formatting").orElseThrow().fixtures(), "stored").
+		requireThat(stored.contract().findTest("formatting").orElseThrow().workspaceFiles(), "stored").
 			isEqualTo(List.of(handbook));
 	}
 
@@ -2250,12 +2250,12 @@ public final class ProposalTest
 			OutputFile.name(initialProject) + "."), project, PROFILES, SALT);
 		DerivedProposal stored = author.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES, SALT);
 
-		List<FixtureFile> expected = List.of(
-			new FixtureFile("docs/handbook.md", content, ".cat/tests/CLAUDE/formatting/workspace/docs/handbook.md"),
-			new FixtureFile("latest.md", "docs/handbook.md", ".cat/tests/CLAUDE/formatting/workspace/latest.md", true));
-		requireThat(derived.contract().findTest("formatting").orElseThrow().fixtures(), "derived").
+		List<WorkspaceFile> expected = List.of(
+			new WorkspaceFile("docs/handbook.md", content, ".cat/tests/CLAUDE/formatting/workspace/docs/handbook.md"),
+			new WorkspaceFile("latest.md", "docs/handbook.md", ".cat/tests/CLAUDE/formatting/workspace/latest.md", true));
+		requireThat(derived.contract().findTest("formatting").orElseThrow().workspaceFiles(), "derived").
 			isEqualTo(expected);
-		requireThat(stored.contract().findTest("formatting").orElseThrow().fixtures(), "stored").isEqualTo(expected);
+		requireThat(stored.contract().findTest("formatting").orElseThrow().workspaceFiles(), "stored").isEqualTo(expected);
 		requireThat(render(derived), "rendered").contains("  - `latest.md`, a link to `docs/handbook.md`\n");
 	}
 
@@ -2625,7 +2625,7 @@ public final class ProposalTest
 		String text = rendered(changedDerivation(proposal ->
 		{
 			ObjectNode test = (ObjectNode) proposal.get("tests").get(0);
-			test.putArray("fixtures").addObject().put("path", "notes/{{tone}}.md").
+			test.putArray("workspace_files").addObject().put("path", "notes/{{tone}}.md").
 				put("content", "{{before}}\n```text\nKeep the {{tone}} voice.\n```\n");
 			test.withArray("variables").addObject().put("name", "before").
 				put("description", "Log lines before the notes.");
@@ -2637,7 +2637,7 @@ public final class ProposalTest
 		}));
 
 		requireThat(text, "text").contains("""
-			- Fixtures, written into each trial's workspace with each test case's values:
+			- Workspace files, written into each trial's workspace with each test case's values:
 			  - `notes/{{tone}}.md`:
 
 			    ````
@@ -2666,7 +2666,7 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(changedDerivation(proposal ->
 		{
 			ObjectNode test = (ObjectNode) proposal.get("tests").get(0);
-			test.putArray("fixtures").addObject().put("path", "notes.md").put("content", "{{before}}\n");
+			test.putArray("workspace_files").addObject().put("path", "notes.md").put("content", "{{before}}\n");
 			test.withArray("variables").addObject().put("name", "before").
 				put("description", "Log lines before the notes.");
 			for (JsonNode testCase : test.get("test_cases"))
@@ -3281,7 +3281,7 @@ public final class ProposalTest
 	/**
 	 * Verifies that the contract author's output schema names each prompt test's directory in the draft directory and
 	 * the requirement of each of its assertions, and holds none of what the test's files hold: no turns, variables,
-	 * test cases, committed test cases or fixtures, nor the salt.
+	 * test cases, committed test cases or workspace files, nor the salt.
 	 */
 	@Test
 	public void outputSchemaNamesTestDirectories()
@@ -3293,8 +3293,8 @@ public final class ProposalTest
 		JsonNode test = outputSchema.get("properties").get("tests").get("items");
 		List<String> testRequired = test.get("required").valueStream().map(JsonNode::asString).toList();
 		requireThat(testRequired, "test.required").contains("directory").contains("assertions");
-		for (String property : List.of("turns", "variables", "test_cases", "committed_test_cases", "fixtures",
-			"recorded_fixtures"))
+		for (String property : List.of("turns", "variables", "test_cases", "committed_test_cases", "workspace_files",
+			"recorded_workspace_files"))
 		{
 			requireThat(test.get("properties").has(property), property).isFalse();
 		}

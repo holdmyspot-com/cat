@@ -26,7 +26,7 @@
 								"variable": {"description": "A variable of the test.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
 								"text": {"description": "The text that replaces {{name}}.", "type": "string"},
 								"call": {
-									"description": "A call to a value generator built into CAT, such as {\"generator\": \"log_lines\", \"count\": 18000} with whole-number parameters, whose output replaces {{name}}. CAT adds the seed and version. A generated value may appear only in fixture contents.",
+									"description": "A call to a value generator built into CAT, such as {\"generator\": \"log_lines\", \"count\": 18000} with whole-number parameters, whose output replaces {{name}}. CAT adds the seed and version. A generated value may appear only in the contents of workspace files.",
 									"type": "object",
 									"required": ["generator"],
 									"properties": {"generator": {"type": "string", "pattern": "\\S"}},

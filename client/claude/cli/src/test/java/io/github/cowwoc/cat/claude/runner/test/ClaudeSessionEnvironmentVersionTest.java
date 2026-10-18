@@ -67,7 +67,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 			manager.snapshotProject(run);
 			Files.writeString(Files.createDirectories(run.directory().resolve("home/.claude")).
 				resolve(".credentials.json"), "{}");
-			Files.createDirectories(root.resolve("runs/fixtures"));
+			Files.createDirectories(root.resolve("runs/workspaces"));
 			Files.writeString(source, """
 				{
 				  "env": {"ANTHROPIC_BASE_URL": "https://host.example"},

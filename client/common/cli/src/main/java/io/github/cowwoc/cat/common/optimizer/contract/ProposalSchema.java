@@ -71,10 +71,10 @@ public final class ProposalSchema
 	 */
 	public static final String COMMITTED_TEST_CASES = "committed_test_cases";
 	/**
-	 * The property of a test that holds the fixtures of the recorded scenarios that it cites, which CAT copies from
-	 * the scenarios' files rather than the contract author writes.
+	 * The property of a test that holds the workspace files of the recorded scenarios that it cites, which CAT copies
+	 * from the scenarios' files rather than the contract author writes.
 	 */
-	public static final String RECORDED_FIXTURES = "recorded_fixtures";
+	public static final String RECORDED_WORKSPACE_FILES = "recorded_workspace_files";
 	/**
 	 * The property that holds the contract's salt, which CAT draws rather than the contract author.
 	 */
@@ -162,7 +162,7 @@ public final class ProposalSchema
 
 	/**
 	 * Returns the proposal schema without the parts that CAT computes: the salt, the trial profiles, each test's
-	 * committed test cases and recorded fixtures.
+	 * committed test cases and recorded workspace files.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param schemaText the proposal schema
@@ -175,7 +175,7 @@ public final class ProposalSchema
 		removeProperty(json, root, SALT);
 		ObjectNode test = (ObjectNode) root.get("properties").get("tests").get("items");
 		removeProperty(json, test, COMMITTED_TEST_CASES);
-		removeProperty(json, test, RECORDED_FIXTURES);
+		removeProperty(json, test, RECORDED_WORKSPACE_FILES);
 		return root;
 	}
 
@@ -210,7 +210,7 @@ public final class ProposalSchema
 
 	/**
 	 * Returns the JSON schema of contract author output: the proposal schema without the salt, the trial profiles, the
-	 * committed test cases and the recorded fixtures that CAT supplies.
+	 * committed test cases and the recorded workspace files that CAT supplies.
 	 *
 	 * @return a copy of the schema, which the caller may change
 	 */
@@ -261,27 +261,27 @@ public final class ProposalSchema
 
 	/**
 	 * Validates contract author output that holds no salt, no trial profiles, no committed test cases and no recorded
-	 * fixtures, computes the profiles, adds the committed test cases and the recorded fixtures, and converts the output
-	 * to a contract.
+	 * workspace files, computes the profiles, adds the committed test cases and the recorded workspace files, and
+	 * converts the output to a contract.
 	 *
 	 * @param proposal the contract author's JSON output, without {@value #SALT}, {@value #TRIAL_PROFILES},
-	 *   {@value #COMMITTED_TEST_CASES} and {@value #RECORDED_FIXTURES}
+	 *   {@value #COMMITTED_TEST_CASES} and {@value #RECORDED_WORKSPACE_FILES}
 	 * @param profiles computes the trial profiles from the proposal's requirements and tests
 	 * @param salt the salt that CAT drew for the proposal
 	 * @param seeds the source of the seeds that CAT adds to each generator call
 	 * @param committed the test cases that earlier campaigns committed, by the identifier of the prompt test that
 	 *   receives them; a prompt test that it does not name has none
-	 * @param recorded the fixtures of the recorded scenarios that each prompt test cites, by the identifier of the
+	 * @param recorded the workspace files of the recorded scenarios that each prompt test cites, by the identifier of the
 	 *   prompt test that receives them, each with its source; a prompt test that it does not name has none
 	 * @return the contract that the proposal describes
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws InvalidProposalException if {@code proposal} is not valid JSON, violates the schema, holds a salt or
-	 *   trial profiles, states only one of a generator call's seed and version, writes a fixture at the path of a
-	 *   fixture that {@code recorded} gives its test, breaks a rule that the schema cannot express, or
+	 *   trial profiles, states only one of a generator call's seed and version, writes a workspace file at the path of a
+	 *   workspace file that {@code recorded} gives its test, breaks a rule that the schema cannot express, or
 	 *   {@code profiles} rejects it
 	 */
 	public Contract parse(String proposal, ProfileRule profiles, long salt, RandomGenerator seeds,
-		Map<String, List<TestCase>> committed, Map<String, List<FixtureFile>> recorded) throws InvalidProposalException
+		Map<String, List<TestCase>> committed, Map<String, List<WorkspaceFile>> recorded) throws InvalidProposalException
 	{
 		requireThat(proposal, "proposal").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
@@ -301,12 +301,13 @@ public final class ProposalSchema
 	 * @param seeds the source of the seeds that CAT adds to each generator call, or {@code null} if each call carries
 	 *   its seed and version
 	 * @param committed the committed test cases that CAT adds, by prompt test identifier, to tests whose JSON holds none
-	 * @param recorded the recorded fixtures that CAT adds, by prompt test identifier, to tests whose JSON holds none
+	 * @param recorded the recorded workspace files that CAT adds, by prompt test identifier, to tests whose JSON holds
+	 *   none
 	 * @return the contract
 	 * @throws InvalidProposalException if the proposal is invalid
 	 */
 	private Contract parse(String proposal, SchemaValidator schema, ProfileRule profiles, Long salt,
-		RandomGenerator seeds, Map<String, List<TestCase>> committed, Map<String, List<FixtureFile>> recorded)
+		RandomGenerator seeds, Map<String, List<TestCase>> committed, Map<String, List<WorkspaceFile>> recorded)
 		throws InvalidProposalException
 	{
 		JsonNode root;
@@ -351,8 +352,8 @@ public final class ProposalSchema
 			write(test, tests.addObject());
 		write(contract.profiles(), root.putObject(TRIAL_PROFILES));
 		write(contract.judge(), root.putObject("judge"));
-		ArrayNode ignoredPaths = root.putObject("fixtures").putArray("ignored_paths");
-		contract.fixtures().ignoredPaths().forEach(ignoredPaths::add);
+		ArrayNode ignoredPaths = root.putObject("ignored_files").putArray("paths");
+		contract.ignoredFiles().paths().forEach(ignoredPaths::add);
 		ArrayNode limitations = root.putArray("limitations");
 		contract.limitations().forEach(limitations::add);
 		root.put("minimum_pass_rate", contract.minimumPassRate());
@@ -560,26 +561,26 @@ public final class ProposalSchema
 				}
 			}
 		});
-		ArrayNode fixtures = node.putArray("fixtures");
+		ArrayNode workspaceFiles = node.putArray("workspace_files");
 		ArrayNode recorded = null;
-		for (FixtureFile fixture : test.fixtures())
+		for (WorkspaceFile workspaceFile : test.workspaceFiles())
 		{
-			ObjectNode fixtureNode;
-			if (fixture.source().isEmpty())
-				fixtureNode = fixtures.addObject();
+			ObjectNode workspaceFileNode;
+			if (workspaceFile.source().isEmpty())
+				workspaceFileNode = workspaceFiles.addObject();
 			else
 			{
-				// A test without recorded fixtures keeps the identity that it had before the property existed
+				// A test without recorded workspace files keeps the identity that it had before the property existed
 				if (recorded == null)
-					recorded = node.putArray(RECORDED_FIXTURES);
-				fixtureNode = recorded.addObject();
+					recorded = node.putArray(RECORDED_WORKSPACE_FILES);
+				workspaceFileNode = recorded.addObject();
 			}
-			fixtureNode.put("path", fixture.path());
-			fixtureNode.put("content", fixture.content());
-			if (!fixture.source().isEmpty())
-				fixtureNode.put("source", fixture.source());
-			if (fixture.link())
-				fixtureNode.put("link", true);
+			workspaceFileNode.put("path", workspaceFile.path());
+			workspaceFileNode.put("content", workspaceFile.content());
+			if (!workspaceFile.source().isEmpty())
+				workspaceFileNode.put("source", workspaceFile.source());
+			if (workspaceFile.link())
+				workspaceFileNode.put("link", true);
 		}
 		ArrayNode variables = node.putArray("variables");
 		for (VariableDeclaration variable : test.variables())
@@ -631,7 +632,7 @@ public final class ProposalSchema
 		private final List<String> problems;
 		private final RandomGenerator seeds;
 		private final Map<String, List<TestCase>> committed;
-		private final Map<String, List<FixtureFile>> recorded;
+		private final Map<String, List<WorkspaceFile>> recorded;
 		private final Set<Long> taken = new HashSet<>();
 
 		/**
@@ -642,11 +643,11 @@ public final class ProposalSchema
 		 *   carries its seed and version
 		 * @param committed the committed test cases that CAT adds, by prompt test identifier, to tests whose JSON
 		 *   holds none
-		 * @param recorded the recorded fixtures that CAT adds, by prompt test identifier, to tests whose JSON holds
+		 * @param recorded the recorded workspace files that CAT adds, by prompt test identifier, to tests whose JSON holds
 		 *   none
 		 */
 		Builder(List<String> problems, RandomGenerator seeds, Map<String, List<TestCase>> committed,
-			Map<String, List<FixtureFile>> recorded)
+			Map<String, List<WorkspaceFile>> recorded)
 		{
 			this.problems = problems;
 			this.seeds = seeds;
@@ -686,8 +687,8 @@ public final class ProposalSchema
 			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(profile(judgeNode),
 				text(judgeNode, "prompt"), text(judgeNode, "rubric"), text(judgeNode, "decision_rule"),
 				judgeNode.get("result_schema").toString()));
-			TrialFixtures fixtures = attempt("$.fixtures", () -> new TrialFixtures(
-				strings(root.get("fixtures").get("ignored_paths"))));
+			IgnoredFiles workspaceFiles = attempt("$.ignored_files", () -> new IgnoredFiles(
+				strings(root.get("ignored_files").get("paths"))));
 			List<Dependent> dependents = List.of();
 			JsonNode dependentsNode = root.get(DEPENDENTS);
 			if (dependentsNode != null && !dependentsNode.isNull())
@@ -710,7 +711,7 @@ public final class ProposalSchema
 			else
 				contractSalt = salt;
 			List<Dependent> contractDependents = dependents;
-			return attempt("$", () -> new Contract(requirements, tests, profiles, judge, fixtures,
+			return attempt("$", () -> new Contract(requirements, tests, profiles, judge, workspaceFiles,
 				strings(root.get("limitations")), root.get("minimum_pass_rate").decimalValue(), contractSalt,
 				contractDependents));
 		}
@@ -839,10 +840,10 @@ public final class ProposalSchema
 			List<VariableDeclaration> variables = list(node.get("variables"), location + ".variables",
 				(variableNode, variableLocation) -> attempt(variableLocation, () ->
 					new VariableDeclaration(text(variableNode, "name"), text(variableNode, "description"))));
-			List<FixtureFile> fixtures = recordedFixtures(node, location);
-			List<FixtureFile> written = list(node.get("fixtures"), location + ".fixtures", (fixtureNode, at) ->
-				attempt(at, () -> written(fixtureNode, fixtures)));
-			fixtures.addAll(written);
+			List<WorkspaceFile> workspaceFiles = recordedWorkspaceFiles(node, location);
+			List<WorkspaceFile> written = list(node.get("workspace_files"), location + ".workspace_files",
+				(workspaceFileNode, at) -> attempt(at, () -> written(workspaceFileNode, workspaceFiles)));
+			workspaceFiles.addAll(written);
 			List<TestCase> committedTestCases = committed.getOrDefault(node.get("id").asString(), List.of());
 			JsonNode committedNode = node.get(COMMITTED_TEST_CASES);
 			if (committedNode != null)
@@ -866,7 +867,7 @@ public final class ProposalSchema
 				strings(node.get("absent_triggers")), text(node, "applicability"), strings(node.get("turns")),
 				Duration.ofSeconds(node.get("time_limit_seconds").asLong()), text(node, "expected_behavior"),
 				strings(node.get("uncovered_interactions")), variables, committed, testCases, assertions,
-				strings(node.get(REGRESSION_SCENARIOS)), fixtures, draft));
+				strings(node.get(REGRESSION_SCENARIOS)), workspaceFiles, draft));
 			if (test == null)
 				return null;
 			// Delivery writes every prompt test as a scenario.md
@@ -876,43 +877,44 @@ public final class ProposalSchema
 		}
 
 		/**
-		 * Returns the recorded fixtures of one prompt test: those that its JSON holds, or else those that CAT adds.
+		 * Returns the recorded workspace files of one prompt test: those that its JSON holds, or else those that CAT adds.
 		 *
 		 * @param node the prompt test
 		 * @param location the location of the prompt test
-		 * @return a list that the caller may change, holding the fixtures that could be built
+		 * @return a list that the caller may change, holding the workspace files that could be built
 		 */
-		private List<FixtureFile> recordedFixtures(JsonNode node, String location)
+		private List<WorkspaceFile> recordedWorkspaceFiles(JsonNode node, String location)
 		{
-			JsonNode recordedNode = node.get(RECORDED_FIXTURES);
+			JsonNode recordedNode = node.get(RECORDED_WORKSPACE_FILES);
 			if (recordedNode == null)
 				return new ArrayList<>(recorded.getOrDefault(node.get("id").asString(), List.of()));
-			return list(recordedNode, location + "." + RECORDED_FIXTURES, (fixtureNode, at) ->
-				attempt(at, () -> new FixtureFile(text(fixtureNode, "path"), text(fixtureNode, "content"),
-					text(fixtureNode, "source"), fixtureNode.path("link").asBoolean(false))));
+			return list(recordedNode, location + "." + RECORDED_WORKSPACE_FILES, (workspaceFileNode, at) ->
+				attempt(at, () -> new WorkspaceFile(text(workspaceFileNode, "path"), text(workspaceFileNode, "content"),
+					text(workspaceFileNode, "source"), workspaceFileNode.path("link").asBoolean(false))));
 		}
 
 		/**
-		 * Builds a fixture that the contract author wrote.
+		 * Builds a workspace file that the contract author wrote.
 		 *
-		 * @param node the fixture
-		 * @param recordedFixtures the recorded fixtures of the same prompt test
-		 * @return the fixture
-		 * @throws IllegalArgumentException if a recorded fixture has the same path, or a model constructor rejects a
+		 * @param node the workspace file
+		 * @param recordedWorkspaceFiles the recorded workspace files of the same prompt test
+		 * @return the workspace file
+		 * @throws IllegalArgumentException if a recorded workspace file has the same path, or a model constructor rejects a
 		 *   value
 		 */
-		private static FixtureFile written(JsonNode node, List<FixtureFile> recordedFixtures)
+		private static WorkspaceFile written(JsonNode node, List<WorkspaceFile> recordedWorkspaceFiles)
 		{
-			FixtureFile fixture = new FixtureFile(text(node, "path"), text(node, "content"));
-			for (FixtureFile recordedFixture : recordedFixtures)
+			WorkspaceFile workspaceFile = new WorkspaceFile(text(node, "path"), text(node, "content"));
+			for (WorkspaceFile recordedWorkspaceFile : recordedWorkspaceFiles)
 			{
-				if (recordedFixture.path().equals(fixture.path()))
+				if (recordedWorkspaceFile.path().equals(workspaceFile.path()))
 				{
-					throw new IllegalArgumentException("CAT adds the fixture '" + fixture.path() + "' from the file '" +
-						recordedFixture.source() + "' of a cited scenario. Leave it out of fixtures.");
+					throw new IllegalArgumentException("CAT adds the workspace file '" + workspaceFile.path() +
+						"' from the file '" + recordedWorkspaceFile.source() + "' of a cited scenario. Leave it out of " +
+						"workspace_files.");
 				}
 			}
-			return fixture;
+			return workspaceFile;
 		}
 
 		/**

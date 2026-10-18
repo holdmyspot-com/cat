@@ -1,8 +1,8 @@
 package io.github.cowwoc.cat.common.optimizer.contract;
 
 /**
- * Thrown when a prompt test's {@code scenario.md}, fixtures or values file does not follow the prompt test format.
- * The message names the location of the problem.
+ * Thrown when a prompt test's {@code scenario.md}, workspace files or values file does not follow the prompt test
+ * format. The message names the location of the problem.
  */
 public final class ScenarioFormatException extends Exception
 {

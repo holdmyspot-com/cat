@@ -40,9 +40,9 @@ public final class Commands
 	private static final String MAX_CONCURRENCY = "--max-concurrency";
 	private static final String GOAL = "--goal";
 	/**
-	 * The arguments of {@code contract fixtures}.
+	 * The arguments of {@code contract workspace}.
 	 */
-	private static final String FIXTURES_FORM = "<context file> <test directory> <test case number> <output directory>";
+	private static final String WORKSPACE_FORM = "<context file> <test directory> <test case number> <output directory>";
 
 	/**
 	 * The usage text.
@@ -57,8 +57,8 @@ public final class Commands
 		  choose <campaign> <choice> [--attempt N | --review-point N]
 		  cancel <campaign>
 		  contract check <context file>
-		  contract fixtures %s""".formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, scopeIds(),
-		FIXTURES_FORM);
+		  contract workspace %s""".formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, scopeIds(),
+		WORKSPACE_FORM);
 	private static final Pattern CAMPAIGN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,63}");
 	private final Core core;
 	private final JsonMapper json;
@@ -262,7 +262,7 @@ public final class Commands
 	}
 
 	/**
-	 * Parses a contract tool: {@code contract check} or {@code contract fixtures}.
+	 * Parses a contract tool: {@code contract check} or {@code contract workspace}.
 	 *
 	 * @param rest the arguments after the command's name
 	 * @return the command
@@ -270,7 +270,7 @@ public final class Commands
 	 */
 	private static Command contract(List<String> rest)
 	{
-		String form = "check <context file> | fixtures " + FIXTURES_FORM;
+		String form = "check <context file> | workspace " + WORKSPACE_FORM;
 		if (rest.isEmpty())
 			throw new InvalidCommandException("contract: expected " + form);
 		List<String> arguments = rest.subList(1, rest.size());
@@ -281,11 +281,11 @@ public final class Commands
 				expect("contract check", arguments, 1, "<context file>");
 				yield new Command.ContractCheck(path("contract check", "the context file", arguments.getFirst()));
 			}
-			case "fixtures" ->
+			case "workspace" ->
 			{
-				String command = "contract fixtures";
-				expect(command, arguments, 4, FIXTURES_FORM);
-				yield new Command.ContractFixtures(path(command, "the context file", arguments.get(0)),
+				String command = "contract workspace";
+				expect(command, arguments, 4, WORKSPACE_FORM);
+				yield new Command.ContractWorkspace(path(command, "the context file", arguments.get(0)),
 					path(command, "the test directory", arguments.get(1)),
 					positive("The test case number", arguments.get(2)),
 					path(command, "the output directory", arguments.get(3)));
@@ -545,8 +545,8 @@ public final class Commands
 			return switch (tool)
 			{
 				case Command.ContractCheck check -> tools.check(check.context(), out);
-				case Command.ContractFixtures fixtures -> tools.fixtures(fixtures.context(),
-					fixtures.testDirectory(), fixtures.testCase(), fixtures.output(), out);
+				case Command.ContractWorkspace workspace -> tools.workspace(workspace.context(),
+					workspace.testDirectory(), workspace.testCase(), workspace.output(), out);
 			};
 		}
 		catch (IOException e)

@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.PortablePaths;
-import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles.Fixture;
+import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles.WorkspaceEntry;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,8 +24,8 @@ import java.util.stream.Stream;
 
 /**
  * Reads the {@value PromptTestFiles#WORKSPACE} directory of one prompt test. A file of the directory, or a file of the
- * project that a link reaches, becomes a fixture at its path below {@value PromptTestFiles#WORKSPACE}. A link of the
- * directory whose target lies inside the directory stays a link; every other link is replaced by its target.
+ * project that a link reaches, becomes a workspace file at its path below {@value PromptTestFiles#WORKSPACE}. A link of
+ * the directory whose target lies inside the directory stays a link; every other link is replaced by its target.
  * <p>
  * The prompt test may lie in a draft directory, which holds files at their paths relative to the project. A link
  * resolves at the path where it lies relative to the draft directory: a target that the draft directory holds is read
@@ -51,15 +51,15 @@ final class WorkspaceReader
 	 */
 	private Path workspace;
 	/**
-	 * The names of the prompt test's variables, which a fixture's content may name.
+	 * The names of the prompt test's variables, which a workspace file's content may name.
 	 */
 	private final Set<String> declared;
 	/**
-	 * The fixtures read so far, by path.
+	 * The workspace files read so far, by path.
 	 */
-	private final Map<String, Fixture> fixtures = new TreeMap<>();
+	private final Map<String, WorkspaceEntry> workspaceFiles = new TreeMap<>();
 	/**
-	 * The file that each fixture is copied from, by the fixture's path.
+	 * The file that each workspace file is copied from, by the workspace file's path.
 	 */
 	private final Map<String, Path> sources = new TreeMap<>();
 	/**
@@ -116,19 +116,19 @@ final class WorkspaceReader
 	}
 
 	/**
-	 * Returns the fixtures.
+	 * Returns the workspace files.
 	 *
-	 * @return the fixtures, sorted by path
+	 * @return the workspace files, sorted by path
 	 */
-	List<Fixture> fixtures()
+	List<WorkspaceEntry> workspaceFiles()
 	{
-		return List.copyOf(fixtures.values());
+		return List.copyOf(workspaceFiles.values());
 	}
 
 	/**
-	 * Returns the file that each fixture is copied from.
+	 * Returns the file that each workspace file is copied from.
 	 *
-	 * @return each file, by the fixture's path
+	 * @return each file, by the workspace file's path
 	 */
 	Map<String, Path> sources()
 	{
@@ -137,7 +137,7 @@ final class WorkspaceReader
 
 	/**
 	 * Returns the target of each link of the prompt test's own {@value PromptTestFiles#WORKSPACE} whose target lies
-	 * outside it, so that the link's fixtures are copies of what it reaches.
+	 * outside it, so that the link's workspace files are copies of what it reaches.
 	 *
 	 * @return each target, relative to the link's directory, by the link's path below
 	 *   {@value PromptTestFiles#WORKSPACE}; paths and targets have {@code /} separators
@@ -208,12 +208,12 @@ final class WorkspaceReader
 					PromptTestFiles.display(project, directory) + "; a trial may not receive a prompt test's files");
 			}
 			else
-				addFixture(path, entry);
+				addWorkspaceFile(path, entry);
 		}
 	}
 
 	/**
-	 * Adds a link of the prompt test's {@value PromptTestFiles#WORKSPACE} as a fixture if its target lies inside
+	 * Adds a link of the prompt test's {@value PromptTestFiles#WORKSPACE} as a workspace file if its target lies inside
 	 * {@value PromptTestFiles#WORKSPACE}.
 	 *
 	 * @param link          the link
@@ -243,7 +243,7 @@ final class WorkspaceReader
 				break;
 		}
 		String text = PortablePaths.text(relative.getParent().relativize(first));
-		fixtures.put(workspacePath, new Fixture(workspacePath, false, Set.of(), Optional.of(text)));
+		workspaceFiles.put(workspacePath, new WorkspaceEntry(workspacePath, false, Set.of(), Optional.of(text)));
 		sources.put(workspacePath, link);
 		return true;
 	}
@@ -332,7 +332,7 @@ final class WorkspaceReader
 				expanding.pop();
 			}
 			else if (attributes.isRegularFile())
-				addFixture(workspacePath, file);
+				addWorkspaceFile(workspacePath, file);
 			else
 				throw problem(location, "the link's target " + display(target) + " is a special file");
 			return;
@@ -385,25 +385,25 @@ final class WorkspaceReader
 	}
 
 	/**
-	 * Adds a fixture.
+	 * Adds a workspace file.
 	 *
-	 * @param path the fixture's path below {@value PromptTestFiles#WORKSPACE}
-	 * @param file the file that the fixture is copied from
+	 * @param path the workspace file's path below {@value PromptTestFiles#WORKSPACE}
+	 * @param file the file that the workspace file is copied from
 	 * @throws IOException if the file cannot be read
 	 */
-	private void addFixture(String path, Path file) throws IOException
+	private void addWorkspaceFile(String path, Path file) throws IOException
 	{
 		String content = PromptTestFiles.utf8(Files.readAllBytes(file));
-		Fixture fixture;
+		WorkspaceEntry workspaceFile;
 		if (content == null)
-			fixture = new Fixture(path, false, Set.of());
+			workspaceFile = new WorkspaceEntry(path, false, Set.of());
 		else
 		{
 			Set<String> names = new HashSet<>(Placeholders.scenarioNames(content));
 			names.retainAll(declared);
-			fixture = new Fixture(path, true, names);
+			workspaceFile = new WorkspaceEntry(path, true, names);
 		}
-		fixtures.put(path, fixture);
+		workspaceFiles.put(path, workspaceFile);
 		sources.put(path, file);
 	}
 

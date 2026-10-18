@@ -1,10 +1,10 @@
 {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
 	"title": "Compliance contract proposal",
-	"description": "Every requirement, prompt test, trial profile, cell, variable, judge profile field and fixture that the proposal presents to the user. Lists hold the items themselves; a count or summary never stands in for them.",
+	"description": "Every requirement, prompt test, trial profile, cell, variable, judge profile field and workspace file that the proposal presents to the user. Lists hold the items themselves; a count or summary never stands in for them.",
 	"type": "object",
 	"additionalProperties": false,
-	"required": ["requirements", "tests", "trial_profiles", "judge", "fixtures", "limitations", "minimum_pass_rate", "salt"],
+	"required": ["requirements", "tests", "trial_profiles", "judge", "ignored_files", "limitations", "minimum_pass_rate", "salt"],
 	"$defs": {
 		"assertion": {
 			"description": "One statement that a compliant trial satisfies. CAT adds the assertion expected_outcome, which the judge decides, to every test: the reply's result matches the test case's expected outcome.",
@@ -31,7 +31,7 @@
 					"variable": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
 					"text": {"description": "The text that replaces {{name}}.", "type": "string"},
 					"call": {
-						"description": "A call to a value generator built into CAT, such as {\"generator\": \"log_lines\", \"count\": 18000} with whole-number parameters, whose output replaces {{name}}. CAT adds the seed and version. A generated value may appear only in fixture contents.",
+						"description": "A call to a value generator built into CAT, such as {\"generator\": \"log_lines\", \"count\": 18000} with whole-number parameters, whose output replaces {{name}}. CAT adds the seed and version. A generated value may appear only in the contents of workspace files.",
 						"type": "object",
 						"required": ["generator"],
 						"properties": {"generator": {"type": "string", "pattern": "\\S"}},
@@ -75,7 +75,7 @@
 			"items": {
 				"type": "object",
 				"additionalProperties": false,
-				"required": ["id", "risk_rank", "requirement_ids", "absent_triggers", "applicability", "turns", "time_limit_seconds", "expected_behavior", "uncovered_interactions", "variables", "fixtures", "committed_test_cases", "test_cases", "assertions", "regression_scenarios"],
+				"required": ["id", "risk_rank", "requirement_ids", "absent_triggers", "applicability", "turns", "time_limit_seconds", "expected_behavior", "uncovered_interactions", "variables", "workspace_files", "committed_test_cases", "test_cases", "assertions", "regression_scenarios"],
 				"properties": {
 					"id": {"type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
 					"risk_rank": {"description": "1 is the riskiest. Tests may share a rank.", "type": "integer", "minimum": 1},
@@ -128,7 +128,7 @@
 							}
 						}
 					},
-					"fixtures": {
+					"workspace_files": {
 						"description": "The text files that CAT writes into each trial's workspace before the first turn, at their path relative to the workspace root. {{name}} placeholders are replaced in each path and content. A path must not collide with a project file. Empty if none.",
 						"type": "array",
 						"items": {
@@ -141,8 +141,8 @@
 							}
 						}
 					},
-					"recorded_fixtures": {
-						"description": "The text files and links of the recorded scenarios that the test cites, which CAT copies from the scenarios' files and writes into each trial's workspace like fixtures. Absent if none.",
+					"recorded_workspace_files": {
+						"description": "The text files and links of the recorded scenarios that the test cites, which CAT copies from the scenarios' files and writes into each trial's workspace like workspace_files. Absent if none.",
 						"type": "array",
 						"minItems": 1,
 						"items": {
@@ -242,13 +242,13 @@
 				"result_schema": {"description": "The JSON schema that a judge result must satisfy.", "type": "object"}
 			}
 		},
-		"fixtures": {
-			"description": "The ignored paths that trials need.",
+		"ignored_files": {
+			"description": "The ignored files that trials need.",
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["ignored_paths"],
+			"required": ["paths"],
 			"properties": {
-				"ignored_paths": {"description": "Project-relative paths, using / as the separator. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}}
+				"paths": {"description": "Project-relative paths, using / as the separator. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}}
 			}
 		},
 		"limitations": {

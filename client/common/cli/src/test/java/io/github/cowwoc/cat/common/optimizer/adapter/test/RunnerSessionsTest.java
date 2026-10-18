@@ -11,7 +11,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.DerivedSource;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
-import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TestWorkspace;
 import io.github.cowwoc.cat.common.optimizer.port.FollowUp;
 import io.github.cowwoc.cat.common.optimizer.port.LoadedSources;
 import io.github.cowwoc.cat.common.optimizer.port.PluginBase;
@@ -289,7 +289,7 @@ public final class RunnerSessionsTest
 			for (List<Path> plugins : List.of(List.of(otherCopy, catCopy), List.of(otherCopy), List.<Path>of()))
 			{
 				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, WorkspaceFixtures.NONE, plugins)));
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, plugins)));
 			}
 			await(sessions.start(request(SessionRole.JUDGE, TrialProfile.HARNESS_DEFAULT, source, List.of(), "go")));
 

@@ -241,7 +241,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 					put("candidate_passes", pairs.candidatePasses()).put("incumbent_passes", pairs.referencePasses());
 			}
 		}
-		// The session works in a copy of the project, so it reads a recorded fixture's file if it needs the content
+		// The session works in a copy of the project, so it reads a recorded workspace file's file if it needs the content
 		ObjectNode contract = DevelopmentContract.toJson(json, schema, brief.contract());
 		DevelopmentContract.omitRecordedContent(contract);
 		String turn = prompt.fill(Map.ofEntries(

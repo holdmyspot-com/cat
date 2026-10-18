@@ -6,7 +6,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
 import io.github.cowwoc.cat.common.optimizer.contract.CapabilityRanking;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.JudgeProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.MappedAssertion;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileBinding;
@@ -16,7 +16,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.RiskRank;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
-import io.github.cowwoc.cat.common.optimizer.contract.TrialFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.IgnoredFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfiles;
 import io.github.cowwoc.cat.common.optimizer.contract.VariableDeclaration;
@@ -178,7 +178,7 @@ public final class ContractFixtures
 		}
 		else
 			profiles = profiles(requirements, tests);
-		return new Contract(requirements, tests, profiles, judge(), new TrialFixtures(List.of(".env.example")),
+		return new Contract(requirements, tests, profiles, judge(), new IgnoredFiles(List.of(".env.example")),
 			List.of("Only the English prompts are covered."), Contract.DEFAULT_MINIMUM_PASS_RATE, SALT);
 	}
 
@@ -199,7 +199,7 @@ public final class ContractFixtures
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
 				test.assertions(), citations.getOrDefault(test.id(), List.of()), List.of()));
 		}
-		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.fixtures(),
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.ignoredFiles(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
 	}
 
@@ -211,12 +211,12 @@ public final class ContractFixtures
 	 * @param fixtures the fixtures
 	 * @return the contract with the fixtures
 	 */
-	public static Contract withFixtures(Contract contract, String testId, List<FixtureFile> fixtures)
+	public static Contract withFixtures(Contract contract, String testId, List<WorkspaceFile> fixtures)
 	{
 		List<PromptTest> tests = new ArrayList<>();
 		for (PromptTest test : contract.tests())
 		{
-			List<FixtureFile> testFixtures = test.fixtures();
+			List<WorkspaceFile> testFixtures = test.workspaceFiles();
 			if (test.id().equals(testId))
 				testFixtures = fixtures;
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
@@ -224,7 +224,7 @@ public final class ContractFixtures
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
 				test.assertions(), test.regressionScenarios(), testFixtures));
 		}
-		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.fixtures(),
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(), contract.ignoredFiles(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
 	}
 
@@ -238,7 +238,7 @@ public final class ContractFixtures
 	public static Contract withDependents(Contract contract, List<Dependent> dependents)
 	{
 		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), contract.judge(),
-			contract.fixtures(), contract.limitations(), contract.minimumPassRate(), contract.salt(), dependents);
+			contract.ignoredFiles(), contract.limitations(), contract.minimumPassRate(), contract.salt(), dependents);
 	}
 
 	/**

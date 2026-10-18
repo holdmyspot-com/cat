@@ -123,7 +123,7 @@ public final class PromptTestLocationsTest
 	}
 
 	/**
-	 * A prompt test that delivery creates holds its own fixtures, so staging excludes only its directory and the
+	 * A prompt test that delivery creates holds its own workspace files, so staging excludes only its directory and the
 	 * target's prompt test configuration and certification history.
 	 *
 	 * @throws IOException if a file cannot be read

@@ -6,7 +6,7 @@ import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.AddedTestCases;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
@@ -26,59 +26,60 @@ import java.util.Set;
 /**
  * A confirmed prompt test that delivery writes as a regression scenario.
  *
- * @param id          the prompt test's identifier
- * @param location    the prompt test's directory, relative to the project, and whether delivery creates it
- * @param scenario    the prompt test's scenario
- * @param designGoals what a compliant response does, which a created scenario states as its design goals
- * @param testCases   every test case of the campaign for the prompt test, each once
- * @param fixtures    the files that the prompt test writes into each trial's workspace, as the contract author wrote
- *                    them; for a prompt test with a draft directory, each names its file there, which is also its path
- *                    relative to the project
- * @param draft       the {@value PromptTestFiles#SCENARIO} that the contract author wrote in the prompt test's draft
- *                    directory, which delivery writes as it is, or empty for a prompt test that the contract author
- *                    wrote into the proposal itself
- * @param copiedLinks the target of each link of the draft directory's {@value PromptTestFiles#WORKSPACE} whose target
- *                    lies outside it, by the link's path relative to {@value PromptTestFiles#WORKSPACE}; each target
- *                    is relative to the link's directory, and paths and targets have {@code /} separators. Empty
- *                    without a draft directory.
+ * @param id             the prompt test's identifier
+ * @param location       the prompt test's directory, relative to the project, and whether delivery creates it
+ * @param scenario       the prompt test's scenario
+ * @param designGoals    what a compliant response does, which a created scenario states as its design goals
+ * @param testCases      every test case of the campaign for the prompt test, each once
+ * @param workspaceFiles the files that the prompt test writes into each trial's workspace, as the contract author wrote
+ *                       them; for a prompt test with a draft directory, each names its file there, which is also its
+ *                       path relative to the project
+ * @param draft          the {@value PromptTestFiles#SCENARIO} that the contract author wrote in the prompt test's draft
+ *                       directory, which delivery writes as it is, or empty for a prompt test that the contract author
+ *                       wrote into the proposal itself
+ * @param copiedLinks    the target of each link of the draft directory's {@value PromptTestFiles#WORKSPACE} whose
+ *                       target lies outside it, by the link's path relative to {@value PromptTestFiles#WORKSPACE}; each
+ *                       target is relative to the link's directory, and paths and targets have {@code /} separators.
+ *                       Empty without a draft directory.
  */
 public record DeliveredTest(String id, Location location, Scenario scenario, String designGoals,
-	List<TestCase> testCases, List<FixtureFile> fixtures, Optional<String> draft, Map<String, String> copiedLinks)
+	List<TestCase> testCases, List<WorkspaceFile> workspaceFiles, Optional<String> draft, Map<String, String> copiedLinks)
 {
 	/**
 	 * Creates a delivered test that the contract author wrote into the proposal itself.
 	 *
-	 * @param id          the prompt test's identifier
-	 * @param location    the prompt test's directory, relative to the project, and whether delivery creates it
-	 * @param scenario    the prompt test's scenario
-	 * @param designGoals what a compliant response does, which a created scenario states as its design goals
-	 * @param testCases   every test case of the campaign for the prompt test, each once
-	 * @param fixtures    the files that the prompt test writes into each trial's workspace
+	 * @param id             the prompt test's identifier
+	 * @param location       the prompt test's directory, relative to the project, and whether delivery creates it
+	 * @param scenario       the prompt test's scenario
+	 * @param designGoals    what a compliant response does, which a created scenario states as its design goals
+	 * @param testCases      every test case of the campaign for the prompt test, each once
+	 * @param workspaceFiles the files that the prompt test writes into each trial's workspace
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code id} is blank, {@code designGoals} is blank or {@code testCases} is
 	 *                                  empty
 	 */
 	public DeliveredTest(String id, Location location, Scenario scenario, String designGoals,
-		List<TestCase> testCases, List<FixtureFile> fixtures)
+		List<TestCase> testCases, List<WorkspaceFile> workspaceFiles)
 	{
-		this(id, location, scenario, designGoals, testCases, fixtures, Optional.empty(), Map.of());
+		this(id, location, scenario, designGoals, testCases, workspaceFiles, Optional.empty(), Map.of());
 	}
 
 	/**
 	 * Creates a delivered test.
 	 *
-	 * @param id          the prompt test's identifier
-	 * @param location    the prompt test's directory, relative to the project, and whether delivery creates it
-	 * @param scenario    the prompt test's scenario
-	 * @param designGoals what a compliant response does, which a created scenario states as its design goals
-	 * @param testCases   every test case of the campaign for the prompt test, each once
-	 * @param fixtures    the files that the prompt test writes into each trial's workspace; for a prompt test with a
-	 *                    draft directory, each names its file there
-	 * @param draft       the {@value PromptTestFiles#SCENARIO} that the contract author wrote in the prompt test's draft
-	 *                    directory, or empty for a prompt test that the contract author wrote into the proposal itself
-	 * @param copiedLinks the target of each link of the draft directory's {@value PromptTestFiles#WORKSPACE} whose
-	 *                    target lies outside it, by the link's path relative to {@value PromptTestFiles#WORKSPACE};
-	 *                    empty without a draft directory
+	 * @param id             the prompt test's identifier
+	 * @param location       the prompt test's directory, relative to the project, and whether delivery creates it
+	 * @param scenario       the prompt test's scenario
+	 * @param designGoals    what a compliant response does, which a created scenario states as its design goals
+	 * @param testCases      every test case of the campaign for the prompt test, each once
+	 * @param workspaceFiles the files that the prompt test writes into each trial's workspace; for a prompt test with a
+	 *                       draft directory, each names its file there
+	 * @param draft          the {@value PromptTestFiles#SCENARIO} that the contract author wrote in the prompt test's
+	 *                       draft directory, or empty for a prompt test that the contract author wrote into the proposal
+	 *                       itself
+	 * @param copiedLinks    the target of each link of the draft directory's {@value PromptTestFiles#WORKSPACE} whose
+	 *                       target lies outside it, by the link's path relative to {@value PromptTestFiles#WORKSPACE};
+	 *                       empty without a draft directory
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code id} is blank, {@code designGoals} is blank, {@code testCases} is
 	 *                                  empty, or {@code copiedLinks} is not empty without a draft
@@ -91,8 +92,8 @@ public record DeliveredTest(String id, Location location, Scenario scenario, Str
 		requireThat(designGoals, "designGoals").isNotBlank();
 		requireThat(testCases, "testCases").isNotEmpty();
 		testCases = List.copyOf(testCases);
-		requireThat(fixtures, "fixtures").isNotNull();
-		fixtures = List.copyOf(fixtures);
+		requireThat(workspaceFiles, "workspaceFiles").isNotNull();
+		workspaceFiles = List.copyOf(workspaceFiles);
 		requireThat(draft, "draft").isNotNull();
 		copiedLinks = Map.copyOf(copiedLinks);
 		if (draft.isEmpty())
@@ -160,7 +161,7 @@ public record DeliveredTest(String id, Location location, Scenario scenario, Str
 				copiedLinks = test.draft().get().copiedLinks();
 			}
 			tests.add(new DeliveredTest(test.id(), location, test.scenario(), test.expectedBehaviour(),
-				List.copyOf(testCases), test.fixtures(), draft, copiedLinks));
+				List.copyOf(testCases), test.workspaceFiles(), draft, copiedLinks));
 		}
 		return tests;
 	}

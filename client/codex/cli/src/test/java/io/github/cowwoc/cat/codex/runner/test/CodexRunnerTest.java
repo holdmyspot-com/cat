@@ -318,7 +318,7 @@ public final class CodexRunnerTest
 	 * Verifies that on Linux a session that reads no evidence under the run root is denied the whole run root as one
 	 * path, besides the Codex session logs and login in its home and the paths that the caller denies. The sandbox
 	 * keeps the session's project and home writable inside the denied root, so the session reads them while every
-	 * other run, including one that starts later, and the fixtures stay hidden. The session log directory exists so
+	 * other run, including one that starts later, and the workspaces stay hidden. The session log directory exists so
 	 * that the sandbox can deny it.
 	 *
 	 * @throws IOException if the run cannot be created
@@ -336,7 +336,7 @@ public final class CodexRunnerTest
 			manager.snapshotProject(run);
 			Path login = Files.writeString(directory.resolve("home/auth.json"), "{}");
 			manager.create("codex");
-			Files.createDirectories(root.resolve("fixtures"));
+			Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
 			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
@@ -389,7 +389,7 @@ public final class CodexRunnerTest
 			manager.snapshotProject(run);
 			Path login = Files.writeString(directory.resolve("home/auth.json"), "{}");
 			manager.create("codex");
-			Files.createDirectories(root.resolve("fixtures"));
+			Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
 			for (Platform platform : List.of(Platform.MACOS_ARM64, Platform.WINDOWS_X64))
@@ -457,7 +457,7 @@ public final class CodexRunnerTest
 			HarnessRun other = manager.create("codex");
 			HarnessRun evidence = manager.create("codex");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
-			Path fixtures = Files.createDirectories(root.resolve("fixtures"));
+			Path workspaces = Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
 			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
@@ -467,7 +467,7 @@ public final class CodexRunnerTest
 				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
 				directory.resolve("initial-project"), directory.resolve("home/sessions"), login, other.directory(),
 				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
-				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock"), fixtures));
+				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock"), workspaces));
 		}
 	}
 }

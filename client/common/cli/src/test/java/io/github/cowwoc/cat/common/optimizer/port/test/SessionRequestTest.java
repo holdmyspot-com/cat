@@ -2,10 +2,10 @@ package io.github.cowwoc.cat.common.optimizer.port.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.Part;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
-import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TestWorkspace;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRequest;
 import io.github.cowwoc.cat.common.optimizer.port.SessionRole;
 
@@ -113,7 +113,7 @@ public final class SessionRequestTest
 	public void refusesFixturesOutsideTrial()
 	{
 		// Requirement: R-C21
-		WorkspaceFixtures files = new WorkspaceFixtures(Map.of("notes.md", new FixtureFile("notes.md", "notes")),
+		TestWorkspace files = new TestWorkspace(Map.of("notes.md", new WorkspaceFile("notes.md", "notes")),
 			Map.of(), "outcome");
 		SessionRequest trial = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, Path.of("/staged").toAbsolutePath(),
 			List.of("turn"), List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT, files);
@@ -137,7 +137,7 @@ public final class SessionRequestTest
 	@Test
 	public void acceptsContractAuthorFiles()
 	{
-		WorkspaceFixtures files = new WorkspaceFixtures(Map.of("notes.md", new FixtureFile("notes.md", "notes")),
+		TestWorkspace files = new TestWorkspace(Map.of("notes.md", new WorkspaceFile("notes.md", "notes")),
 			Map.of(), "outcome");
 		SessionRequest request = new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT,
 			Path.of("/staged").toAbsolutePath(), List.of("turn"), List.of(), Duration.ofMinutes(1),

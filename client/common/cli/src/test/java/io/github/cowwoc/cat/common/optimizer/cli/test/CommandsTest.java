@@ -784,7 +784,7 @@ public final class CommandsTest
 	{
 		// Requirement: R-C27
 		requireThat(Commands.USAGE, "usage").contains("contract check <context file>").
-			contains("contract fixtures <context file> <test directory> <test case number> <output directory>");
+			contains("contract workspace <context file> <test directory> <test case number> <output directory>");
 	}
 
 	/**
@@ -797,14 +797,14 @@ public final class CommandsTest
 		Commands commands = new Commands(new FakeCore(), JSON, ZoneOffset.UTC);
 		requireThat(commands.parse(List.of("contract", "check", "cat-contract.json")), "check").
 			isEqualTo(new Command.ContractCheck(Path.of("cat-contract.json")));
-		requireThat(commands.parse(List.of("contract", "fixtures", "cat-contract.json", ".cat/tests/CLAUDE/notes", "2",
-			"../sized")), "fixtures").isEqualTo(new Command.ContractFixtures(Path.of("cat-contract.json"),
+		requireThat(commands.parse(List.of("contract", "workspace", "cat-contract.json", ".cat/tests/CLAUDE/notes", "2",
+			"../sized")), "workspace").isEqualTo(new Command.ContractWorkspace(Path.of("cat-contract.json"),
 			Path.of(".cat/tests/CLAUDE/notes"), 2, Path.of("../sized")));
 		for (List<String> malformed : List.of(List.of("contract"), List.of("contract", "verify", "cat-contract.json"),
 			List.of("contract", "check"), List.of("contract", "check", "a.json", "b.json"),
-			List.of("contract", "fixtures", "cat-contract.json", "notes", "0", "out"),
-			List.of("contract", "fixtures", "cat-contract.json", "notes", "first", "out"),
-			List.of("contract", "fixtures", "cat-contract.json", "notes", "1")))
+			List.of("contract", "workspace", "cat-contract.json", "notes", "0", "out"),
+			List.of("contract", "workspace", "cat-contract.json", "notes", "first", "out"),
+			List.of("contract", "workspace", "cat-contract.json", "notes", "1")))
 		{
 			try
 			{

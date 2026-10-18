@@ -159,7 +159,7 @@ public final class CodexRunner
 	 *
 	 * @param artifact the complete Codex artifact
 	 * @param project the validator project
-	 * @param fixtures the optional directory whose files are copied into the project on top of {@code project}
+	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
 	 * @param trialPlugins the trial plugins, each installed into the isolated home from the marketplace that bears its
 	 *   manifest's name, beside CAT when {@code installCat} is set, with the user's approvals of its hooks
 	 * @param manager the run manager
@@ -178,7 +178,7 @@ public final class CodexRunner
 	 * @return the live owned Codex run session
 	 * @throws IOException if validation, copying, or process startup fails
 	 */
-	HarnessRunSession start(Path artifact, Path project, Path fixtures, List<Path> trialPlugins,
+	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
 		int toolOutputTokenLimit) throws IOException
@@ -200,8 +200,8 @@ public final class CodexRunner
 		try
 		{
 			manager.copyProject(project, run);
-			if (fixtures != null)
-				manager.copyFixtures(fixtures, run);
+			if (workspace != null)
+				manager.copyWorkspace(workspace, run);
 			manager.snapshotProject(run);
 			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment);
 			Path isolatedHome = run.directory().resolve("home");
@@ -304,10 +304,10 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
-	 * file and directory under the run root except the session's project, home and evidence, the directory where Codex
-	 * logs the session's events, and the login that the runner copied into the session's home. The session therefore
-	 * cannot read the runner's records of its own run or of any other run, the fixtures of any run, or the login. The
+	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every file
+	 * and directory under the run root except the session's project, home and evidence, the directory where Codex logs
+	 * the session's events, and the login that the runner copied into the session's home. The session therefore cannot
+	 * read the runner's records of its own run or of any other run, the workspace files of any run, or the login. The
 	 * method creates the session log directory, because the sandbox skips a denied path that does not exist yet.
 	 * <p>
 	 * The result names the run root itself rather than each path under it, which also denies the runs that start after

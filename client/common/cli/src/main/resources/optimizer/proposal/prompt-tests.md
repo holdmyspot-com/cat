@@ -14,11 +14,11 @@ Write every test by these rules:
 - It proves its requirements: its assertions check the requirements' outcomes, not a mechanism that a prompt file
   prescribes, unless a requirement names that mechanism.
 - It needs the least work that can still fail its requirements: the smallest inputs, turns and actions under which a
-  requirement can still fail. Size each fixture from the specific way that the requirement fails: when the failure is
-  reading only the first part that a tool returns, make the document just over one part; when it is reading only the
-  first lines, make it just over that many lines. A document many times that size adds cost without adding a way to
-  fail, and a fixture that the requirement does not concern needs only the content that the turn uses.
-- It is organic: no turn, fixture or file name tells the agent the expected outcome or that it is being tested.
+  requirement can still fail. Size each workspace file from the specific way that the requirement fails: when the
+  failure is reading only the first part that a tool returns, make the document just over one part; when it is reading
+  only the first lines, make it just over that many lines. A document many times that size adds cost without adding a
+  way to fail, and a workspace file that the requirement does not concern needs only the content that the turn uses.
+- It is organic: no turn, workspace file or file name tells the agent the expected outcome or that it is being tested.
 
 Each item of `tests` gives:
 
@@ -57,10 +57,9 @@ continues on lines indented by two spaces.
 - `## Assertions`: one `### <id>` subsection per assertion, holding its pairs as Assertions below describes.
 
 Where a variable's value is inserted, write `{{` and `}}` around the variable's name, as in `{{tone}}`. A placeholder
-may appear in a turn, the expected behavior, an assertion's `description` and `tool`, and a fixture's path, content and
-link target.
-CAT replaces only declared names, so other text in double braces stays as written. `{{expected_outcome}}` stands for
-the test case's expected outcome, and no variable may take that name.
+may appear in a turn, the expected behavior, an assertion's `description` and `tool`, and a workspace file's path,
+content and link target. CAT replaces only declared names, so other text in double braces stays as written.
+`{{expected_outcome}}` stands for the test case's expected outcome, and no variable may take that name.
 
 ### Variables and test cases
 
@@ -105,8 +104,9 @@ call that already has them, so that its content stays the same.
 
 - Write bulk content as a generator call, never as typed text: any text beyond the facts that decide the expected
   outcome and the context that the turn needs.
-- Use a generated value only in a fixture's content. CAT refuses one in a turn, an assertion or a fixture's path.
-- Generated content never decides a test case's expected outcome: only the values and fixture text that you write do.
+- Use a generated value only in a workspace file's content. CAT refuses one in a turn, an assertion or a workspace
+  file's path.
+- Generated content never decides a test case's expected outcome: only the values and workspace text that you write do.
   Write each fact that decides it with a word that the generator's output never contains, or a date or number outside
   the output's range, so that the generated content never repeats or contradicts the fact.
 
@@ -118,8 +118,8 @@ The generators, with every word, date and number that their output can contain:
 
 A trial's workspace holds the prompt system's files and the files of the test's `workspace/` directory, each at its
 path below `workspace/`, and no other file of the project. CAT writes those files before the first turn and replaces
-placeholders in each one's path and content. Each is a fixture: use one when a turn needs a file whose content the test case decides,
-or a file of the project that the turn works on.
+placeholders in each one's path and content. Each is a workspace file: use one when a turn needs a file whose content
+the test case decides, or a file of the project that the turn works on.
 
 - To give a trial a file or directory that lies elsewhere in the project, put a symbolic link in `workspace/` whose
   target, relative to the link's directory, is that file or directory. The trial receives a copy of the target at the
@@ -133,12 +133,12 @@ or a file of the project that the turn works on.
 - CAT refuses a link whose target is absolute, missing, outside the project or in a cycle of links, and a link that
   reaches a prompt test's directory or a prompt file: every trial already receives the prompt files that it measures.
   `workspace/` holds only regular files, directories and symbolic links.
-- A fixture's workspace path stays outside `.git`, and must not name a file that every trial already receives, such as
+- A workspace file's path stays outside `.git`, and must not name a file that every trial already receives, such as
   a prompt file.
 - A value inserted into a path or a link target must be a single name: not empty, not `.` or `..`, and without `/`,
-  `\`, control characters or any of `< > : " | ? *`. CAT refuses a test case that breaks this rule or whose fixture
-  paths collide.
-- Write fixtures as UTF-8 text.
+  `\`, control characters or any of `< > : " | ? *`. CAT refuses a test case that breaks this rule or whose
+  workspace paths collide.
+- Write workspace files as UTF-8 text.
 
 ### Assertions
 
@@ -205,9 +205,9 @@ directory or the proposal file.
   only then. It prints every problem at once, each with the file and line or the JSON path of the proposal file that
   it concerns, and exits with a non-zero status when there is one. It also prints, for each test, how many distinct
   expected outcomes its test cases have.
-- `{{launcher}} contract fixtures {{context_file}} <test directory> <test case number> <output directory>` writes the
+- `{{launcher}} contract workspace {{context_file}} <test directory> <test case number> <output directory>` writes the
   workspace files of one test case, counted from 1 in `values.json`, into a new output directory outside the draft
   directory, with its values inserted and its generator calls expanded. Give the test directory as the test's
   `directory` in the proposal file, relative to the draft directory. For each file it prints the path, the size in
   bytes, the number of lines and how the size compares with the tool-output limit of each trial profile, so that you
-  can size each fixture by the rules above.
+  can size each workspace file by the rules above.

@@ -33,7 +33,7 @@ public final class DraftFixtures
 	 * other property, including one that the proposal file does not allow, stays in the item.
 	 */
 	private static final Set<String> INLINE = Set.of("id", "turns", "time_limit_seconds", "expected_behavior",
-		"variables", "test_cases", "fixtures", "regression_scenarios");
+		"variables", "test_cases", "workspace_files", "regression_scenarios");
 
 	/**
 	 * Prevents instantiation.
@@ -147,11 +147,11 @@ public final class DraftFixtures
 		Path testDirectory = Files.createDirectories(draft.resolve(directory));
 		Files.writeString(testDirectory.resolve("scenario.md"), scenario(test), UTF_8);
 		Files.writeString(testDirectory.resolve("values.json"), values(json, test), UTF_8);
-		for (JsonNode fixture : test.path("fixtures"))
+		for (JsonNode workspaceFile : test.path("workspace_files"))
 		{
-			Path file = testDirectory.resolve("workspace").resolve(fixture.path("path").asString());
+			Path file = testDirectory.resolve("workspace").resolve(workspaceFile.path("path").asString());
 			Files.createDirectories(file.getParent());
-			Files.writeString(file, fixture.path("content").asString(), UTF_8);
+			Files.writeString(file, workspaceFile.path("content").asString(), UTF_8);
 		}
 
 		ObjectNode item = json.createObjectNode();

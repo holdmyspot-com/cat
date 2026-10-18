@@ -202,7 +202,7 @@ public final class PromptTestLocations
 	 * directory of each prompt test and each regression scenario that a prompt test cites inside the project, which is
 	 * the directory of a {@value PromptTestFiles#SCENARIO} or the file of a scenario in an earlier format, each file or
 	 * directory inside a test root that a symbolic link in a cited prompt test's {@value PromptTestFiles#WORKSPACE}
-	 * reaches, each recorded file that a prompt test's fixture was copied from outside its directory, the target's
+	 * reaches, each recorded file that a prompt test's workspace file was copied from outside its directory, the target's
 	 * prompt test configuration, which names the trial plugins, and the target's certification history, which holds
 	 * the results of earlier certifications.
 	 *
@@ -224,10 +224,10 @@ public final class PromptTestLocations
 		excluded.add(certificationHistory(target));
 		for (PromptTest test : contract.tests())
 		{
-			for (FixtureFile fixture : test.fixtures())
+			for (WorkspaceFile workspaceFile : test.workspaceFiles())
 			{
-				if (!fixture.source().isEmpty() && !Path.of(fixture.source()).isAbsolute())
-					excluded.add(Path.of(fixture.source()).normalize());
+				if (!workspaceFile.source().isEmpty() && !Path.of(workspaceFile.source()).isAbsolute())
+					excluded.add(Path.of(workspaceFile.source()).normalize());
 			}
 			for (String citation : test.regressionScenarios())
 			{

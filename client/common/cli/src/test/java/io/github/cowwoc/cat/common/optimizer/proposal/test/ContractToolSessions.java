@@ -164,7 +164,7 @@ public final class ContractToolSessions
 	}
 
 	/**
-	 * Runs {@code contract fixtures}.
+	 * Runs {@code contract workspace}.
 	 *
 	 * @param json          the JSON mapper
 	 * @param contextFile   the session's context file
@@ -174,13 +174,13 @@ public final class ContractToolSessions
 	 * @return the tool's report
 	 * @throws IOException if a file cannot be read or written
 	 */
-	public static Report fixtures(JsonMapper json, Path contextFile, Path testDirectory, int testCase, Path output)
+	public static Report workspace(JsonMapper json, Path contextFile, Path testDirectory, int testCase, Path output)
 		throws IOException
 	{
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (PrintStream out = new PrintStream(bytes, true, UTF_8))
 		{
-			int exitCode = new ContractTools(json).fixtures(contextFile, testDirectory, testCase, output, out);
+			int exitCode = new ContractTools(json).workspace(contextFile, testDirectory, testCase, output, out);
 			return new Report(exitCode, bytes.toString(UTF_8));
 		}
 	}

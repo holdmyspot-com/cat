@@ -16,29 +16,29 @@ import java.util.Map;
 import java.util.regex.Matcher;
 
 /**
- * Copies a prompt test's fixtures into a trial's workspace for one test case, creating each link fixture as a
+ * Copies a prompt test's workspace files into a trial's workspace for one test case, creating each workspace link as a
  * link.
  */
-public final class Fixtures
+public final class TestWorkspaces
 {
 	/**
 	 * Prevents instantiation.
 	 */
-	private Fixtures()
+	private TestWorkspaces()
 	{
 	}
 
 	/**
-	 * Copies every fixture to its path in a workspace, creating a link fixture as a link. Placeholders are replaced in
-	 * file names, in link targets and in the content of files that are valid UTF-8; other files are copied unchanged.
-	 * Nothing is written unless every fixture can be.
+	 * Copies every workspace file to its path in a workspace, creating a workspace link as a link. Placeholders are
+	 * replaced in file names, in link targets and in the content of files that are valid UTF-8; other files are copied
+	 * unchanged. Nothing is written unless every workspace file can be.
 	 *
 	 * @param files     the prompt test's files
 	 * @param testCase  a valid test case of the prompt test
 	 * @param workspace the trial's workspace root, which already holds the staged source
 	 * @throws NullPointerException       if any of the arguments are null
 	 * @throws IllegalArgumentException   if the prompt test rejects the test case
-	 * @throws FileAlreadyExistsException if a fixture's path already exists in the workspace, or one of its parent
+	 * @throws FileAlreadyExistsException if a workspace file's path already exists in the workspace, or one of its parent
 	 *                                    directories exists as another kind of file
 	 * @throws IOException                if a file cannot be read or written
 	 */
@@ -47,18 +47,18 @@ public final class Fixtures
 		requireThat(files, "files").isNotNull();
 		requireThat(testCase, "testCase").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
-		Map<PromptTestFiles.Fixture, String> targets = files.targets(testCase);
+		Map<PromptTestFiles.WorkspaceEntry, String> targets = files.targets(testCase);
 		for (String target : targets.values())
 		{
 			if (Files.exists(workspace.resolve(target), LinkOption.NOFOLLOW_LINKS))
-				throw new FileAlreadyExistsException(target, null, "A fixture lands at a path that the workspace holds");
+				throw new FileAlreadyExistsException(target, null, "A workspace file lands at a path that the workspace holds");
 			for (int slash = target.indexOf('/'); slash != -1; slash = target.indexOf('/', slash + 1))
 			{
 				String parent = target.substring(0, slash);
 				Path path = workspace.resolve(parent);
 				if (Files.exists(path, LinkOption.NOFOLLOW_LINKS) && !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
 				{
-					throw new FileAlreadyExistsException(parent, null, "A fixture needs this path as a directory, but " +
+					throw new FileAlreadyExistsException(parent, null, "A workspace file needs this path as a directory, but " +
 						"the workspace holds a file there");
 				}
 			}
@@ -67,15 +67,15 @@ public final class Fixtures
 		List<Path> created = new ArrayList<>();
 		try
 		{
-			for (Map.Entry<PromptTestFiles.Fixture, String> entry : targets.entrySet())
+			for (Map.Entry<PromptTestFiles.WorkspaceEntry, String> entry : targets.entrySet())
 			{
-				PromptTestFiles.Fixture fixture = entry.getKey();
-				Path source = files.source(fixture);
+				PromptTestFiles.WorkspaceEntry workspaceFile = entry.getKey();
+				Path source = files.source(workspaceFile);
 				Path target = workspace.resolve(entry.getValue());
 				createParents(workspace, target.getParent(), created);
-				if (fixture.link().isPresent())
-					writeLink(fixture.link().get(), target, testCase.values(), testCase.expectedOutcome());
-				else if (fixture.text())
+				if (workspaceFile.link().isPresent())
+					writeLink(workspaceFile.link().get(), target, testCase.values(), testCase.expectedOutcome());
+				else if (workspaceFile.text())
 					writeText(Files.readString(source), target, testCase.values(), testCase.expectedOutcome());
 				else
 					Files.copy(source, target);
@@ -137,7 +137,7 @@ public final class Fixtures
 	 * expanding a generated value, and {@code {{expected_outcome}}} by the expected outcome. Other text in double
 	 * braces stays as it is.
 	 *
-	 * @param content         the fixture's content
+	 * @param content         the workspace file's content
 	 * @param target          the path to write, which must not exist
 	 * @param values          the test case's value of each variable, by name
 	 * @param expectedOutcome the test case's expected outcome

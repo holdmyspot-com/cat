@@ -40,7 +40,7 @@ import java.util.TreeMap;
  * @param testCases the test cases that the contract author wrote for this campaign
  * @param assertions the assertions that the contract author declared, each with the requirement that it checks
  * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
- * @param fixtures the files that each trial's workspace receives, with placeholders replaced in their paths and
+ * @param workspaceFiles the files that each trial's workspace receives, with placeholders replaced in their paths and
  *   contents
  * @param draft the test's directory in the contract author's draft directory and the {@value PromptTestFiles#SCENARIO}
  *   that it holds, which delivery writes; empty for a test that the contract author wrote into the proposal itself
@@ -49,7 +49,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
 	List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
 	List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
-	List<FixtureFile> fixtures, Optional<PromptTest.Draft> draft)
+	List<WorkspaceFile> workspaceFiles, Optional<PromptTest.Draft> draft)
 {
 	/**
 	 * The behavior through which a reply fails the assertion {@value TestCase#EXPECTED_OUTCOME}.
@@ -130,7 +130,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 * @param testCases the test cases that the contract author wrote for this campaign
 	 * @param assertions the assertions that the contract author declared, each with the requirement that it checks
 	 * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
-	 * @param fixtures the files that each trial's workspace receives, with placeholders replaced in their paths and
+	 * @param workspaceFiles the files that each trial's workspace receives, with placeholders replaced in their paths and
 	 *   contents
 	 * @param draft the test's directory in the contract author's draft directory and the
 	 *   {@value PromptTestFiles#SCENARIO} that it holds, which delivery writes; empty for a test that the contract
@@ -138,15 +138,15 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code id}, a requirement identifier or an absent trigger is not lowercase
 	 *   words joined by underscores, a text is blank, a list that must not be empty is empty, {@code timeLimit} is not
-	 *   positive or includes fractional seconds, two variables share a name, a turn names a placeholder that no
-	 *   variable defines, a test case does not give a value to exactly the declared variables, a test case's values
-	 *   do not fit the fixtures (a generated value outside fixture contents or in none, a file-name value that is
-	 *   not one valid segment, or two fixtures landing on one path), a test case appears twice, two fixtures share a
-	 *   path, two assertions share an identifier, an assertion has the reserved identifier
-	 *   {@value TestCase#EXPECTED_OUTCOME}, an assertion checks a requirement that the test does not check, a
-	 *   requirement has no assertion, an assertion's statement or {@code tool} names a placeholder that is
-	 *   neither a variable nor {@value TestCase#EXPECTED_OUTCOME}, a {@code tool} examines a turn that the test
-	 *   does not have, or a test case's values make a {@code tool} invalid
+	 *   positive or includes fractional seconds, two variables share a name, a turn names a placeholder that no variable
+	 *   defines, a test case does not give a value to exactly the declared variables, a test case's values do not fit the
+	 *   workspace files (a generated value outside workspace file contents or in none, a file-name value that is not one
+	 *   valid segment, or two workspace files landing on one path), a test case appears twice, two workspace files share
+	 *   a path, two assertions share an identifier, an assertion has the reserved identifier
+	 *   {@value TestCase#EXPECTED_OUTCOME}, an assertion checks a requirement that the test does not check, a requirement
+	 *   has no assertion, an assertion's statement or {@code tool} names a placeholder that is neither a variable nor
+	 *   {@value TestCase#EXPECTED_OUTCOME}, a {@code tool} examines a turn that the test does not have, or a test case's
+	 *   values make a {@code tool} invalid
 	 */
 	public PromptTest
 	{
@@ -165,7 +165,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		requireThat(testCases, "testCases").isNotNull();
 		requireThat(assertions, "assertions").isNotNull();
 		requireThat(regressionScenarios, "regressionScenarios").isNotNull();
-		requireThat(fixtures, "fixtures").isNotNull();
+		requireThat(workspaceFiles, "workspaceFiles").isNotNull();
 		requireThat(draft, "draft").isNotNull();
 		requirementIds = List.copyOf(requirementIds);
 		absentTriggers = List.copyOf(absentTriggers);
@@ -176,7 +176,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		testCases = List.copyOf(testCases);
 		assertions = List.copyOf(assertions);
 		regressionScenarios = List.copyOf(regressionScenarios);
-		fixtures = List.copyOf(fixtures);
+		workspaceFiles = List.copyOf(workspaceFiles);
 		for (String requirementId : requirementIds)
 			requireThat(requirementId, "requirementId").matches(Identifier.SNAKE_CASE);
 		for (String absentTrigger : absentTriggers)
@@ -207,14 +207,17 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 			}
 		}
 
-		Set<String> fixturePaths = new HashSet<>();
-		for (FixtureFile fixture : fixtures)
+		Set<String> workspaceFilePaths = new HashSet<>();
+		for (WorkspaceFile workspaceFile : workspaceFiles)
 		{
-			if (!fixturePaths.add(fixture.path()))
-				throw new IllegalArgumentException("Test '" + id + "' lists the fixture '" + fixture.path() + "' twice");
+			if (!workspaceFilePaths.add(workspaceFile.path()))
+			{
+				throw new IllegalArgumentException("Test '" + id + "' lists the workspace file '" + workspaceFile.path() +
+					"' twice");
+			}
 		}
 		Set<String> inText = namedInText(turns, assertions);
-		List<PromptTestFiles.Fixture> described = describe(fixtures, names);
+		List<PromptTestFiles.WorkspaceEntry> described = describe(workspaceFiles, names);
 		List<TestCase> allTestCases = concat(committedTestCases, testCases);
 		Set<TestCase> seen = new HashSet<>();
 		for (TestCase testCase : allTestCases)
@@ -283,7 +286,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 * @param testCases the test cases that the contract author wrote for this campaign
 	 * @param assertions the assertions that the contract author declared, each with the requirement that it checks
 	 * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
-	 * @param fixtures the files that each trial's workspace receives
+	 * @param workspaceFiles the files that each trial's workspace receives
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if the canonical constructor rejects the arguments
 	 */
@@ -291,10 +294,10 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
 		List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
 		List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
-		List<FixtureFile> fixtures)
+		List<WorkspaceFile> workspaceFiles)
 	{
 		this(id, riskRank, requirementIds, absentTriggers, applicability, turns, timeLimit, expectedBehaviour,
-			uncoveredInteractions, variables, committedTestCases, testCases, assertions, regressionScenarios, fixtures,
+			uncoveredInteractions, variables, committedTestCases, testCases, assertions, regressionScenarios, workspaceFiles,
 			Optional.empty());
 	}
 
@@ -353,55 +356,56 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
-	 * Describes fixture files as the fixture rules read them.
+	 * Describes workspace files as the workspace file rules read them.
 	 *
-	 * @param fixtures the fixture files
+	 * @param workspaceFiles the workspace files
 	 * @param names the names of the declared variables
-	 * @return one fixture per file or link, naming the declared variables that a file's content names
+	 * @return one workspace file per file or link, naming the declared variables that a file's content names
 	 */
-	private static List<PromptTestFiles.Fixture> describe(List<FixtureFile> fixtures, Set<String> names)
+	private static List<PromptTestFiles.WorkspaceEntry> describe(List<WorkspaceFile> workspaceFiles, Set<String> names)
 	{
-		List<PromptTestFiles.Fixture> described = new ArrayList<>(fixtures.size());
-		for (FixtureFile fixture : fixtures)
+		List<PromptTestFiles.WorkspaceEntry> described = new ArrayList<>(workspaceFiles.size());
+		for (WorkspaceFile workspaceFile : workspaceFiles)
 		{
-			if (fixture.link())
+			if (workspaceFile.link())
 			{
-				described.add(new PromptTestFiles.Fixture(fixture.path(), false, Set.of(),
-					Optional.of(fixture.content())));
+				described.add(new PromptTestFiles.WorkspaceEntry(workspaceFile.path(), false, Set.of(),
+					Optional.of(workspaceFile.content())));
 				continue;
 			}
-			Set<String> contentNames = new HashSet<>(Placeholders.scenarioNames(fixture.content()));
+			Set<String> contentNames = new HashSet<>(Placeholders.scenarioNames(workspaceFile.content()));
 			contentNames.retainAll(names);
-			described.add(new PromptTestFiles.Fixture(fixture.path(), true, contentNames));
+			described.add(new PromptTestFiles.WorkspaceEntry(workspaceFile.path(), true, contentNames));
 		}
 		return described;
 	}
 
 	/**
-	 * Returns where each fixture lands in a trial's workspace for a test case.
+	 * Returns where each workspace file lands in a trial's workspace for a test case.
 	 *
 	 * @param testCase a test case of this test
-	 * @return each fixture by its path relative to the workspace root, with {@code /} separators, in fixture order
+	 * @return each workspace file by its path relative to the workspace root, with {@code /} separators, in the order
+	 *   of the workspace files
 	 * @throws NullPointerException if {@code testCase} is null
-	 * @throws IllegalArgumentException if the test case does not fit this test's fixtures
+	 * @throws IllegalArgumentException if the test case does not fit this test's workspace files
 	 */
-	public Map<String, FixtureFile> fixtureTargets(TestCase testCase)
+	public Map<String, WorkspaceFile> workspaceTargets(TestCase testCase)
 	{
 		requireThat(testCase, "testCase").isNotNull();
 		Set<String> names = new LinkedHashSet<>();
 		for (VariableDeclaration variable : variables)
 			names.add(variable.name());
-		List<PromptTestFiles.Fixture> described = describe(fixtures, names);
+		List<PromptTestFiles.WorkspaceEntry> described = describe(workspaceFiles, names);
 		List<String> problems = PromptTestFiles.problems(names, namedInText(turns, assertions), described, testCase);
 		if (!problems.isEmpty())
 		{
 			throw new IllegalArgumentException("The test case does not fit test '" + id + "': " +
 				String.join("; ", problems));
 		}
-		Map<PromptTestFiles.Fixture, String> targets = PromptTestFiles.substitute(described, testCase);
-		Map<String, FixtureFile> byTarget = new LinkedHashMap<>();
-		for (int i = 0; i < fixtures.size(); ++i)
-			byTarget.put(targets.get(described.get(i)), fixtures.get(i));
+		Map<PromptTestFiles.WorkspaceEntry, String> targets = PromptTestFiles.substitute(described, testCase);
+		Map<String, WorkspaceFile> byTarget = new LinkedHashMap<>();
+		for (int i = 0; i < workspaceFiles.size(); ++i)
+			byTarget.put(targets.get(described.get(i)), workspaceFiles.get(i));
 		return byTarget;
 	}
 
@@ -548,8 +552,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
-	 * Returns the text of each text value of a test case. Generated values are left out: they appear only in fixture
-	 * contents, never in turns, assertions or file names.
+	 * Returns the text of each text value of a test case. Generated values are left out: they appear only in workspace
+	 * file contents, never in turns, assertions or file names.
 	 *
 	 * @param testCase the test case
 	 * @return the text of each text value, by variable, in the test case's order

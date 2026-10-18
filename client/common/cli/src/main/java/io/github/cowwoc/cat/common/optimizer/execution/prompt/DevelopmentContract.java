@@ -46,9 +46,9 @@ final class DevelopmentContract
 	}
 
 	/**
-	 * Removes from a contract's JSON the content of each fixture that CAT copied from a recorded scenario, leaving its
-	 * path and the file that it was copied from, for a session that works in a copy of the project and so can read that
-	 * file when it needs the content.
+	 * Removes from a contract's JSON the content of each workspace file that CAT copied from a recorded scenario, leaving
+	 * its path and the file that it was copied from, for a session that works in a copy of the project and so can read
+	 * that file when it needs the content.
 	 *
 	 * @param contract the contract's JSON in the proposal schema
 	 */
@@ -56,11 +56,11 @@ final class DevelopmentContract
 	{
 		for (JsonNode test : contract.get("tests"))
 		{
-			JsonNode recorded = test.get(ProposalSchema.RECORDED_FIXTURES);
+			JsonNode recorded = test.get(ProposalSchema.RECORDED_WORKSPACE_FILES);
 			if (recorded == null)
 				continue;
-			for (JsonNode fixture : recorded)
-				((ObjectNode) fixture).remove("content");
+			for (JsonNode workspaceFile : recorded)
+				((ObjectNode) workspaceFile).remove("content");
 		}
 	}
 

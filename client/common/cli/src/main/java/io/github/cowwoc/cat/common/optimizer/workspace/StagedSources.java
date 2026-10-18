@@ -22,8 +22,8 @@ import java.util.function.Predicate;
 /**
  * Builds and deletes the staged source of each candidate: the directory that every trial session copies.
  * <p>
- * A staged source holds the fork's recorded files, including the participating ignored and external files and the
- * trial fixtures, with the candidate's overlay applied and the paths that the caller excludes left out. A caller can
+ * A staged source holds the fork's recorded files, including the participating ignored and external files, with the
+ * candidate's overlay applied and the paths that the caller excludes left out. A caller can
  * also select the files that a source holds, so that a trial receives only those. Every symbolic
  * link is replaced by a copy of its resolved target, so a trial write through a link reaches only the trial's copy.
  * CAT's session directories are excluded. A staged source is a cache that is rebuilt from the overlay when needed.

@@ -26,7 +26,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.TrialFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.CertificationScope;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.InvalidProposalException;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
 import io.github.cowwoc.cat.common.optimizer.contract.ProfileCatalog;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptConfiguration;
@@ -1305,16 +1305,16 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Requires that the fork holds the trial fixtures and derived prompt sources of the proposal that the user
+	 * Requires that the fork holds the ignored files and derived prompt sources of the proposal that the user
 	 * confirms, which presenting the proposal recorded, so that trials never read a live file.
 	 *
 	 * @param root the project root
 	 * @param fork the fork that the confirmed contract runs on
 	 * @param derived the proposal that the user confirms
 	 * @param selection the files of the candidate that every trial receives
-	 * @throws CommandRefusedException if a fixture does not exist, the fork lacks a file that the proposal needs, a
-	 *   fixture file of a prompt test would replace a file of the fork that every trial receives, or a fixture file is
-	 *   a copy of a file that every trial receives
+	 * @throws CommandRefusedException if an ignored file does not exist, the fork lacks a file that the proposal needs, a
+	 *   workspace file of a prompt test would replace a file of the fork that every trial receives, or a workspace file
+	 *   is a copy of a file that every trial receives
 	 */
 	private static void requireParticipantsHeld(Path root, ForkView fork, DerivedProposal derived,
 		SourceSelection selection) throws CommandRefusedException
@@ -1322,23 +1322,23 @@ public final class OptimizerCore implements Core
 		Set<String> promptCopies = promptFileCopies(derived.contract(), selection);
 		if (!promptCopies.isEmpty())
 		{
-			throw new CommandRefusedException("These fixture files of the proposal's prompt tests are copies of files " +
+			throw new CommandRefusedException("These workspace files of the proposal's prompt tests are copies of files " +
 				"that every trial already receives from its candidate, so each copy would stand in for the " +
 				"candidate's version: " + String.join("; ", promptCopies) + ". Run `revise` with feedback that " +
 				"removes these links from the tests' " + PromptTestFiles.WORKSPACE + "/ directories.");
 		}
-		Set<String> collisions = fixtureCollisions(fork.inventory(), derived.contract(), selection);
+		Set<String> collisions = collisionsOf(fork.inventory(), derived.contract(), selection);
 		if (!collisions.isEmpty())
 		{
-			throw new CommandRefusedException("These fixture files of the proposal's prompt tests collide with " +
+			throw new CommandRefusedException("These workspace files of the proposal's prompt tests collide with " +
 				"project files, so the trials could not receive them: " + String.join(", ", collisions) + ". Run " +
 				"`revise` with feedback that asks for other paths.");
 		}
 		Participants participants = participants(root, derived);
-		if (!participants.missingFixtures().isEmpty())
+		if (!participants.missingIgnoredFiles().isEmpty())
 		{
-			throw new CommandRefusedException("These trial fixtures do not exist in the project, so the trials " +
-				"could not see them: " + String.join(", ", participants.missingFixtures()));
+			throw new CommandRefusedException("These ignored files do not exist in the project, so the trials " +
+				"could not see them: " + String.join(", ", participants.missingIgnoredFiles()));
 		}
 		String unheld = unheld(fork, participants);
 		if (unheld.isEmpty())
@@ -1349,7 +1349,7 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns the fixture files of a contract's prompt tests that are copies of a file that every trial receives from
+	 * Returns the workspace files of a contract's prompt tests that are copies of a file that every trial receives from
 	 * its candidate. A file of a test root is never one, because trials do not receive the test roots.
 	 *
 	 * @param contract the contract
@@ -1361,21 +1361,21 @@ public final class OptimizerCore implements Core
 		Set<String> copies = new TreeSet<>();
 		for (PromptTest test : contract.tests())
 		{
-			for (FixtureFile fixture : test.fixtures())
+			for (WorkspaceFile workspaceFile : test.workspaceFiles())
 			{
-				if (fixture.source().isEmpty())
+				if (workspaceFile.source().isEmpty())
 					continue;
-				Path source = Path.of(fixture.source()).normalize();
+				Path source = Path.of(workspaceFile.source()).normalize();
 				if (source.isAbsolute() || PromptTestLocations.rootOf(source).isPresent() || !selection.selects(source))
 					continue;
-				copies.add("`" + test.id() + "` copies `" + fixture.source() + "` to `" + fixture.path() + "`");
+				copies.add("`" + test.id() + "` copies `" + workspaceFile.source() + "` to `" + workspaceFile.path() + "`");
 			}
 		}
 		return copies;
 	}
 
 	/**
-	 * Returns the fixture files of a contract's prompt tests that would replace a file of the fork that every trial
+	 * Returns the workspace files of a contract's prompt tests that would replace a file of the fork that every trial
 	 * receives, or that need a directory where every trial receives a file.
 	 *
 	 * @param inventory the files of the fork
@@ -1383,14 +1383,14 @@ public final class OptimizerCore implements Core
 	 * @param selection the files of the candidate that every trial receives
 	 * @return the colliding paths of every test case, relative to the workspace root
 	 */
-	private static Set<String> fixtureCollisions(FileInventory inventory, Contract contract, SourceSelection selection)
+	private static Set<String> collisionsOf(FileInventory inventory, Contract contract, SourceSelection selection)
 	{
 		Set<String> collisions = new TreeSet<>();
 		for (PromptTest test : contract.tests())
 		{
 			for (TestCase testCase : test.allTestCases())
 			{
-				for (String target : test.fixtureTargets(testCase).keySet())
+				for (String target : test.workspaceTargets(testCase).keySet())
 				{
 					Path path = Path.of(target);
 					boolean collides = selection.selects(path) && inventory.holds(path);
@@ -1461,15 +1461,15 @@ public final class OptimizerCore implements Core
 	/**
 	 * The files beyond the prompt system that a proposal's trials need.
 	 *
-	 * @param existing the existing trial fixtures and derived prompt sources, named as the fork names participants
-	 * @param missingFixtures the trial fixtures that do not exist in the project
+	 * @param existing the existing ignored files and derived prompt sources, named as the fork names participants
+	 * @param missingIgnoredFiles the ignored files that do not exist in the project
 	 */
-	private record Participants(Set<Path> existing, List<String> missingFixtures)
+	private record Participants(Set<Path> existing, List<String> missingIgnoredFiles)
 	{
 	}
 
 	/**
-	 * Returns the trial fixtures and derived prompt sources of a proposal.
+	 * Returns the ignored files and derived prompt sources of a proposal.
 	 *
 	 * @param root the project root
 	 * @param derived the contract author's proposal
@@ -1479,13 +1479,13 @@ public final class OptimizerCore implements Core
 	{
 		Set<Path> existing = new LinkedHashSet<>();
 		List<String> missing = new ArrayList<>();
-		for (String fixture : derived.contract().fixtures().ignoredPaths())
+		for (String ignored : derived.contract().ignoredFiles().paths())
 		{
-			Path path = Path.of(fixture);
+			Path path = Path.of(ignored);
 			if (InventoryScanner.isOmitted(path) ||
 				Files.notExists(root.resolve(path), LinkOption.NOFOLLOW_LINKS))
 			{
-				missing.add(fixture);
+				missing.add(ignored);
 			}
 			else
 				existing.add(path);
@@ -1818,7 +1818,7 @@ public final class OptimizerCore implements Core
 	 * Runs the guard pilot of a proposal, reusing the stored pilot of each prompt test that it still describes, then
 	 * presents the proposal with the pilot's results. The pilot's control trials install the campaign's trial
 	 * plugins. The fork first
-	 * records the proposal's trial fixtures and derived prompt sources, so the pilot's trials see the files that formal
+	 * records the proposal's ignored files and derived prompt sources, so the pilot's trials see the files that formal
 	 * trials will see. Before confirmation, the fork also leaves out those that an earlier proposal needed and this one
 	 * does not. After confirmation, nothing leaves the fork, and the campaign stays on its current fork until the user
 	 * confirms the revision.
@@ -1864,7 +1864,7 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
-	 * @param fork the fork that holds the proposal's trial fixtures and derived prompt sources
+	 * @param fork the fork that holds the proposal's ignored files and derived prompt sources
 	 * @param derived the proposal
 	 * @param plugin the check of the campaign's trial plugins
 	 * @return the pilot of each prompt test, by prompt test, or none if control trials cannot remove the dependents

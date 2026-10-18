@@ -31,7 +31,7 @@ public final class TrialSelection
 	 * Returns the files that load the prompt system into a trial: the prompt sources, the in-project loader
 	 * configuration, CAT's project directory, the harness's instruction files in any directory and its top-level
 	 * project directories, the project files that plugin mappings write into trial plugins, the in-project dependents
-	 * and the contract's ignored fixtures. A trial's project holds no other file of the candidate.
+	 * and the contract's ignored files. A trial's project holds no other file of the candidate.
 	 *
 	 * @param harness the harness that runs the trials
 	 * @param promptSources the in-project prompt files and directories, relative to the project
@@ -53,7 +53,7 @@ public final class TrialSelection
 			if (dependent.location() == Dependent.Location.PROJECT)
 				roots.add(dependent.path());
 		}
-		for (String ignored : contract.fixtures().ignoredPaths())
+		for (String ignored : contract.ignoredFiles().paths())
 			roots.add(Path.of(ignored));
 		return new SourceSelection(roots, Set.copyOf(harness.instructionFiles()), List.of());
 	}

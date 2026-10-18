@@ -53,7 +53,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestLocations;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
-import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TestWorkspace;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialProfile;
 import io.github.cowwoc.cat.common.optimizer.contract.UndecidableToolException;
 import io.github.cowwoc.cat.common.optimizer.evidence.EvidenceSection;
@@ -1334,7 +1334,7 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Returns the paths that a staged source leaves out so that a trial cannot read the prompt tests.
 	 *
-	 * @return the confirmed contract's prompt test directories, cited regression scenarios and the shared fixture
+	 * @return the confirmed contract's prompt test directories, cited regression scenarios and the shared workspace file
 	 *   directories that the cited scenarios name, relative to the project
 	 * @throws IOException if a cited scenario cannot be read
 	 */
@@ -1351,7 +1351,7 @@ public final class Driver implements AutoCloseable
 	 * Returns the files of a candidate that a staged source holds, so that a trial's project holds only the files that
 	 * load the prompt system.
 	 *
-	 * @return the campaign's base selection, which holds the contract's dependents and ignored fixtures once a contract
+	 * @return the campaign's base selection, which holds the contract's dependents and ignored files once a contract
 	 *   is confirmed
 	 */
 	private SourceSelection trialSelection()
@@ -1746,7 +1746,7 @@ public final class Driver implements AutoCloseable
 				context.workspace(), source, key.purpose() == Purpose.CONTROL, context.json());
 			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
 				trial.testCase().turns(), List.of(), test.timeLimit(), profile,
-				WorkspaceFixtures.of(test, trial.testCase().testCase()), plugins));
+				TestWorkspace.of(test, trial.testCase().testCase()), plugins));
 		}
 		catch (IOException e)
 		{

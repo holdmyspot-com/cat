@@ -18,7 +18,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TrialPlugin;
-import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TestWorkspace;
 import io.github.cowwoc.cat.common.optimizer.contract.UndecidableToolException;
 import io.github.cowwoc.cat.common.optimizer.inventory.Overlay;
 import io.github.cowwoc.cat.common.optimizer.inventory.Sha256;
@@ -461,7 +461,7 @@ public final class GuardPilot
 				{
 					case TrialJob trial -> new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
 						trial.testCase().turns(), List.of(), trial.pilot().test.timeLimit(), trial.pilot().cell.profile(),
-						WorkspaceFixtures.of(trial.pilot().test, trial.testCase().testCase()), plugins);
+						TestWorkspace.of(trial.pilot().test, trial.testCase().testCase()), plugins);
 					case JudgeJob judging -> judge.request(contract.judge(), judging.testCase(), judging.trial(),
 						judging.judged(), judging.results(), judging.section());
 				};

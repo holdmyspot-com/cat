@@ -29,9 +29,9 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Tests {@code contract fixtures}, {@link ContractTools#fixtures}.
+ * Tests {@code contract workspace}, {@link ContractTools#workspace}.
  */
-public final class ContractFixturesTest
+public final class ContractWorkspaceTest
 {
 	/**
 	 * The profile evidence of the sessions, whose inventory holds two profiles.
@@ -56,12 +56,12 @@ public final class ContractFixturesTest
 	 * not state its limit for {@code small/high}.
 	 */
 	private final ContractAuthorProtocol contractAuthor = ContractToolSessions.contractAuthor(json,
-		ContractFixturesTest::limit);
+		ContractWorkspaceTest::limit);
 
 	/**
 	 * Creates the test.
 	 */
-	public ContractFixturesTest()
+	public ContractWorkspaceTest()
 	{
 	}
 
@@ -90,7 +90,7 @@ public final class ContractFixturesTest
 	}
 
 	/**
-	 * Returns a session's project whose {@code safety} prompt test has two fixtures, one of whose path and content
+	 * Returns a session's project whose {@code safety} prompt test has two workspace files, one of whose path and content
 	 * name the directory that the user asks to delete.
 	 *
 	 * @param change edits the contract author output further
@@ -99,13 +99,13 @@ public final class ContractFixturesTest
 	 */
 	private Path project(Consumer<ObjectNode> change) throws IOException
 	{
-		Path project = directories.add(Files.createTempDirectory("contract-fixtures-"));
+		Path project = directories.add(Files.createTempDirectory("contract-workspace-"));
 		return ContractToolSessions.write(json, contractAuthor, PROFILES,
 			ContractToolSessions.derivation(json, proposal ->
 			{
-				ArrayNode fixtures = ((ObjectNode) proposal.get("tests").get(2)).putArray("fixtures");
-				fixtures.addObject().put("path", "{{target}}/README.md").put("content", README);
-				fixtures.addObject().put("path", "notes.txt").put("content", "ok");
+				ArrayNode workspaceFiles = ((ObjectNode) proposal.get("tests").get(2)).putArray("workspace_files");
+				workspaceFiles.addObject().put("path", "{{target}}/README.md").put("content", README);
+				workspaceFiles.addObject().put("path", "notes.txt").put("content", "ok");
 				change.accept(proposal);
 			}), project);
 	}
@@ -129,7 +129,7 @@ public final class ContractFixturesTest
 	}
 
 	/**
-	 * Verifies that {@code contract fixtures} writes one test case's workspace files, with its values in their paths
+	 * Verifies that {@code contract workspace} writes one test case's workspace files, with its values in their paths
 	 * and content, into the named directory and nowhere else, and reports each file's size and line count and how its
 	 * size compares with the tool-output limit of each trial profile of the test, naming the profiles whose limit the
 	 * harness does not state.
@@ -147,7 +147,7 @@ public final class ContractFixturesTest
 		Map<String, String> before = files(project);
 		Path output = project.resolve("sized");
 
-		Report report = ContractToolSessions.fixtures(json, contextFile, SAFETY, 2, output);
+		Report report = ContractToolSessions.workspace(json, contextFile, SAFETY, 2, output);
 
 		String readme = README.replace("{{target}}", "cache");
 		int readmeBytes = readme.getBytes(UTF_8).length;
@@ -170,7 +170,7 @@ public final class ContractFixturesTest
 	}
 
 	/**
-	 * Verifies that {@code contract fixtures} writes nothing and exits with a nonzero status when the output directory
+	 * Verifies that {@code contract workspace} writes nothing and exits with a nonzero status when the output directory
 	 * exists or lies in the draft directory, when the test directory names no prompt test of the draft directory, and
 	 * when the test has no test case with the given number.
 	 *
@@ -187,17 +187,17 @@ public final class ContractFixturesTest
 		Files.createDirectory(project.resolve("taken"));
 		Map<String, String> before = files(project);
 
-		Report existing = ContractToolSessions.fixtures(json, contextFile, SAFETY, 1, project.resolve("taken"));
+		Report existing = ContractToolSessions.workspace(json, contextFile, SAFETY, 1, project.resolve("taken"));
 		requireThat(existing.output(), "existing").contains("must be a new directory outside the draft directory");
 		Path inDraft = project.resolve(DraftDirectory.NAME).resolve("sized");
-		Report drafted = ContractToolSessions.fixtures(json, contextFile, SAFETY, 1, inDraft);
+		Report drafted = ContractToolSessions.workspace(json, contextFile, SAFETY, 1, inDraft);
 		requireThat(drafted.output(), "drafted").contains("must be a new directory outside the draft directory");
 		Path output = project.resolve("sized");
-		Report escaping = ContractToolSessions.fixtures(json, contextFile, Path.of("../safety"), 1, output);
+		Report escaping = ContractToolSessions.workspace(json, contextFile, Path.of("../safety"), 1, output);
 		requireThat(escaping.output(), "escaping").contains("names no prompt test in the draft directory");
-		Report noTest = ContractToolSessions.fixtures(json, contextFile, Path.of(".cat/tests/CLAUDE"), 1, output);
+		Report noTest = ContractToolSessions.workspace(json, contextFile, Path.of(".cat/tests/CLAUDE"), 1, output);
 		requireThat(noTest.output(), "noTest").contains("names no prompt test in the draft directory");
-		Report noTestCase = ContractToolSessions.fixtures(json, contextFile, SAFETY, 9, output);
+		Report noTestCase = ContractToolSessions.workspace(json, contextFile, SAFETY, 9, output);
 		requireThat(noTestCase.output(), "noTestCase").contains(".cat/tests/CLAUDE/safety/values.json: the file " +
 			"holds 8 test case(s), so it has no test case 9");
 
@@ -208,7 +208,7 @@ public final class ContractFixturesTest
 	}
 
 	/**
-	 * Verifies that {@code contract fixtures} still writes a test case's files when the proposal fails the check,
+	 * Verifies that {@code contract workspace} still writes a test case's files when the proposal fails the check,
 	 * comparing their sizes with the limit of every profile of the inventory, and that it warns that a generator call
 	 * without a seed generates other content when the session ends.
 	 *
@@ -222,7 +222,7 @@ public final class ContractFixturesTest
 		{
 			proposal.put("minimum_pass_rate", "high");
 			ObjectNode safety = (ObjectNode) proposal.get("tests").get(2);
-			((ArrayNode) safety.get("fixtures")).addObject().put("path", "app.log").put("content", "{{before}}\n");
+			((ArrayNode) safety.get("workspace_files")).addObject().put("path", "app.log").put("content", "{{before}}\n");
 			safety.withArray("variables").addObject().put("name", "before").
 				put("description", "Log lines before the request.");
 			for (JsonNode testCase : safety.get("test_cases"))
@@ -233,7 +233,7 @@ public final class ContractFixturesTest
 		});
 		Path output = contextFile.getParent().resolve("sized");
 
-		Report report = ContractToolSessions.fixtures(json, contextFile, SAFETY, 1, output);
+		Report report = ContractToolSessions.workspace(json, contextFile, SAFETY, 1, output);
 
 		requireThat(report.output(), "output").contains("A generator call of the test case states no seed.").
 			contains("The proposal does not pass `contract check`, so the test's trial profiles are not known. " +

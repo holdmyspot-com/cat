@@ -5,7 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.git.Git;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
@@ -56,24 +56,24 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	/**
 	 * A prompt test directory in the current format.
 	 *
-	 * @param files        the prompt test's scenario, fixtures and committed test cases
-	 * @param textFixtures each fixture that is UTF-8 text, with its content and the file that it is copied from, in
-	 *                     path order
+	 * @param files              the prompt test's scenario, workspace files and committed test cases
+	 * @param textWorkspaceFiles each workspace file that is UTF-8 text, with its content and the file that it is copied
+	 *                           from, in path order
 	 */
-	public record Current(PromptTestFiles files, List<FixtureFile> textFixtures) implements Format
+	public record Current(PromptTestFiles files, List<WorkspaceFile> textWorkspaceFiles) implements Format
 	{
 		/**
 		 * Creates a current-format scenario.
 		 *
-		 * @param files        the prompt test's scenario, fixtures and committed test cases
-		 * @param textFixtures each fixture that is UTF-8 text, with its content and the file that it is copied from,
-		 *                     in path order
+		 * @param files              the prompt test's scenario, workspace files and committed test cases
+		 * @param textWorkspaceFiles each workspace file that is UTF-8 text, with its content and the file that it is copied
+		 *                           from, in path order
 		 * @throws NullPointerException if any of the arguments are null
 		 */
 		public Current
 		{
 			requireThat(files, "files").isNotNull();
-			textFixtures = List.copyOf(textFixtures);
+			textWorkspaceFiles = List.copyOf(textWorkspaceFiles);
 		}
 	}
 
@@ -148,12 +148,12 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 * A {@code .cat/tests} scenario directory holds its scenarios as Markdown files directly in it or as
 	 * {@code scenario.md} files in its child directories. Guidance packaged as a module resource,
 	 * {@code <module>/src/main/resources/<top>/<path>.md}, keeps its scenarios in
-	 * {@code <module>/src/test/resources/<path>/<case>/scenario.md}. Other Markdown files hold fixtures.
+	 * {@code <module>/src/test/resources/<path>/<case>/scenario.md}. Other Markdown files hold workspace files.
 	 * <p>
-	 * A {@code <case>/scenario.md} that parses is a prompt test directory in the current format, read with its fixtures
-	 * and values file, unless the project's Git index records a symbolic link in its {@value PromptTestFiles#WORKSPACE}
-	 * directory where the checkout holds a regular file. Any other scenario is in an earlier format, kept with the reason
-	 * for its conversion.
+	 * A {@code <case>/scenario.md} that parses is a prompt test directory in the current format, read with its workspace
+	 * files and values file, unless the project's Git index records a symbolic link in its
+	 * {@value PromptTestFiles#WORKSPACE} directory where the checkout holds a regular file. Any other scenario is in an
+	 * earlier format, kept with the reason for its conversion.
 	 *
 	 * @param json    the JSON mapper that reads values files
 	 * @param project the project root
@@ -373,7 +373,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 * @param source    the guidance file
 	 * @param file      the scenario file
 	 * @param scenarios receives the scenario
-	 * @throws IOException if the scenario, its fixtures or its values file cannot be read
+	 * @throws IOException if the scenario, its workspace files or its values file cannot be read
 	 */
 	private static void addScenario(JsonMapper json, Path project, Path tests, Path source, Path file,
 		List<Scenario> scenarios)
@@ -386,22 +386,22 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 			try
 			{
 				PromptTestFiles files = PromptTestFiles.read(json, project, tests, file.getParent());
-				List<FixtureFile> textFixtures = new ArrayList<>();
-				for (PromptTestFiles.Fixture fixture : files.fixtures())
+				List<WorkspaceFile> textWorkspaceFiles = new ArrayList<>();
+				for (PromptTestFiles.WorkspaceEntry workspaceFile : files.workspaceFiles())
 				{
-					Path fixtureSource = files.source(fixture);
-					if (fixture.link().isPresent())
+					Path workspaceFileSource = files.source(workspaceFile);
+					if (workspaceFile.link().isPresent())
 					{
-						textFixtures.add(new FixtureFile(fixture.path(), fixture.link().get(), cited(project, fixtureSource),
-							true));
+						textWorkspaceFiles.add(new WorkspaceFile(workspaceFile.path(), workspaceFile.link().get(),
+							cited(project, workspaceFileSource), true));
 					}
-					else if (fixture.text())
+					else if (workspaceFile.text())
 					{
-						textFixtures.add(new FixtureFile(fixture.path(), Files.readString(fixtureSource),
-							cited(project, fixtureSource)));
+						textWorkspaceFiles.add(new WorkspaceFile(workspaceFile.path(), Files.readString(workspaceFileSource),
+							cited(project, workspaceFileSource)));
 					}
 				}
-				format = new Current(files, textFixtures);
+				format = new Current(files, textWorkspaceFiles);
 			}
 			catch (ScenarioFormatException e)
 			{
@@ -454,25 +454,25 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	}
 
 	/**
-	 * Returns the text fixtures of the cited scenarios, which CAT adds to the prompt test that cites them.
+	 * Returns the text workspace files of the cited scenarios, which CAT adds to the prompt test that cites them.
 	 *
 	 * @param citations the citations of the scenarios that one prompt test covers
-	 * @return the fixtures, each with its source, in citation order, each once
+	 * @return the workspace files, each with its source, in citation order, each once
 	 * @throws NullPointerException if {@code citations} is null
 	 */
-	public List<FixtureFile> recordedFixtures(List<String> citations)
+	public List<WorkspaceFile> recordedWorkspaceFiles(List<String> citations)
 	{
 		requireThat(citations, "citations").isNotNull();
-		Set<FixtureFile> fixtures = new LinkedHashSet<>();
+		Set<WorkspaceFile> workspaceFiles = new LinkedHashSet<>();
 		for (String citation : citations)
 		{
 			for (Scenario scenario : scenarios)
 			{
 				if (scenario.citation().equals(citation) && scenario.format() instanceof Current current)
-					fixtures.addAll(current.textFixtures());
+					workspaceFiles.addAll(current.textWorkspaceFiles());
 			}
 		}
-		return List.copyOf(fixtures);
+		return List.copyOf(workspaceFiles);
 	}
 
 	/**

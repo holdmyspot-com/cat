@@ -48,7 +48,7 @@ public final class HarnessRunnerOptionsTest
 			contains("--artifact <path>").
 			contains("--max-concurrency <1..16>").
 			contains("--deny-read <path>").
-			contains("--fixtures <path>").
+			contains("--workspace <path>").
 			contains("--plugin <path>");
 	}
 
@@ -91,7 +91,7 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that {@code --fixtures} names the directory whose files the project receives, and that it is absent
+	 * Verifies that {@code --workspace} names the directory whose files the project receives, and that it is absent
 	 * unless given.
 	 */
 	@Test
@@ -99,12 +99,12 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-C21
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--fixtures", absolute("runs/fixtures/trial")}, "harness", SESSION);
+			"--workspace", absolute("runs/workspaces/trial")}, "harness", SESSION);
 		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
 			"harness", SESSION);
 
-		requireThat(result.fixtures(), "fixtures").isEqualTo(path("runs/fixtures/trial"));
-		requireThat(without.fixtures(), "without").isNull();
+		requireThat(result.workspace(), "workspace").isEqualTo(path("runs/workspaces/trial"));
+		requireThat(without.workspace(), "without").isNull();
 	}
 
 	/**

@@ -4,13 +4,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
 import io.github.cowwoc.cat.common.optimizer.contract.AssertionKind;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTest;
 import io.github.cowwoc.cat.common.optimizer.contract.RiskRank;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import io.github.cowwoc.cat.common.optimizer.contract.TestValue;
 import io.github.cowwoc.cat.common.optimizer.contract.VariableDeclaration;
-import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TestWorkspace;
 
 import org.testng.annotations.Test;
 
@@ -27,12 +27,12 @@ import java.util.Map;
 /**
  * Tests the fixture files that a prompt test of a proposal writes into each trial's workspace.
  */
-public final class WorkspaceFixturesTest
+public final class TestWorkspaceTest
 {
 	/**
 	 * The fixture that holds generated log lines and the expected outcome.
 	 */
-	private static final FixtureFile NOTES = new FixtureFile("docs/{{notes}}", """
+	private static final WorkspaceFile NOTES = new WorkspaceFile("docs/{{notes}}", """
 		{{before}}
 		Release 4.2 was published on {{expected_outcome}}.
 		""");
@@ -40,18 +40,18 @@ public final class WorkspaceFixturesTest
 	/**
 	 * Creates the test.
 	 */
-	public WorkspaceFixturesTest()
+	public TestWorkspaceTest()
 	{
 	}
 
 	/**
 	 * Returns a prompt test whose turn names {@code notes} and whose fixture holds {@code before}.
 	 *
-	 * @param turn     the test's only turn
-	 * @param fixtures the test's fixture files
+	 * @param turn           the test's only turn
+	 * @param workspaceFiles the test's workspace files
 	 * @return the prompt test, with one test case from {@link #testCase()}
 	 */
-	private static PromptTest test(String turn, List<FixtureFile> fixtures)
+	private static PromptTest test(String turn, List<WorkspaceFile> workspaceFiles)
 	{
 		return new PromptTest("release_date", new RiskRank(1), List.of("r1"), List.of(),
 			"The user asks when a release was published.", List.of(turn), Duration.ofMinutes(2),
@@ -59,7 +59,7 @@ public final class WorkspaceFixturesTest
 			List.of(new VariableDeclaration("notes", "The notes file name."),
 				new VariableDeclaration("before", "Log lines before the release entry.")), List.of(),
 			List.of(testCase()), List.of(ContractFixtures.judged("states_date", AssertionKind.EFFECT,
-				"The reply states {{expected_outcome}}.", "r1")), List.of(), fixtures);
+				"The reply states {{expected_outcome}}.", "r1")), List.of(), workspaceFiles);
 	}
 
 	/**
@@ -87,13 +87,13 @@ public final class WorkspaceFixturesTest
 		// Requirement: R-C21
 		PromptTest test = test("When was the release in `docs/{{notes}}` published?", List.of(NOTES));
 		TestCase testCase = testCase();
-		WorkspaceFixtures fixtures = WorkspaceFixtures.of(test, testCase);
-		requireThat(List.copyOf(fixtures.fixtures().keySet()), "paths").isEqualTo(List.of("docs/release-notes.md"));
+		TestWorkspace testWorkspace = TestWorkspace.of(test, testCase);
+		requireThat(List.copyOf(testWorkspace.files().keySet()), "paths").isEqualTo(List.of("docs/release-notes.md"));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
-			fixtures.write(workspace);
+			testWorkspace.write(workspace);
 
 			StringWriter logs = new StringWriter();
 			((TestValue.Generated) testCase.values().get("before")).write(logs);
@@ -111,15 +111,15 @@ public final class WorkspaceFixturesTest
 	@Test
 	public void writesLinkFixtureAsLink() throws IOException
 	{
-		FixtureFile latest = new FixtureFile("latest", "docs/{{notes}}", ".cat/tests/release_date/workspace/latest",
+		WorkspaceFile latest = new WorkspaceFile("latest", "docs/{{notes}}", ".cat/tests/release_date/workspace/latest",
 			true);
 		PromptTest test = test("When was the release in `latest` published?", List.of(NOTES, latest));
-		WorkspaceFixtures fixtures = WorkspaceFixtures.of(test, testCase());
+		TestWorkspace testWorkspace = TestWorkspace.of(test, testCase());
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
-			fixtures.write(workspace);
+			testWorkspace.write(workspace);
 
 			requireThat(Files.readSymbolicLink(workspace.resolve("latest")), "latest").
 				isEqualTo(Path.of("docs/release-notes.md"));
@@ -140,7 +140,7 @@ public final class WorkspaceFixturesTest
 		{
 			try
 			{
-				new FixtureFile("docs/link.md", target, "", true);
+				new WorkspaceFile("docs/link.md", target, "", true);
 				throw new AssertionError("The link target " + target + " was accepted");
 			}
 			catch (IllegalArgumentException e)
@@ -160,7 +160,7 @@ public final class WorkspaceFixturesTest
 	{
 		// Requirement: R-C21
 		PromptTest test = test("When was the release in `docs/{{notes}}` published?", List.of(NOTES));
-		WorkspaceFixtures fixtures = WorkspaceFixtures.of(test, testCase());
+		TestWorkspace testWorkspace = TestWorkspace.of(test, testCase());
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
@@ -169,7 +169,7 @@ public final class WorkspaceFixturesTest
 			Files.writeString(workspace.resolve("docs/release-notes.md"), "Project notes");
 			try
 			{
-				fixtures.write(workspace);
+				testWorkspace.write(workspace);
 				throw new AssertionError("A fixture replaced an existing file");
 			}
 			catch (FileAlreadyExistsException e)
@@ -182,7 +182,7 @@ public final class WorkspaceFixturesTest
 	}
 
 	/**
-	 * Verifies that a test without fixtures gives a trial nothing to write.
+	 * Verifies that a test without workspace files gives a trial nothing to write.
 	 */
 	@Test
 	public void withoutFixturesWritesNothing()
@@ -194,7 +194,7 @@ public final class WorkspaceFixturesTest
 			List.of(new VariableDeclaration("kind", "The kind of item.")), List.of(),
 			List.of(ContractFixtures.plainList("colors")), List.of(ContractFixtures.judged("lists_three",
 				AssertionKind.EFFECT, "The answer lists three items.", "r1")), List.of(), List.of());
-		requireThat(WorkspaceFixtures.of(test, ContractFixtures.plainList("colors")).isEmpty(), "isEmpty").isTrue();
+		requireThat(TestWorkspace.of(test, ContractFixtures.plainList("colors")).isEmpty(), "isEmpty").isTrue();
 	}
 
 	/**
@@ -228,7 +228,7 @@ public final class WorkspaceFixturesTest
 		{
 			try
 			{
-				new FixtureFile(path, "content");
+				new WorkspaceFile(path, "content");
 				throw new AssertionError("The fixture path " + path + " was accepted");
 			}
 			catch (IllegalArgumentException e)

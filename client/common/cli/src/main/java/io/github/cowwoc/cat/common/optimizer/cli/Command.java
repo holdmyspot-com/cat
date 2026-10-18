@@ -213,7 +213,7 @@ public sealed interface Command
 	 * A contract tool, which a contract author session runs while it writes the proposal file and the draft
 	 * directory. A contract tool needs no campaign and no harness.
 	 */
-	sealed interface ContractTool extends Command permits ContractCheck, ContractFixtures
+	sealed interface ContractTool extends Command permits ContractCheck, ContractWorkspace
 	{
 	}
 
@@ -248,7 +248,7 @@ public sealed interface Command
 	 * @param testCase      the test case's number, counted from 1 in the test's values file
 	 * @param output        the new directory to write to
 	 */
-	record ContractFixtures(Path context, Path testDirectory, int testCase, Path output) implements ContractTool
+	record ContractWorkspace(Path context, Path testDirectory, int testCase, Path output) implements ContractTool
 	{
 		/**
 		 * Creates the command.
@@ -260,7 +260,7 @@ public sealed interface Command
 		 * @throws NullPointerException     if any of the arguments are null
 		 * @throws IllegalArgumentException if {@code testCase} is not positive
 		 */
-		public ContractFixtures
+		public ContractWorkspace
 		{
 			requireThat(context, "context").isNotNull();
 			requireThat(testDirectory, "testDirectory").isNotNull();

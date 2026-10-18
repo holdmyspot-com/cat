@@ -40,7 +40,7 @@ public final class ContractIdentityTest
 		requireThat(ContractIdentity.of(schema, ContractFixtures.contract()), "equal").
 			isEqualTo(ContractIdentity.of(schema, contract));
 		Contract revised = new Contract(contract.requirements(), contract.tests(), contract.profiles(),
-			contract.judge(), contract.fixtures(), List.of("Only the English and French prompts are covered."),
+			contract.judge(), contract.ignoredFiles(), List.of("Only the English and French prompts are covered."),
 			contract.minimumPassRate(), contract.salt());
 		requireThat(ContractIdentity.of(schema, revised), "revised").
 			isNotEqualTo(ContractIdentity.of(schema, contract));

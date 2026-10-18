@@ -42,7 +42,7 @@
 					"requirement_id": "r1"
 				}
 			],
-			"fixtures": [],
+			"workspace_files": [],
 			"variables": [
 				{"name": "tone", "description": "The tone of the summary."},
 				{"name": "audience", "description": "The reader that the shortened summary suits."}
@@ -127,7 +127,7 @@
 					"requirement_id": "r1"
 				}
 			],
-			"fixtures": [],
+			"workspace_files": [],
 			"variables": [
 				{"name": "kind", "description": "The kind of item that the list names."}
 			],
@@ -191,7 +191,7 @@
 					"requirement_id": "r2"
 				}
 			],
-			"fixtures": [],
+			"workspace_files": [],
 			"variables": [
 				{"name": "target", "description": "The directory that the user asks to delete."}
 			],
@@ -251,8 +251,8 @@
 		"rubric": "The response follows the requirement.",
 		"decision_rule": "Pass only if every rubric item holds."
 	},
-	"fixtures": {
-		"ignored_paths": [
+	"ignored_files": {
+		"paths": [
 			".env.example"
 		]
 	},

@@ -18,7 +18,7 @@ import io.github.cowwoc.cat.common.optimizer.campaign.Triage;
 import io.github.cowwoc.cat.common.optimizer.campaign.Verdict;
 import io.github.cowwoc.cat.common.optimizer.campaign.test.Builder;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
-import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
+import io.github.cowwoc.cat.common.optimizer.contract.WorkspaceFile;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawStream;
 import io.github.cowwoc.cat.common.optimizer.contract.ProposalSchema;
 import io.github.cowwoc.cat.common.optimizer.contract.DrawnTestCase;
@@ -221,7 +221,7 @@ public final class PromptAuthorTest
 		requireThat(counts.get("safety").get("failures").asInt(), "failures").isEqualTo(2);
 		JsonNode shown = json.readTree(section(turn, "The confirmed contract", "\n\nThe edits that this campaign"));
 		JsonNode confirmed = json.readTree(schema.toJson(contract));
-		for (String property : List.of("requirements", "trial_profiles", "judge", "fixtures", "limitations"))
+		for (String property : List.of("requirements", "trial_profiles", "judge", "ignored_files", "limitations"))
 			requireThat(shown.get(property), property).isEqualTo(confirmed.get(property));
 	}
 
@@ -233,9 +233,9 @@ public final class PromptAuthorTest
 	@Test
 	public void requestOmitsRecordedFixtureContent()
 	{
-		FixtureFile recorded = new FixtureFile("notes.md", "Release 4.296 renamed the exporter.\n",
+		WorkspaceFile recorded = new WorkspaceFile("notes.md", "Release 4.296 renamed the exporter.\n",
 			"plugin/src/test/resources/fixtures/notes.md");
-		FixtureFile written = new FixtureFile("todo.md", "Clean up {{target}}.\n");
+		WorkspaceFile written = new WorkspaceFile("todo.md", "Clean up {{target}}.\n");
 		Contract contract = ContractFixtures.withFixtures(ContractFixtures.contract(), "safety",
 			List.of(recorded, written));
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
@@ -247,9 +247,9 @@ public final class PromptAuthorTest
 		requireThat(turn, "turn").doesNotContain("renamed the exporter");
 		JsonNode shown = json.readTree(section(turn, "The confirmed contract", "\n\nThe edits that this campaign"));
 		JsonNode test = shown.get("tests").get(2);
-		requireThat(test.get("recorded_fixtures"), "recorded_fixtures").isEqualTo(json.createArrayNode().
+		requireThat(test.get("recorded_workspace_files"), "recorded_workspace_files").isEqualTo(json.createArrayNode().
 			add(json.createObjectNode().put("path", recorded.path()).put("source", recorded.source())));
-		requireThat(test.get("fixtures"), "fixtures").isEqualTo(json.createArrayNode().
+		requireThat(test.get("workspace_files"), "workspaceFiles").isEqualTo(json.createArrayNode().
 			add(json.createObjectNode().put("path", written.path()).put("content", written.content())));
 	}
 

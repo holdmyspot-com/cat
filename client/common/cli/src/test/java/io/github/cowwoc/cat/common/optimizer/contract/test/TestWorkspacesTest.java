@@ -3,7 +3,7 @@ package io.github.cowwoc.cat.common.optimizer.contract.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import io.github.cowwoc.cat.common.TemporaryDirectories;
-import io.github.cowwoc.cat.common.optimizer.contract.Fixtures;
+import io.github.cowwoc.cat.common.optimizer.contract.TestWorkspaces;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
 import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
@@ -26,12 +26,12 @@ import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests reading a prompt test directory and copying its fixtures into a trial's workspace.
+ * Tests reading a prompt test directory and copying its workspace files into a trial's workspace.
  */
-public final class FixturesTest
+public final class TestWorkspacesTest
 {
 	/**
-	 * A scenario whose turn names {@code notes} and whose fixtures may use {@code before}.
+	 * A scenario whose turn names {@code notes} and whose workspace files may use {@code before}.
 	 */
 	private static final String SCENARIO = """
 		## Variables
@@ -59,7 +59,7 @@ public final class FixturesTest
 	/**
 	 * Creates the test fixture.
 	 */
-	public FixturesTest()
+	public TestWorkspacesTest()
 	{
 	}
 
@@ -129,7 +129,7 @@ public final class FixturesTest
 	}
 
 	/**
-	 * Verifies that reading a prompt test directory lists its fixtures, whether each is text and the declared
+	 * Verifies that reading a prompt test directory lists its workspace files, whether each is text and the declared
 	 * variables that its content names.
 	 *
 	 * @throws IOException             if the directory cannot be written or read
@@ -142,9 +142,9 @@ public final class FixturesTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			PromptTestFiles files = read(promptTest(cleanup));
-			requireThat(files.fixtures(), "fixtures").isEqualTo(List.of(
-				new PromptTestFiles.Fixture("docs/{{notes}}", true, Set.of("before")),
-				new PromptTestFiles.Fixture("logo.png", false, Set.of())));
+			requireThat(files.workspaceFiles(), "workspaceFiles").isEqualTo(List.of(
+				new PromptTestFiles.WorkspaceEntry("docs/{{notes}}", true, Set.of("before")),
+				new PromptTestFiles.WorkspaceEntry("logo.png", false, Set.of())));
 			requireThat(files.testCases(), "testCases").isEmpty();
 		}
 	}
@@ -167,7 +167,7 @@ public final class FixturesTest
 				"workspace"));
 			Files.writeString(workspace.resolve("README.md"), "Project");
 			TestCase testCase = testCase("release-notes.md");
-			Fixtures.copy(files, testCase, workspace);
+			TestWorkspaces.copy(files, testCase, workspace);
 
 			StringWriter logs = new StringWriter();
 			((TestValue.Generated) testCase.values().get("before")).write(logs);
@@ -237,7 +237,7 @@ public final class FixturesTest
 
 	/**
 	 * Verifies that a prompt test's {@code workspace/} files and the files that its links reach, inside or outside the
-	 * test root, are its fixtures at their paths below {@code workspace/}, and that copying the fixtures replaces
+	 * test root, are its workspace files at their paths below {@code workspace/}, and that copying them replaces
 	 * placeholders in the linked files.
 	 *
 	 * @throws IOException             if a file cannot be written or read
@@ -252,20 +252,20 @@ public final class FixturesTest
 			Path project = linkedProject(cleanup);
 			Path root = project.resolve(".cat/tests");
 			PromptTestFiles files = PromptTestFiles.read(json, project, root, linkedTest(project));
-			requireThat(files.fixtures(), "fixtures").isEqualTo(List.of(
-				new PromptTestFiles.Fixture("AGENTS.md", true, Set.of()),
-				new PromptTestFiles.Fixture("guide/intro.md", true, Set.of("notes")),
-				new PromptTestFiles.Fixture("logs/{{notes}}", true, Set.of("before")),
-				new PromptTestFiles.Fixture("own.md", true, Set.of()),
-				new PromptTestFiles.Fixture("src/Main.java", true, Set.of())));
-			requireThat(files.source(files.fixtures().get(2)), "shared").
+			requireThat(files.workspaceFiles(), "workspaceFiles").isEqualTo(List.of(
+				new PromptTestFiles.WorkspaceEntry("AGENTS.md", true, Set.of()),
+				new PromptTestFiles.WorkspaceEntry("guide/intro.md", true, Set.of("notes")),
+				new PromptTestFiles.WorkspaceEntry("logs/{{notes}}", true, Set.of("before")),
+				new PromptTestFiles.WorkspaceEntry("own.md", true, Set.of()),
+				new PromptTestFiles.WorkspaceEntry("src/Main.java", true, Set.of())));
+			requireThat(files.source(files.workspaceFiles().get(2)), "shared").
 				isEqualTo(root.resolve("guidance/shared/logs/{{notes}}"));
-			requireThat(files.source(files.fixtures().get(1)), "project").
+			requireThat(files.source(files.workspaceFiles().get(1)), "project").
 				isEqualTo(project.resolve("docs/guide/intro.md"));
 
 			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
-			Fixtures.copy(files, testCase("notes.md"), workspace);
+			TestWorkspaces.copy(files, testCase("notes.md"), workspace);
 			requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "guide/intro.md", "logs/notes.md",
 				"own.md", "src/Main.java"));
 			requireThat(Files.readString(workspace.resolve("AGENTS.md")), "agents").
@@ -276,7 +276,7 @@ public final class FixturesTest
 			Path bare = Files.createDirectories(root.resolve("guidance/bare"));
 			Files.writeString(bare.resolve(PromptTestFiles.SCENARIO), SCENARIO);
 			PromptTestFiles none = PromptTestFiles.read(json, project, root, bare);
-			requireThat(none.fixtures(), "noFixtures").isEmpty();
+			requireThat(none.workspaceFiles(), "noWorkspaceFiles").isEmpty();
 		}
 	}
 
@@ -306,10 +306,10 @@ public final class FixturesTest
 			PromptTestFiles files = PromptTestFiles.readScenario(project, draft, draft.resolve(".cat/tests"),
 				directory);
 
-			requireThat(files.fixtures().stream().map(PromptTestFiles.Fixture::path).toList(), "fixtures").
+			requireThat(files.workspaceFiles().stream().map(PromptTestFiles.WorkspaceEntry::path).toList(), "workspaceFiles").
 				isEqualTo(List.of("AGENTS.md", "logs/{{notes}}"));
-			requireThat(files.source(files.fixtures().get(0)), "fromDraft").isEqualTo(drafted);
-			requireThat(files.source(files.fixtures().get(1)), "fromProject").
+			requireThat(files.source(files.workspaceFiles().get(0)), "fromDraft").isEqualTo(drafted);
+			requireThat(files.source(files.workspaceFiles().get(1)), "fromProject").
 				isEqualTo(project.resolve(".cat/tests/guidance/shared/logs/{{notes}}"));
 		}
 	}
@@ -337,11 +337,11 @@ public final class FixturesTest
 
 			PromptTestFiles files = PromptTestFiles.read(json, project, project.resolve(".cat/tests"),
 				linkedTest(project));
-			requireThat(files.fixtures().stream().filter(fixture -> fixture.link().isPresent()).toList(), "links").
+			requireThat(files.workspaceFiles().stream().filter(fixture -> fixture.link().isPresent()).toList(), "links").
 				isEqualTo(List.of(
-					new PromptTestFiles.Fixture("a", false, Set.of(), Optional.of("b")),
-					new PromptTestFiles.Fixture("docs/up.md", false, Set.of(), Optional.of("../own.md")),
-					new PromptTestFiles.Fixture("latest", false, Set.of(), Optional.of("logs/{{notes}}"))));
+					new PromptTestFiles.WorkspaceEntry("a", false, Set.of(), Optional.of("b")),
+					new PromptTestFiles.WorkspaceEntry("docs/up.md", false, Set.of(), Optional.of("../own.md")),
+					new PromptTestFiles.WorkspaceEntry("latest", false, Set.of(), Optional.of("logs/{{notes}}"))));
 			requireThat(files.copiedLinks(), "copiedLinks").isEqualTo(Map.of(
 				"AGENTS.md", "../../shared/AGENTS.md",
 				"b", "../../shared/AGENTS.md",
@@ -351,7 +351,7 @@ public final class FixturesTest
 
 			Path trial = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
 				"workspace"));
-			Fixtures.copy(files, testCase("notes.md"), trial);
+			TestWorkspaces.copy(files, testCase("notes.md"), trial);
 			requireThat(Files.readSymbolicLink(trial.resolve("a")), "a").isEqualTo(Path.of("b"));
 			requireThat(Files.isSymbolicLink(trial.resolve("b")), "bIsLink").isFalse();
 			requireThat(Files.readString(trial.resolve("b")), "b").isEqualTo("Published on 2025-03-04");
@@ -480,7 +480,7 @@ public final class FixturesTest
 			Files.writeString(workspace.resolve("docs/notes.md"), "Project notes");
 			try
 			{
-				Fixtures.copy(files, testCase("notes.md"), workspace);
+				TestWorkspaces.copy(files, testCase("notes.md"), workspace);
 				throw new AssertionError("A colliding fixture was copied");
 			}
 			catch (FileAlreadyExistsException e)
@@ -495,7 +495,7 @@ public final class FixturesTest
 			Files.writeString(workspace.resolve("docs"), "A file named like the fixture's directory");
 			try
 			{
-				Fixtures.copy(files, testCase("notes.md"), workspace);
+				TestWorkspaces.copy(files, testCase("notes.md"), workspace);
 				throw new AssertionError("A fixture below a file was copied");
 			}
 			catch (FileAlreadyExistsException e)
@@ -523,7 +523,7 @@ public final class FixturesTest
 				"workspace"));
 			try
 			{
-				Fixtures.copy(files, testCase("../escape.md"), workspace);
+				TestWorkspaces.copy(files, testCase("../escape.md"), workspace);
 				throw new AssertionError("An invalid file name was accepted");
 			}
 			catch (IllegalArgumentException e)

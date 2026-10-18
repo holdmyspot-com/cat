@@ -238,7 +238,7 @@ public final class ClaudeRunnerTest
 	/**
 	 * Verifies that a session is denied reading the runner's records of its own run, namely the run's artifacts,
 	 * manifest, lock and initial project, the login that the run copied from the host, and the other runs and
-	 * fixtures under the run root, besides the paths that the caller denies. The session can still read its project,
+	 * workspaces under the run root, besides the paths that the caller denies. The session can still read its project,
 	 * the rest of its home, its Claude temporary directory and the evidence that it validates.
 	 *
 	 * @throws IOException if the run cannot be created
@@ -260,7 +260,7 @@ public final class ClaudeRunnerTest
 			HarnessRun other = manager.create("claude");
 			HarnessRun evidence = manager.create("claude");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
-			Path fixtures = Files.createDirectories(root.resolve("fixtures"));
+			Path workspaces = Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
 			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
@@ -270,7 +270,7 @@ public final class ClaudeRunnerTest
 				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
 				directory.resolve("initial-project"), login, other.directory(), evidence.directory().resolve("project"),
 				evidence.directory().resolve("home"), evidence.directory().resolve("run.json"),
-				evidence.directory().resolve(".lock"), fixtures));
+				evidence.directory().resolve(".lock"), workspaces));
 		}
 	}
 }

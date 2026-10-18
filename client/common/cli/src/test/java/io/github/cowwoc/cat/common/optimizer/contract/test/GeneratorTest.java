@@ -319,7 +319,7 @@ public final class GeneratorTest
 		Contract original = ContractFixtures.contract();
 		List<PromptTest> tests = List.of(test);
 		Contract contract = new Contract(checked(original, tests), tests,
-			ContractFixtures.profiles(checked(original, tests), tests), original.judge(), original.fixtures(),
+			ContractFixtures.profiles(checked(original, tests), tests), original.judge(), original.ignoredFiles(),
 			original.limitations(), original.minimumPassRate(), original.salt());
 
 		// The test's one expected outcome belongs to one part; draw from a stream of that part
@@ -676,7 +676,7 @@ public final class GeneratorTest
 		Contract original = ContractFixtures.contract();
 		List<PromptTest> tests = List.of(capitalTest(countries, List.of("alpha")));
 		return new Contract(checked(original, tests), tests,
-			ContractFixtures.profiles(checked(original, tests), tests), original.judge(), original.fixtures(),
+			ContractFixtures.profiles(checked(original, tests), tests), original.judge(), original.ignoredFiles(),
 			original.limitations(), original.minimumPassRate(), CAPITAL_SALT);
 	}
 
