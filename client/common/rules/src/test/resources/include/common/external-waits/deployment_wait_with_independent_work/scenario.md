@@ -40,6 +40,13 @@ its result. Tell me the result once it finishes. Also add `- {{entry}}` to the U
   than `running` or a stated deadline passes, and the agent blocks on that script's exit instead of running the status
   command itself at intervals.
 
+### longest_wait_limit
+
+- **kind**: effect
+- **description**: Once the agent has edited `CHANGELOG.md`, every call that waits on its wait for the deployment
+  requests the longest limit that the wait operation accepts, or the longest that the agent's instructions allow when
+  they cap it, rather than a shorter limit such as a few seconds.
+
 ### changelog_entry_added
 
 - **kind**: guard
