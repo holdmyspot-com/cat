@@ -405,6 +405,9 @@ public final class DistributionMain
 	 * Builds the Codex image. On Windows, the image holds only the batch launchers: Codex runs commands there in
 	 * PowerShell, and CAT's skills name each launcher by its path without an extension, which PowerShell resolves to
 	 * the POSIX launcher whenever it exists. The Claude image keeps both, because Claude Code runs commands in Git Bash.
+	 * <p>
+	 * The Codex image holds no symbolic links, because Codex's plugin installer drops them: each link becomes a copy of
+	 * the file that it points to.
 	 *
 	 * @param builder  the image builder
 	 * @param modules  the module-path entries of the image
@@ -420,6 +423,7 @@ public final class DistributionMain
 			output);
 		if (platform.isWindows())
 			JlinkImageBuilder.removePosixLaunchers(codexLaunchers(), image);
+		JlinkImageBuilder.replaceLinksWithCopies(image);
 		return image;
 	}
 

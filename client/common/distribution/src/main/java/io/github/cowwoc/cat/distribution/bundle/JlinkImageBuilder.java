@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.spi.ToolProvider;
+import java.util.stream.Stream;
 
 /**
  * Uses the JDK's {@code jlink} tool to build the Java runtime directory bundled with a CAT plugin.
@@ -171,6 +172,36 @@ public final class JlinkImageBuilder
 			if (Files.notExists(script.resolveSibling(launcher.name() + ".bat")))
 				throw new IOException("The launcher has no batch form: " + script);
 			Files.delete(script);
+		}
+	}
+
+	/**
+	 * Replaces every symbolic link in a runtime image with a copy of the file that it points to. jlink links some
+	 * modules' license files to the {@code java.base} module's copies, and an installer that drops symbolic links, such
+	 * as Codex's plugin installer, would otherwise leave those modules without their license files.
+	 *
+	 * @param image the runtime-image directory
+	 * @throws NullPointerException if {@code image} is null
+	 * @throws IOException if a link does not resolve to a regular file, or if the image cannot be read or changed
+	 */
+	public static void replaceLinksWithCopies(Path image) throws IOException
+	{
+		requireThat(image, "image").isNotNull();
+		List<Path> links;
+		try (Stream<Path> paths = Files.walk(image))
+		{
+			links = paths.filter(Files::isSymbolicLink).toList();
+		}
+		for (Path link : links)
+		{
+			if (!Files.isRegularFile(link))
+				throw new IOException("The symbolic link does not point to a regular file: " + link);
+		}
+		for (Path link : links)
+		{
+			Path target = link.resolveSibling(Files.readSymbolicLink(link));
+			Files.delete(link);
+			Files.copy(target, link);
 		}
 	}
 

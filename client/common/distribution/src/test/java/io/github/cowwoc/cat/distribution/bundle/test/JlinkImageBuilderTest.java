@@ -154,6 +154,55 @@ public final class JlinkImageBuilderTest
 	}
 
 	/**
+	 * Verifies that a symbolic link in an image becomes a regular file with its target's content, and that the target
+	 * stays in place.
+	 */
+	@Test
+	public void replacesLinksWithCopies() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path image = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path target = image.resolve("legal/java.base/LICENSE");
+			Files.createDirectories(target.getParent());
+			Files.writeString(target, "license text");
+			Path link = image.resolve("legal/java.xml/LICENSE");
+			Files.createDirectories(link.getParent());
+			Files.createSymbolicLink(link, Path.of("../java.base/LICENSE"));
+
+			JlinkImageBuilder.replaceLinksWithCopies(image);
+
+			requireThat(Files.isSymbolicLink(link), "isSymbolicLink").isFalse();
+			requireThat(Files.readString(link), "copy").isEqualTo("license text");
+			requireThat(Files.readString(target), "target").isEqualTo("license text");
+		}
+	}
+
+	/**
+	 * Verifies that a symbolic link whose target is missing is reported instead of being copied or kept.
+	 */
+	@Test
+	public void rejectsBrokenLink() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path image = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path link = image.resolve("legal/java.xml/LICENSE");
+			Files.createDirectories(link.getParent());
+			Files.createSymbolicLink(link, Path.of("../java.base/LICENSE"));
+			try
+			{
+				JlinkImageBuilder.replaceLinksWithCopies(image);
+				throw new AssertionError("Expected a failure for the broken link");
+			}
+			catch (IOException failure)
+			{
+				requireThat(failure.getMessage(), "failureMessage").contains(link.toString());
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a moved launcher, in both forms, starts the image's Java from its new folder, that its batch form
 	 * takes the extension {@code .cmd}, and that the launchers that do not move stay in the image.
 	 */
