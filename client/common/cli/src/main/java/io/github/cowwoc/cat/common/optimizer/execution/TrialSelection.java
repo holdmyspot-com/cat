@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.ProjectRuleLoader;
 import io.github.cowwoc.cat.common.optimizer.campaign.Harness;
 import io.github.cowwoc.cat.common.optimizer.contract.Contract;
 import io.github.cowwoc.cat.common.optimizer.contract.Dependent;
@@ -29,9 +30,10 @@ public final class TrialSelection
 
 	/**
 	 * Returns the files that load the prompt system into a trial: the prompt sources, the in-project loader
-	 * configuration, CAT's project directory, the harness's instruction files in any directory and its top-level
-	 * project directories, the project files that plugin mappings write into trial plugins, the in-project dependents
-	 * and the contract's ignored files. A trial's project holds no other file of the candidate.
+	 * configuration, the project rules, the harness's instruction files in any directory and its top-level project
+	 * directories, the project files that plugin mappings write into trial plugins and the in-project dependents. A
+	 * trial's project holds no other file of the candidate; a prompt test links any other file that its trials need,
+	 * such as one of the contract's ignored files.
 	 *
 	 * @param harness the harness that runs the trials
 	 * @param promptSources the in-project prompt files and directories, relative to the project
@@ -53,15 +55,13 @@ public final class TrialSelection
 			if (dependent.location() == Dependent.Location.PROJECT)
 				roots.add(dependent.path());
 		}
-		for (String ignored : contract.ignoredFiles().paths())
-			roots.add(Path.of(ignored));
 		return new SourceSelection(roots, Set.copyOf(harness.instructionFiles()), List.of());
 	}
 
 	/**
 	 * Returns the files that load the prompt system into a session before a contract exists: the prompt sources, the
-	 * in-project loader configuration, CAT's project directory, the harness's instruction files in any directory and
-	 * its top-level project directories, and the project files that plugin mappings write into trial plugins.
+	 * in-project loader configuration, the project rules, the harness's instruction files in any directory and its
+	 * top-level project directories, and the project files that plugin mappings write into trial plugins.
 	 *
 	 * @param harness the harness that runs the sessions
 	 * @param promptSources the in-project prompt files and directories, relative to the project
@@ -104,7 +104,7 @@ public final class TrialSelection
 			if (!path.isAbsolute())
 				roots.add(path);
 		}
-		roots.add(Path.of(".cat"));
+		roots.add(ProjectRuleLoader.rulesDirectory(Path.of("")));
 		for (String directory : harness.projectDirectories())
 			roots.add(Path.of(directory));
 		for (TrialPlugin plugin : plugins)

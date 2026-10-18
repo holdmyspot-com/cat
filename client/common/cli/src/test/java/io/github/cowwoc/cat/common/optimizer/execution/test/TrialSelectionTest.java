@@ -31,8 +31,8 @@ public final class TrialSelectionTest
 
 	/**
 	 * Verifies that the base selection holds the prompt sources, the harness's project files, the in-project loader
-	 * configuration, CAT's project directory, the files that plugin mappings cover, the in-project dependents and the
-	 * ignored files, and leaves out the project's other files.
+	 * configuration, the project rules, the files that plugin mappings cover and the in-project dependents, and leaves
+	 * out the project's other files, including the contract's ignored files and CAT's other project files.
 	 */
 	@Test
 	public void baseHoldsOnlyThePromptSystem()
@@ -54,17 +54,20 @@ public final class TrialSelectionTest
 
 		for (String selected : List.of("docs/prompt.md", "module/AGENTS.md", "AGENTS.override.md",
 			".agents/skills/a/SKILL.md", ".codex/config.toml", ".cat/rules/r.md", "plugin/rules/x.md",
-			"scripts/repair.sh", "build/generated.md"))
+			"scripts/repair.sh"))
 		{
 			requireThat(selection.selects(Path.of(selected)), selected).isTrue();
 		}
-		for (String left : List.of("docs/other.md", "src/Main.java", "plugin/other.md", "module/CLAUDE.md"))
+		for (String left : List.of("docs/other.md", "src/Main.java", "plugin/other.md", "module/CLAUDE.md",
+			"build/generated.md", ".cat/tests/t/scenario.md", ".cat/config.json"))
+		{
 			requireThat(selection.selects(Path.of(left)), left).isFalse();
+		}
 	}
 
 	/**
 	 * Verifies that before a contract exists, the base selection holds the prompt sources, the harness's project files,
-	 * the in-project loader configuration, CAT's project directory and the files that plugin mappings cover.
+	 * the in-project loader configuration, the project rules and the files that plugin mappings cover.
 	 */
 	@Test
 	public void baseBeforeContractHoldsThePromptSystem()

@@ -1351,8 +1351,8 @@ public final class Driver implements AutoCloseable
 	 * Returns the files of a candidate that a staged source holds, so that a trial's project holds only the files that
 	 * load the prompt system.
 	 *
-	 * @return the campaign's base selection, which holds the contract's dependents and ignored files once a contract
-	 *   is confirmed
+	 * @return the campaign's base selection, which holds the contract's in-project dependents once a contract is
+	 *   confirmed
 	 */
 	private SourceSelection trialSelection()
 	{

@@ -2761,11 +2761,12 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that the guard pilot, which runs before confirmation, stages the proposal's ignored files, and that a
-	 * revision after confirmation reuses every pilot because the control trials see the same files.
+	 * Verifies that the guard pilot, which runs before confirmation, does not give its trials the proposal's ignored
+	 * files, which reach a trial only through a link in its prompt test's workspace, and that a revision after
+	 * confirmation reuses every pilot because the control trials see the same files.
 	 */
 	@Test
-	public void pilotStagesUnrecordedFixtures() throws Exception
+	public void pilotLeavesOutIgnoredFiles() throws Exception
 	{
 		// Requirement: R-C23
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -2777,8 +2778,7 @@ public final class OptimizerCoreTest
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
 			for (SessionRequest trial : trials)
 			{
-				requireThat(Files.readString(trial.source().resolve(".env.example")), "fixture").
-					isEqualTo("TOKEN=fixture\n");
+				requireThat(Files.exists(trial.source().resolve(".env.example")), "ignoredFile").isFalse();
 			}
 
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
@@ -2793,7 +2793,7 @@ public final class OptimizerCoreTest
 	 * confirmation records nothing more.
 	 */
 	@Test
-	public void presentingRecordsFixtures() throws Exception
+	public void presentingRecordsIgnoredFiles() throws Exception
 	{
 		// Requirement: R-W2
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -2813,11 +2813,11 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that a trial fixture that a revision before confirmation drops leaves the fork, so that neither the
-	 * revised proposal's guard pilot nor the confirmed incumbent stages it.
+	 * Verifies that an ignored file that a revision before confirmation drops leaves the fork, so that the confirmed
+	 * incumbent does not hold it.
 	 */
 	@Test
-	public void revisionLeavesOutDroppedFixture() throws Exception
+	public void revisionLeavesOutDroppedIgnoredFile() throws Exception
 	{
 		// Requirement: R-W2
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -2828,17 +2828,9 @@ public final class OptimizerCoreTest
 					((ArrayNode) output.get("ignored_files").get("paths")).removeAll();
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
 
 			repository.core().revise(id, "drop the ignored file");
 
-			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
-			List<SessionRequest> rerun = trials.subList(pilotTrials, trials.size());
-			requireThat(rerun, "rerun").isNotEmpty();
-			for (SessionRequest trial : rerun)
-			{
-				requireThat(Files.exists(trial.source().resolve(".env.example")), "pilotIgnoredFile").isFalse();
-			}
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
@@ -2849,12 +2841,12 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that a revision after confirmation that needs a trial fixture the fork does not hold records it and
-	 * runs its guard pilot on it, leaves the campaign's incumbent alone until the user confirms, and that confirming
-	 * moves the incumbent onto the larger fork in a new lineage.
+	 * Verifies that a revision after confirmation that lists an ignored file the fork does not hold records it and
+	 * reruns its guard pilot, leaves the campaign's incumbent alone until the user confirms, and that confirming moves
+	 * the incumbent onto the larger fork in a new lineage.
 	 */
 	@Test
-	public void confirmedRevisionRecordsNewFixture() throws Exception
+	public void confirmedRevisionRecordsNewIgnoredFile() throws Exception
 	{
 		// Requirement: R-W2
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -2876,11 +2868,6 @@ public final class OptimizerCoreTest
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
 			List<SessionRequest> rerun = trials.subList(pilotTrials, trials.size());
 			requireThat(rerun, "rerun").isNotEmpty();
-			for (SessionRequest trial : rerun)
-			{
-				requireThat(Files.readString(trial.source().resolve("late.example")), "pilotIgnoredFile").
-					isEqualTo("LATE=fixture\n");
-			}
 			requireThat(repository.load(id).incumbent().snapshot(), "unconfirmedIncumbent").isEqualTo(confirmed);
 
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
