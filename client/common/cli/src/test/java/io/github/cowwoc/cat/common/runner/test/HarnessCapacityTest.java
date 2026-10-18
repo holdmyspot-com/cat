@@ -148,7 +148,6 @@ public final class HarnessCapacityTest
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	@SuppressWarnings("PMD.CloseResource")
 	public void closingPermitTwiceIsHarmless() throws IOException
 	{
 		// Requirement: R-E8
@@ -157,7 +156,10 @@ public final class HarnessCapacityTest
 			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
 			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, unexpectedPause(), CLOCK);
 			HarnessCapacity.Permit first = capacity.tryAcquire().orElseThrow();
-			first.close();
+			try (first)
+			{
+				requireThat(capacity.tryAcquire().isPresent(), "acquiredWhileFirstHeld").isFalse();
+			}
 			try (HarnessCapacity.Permit second = capacity.tryAcquire().orElseThrow())
 			{
 				first.close();

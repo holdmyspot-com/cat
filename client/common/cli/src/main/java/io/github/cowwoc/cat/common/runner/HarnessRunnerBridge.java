@@ -13,9 +13,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -93,7 +92,6 @@ public final class HarnessRunnerBridge
 	 *
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or stream fails
 	 */
-	@SuppressWarnings("PMD.CloseResource")
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
 		Writer output) throws IOException
 	{
@@ -103,9 +101,8 @@ public final class HarnessRunnerBridge
 		HarnessRun run = null;
 		boolean completed = false;
 		int turnNumber = 0;
-		Future<?> activeTurn = null;
+		FutureTask<Void> activeTurn = null;
 		CountDownLatch activeTurnStarted = null;
-		ExecutorService turnExecutor = Executors.newSingleThreadExecutor();
 		try
 		{
 			try (HarnessRunSession session = starter.start();
@@ -130,7 +127,7 @@ public final class HarnessRunnerBridge
 							int currentTurn = turnNumber + 1;
 							CountDownLatch turnStarted = new CountDownLatch(1);
 							client.startTurn();
-							activeTurn = turnExecutor.submit(() ->
+							activeTurn = new FutureTask<>(() ->
 							{
 								try
 								{
@@ -174,6 +171,7 @@ public final class HarnessRunnerBridge
 									client.endTurn();
 								}
 							});
+							Thread.ofPlatform().start(activeTurn);
 							activeTurnStarted = turnStarted;
 							turnNumber = currentTurn;
 						}
@@ -217,7 +215,7 @@ public final class HarnessRunnerBridge
 				{
 					// A running turn holds the session's monitor, so closing the session would wait for it. Interrupt the turn
 					// first so that a failure of the bridge itself does not wait for a turn that may never end.
-					turnExecutor.shutdownNow();
+					stopTurn(activeTurn);
 					throw e;
 				}
 			}
@@ -242,8 +240,19 @@ public final class HarnessRunnerBridge
 		}
 		finally
 		{
-			turnExecutor.shutdownNow();
+			stopTurn(activeTurn);
 		}
+	}
+
+	/**
+	 * Interrupts a turn that is still running.
+	 *
+	 * @param turn the last turn that started, or {@code null} if none started
+	 */
+	private static void stopTurn(FutureTask<Void> turn)
+	{
+		if (turn != null)
+			turn.cancel(true);
 	}
 
 	/**

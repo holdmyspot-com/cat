@@ -643,33 +643,48 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	@Override
-	@SuppressWarnings("PMD.CloseResource")
 	protected StoreFixture open() throws IOException
 	{
-		// The returned fixture owns the directories and closes them
-		TemporaryDirectories cleanup = new TemporaryDirectories();
-		Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-store-"));
-		FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
-		return new StoreFixture()
+		return new FileStoreFixture();
+	}
+
+	/**
+	 * A store in a new temporary directory, which the fixture deletes when it closes.
+	 */
+	private static final class FileStoreFixture implements StoreFixture
+	{
+		private final TemporaryDirectories cleanup = new TemporaryDirectories();
+		private final Path campaigns;
+		private final FileCampaignStore store;
+
+		/**
+		 * Creates the directory and the store.
+		 *
+		 * @throws IOException if the directory cannot be created
+		 */
+		FileStoreFixture() throws IOException
 		{
-			@Override
-			public CampaignStore store()
-			{
-				return store;
-			}
+			campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-store-"));
+			store = new FileCampaignStore(campaigns, JSON);
+		}
 
-			@Override
-			public CampaignStore reopen()
-			{
-				return new FileCampaignStore(campaigns, JSON);
-			}
+		@Override
+		public CampaignStore store()
+		{
+			return store;
+		}
 
-			@Override
-			public void close() throws IOException
-			{
-				cleanup.close();
-			}
-		};
+		@Override
+		public CampaignStore reopen()
+		{
+			return new FileCampaignStore(campaigns, JSON);
+		}
+
+		@Override
+		public void close() throws IOException
+		{
+			cleanup.close();
+		}
 	}
 
 	/**

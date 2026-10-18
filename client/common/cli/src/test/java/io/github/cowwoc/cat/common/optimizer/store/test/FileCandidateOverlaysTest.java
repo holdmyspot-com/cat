@@ -42,33 +42,51 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 	}
 
 	@Override
-	@SuppressWarnings("PMD.CloseResource")
 	protected OverlaysFixture open(FileInventory fork) throws IOException
 	{
-		// The returned fixture owns the directory and closes it
-		TemporaryDirectories cleanup = new TemporaryDirectories();
-		Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-"));
-		FileCandidateOverlays overlays = new FileCandidateOverlays(campaign, fork, JSON);
-		return new OverlaysFixture()
+		return new FileOverlaysFixture(fork);
+	}
+
+	/**
+	 * Overlays in a new temporary campaign directory, which the fixture deletes when it closes.
+	 */
+	private static final class FileOverlaysFixture implements OverlaysFixture
+	{
+		private final TemporaryDirectories cleanup = new TemporaryDirectories();
+		private final FileInventory fork;
+		private final Path campaign;
+		private final FileCandidateOverlays overlays;
+
+		/**
+		 * Creates the directory and the overlays.
+		 *
+		 * @param fork the fork that the overlays apply to
+		 * @throws IOException if the directory cannot be created
+		 */
+		FileOverlaysFixture(FileInventory fork) throws IOException
 		{
-			@Override
-			public CandidateOverlays overlays()
-			{
-				return overlays;
-			}
+			this.fork = fork;
+			campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-"));
+			overlays = new FileCandidateOverlays(campaign, fork, JSON);
+		}
 
-			@Override
-			public CandidateOverlays reopen()
-			{
-				return new FileCandidateOverlays(campaign, fork, JSON);
-			}
+		@Override
+		public CandidateOverlays overlays()
+		{
+			return overlays;
+		}
 
-			@Override
-			public void close() throws IOException
-			{
-				cleanup.close();
-			}
-		};
+		@Override
+		public CandidateOverlays reopen()
+		{
+			return new FileCandidateOverlays(campaign, fork, JSON);
+		}
+
+		@Override
+		public void close() throws IOException
+		{
+			cleanup.close();
+		}
 	}
 
 	/**

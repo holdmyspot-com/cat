@@ -12,6 +12,7 @@ import io.github.cowwoc.cat.common.runner.HarnessStandardError;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.time.Duration;
@@ -78,7 +79,6 @@ public final class ClaudeProcess implements HarnessProcess
 	 * @param process the started Claude process
 	 * @throws NullPointerException if {@code scope} or {@code process} are null
 	 */
-	@SuppressWarnings("PMD.CloseResource")
 	public ClaudeProcess(HarnessRunnerScope scope, Process process)
 	{
 		requireThat(scope, "scope").isNotNull();
@@ -88,20 +88,19 @@ public final class ClaudeProcess implements HarnessProcess
 		input = new OutputStreamWriter(process.getOutputStream(), UTF_8);
 		standardError = new HarnessStandardError(process.getErrorStream());
 		// The output reader thread owns Claude's standard output and closes it when the stream ends.
-		BufferedReader lines = new BufferedReader(new InputStreamReader(process.getInputStream(), UTF_8));
-		Thread.ofVirtual().start(() -> readOutput(lines));
+		Thread.ofVirtual().start(() -> readOutput(process.getInputStream()));
 	}
 
 	/**
 	 * Moves each line of Claude's standard output into {@link #output} so a turn can wait for the next line with a
 	 * deadline. Ends with one end-of-stream entry when Claude closes its output or reading fails.
 	 *
-	 * @param lines Claude's standard output
+	 * @param stream Claude's standard output
 	 */
-	private void readOutput(BufferedReader lines)
+	private void readOutput(InputStream stream)
 	{
-		assert lines != null;
-		try (lines)
+		assert stream != null;
+		try (BufferedReader lines = new BufferedReader(new InputStreamReader(stream, UTF_8)))
 		{
 			String line = lines.readLine();
 			while (line != null)

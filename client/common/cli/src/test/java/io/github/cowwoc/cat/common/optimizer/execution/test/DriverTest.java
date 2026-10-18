@@ -3086,7 +3086,6 @@ public final class DriverTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	@SuppressWarnings("PMD.CloseResource")
 	public void openKeepsFailureWhenUnlockFails() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -3096,12 +3095,11 @@ public final class DriverTest
 			IOException release = new IOException("release failed");
 			try (FaultingFileChannel channel = new FaultingFileChannel(null, release, null))
 			{
-				// Driver.open takes ownership of the lock and releases it when it fails
-				CampaignLock lock = CampaignLock.tryAcquire(directory.resolve("unlock.lock"), _ -> channel).
-					orElseThrow();
 				try
 				{
-					Driver.open(harness.context(), "missing-campaign", lock).close();
+					// Driver.open takes ownership of the lock and releases it when it fails
+					Driver.open(harness.context(), "missing-campaign",
+						CampaignLock.tryAcquire(directory.resolve("unlock.lock"), _ -> channel).orElseThrow()).close();
 					throw new AssertionError("Expected the missing campaign to fail");
 				}
 				catch (IllegalArgumentException e)
