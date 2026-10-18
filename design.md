@@ -141,15 +141,15 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Assertion | One statement about a trial that a prompt test checks, under its own heading in the scenario's `## Assertions` section. It is a guard or an effect assertion, and a built-in tool or the judge decides it ([§6.3](#63-prompt-tests-and-test-cases), [§6.4](#64-judge)). |
 | Guard assertion | An assertion that an agent passes almost always even without the target prompt, such as answering a question from the one line that a search finds. It protects an operation that the prompt must not harm. |
 | Effect assertion | An assertion that the target prompt exists to make true, such as reading a long file whole. Any assertion that is not a guard is an effect assertion. |
-| Variable | A named input of a prompt test, declared in its `## Variables` section and written `{{name}}` in its turns, assertions and fixtures ([§6.3](#63-prompt-tests-and-test-cases)). |
+| Variable | A named input of a prompt test, declared in its `## Variables` section and written `{{name}}` in its turns, assertions and workspace files ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Test case | A prompt test with one value for each of its variables, together with its expected outcome. The contract author writes the test cases. Every trial of the same values is a trial of the same test case ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Expected outcome | The result that a compliant reply gives for a test case, such as the date that the turn asks for. CAT splits test cases into parts by it, and adds to every prompt test an assertion that the reply's result matches it ([§6.3](#63-prompt-tests-and-test-cases)). "Expected outcome" never means a trial's pass or fail result. |
 | Held-out part | The test cases of each prompt test that only formal trials, control trials of an attempt and the incumbent's baseline trials draw. No session that shapes a candidate sees them ([§6.3](#63-prompt-tests-and-test-cases)). |
-| Fixture | A file in a prompt test's `workspace/` directory, or the copy of the file or directory that a symbolic link there reaches. CAT copies it into each trial's workspace at its path below `workspace/`, replacing each variable in its name, and in the content of a file from a test root, with the test case's value ([§6.3](#63-prompt-tests-and-test-cases)). |
-| Value generator | A function built into CAT that expands a seed and parameters, such as a line count, into fixture text, giving the same bytes on every machine ([§6.3](#63-prompt-tests-and-test-cases)). |
+| Workspace file | A file in a prompt test's `workspace/` directory, or the copy of the file or directory that a symbolic link there reaches. CAT copies it into each trial's workspace at its path below `workspace/`, replacing each variable in its name, and in the content of a file from a test root, with the test case's value ([§6.3](#63-prompt-tests-and-test-cases)). |
+| Value generator | A function built into CAT that expands a seed and parameters, such as a line count, into the text of a workspace file, giving the same bytes on every machine ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Values file | The committed `values.json` beside a scenario, which holds its test cases' values and expected outcomes. Delivery writes it at the end of a campaign ([§4.7](#47-delivery)). In a draft directory it also holds the contract author's new test cases. |
 | Draft directory | A new directory that CAT creates for each contract author session, holding a copy of every recorded prompt test of the target. The session edits those copies and creates its new prompt tests there, and delivery writes the confirmed ones ([§6.1](#61-derivation-and-confirmation)). |
-| Contract tools | The commands that CAT gives a contract author session for work that needs no judgment, such as validating its draft or measuring a test case's fixtures ([§6.1](#61-derivation-and-confirmation)). |
+| Contract tools | The commands that CAT gives a contract author session for work that needs no judgment, such as validating its draft or measuring a test case's workspace files ([§6.1](#61-derivation-and-confirmation)). |
 | Reply | Every assistant message the trial agent sends during one turn, in order: its interim messages, such as a progress note before a tool call, and its final response (D29). |
 | Built-in tool | A tool that ships with CAT and decides one assertion from the trial record without a model. An assertion names it in its `tool` key, and its `on_tool_failure` key says whether a failure of the tool fails the trial or leaves the assertion to the judge ([§6.4](#64-judge)). |
 | Trial record | The normalized record of one trial that CAT builds from the harness events and the trial's file changes. Built-in tools read it, and the judge receives it as its evidence section ([§6.4](#64-judge)). |
@@ -806,7 +806,7 @@ CAT runs five kinds of work in nested sessions, each started through the current
 | Role | Input | Output |
 |---|---|---|
 | Contract author | Read-only prompt system, the prompt tests already in it, user feedback and the latest guard pilot results; after a failed attempt, each failed prompt test with its development test cases only, its formal failures' cells, failed assertions and behaviors, and the reproduction counts of the test cases it tried | Complete contract proposal in a strict schema, including every prompt test it creates or edits and every test case's values and expected outcome; after a failed attempt, new development test cases for each failed test ([§6.3](#63-prompt-tests-and-test-cases)) |
-| Trial agent | Staged candidate project or control source with the test case's fixtures, the assigned turn sequence and its cell's trial profile | Transcript, the reply to each turn, project effects |
+| Trial agent | Staged candidate project or control source with the test case's workspace files, the assigned turn sequence and its cell's trial profile | Transcript, the reply to each turn, project effects |
 | Judge | Frozen rubric, the test case, that trial's evidence section and the assertions it decides | `pass` or `fail` with rationale per assertion, in a strict schema |
 | Triage | A failed development trial's test case, reply, evidence section, built-in tool results and failure record | `blocking` or `self-recovering` with rationale, in a strict schema ([§2.7](#27-development-commit-gate-and-edit-or-continue)) |
 | Prompt author | Copy of the working candidate and the failure evidence, including each failing trial's evidence section | Edited prompt files in its copy, and the evidence manifest ([§2.7](#27-development-commit-gate-and-edit-or-continue)) |
@@ -1141,13 +1141,13 @@ project, into campaign storage. It then adds a detached optimization worktree at
 the current working candidate for the user to inspect.
 
 When CAT presents a proposal, it records and copies the proposal's prompt tests, with their scenarios, `workspace/`
-directories and the shared files that their links reach, its other trial fixtures and the derived prompt sources that
-the fork does not yet hold in the same way, so neither the guard pilot nor the trials read a live fixture, test or
-source. Before confirmation, presenting a later proposal leaves out the files that only earlier proposals needed,
-together with the files outside the project that only their links reach. Their copies stay in campaign storage, and a
-proposal that needs such a file again gets the recorded copy back rather than the live file. A file that appears after
-the presentation is refused at confirmation until CAT presents the proposal again. After confirmation the fork only
-grows: a file that a revision no longer needs stays. Presenting a revision records the files it needs that the fork
+directories and the shared files that their links reach, its ignored files and the derived prompt sources that the fork
+does not yet hold in the same way, so neither the guard pilot nor the trials read a live workspace file, ignored file,
+test or source. Before confirmation, presenting a later proposal leaves out the files that only earlier proposals
+needed, together with the files outside the project that only their links reach. Their copies stay in campaign storage,
+and a proposal that needs such a file again gets the recorded copy back rather than the live file. A file that appears
+after the presentation is refused at confirmation until CAT presents the proposal again. After confirmation the fork
+only grows: a file that a revision no longer needs stays. Presenting a revision records the files it needs that the fork
 lacks, and its guard pilot reads them, but the campaign stays on its current fork. Confirming the revision moves the
 campaign onto the larger fork: the incumbent and the working candidate keep their edits under new snapshot identities,
 and the new lineage measures them ([§7](#7-campaign-lifecycle)). Candidates of earlier lineages stay on the fork they
@@ -1201,26 +1201,26 @@ source** that contains:
   `.codex/` and `.agents/` for Codex); the loader configuration; CAT's project directory `.cat/`; every file of a
   project directory or file that a plugin mapping covers; and every in-project dependent of the target;
 - the recorded participating ignored and external prompt files;
-- any ignored paths the confirmed contract lists as trial fixtures;
+- any ignored files that the confirmed contract lists;
 - the candidate overlay;
 - **every symbolic link replaced by a copy of its resolved target**, so trial writes through a link reach only the trial
   copy and never a live target. A link cycle, or a link to a missing target, is reported in the proposal and blocks
   confirmation until it is resolved.
 
-A trial's workspace is its candidate's base source plus its test case's fixtures: the prompt test's `workspace/`
+A trial's workspace is its candidate's base source plus its test case's workspace files: the prompt test's `workspace/`
 directory, whose symbolic links that lead outside it reach the trial as copies of their targets and whose other links
-stay links ([§6.3](#63-prompt-tests-and-test-cases)).
-Neither ever holds a prompt test directory of the confirmed contract, with its scenario and values file, a shared file
-that a link reaches inside a test root, or the prompt test configuration. A prompt test whose agent must search, read or
-build the project's own files links them from its `workspace/` at the paths where the agent should find them, so a
-search test links the files among which the agent searches. CAT reads every link's target when it checks the
-proposal and records it with the prompt test, so every trial of the prompt test receives the same copy. Every trial
-already receives its candidate's version of each prompt file, so confirmation refuses a link that would copy one in its
-place. The proposal lists each prompt test's fixtures and links for the user to review. Control trials
-and candidate trials of one prompt test receive the same fixtures. A trial that needs a file its prompt test does not
-provide fails like any other trial, so the guard pilot shows the missing file before confirmation. The plugin copies
-and the prompt measurement read the base source, since no fixture reaches a plugin or the prompt. The contract author
-and a test revision still work in a copy of the whole fork, because writing a prompt test means reading the project.
+stay links ([§6.3](#63-prompt-tests-and-test-cases)). Neither ever holds a prompt test directory of the confirmed
+contract, with its scenario and values file, a shared file that a link reaches inside a test root, or the prompt test
+configuration. A prompt test whose agent must search, read or build the project's own files links them from its
+`workspace/` at the paths where the agent should find them, so a search test links the files among which the agent
+searches. CAT reads every link's target when it checks the proposal and records it with the prompt test, so every trial
+of the prompt test receives the same copy. Every trial already receives its candidate's version of each prompt file, so
+confirmation refuses a link that would copy one in its place. The proposal lists each prompt test's workspace files and
+links for the user to review. Control trials and candidate trials of one prompt test receive the same workspace files. A
+trial that needs a file its prompt test does not provide fails like any other trial, so the guard pilot shows the
+missing file before confirmation. The plugin copies and the prompt measurement read the base source, since no workspace
+file reaches a plugin or the prompt. The contract author and a test revision still work in a copy of the whole fork,
+because writing a prompt test means reading the project.
 
 **Prompt test configuration (user rulings, 2026-10-15).** Which plugins a trial installs is the user's decision, so CAT
 reads it from the prompt test configuration instead of inferring it from file contents. The configuration belongs to the
@@ -1310,18 +1310,19 @@ assignments. Excluding the prompt test directories keeps a trial agent from read
 outcomes or other test cases. User-level rules reach the nested harness home through the runner's existing user-rule
 handling.
 
-**Test case fixtures.** Each trial's workspace receives its test case's fixtures on top of the base source: CAT copies
-the prompt test's `workspace/` directory into the workspace root, keeping each file's path below it, and replaces every
-declared variable's `{{name}}` in file names and in the contents of files that are valid UTF-8 and come from a test
-root: the prompt test's own files and the shared files that its links reach. A linked project file and every other file
-are copied unchanged. A generated value is expanded only into file contents ([§6.3](#63-prompt-tests-and-test-cases)).
-CAT refuses a test case whose fixture path collides with another fixture or with a path of the base source, unless the
-fixture is a link to that same project path and so the same file, so a fixture never silently replaces project content.
+**Test case workspace files.** Each trial's workspace receives its test case's workspace files on top of the base
+source: CAT copies the prompt test's `workspace/` directory into the workspace root, keeping each file's path below it,
+and replaces every declared variable's `{{name}}` in file names and in the contents of files that are valid UTF-8 and
+come from a test root: the prompt test's own files and the shared files that its links reach. A linked project file and
+every other file are copied unchanged. A generated value is expanded only into file contents
+([§6.3](#63-prompt-tests-and-test-cases)). CAT refuses a test case whose workspace path collides with another workspace
+file or with a path of the base source, unless the workspace file is a link to that same project path and so the same
+file, so a workspace file never silently replaces project content.
 
-**Initial project (user ruling, 2026-10-12).** Before the first turn, the runner copies each trial's workspace, fixtures
-included, to the run's **initial project**. A built-in tool that reads a file as it was when the trial started, and the
-trial record's file changes, compare with that copy rather than with the staged source, so a fixture is part of the
-workspace that the trial started with, not a file that the trial created.
+**Initial project (user ruling, 2026-10-12).** Before the first turn, the runner copies each trial's workspace, with its
+workspace files, to the run's **initial project**. A built-in tool that reads a file as it was when the trial started,
+and the trial record's file changes, compare with that copy rather than with the staged source, so a workspace file is
+part of the workspace that the trial started with, not a file that the trial created.
 
 **Passing trials' project copies (user ruling, 2026-10-17).** Once a trial's passing verdict is recorded, CAT deletes
 the trial's effects and its initial project; a guard pilot's control trial loses them once it passes every assertion.
@@ -1349,8 +1350,8 @@ still try to read it; the proposal records this as a limitation.
 
 ### 4.5 Symbolic-link warning
 
-Before confirmation, the proposal lists every symbolic link that it finds in the prompt system or in staged fixtures.
-For each link it shows:
+Before confirmation, the proposal lists every symbolic link that it finds in the prompt system or in staged ignored
+files. For each link it shows:
 
 - the link path and its resolved target;
 - whether the target is inside or outside the project, and its edit authority;
@@ -1531,7 +1532,7 @@ proposal file holds only what belongs to this contract and to no prompt test:
   requirements whose trigger it leaves absent, its applicability, the requirement that each assertion checks, and any
   interaction it cannot cover;
 - the minimum pass rate, the judge's rubric and decision rule, the dependents, the conflicts, the limitations and the
-  ignored paths needed as trial fixtures.
+  ignored files that trials need.
 
 A recorded prompt test that the author leaves unchanged therefore costs it nothing to carry, and the user reviews the
 same files that delivery writes ([§4.7](#47-delivery)). The draft directory lies in the contract author's run
@@ -1559,11 +1560,11 @@ Work on what the author is drafting is a contract tool, a command that the reque
   prints each prompt test's number of distinct expected outcomes. It does not split them into parts, so that the author
   cannot tell which of its test cases are held out; CAT checks the split when the session ends
   ([§6.3](#63-prompt-tests-and-test-cases)).
-- `contract fixtures` writes one test case's workspace files into a directory that the author names: the prompt test's
+- `contract workspace` writes one test case's workspace files into a directory that the author names: the prompt test's
   `workspace/` with each link replaced by a copy of its target, the case's values in place of the placeholders and its
   generator calls expanded. It prints each file's path, size in bytes and line count, and how its size compares with the
-  tool-output limit of each trial profile of the prompt test, so the author can size a fixture just over a limit without
-  reading the harness's or CAT's implementation.
+  tool-output limit of each trial profile of the prompt test, so the author can size a workspace file just over a limit
+  without reading the harness's or CAT's implementation.
 
 The author still decides everything that needs judgment: the requirements, the prompt tests and their content, the
 test cases' values and expected outcomes, the dependents, the conflicts, the limitations, and the judge's rubric and
@@ -1600,7 +1601,7 @@ Aggregate counts never stand in for the items themselves. The proposal that CAT 
   project file that no mapping covers; the prompt files that load in production but not in trials; and the hooks that
   the user has not approved ([§4.4](#44-trial-staging));
 - the guard pilot's results (below);
-- ignored paths needed as trial fixtures;
+- ignored files that trials need;
 - the statistical procedure: the joint budget, bets, caps for the first attempts, the commit gate, the review
   checkpoint and the baseline targets, at the proposed `p_min`;
 - every conflict: requirements that no reply can satisfy together, with the source text that shows it, at least two
@@ -1680,7 +1681,8 @@ test by three rules:
 2. **It needs the least work that can still fail them.** Its inputs, turns and actions are the smallest under which a
    requirement can still fail, such as a document just over one part rather than one many parts long. The rule sizes
    each trial; it never reduces the number of trials.
-3. **It is organic.** No turn, fixture or file name tells the agent the expected outcome or that it is being tested.
+3. **It is organic.** No turn, workspace file or file name tells the agent the expected outcome or that it is being
+   tested.
 
 **Scenario format (user rulings, 2026-10-10).** A prompt test is a directory named by its case in snake_case, under
 `<root>/.cat/tests/<path>/` or `<module>/src/test/resources/<path>/` ([§8](#8-skill-and-command-interface)). It holds
@@ -1811,12 +1813,12 @@ an old values file rebuilds the same files. CAT starts with `log_lines`, whose l
 2025-02-11T08:14:03.512Z INFO  billing.InvoiceService - processed batch 4821 in 37 ms
 ```
 
-Each line must look real by itself, in format, words and token density, because a file of gibberish tells the agent
-it is being tested and costs a different number of tokens per line than real text; the file as a whole need not mean
+Each line must look real by itself, in format, words and token density, because a file of gibberish tells the agent it
+is being tested and costs a different number of tokens per line than real text; the file as a whole need not mean
 anything. Generated text never decides a test case's expected outcome: only the values the contract author writes do.
 The contract author's instructions list each generator's words and date range, so it can write facts that the filler
-never contains. A generated value may appear only in fixture file contents; CAT refuses one in a turn, an assertion, a
-`tool` value or a file name.
+never contains. A generated value may appear only in the contents of workspace files; CAT refuses one in a turn, an
+assertion, a `tool` value or a file name.
 
 **Development and held-out parts (user ruling, 2026-10-10).** CAT draws a random salt when it validates a campaign's
 first proposal and keeps it for the campaign. It assigns each test case to the **development part** or the **held-out
@@ -1909,7 +1911,8 @@ failure is an infrastructure failure, not evidence.
 
 **Earlier scenarios.** A scenario written before this format, with its context in prose and its values fixed in the
 text, is input that the contract author converts in the draft directory: it writes the variables, the turns with
-placeholders, the fixtures and the test cases, and the proposal shows the conversion as an edit of the recorded file.
+placeholders, the workspace files and the test cases, and the proposal shows the conversion as an edit of the recorded
+file.
 
 ### 6.4 Judge
 
@@ -2177,7 +2180,7 @@ It reads the prompt test configuration from the target's test directory (below) 
 the file to write ([§4.4](#44-trial-staging)).
 Each prints one JSON status object to standard output, holding the status, campaign identity, a summary for the user
 and any choices. The skill never interprets statistics itself. The launcher also provides the contract tools,
-`contract check` and `contract fixtures`, for contract author sessions ([§6.1](#61-derivation-and-confirmation)); the
+`contract check` and `contract workspace`, for contract author sessions ([§6.1](#61-derivation-and-confirmation)); the
 skill does not use them.
 
 Agents locate CAT's installed files without shell variables that the harness does not define. The session hooks
@@ -2458,7 +2461,7 @@ a named end-to-end boundary.
 | Goal | Required evidence |
 |---|---|
 | G1 | **End-to-end in both harnesses:** a dirty base is refused before any fork. A deliberately deficient prompt system is improved in the optimization worktree; unselected attempts never touch the base; a certified, non-regressing candidate is delivered as a Git diff that includes its certification record, after which nothing of the campaign remains under `.cat/sessions/`; keeping the incumbent instead of a regressing certified candidate also removes it, and an uncertified campaign keeps its files; an interrupted removal completes on the next command. **Delivery:** disjoint post-fork base edits survive; same-file changes stop for direction; a fault between writes resumes without duplicating or overwriting. **Uncertified outcomes:** they leave the base unchanged unless the user explicitly chooses. An improvement proven by an inconclusive attempt is offered and, when kept, delivered as `improved, not certified`; when several attempts qualify, the best candidate so far is offered, even after later candidates fail. Driver and delivery tests prove these, because an uncertified certification attempt costs hundreds of trials end to end. An accepted uncertified candidate is labelled `not certified`. **Authoring:** an attempt whose manifest omits a changed hunk or cites an unknown test case is rejected; the minimality pass removes a hunk that the promotion runs do not need and keeps one they do; a weak round's 3 attempts promote only the best accepted one; an attempt that fixes some triggering test cases but not all is promoted; a triggering test case gets extra runs until its streak is unlikely for the working candidate, up to 4; a promoted candidate that falls clearly below its predecessor is reverted; each attempt of a round receives its own approach (driver tests with a fake `SessionPort`). |
-| G2 | **Proposal content:** every fixture requirement and source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per prompt test in the weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns it only for changed prompt tests, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed; a mapping to a path that the base does not hold, or in-project prompt files in two plugins, is refused, and a mapped file that differs from the base is a warning. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, prose in a section of key-value pairs, a `## Scenario` or turn of key-value pairs without a `description`, an unknown key or section, a workspace link that is absolute, is missing, leaves the project, forms a cycle, holds itself or reaches a prompt test directory, a link that copies a prompt file, a link that Git records where the checkout holds another kind of file, a malformed variable, an undeclared or generated placeholder outside fixture contents, an unknown built-in tool, an `on_tool_failure` other than `fail` or `judge` or without a `tool`, or a check whose evidence the harness cannot supply is refused. **Test cases:** fixtures are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation waits until the user chooses a certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. |
+| G2 | **Proposal content:** every workspace file and ignored file and its source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per prompt test in the weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns it only for changed prompt tests, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed; a mapping to a path that the base does not hold, or in-project prompt files in two plugins, is refused, and a mapped file that differs from the base is a warning. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, prose in a section of key-value pairs, a `## Scenario` or turn of key-value pairs without a `description`, an unknown key or section, a workspace link that is absolute, is missing, leaves the project, forms a cycle, holds itself or reaches a prompt test directory, a link that copies a prompt file, a link that Git records where the checkout holds another kind of file, a malformed variable, an undeclared or generated placeholder outside fixture contents, an unknown built-in tool, an `on_tool_failure` other than `fail` or `judge` or without a `tool`, or a check whose evidence the harness cannot supply is refused. **Test cases:** fixtures are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation waits until the user chooses a certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. |
 | G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds; caps, all-pass minimums, bets, the commit gate and the baseline at minimum pass rates other than 0.95; the control and incumbent e-values on fixed pair paths, including `not certified: below control`, `not certified: below incumbent` and certification held back until both comparisons are decided. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim names the frozen judge, the benchmark, the held-out part and the conditions, and a weakest-only claim names its one profile per prompt test and says that no other profile was certified. |
 | G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** detected dependence yields `invalid statistical assumptions`. **Held-out test cases:** the split by normalized expected outcome is fixed at the first validated proposal, and outcomes that differ only in case or whitespace share a part; committed test cases go to development and a new test case sharing a committed outcome does too; development trials, targeted runs and prompt author sessions receive only development test cases; formal and baseline trials draw only held-out ones; a formal failure reaches development only as its cell, test, failed assertions and behaviors, and the development test cases added after it never share a held-out expected outcome and join development only after two reproduction failures with the failure's behavior in its cell or a stressed profile, the contract author replacing test cases that do not reproduce, with a pause after 4 rounds; in both harnesses, no session whose output reaches development can read the held-out directory or the held-out run root. |
 | G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each material change makes a result historical; a changed command that an unchanged prompt tells the model to run leaves it current; a runner or CAT version change with an unchanged session environment version leaves it current; a raised threshold or a lowered error level makes it historical, and a lowered threshold or a raised error level does not; a new judge version makes it historical; after cleanup, `status` reports from the certification record, naming each changed condition and each unchecked one; a comparability field that only one side records makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: testing environment changed`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. **Size:** the status shows the candidate's prompt size and median trial input tokens against the incumbent's. |
