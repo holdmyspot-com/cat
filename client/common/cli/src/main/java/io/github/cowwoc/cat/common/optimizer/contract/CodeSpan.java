@@ -1,8 +1,5 @@
 package io.github.cowwoc.cat.common.optimizer.contract;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
  * Writes and reads Markdown code spans, following CommonMark: a span opens with a run of backticks and closes with the
  * next run of the same length, and one space is removed from each end of content that both starts and ends with one.
@@ -45,42 +42,27 @@ final class CodeSpan
 	}
 
 	/**
-	 * Reads code spans separated by commas, such as {@code `a`, `b`}.
+	 * Reads one code span, such as {@code `a`}, with optional whitespace around it.
 	 *
 	 * @param text the text
-	 * @return the content of each span, in order
-	 * @throws IllegalArgumentException if {@code text} holds anything other than code spans separated by commas, or no
-	 *                                  code span
+	 * @return the span's content
+	 * @throws IllegalArgumentException if {@code text} holds anything other than one code span
 	 */
-	static List<String> parseList(String text)
+	static String parse(String text)
 	{
-		List<String> spans = new ArrayList<>();
 		int i = skipWhitespace(text, 0);
-		while (true)
-		{
-			if (i == text.length() || text.charAt(i) != '`')
-			{
-				throw new IllegalArgumentException("'" + text + "' must be code spans separated by commas, such as " +
-					"`fixtures/**`, `../fixtures/AGENTS.md`");
-			}
-			int open = i;
-			while (i < text.length() && text.charAt(i) == '`')
-				++i;
-			int length = i - open;
-			int close = closing(text, i, length);
-			if (close == -1)
-				throw new IllegalArgumentException("'" + text + "' has a code span that is not closed");
-			spans.add(content(text.substring(i, close)));
-			i = skipWhitespace(text, close + length);
-			if (i == text.length())
-				return spans;
-			if (text.charAt(i) != ',')
-			{
-				throw new IllegalArgumentException("'" + text + "' must be code spans separated by commas, such as " +
-					"`fixtures/**`, `../fixtures/AGENTS.md`");
-			}
-			i = skipWhitespace(text, i + 1);
-		}
+		if (i == text.length() || text.charAt(i) != '`')
+			throw new IllegalArgumentException("'" + text + "' must be one code span");
+		int open = i;
+		while (i < text.length() && text.charAt(i) == '`')
+			++i;
+		int length = i - open;
+		int close = closing(text, i, length);
+		if (close == -1)
+			throw new IllegalArgumentException("'" + text + "' has a code span that is not closed");
+		if (skipWhitespace(text, close + length) != text.length())
+			throw new IllegalArgumentException("'" + text + "' must be one code span");
+		return content(text.substring(i, close));
 	}
 
 	/**

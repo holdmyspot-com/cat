@@ -606,8 +606,8 @@ public final class ScenarioTest
 
 	/**
 	 * Verifies that an assertion without a kind, with an unknown kind, without a description, with a repeated key, or
-	 * with a {@code tool} that is not a code span, names no built-in tool or gives it unsuitable arguments is refused
-	 * at the line concerned.
+	 * with a {@code tool} that is not one code span, names no built-in tool or gives it unsuitable arguments is
+	 * refused at the line concerned.
 	 */
 	@Test
 	public void refusesMalformedAssertions()
@@ -625,6 +625,12 @@ public final class ScenarioTest
 			startsWith("Line 12:");
 		requireThat(refusal(heading + "- **kind**: effect\n- **tool**: read-in-full docs/{{notes}}\n" + description),
 			"toolOutsideCodeSpan").startsWith("Line 12:").contains("code span");
+		requireThat(refusal(heading + "- **kind**: effect\n- **tool**: `tool-used Read`, `tool-used Grep`\n" +
+			description), "twoCodeSpans").startsWith("Line 12:").contains("one code span");
+		requireThat(refusal(heading + "- **kind**: effect\n- **tool**: `tool-used Read` twice\n" + description),
+			"textAfterCodeSpan").startsWith("Line 12:").contains("one code span");
+		requireThat(refusal(heading + "- **kind**: effect\n- **tool**: `tool-used Read\n" + description),
+			"unclosedCodeSpan").startsWith("Line 12:").contains("one code span");
 		requireThat(refusal(heading + "- **kind**: effect\n- **tool**: `spell-check`\n" + description),
 			"unknownTool").startsWith("Line 12:").contains("spell-check");
 		requireThat(refusal(heading + "- **kind**: effect\n- **tool**: `count \"^- \" 3 1`\n" + description),

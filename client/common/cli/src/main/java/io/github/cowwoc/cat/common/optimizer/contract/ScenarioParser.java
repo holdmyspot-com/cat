@@ -616,18 +616,15 @@ final class ScenarioParser
 	{
 		if (pair.value().isEmpty())
 			throw error(pair.line(), "the key tool names no built-in tool");
-		List<String> spans;
+		String tool;
 		try
 		{
-			spans = CodeSpan.parseList(pair.value());
+			tool = CodeSpan.parse(pair.value());
 		}
 		catch (IllegalArgumentException _)
 		{
-			spans = List.of();
-		}
-		if (spans.size() != 1)
 			throw error(pair.line(), "the tool must be one code span, such as `read-in-full docs/{{notes}}`");
-		String tool = spans.getFirst();
+		}
 		try
 		{
 			BuiltInTool.parse(tool);
