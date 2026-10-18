@@ -322,6 +322,35 @@ public final class ProposalSchemaTest
 	}
 
 	/**
+	 * Verifies that the stored contract keeps a recorded fixture that is a link as a link, and reads it back.
+	 *
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	@Test
+	public void storesRecordedLinks() throws InvalidProposalException
+	{
+		ObjectNode proposal = (ObjectNode) json.readTree(ContractFixtures.resource("valid-proposal.json"));
+		proposal.remove(List.of("salt", "trial_profiles"));
+		for (JsonNode testNode : proposal.get("tests"))
+			((ObjectNode) testNode).remove("committed_test_cases");
+		FixtureFile glossary = new FixtureFile("docs/glossary.md", "A glossary.\n",
+			".cat/tests/CLAUDE/formatting/workspace/docs/glossary.md");
+		FixtureFile link = new FixtureFile("glossary.md", "docs/glossary.md",
+			".cat/tests/CLAUDE/formatting/workspace/glossary.md", true);
+		Map<String, List<FixtureFile>> recordedByTest = Map.of("formatting", List.of(glossary, link));
+
+		Contract contract = schema().parse(json.writeValueAsString(proposal), ContractFixtures::profiles,
+			ContractFixtures.SALT, new SplittableRandom(3), Map.of(), recordedByTest);
+
+		requireThat(contract.tests().getFirst().fixtures(), "fixtures").isEqualTo(List.of(glossary, link));
+		JsonNode stored = json.readTree(schema().toJson(contract));
+		requireThat(stored.get("tests").get(0).get("recorded_fixtures").get(1), "link").isEqualTo(
+			json.createObjectNode().put("path", link.path()).put("content", link.content()).
+				put("source", link.source()).put("link", true));
+		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
+	}
+
+	/**
 	 * Verifies that CAT adds to a prompt test the fixtures of the recorded scenarios that it cites, before the fixtures
 	 * that the contract author wrote, that the stored contract keeps each with the file that CAT copied it from, and
 	 * that the contract author can neither write them nor write another fixture at one's path.

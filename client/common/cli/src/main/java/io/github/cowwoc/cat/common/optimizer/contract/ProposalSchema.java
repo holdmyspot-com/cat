@@ -561,6 +561,8 @@ public final class ProposalSchema
 			fixtureNode.put("content", fixture.content());
 			if (!fixture.source().isEmpty())
 				fixtureNode.put("source", fixture.source());
+			if (fixture.link())
+				fixtureNode.put("link", true);
 		}
 		ArrayNode variables = node.putArray("variables");
 		for (VariableDeclaration variable : test.variables())
@@ -864,7 +866,7 @@ public final class ProposalSchema
 				return new ArrayList<>(recorded.getOrDefault(node.get("id").asString(), List.of()));
 			return list(recordedNode, location + "." + RECORDED_FIXTURES, (fixtureNode, at) ->
 				attempt(at, () -> new FixtureFile(text(fixtureNode, "path"), text(fixtureNode, "content"),
-					text(fixtureNode, "source"))));
+					text(fixtureNode, "source"), fixtureNode.path("link").asBoolean(false))));
 		}
 
 		/**

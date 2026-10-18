@@ -397,6 +397,12 @@ public final class Markdown
 		text.append("- Fixtures, written into each trial's workspace with each test case's values:\n");
 		for (FixtureFile fixture : test.fixtures())
 		{
+			if (fixture.link())
+			{
+				text.append("  - `").append(fixture.path()).append("`, a link to `").append(fixture.content()).
+					append("`\n");
+				continue;
+			}
 			if (!fixture.source().isEmpty() && !created)
 			{
 				text.append("  - `").append(fixture.path()).append("`, copied from `").append(fixture.source()).

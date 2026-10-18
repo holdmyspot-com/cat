@@ -938,7 +938,7 @@ public final class ProposalCheck
 				for (JsonNode fixture : recordedFixtures)
 				{
 					testFixtures.add(new FixtureFile(fixture.get("path").asString(), fixture.get("content").asString(),
-						fixture.get("source").asString()));
+						fixture.get("source").asString(), fixture.path("link").asBoolean(false)));
 				}
 			}
 			if (!testFixtures.isEmpty())
@@ -1130,18 +1130,18 @@ public final class ProposalCheck
 		}
 
 		/**
-		 * Reads the text fixtures that a prompt test's patterns select.
+		 * Reads a prompt test's fixtures that are text files or links.
 		 *
 		 * @param files the prompt test's files
-		 * @return the fixtures, each with its file relative to the draft directory as its source, or empty if a problem
-		 *   was added
+		 * @return the fixtures, each with its file or link relative to the draft directory as its source, or empty if a
+		 *   problem was added
 		 */
 		private Optional<List<FixtureFile>> textFixtures(PromptTestFiles files)
 		{
 			List<FixtureFile> textFixtures = new ArrayList<>();
 			for (PromptTestFiles.Fixture fixture : files.fixtures())
 			{
-				if (!fixture.text())
+				if (!fixture.text() && fixture.link().isEmpty())
 					continue;
 				Path source = files.source(fixture);
 				// A link's target that the draft directory does not hold is read from the project
@@ -1152,8 +1152,16 @@ public final class ProposalCheck
 					relative = project.relativize(source);
 				try
 				{
-					textFixtures.add(new FixtureFile(fixture.path(), Files.readString(source, UTF_8),
-						PortablePaths.text(relative)));
+					if (fixture.link().isPresent())
+					{
+						textFixtures.add(new FixtureFile(fixture.path(), fixture.link().get(), PortablePaths.text(relative),
+							true));
+					}
+					else
+					{
+						textFixtures.add(new FixtureFile(fixture.path(), Files.readString(source, UTF_8),
+							PortablePaths.text(relative)));
+					}
 				}
 				catch (IllegalArgumentException e)
 				{

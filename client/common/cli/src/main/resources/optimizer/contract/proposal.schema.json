@@ -129,7 +129,7 @@
 						}
 					},
 					"recorded_fixtures": {
-						"description": "The text files of the recorded scenarios that the test cites, which CAT copies from the scenarios' files and writes into each trial's workspace like fixtures. Absent if none.",
+						"description": "The text files and links of the recorded scenarios that the test cites, which CAT copies from the scenarios' files and writes into each trial's workspace like fixtures. Absent if none.",
 						"type": "array",
 						"minItems": 1,
 						"items": {
@@ -138,8 +138,9 @@
 							"required": ["path", "content", "source"],
 							"properties": {
 								"path": {"description": "The path relative to the workspace root, with / separators.", "type": "string", "pattern": "\\S"},
-								"content": {"description": "The file's UTF-8 content.", "type": "string"},
-								"source": {"description": "The recorded file that CAT copied the content from, relative to the project when it lies inside it.", "type": "string", "pattern": "\\S"}
+								"content": {"description": "The file's UTF-8 content, or the link's target relative to the link's directory.", "type": "string"},
+								"source": {"description": "The recorded file or link that CAT copied the content from, relative to the project when it lies inside it.", "type": "string", "pattern": "\\S"},
+								"link": {"description": "true if the entry is a link to another entry of the workspace; absent for a file.", "type": "boolean"}
 							}
 						}
 					},

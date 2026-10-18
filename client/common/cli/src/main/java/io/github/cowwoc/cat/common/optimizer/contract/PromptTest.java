@@ -330,13 +330,19 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 *
 	 * @param fixtures the fixture files
 	 * @param names the names of the declared variables
-	 * @return one text fixture per file, naming the declared variables that its content names
+	 * @return one fixture per file or link, naming the declared variables that a file's content names
 	 */
 	private static List<PromptTestFiles.Fixture> describe(List<FixtureFile> fixtures, Set<String> names)
 	{
 		List<PromptTestFiles.Fixture> described = new ArrayList<>(fixtures.size());
 		for (FixtureFile fixture : fixtures)
 		{
+			if (fixture.link())
+			{
+				described.add(new PromptTestFiles.Fixture(fixture.path(), false, Set.of(),
+					Optional.of(fixture.content())));
+				continue;
+			}
 			Set<String> contentNames = new HashSet<>(Placeholders.scenarioNames(fixture.content()));
 			contentNames.retainAll(names);
 			described.add(new PromptTestFiles.Fixture(fixture.path(), true, contentNames));

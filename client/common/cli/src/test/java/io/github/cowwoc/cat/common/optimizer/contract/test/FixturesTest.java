@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -310,6 +311,67 @@ public final class FixturesTest
 			requireThat(files.source(files.fixtures().get(0)), "fromDraft").isEqualTo(drafted);
 			requireThat(files.source(files.fixtures().get(1)), "fromProject").
 				isEqualTo(project.resolve(".cat/tests/guidance/shared/logs/{{notes}}"));
+		}
+	}
+
+	/**
+	 * Verifies that a link of {@code workspace/} whose target lies inside {@code workspace/} reaches each trial as a
+	 * link with that target, its placeholders replaced, while a link that it reaches and whose own target lies outside
+	 * {@code workspace/} reaches the trial as a copy.
+	 *
+	 * @throws IOException             if a file cannot be written or read
+	 * @throws ScenarioFormatException if the prompt test is refused
+	 */
+	@Test
+	public void keepsLinksInsideTheWorkspace() throws IOException, ScenarioFormatException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = linkedProject(cleanup);
+			Path workspace = linkedTest(project).resolve(PromptTestFiles.WORKSPACE);
+			link(workspace.resolve("a"), "b");
+			link(workspace.resolve("b"), "../../shared/AGENTS.md");
+			Files.createDirectories(workspace.resolve("docs"));
+			link(workspace.resolve("docs/up.md"), "../own.md");
+			link(workspace.resolve("latest"), "logs/{{notes}}");
+
+			PromptTestFiles files = PromptTestFiles.read(json, project, project.resolve(".cat/tests"),
+				linkedTest(project));
+			requireThat(files.fixtures().stream().filter(fixture -> fixture.link().isPresent()).toList(), "links").
+				isEqualTo(List.of(
+					new PromptTestFiles.Fixture("a", false, Set.of(), Optional.of("b")),
+					new PromptTestFiles.Fixture("docs/up.md", false, Set.of(), Optional.of("../own.md")),
+					new PromptTestFiles.Fixture("latest", false, Set.of(), Optional.of("logs/{{notes}}"))));
+
+			Path trial = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"workspace"));
+			Fixtures.copy(files, testCase("notes.md"), trial);
+			requireThat(Files.readSymbolicLink(trial.resolve("a")), "a").isEqualTo(Path.of("b"));
+			requireThat(Files.isSymbolicLink(trial.resolve("b")), "bIsLink").isFalse();
+			requireThat(Files.readString(trial.resolve("b")), "b").isEqualTo("Published on 2025-03-04");
+			requireThat(Files.readString(trial.resolve("a")), "throughA").isEqualTo("Published on 2025-03-04");
+			requireThat(Files.readSymbolicLink(trial.resolve("docs/up.md")), "up").isEqualTo(Path.of("../own.md"));
+			requireThat(Files.readSymbolicLink(trial.resolve("latest")), "latest").
+				isEqualTo(Path.of("logs/notes.md"));
+			requireThat(Files.readString(trial.resolve("latest")), "throughLatest").endsWith("\nShared");
+		}
+	}
+
+	/**
+	 * Verifies that links inside {@code workspace/} that lead to each other in a cycle are refused.
+	 *
+	 * @throws IOException if a file cannot be written or read
+	 */
+	@Test
+	public void refusesCycleInsideTheWorkspace() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = linkedProject(cleanup);
+			Path workspace = linkedTest(project).resolve(PromptTestFiles.WORKSPACE);
+			link(workspace.resolve("c"), "d");
+			link(workspace.resolve("d"), "c");
+			requireRefused(project, "workspace/c: ", "cycle");
 		}
 	}
 

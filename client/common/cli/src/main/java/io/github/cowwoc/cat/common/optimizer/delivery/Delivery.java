@@ -318,6 +318,9 @@ public final class Delivery
 				// The draft holds every file of the test where delivery writes it
 				for (FixtureFile fixture : test.fixtures())
 				{
+					// Delivery writes files only
+					if (fixture.link())
+						continue;
 					Path file;
 					if (fixture.source().isEmpty())
 						file = own.resolve(fixture.path());
@@ -337,6 +340,8 @@ public final class Delivery
 			}
 			for (FixtureFile fixture : test.fixtures())
 			{
+				if (fixture.link())
+					continue;
 				byte[] content = fixture.content().getBytes(UTF_8);
 				Path file = own.resolve(fixture.path());
 				if (recorded != null)

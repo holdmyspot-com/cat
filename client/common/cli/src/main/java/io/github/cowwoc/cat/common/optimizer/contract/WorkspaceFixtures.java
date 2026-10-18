@@ -12,13 +12,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The fixtures that one trial's workspace receives on top of its staged source: each fixture file of the trial's
- * prompt test with the test case's values in its path and content.
+ * The fixtures that one trial's workspace receives on top of its staged source: each fixture file or link of the
+ * trial's prompt test with the test case's values in its path, content and link target.
  *
  * @param fixtures        each fixture by its path relative to the workspace root, with {@code /} separators and the
  *                        placeholders of the path replaced
  * @param values          the test case's value of each variable, by name, which replace the placeholders of the
- *                        contents
+ *                        contents and link targets
  * @param expectedOutcome the test case's expected outcome, or an empty string if there are no fixtures
  */
 public record WorkspaceFixtures(Map<String, FixtureFile> fixtures, Map<String, TestValue> values,
@@ -84,7 +84,11 @@ public record WorkspaceFixtures(Map<String, FixtureFile> fixtures, Map<String, T
 			if (Files.exists(target, LinkOption.NOFOLLOW_LINKS))
 				throw new FileAlreadyExistsException(target.toString());
 			Files.createDirectories(target.getParent());
-			Fixtures.writeText(entry.getValue().content(), target, values, expectedOutcome);
+			FixtureFile fixture = entry.getValue();
+			if (fixture.link())
+				Fixtures.writeLink(fixture.content(), target, values, expectedOutcome);
+			else
+				Fixtures.writeText(fixture.content(), target, values, expectedOutcome);
 		}
 	}
 }

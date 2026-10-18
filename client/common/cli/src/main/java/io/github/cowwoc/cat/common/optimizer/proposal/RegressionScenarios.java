@@ -389,9 +389,14 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 				List<FixtureFile> textFixtures = new ArrayList<>();
 				for (PromptTestFiles.Fixture fixture : files.fixtures())
 				{
-					if (fixture.text())
+					Path fixtureSource = files.source(fixture);
+					if (fixture.link().isPresent())
 					{
-						Path fixtureSource = files.source(fixture);
+						textFixtures.add(new FixtureFile(fixture.path(), fixture.link().get(), cited(project, fixtureSource),
+							true));
+					}
+					else if (fixture.text())
+					{
 						textFixtures.add(new FixtureFile(fixture.path(), Files.readString(fixtureSource),
 							cited(project, fixtureSource)));
 					}

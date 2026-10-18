@@ -2,6 +2,7 @@ package io.github.cowwoc.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles.Fixture;
 
 import java.io.IOException;
@@ -16,14 +17,15 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
- * Reads the {@value PromptTestFiles#WORKSPACE} directory of one prompt test, replacing each symbolic link by its
- * target. A file of the directory, or a file of the project that a link reaches, becomes a fixture at its path below
- * {@value PromptTestFiles#WORKSPACE}.
+ * Reads the {@value PromptTestFiles#WORKSPACE} directory of one prompt test. A file of the directory, or a file of the
+ * project that a link reaches, becomes a fixture at its path below {@value PromptTestFiles#WORKSPACE}. A link of the
+ * directory whose target lies inside the directory stays a link; every other link is replaced by its target.
  * <p>
  * The prompt test may lie in a draft directory, which holds files at their paths relative to the project. A link
  * resolves at the path where it lies relative to the draft directory: a target that the draft directory holds is read
@@ -43,6 +45,11 @@ final class WorkspaceReader
 	 * The test root that holds the prompt test, relative to {@link #tree}, or an empty path if the tree is the root.
 	 */
 	private final Path root;
+	/**
+	 * The prompt test's {@value PromptTestFiles#WORKSPACE} directory relative to the project, or {@code null} before
+	 * {@link #read(Path)}.
+	 */
+	private Path workspace;
 	/**
 	 * The names of the prompt test's variables, which a fixture's content may name.
 	 */
@@ -99,7 +106,8 @@ final class WorkspaceReader
 			throw new ScenarioFormatException(PromptTestFiles.display(project, workspace) + ": " +
 				PromptTestFiles.WORKSPACE + " must be a directory");
 		}
-		walk(workspace, tree.relativize(workspace), "", new ArrayDeque<>(), null);
+		this.workspace = tree.relativize(workspace);
+		walk(workspace, this.workspace, "", new ArrayDeque<>(), null);
 	}
 
 	/**
@@ -166,7 +174,10 @@ final class WorkspaceReader
 			if (attributes.isDirectory())
 				walk(entry, entryRelative, path, expanding, origin);
 			else if (attributes.isSymbolicLink())
-				resolve(entry, entryRelative, path, expanding);
+			{
+				if (origin != null || !addInternalLink(entry, entryRelative, path))
+					resolve(entry, entryRelative, path, expanding);
+			}
 			else if (!attributes.isRegularFile())
 				throw problem(entry, "a workspace file must be a regular file, a directory or a symbolic link");
 			else if (origin != null && name.equals(PromptTestFiles.SCENARIO))
@@ -177,6 +188,61 @@ final class WorkspaceReader
 			else
 				addFixture(path, entry);
 		}
+	}
+
+	/**
+	 * Adds a link of the prompt test's {@value PromptTestFiles#WORKSPACE} as a fixture if its target lies inside
+	 * {@value PromptTestFiles#WORKSPACE}.
+	 *
+	 * @param link          the link
+	 * @param relative      the link's path relative to the project
+	 * @param workspacePath the link's path below {@value PromptTestFiles#WORKSPACE}
+	 * @return {@code false} if the link's target lies outside {@value PromptTestFiles#WORKSPACE} or is
+	 *   {@value PromptTestFiles#WORKSPACE} itself, so that the link is replaced by its target
+	 * @throws IOException             if a file cannot be read
+	 * @throws ScenarioFormatException if the link's target is missing, or the link leads through links inside
+	 *                                 {@value PromptTestFiles#WORKSPACE} back to one of them
+	 */
+	private boolean addInternalLink(Path link, Path relative, String workspacePath)
+		throws IOException, ScenarioFormatException
+	{
+		Path first = internalTarget(relative);
+		if (first == null)
+			return false;
+		Set<Path> chain = new HashSet<>();
+		for (Path target = first; target != null; target = internalTarget(target))
+		{
+			Path file = locate(target);
+			if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS))
+				throw problem(link, "the link's target " + display(target) + " does not exist");
+			if (!chain.add(target))
+				throw problem(link, "the link's target " + display(target) + " forms a cycle of links");
+			if (!Files.isSymbolicLink(file))
+				break;
+		}
+		String text = PortablePaths.text(relative.getParent().relativize(first));
+		fixtures.put(workspacePath, new Fixture(workspacePath, false, Set.of(), Optional.of(text)));
+		sources.put(workspacePath, link);
+		return true;
+	}
+
+	/**
+	 * Returns the target of a link if it lies inside the prompt test's {@value PromptTestFiles#WORKSPACE}.
+	 *
+	 * @param relative the link's path relative to the project
+	 * @return the target relative to the project, or {@code null} if the target is absolute, lies outside
+	 *   {@value PromptTestFiles#WORKSPACE} or is {@value PromptTestFiles#WORKSPACE} itself
+	 * @throws IOException if the link cannot be read
+	 */
+	private Path internalTarget(Path relative) throws IOException
+	{
+		Path text = Files.readSymbolicLink(locate(relative));
+		if (text.isAbsolute() || text.getRoot() != null)
+			return null;
+		Path target = relative.getParent().resolve(text).normalize();
+		if (!target.startsWith(workspace) || target.equals(workspace))
+			return null;
+		return target;
 	}
 
 	/**

@@ -53,19 +53,48 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	private static final String RESERVED_CHARACTERS = "/\\:*?\"<>|";
 
 	/**
-	 * One file that each trial's workspace receives: a file of {@value #WORKSPACE} or a project file that a link there
-	 * reaches.
+	 * One entry that each trial's workspace receives: a file of {@value #WORKSPACE}, a project file that a link there
+	 * reaches, or a link of {@value #WORKSPACE} whose target lies inside {@value #WORKSPACE}.
 	 *
 	 * @param path         the path relative to {@value #WORKSPACE}, with {@code /} separators, which may contain
 	 *                     placeholders
 	 * @param text         {@code true} if the content is valid UTF-8, so that its placeholders are replaced;
-	 *                     {@code false} if it is copied unchanged
+	 *                     {@code false} if it is copied unchanged or the entry is a link
 	 * @param contentNames the declared variables that the content names; empty if {@code text} is {@code false}
+	 * @param link         the link's target relative to the link's directory, with {@code /} separators, which may
+	 *                     contain placeholders; empty if the entry is a file
 	 */
-	public record Fixture(String path, boolean text, Set<String> contentNames)
+	public record Fixture(String path, boolean text, Set<String> contentNames, Optional<String> link)
 	{
 		/**
 		 * Creates a fixture.
+		 *
+		 * @param path         the path relative to {@value #WORKSPACE}, with {@code /} separators
+		 * @param text         {@code true} if the content is valid UTF-8
+		 * @param contentNames the declared variables that the content names
+		 * @param link         the link's target relative to the link's directory, or empty if the entry is a file
+		 * @throws NullPointerException     if any of the arguments are null
+		 * @throws IllegalArgumentException if {@code path} is blank, {@code contentNames} is not empty when
+		 *                                  {@code text} is {@code false}, {@code text} is {@code true} for a link, or
+		 *                                  {@code link} is blank
+		 */
+		public Fixture
+		{
+			requireThat(path, "path").isNotBlank();
+			requireThat(contentNames, "contentNames").isNotNull();
+			requireThat(link, "link").isNotNull();
+			if (!text)
+				requireThat(contentNames, "contentNames").isEmpty();
+			if (link.isPresent())
+			{
+				requireThat(text, "text").isFalse();
+				requireThat(link.get(), "link").isNotBlank();
+			}
+			contentNames = Set.copyOf(contentNames);
+		}
+
+		/**
+		 * Creates a fixture for a file.
 		 *
 		 * @param path         the path relative to {@value #WORKSPACE}, with {@code /} separators
 		 * @param text         {@code true} if the content is valid UTF-8
@@ -74,13 +103,9 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		 * @throws IllegalArgumentException if {@code path} is blank, or {@code contentNames} is not empty when
 		 *                                  {@code text} is {@code false}
 		 */
-		public Fixture
+		public Fixture(String path, boolean text, Set<String> contentNames)
 		{
-			requireThat(path, "path").isNotBlank();
-			requireThat(contentNames, "contentNames").isNotNull();
-			if (!text)
-				requireThat(contentNames, "contentNames").isEmpty();
-			contentNames = Set.copyOf(contentNames);
+			this(path, text, contentNames, Optional.empty());
 		}
 	}
 
@@ -353,6 +378,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 		for (Fixture fixture : fixtures)
 		{
 			inNames.addAll(Placeholders.scenarioNames(fixture.path()));
+			fixture.link().ifPresent(link -> inNames.addAll(Placeholders.scenarioNames(link)));
 			inContents.addAll(fixture.contentNames());
 		}
 		for (Map.Entry<String, TestValue> entry : testCase.values().entrySet())
@@ -398,6 +424,24 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 				{
 					problems.add("the fixture path '" + target + "' has the segment '" + segment + "', which " +
 						segmentProblem);
+				}
+			}
+		}
+		Map<String, String> textByName = textByName(testCase.values(), testCase.expectedOutcome());
+		for (Fixture fixture : fixtures)
+		{
+			if (fixture.link().isEmpty())
+				continue;
+			String link = Placeholders.fillScenario(fixture.link().get(), textByName);
+			for (String segment : link.split("/", -1))
+			{
+				if (segment.equals(".."))
+					continue;
+				String segmentProblem = segmentProblem(segment);
+				if (segmentProblem != null)
+				{
+					problems.add("the target '" + link + "' of the link " + fixture.path() + " has the segment '" +
+						segment + "', which " + segmentProblem);
 				}
 			}
 		}
@@ -459,17 +503,30 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario, List
 	 */
 	static Map<Fixture, String> substitute(List<Fixture> fixtures, TestCase testCase)
 	{
-		Map<String, String> textByName = new HashMap<>();
-		for (Map.Entry<String, TestValue> entry : testCase.values().entrySet())
-		{
-			if (entry.getValue() instanceof TestValue.Text text)
-				textByName.put(entry.getKey(), text.text());
-		}
-		textByName.put(TestCase.EXPECTED_OUTCOME, testCase.expectedOutcome());
+		Map<String, String> textByName = textByName(testCase.values(), testCase.expectedOutcome());
 		Map<Fixture, String> targets = new LinkedHashMap<>();
 		for (Fixture fixture : fixtures)
 			targets.put(fixture, Placeholders.fillScenario(fixture.path(), textByName));
 		return targets;
+	}
+
+	/**
+	 * Returns the text that replaces each placeholder of a fixture's path or link target.
+	 *
+	 * @param values          a test case's value of each variable, by name
+	 * @param expectedOutcome the test case's expected outcome
+	 * @return the value of each variable whose value is text, and the expected outcome, by placeholder name
+	 */
+	static Map<String, String> textByName(Map<String, TestValue> values, String expectedOutcome)
+	{
+		Map<String, String> textByName = new HashMap<>();
+		for (Map.Entry<String, TestValue> entry : values.entrySet())
+		{
+			if (entry.getValue() instanceof TestValue.Text text)
+				textByName.put(entry.getKey(), text.text());
+		}
+		textByName.put(TestCase.EXPECTED_OUTCOME, expectedOutcome);
+		return textByName;
 	}
 
 	/**

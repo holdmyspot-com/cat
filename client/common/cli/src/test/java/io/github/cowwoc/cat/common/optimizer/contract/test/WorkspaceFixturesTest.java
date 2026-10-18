@@ -103,6 +103,54 @@ public final class WorkspaceFixturesTest
 	}
 
 	/**
+	 * Verifies that a link fixture is written as a link whose target has the test case's values in place of its
+	 * placeholders.
+	 *
+	 * @throws IOException if a file cannot be written or read
+	 */
+	@Test
+	public void writesLinkFixtureAsLink() throws IOException
+	{
+		FixtureFile latest = new FixtureFile("latest", "docs/{{notes}}", ".cat/tests/release_date/workspace/latest",
+			true);
+		PromptTest test = test("When was the release in `latest` published?", List.of(NOTES, latest));
+		WorkspaceFixtures fixtures = WorkspaceFixtures.of(test, testCase());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"workspace"));
+			fixtures.write(workspace);
+
+			requireThat(Files.readSymbolicLink(workspace.resolve("latest")), "latest").
+				isEqualTo(Path.of("docs/release-notes.md"));
+			requireThat(Files.readString(workspace.resolve("latest")), "throughLatest").
+				endsWith("Release 4.2 was published on 2025-03-04.\n");
+		}
+	}
+
+	/**
+	 * Verifies that a link fixture's target must lie inside the workspace, below its root and outside its Git
+	 * directory.
+	 */
+	@Test
+	public void refusesLinkTargetOutsideWorkspace()
+	{
+		for (String target : List.of("../../notes.md", "../../../notes.md", "/notes.md", "..\\notes.md", "a//b.md",
+			"./b.md", "..", "../.git/config"))
+		{
+			try
+			{
+				new FixtureFile("docs/link.md", target, "", true);
+				throw new AssertionError("The link target " + target + " was accepted");
+			}
+			catch (IllegalArgumentException e)
+			{
+				requireThat(e.getMessage(), "message").contains(target);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that writing refuses a fixture whose path exists already, without replacing it.
 	 *
 	 * @throws IOException if a file cannot be written or read

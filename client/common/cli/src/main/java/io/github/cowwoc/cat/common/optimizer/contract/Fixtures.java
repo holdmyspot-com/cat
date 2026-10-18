@@ -16,7 +16,8 @@ import java.util.Map;
 import java.util.regex.Matcher;
 
 /**
- * Copies a prompt test's fixtures into a trial's workspace for one test case.
+ * Copies a prompt test's fixtures into a trial's workspace for one test case, creating each link fixture as a
+ * link.
  */
 public final class Fixtures
 {
@@ -28,8 +29,9 @@ public final class Fixtures
 	}
 
 	/**
-	 * Copies every fixture to its path in a workspace. Placeholders are replaced in file names and in the content of
-	 * files that are valid UTF-8; other files are copied unchanged. Nothing is written unless every fixture can be.
+	 * Copies every fixture to its path in a workspace, creating a link fixture as a link. Placeholders are replaced in
+	 * file names, in link targets and in the content of files that are valid UTF-8; other files are copied unchanged.
+	 * Nothing is written unless every fixture can be.
 	 *
 	 * @param files     the prompt test's files
 	 * @param testCase  a valid test case of the prompt test
@@ -71,7 +73,9 @@ public final class Fixtures
 				Path source = files.source(fixture);
 				Path target = workspace.resolve(entry.getValue());
 				createParents(workspace, target.getParent(), created);
-				if (fixture.text())
+				if (fixture.link().isPresent())
+					writeLink(fixture.link().get(), target, testCase.values(), testCase.expectedOutcome());
+				else if (fixture.text())
 					writeText(Files.readString(source), target, testCase.values(), testCase.expectedOutcome());
 				else
 					Files.copy(source, target);
@@ -110,6 +114,22 @@ public final class Fixtures
 		createParents(workspace, directory.getParent(), created);
 		Files.createDirectory(directory);
 		created.add(directory);
+	}
+
+	/**
+	 * Creates a new symbolic link with the placeholders of its target replaced.
+	 *
+	 * @param link            the link's target relative to the link's directory, with {@code /} separators
+	 * @param target          the path of the link, which must not exist
+	 * @param values          the test case's value of each variable, by name
+	 * @param expectedOutcome the test case's expected outcome
+	 * @throws IOException if the link cannot be created
+	 */
+	static void writeLink(String link, Path target, Map<String, TestValue> values, String expectedOutcome)
+		throws IOException
+	{
+		String filled = Placeholders.fillScenario(link, PromptTestFiles.textByName(values, expectedOutcome));
+		Files.createSymbolicLink(target, target.getFileSystem().getPath(filled));
 	}
 
 	/**
