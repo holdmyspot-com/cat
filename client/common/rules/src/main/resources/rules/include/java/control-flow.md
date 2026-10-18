@@ -29,4 +29,5 @@ inventing a switch.
 The conversion applies only to alternatives that the comparisons spell out. A lookup in a collection, such as
 `Set.contains()` or `Map.containsKey()`, already states the membership test once, and the collection defines the set:
 keep the lookup and do not copy the collection's elements into `switch` cases, even when no other code uses the
-collection.
+collection. When the alternatives are also defined as a collection, or the code needs them as one, test membership with
+that collection's lookup instead of listing them as `switch` cases.

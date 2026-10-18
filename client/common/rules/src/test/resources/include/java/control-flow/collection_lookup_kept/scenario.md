@@ -52,6 +52,25 @@ static boolean isSecret(String key)
 }
 ```
 
+**Request 4.** Tidy up the control flow of `isSupported` in the same way, and show the revised class.
+
+```java
+final class ExportFormats
+{
+	private static final Set<String> FORMATS = Set.of("csv", "json", "{{setting}}");
+
+	static String usage()
+	{
+		return "Supported formats: " + String.join(", ", new TreeSet<>(FORMATS));
+	}
+
+	static boolean isSupported(String format)
+	{
+		return format.equals("csv") || format.equals("json") || format.equals("{{setting}}");
+	}
+}
+```
+
 ## Assertions
 
 ### set_lookup_kept
@@ -71,6 +90,12 @@ static boolean isSecret(String key)
 - **kind**: guard
 - **description**: For request 3: The revised method replaces the `equals()` chain with a `switch` expression on `key`
   that has one case per accepted name, each yielding `true`, and `false` from `default`.
+
+### existing_collection_used
+
+- **kind**: effect
+- **description**: For request 4: The revised `isSupported` tests membership with `FORMATS.contains(...)` rather than
+  a `switch` or another construct that lists the formats again.
 
 ### guidance_selection
 
