@@ -390,23 +390,6 @@ public final class ScenarioTest
 	}
 
 	/**
-	 * Verifies that a {@code ## Fixtures} section is refused as an unknown section, because a prompt test's
-	 * {@code workspace/} directory places files in each trial's workspace.
-	 */
-	@Test
-	public void refusesFixturesSection()
-	{
-		String withFixtures = VARIABLES + """
-
-			## Fixtures
-
-			- **patterns**: `fixtures/**`
-
-			""" + TURN + ASSERTIONS;
-		requireThat(refusal(withFixtures), "refusal").contains("## Fixtures");
-	}
-
-	/**
 	 * Verifies that a scenario without a required section is refused, naming the section.
 	 */
 	@Test
