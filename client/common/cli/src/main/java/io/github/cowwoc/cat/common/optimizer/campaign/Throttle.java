@@ -11,11 +11,10 @@ import java.util.List;
  * The response to the rate limits that the harness reports.
  * <p>
  * Utilization is the fraction of a reported rate-limit allowance consumed. At {@value #FREEZE_UTILIZATION} or more
- * of any allowance, the limit on simultaneous candidate trials stops growing. At {@value #HOLD_UTILIZATION} or more,
- * that limit drops to 1 and no trials start until the latest future reset time of the allowances at that level. A
- * rate-limit rejection or a provider refusal also drops the limit to 1, and no trials start until the harness's shared
- * hold ends; the shared hold, not this throttle, keeps the sequence of hold lengths. The response adds no randomized
- * pacing.
+ * of any allowance, the limit on simultaneous candidate trials stops growing, even when an allowance is exhausted: the
+ * harness may draw on several accounts, so only a rejection shows that it cannot start another session. A rate-limit
+ * rejection or a provider refusal drops the limit to 1, and no trials start until the harness's shared hold ends; the
+ * shared hold, not this throttle, keeps the sequence of hold lengths. The response adds no randomized pacing.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -29,10 +28,6 @@ public record Throttle(Instant holdUntil, int windowCap, int backoffs)
 	 * The utilization at which the window stops growing.
 	 */
 	public static final double FREEZE_UTILIZATION = 0.80;
-	/**
-	 * The utilization at which admissions stop until the reset time.
-	 */
-	public static final double HOLD_UTILIZATION = 0.95;
 	/**
 	 * No throttling.
 	 */
@@ -59,36 +54,20 @@ public record Throttle(Instant holdUntil, int windowCap, int backoffs)
 	 * Returns the state after the harness reported its rate-limit windows.
 	 *
 	 * @param windows the reported windows; an empty list leaves the state unchanged
-	 * @param now the current time
 	 * @param window the active candidate's current concurrency window
 	 * @return the updated state
-	 * @throws NullPointerException if {@code windows} or {@code now} are null, or {@code windows} contains null
+	 * @throws NullPointerException if {@code windows} is null or contains null
 	 * @throws IllegalArgumentException if {@code window} is not positive
 	 */
-	public Throttle observe(List<RateLimitWindow> windows, Instant now, int window)
+	public Throttle observe(List<RateLimitWindow> windows, int window)
 	{
 		requireThat(windows, "windows").isNotNull();
-		requireThat(now, "now").isNotNull();
 		requireThat(window, "window").isPositive();
 		if (windows.isEmpty())
 			return this;
 		double utilization = 0;
 		for (RateLimitWindow reported : windows)
 			utilization = Math.max(utilization, reported.utilization());
-		if (utilization >= HOLD_UTILIZATION)
-		{
-			Instant latestReset = holdUntil;
-			for (RateLimitWindow reported : windows)
-			{
-				Instant resetsAt = reported.resetsAt();
-				if (reported.utilization() >= HOLD_UTILIZATION && resetsAt != null && resetsAt.isAfter(now) &&
-					resetsAt.isAfter(latestReset))
-				{
-					latestReset = resetsAt;
-				}
-			}
-			return new Throttle(latestReset, 1, backoffs);
-		}
 		if (utilization >= FREEZE_UTILIZATION)
 		{
 			if (windowCap > 0)

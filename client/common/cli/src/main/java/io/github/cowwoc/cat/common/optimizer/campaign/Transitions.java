@@ -69,8 +69,7 @@ public final class Transitions
 			case CampaignEvent.Fail fail -> fail(draft, fail);
 			case CampaignEvent.ObserveRateLimit observe ->
 			{
-				draft.throttle = draft.throttle.observe(observe.windows(), observe.at(),
-					ConcurrencyPolicy.window(campaign));
+				draft.throttle = draft.throttle.observe(observe.windows(), ConcurrencyPolicy.window(campaign));
 				if (!draft.throttle.allowsAdmission(observe.at()))
 					draft.slowStart = SlowStart.INITIAL;
 			}
