@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import io.github.cowwoc.cat.common.PortablePaths;
 import io.github.cowwoc.cat.common.TemporaryDirectories;
+import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.proposal.RegressionScenarios;
@@ -375,6 +376,72 @@ public final class RegressionScenariosTest
 				requireThat(read.recordedFixtures(List.of(regression.citation(), regression.citation())),
 					"recordedFixtures").withContext(regression.citation(), "citation").isEqualTo(expected);
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a prompt test whose Git index records a symbolic link in its {@code workspace/}, while the checkout
+	 * holds a regular file there, is kept for conversion with a reason that names the link and how to restore it, and
+	 * that a prompt test whose checkout holds its links is read.
+	 *
+	 * @throws IOException if the scenario tree cannot be created or read
+	 */
+	@Test
+	public void refusesLinkCheckedOutAsFile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+				"link-checkout"));
+			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
+				resolve("reading.md");
+			Files.writeString(guidance, "Read files whole.");
+			Path reading = root.resolve("plugin/src/test/resources/common/reading");
+			Files.createDirectories(reading.resolve("shared"));
+			Files.writeString(reading.resolve("shared/AGENTS.md"), "Shared by the reading tests.");
+			String scenario = """
+				## Variables
+
+				- **topic**: The topic to summarize
+
+				## Scenario
+
+				Summarize {{topic}} from AGENTS.md.
+
+				## Assertions
+
+				### summary_given
+
+				- **kind**: effect
+				- **description**: The reply summarizes the file.
+				""";
+			for (String name : List.of("broken_checkout", "linked_checkout"))
+			{
+				Path test = Files.createDirectories(reading.resolve(name));
+				Files.writeString(test.resolve("scenario.md"), scenario);
+				Path workspace = Files.createDirectories(test.resolve("workspace"));
+				Files.createSymbolicLink(workspace.resolve("AGENTS.md"), Path.of("../../shared/AGENTS.md"));
+			}
+			Git git = new Git(root);
+			git.run("init", "--quiet");
+			git.run("add", "--all");
+			// Git checks out a link as a regular file that holds the target when core.symlinks is false
+			Path broken = reading.resolve("broken_checkout/workspace/AGENTS.md");
+			Files.delete(broken);
+			Files.writeString(broken, "../../shared/AGENTS.md");
+
+			List<RegressionScenarios.Scenario> found = RegressionScenarios.read(JSON, root, root.resolve("home")).
+				scenarios();
+			requireThat(found.size(), "found.size()").isEqualTo(2);
+			if (!(found.get(0).format() instanceof RegressionScenarios.Earlier(String problem)))
+				throw new AssertionError("Not an earlier format: " + found.get(0).format());
+			requireThat(problem, "problem").
+				contains("plugin/src/test/resources/common/reading/broken_checkout/workspace/AGENTS.md").
+				contains("core.symlinks").contains("Developer Mode");
+			if (!(found.get(1).format() instanceof RegressionScenarios.Current(PromptTestFiles _, var texts)))
+				throw new AssertionError("Not the current format: " + found.get(1).format());
+			requireThat(texts, "texts").isEqualTo(List.of(new FixtureFile("AGENTS.md", "Shared by the reading tests.",
+				"plugin/src/test/resources/common/reading/shared/AGENTS.md")));
 		}
 	}
 

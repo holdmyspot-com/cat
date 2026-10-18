@@ -1,8 +1,10 @@
 package io.github.cowwoc.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.cowwoc.cat.common.PortablePaths;
+import io.github.cowwoc.cat.common.git.Git;
 import io.github.cowwoc.cat.common.optimizer.contract.FixtureFile;
 import io.github.cowwoc.cat.common.optimizer.contract.PromptTestFiles;
 import io.github.cowwoc.cat.common.optimizer.contract.ScenarioFormatException;
@@ -11,6 +13,7 @@ import io.github.cowwoc.cat.common.optimizer.contract.TestCase;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
@@ -19,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -37,6 +41,10 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	private static final String SCENARIO = PromptTestFiles.SCENARIO;
 	private static final Path TEST_RESOURCES = Path.of("src/test/resources");
 	private static final Path MAIN_RESOURCES = Path.of("src/main/resources");
+	/**
+	 * The mode that a Git index records for a symbolic link.
+	 */
+	private static final String SYMBOLIC_LINK_MODE = "120000";
 
 	/**
 	 * The format of a recorded scenario.
@@ -143,14 +151,16 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 * {@code <module>/src/test/resources/<path>/<case>/scenario.md}. Other Markdown files hold fixtures.
 	 * <p>
 	 * A {@code <case>/scenario.md} that parses is a prompt test directory in the current format, read with its fixtures
-	 * and values file. Any other scenario is in an earlier format, kept with the reason for its conversion.
+	 * and values file, unless the project's Git index records a symbolic link in its {@value PromptTestFiles#WORKSPACE}
+	 * directory where the checkout holds a regular file. Any other scenario is in an earlier format, kept with the reason
+	 * for its conversion.
 	 *
 	 * @param json    the JSON mapper that reads values files
 	 * @param project the project root
 	 * @param home the user home resolved at the environment boundary
 	 * @return the available scenarios, sorted by citation
 	 * @throws NullPointerException if any argument is null
-	 * @throws IOException if an existing scenario tree cannot be read
+	 * @throws IOException if an existing scenario tree cannot be read or Git fails in a project that it manages
 	 */
 	public static RegressionScenarios read(JsonMapper json, Path project, Path home) throws IOException
 	{
@@ -162,10 +172,55 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		List<Scenario> scenarios = new ArrayList<>();
 		readRoot(json, root, root, true, scenarios);
 		readModules(json, root, scenarios);
+		refuseLinksCheckedOutAsFiles(root, scenarios);
 		if (!user.equals(root))
 			readRoot(json, root, user, false, scenarios);
 		scenarios.sort(Comparator.comparing(Scenario::citation));
 		return new RegressionScenarios(root, scenarios);
+	}
+
+	/**
+	 * Keeps for conversion each prompt test of the project whose {@value PromptTestFiles#WORKSPACE} directory holds a
+	 * regular file where the project's Git index records a symbolic link. Git writes such a file, holding the link's
+	 * target, when it checks out a link with {@code core.symlinks} false, and the prompt test would read the target's
+	 * path as the file's content.
+	 *
+	 * @param project   the project root
+	 * @param scenarios the scenarios read from the project; each affected one is replaced
+	 * @throws IOException if Git fails in a project that it manages
+	 */
+	private static void refuseLinksCheckedOutAsFiles(Path project, List<Scenario> scenarios) throws IOException
+	{
+		Git git = new Git(project);
+		if (git.status("rev-parse", "--is-inside-work-tree") != 0)
+			return;
+		// Each entry is "<mode> <object> <stage>\t<path>", with the path relative to the project
+		String entries = new String(git.bytes("ls-files", "--stage", "-z", "--", ":(glob)**/" +
+			PromptTestFiles.WORKSPACE + "/**"), UTF_8);
+		List<Path> linksAsFiles = new ArrayList<>();
+		for (String entry : entries.split("\0"))
+		{
+			if (!entry.startsWith(SYMBOLIC_LINK_MODE + " "))
+				continue;
+			Path file = project.resolve(entry.substring(entry.indexOf('\t') + 1));
+			if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(file))
+				linksAsFiles.add(file);
+		}
+		for (int i = 0; i < scenarios.size(); ++i)
+		{
+			Scenario scenario = scenarios.get(i);
+			if (!(scenario.format() instanceof Current current))
+				continue;
+			Path workspace = current.files().directory().resolve(PromptTestFiles.WORKSPACE);
+			Optional<Path> linkAsFile = linksAsFiles.stream().filter(file -> file.startsWith(workspace)).findFirst();
+			if (linkAsFile.isEmpty())
+				continue;
+			String path = cited(project, linkAsFile.get());
+			scenarios.set(i, new Scenario(scenario.source(), scenario.citation(), scenario.content(),
+				new Earlier(path + ": Git records a symbolic link here, but the checkout holds a regular file. " +
+					"Enable symbolic links for Git: on Windows, turn on Developer Mode, then run `git config " +
+					"core.symlinks true` and `git checkout -- " + path + "`.")));
+		}
 	}
 
 	/**
