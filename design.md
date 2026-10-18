@@ -1198,10 +1198,9 @@ source** that contains:
   prompt file or a derived prompt source; every file that the harness reads from the project itself, which is an
   instruction file in any directory (`CLAUDE.md` and `CLAUDE.local.md` for Claude Code, `AGENTS.md` and
   `AGENTS.override.md` for Codex) or a file below the harness's project directories (`.claude/` for Claude Code,
-  `.codex/` and `.agents/` for Codex); the loader configuration; CAT's project directory `.cat/`; every file of a
+  `.codex/` and `.agents/` for Codex); the loader configuration; the project rules `.cat/rules/`; every file of a
   project directory or file that a plugin mapping covers; and every in-project dependent of the target;
 - the recorded participating ignored and external prompt files;
-- any ignored files that the confirmed contract lists;
 - the candidate overlay;
 - **every symbolic link replaced by a copy of its resolved target**, so trial writes through a link reach only the trial
   copy and never a live target. A link cycle, or a link to a missing target, is reported in the proposal and blocks
