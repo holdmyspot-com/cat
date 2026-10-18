@@ -30,9 +30,9 @@ Classify the attribution before changing guidance:
 For every correction to user-owned prompt, rule, or workflow guidance, record regression scenarios before resuming
 dependent work: the reported case, a meaningful analogous case, and a dissimilar case that must not receive unrelated
 guidance. Each scenario is a directory named by its case in snake_case. It holds `scenario.md` and, when the turns need
-files in the workspace, a `fixtures/` directory whose files are copied into the workspace root. Store it in the
-corrected guidance's test directory: for `<root>/.cat/rules/<path>.md`, where `<root>` is the project or `${HOME}`,
-use `<root>/.cat/tests/<path>/<case>/`; for guidance packaged as a module resource,
+files in the workspace, a `workspace/` directory whose files are copied to the same paths in the workspace root. Store
+it in the corrected guidance's test directory: for `<root>/.cat/rules/<path>.md`, where `<root>` is the project or
+`${HOME}`, use `<root>/.cat/tests/<path>/<case>/`; for guidance packaged as a module resource,
 `<module>/src/main/resources/<top>/<path>.md`, such as a plugin's rules and skills, use
 `<module>/src/test/resources/<path>/<case>/`; for other guidance in the project, use
 `<project>/.cat/tests/<path relative to the project, without .md>/<case>/`. Extend an existing scenario that already
@@ -45,11 +45,6 @@ Write `scenario.md` with these sections and no others:
 - `## Variables`: one `- **<name>**: <description>` pair per variable, with a snake_case name. Declare at least one
   variable, such as a file name, a value that the turn asks about or part of a turn's wording, and choose them so that
   different values lead to different expected outcomes.
-- `## Fixtures`, only when the scenario reads files that other scenarios share: `- **patterns**: ` followed by code
-  spans separated by commas, such as `` `fixtures/**`, `../fixtures/AGENTS.md` ``. Each pattern is
-  `<directory>/fixtures/<glob>`, relative to the scenario's directory and inside its test directory, and must select a
-  file; a later pattern's file replaces an earlier one at the same path. Without the section, the scenario reads its
-  own `fixtures/**`.
 - `## Scenario`: the turn's text, or `### Turn <n>` subsections numbered from 1 when there are several turns. State the
   situation that the agent faces in the turn itself.
 - `## Assertions`: one `### <id>` subsection per assertion, with a snake_case id, holding `- **kind**: effect`, or
@@ -58,7 +53,13 @@ Write `scenario.md` with these sections and no others:
 
 A pair's value continues on following lines indented by two spaces.
 
-Write `{{<name>}}` wherever a variable's value belongs, in the turns, the assertions and the fixtures' names and
+To give the workspace a file that lies elsewhere in the project, or one that several scenarios share, put a symbolic
+link in `workspace/` whose target, relative to the link's directory, is that file or directory; the workspace receives a
+copy of the target at the link's path. Keep a shared file in the test directory outside every scenario's directory. A
+link to another entry of the same `workspace/` stays a link. Do not link a prompt or rule file, which every trial
+already receives, or another scenario's directory: a campaign refuses such a link.
+
+Write `{{<name>}}` wherever a variable's value belongs, in the turns, the assertions and the workspace files' names and
 contents. `{{expected_outcome}}` and the assertion id `expected_outcome` are reserved. Do not write test cases or their
 values: a campaign's contract author writes them.
 

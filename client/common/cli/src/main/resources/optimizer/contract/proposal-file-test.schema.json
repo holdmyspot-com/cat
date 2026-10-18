@@ -4,7 +4,7 @@
 	"additionalProperties": false,
 	"required": ["directory", "risk_rank", "requirement_ids", "absent_triggers", "applicability", "assertions", "uncovered_interactions"],
 	"properties": {
-		"directory": {"description": "The prompt test's directory relative to the draft directory, with / separators, such as .cat/tests/rules/notes/long_document. It holds scenario.md, optional fixtures/ and values.json. Its last name is the prompt test's identifier, in snake_case. A recorded prompt test keeps its directory; a new one lies directly in the target's test directory.", "type": "string", "pattern": "\\S"},
+		"directory": {"description": "The prompt test's directory relative to the draft directory, with / separators, such as .cat/tests/rules/notes/long_document. It holds scenario.md, values.json and an optional workspace/ directory. Its last name is the prompt test's identifier, in snake_case. A recorded prompt test keeps its directory; a new one lies directly in the target's test directory.", "type": "string", "pattern": "\\S"},
 		"assertions": {
 			"description": "The requirement that each assertion of the scenario's ## Assertions section checks, one item per assertion. Each requirement that the test proves has at least one assertion.",
 			"type": "array",

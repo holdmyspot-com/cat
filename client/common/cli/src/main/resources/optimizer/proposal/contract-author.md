@@ -135,7 +135,7 @@ proposal that leaves one out, naming every missing test.
 
 - A recorded test's `values.json` may hold test cases that earlier campaigns committed. CAT keeps them in the test, so
   keep its variables, and add test cases whose values and expected outcomes differ from the committed ones. Its
-  fixtures stay in its `fixtures/` directory, or wherever its `## Fixtures` patterns select them.
+  fixtures stay in its `workspace/` directory, and the files that its links reach stay where they are.
 - A recorded test in an earlier format holds its context in prose and its values fixed in the text of its
   `scenario.md`. Convert it in place: rewrite its `scenario.md` with variables, turns with placeholders, the expected
   behavior and the assertions, and write its fixtures and its `values.json`. Its fixed values become one test case, and

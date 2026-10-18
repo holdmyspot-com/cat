@@ -5,7 +5,7 @@ hide behind common or easy ones. Write a separate test for each use that needs i
 value is another test case of the same test, not another test.
 
 A prompt test is a directory of files in the draft directory `{{draft_directory}}`, at the path relative to the project
-where it belongs: its `scenario.md`, its `values.json` and its `fixtures/` directory. When CAT delivers a certified
+where it belongs: its `scenario.md`, its `values.json` and its `workspace/` directory. When CAT delivers a certified
 prompt, it writes these files to the project at the same paths, so the user's project receives them as you write
 them.
 
@@ -50,8 +50,6 @@ continues on lines indented by two spaces.
 
 - `## Variables`: one pair per variable, `- **<name>**: <description>`, whose description says what the value
   represents.
-- `## Fixtures`, only when the test selects fixtures other than those of its own `fixtures/` directory: the pair
-  `- **patterns**:` followed by code spans separated by commas, such as `` `fixtures/**`, `../shared/fixtures/*.md` ``.
 - `## Scenario`: the complete prewritten user turn, or, when the test has several turns, one `### Turn <n>` subsection
   per turn, numbered from 1.
 - `## Expected Behavior`: the pairs `description`, what a compliant response does, observable in text, file effects or
@@ -59,7 +57,8 @@ continues on lines indented by two spaces.
 - `## Assertions`: one `### <id>` subsection per assertion, holding its pairs as Assertions below describes.
 
 Where a variable's value is inserted, write `{{` and `}}` around the variable's name, as in `{{tone}}`. A placeholder
-may appear in a turn, the expected behavior, an assertion's `description` and `tool`, and a fixture's path and content.
+may appear in a turn, the expected behavior, an assertion's `description` and `tool`, and a fixture's path, content and
+link target.
 CAT replaces only declared names, so other text in double braces stays as written. `{{expected_outcome}}` stands for
 the test case's expected outcome, and no variable may take that name.
 
@@ -115,20 +114,30 @@ The generators, with every word, date and number that their output can contain:
 
 {{generators}}
 
-### Fixtures
+### The workspace
 
-A fixture is a text file that CAT writes into each trial's workspace before the first turn. Put it in the test's
-`fixtures/` directory: its path below `fixtures/` is its path in the workspace. Use a fixture when a turn needs a file
-whose content the test case decides. CAT replaces placeholders in each fixture's path and content.
+A trial's workspace holds the prompt system's files and the files of the test's `workspace/` directory, each at its
+path below `workspace/`, and no other file of the project. CAT writes those files before the first turn and replaces
+placeholders in each one's path and content. Each is a fixture: use one when a turn needs a file whose content the test case decides,
+or a file of the project that the turn works on.
 
-- A pattern of `## Fixtures` is relative to the test's directory and has the form `<directory>/fixtures/<glob>`; it
-  selects the files below that `fixtures` directory that the glob matches, and must stay inside the test root that
-  holds the test. A file that a later pattern selects replaces the one at the same workspace path that an earlier
-  pattern selects.
-- A fixture's workspace path stays inside the workspace and outside `.git`, and must not name a file that the project
-  already has. CAT refuses a fixture that would replace a project file.
-- A value inserted into a path must be a single name: not empty, not `.` or `..`, and without `/`, `\`, control
-  characters or any of `< > : " | ? *`. CAT refuses a test case that breaks this rule or whose fixture paths collide.
+- To give a trial a file or directory that lies elsewhere in the project, put a symbolic link in `workspace/` whose
+  target, relative to the link's directory, is that file or directory. The trial receives a copy of the target at the
+  link's path. Write the target as it resolves from the test's path in the project: a target that the draft directory
+  does not hold is read from the project.
+- To share a file among several tests, put it in the test root outside every test's directory, and link it from the
+  `workspace/` of each test that needs it.
+- A link whose target is another file or directory of the same `workspace/` stays a link in the trial, so the turn sees
+  the same paths related the same way. When that target is itself a link to a file outside `workspace/`, the target
+  becomes a copy and the first link still points to it.
+- CAT refuses a link whose target is absolute, missing, outside the project or in a cycle of links, and a link that
+  reaches a prompt test's directory or a prompt file: every trial already receives the prompt files that it measures.
+  `workspace/` holds only regular files, directories and symbolic links.
+- A fixture's workspace path stays outside `.git`, and must not name a file that every trial already receives, such as
+  a prompt file.
+- A value inserted into a path or a link target must be a single name: not empty, not `.` or `..`, and without `/`,
+  `\`, control characters or any of `< > : " | ? *`. CAT refuses a test case that breaks this rule or whose fixture
+  paths collide.
 - Write fixtures as UTF-8 text.
 
 ### Assertions

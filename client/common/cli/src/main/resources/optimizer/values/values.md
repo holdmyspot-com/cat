@@ -61,8 +61,8 @@ The failure group, as JSON:
   parameters. CAT rejects a test case whose expected outcome equals that of a held-out test case, so choose content and
   outcomes that clearly differ from the shown ones rather than variants of them.
 - Write each text value so that the turns, assertions and fixtures read correctly with it inserted, as the shown values
-  do. A value inserted into a fixture's path must be a single name: not empty, not `.` or `..`, and without `/`, `\`,
-  control characters or any of `< > : " | ? *`.
+  do. A value inserted into a fixture's path or link target must be a single name: not empty, not `.` or `..`, and
+  without `/`, `\`, control characters or any of `< > : " | ? *`.
 
 ### Values
 
