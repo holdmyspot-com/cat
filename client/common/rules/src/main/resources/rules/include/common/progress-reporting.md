@@ -20,9 +20,9 @@ the report between them. If an operation cannot yield that often, say before sta
 sent while it runs, then report immediately when control returns. Do not claim that a prompt alone can wake the agent or
 guarantee a wall-clock report.
 
-This rule covers work that you perform yourself. When your next action instead waits for a state change that
-something else produces, such as a hosted build finishing, a background process exiting or a subagent returning,
-lazy load `external-waits.md` and send no regular report while you wait.
+This rule covers work that you perform yourself. When the work also needs a state change that something else
+produces, such as a hosted build finishing, a background process exiting or a subagent returning, lazy load
+`external-waits.md` and send no regular report about that wait.
 
 Immediately before appending an estimate, read the authoritative current clock and record the returned timestamp
 exactly; do not predict, round forward, or manually invent it. Verify that it is not earlier than the preceding history

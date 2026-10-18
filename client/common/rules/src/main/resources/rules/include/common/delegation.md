@@ -84,8 +84,8 @@ same live `exec` result. Never use `exec`, an `exec`-wait operation, an invented
 tool catalog as a launch fallback; those actions neither launch nor diagnose a delegate. An error from another
 operation does not establish launch failure: correct the selected operation and obtain its own invocation receipt.
 
-When waiting for a live delegate, lazy load `external-waits.md` and block on the delegate's wait operation until it
-returns. A wait operation that times out before the delegate returns does not establish failure or authorize a restart;
+While a live delegate runs, lazy load `external-waits.md` and wait on the delegate's wait operation until it returns.
+A wait operation that times out before the delegate returns does not establish failure or authorize a restart;
 wait on the same delegate again.
 
 After the task contract is ready and the state is `ready-to-launch`, make the documented direct spawn call as the next

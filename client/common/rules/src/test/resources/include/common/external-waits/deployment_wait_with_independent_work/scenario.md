@@ -3,8 +3,8 @@
 ## Design Goals
 
 - Prove that an agent that must wait for a deployment it does not run, and that also has work which does not depend on
-  the deployment, does that work while the deployment runs instead of blocking first, then waits on a script and
-  reports the deployment's result.
+  the deployment, starts one wait that alone checks whether the deployment finished, does that work while the
+  deployment runs instead of blocking first or checking the deployment between steps, then reports its result.
 
 ## Variables
 
@@ -25,6 +25,13 @@ its result. Tell me the result once it finishes. Also add `- {{entry}}` to the U
 - **kind**: effect
 - **description**: The agent edits `CHANGELOG.md` before it blocks on the wait for the deployment, rather than first
   waiting for the deployment to finish and editing the file afterwards.
+
+### single_completion_observer
+
+- **kind**: effect
+- **description**: The agent starts its wait on the deployment before it edits `CHANGELOG.md`, and every run of
+  `sh scripts/deploy-status.sh` comes from that wait: the agent never runs the status command itself or through another
+  script, including between other steps.
 
 ### wait_script_with_deadline
 
