@@ -179,6 +179,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-92 | `optimize-medium` | Changes which files the runner copies into a session's project; an error lets a session follow a link out of its project, or refuses every revision of a proposal whose prompt tests link a project file. |
 | WI-93 | `optimize-medium` | Changes how the guard pilot answers a provider's rate limit or refusal; an error starts sessions during a hold, retries a refusal that waiting does not fix, or leaves a pilot that never finishes. |
 | WI-94 | `optimize-low` | Changes what the contract author lists as the contract's limitations; an error drops a real coverage gap from the contract, or keeps one run's results in it. |
+| WI-95 | `optimize-low` | Changes how the Claude runner writes each request line; an error makes Claude Code reject a request and end every nested Claude session. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -365,6 +366,7 @@ requirement names.
 | WI-92 | Done: the runner copies a link among a session's workspace files as a link and refuses, by name, one whose target is absolute or leaves the session's project, so a revision of a proposal whose prompt tests link a project file no longer fails. Commit `1222a545fe`; full build passed (2942 tests, 0 failures, 10 skipped; 4 min 32 s, of which tests took 87 s, 62 s in `client/common/cli`); the new test takes 0.09 s. 33 tests took 1 s or more, against 13 in the build before, none touched by this change, while another project's build loaded the machine. |
 | WI-93 | Done: a guard pilot session that the provider rejects because of a rate limit, or refuses, runs again after the harness's shared hold, a trial with the same test case and a judge without spending an attempt; only a refusal after a 30-minute hold stops the pilot. Commit `0e11763633`; full build passed (2943 tests, 0 failures, 10 skipped; 109 s); the new tests take 0.17 s and 0.01 s. One test took 1 s or more (`TestabilityAuditTest.onlyMainReadsEnvironment`, 1.2 s), not touched by this change. |
 | WI-94 | Built, exit pending: the contract author's prompt says that `limitations` holds only gaps in what the contract requires or tests, and leaves out guard pilot results and other facts about one run. Commit `7d297c65d7`; full build passed (2943 tests, 0 failures, 10 skipped; 88 s). Four `OptimizerCoreTest` tests took 2.2 s to 2.4 s, none touched by this change. The exit needs the next revised E-scenario proposal after a pilot. |
+| WI-95 | Built, exit pending: the Claude runner writes each stream-json request with a JSON library, so a prompt that holds a tab or another control character is valid JSON. Commit `0cf58de40a`; full build passed (2944 tests, 0 failures, 10 skipped; 86 s; no test at 1 s or more). The exit needs the Claude E1 run's `start` to produce a proposal. |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -648,7 +650,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E12 | Minimum remaining trials by the §3.9 formulas for the development and formal phases, the development minimum summing over every development cell, inside the certification scope or not; token statistics; no totals or time estimates. | §3.9 | WI-12, WI-44 | U: `RemainingWorkTest` |
 | R-E19 | Development cells: representative development trials and prompt author rounds only in a prompt test's development cells (its weakest cell, plus every cell where a certification attempt of the lineage adopted a failure); the coverage floor among them. | §3.3, §6.6, D27 | WI-32 | U: `SchedulerTest` (only development cells sampled, the floor among them, a formal failure adding a cell), `DriverTest` trace 19 |
 | R-E18 | The status compares the working candidate with the incumbent on prompt size (bytes and words) and on median input tokens per trial in each cell where both have outcomes. | §3.9, D11 | WI-18 | U: `StatusReportTest` |
-| R-E13 | Every nested role runs through the runners. Judge and contract author output is schema-validated, and invalid output is an infrastructure failure. The host agent never prompt authors or judges. | §3.1 | WI-8, WI-10 | U: `JudgeVerdictTest`, `ProposalTest`; E: E1 runs trial, judge, prompt author and contract author sessions per harness |
+| R-E13 | Every nested role runs through the runners. Judge and contract author output is schema-validated, and invalid output is an infrastructure failure. The host agent never prompt authors or judges. | §3.1 | WI-8, WI-10, WI-95 | U: `JudgeVerdictTest`, `ProposalTest`, `ClaudeStreamingProtocolTest`; E: E1 runs trial, judge, prompt author and contract author sessions per harness |
 | R-E14 | Child subagents and child worktrees stay within one logical trial; reconciliation before judging; observation limits. | §3.2 | WI-8 | E: E5 child scenarios per harness (premise P7) |
 | R-E15 | The Claude adapter classifies an interrupt it requested as an interruption (H10). | §11 | WI-8 | U: `ClaudeSessionsTest`; E: E2 in Claude |
 | R-E16 | The observed model comes from harness events, never the alias. | §5 | WI-8 | U: event parsing tests per harness; E: E1 observed model per harness |
@@ -2668,6 +2670,20 @@ The riskiest pure code, built first.
 - **Tests:** the full build; the next contract author revision in E1–E8 lists no pilot result as a limitation.
 - **Exit:** the full build passes; a revised E-scenario proposal after a pilot lists no pilot result as a limitation.
 
+### WI-95 — Claude requests with control characters
+
+- **Problem:** in the first Claude E1 run, `start` failed twice before the contract author's first reply. Claude Code
+	ended the session with `Error parsing streaming input line (type=user, 74130 chars): SyntaxError`. The Claude runner
+	escaped only backslashes, quotes and line feeds in each request, so the tabs that indent the contract author's
+	prompt reached Claude as raw control characters, which JSON does not allow in a string. Every nested Claude role
+	whose prompt holds a tab fails the same way.
+- **Change:** the runner builds each request line, a user turn or an interrupt, with the JSON library, which escapes
+	every character that a JSON string cannot hold.
+- **Tests:** `ClaudeStreamingProtocolTest.framesControlCharacters` frames a prompt with a tab, a carriage return and
+	another control character and reads the line back as JSON with the same prompt; it failed before the change on the
+	raw tab.
+- **Exit:** the full build passes; the Claude E1 run's `start` produces a proposal.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2806,7 +2822,8 @@ blocks only the part of a work item that it names.
 | WI-92 | WI-61 |
 | WI-93 | WI-66 |
 | WI-94 | WI-66 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92 and WI-93. |
+| WI-95 | WI-8 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93 and WI-95. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
