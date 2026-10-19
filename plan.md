@@ -178,6 +178,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-91 | `optimize-medium` | Changes what control trials remove at a symbolic link and what the proposal shows when the control source cannot be built; an error deletes or edits a link's target, which other paths or an external file share, or hides why no guard pilot ran. |
 | WI-92 | `optimize-medium` | Changes which files the runner copies into a session's project; an error lets a session follow a link out of its project, or refuses every revision of a proposal whose prompt tests link a project file. |
 | WI-93 | `optimize-medium` | Changes how the guard pilot answers a provider's rate limit or refusal; an error starts sessions during a hold, retries a refusal that waiting does not fix, or leaves a pilot that never finishes. |
+| WI-94 | `optimize-low` | Changes what the contract author lists as the contract's limitations; an error drops a real coverage gap from the contract, or keeps one run's results in it. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -363,6 +364,7 @@ requirement names.
 | WI-91 | Done: a dependent at a symbolic link removes the copy that trials see at the link's path and leaves the link's target unchanged; the proposal lists each reason why the control source cannot be built, and a test without a pilot gives that reason. Commit `27805aff58`; full build passed (2941 tests, 0 failures, 10 skipped; 4 min 34 s, of which tests took 72 s, 54 s in `client/common/cli`); the new tests take 0.02 s and 0.06 s. The build before it failed once in `BundledRuleAudienceTest.subagentGetsRoutingNotUserRules` (the bundled common rules were missing from the copied plugin; 3 of 3 isolated runs and the next full build passed), an intermittent failure not yet explained. |
 | WI-92 | Done: the runner copies a link among a session's workspace files as a link and refuses, by name, one whose target is absolute or leaves the session's project, so a revision of a proposal whose prompt tests link a project file no longer fails. Commit `1222a545fe`; full build passed (2942 tests, 0 failures, 10 skipped; 4 min 32 s, of which tests took 87 s, 62 s in `client/common/cli`); the new test takes 0.09 s. 33 tests took 1 s or more, against 13 in the build before, none touched by this change, while another project's build loaded the machine. |
 | WI-93 | Done: a guard pilot session that the provider rejects because of a rate limit, or refuses, runs again after the harness's shared hold, a trial with the same test case and a judge without spending an attempt; only a refusal after a 30-minute hold stops the pilot. Commit `0e11763633`; full build passed (2943 tests, 0 failures, 10 skipped; 109 s); the new tests take 0.17 s and 0.01 s. One test took 1 s or more (`TestabilityAuditTest.onlyMainReadsEnvironment`, 1.2 s), not touched by this change. |
+| WI-94 | Built, exit pending: the contract author's prompt says that `limitations` holds only gaps in what the contract requires or tests, and leaves out guard pilot results and other facts about one run. Commit `7d297c65d7`; full build passed (2943 tests, 0 failures, 10 skipped; 88 s). Four `OptimizerCoreTest` tests took 2.2 s to 2.4 s, none touched by this change. The exit needs the next revised E-scenario proposal after a pilot. |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -727,7 +729,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-P1 | Four outputs in both phases, with unavailable values explained, including the per-prompt-test comparison state at `β_i / K`. Allocation counts are shown apart from benchmark weights, and a pooled adaptive pass fraction is never presented as the future pass rate. | §2.9 | WI-12 | U: `StatusReportTest` |
 | R-P2 | Descriptive pass rates by concurrency level; detected dependence gives `invalid statistical assumptions`. | §2.6 | WI-12, WI-3 | U: `AssumptionCheckTest` |
 | R-P3 | The outcome set and its labels match §1 exactly, including `improved, not certified`. | §1 | WI-12 | U: `StatusReportTest` |
-| R-P4 | Claim wording names the frozen judge, benchmark, held-out part and conditions, and lists limitations; a weakest-only claim names each prompt test's profile and says no other profile was certified. | §2.1, §5, §6.6 | WI-12, WI-32 | U: `StatusReportTest` |
+| R-P4 | Claim wording names the frozen judge, benchmark, held-out part and conditions, and lists limitations; a weakest-only claim names each prompt test's profile and says no other profile was certified. | §2.1, §5, §6.6 | WI-12, WI-32, WI-94 | U: `StatusReportTest` |
 | R-I1 | Skill wrappers in both harnesses share one body and follow the §8 loop. | §8 | WI-14 | E: both harnesses |
 | R-I2 | Launcher commands and the JSON status object. | §8 | WI-13 | U: `CommandsTest` |
 | R-I3 | The old skill is retired; `failure-regression-promotion.md` follows D13; `default-rules.md` routing is updated. Recorded regression scenarios live in the location `design.md` §8 names for their guidance, as prompt test directories in the format of §6.3 (`.cat/tests/` for project and user guidance, the module's `src/test/resources/` for guidance packaged as a module resource), and CAT refuses a proposal that omits a scenario of one of its prompt sources. | §6.1, §8, §13 | WI-14, WI-21, WI-23, WI-61, WI-69 | U: `RegressionScenariosTest` (location audit), the proposal refusal test; reference audit |
@@ -2655,6 +2657,17 @@ The riskiest pure code, built first.
 	longest hold stops the pilot (`GuardPilotTest`).
 - **Exit:** unit tests pass; the full build passes; the E1 and E7 Codex pilots finish.
 
+### WI-94 — Limitations without pilot results
+
+- **Problem:** after the E1 and E7 Codex pilots finished, E1's revised contract still listed, as limitations, that its
+	guard pilots had stopped on rate limits. The contract author copied the pilot status from its request, because its
+	prompt does not say what a limitation is not; the copy stays in the frozen contract, and in every claim that lists
+	its limitations, after a later pilot changes the results.
+- **Change:** the contract author's prompt limits `limitations` to gaps in what the contract requires or tests, and
+	leaves out guard pilot results and other facts about one run, which the proposal already shows.
+- **Tests:** the full build; the next contract author revision in E1–E8 lists no pilot result as a limitation.
+- **Exit:** the full build passes; a revised E-scenario proposal after a pilot lists no pilot result as a limitation.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2792,6 +2805,7 @@ blocks only the part of a work item that it names.
 | WI-91 | WI-65, WI-81 |
 | WI-92 | WI-61 |
 | WI-93 | WI-66 |
+| WI-94 | WI-66 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92 and WI-93. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
