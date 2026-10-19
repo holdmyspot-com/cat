@@ -28,7 +28,7 @@ $CatReleaseTag = "v$CatVersion"
 $CatReleaseBaseUrl = $env:CAT_RELEASE_BASE_URL
 if (-not $CatReleaseBaseUrl)
 {
-	$CatReleaseBaseUrl = "https://github.com/cowwoc/cat.client/releases/download/$CatReleaseTag"
+	$CatReleaseBaseUrl = "https://github.com/holdmyspot-com/cat/releases/download/$CatReleaseTag"
 }
 
 # Returns -1, 0 or 1 when the dotted numeric version $Left precedes, equals or follows $Right.

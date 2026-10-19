@@ -11,7 +11,7 @@ Use CAT's uninstaller. It removes only the files recorded in CAT's ownership man
 marketplace registration. It keeps CAT's data directory unless the user asks to delete CAT's data as well.
 
 The uninstaller for each shell is in
-`https://raw.githubusercontent.com/cowwoc/cat/main/client/codex/lifecycle/src/main/resources/install/`:
+`https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/`:
 
 - In PowerShell, download `bootstrap-codex.ps1` from there with `Invoke-RestMethod`, create a script block from its
   text, and run the script block with the argument `-Uninstall`, followed by `-DeleteData` when the user asks to delete

@@ -7,7 +7,7 @@ shift
 	echo "Usage: $0 HARNESS [VERSION]" >&2
 	exit 2
 }
-CAT_REPOSITORY="${CAT_BOOTSTRAP_REPOSITORY:-cowwoc/cat}"
+CAT_REPOSITORY="${CAT_BOOTSTRAP_REPOSITORY:-holdmyspot-com/cat}"
 CAT_DOWNLOAD_TEMP_ROOT="${TMPDIR:-/tmp}"
 mkdir -p "${CAT_DOWNLOAD_TEMP_ROOT}"
 CAT_VERSION="${1:-}"

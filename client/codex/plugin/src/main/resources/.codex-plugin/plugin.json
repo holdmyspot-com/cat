@@ -6,7 +6,7 @@
     "name": "cowwoc",
     "url": "https://github.com/cowwoc"
   },
-  "repository": "https://github.com/cowwoc/cat",
+  "repository": "https://github.com/holdmyspot-com/cat",
   "license": "CAT Commercial License",
   "skills": "./skills/",
   "hooks": "./hooks/hooks.json",
@@ -17,6 +17,6 @@
     "developerName": "cowwoc",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write"],
-    "websiteURL": "https://cowwoc.github.io/cat/"
+    "websiteURL": "https://holdmyspot-com.github.io/cat/"
   }
 }

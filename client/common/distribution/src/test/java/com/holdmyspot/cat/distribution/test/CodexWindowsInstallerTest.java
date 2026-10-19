@@ -287,8 +287,8 @@ public final class CodexWindowsInstallerTest
 
 			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(0);
 			requireThat(fixture.commands(), "commands").isEqualTo(List.of(
-				"fetch https://api.github.com/repos/cowwoc/cat/releases/latest",
-				"fetch https://raw.githubusercontent.com/cowwoc/cat/v9.8/client/codex/lifecycle/src/main/resources/" +
+				"fetch https://api.github.com/repos/holdmyspot-com/cat/releases/latest",
+				"fetch https://raw.githubusercontent.com/holdmyspot-com/cat/v9.8/client/codex/lifecycle/src/main/resources/" +
 					"install/install-codex.ps1",
 				"install v9.8"));
 		}

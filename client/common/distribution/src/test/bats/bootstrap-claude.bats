@@ -100,8 +100,8 @@ platform=${expected_platform}" ]
 		sh "${INSTALL_DIRECTORY}/install-claude.sh" v1.0
 
 	[ "${status}" -eq 0 ]
-	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.0/${archive}" "${COMMAND_LOG}"
-	grep -F "https://github.com/cowwoc/cat.client/releases/download/v1.0/SHA256SUMS.txt" "${COMMAND_LOG}"
+	grep -F "https://github.com/holdmyspot-com/cat/releases/download/v1.0/${archive}" "${COMMAND_LOG}"
+	grep -F "https://github.com/holdmyspot-com/cat/releases/download/v1.0/SHA256SUMS.txt" "${COMMAND_LOG}"
 	[ -f "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace/plugins/cat/.claude-plugin/plugin.json" ]
 }
 

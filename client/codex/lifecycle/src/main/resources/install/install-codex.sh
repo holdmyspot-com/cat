@@ -17,7 +17,7 @@ trap cat_delete_download_temp_directory EXIT HUP INT TERM
 case "$(uname -s)" in
 	MINGW*|MSYS*)
 		echo "On Windows, install CAT for Codex from PowerShell with bootstrap-codex.ps1, as described in" \
-			"https://github.com/cowwoc/cat/blob/main/docs/installation.md" >&2
+			"https://github.com/holdmyspot-com/cat/blob/HEAD/docs/installation.md" >&2
 		exit 1
 		;;
 esac

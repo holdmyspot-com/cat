@@ -5,7 +5,7 @@
   "author": {
     "name": "cowwoc"
   },
-  "repository": "https://github.com/cowwoc/cat",
+  "repository": "https://github.com/holdmyspot-com/cat",
   "license": "CAT Commercial License",
   "skills": "./skills/",
   "hooks": "./hooks/hooks.json"

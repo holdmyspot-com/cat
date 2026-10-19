@@ -21,7 +21,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $repository = $env:CAT_BOOTSTRAP_REPOSITORY
-if (-not $repository) { $repository = 'cowwoc/cat' }
+if (-not $repository) { $repository = 'holdmyspot-com/cat' }
 # Windows PowerShell 5.1 does not offer TLS 1.2, which GitHub requires, unless asked to
 $protocols = [Net.ServicePointManager]::SecurityProtocol
 [Net.ServicePointManager]::SecurityProtocol = $protocols -bor [Net.SecurityProtocolType]::Tls12
@@ -29,7 +29,7 @@ $protocols = [Net.ServicePointManager]::SecurityProtocol
 if ($Uninstall)
 {
 	if ($Version) { throw '-Version cannot be used with -Uninstall' }
-	$reference = 'main'
+	$reference = 'HEAD'
 }
 else
 {

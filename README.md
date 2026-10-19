@@ -60,14 +60,14 @@ and safely upgrades an existing CAT installation. To install a particular releas
 
 ```bash
 curl -fsSL \
-  https://raw.githubusercontent.com/cowwoc/cat/main/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh | sh
+  https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh | sh
 ```
 
 To install into a custom Claude Code configuration directory, set `CLAUDE_CONFIG_DIR`:
 
 ```bash
 curl -fsSL \
-  https://raw.githubusercontent.com/cowwoc/cat/main/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh \
+  https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh \
   | CLAUDE_CONFIG_DIR=/path/to/claude-home sh
 ```
 
@@ -78,14 +78,14 @@ curl -fsSL \
 
 ```bash
 curl -fsSL \
-  https://raw.githubusercontent.com/cowwoc/cat/main/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh | sh
+  https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh | sh
 ```
 
 To install into a custom Codex home directory, set `CODEX_HOME`:
 
 ```bash
 curl -fsSL \
-  https://raw.githubusercontent.com/cowwoc/cat/main/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh \
+  https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh \
   | CODEX_HOME=/path/to/codex-home sh
 ```
 
