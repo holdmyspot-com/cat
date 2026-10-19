@@ -48,10 +48,11 @@ final class PilotReport
 	 *
 	 * @param contract the proposed contract that the pilots ran
 	 * @param pilots the pilot of each prompt test that has one, by prompt test
+	 * @param controlRefused {@code true} if the control source cannot be built, so no control trial could run
 	 * @return the Markdown text, which starts with a paragraph and holds one {@code ###} section per prompt test
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	static String render(Contract contract, Map<String, PilotResult> pilots)
+	static String render(Contract contract, Map<String, PilotResult> pilots, boolean controlRefused)
 	{
 		requireThat(contract, "contract").isNotNull();
 		requireThat(pilots, "pilots").isNotNull();
@@ -65,8 +66,8 @@ final class PilotReport
 			PilotResult pilot = pilots.get(test.id());
 			if (pilot == null)
 			{
-				text.append("\n### `").append(test.id()).append("`\n\nNo pilot: ").append(whyNoPilot(contract, test)).
-					append('\n');
+				text.append("\n### `").append(test.id()).append("`\n\nNo pilot: ").
+					append(whyNoPilot(contract, test, controlRefused)).append('\n');
 				continue;
 			}
 			test(text, contract, test, pilot);
@@ -136,14 +137,17 @@ final class PilotReport
 	 *
 	 * @param contract the proposed contract
 	 * @param test the prompt test
+	 * @param controlRefused {@code true} if the control source cannot be built, so no control trial could run
 	 * @return the reason, as a sentence
 	 */
-	private static String whyNoPilot(Contract contract, PromptTest test)
+	private static String whyNoPilot(Contract contract, PromptTest test, boolean controlRefused)
 	{
 		if (GuardPilot.pilotCell(contract, test.id()).isEmpty())
 			return "its weakest cell depends on a model whose family is unranked.";
 		if (contract.split().testCases(test, Part.DEVELOPMENT).isEmpty())
 			return "it has no development test case.";
+		if (controlRefused)
+			return "CAT cannot build the control source; the Control source section says why.";
 		return "CAT has not run it.";
 	}
 

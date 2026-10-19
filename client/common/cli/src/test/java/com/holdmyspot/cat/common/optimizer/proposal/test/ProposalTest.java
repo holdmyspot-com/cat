@@ -1260,7 +1260,8 @@ public final class ProposalTest
 
 	/**
 	 * Verifies that the proposal lists each dependent that control trials remove, that the confirmed contract carries
-	 * them, and that a dependent that the control source cannot remove blocks confirmation.
+	 * them, and that a dependent that the control source cannot remove is shown with the control source, explains each
+	 * missing guard pilot and blocks confirmation.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -1308,6 +1309,16 @@ public final class ProposalTest
 		requireThat(accepted.isConfirmable(CertificationScope.LATEST_VERSIONS), "acceptedConfirmable").isTrue();
 		requireThat(refused.isConfirmable(CertificationScope.LATEST_VERSIONS), "refusedConfirmable").isFalse();
 		requireThat(refused.confirmationRefusal(CertificationScope.LATEST_VERSIONS), "refusal").contains(refusal);
+		requireThat(refused.render(), "refusedRender").contains("""
+			Serves: Runs the repair script.
+
+			CAT cannot build the control source, so it ran no guard pilot, and confirmation is refused until revision \
+			feedback corrects the dependents:
+
+			- %s
+			""".formatted(refusal)).contains("No pilot: CAT cannot build the control source; the Control source " +
+			"section says why.\n");
+		requireThat(accepted.render(), "acceptedRender").doesNotContain("cannot build the control source");
 	}
 
 	/**

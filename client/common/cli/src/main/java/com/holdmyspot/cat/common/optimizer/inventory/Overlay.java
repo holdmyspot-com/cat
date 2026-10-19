@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
+import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.OverlayEntry.Delete;
 import com.holdmyspot.cat.common.optimizer.inventory.OverlayEntry.Write;
 
@@ -24,9 +25,11 @@ import java.util.TreeMap;
  * rename is a delete of the old path and a create of the new one.
  * <p>
  * Each overlay entry is keyed by the path it changes after symbolic links are resolved, so an edit made at a link path
- * is recorded at the link's target. The overlay holds only differences from the fork: writing a file's recorded
- * content and mode back, or deleting a file the fork did not record, removes the entry. Two overlays that describe the
- * same files on the same fork therefore have the same {@link #identity() identity}.
+ * is recorded at the link's target. Only {@link #replaceLink replaceLink} and {@link #deleteLink deleteLink} key an
+ * entry at a link itself, which replaces or removes the link and leaves its target unchanged. The overlay holds only
+ * differences from the fork: writing a file's recorded content and mode back, or deleting a file the fork did not
+ * record, removes the entry. Two overlays that describe the same files on the same fork therefore have the same
+ * {@link #identity() identity}.
  * <p>
  * The overlay does not decide whether a change is authorized; {@link Authority} does.
  * <p>
@@ -95,13 +98,7 @@ public final class Overlay
 		}
 		Overlay moved = of(larger);
 		for (Entry<Path, OverlayEntry> entry : entries.entrySet())
-		{
-			moved = switch (entry.getValue())
-			{
-				case Write write -> moved.write(entry.getKey(), write.content(), write.permissions());
-				case Delete _ -> moved.delete(entry.getKey());
-			};
-		}
+			moved = moved.restore(entry.getKey(), entry.getValue());
 		return moved;
 	}
 
@@ -142,6 +139,85 @@ public final class Overlay
 		if (recorded.isEmpty())
 			return without(target);
 		return with(target, new Delete());
+	}
+
+	/**
+	 * Returns a candidate in which a symbolic link of the fork is replaced by an ordinary file with the given content
+	 * and mode. The link's target is unchanged. A control source uses this to remove part of a dependent that trials see
+	 * at a link's path; a prompt author's edit at a link's path applies to the link's target instead.
+	 *
+	 * @param link the link's path, which no other recorded link leads to
+	 * @param content the file's bytes
+	 * @param permissions the file's mode
+	 * @return the resulting overlay; this overlay is unchanged
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code link} is not a valid inventory path, or if the fork does not record a
+	 *                                  symbolic link at {@code link} or reaches {@code link} through another link
+	 */
+	public Overlay replaceLink(Path link, FileContent content, Set<PosixFilePermission> permissions)
+	{
+		Write write = new Write(content, permissions);
+		requireLink(link);
+		return with(link, write);
+	}
+
+	/**
+	 * Returns a candidate in which a symbolic link of the fork does not exist. The link's target is unchanged. A control
+	 * source uses this to remove a dependent that trials see at a link's path.
+	 *
+	 * @param link the link's path, which no other recorded link leads to
+	 * @return the resulting overlay; this overlay is unchanged
+	 * @throws NullPointerException if {@code link} is null
+	 * @throws IllegalArgumentException if {@code link} is not a valid inventory path, or if the fork does not record a
+	 *                                  symbolic link at {@code link} or reaches {@code link} through another link
+	 */
+	public Overlay deleteLink(Path link)
+	{
+		requireLink(link);
+		return with(link, new Delete());
+	}
+
+	/**
+	 * Returns a candidate with one entry of another overlay on the same files repeated: a write or delete of an ordinary
+	 * file, or, where the fork records a symbolic link at {@code path}, the link's replacement or removal.
+	 *
+	 * @param path the entry's path
+	 * @param entry the entry
+	 * @return the resulting overlay; this overlay is unchanged
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if the entry is not valid on this overlay's fork (see
+	 *                                  {@link #write(Path, FileContent, Set)} and {@link #replaceLink})
+	 */
+	public Overlay restore(Path path, OverlayEntry entry)
+	{
+		requireThat(path, "path").isNotNull();
+		requireThat(entry, "entry").isNotNull();
+		boolean link = fork.entry(path).orElse(null) instanceof SymbolicLink;
+		return switch (entry)
+		{
+			case Write write when link -> replaceLink(path, write.content(), write.permissions());
+			case Write write -> write(path, write.content(), write.permissions());
+			case Delete _ when link -> deleteLink(path);
+			case Delete _ -> delete(path);
+		};
+	}
+
+	/**
+	 * Requires that the fork records a symbolic link at a path that no other recorded link leads to.
+	 *
+	 * @param link the path
+	 * @throws NullPointerException if {@code link} is null
+	 * @throws IllegalArgumentException if {@code link} is not a valid inventory path, or if the fork does not record a
+	 *                                  symbolic link at {@code link} or reaches {@code link} through another link
+	 */
+	private void requireLink(Path link)
+	{
+		FileInventory.requireInventoryPath(link, "link");
+		if (!fork.firstLinkPrefix(link).equals(Optional.of(link)))
+		{
+			throw new IllegalArgumentException("The fork does not record " + link + " as a symbolic link that no " +
+				"other link leads to.");
+		}
 	}
 
 	/**

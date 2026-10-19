@@ -79,6 +79,49 @@ public final class ControlSourceTest
 	}
 
 	/**
+	 * Verifies that a dependent at a symbolic link removes what trials see at the link's path and leaves the link's
+	 * target alone: a whole-file dependent deletes the link, and a span dependent leaves a regular file at the link's
+	 * path without the span, even when the target lies outside the project.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	@Test
+	public void removesDependentsAtLinks() throws IOException
+	{
+		// Requirement: R-W10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-control-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			Path campaign = root.resolve("campaign");
+			Path external = root.resolve("external/reply-rules.md");
+			writeFile(base.resolve(TARGET), "Follow docs/rules.md and docs/reply-rules.md.\n", READ_WRITE);
+			writeFile(base.resolve("shared/rules.md"), "Be brief.\n", READ_WRITE);
+			writeFile(external, "Close with the motto.\nAnswer plainly.\n", READ_WRITE);
+			Files.createDirectories(base.resolve("docs"));
+			Files.createSymbolicLink(base.resolve("docs/rules.md"), Path.of("../shared/rules.md"));
+			Files.createSymbolicLink(base.resolve("docs/reply-rules.md"), external);
+			ForkTree tree = ForkTree.record(base, campaign, Set.of(TARGET, Path.of("shared/rules.md"),
+				Path.of("docs/rules.md"), Path.of("docs/reply-rules.md")));
+			WorkspacePort port = new Workspace(tree, campaign, campaign.resolve("worktree"));
+			List<Dependent> dependents = List.of(
+				new Dependent(Path.of("docs/rules.md"), new Dependent.WholeFile(), "Holds the prompt's rules."),
+				new Dependent(Path.of("docs/reply-rules.md"), new Dependent.Span("Close with the motto.\n"),
+					"Defines the closing that the prompt asks for."));
+
+			List<String> problems = ControlSource.problems(port, tree.inventory(), TARGET, dependents, JSON);
+			Path staged = port.stage(ControlSource.of(port, tree.inventory(), TARGET, dependents, JSON), Set.of());
+
+			requireThat(problems, "problems").isEmpty();
+			requireThat(Files.exists(staged.resolve("docs/rules.md")), "linkExists").isFalse();
+			requireThat(Files.readString(staged.resolve("shared/rules.md")), "linkTarget").isEqualTo("Be brief.\n");
+			requireThat(Files.readString(staged.resolve("docs/reply-rules.md")), "externalCopy").
+				isEqualTo("Answer plainly.\n");
+			requireThat(Files.readString(external), "external").isEqualTo("Close with the motto.\nAnswer plainly.\n");
+		}
+	}
+
+	/**
 	 * Verifies that the control source reports the target listed as its own dependent, a dependent whose file the fork
 	 * does not hold and a span that occurs more than once, and refuses to build while any is reported.
 	 *

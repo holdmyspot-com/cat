@@ -254,8 +254,9 @@ public final class ContractAuthorProtocol
 		requireThat(pilots, "pilots").isNotNull();
 		Path previousDraft = previous.draft();
 		requireThat(previousDraft, "previous.draft()").isNotNull();
+		String pilotResults = PilotReport.render(previous.contract(), pilots, false);
 		return request(promptSystem, profiles, hooks, loadedFiles, previous.derivation() + "\n\nGuard pilot " +
-				"results of the previous proposal:\n\n" + PilotReport.render(previous.contract(), pilots), feedback,
+				"results of the previous proposal:\n\n" + pilotResults, feedback,
 			draft -> DraftDirectory.copy(previousDraft, draft), previous.contract().salt());
 	}
 

@@ -158,12 +158,12 @@ final class OverlayJson
 			{
 				requireFields(node, name, WRITE_FIELDS);
 				FileContent content = new FileContent(Base64.getDecoder().decode(text(node, "content")));
-				yield overlay.write(path, content, PosixFilePermissions.fromString(text(node, "permissions")));
+				yield overlay.restore(path, new Write(content, PosixFilePermissions.fromString(text(node, "permissions"))));
 			}
 			case "delete" ->
 			{
 				requireFields(node, name, DELETE_FIELDS);
-				yield overlay.delete(path);
+				yield overlay.restore(path, new Delete());
 			}
 			default -> throw new IllegalArgumentException(name + ".kind: must be write or delete, but was " + kind);
 		};

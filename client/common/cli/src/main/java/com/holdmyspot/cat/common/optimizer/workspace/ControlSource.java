@@ -5,7 +5,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
+import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
+import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
@@ -24,7 +26,9 @@ import tools.jackson.databind.json.JsonMapper;
  * The source that control trials run on: the incumbent with the target prompt file emptied to zero bytes and each
  * dependent of the target removed. The target still exists but gives no instruction, and every other part of the prompt
  * system stays as the incumbent has it, so control trials measure the agent that the user would have without the
- * target. The source depends only on the fork, the target and its dependents, so it is the same for every candidate.
+ * target. A dependent at a symbolic link removes the copy of the link's target that trials see at the link's path and
+ * leaves the target unchanged. The source depends only on the fork, the target and its dependents, so it is the same
+ * for every candidate.
  * <p>
  * <b>Thread Safety:</b> This class is stateless and thread-safe.
  */
@@ -169,7 +173,12 @@ public final class ControlSource
 					"already empty; a dependent is another part of the prompt system");
 				continue;
 			}
-			if (!(fork.entry(path).orElse(null) instanceof RegularFile file))
+			// Trials see a copy of a link's target at the link's path, so a dependent there removes that copy
+			FileEntry recorded = fork.entry(path).orElse(null);
+			boolean link = recorded instanceof SymbolicLink;
+			if (link)
+				recorded = fork.resolve(path).flatMap(fork::entry).orElse(null);
+			if (!(recorded instanceof RegularFile file))
 			{
 				problems.add(DependentRemoval.describe(dependent) + ", which a dependent names, is not a regular file " +
 					"of the project");
@@ -186,8 +195,12 @@ public final class ControlSource
 				problems.add(e.getMessage());
 				continue;
 			}
-			if (content.isEmpty())
+			if (content.isEmpty() && link)
+				control = control.deleteLink(path);
+			else if (content.isEmpty())
 				control = control.delete(path);
+			else if (link)
+				control = control.replaceLink(path, new FileContent(content.get()), file.permissions());
 			else
 				control = control.write(path, new FileContent(content.get()), file.permissions());
 		}

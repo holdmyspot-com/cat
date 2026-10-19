@@ -474,7 +474,7 @@ public final class Proposal
 	public String render()
 	{
 		return new Markdown(derived, contract, links, controlFile, login, ceiling, previews, caps, incumbent, pilots,
-			delivered, plugin, goal).render();
+			delivered, plugin, controlRefusals, goal).render();
 	}
 
 	/**

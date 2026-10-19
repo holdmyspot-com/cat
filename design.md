@@ -1342,7 +1342,9 @@ trials measure the agent that the user would have without the target, not an age
 
 CAT works out the control source itself; the user does not write it. The contract author lists each dependent with the
 part it removes (a whole file, which is deleted; a hook registration, which is unregistered; or an exact span of a file,
-which is deleted) and the target instruction it serves. CAT refuses an entry that names the target, a path outside the
+which is deleted) and the target instruction it serves. A dependent at a symbolic link removes the copy that trials see
+at the link's path and leaves the link's target unchanged, so an external file or a file that other paths share keeps
+its content. CAT refuses an entry that names the target, a path outside the
 prompt system and the project-built trial plugins, or a span that does not occur exactly once, and the user confirms the
 list with the proposal ([§6.1](#61-derivation-and-confirmation)). The control source is the same for every candidate.
 Its plugin copies are built from it in the same way, so a target or dependent that a project-built trial plugin ships is

@@ -79,6 +79,7 @@ public final class Markdown
 	private final Map<String, PilotResult> pilots;
 	private final Map<String, DeliveredTest> delivered;
 	private final PluginCheck plugin;
+	private final List<String> controlRefusals;
 	private final String goal;
 	private final StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
 
@@ -98,12 +99,13 @@ public final class Markdown
 	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
 	 * @param delivered each prompt test as delivery would write it, by prompt test
 	 * @param plugin the check of the trial plugins
+	 * @param controlRefusals the reasons why the control source cannot be built, which block confirmation
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
 	Markdown(DerivedProposal derived, Contract contract, LinkReport links, Path controlFile,
 		HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews, List<String> caps,
 		CertificationStatus incumbent, Map<String, PilotResult> pilots, Map<String, DeliveredTest> delivered,
-		PluginCheck plugin, String goal)
+		PluginCheck plugin, List<String> controlRefusals, String goal)
 	{
 		this.derived = derived;
 		this.contract = contract;
@@ -117,6 +119,7 @@ public final class Markdown
 		this.pilots = pilots;
 		this.delivered = delivered;
 		this.plugin = plugin;
+		this.controlRefusals = controlRefusals;
 		this.goal = goal;
 	}
 
@@ -629,11 +632,25 @@ public final class Markdown
 
 	/**
 	 * Shows what the control source changes: the target prompt file that it empties and each dependent that it
-	 * removes.
+	 * removes, followed by each reason why it cannot be built.
 	 */
 	private void controlSource()
 	{
 		heading("Control source");
+		controlDependents();
+		if (controlRefusals.isEmpty())
+			return;
+		text.append("\nCAT cannot build the control source, so it ran no guard pilot, and confirmation is refused " +
+			"until revision feedback corrects the dependents:\n\n");
+		for (String refusal : controlRefusals)
+			text.append("- ").append(refusal).append('\n');
+	}
+
+	/**
+	 * Shows the target prompt file that the control source empties and each dependent that it removes.
+	 */
+	private void controlDependents()
+	{
 		text.append("Control trials run the incumbent with the target prompt file `").append(controlFile).
 			append("` emptied to zero bytes");
 		List<Dependent> dependents = contract.dependents();
@@ -741,7 +758,7 @@ public final class Markdown
 	private void guardPilot()
 	{
 		heading("Guard pilot");
-		text.append(PilotReport.render(contract, pilots));
+		text.append(PilotReport.render(contract, pilots, !controlRefusals.isEmpty()));
 	}
 
 	/**
