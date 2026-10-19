@@ -44,23 +44,23 @@ jobs:
       - name: Install test tools on macOS
         if: runner.os == 'macOS'
         run: brew install bats-core shellcheck
-      # Chocolatey reports success without installing anything when its package feed is unavailable, so the step
-      # retries until shellcheck is on the PATH and fails here, rather than later in the build, if it never is.
+      # Chocolatey's community feed can be unavailable to GitHub's runners, and choco then reports success without
+      # installing anything, so ShellCheck comes from its own GitHub release, pinned by checksum.
       - name: Install test tools on Windows
         if: runner.os == 'Windows'
         run: |
-          for attempt in 1 2 3; do
-            if choco install shellcheck --yes --no-progress && command -v shellcheck > /dev/null; then
-              break
-            fi
-            if [ "${attempt}" -eq 3 ]; then
-              echo "::error::Chocolatey did not install shellcheck after 3 attempts"
-              exit 1
-            fi
-            sleep 30
-          done
+          shellcheck_directory="$(cygpath --unix "${RUNNER_TEMP}")/shellcheck"
+          archive="${shellcheck_directory}/shellcheck.zip"
+          mkdir -p "${shellcheck_directory}"
+          curl -fsSL --retry 3 --retry-all-errors -o "${archive}" \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip
+          echo "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e  ${archive}" |
+            sha256sum --check --strict
+          pwsh -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath --windows "${archive}")' -DestinationPath \
+            '$(cygpath --windows "${shellcheck_directory}")'"
+          cygpath --windows "${shellcheck_directory}" >> "${GITHUB_PATH}"
+          "${shellcheck_directory}/shellcheck.exe" --version
           npm install --global bats@1.11.1
-          shellcheck --version
           bats --version
       - name: Verify and package
         run: client/mvnw -f client/pom.xml verify
