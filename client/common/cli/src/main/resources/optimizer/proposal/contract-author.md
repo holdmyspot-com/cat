@@ -56,10 +56,10 @@ The user's goal for the target, in the user's own words, or `none` if the user s
 
 ### What to inspect
 
-- The prompt system is the current directory. CAT lists below the files that load in production: the harness's
-	instruction files and the files that CAT's rules give the agent, each with the rule that loads it. Start from this
-	list instead of working out the loading rules or reading CAT's rule loader, and read a listed file when its content
-	matters to the proposal. A path outside the project is a file of an installed plugin or of the user's rules.
+- The prompt system is the current directory. CAT lists below the files that load in trials: the harness's
+	instruction files and the files that the trial plugins' rules give the agent, each with the rule that loads it.
+	Start from this list instead of working out the loading rules or reading a plugin's rule loader, and read a listed
+	file when its content matters to the proposal. A path outside the project is a file of a trial plugin.
 - Add the files that a listed file references as instructions, including files reached through symbolic links and
 	readable files outside the project.
 - Record the `source` of a requirement that a prompt file states as the path of that file. For a file reached through a

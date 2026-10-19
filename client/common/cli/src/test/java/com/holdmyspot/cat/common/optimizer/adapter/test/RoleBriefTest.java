@@ -149,10 +149,11 @@ public final class RoleBriefTest
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema,
 				new JudgeTemplate(json, new TrialProfile("role-model", "high")), new RegressionScenarios(root, List.of()),
-				root.resolve("CLAUDE.md"), null, true, List.of(), List.of(),
+				root.resolve("CLAUDE.md"), null, true, List.of(),
 				root.toAbsolutePath().resolve("bin/prompt-optimizer"), profile -> OptionalLong.empty());
 			SessionRequest request = contractAuthor.request(root, new ProfileEvidence(ContractFixtures.ONE_PROFILE,
-				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), List.of(), ContractFixtures.SALT);
+				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), List.of(), List.of(),
+				ContractFixtures.SALT);
 
 			List<String> delivered = deliver(root, artifact, request);
 

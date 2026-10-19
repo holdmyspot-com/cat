@@ -680,10 +680,21 @@ public final class OptimizerCoreTest
 		 * loading in trials, each named by its absolute path in the base copy.
 		 */
 		private volatile List<Path> pluginSources = List.of();
+		/**
+		 * The prompt files that {@link #loadedSources(Path, List)} returns as loading in production but not in trials.
+		 */
+		private volatile List<DerivedSource> productionOnlySources = List.of();
 
 		@Override
 		public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
 		{
+			List<DerivedSource> production = new ArrayList<>(derivedSources);
+			List<String> productionOnly = new ArrayList<>();
+			for (DerivedSource source : productionOnlySources)
+			{
+				production.add(source);
+				productionOnly.add(source.path());
+			}
 			List<DerivedSource> trials = new ArrayList<>(derivedSources);
 			for (PluginBase base : plugins)
 			{
@@ -694,7 +705,17 @@ public final class OptimizerCoreTest
 						"CAT injects this rule into every session"));
 				}
 			}
-			return new LoadedSources(derivedSources, trials, List.of());
+			return new LoadedSources(production, trials, productionOnly);
+		}
+
+		/**
+		 * Sets the files that load in production but not in trials.
+		 *
+		 * @param sources the files
+		 */
+		void setProductionOnlySources(List<DerivedSource> sources)
+		{
+			productionOnlySources = List.copyOf(sources);
 		}
 
 		/**
@@ -2611,6 +2632,40 @@ public final class OptimizerCoreTest
 			exit "$2"
 			""");
 		requireThat(script.toFile().setExecutable(true, false), "executable").isTrue();
+	}
+
+	/**
+	 * Verifies that the contract author's request lists the files that load in trials, including those that load from
+	 * a trial plugin's base copy, and leaves out the files that load only in the user's own sessions.
+	 *
+	 * @throws CommandRefusedException if a command is refused
+	 * @throws IOException if a file cannot be read or written
+	 * @throws InterruptedException if a command waits for a session and the thread is interrupted
+	 */
+	@Test
+	public void contractAuthorListsFilesThatLoadInTrials()
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), buildProgram()));
+			Path root = repository.root();
+			writeBuildProgram(root);
+			configure(root, buildConfiguration("cat", 0, "out"));
+			repository.sessions().setPluginSources(List.of(Path.of("rules/common/default-rules.md")));
+			repository.sessions().setProductionOnlySources(List.of(new DerivedSource("/home/user/.cat/rules/own.md",
+				"CAT injects this rule into every session")));
+
+			repository.core().start(Path.of("CLAUDE.md"));
+
+			String request = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getFirst().turns().
+				getFirst();
+			requireThat(request, "request").contains("`CLAUDE.md`: ").
+				contains("rules/common/default-rules.md`: CAT injects this rule into every session").
+				doesNotContain("own.md");
+		}
 	}
 
 	/**

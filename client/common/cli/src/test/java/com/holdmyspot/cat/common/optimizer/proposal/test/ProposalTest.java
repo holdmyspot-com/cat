@@ -153,8 +153,7 @@ public final class ProposalTest
 	private final ProposalSchema schema = new ProposalSchema(json);
 	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
 	private final ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
-		new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(), List.of(), LAUNCHER,
-		UNKNOWN_LIMIT);
+		new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(), LAUNCHER, UNKNOWN_LIMIT);
 
 	/**
 	 * Creates the test fixture.
@@ -411,7 +410,7 @@ public final class ProposalTest
 	{
 		// Requirement: R-E20
 		// Requirement: R-E13
-		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT);
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT);
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.CONTRACT_AUTHOR);
 		requireThat(request.source(), "source").isEqualTo(PROMPT_SYSTEM);
@@ -710,7 +709,7 @@ public final class ProposalTest
 		Files.writeString(project.resolve(OutputFile.NAME), "{\"user\": \"data\"}\n", UTF_8);
 		String name = OutputFile.name(project);
 		requireThat(name, "name").isNotEqualTo(OutputFile.NAME);
-		requireThat(contractAuthor.request(project, PROFILES, List.of(), SALT).turns().getFirst(), "turn").
+		requireThat(contractAuthor.request(project, PROFILES, List.of(), List.of(), SALT).turns().getFirst(), "turn").
 			contains(name);
 
 		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
@@ -728,7 +727,7 @@ public final class ProposalTest
 	@Test
 	public void correctionNamesTheFileAndEachProblem()
 	{
-		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT);
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT);
 		String correction = request.followUp().orElseThrow().next(session(fixture("derivation-with-judge-fields.json"))).
 			orElseThrow();
 		requireThat(correction, "correction").contains(OutputFile.NAME).
@@ -823,7 +822,8 @@ public final class ProposalTest
 		DerivedProposal first = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES, SALT);
 		String feedback = "Split the safety test by the kind of directory.";
 
-		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), first, feedback, Map.of());
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), first, feedback,
+			Map.of());
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.CONTRACT_AUTHOR);
 		requireThat(request.source(), "source").isEqualTo(PROMPT_SYSTEM);
@@ -1095,8 +1095,8 @@ public final class ProposalTest
 		// Requirement: R-E22
 		// Requirement: R-C1
 		ProfileEvidence evidence = evidence(ContractFixtures.TWO_PROFILES, Map.of());
-		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence, List.of(), SALT).turns().getFirst(), "request").
-			contains("Capability ranking, most capable first (test ranking in inventory order): big, small");
+		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence, List.of(), List.of(), SALT).turns().getFirst(),
+			"request").contains("Capability ranking, most capable first (test ranking in inventory order): big, small");
 
 		String revised = changedDerivation(output ->
 		{
@@ -1416,7 +1416,7 @@ public final class ProposalTest
 		Map<String, PilotResult> pilots = Map.of("safety", pilot(first.contract(), "safety", "asks_before_deleting",
 			15, List.of(), null));
 
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), first, "Keep the tests.",
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), first, "Keep the tests.",
 			pilots).turns().
 			getFirst();
 
@@ -1466,11 +1466,11 @@ public final class ProposalTest
 	public void requestListsTrialPlugins()
 	{
 		ContractAuthorProtocol withPlugins = new ContractAuthorProtocol(json, schema, judge,
-			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(),
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true,
 			List.of(builtPlugin(), installedPlugin()), LAUNCHER, UNKNOWN_LIMIT);
 
-		String listed = withPlugins.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
-		String none = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+		String listed = withPlugins.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
+		String none = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
 
 		requireThat(listed, "listed").
 			contains("\n- `cat`, built by the project, with these project paths written over it: `source/rules` → " +
@@ -1491,8 +1491,8 @@ public final class ProposalTest
 			new HookRegistration("", ".claude/settings.json", "SessionStart", "", "bin/session-start"),
 			new HookRegistration("cat", "hooks/hooks.json", "PostToolUse", "Bash", "${PLUGIN_ROOT}/bin/repair"));
 
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, hooks, SALT).turns().getFirst();
-		String none = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, hooks, List.of(), SALT).turns().getFirst();
+		String none = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
 
 		requireThat(prompt, "prompt").
 			contains("- event `SessionStart`, command `bin/session-start`, registered by `.claude/settings.json` " +
@@ -1786,14 +1786,15 @@ public final class ProposalTest
 	{
 		// Requirement: R-C10
 		String prompt = contractAuthor.request(PROMPT_SYSTEM, evidence(ContractFixtures.TWO_PROFILES, Map.of()),
-			List.of(), SALT).
+			List.of(), List.of(), SALT).
 			turns(). getFirst();
 		requireThat(prompt, "prompt").contains(ContractFixtures.TWO_PROFILES.source()).
 			contains("- model `big`, effort `high`").contains("- model `small`, effort `high`");
 
 		ProfileCatalog plain = new ProfileCatalog("plain models", List.of(new TrialProfile("plain", "")));
-		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence(plain, Map.of()), List.of(), SALT).turns().getFirst(),
-			"plainPrompt").contains("- model `plain`, no effort dimension").doesNotContain("effort ``");
+		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence(plain, Map.of()), List.of(), List.of(), SALT).
+			turns().getFirst(), "plainPrompt").contains("- model `plain`, no effort dimension").
+			doesNotContain("effort ``");
 	}
 
 	/**
@@ -1805,7 +1806,7 @@ public final class ProposalTest
 	{
 		// Requirement: R-E20
 		// Requirement: R-C9
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
 
 		JsonNode outputSchema = readOutputSchema(prompt);
 		JsonNode test = outputSchema.get("properties").get("tests").get("items");
@@ -1841,7 +1842,7 @@ public final class ProposalTest
 	public void requestListsRecordedPromptTests()
 	{
 		// Requirement: R-I3
-		String prompt = regressionContractAuthor().request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().
+		String prompt = regressionContractAuthor().request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().
 			getFirst();
 		requireThat(prompt, "prompt").contains("### Recorded prompt tests").
 			contains("- `.cat/tests/rules/safety/reported`, recorded as `" + REPORTED + "` for `rules/safety.md`. " +
@@ -1935,7 +1936,7 @@ public final class ProposalTest
 	private ContractAuthorProtocol contractAuthor(RegressionScenarios scenarios)
 	{
 		return new ContractAuthorProtocol(json, schema, judge, scenarios, scenarios.project().resolve("CLAUDE.md"),
-			null, true, List.of(), List.of(), LAUNCHER, UNKNOWN_LIMIT);
+			null, true, List.of(), LAUNCHER, UNKNOWN_LIMIT);
 	}
 
 	/**
@@ -1954,7 +1955,7 @@ public final class ProposalTest
 	{
 		Path initialProject = directories.add(Files.createTempDirectory("contract-author-initial-"));
 		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
-		author.request(project, PROFILES, List.of(), SALT).files().write(effects);
+		author.request(project, PROFILES, List.of(), List.of(), SALT).files().write(effects);
 		write(effects, initialProject, output, Path.of("CLAUDE.md"),
 			DraftDirectory.testDirectories(RegressionScenarios.read(json, project, project)));
 		return session(effects, initialProject, "The proposal is in " + OutputFile.name(initialProject) + ".");
@@ -2072,7 +2073,7 @@ public final class ProposalTest
 			new TestValue.Text("a manager")), "a terse summary shortened for a manager reader");
 
 		Path workspace = directories.add(Files.createTempDirectory("contract-author-workspace-"));
-		author.request(project, PROFILES, List.of(), SALT).files().write(workspace);
+		author.request(project, PROFILES, List.of(), List.of(), SALT).files().write(workspace);
 		requireThat(Files.readString(workspace.resolve(DraftDirectory.name(project)).
 			resolve(".cat/tests/CLAUDE/formatting/values.json"), UTF_8), "seeded").
 			contains("a terse summary shortened for a manager reader");
@@ -2188,7 +2189,7 @@ public final class ProposalTest
 		// The session's project copy is a copy of the whole project, so it holds the linked file too
 		Path initialProject = directories.add(Files.createTempDirectory("contract-author-initial-"));
 		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
-		author.request(project, PROFILES, List.of(), SALT).files().write(effects);
+		author.request(project, PROFILES, List.of(), List.of(), SALT).files().write(effects);
 		Files.createDirectories(effects.resolve("docs"));
 		Files.copy(docs.resolve("handbook.md"), effects.resolve("docs/handbook.md"));
 		write(effects, initialProject, output, Path.of("CLAUDE.md"), DraftDirectory.testDirectories(scenarios));
@@ -2243,7 +2244,7 @@ public final class ProposalTest
 
 		Path initialProject = directories.add(Files.createTempDirectory("contract-author-initial-"));
 		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
-		author.request(project, PROFILES, List.of(), SALT).files().write(effects);
+		author.request(project, PROFILES, List.of(), List.of(), SALT).files().write(effects);
 		write(effects, initialProject, output, Path.of("CLAUDE.md"), DraftDirectory.testDirectories(scenarios));
 		DerivedProposal derived = author.proposal(session(effects, initialProject, "The proposal is in " +
 			OutputFile.name(initialProject) + "."), project, PROFILES, SALT);
@@ -2284,7 +2285,7 @@ public final class ProposalTest
 	private ContractAuthorProtocol regressionContractAuthor()
 	{
 		return new ContractAuthorProtocol(json, schema, judge, regressionScenarios(), PROMPT_SYSTEM.resolve("rules"),
-			null, true, List.of(), List.of(), LAUNCHER, UNKNOWN_LIMIT);
+			null, true, List.of(), LAUNCHER, UNKNOWN_LIMIT);
 	}
 
 	/**
@@ -2305,7 +2306,7 @@ public final class ProposalTest
 	public void sendsOnlyTheTargetsScenarios()
 	{
 		// Requirement: R-C24
-		String prompt = regressionContractAuthor().request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().
+		String prompt = regressionContractAuthor().request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().
 			getFirst();
 		requireThat(prompt, "prompt").contains(REPORTED).contains(ANALOGOUS).doesNotContain("unrelated.md");
 	}
@@ -2359,24 +2360,22 @@ public final class ProposalTest
 		String goal = "Summaries must stay safe for a general audience.";
 		ContractAuthorProtocol withGoal = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), PROMPT_SYSTEM.resolve("rules/safety.md"), goal, true,
-			List.of(), List.of(), LAUNCHER, UNKNOWN_LIMIT);
-		String prompt = withGoal.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+			List.of(), LAUNCHER, UNKNOWN_LIMIT);
+		String prompt = withGoal.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
 		requireThat(prompt, "prompt").contains("`rules/safety.md`").contains(goal);
 	}
 
 	/**
-	 * Verifies that the contract author's request lists the files that load in production, with the rule that loads
-	 * each, so that the author need not work out the loading rules.
+	 * Verifies that the contract author's request lists the files that load in trials, with the rule that loads each,
+	 * so that the author need not work out the loading rules.
 	 */
 	@Test
 	public void requestListsLoadedFiles()
 	{
-		ContractAuthorProtocol withLoaded = new ContractAuthorProtocol(json, schema, judge,
-			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(
-				new DerivedSource("AGENTS.md", "Codex reads the project's instruction file."),
-				new DerivedSource("/plugins/cat/rules/codex/read-file.md", "CAT's rule loader injects the rule.")),
-			List.of(), LAUNCHER, UNKNOWN_LIMIT);
-		String prompt = withLoaded.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+		List<DerivedSource> loaded = List.of(
+			new DerivedSource("AGENTS.md", "Codex reads the project's instruction file."),
+			new DerivedSource("/plugins/cat/rules/codex/read-file.md", "CAT's rule loader injects the rule."));
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), loaded, SALT).turns().getFirst();
 		requireThat(prompt, "prompt").
 			contains("- `AGENTS.md`: Codex reads the project's instruction file.\n").
 			contains("- `/plugins/cat/rules/codex/read-file.md`: CAT's rule loader injects the rule.\n");
@@ -2532,8 +2531,7 @@ public final class ProposalTest
 		contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 
 		ContractAuthorProtocol unreported = new ContractAuthorProtocol(json, schema, judge,
-			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, false, List.of(), List.of(), LAUNCHER,
-			UNKNOWN_LIMIT);
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, false, List.of(), LAUNCHER, UNKNOWN_LIMIT);
 		try
 		{
 			unreported.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
@@ -2941,7 +2939,7 @@ public final class ProposalTest
 		// Requirement: R-E20
 		// Requirement: R-C13
 		// Requirement: R-C14
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
 		requireThat(prompt.replace('\n', ' '), "prompt").contains("### Conflicts  ").
 			contains("Report the conflict; do not decide which requirement").
 			contains("On a revision, drop a conflict that the user's feedback");
@@ -3143,7 +3141,7 @@ public final class ProposalTest
 	public void requestAsksForTriggersAndAbsentTests()
 	{
 		// Requirement: R-D17
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
 
 		requireThat(prompt, "prompt").contains("`trigger`").contains("`absent_triggers`");
 		JsonNode outputSchema = readOutputSchema(prompt);
@@ -3163,7 +3161,7 @@ public final class ProposalTest
 	public void requestAsksForFailureBehaviors()
 	{
 		// Requirement: R-C18
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
 
 		requireThat(prompt, "prompt").contains("`behaviors`");
 		JsonNode outputSchema = readOutputSchema(prompt);
@@ -3286,7 +3284,7 @@ public final class ProposalTest
 	public void outputSchemaNamesTestDirectories()
 	{
 		// Requirement: R-C16
-		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), SALT).turns().getFirst();
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
 
 		JsonNode outputSchema = readOutputSchema(prompt);
 		JsonNode test = outputSchema.get("properties").get("tests").get("items");

@@ -95,10 +95,6 @@ public final class ContractAuthorProtocol
 	 */
 	private final Function<TrialProfile, OptionalLong> toolOutputBytes;
 	/**
-	 * The files that load in production, each with the rule that loads it, as a Markdown list.
-	 */
-	private final String loadedFiles;
-	/**
 	 * The trial plugins, with the project paths that trials write over each one that the project builds, as a
 	 * Markdown list.
 	 */
@@ -117,7 +113,6 @@ public final class ContractAuthorProtocol
 	 *                          the user stated no goal
 	 * @param reportsExitStatus {@code true} if the harness reports the exit status of commands, so that a built-in
 	 *                          check that needs it can be decided
-	 * @param loadedFiles       the files that load in production, each with the rule that loads it
 	 * @param trialPlugins      the trial plugins that every trial of the campaign installs, in configuration order
 	 * @param launcher          the absolute path of the launcher that provides the contract tools
 	 * @param toolOutputBytes   returns the number of bytes of each tool output that a trial of a profile receives
@@ -129,7 +124,7 @@ public final class ContractAuthorProtocol
 	 */
 	public ContractAuthorProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge,
 		RegressionScenarios scenarios, Path target, String goal, boolean reportsExitStatus,
-		List<DerivedSource> loadedFiles, List<TrialPlugin> trialPlugins, Path launcher,
+		List<TrialPlugin> trialPlugins, Path launcher,
 		Function<TrialProfile, OptionalLong> toolOutputBytes)
 	{
 		requireThat(json, "json").isNotNull();
@@ -140,7 +135,6 @@ public final class ContractAuthorProtocol
 		requireThat(target.isAbsolute(), "target.isAbsolute()").isTrue();
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
-		requireThat(loadedFiles, "loadedFiles").isNotNull();
 		requireThat(trialPlugins, "trialPlugins").isNotNull();
 		requireThat(launcher, "launcher").isNotNull();
 		requireThat(launcher.isAbsolute(), "launcher.isAbsolute()").isTrue();
@@ -155,7 +149,6 @@ public final class ContractAuthorProtocol
 		this.check = new ProposalCheck(json, schema, judge, relativeTarget(), reportsExitStatus, recorded);
 		this.launcher = launcher;
 		this.toolOutputBytes = toolOutputBytes;
-		this.loadedFiles = loadedFiles(loadedFiles);
 		this.trialPlugins = trialPlugins(trialPlugins);
 		this.outputFile = new OutputFile(json);
 		this.prompt = withPromptTests(PROMPT_RESOURCE);
@@ -215,18 +208,20 @@ public final class ContractAuthorProtocol
 	 * @param profiles     the harness's profile inventory, which a profile restriction selects from, and its
 	 *                     capability ranking
 	 * @param hooks        every hook registration of the prompt system and of the trial plugins
+	 * @param loadedFiles  the files that load in trials, each with the rule that loads it
 	 * @param salt         the salt that CAT drew for the proposal, which the session validates the proposal with
 	 * @return a request whose role is {@link SessionRole#CONTRACT_AUTHOR}
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, List<HookRegistration> hooks,
-		long salt)
+		List<DerivedSource> loadedFiles, long salt)
 	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
 		requireThat(hooks, "hooks").isNotNull();
-		return request(promptSystem, profiles, hooks, NONE, NONE, draft -> DraftDirectory.seed(scenarios, draft),
-			salt);
+		requireThat(loadedFiles, "loadedFiles").isNotNull();
+		return request(promptSystem, profiles, hooks, loadedFiles, NONE, NONE,
+			draft -> DraftDirectory.seed(scenarios, draft), salt);
 	}
 
 	/**
@@ -237,6 +232,7 @@ public final class ContractAuthorProtocol
 	 * @param profiles     the harness's profile inventory, which a profile restriction selects from, and its
 	 *                     capability ranking
 	 * @param hooks        every hook registration of the prompt system and of the trial plugins
+	 * @param loadedFiles  the files that load in trials, each with the rule that loads it
 	 * @param previous     the proposal that the user gave feedback on
 	 * @param feedback     the user's feedback
 	 * @param pilots       the latest guard pilot of each prompt test of {@code previous} that has one, by prompt test;
@@ -247,18 +243,19 @@ public final class ContractAuthorProtocol
 	 * @throws IllegalArgumentException if {@code feedback} is blank or {@code previous} has no draft directory
 	 */
 	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, List<HookRegistration> hooks,
-		DerivedProposal previous, String feedback, Map<String, PilotResult> pilots)
+		List<DerivedSource> loadedFiles, DerivedProposal previous, String feedback, Map<String, PilotResult> pilots)
 	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
 		requireThat(hooks, "hooks").isNotNull();
+		requireThat(loadedFiles, "loadedFiles").isNotNull();
 		requireThat(previous, "previous").isNotNull();
 		requireThat(feedback, "feedback").isNotBlank();
 		requireThat(pilots, "pilots").isNotNull();
 		Path previousDraft = previous.draft();
 		requireThat(previousDraft, "previous.draft()").isNotNull();
-		return request(promptSystem, profiles, hooks, previous.derivation() + "\n\nGuard pilot results of the " +
-				"previous proposal:\n\n" + PilotReport.render(previous.contract(), pilots), feedback,
+		return request(promptSystem, profiles, hooks, loadedFiles, previous.derivation() + "\n\nGuard pilot " +
+				"results of the previous proposal:\n\n" + PilotReport.render(previous.contract(), pilots), feedback,
 			draft -> DraftDirectory.copy(previousDraft, draft), previous.contract().salt());
 	}
 
@@ -268,6 +265,7 @@ public final class ContractAuthorProtocol
 	 * @param promptSystem the directory that holds the prompt system
 	 * @param profiles     the harness's profile inventory and its capability ranking
 	 * @param hooks        every hook registration of the prompt system and of the trial plugins
+	 * @param loadedFiles  the files that load in trials, each with the rule that loads it
 	 * @param previous     the previous proposal, or {@code none}
 	 * @param feedback     the user's feedback, or {@code none}
 	 * @param source       fills the session's draft directory
@@ -275,7 +273,7 @@ public final class ContractAuthorProtocol
 	 * @return the request, which returns the problems of a refused proposal to the session once
 	 */
 	private SessionRequest request(Path promptSystem, ProfileEvidence profiles, List<HookRegistration> hooks,
-		String previous, String feedback, DraftSource source, long salt)
+		List<DerivedSource> loadedFiles, String previous, String feedback, DraftSource source, long salt)
 	{
 		ProfileCatalog inventory = profiles.inventory();
 		StringJoiner lines = new StringJoiner("\n");
@@ -293,7 +291,7 @@ public final class ContractAuthorProtocol
 			Map.entry("capability_ranking", profiles.ranking().describe()), Map.entry("output_schema", outputSchema),
 			Map.entry("generators", ValueGenerators.describeAll()),
 			Map.entry("target_prompt_file", targetPromptFile()), Map.entry("goal", goal()),
-			Map.entry("loaded_files", loadedFiles), Map.entry("trial_plugins", trialPlugins),
+			Map.entry("loaded_files", loadedFiles(loadedFiles)), Map.entry("trial_plugins", trialPlugins),
 			Map.entry("hook_registrations", hookRegistrations(hooks)),
 			Map.entry("recorded_tests", recordedTests()),
 			Map.entry("test_directory", PortablePaths.text(PromptTestLocations.scenarioDirectory(relativeTarget()))),
@@ -342,7 +340,7 @@ public final class ContractAuthorProtocol
 	}
 
 	/**
-	 * Returns the files that load in production as a Markdown list.
+	 * Returns the files that load in trials as a Markdown list.
 	 *
 	 * @param files the files, each with the rule that loads it
 	 * @return a list item for each file, or {@code none} if there are none

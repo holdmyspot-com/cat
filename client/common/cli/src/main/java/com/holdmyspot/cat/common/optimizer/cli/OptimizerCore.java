@@ -176,23 +176,21 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Returns a contract author protocol for a campaign, with the target's current recorded scenarios, the
-	 * harness's role profile, the files that load in production, the campaign's trial plugins, the launcher that
-	 * provides the contract tools and the harness's tool-output limits.
+	 * harness's role profile, the campaign's trial plugins, the launcher that provides the contract tools and the
+	 * harness's tool-output limits.
 	 *
 	 * @param root the original project root, where scenarios are recorded
 	 * @param campaign the campaign, whose header holds the target and the user's goal, and whose trial plugins are
 	 *   recorded
 	 * @return the protocol
-	 * @throws IOException if recorded scenarios, the installed role profile or a file that loads in production cannot
-	 *   be read
+	 * @throws IOException if recorded scenarios or the installed role profile cannot be read
 	 */
 	private ContractAuthorProtocol contractAuthor(Path root, Campaign campaign) throws IOException
 	{
 		Header header = campaign.header();
 		return new ContractAuthorProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
 			scope.profiles().roleProfile()), RegressionScenarios.read(scope.json(), root, scope.home()),
-			header.target(), header.goal(), scope.sessions().reportsExitStatus(),
-			scope.sessions().loadedSources(root, List.of()).production(), campaign.plugins().orElseThrow(),
+			header.target(), header.goal(), scope.sessions().reportsExitStatus(), campaign.plugins().orElseThrow(),
 			scope.launcher(), scope.profiles()::toolOutputBytes);
 	}
 
@@ -1695,20 +1693,21 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, unsupported);
 		List<PluginBase> bases = bases(campaign.plugins().orElseThrow(), fork.workspace());
 		List<HookRegistration> hooks = scope.sessions().hookRegistrations(staged, bases);
+		List<DerivedSource> loaded = scope.sessions().loadedSources(root, bases).trials();
 		SessionRequest request;
 		long salt;
 		String invalidRetry;
 		if (previous == null)
 		{
 			salt = scope.random().nextLong();
-			request = protocol.request(staged, profiles, hooks, salt);
+			request = protocol.request(staged, profiles, hooks, loaded, salt);
 			invalidRetry = "Run `start` again to retry.";
 		}
 		else
 		{
 			// Revision keeps the salt, so the test cases that the user reviewed keep their parts
 			salt = previous.contract().salt();
-			request = protocol.request(staged, profiles, hooks, previous, feedback,
+			request = protocol.request(staged, profiles, hooks, loaded, previous, feedback,
 				pilotFile(campaign).read());
 			// The proposal that the user gave feedback on is still stored, so revise can regenerate it again
 			invalidRetry = "Run `revise` with feedback, or `start`, to retry.";

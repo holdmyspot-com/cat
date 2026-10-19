@@ -1510,14 +1510,22 @@ tokens per cell is a size measurement, shown whenever both have outcomes in that
 ### 6.1 Derivation and confirmation
 
 A contract author session receives the target prompt file and, when the user stated one, the user's goal. It
-inspects the prompt system and proposes the complete contract. Loading follows production
-behaviour: CAT observes loading where the harness exposes it (premise P9), and otherwise derives it from the harness's
-documented loading rules and CAT's rule loader, recording that limit. Both harnesses expose hook runs, and Claude
-exposes its skill and command inventory; no harness names the instruction files it loaded, so those are derived (H21).
-CAT lists the derived files itself when the contract author finishes, from the trial plugins; the contract author
-does not list them. The contract author's request already lists the files that load in production with the rule that
-loads each, so the author neither works out the loading rules nor reads CAT's implementation; CAT's validation reports
-what the proposal must change.
+inspects the prompt system and proposes the complete contract. Loading follows trial behaviour: the prompt system is
+what a trial loads, the project's files and the trial plugins that the prompt test configuration lists
+([§4.4](#44-trial-staging)). CAT observes loading where the harness exposes it (premise P9), and otherwise derives it
+from the harness's documented loading rules and, when a trial plugin is CAT, CAT's rule loader, recording that limit.
+Both harnesses expose hook runs, and Claude exposes its skill and command inventory; no harness names the instruction
+files it loaded, so those are derived (H21). CAT lists the derived files itself when the contract author finishes, from
+the trial plugins; the contract author does not list them. The contract author's request already lists the files that
+load in trials with the rule that loads each, so the author neither works out the loading rules nor reads CAT's
+implementation; CAT's validation reports what the proposal must change.
+
+**Requirements come from what trials load (user ruling, 2026-10-19).** A file that loads only in the user's own
+sessions, such as a rule of the CAT that the user installed or the user's own CAT rules when the configuration does not
+list CAT, is not part of the prompt system that trials measure, so the contract author's request does not list it and
+no requirement comes from it. A prompt system whose behaviour depends on a plugin lists that plugin in its prompt test
+configuration; the proposal still names the files that load in the user's sessions but not in trials, as information
+(D85).
 
 **Prompt tests as files (user ruling, 2026-10-15).** Each part of a contract is written once, in the form that outlives
 the campaign. A prompt test outlives it as its directory ([§6.3](#63-prompt-tests-and-test-cases)), so the contract
@@ -1547,7 +1555,7 @@ session that reaches its time limit leaves the files it finished for diagnosis.
 **Contract tools (user ruling, 2026-10-15).** Work that needs no judgment is CAT's, not the contract author's. CAT does
 the work that every proposal needs before the session starts, and puts the result in the request:
 
-- the files that load in production, with the rule that loads each (above);
+- the files that load in trials, with the rule that loads each (above);
 - the trial plugins, with the mappings of each one that the project builds ([§4.4](#44-trial-staging));
 - every hook registration of the prompt system and of the trial plugins, with its event, matcher and command, from
 	which the author chooses the dependents;
@@ -2452,6 +2460,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D82 | Give each trial a workspace that holds the prompt system and its prompt test's `workspace/` directory, the root of the trial's workspace, in which each symbolic link that leads outside `workspace/` reaches the trial as a copy of its target and each other link stays a link, instead of a copy of the whole fork with `fixtures/` files that glob `patterns` select (user rulings, 2026-10-17). | Each trial of the read-file campaign copied the whole project twice, about 230 MB per trial, for tests whose agent read only its fixtures; the project's other files were also material that an agent could search or read by accident and that the test never chose. Patterns needed a rule for where each matched file lands, and that rule differed for fixtures and for project files; a directory that mirrors the trial's workspace shows the layout as the trial sees it, and a link places a shared or project file at any path. The base source keeps every file that the harness, the loader configuration or a trial plugin reads from the project, so the prompt system that loads is unchanged. | A trial that needs a file its prompt test does not link fails, and the guard pilot shows it; every stored guard pilot reruns once; every recorded `fixtures/` directory and `## Fixtures` section is converted; a checkout that cannot create symbolic links, such as Git for Windows without `core.symlinks`, cannot run a prompt test that links. |
 | D83 | Retire the contract's ignored files, the proposal's `ignored_files` and its "Ignored files" section, without compatibility: a trial receives a file outside the prompt system only through a symbolic link in its prompt test's `workspace/` (user ruling, 2026-10-18). | Since D82 the base source holds no ignored file, and a link in `workspace/` reads its target from the draft or the live project, so a listed ignored file reached no trial; keeping the list would have the contract author name files that nothing uses and refuse a confirmation for a missing one. | A campaign stored with `ignored_files` no longer loads, and a contract author that still writes the key has its proposal refused. |
 | D84 | Hold admissions only on a rate-limit rejection or a provider refusal; high reported utilization, even 100%, only stops `w` from growing (user ruling, 2026-10-18). | A read-file campaign's trials ran through a load balancer with two Codex accounts. One account reported 95–97% of its 5-hour window used, so the 95% rule held every admission for over four hours while the other account still had allowance. A harness reports only the windows of the account that served the session, so utilization cannot show that no account can serve the next one; a rejection can. |
+| D85 | Derive the contract from the files that load in trials, never from those that load only in the user's own sessions; a prompt system that depends on a plugin lists it in its prompt test configuration (user ruling, 2026-10-19). | The fifth E1 and sixth E7 Codex runs listed no trial plugin, yet the contract author's request listed the CAT rules and user rules that the user's harness loads, so the proposals carried 11 and 17 requirements from files that no trial receives. Tests of those requirements would measure prompts that the campaign cannot edit or load, and a prompt system's users who do not install CAT never receive them. |
 
 ## 14. Acceptance evidence
 

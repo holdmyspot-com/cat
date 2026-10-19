@@ -72,7 +72,7 @@ public final class ContractToolSessions
 		Function<TrialProfile, OptionalLong> toolOutputBytes)
 	{
 		return new ContractAuthorProtocol(json, new ProposalSchema(json), new JudgeTemplate(json, ROLE),
-			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(), List.of(), LAUNCHER,
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(), LAUNCHER,
 			toolOutputBytes);
 	}
 
@@ -114,7 +114,7 @@ public final class ContractToolSessions
 	public static Path write(JsonMapper json, ContractAuthorProtocol author, ProfileEvidence profiles,
 		String output, Path project) throws IOException
 	{
-		author.request(PROMPT_SYSTEM, profiles, List.of(), 0).files().write(project);
+		author.request(PROMPT_SYSTEM, profiles, List.of(), List.of(), 0).files().write(project);
 		String proposalFile = DraftFixtures.write(json, output, project.resolve(DraftDirectory.name(PROMPT_SYSTEM)),
 			Path.of("CLAUDE.md"), Map.of());
 		Files.writeString(project.resolve(OutputFile.name(PROMPT_SYSTEM)), proposalFile, UTF_8);
