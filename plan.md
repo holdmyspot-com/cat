@@ -176,6 +176,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-89 | `optimize-high` | Changes which files every trial, guard pilot trial and control trial sees, replaces the fixture layout that every recorded prompt test, draft and delivery uses, and copies link targets into trials; an error drops a prompt file that loads in production, lets a trial read a prompt test, gives a trial a frozen or path-only copy of a linked file, or reuses a stored pilot that ran on the old workspace. |
 | WI-90 | `optimize-medium` | Changes which files the contract author derives requirements from; an error lists a file that no trial loads, so a requirement measures prompts that trials never receive, or drops a trial plugin's file, so its requirements go untested. |
 | WI-91 | `optimize-medium` | Changes what control trials remove at a symbolic link and what the proposal shows when the control source cannot be built; an error deletes or edits a link's target, which other paths or an external file share, or hides why no guard pilot ran. |
+| WI-92 | `optimize-medium` | Changes which files the runner copies into a session's project; an error lets a session follow a link out of its project, or refuses every revision of a proposal whose prompt tests link a project file. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -359,6 +360,7 @@ requirement names.
 | WI-89 | Done (user rulings, 2026-10-17): minimal trial workspaces; a prompt test's `workspace/` is the trial's root, its links that lead outside it reach trials as copies of their targets, and its other links stay links. f28029892c, 3db64f97b6, fd712bb3c2, 820553de6f, 2ad8bc43f7, 3236bf3e11, 6080715a42, d4d9c44fdc, 3eb5d8d83e, 4fe2d76299 and c0697fc325 implement staging, reading, refusals, delivery of links and the contract author's instructions; 402e734721 delivers a changed shared file as a copy; 684d23507a renames fixtures to workspace files and ignored files without compatibility; edffe7b9cb narrows the base source to `.cat/rules/` without the contract's ignored files; c7cd852415 retires the contract's ignored files without compatibility, and in-project dependents stay in the base source (user rulings, 2026-10-18); 869f4c54f6 renames the tests' leftover fixture names. The recorded prompt tests use `workspace/`. Full build 2026-10-18 at c7cd852415: 2927 tests, 0 failures, 10 skipped, no test 1 s or longer, 81 s; the renamed test classes pass at 869f4c54f6. WI-71's guard pilots reran in read-file campaign `20261018T084117Z-4dba83` (2026-10-18) on the `workspace/` layout with no failed run. |
 | WI-90 | Done (user ruling, 2026-10-19): the contract author's request lists the files that load in trials, from the trial plugins that the prompt test configuration lists, not the files that load in the user's own sessions. Commit `7bbce9101f`; full build passed (2940 tests, 0 failures, 10 skipped; 4 min 13 s, of which tests took 71 s, 50 s in `client/common/cli`); no new test at 1 s or more. |
 | WI-91 | Done: a dependent at a symbolic link removes the copy that trials see at the link's path and leaves the link's target unchanged; the proposal lists each reason why the control source cannot be built, and a test without a pilot gives that reason. Commit `27805aff58`; full build passed (2941 tests, 0 failures, 10 skipped; 4 min 34 s, of which tests took 72 s, 54 s in `client/common/cli`); the new tests take 0.02 s and 0.06 s. The build before it failed once in `BundledRuleAudienceTest.subagentGetsRoutingNotUserRules` (the bundled common rules were missing from the copied plugin; 3 of 3 isolated runs and the next full build passed), an intermittent failure not yet explained. |
+| WI-92 | Done: the runner copies a link among a session's workspace files as a link and refuses, by name, one whose target is absolute or leaves the session's project, so a revision of a proposal whose prompt tests link a project file no longer fails. Commit `1222a545fe`; full build passed (2942 tests, 0 failures, 10 skipped; 4 min 32 s, of which tests took 87 s, 62 s in `client/common/cli`); the new test takes 0.09 s. 33 tests took 1 s or more, against 13 in the build before, none touched by this change, while another project's build loaded the machine. |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -701,7 +703,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C18 | Failure behavior: each requirement lists the behaviors through which it can fail; each failed built-in tool names the behavior it detects; the judge names one listed behavior or `other` per failed assertion; a formal failure summary carries its cell, test, failed assertions and behaviors. | §6.1, §6.3, D47 | WI-38, WI-63 | U: proposal and contract tests, `JudgeProtocolTest`, `FailureSummary` tests |
 | R-C19 | Reproduction before tuning: after a failed attempt, each failure group (cell, test, failed requirement, behavior) gets contract author values that join development only after 2 failures with its behavior in at most 100 reproduction trials per round; values that do not reproduce are replaced; a round may repeat under a stress setting, whose reproduction adds that stressed profile as a development cell; after 4 rounds CAT pauses with the group recorded as not reproduced. | §6.3, §2.8, D47 | WI-38 | U: `DriverTest` (reproduce, replace, stress, pause), `SchedulerTest` (reproduction trials before authoring), values-prompt tests (tried values and counts, no replies) |
 | R-C20 | Scenario format: a prompt test directory with `scenario.md` (`## Variables` table, `## Scenario` turns, `## Expected Behavior` with `description` and `time_limit_seconds`, `## Assertions` with `kind:`, optional `tool:` and optional `on_tool_failure:`) and optional `workspace/`; placeholders only for declared names; `expected_outcome` reserved; a recorded scenario without `## Expected Behavior` stays readable, and a proposal's prompt test needs it; every malformed form refused with its location. | §6.3, D60, D68, D77 | WI-61, WI-68, WI-72, WI-82 | U: `ScenarioTest` |
-| R-C21 | Test cases and generators: a value is text or a generator call that CAT gives a seed and version once, different for identical calls; `log_lines` version 1 expands deterministically to UTF-8 lines with timestamps in 2025; a generated value only in workspace-file contents; workspace files copied with placeholders replaced in names and UTF-8 contents, invalid names and collisions refused. | §4.4, §6.3, D64 | WI-61 | U: `TestCaseTest`, `LogLinesTest`, `FixturesTest` |
+| R-C21 | Test cases and generators: a value is text or a generator call that CAT gives a seed and version once, different for identical calls; `log_lines` version 1 expands deterministically to UTF-8 lines with timestamps in 2025; a generated value only in workspace-file contents; workspace files copied with placeholders replaced in names and UTF-8 contents, invalid names and collisions refused. | §4.4, §6.3, D64 | WI-61, WI-92 | U: `TestCaseTest`, `LogLinesTest`, `FixturesTest`, `HarnessRunManagerTest` |
 | R-C22 | Values file: `values.json` with `format_version` 1 and `test_cases` holding `values` and `expected_outcome`; unknown fields refused; streamed on read. | §6.3 | WI-61 | U: `ValuesFileTest` |
 | R-C23 | Guard pilot: after validation and before presentation, about 20 control trials per prompt test in its weakest cell on development test cases; the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`; a revision reruns it only for changed prompt tests and its brief carries the latest results; pilot trials enter no count and spend no allowance. | §6.1, D66 | WI-66, WI-68 | U: `GuardPilotTest`, `ProposalTest`, `OptimizerCoreTest` |
 | R-C24 | Goal and requirements: `start` takes the user's goal; the contract author receives the target prompt file, the goal and only the target's recorded regression scenarios; with a goal, requirements state the outcomes it asks for and the operations it implies the prompt must not harm, and each other prompt obligation is an extra requirement that the user keeps or drops; each prompt test lists the requirements it proves and keeps the test design rules; CAT refuses a requirement that no prompt test proves and reports every validation problem at once, the scenario citations included when the proposal cannot be parsed. | G2, §6.1, §6.3, §8, D70 | WI-75 | U: `ProposalTest`, `CommandsTest`, `CampaignStoreContract`, `OptimizerCoreTest`; E: WI-71's certification start |
@@ -2623,6 +2625,21 @@ The riskiest pure code, built first.
 	control source is listed in the proposal and named in each pilot note (`ProposalTest`).
 - **Exit:** unit tests pass; the full build passes; the E7 Codex proposal is revised and runs its guard pilot.
 
+### WI-92 — Links in a revised draft
+
+- **Problem:** the sixth E1 Codex run's contract author linked `docs/handbook.md` from each prompt test's
+	`workspace/`, as `design.md` §6.3 asks of a test whose agent must find a project file. The proposal was valid, but
+	its revision failed twice with "The contract author session did not complete: Workspace files contain a
+	symbolic-link file": a revision copies the latest draft directory into the session's project, and the runner
+	refused every link among the files it copies there. Every revision of a proposal whose prompt tests link a file
+	therefore failed, in both harnesses.
+- **Change:** the runner copies a link among a session's workspace files as a link with the same target and never
+	follows it. It refuses a link whose target is absolute or lies outside the session's project, naming the link, so a
+	session still cannot reach a file outside its project through one.
+- **Tests:** a draft's link is copied as a link that reaches the project file it names, and a link that leaves the
+	project is refused (`HarnessRunManagerTest`).
+- **Exit:** unit tests pass; the full build passes; the E1 Codex proposal is revised.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2758,7 +2775,8 @@ blocks only the part of a work item that it names.
 | WI-89 | WI-88 |
 | WI-90 | WI-81, WI-82 |
 | WI-91 | WI-65, WI-81 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90 and WI-91. |
+| WI-92 | WI-61 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91 and WI-92. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
