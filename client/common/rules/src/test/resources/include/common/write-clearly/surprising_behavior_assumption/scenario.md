@@ -28,10 +28,14 @@ target as deleting `build/` and nothing else.
 public List<Instruction> instructionsFor(String promptId)
 ```
 
-The method returns, in transcript order, the user instructions that carry `promptId` in a chat harness's recorded
-transcript. In 3 of 40 recorded sessions, two user instructions carry the same `promptId`; in each of them, the second
-instruction was sent while the agent's reply to the first was still streaming. It has not been determined whether any
-other sequence also makes two instructions share a `promptId`.
+The method returns, in transcript order, the instructions to a child agent that carry `promptId` in a chat harness's
+recorded transcript. These facts come from 40 recorded sessions:
+
+- In 3 sessions, two instructions carry the same `promptId`. In each of them, the child finished its turn, then
+	received another instruction in a user record whose `origin.kind` is `coordinator`, which marks a message that the
+	harness delivered to the child, and started a new turn under the same `promptId`.
+- No recorded session contains an instruction that reached the child while its turn was still running, so it is not
+	known whether such an instruction keeps the `promptId` of the running turn.
 
 ## Assertions
 
@@ -58,14 +62,16 @@ other sequence also makes two instructions share a `promptId`.
 
 - **kind**: effect
 - **description**: For request 3: The Javadoc says that one `promptId` can identify more than one instruction, which a
-	caller expecting one instruction per `promptId` would not predict, and gives the recorded case: a second instruction
-	sent while the agent's reply to the first was still streaming.
+	caller expecting one instruction per `promptId` would not predict, and traces the recorded case in order: the child
+	finishes its turn, receives another instruction in a user record whose `origin.kind` is `coordinator`, and starts a
+	new turn under the same `promptId`.
 
-### other_causes_unknown
+### running_turn_unknown
 
 - **kind**: effect
-- **description**: For request 3: The Javadoc says that it is not known whether other sequences also make instructions
-	share a `promptId`; it does not present the recorded case as the only cause.
+- **description**: For request 3: The Javadoc says that it is not known whether an instruction that reaches the child
+	while its turn is still running keeps that turn's `promptId`. It does not present such an instruction as a cause of
+	a shared `promptId`, and does not present the recorded case as the only cause.
 
 ### expected_behavior_direct
 
