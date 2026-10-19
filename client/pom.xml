@@ -30,13 +30,12 @@
 		<!-- The harness that native tests start: claude or codex. Native tests skip when it is empty. -->
 		<cat.native.harness/>
 		<!--
-			The directory that holds the fixtures that a harness runner consumes. A build inside a harness session uses the
-			session's temporary directory (see the profiles "claude-session" and "codex-session"); any other build uses
-			this directory, which "clean" removes. Like ".cat", its name starts with a dot, so the tests that read the
-			project's prompt tests skip it instead of reading fixtures that tests running at the same time create and
-			delete there.
+			The directory that holds test fixtures, including those that a harness runner consumes. A build inside a harness
+			session uses the session's temporary directory (see the profiles "claude-session" and "codex-session"). Any other
+			build, such as CI, uses the system's temporary directory. A directory inside the project would expose each test's
+			fixtures to the tests that read the project's prompt tests, while the fixtures are created and deleted.
 		-->
-		<cat.work.temp>${project.rootDirectory}/target/.work-temp</cat.work.temp>
+		<cat.session.temp>${java.io.tmpdir}</cat.session.temp>
 		<checkstyle.version>14.3.0</checkstyle.version>
 		<commons-compress.version>1.28.0</commons-compress.version>
 		<exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
@@ -294,7 +293,7 @@
 						<threadCount>${test.thread.count}</threadCount>
 						<systemPropertyVariables>
 							<cat.native.harness>${cat.native.harness}</cat.native.harness>
-							<cat.work.temp>${cat.work.temp}</cat.work.temp>
+							<cat.session.temp>${cat.session.temp}</cat.session.temp>
 						</systemPropertyVariables>
 						<!-- Git's detached background maintenance would keep changing a test repository's .git directory
 						while the test deletes it. -->
@@ -414,7 +413,7 @@
 				</property>
 			</activation>
 			<properties>
-				<cat.work.temp>${project.rootDirectory}/../.cat/sessions/${env.CODEX_THREAD_ID}/temp</cat.work.temp>
+				<cat.session.temp>${project.rootDirectory}/../.cat/sessions/${env.CODEX_THREAD_ID}/temp</cat.session.temp>
 			</properties>
 		</profile>
 		<profile>
@@ -429,7 +428,7 @@
 				</property>
 			</activation>
 			<properties>
-				<cat.work.temp>${project.rootDirectory}/../.cat/sessions/${env.CLAUDE_CODE_SESSION_ID}/temp</cat.work.temp>
+				<cat.session.temp>${project.rootDirectory}/../.cat/sessions/${env.CLAUDE_CODE_SESSION_ID}/temp</cat.session.temp>
 			</properties>
 		</profile>
 		<profile>

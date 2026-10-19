@@ -49,7 +49,7 @@ public final class EventSinkTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp"))),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))),
 				"cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
@@ -84,7 +84,7 @@ public final class EventSinkTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp"))), "cat-event-sink-"));
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))), "cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 			try (EventSink sink = EventSinkSecrets.access().newEventSink(JSON, new TestSessions.Events(JSON),
@@ -113,7 +113,7 @@ public final class EventSinkTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp"))), "cat-event-sink-"));
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))), "cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 			try (EventSink sink = EventSinkSecrets.access().newEventSink(JSON, new TestSessions.Events(JSON),
@@ -173,7 +173,7 @@ public final class EventSinkTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp"))),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))),
 				"cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();

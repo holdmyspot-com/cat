@@ -248,7 +248,7 @@ public final class ClaudeRunnerTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize());
+			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("claude");

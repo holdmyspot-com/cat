@@ -21,12 +21,12 @@ final class ReplayFixtures
 	/**
 	 * Returns the normalized CAT temporary root supplied by the build.
 	 *
-	 * @return the build's {@code cat.work.temp} root
+	 * @return the build's {@code cat.session.temp} root
 	 * @throws IOException if the temporary root cannot be created
 	 */
 	static Path temporaryRoot() throws IOException
 	{
-		Path root = Path.of(System.getProperty("cat.work.temp")).toAbsolutePath().normalize();
+		Path root = Path.of(System.getProperty("cat.session.temp")).toAbsolutePath().normalize();
 		Files.createDirectories(root);
 		return root;
 	}

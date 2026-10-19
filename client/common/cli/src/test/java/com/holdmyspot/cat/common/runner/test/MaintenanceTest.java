@@ -27,7 +27,7 @@ import java.util.Map;
  */
 public final class MaintenanceTest
 {
-	private static final Path TEMP = Path.of(System.getProperty("cat.work.temp")).toAbsolutePath().normalize();
+	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp")).toAbsolutePath().normalize();
 	/**
 	 * The temporary root of a command that runs outside a harness session, so each run root comes from
 	 * {@code --run-root}.

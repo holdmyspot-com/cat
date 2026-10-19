@@ -119,7 +119,7 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"complete\"}\n"))
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp"))), "cat-run-"));
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))), "cat-run-"));
 			HarnessRun run = new HarnessRun("harness", "run-1", directory);
 			StringWriter output = new StringWriter();
 

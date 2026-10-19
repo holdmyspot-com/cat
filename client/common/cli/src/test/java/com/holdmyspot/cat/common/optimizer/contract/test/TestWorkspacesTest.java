@@ -72,7 +72,7 @@ public final class TestWorkspacesTest
 	 */
 	private static Path promptTest(TemporaryDirectories cleanup) throws IOException
 	{
-		Path directory = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+		Path directory = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 			"prompt-test"));
 		Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
 		Path docs = Files.createDirectories(directory.resolve("workspace/docs"));
@@ -163,7 +163,7 @@ public final class TestWorkspacesTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			PromptTestFiles files = read(promptTest(cleanup));
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"workspace"));
 			Files.writeString(workspace.resolve("README.md"), "Project");
 			TestCase testCase = testCase("release-notes.md");
@@ -192,7 +192,7 @@ public final class TestWorkspacesTest
 	 */
 	private static Path linkedProject(TemporaryDirectories cleanup) throws IOException
 	{
-		Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")), "project"));
+		Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")), "project"));
 		Files.createDirectories(project.resolve("src"));
 		Files.writeString(project.resolve("src/Main.java"), "class Main {}");
 		Files.createDirectories(project.resolve("docs/guide"));
@@ -263,7 +263,7 @@ public final class TestWorkspacesTest
 			requireThat(files.source(files.workspaceFiles().get(1)), "project").
 				isEqualTo(project.resolve("docs/guide/intro.md"));
 
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"workspace"));
 			TestWorkspaces.copy(files, testCase("notes.md"), workspace);
 			requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "guide/intro.md", "logs/notes.md",
@@ -349,7 +349,7 @@ public final class TestWorkspacesTest
 				"logs", "../../shared/logs",
 				"src/Main.java", "../../../../../../src/Main.java"));
 
-			Path trial = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path trial = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"workspace"));
 			TestWorkspaces.copy(files, testCase("notes.md"), trial);
 			requireThat(Files.readSymbolicLink(trial.resolve("a")), "a").isEqualTo(Path.of("b"));
@@ -475,7 +475,7 @@ public final class TestWorkspacesTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			PromptTestFiles files = read(promptTest(cleanup));
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"workspace"));
 			Files.createDirectories(workspace.resolve("docs"));
 			Files.writeString(workspace.resolve("docs/notes.md"), "Project notes");
@@ -520,7 +520,7 @@ public final class TestWorkspacesTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			PromptTestFiles files = read(promptTest(cleanup));
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"workspace"));
 			try
 			{

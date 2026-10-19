@@ -55,7 +55,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class CodexSessionsContractTest
 {
-	private static final Path TEMP = Path.of(System.getProperty("cat.work.temp"));
+	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 	private static final Duration LIMIT = Duration.ofMinutes(5);
 	/**
 	 * How long a replay may run before the test treats it as hung. Replays finish in well under a second; the margin

@@ -58,7 +58,7 @@ import org.testng.annotations.Test;
 public final class RunnerSessionsTest
 {
 	private static final Duration LIMIT = Duration.ofMinutes(5);
-	private static final Path TEMP = Path.of(System.getProperty("cat.work.temp"));
+	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 	private static final Instant START = Instant.parse("2026-10-01T00:00:00Z");
 
 	/**

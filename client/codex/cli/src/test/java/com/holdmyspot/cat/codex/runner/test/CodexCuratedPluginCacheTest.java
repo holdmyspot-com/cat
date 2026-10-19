@@ -55,7 +55,7 @@ public final class CodexCuratedPluginCacheTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-curated-plugin-cache-"));
 			Path parentHome = root.resolve("parent");
 			Files.createDirectories(parentHome.resolve(".tmp/plugins/.git"));

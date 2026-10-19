@@ -68,7 +68,7 @@ public final class StagedSourceRunnerCopyTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path fixture = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"staged-runner-copy-"));
 			LinkedProject project = ProjectFixtures.linkedProject(fixture);
 			Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).

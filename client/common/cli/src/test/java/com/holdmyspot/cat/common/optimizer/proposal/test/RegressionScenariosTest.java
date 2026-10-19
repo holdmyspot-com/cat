@@ -169,7 +169,7 @@ public final class RegressionScenariosTest
 		// Requirement: R-I3
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"module-scenarios"));
 			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
 				resolve("wording.md");
@@ -199,7 +199,7 @@ public final class RegressionScenariosTest
 		// Requirement: R-I3
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"nested-scenarios"));
 			Path rules = Files.createDirectories(root.resolve(".cat/rules/common/testing"));
 			Files.writeString(rules.getParent().resolve("testing.md"), "Test behaviour.");
@@ -224,7 +224,7 @@ public final class RegressionScenariosTest
 		// Requirement: R-I3
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"scenario-discovery"));
 			Path rules = Files.createDirectories(root.resolve(".cat/rules/common"));
 			Files.writeString(rules.resolve("wording.md"), "Be brief.");
@@ -252,7 +252,7 @@ public final class RegressionScenariosTest
 		// Requirement: R-I3, R-C20
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"scenario-formats"));
 			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
 				resolve("reading.md");
@@ -316,7 +316,7 @@ public final class RegressionScenariosTest
 		// Requirement: R-I3, R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"shared-fixtures"));
 			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
 				resolve("reading.md");
@@ -391,7 +391,7 @@ public final class RegressionScenariosTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"link-checkout"));
 			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
 				resolve("reading.md");

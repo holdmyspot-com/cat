@@ -18,7 +18,7 @@ import java.time.Clock;
  */
 public final class MaintenanceTest
 {
-	private static final Path TEMP = Path.of(System.getProperty("cat.work.temp")).toAbsolutePath().normalize();
+	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp")).toAbsolutePath().normalize();
 
 	/**
 	 * Creates the test.

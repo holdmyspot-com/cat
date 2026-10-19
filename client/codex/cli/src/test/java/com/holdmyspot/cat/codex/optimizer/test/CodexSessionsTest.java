@@ -62,7 +62,7 @@ import tools.jackson.databind.json.JsonMapper;
 public final class CodexSessionsTest
 {
 	private static final Duration LIMIT = Duration.ofMinutes(5);
-	private static final Path TEMP = Path.of(System.getProperty("cat.work.temp"));
+	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 
 	/**
 	 * Creates the test.

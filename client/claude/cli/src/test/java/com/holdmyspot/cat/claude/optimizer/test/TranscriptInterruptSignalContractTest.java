@@ -71,7 +71,7 @@ public final class TranscriptInterruptSignalContractTest
 		// Requirement: R-E10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryRoot = Path.of(System.getProperty("cat.work.temp"));
+			Path temporaryRoot = Path.of(System.getProperty("cat.session.temp"));
 			Files.createDirectories(temporaryRoot);
 			Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
 				resolve("session.jsonl");
@@ -90,7 +90,7 @@ public final class TranscriptInterruptSignalContractTest
 		// Requirement: R-E10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryRoot = Path.of(System.getProperty("cat.work.temp"));
+			Path temporaryRoot = Path.of(System.getProperty("cat.session.temp"));
 			Files.createDirectories(temporaryRoot);
 			Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
 				resolve("session.jsonl");
@@ -109,7 +109,7 @@ public final class TranscriptInterruptSignalContractTest
 		// Requirement: R-E10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryRoot = Path.of(System.getProperty("cat.work.temp"));
+			Path temporaryRoot = Path.of(System.getProperty("cat.session.temp"));
 			Files.createDirectories(temporaryRoot);
 			Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
 				resolve("session.jsonl");
@@ -128,7 +128,7 @@ public final class TranscriptInterruptSignalContractTest
 		// Requirement: R-E10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryRoot = Path.of(System.getProperty("cat.work.temp"));
+			Path temporaryRoot = Path.of(System.getProperty("cat.session.temp"));
 			Files.createDirectories(temporaryRoot);
 			Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
 				resolve("session.jsonl");

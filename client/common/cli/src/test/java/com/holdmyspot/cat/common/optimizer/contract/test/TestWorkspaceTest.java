@@ -91,7 +91,7 @@ public final class TestWorkspaceTest
 		requireThat(List.copyOf(testWorkspace.files().keySet()), "paths").isEqualTo(List.of("docs/release-notes.md"));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"workspace"));
 			testWorkspace.write(workspace);
 
@@ -117,7 +117,7 @@ public final class TestWorkspaceTest
 		TestWorkspace testWorkspace = TestWorkspace.of(test, testCase());
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"workspace"));
 			testWorkspace.write(workspace);
 
@@ -163,7 +163,7 @@ public final class TestWorkspaceTest
 		TestWorkspace testWorkspace = TestWorkspace.of(test, testCase());
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"workspace"));
 			Files.createDirectories(workspace.resolve("docs"));
 			Files.writeString(workspace.resolve("docs/release-notes.md"), "Project notes");

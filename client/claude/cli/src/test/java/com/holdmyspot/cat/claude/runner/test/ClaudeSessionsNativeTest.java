@@ -110,9 +110,9 @@ public final class ClaudeSessionsNativeTest
 	private static HarnessSubject open() throws IOException
 	{
 		requireHarness();
-		String workTemp = System.getProperty("cat.work.temp");
+		String workTemp = System.getProperty("cat.session.temp");
 		if (workTemp == null || workTemp.isBlank())
-			throw new IllegalStateException("The build must pass the CAT work temp root as cat.work.temp");
+			throw new IllegalStateException("The build must pass the CAT work temp root as cat.session.temp");
 		Path workTempRoot = Path.of(workTemp).toAbsolutePath().normalize();
 		Files.createDirectories(workTempRoot);
 		TemporaryDirectories cleanup = new TemporaryDirectories();

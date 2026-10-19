@@ -49,7 +49,7 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public final class RoleBriefTest
 {
-	private static final Path TEMP = Path.of(System.getProperty("cat.work.temp"));
+	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
 

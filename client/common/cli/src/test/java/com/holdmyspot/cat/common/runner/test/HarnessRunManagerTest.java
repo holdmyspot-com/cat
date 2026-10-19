@@ -48,7 +48,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Path output = root.resolve("result.json");
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
@@ -72,7 +72,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC()).create("harness");
 			if (run.directory().getFileSystem().supportedFileAttributeViews().contains("posix"))
@@ -95,7 +95,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -126,7 +126,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun terminal = manager.create("harness");
@@ -155,7 +155,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -179,7 +179,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -207,7 +207,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -235,7 +235,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -258,7 +258,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -279,7 +279,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -301,7 +301,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -324,7 +324,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -344,7 +344,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -364,7 +364,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -386,7 +386,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -410,13 +410,13 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Path artifact = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-artifact-"));
 			Path project = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-project-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -445,7 +445,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -471,7 +471,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -495,7 +495,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -522,7 +522,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
@@ -545,7 +545,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("README.md"), "project");
@@ -578,7 +578,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Path project = Files.createDirectories(root.resolve("project/docs"));
 			Files.writeString(project.resolve("guide.md"), "project guide");
@@ -622,7 +622,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Path project = Files.createDirectories(root.resolve("project/docs"));
 			Files.writeString(project.resolve("handbook.md"), "Ship small, ship often.\n");
@@ -668,7 +668,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Path project = Files.createDirectories(root.resolve("project/docs"));
 			Files.writeString(project.resolve("guide.md"), "project guide");
@@ -701,12 +701,12 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			if (!root.getFileSystem().supportedFileAttributeViews().contains("posix"))
 				return;
 			Path project = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-project-"));
 			Path script = project.resolve("build.sh");
 			Files.writeString(script, "#!/bin/sh\n");
@@ -731,7 +731,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-project-"));
 			Files.writeString(project.resolve("README.md"), "project");
 			Path root = project.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp/runner-runs");
@@ -759,7 +759,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()), "cat-run-root-"));
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()), "cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
 			HarnessRun run = manager.create("harness");
 			HarnessRun other = manager.create("harness");
@@ -771,7 +771,7 @@ public final class HarnessRunManagerTest
 			Path workspaces = Files.createDirectories(root.resolve("workspaces"));
 			Path otherHarness = Files.createDirectories(root.resolve("other-harness"));
 			Path outside = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()), "cat-outside-"));
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()), "cat-outside-"));
 
 			Path home = run.directory().resolve("home");
 
@@ -796,7 +796,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			HarnessRunManager oldManager = new HarnessRunManager(root, oldClock);
@@ -822,7 +822,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock clock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
 			HarnessRunManager manager = new HarnessRunManager(root, clock);
@@ -848,7 +848,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			HarnessRun run = new HarnessRunManager(root, oldClock).create("harness");
@@ -877,7 +877,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			FakeProcessLiveness processLiveness = new FakeProcessLiveness(12_345,
@@ -913,7 +913,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			HarnessRun run = new HarnessRunManager(root, oldClock).create("harness");
@@ -937,7 +937,7 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			HarnessRunManager oldManager = new HarnessRunManager(root, oldClock);

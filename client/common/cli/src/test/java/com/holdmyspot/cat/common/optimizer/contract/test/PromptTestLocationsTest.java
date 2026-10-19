@@ -95,7 +95,7 @@ public final class PromptTestLocationsTest
 		// Requirement: R-W11, R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"project"));
 			Path cited = Files.createDirectories(project.resolve(".cat/tests/main/tone_kept"));
 			Files.writeString(cited.resolve("scenario.md"), "# Tone kept\n");
@@ -134,7 +134,7 @@ public final class PromptTestLocationsTest
 		// Requirement: R-W11, R-C21
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.work.temp")),
+			Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
 				"project"));
 			Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
 				"formatting", List.of(), "plain_list", List.of(), "safety", List.of()));
