@@ -610,6 +610,53 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
+	 * Verifies that a symbolic link among the workspace files is copied as a link with the same target, so that a
+	 * draft's link reaches the project file it names, and that a link whose target lies outside the project is refused.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void workspaceKeepsLinksInsideProject() throws IOException
+	{
+		// Requirement: R-C21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(
+				Files.createDirectories(Path.of(System.getProperty("cat.work.temp")).normalize()),
+				"cat-run-root-"));
+			Path project = Files.createDirectories(root.resolve("project/docs"));
+			Files.writeString(project.resolve("handbook.md"), "Ship small, ship often.\n");
+			Path linkDirectory = Files.createDirectories(root.resolve("workspaces/draft/workspace/docs"));
+			Path target = Path.of("../../../docs/handbook.md");
+			Files.createSymbolicLink(linkDirectory.resolve("handbook.md"), target);
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			HarnessRun run = manager.create("harness");
+			manager.copyProject(root.resolve("project"), run);
+
+			manager.copyWorkspace(root.resolve("workspaces"), run);
+
+			Path link = run.directory().resolve("project/draft/workspace/docs/handbook.md");
+			requireThat(Files.isSymbolicLink(link), "isLink").isTrue();
+			requireThat(Files.readSymbolicLink(link), "target").isEqualTo(target);
+			requireThat(Files.readString(link), "content").isEqualTo("Ship small, ship often.\n");
+
+			Path escaping = Files.createDirectories(root.resolve("escaping/docs"));
+			Files.createSymbolicLink(escaping.resolve("secret.md"), Path.of("../../../outside.md"));
+			HarnessRun other = manager.create("harness");
+			manager.copyProject(root.resolve("project"), other);
+			try
+			{
+				manager.copyWorkspace(root.resolve("escaping"), other);
+				throw new AssertionError("A link that leaves the project was copied");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("secret.md");
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the snapshot of a run's project holds the copied files and workspace files, and keeps them as they
 	 * were when the project changes afterward.
 	 *

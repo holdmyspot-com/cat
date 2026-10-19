@@ -415,12 +415,15 @@ public final class HarnessRunManager
 
 	/**
 	 * Copies workspace files into the project of an owned run, on top of the files that {@link #copyProject(Path,
-	 * HarnessRun)} copied. Nothing is replaced: a workspace file whose path exists in the project already is refused.
+	 * HarnessRun)} copied. Nothing is replaced: a workspace file whose path exists in the project already is refused. A
+	 * symbolic link is copied as a link with the same relative target and is never followed, so that a link of a draft
+	 * directory reaches the project file that it names.
 	 *
 	 * @param source the directory that holds the workspace files at their paths relative to the project root
 	 * @param run the owned run
-	 * @throws IOException if the source is not a real directory, contains symbolic links, a workspace file's path exists
-	 *   in the project already, or copying fails
+	 * @throws IOException if the source is not a real directory, contains a symbolic-link directory, contains a link
+	 *   whose target is absolute or lies outside the project, a workspace file's path exists in the project already, or
+	 *   copying fails
 	 */
 	public void copyWorkspace(Path source, HarnessRun run) throws IOException
 	{
@@ -449,10 +452,18 @@ public final class HarnessRunManager
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
 				throws IOException
 			{
+				Path copy = destination.resolve(normalized.relativize(file));
 				if (Files.isSymbolicLink(file))
-					throw new IOException("Workspace files contain a symbolic-link file");
+				{
+					Path target = Files.readSymbolicLink(file);
+					if (target.isAbsolute() || !copy.getParent().resolve(target).normalize().startsWith(destination))
+					{
+						throw new IOException("The workspace file " + normalized.relativize(file) + " is a symbolic link " +
+							"to " + target + ", which lies outside the project");
+					}
+				}
 				// Without REPLACE_EXISTING, a workspace file that collides with a project file is refused
-				Files.copy(file, destination.resolve(normalized.relativize(file)));
+				Files.copy(file, copy, NOFOLLOW_LINKS);
 				return CONTINUE;
 			}
 		});
