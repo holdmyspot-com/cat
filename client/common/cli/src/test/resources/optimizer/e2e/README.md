@@ -4,6 +4,10 @@ Each directory is a small prompt system that the end-to-end acceptance runs copy
 project and optimize through the installed `prompt-optimizer` skill. The fixtures are data for those runs; no Java test
 reads them. Each entry describes the acceptance scenarios that use it.
 
+Every fixture holds the prompt test configuration of both targets, `.cat/tests/AGENTS/prompt.json` for Codex and
+`.cat/tests/CLAUDE/prompt.json` for Claude. Neither lists a trial plugin, so trials measure only the fixture's own
+instructions.
+
 - `deficient/`: `AGENTS.md` asks every reply to close with the handbook motto but also forbids slogans and sign-offs.
 	Before optimization, Codex closed 0 of 6 replies with the motto and Claude 4 of 6; resolving the contradiction raised
 	Codex to 6 of 6. The delivery scenario expects the proposal to list the conflict with its resolutions, confirmation
