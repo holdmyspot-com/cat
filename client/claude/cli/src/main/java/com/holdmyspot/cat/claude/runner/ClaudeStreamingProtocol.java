@@ -2,11 +2,19 @@ package com.holdmyspot.cat.claude.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
+
 /**
  * Creates the JSON lines that Claude's stream-json CLI accepts as requests.
  */
 public final class ClaudeStreamingProtocol
 {
+	/**
+	 * Writes each request line, escaping every character that a JSON string cannot hold as is, such as a tab.
+	 */
+	private static final JsonMapper JSON = JsonMapper.builder().build();
+
 	/**
 	 * Frames one user turn as a stream-json line.
 	 *
@@ -18,8 +26,9 @@ public final class ClaudeStreamingProtocol
 	public static String userTurn(String prompt)
 	{
 		requireThat(prompt, "prompt").isNotBlank();
-		return "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"" +
-			escape(prompt) + "\"}}\n";
+		ObjectNode request = JSON.createObjectNode().put("type", "user");
+		request.putObject("message").put("role", "user").put("content", prompt);
+		return JSON.writeValueAsString(request) + "\n";
 	}
 
 	/**
@@ -34,8 +43,9 @@ public final class ClaudeStreamingProtocol
 	public static String interrupt(String requestId)
 	{
 		requireThat(requestId, "requestId").isNotBlank();
-		return "{\"type\":\"control_request\",\"request_id\":\"" + escape(requestId) +
-			"\",\"request\":{\"subtype\":\"interrupt\"}}\n";
+		ObjectNode request = JSON.createObjectNode().put("type", "control_request").put("request_id", requestId);
+		request.putObject("request").put("subtype", "interrupt");
+		return JSON.writeValueAsString(request) + "\n";
 	}
 
 	/**
@@ -43,17 +53,5 @@ public final class ClaudeStreamingProtocol
 	 */
 	private ClaudeStreamingProtocol()
 	{
-	}
-
-	/**
-	 * Escapes a JSON string value.
-	 *
-	 * @param value a non-null value
-	 * @return the escaped value
-	 */
-	private static String escape(String value)
-	{
-		assert value != null;
-		return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
 	}
 }
