@@ -180,6 +180,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-93 | `optimize-medium` | Changes how the guard pilot answers a provider's rate limit or refusal; an error starts sessions during a hold, retries a refusal that waiting does not fix, or leaves a pilot that never finishes. |
 | WI-94 | `optimize-low` | Changes what the contract author lists as the contract's limitations; an error drops a real coverage gap from the contract, or keeps one run's results in it. |
 | WI-95 | `optimize-low` | Changes how the Claude runner writes each request line; an error makes Claude Code reject a request and end every nested Claude session. |
+| WI-96 | `optimize-low` | Changes which files CAT derives as loading in Claude trials; an error leaves an imported instruction file uneditable, or lets the prompt author edit a file that trials do not load. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -367,6 +368,7 @@ requirement names.
 | WI-93 | Done: a guard pilot session that the provider rejects because of a rate limit, or refuses, runs again after the harness's shared hold, a trial with the same test case and a judge without spending an attempt; only a refusal after a 30-minute hold stops the pilot. Commit `0e11763633`; full build passed (2943 tests, 0 failures, 10 skipped; 109 s); the new tests take 0.17 s and 0.01 s. One test took 1 s or more (`TestabilityAuditTest.onlyMainReadsEnvironment`, 1.2 s), not touched by this change. |
 | WI-94 | Done: the contract author's prompt says that `limitations` holds only gaps in what the contract requires or tests, and leaves out guard pilot results and other facts about one run. Commit `7d297c65d7`; full build passed (2943 tests, 0 failures, 10 skipped; 88 s). Four `OptimizerCoreTest` tests took 2.2 s to 2.4 s, none touched by this change. Exit: the Claude E1 run's revised proposal (2026-10-19, `~/cat/worktrees/e1-claude1/receipts/revise-final.txt`), made after both guard pilots finished, lists no pilot result as a limitation. |
 | WI-95 | Done: the Claude runner writes each stream-json request with a JSON library, so a prompt that holds a tab or another control character is valid JSON. Commit `0cf58de40a`; full build passed (2944 tests, 0 failures, 10 skipped; 86 s; no test at 1 s or more). Exit: the Claude E1 run's `start` produced a proposal on that build (2026-10-19, `~/cat/worktrees/e1-claude1/receipts/start2-final.txt`). |
+| WI-96 | Built, exit pending: the Claude adapter lists the files that a listed `CLAUDE.md` imports through `@path` as derived prompt sources, as Claude Code's documented loading rules do. Commit `d75e99cb01`; full build passed (2945 tests, 0 failures, 10 skipped; 92 s). Six `DeliveryTest` tests took 1.0 s to 2.2 s, none touched by this change. The exit needs a fresh Claude E1 run. |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -717,7 +719,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C26 | Prompt tests as files: before each contract author session CAT creates a new draft directory in the session's run directory holding a copy, at its test path, of every recorded prompt test of the target (a revision starts from the latest proposal's draft, a test revision from the prompt test it revises); the request names the draft directory and the proposal file; the proposal file holds only the requirements, each prompt test's draft directory with its risk rank, proven and trigger-absent requirements, applicability, the requirement each assertion checks and uncovered interactions, and the minimum pass rate, rubric, decision rule, dependents, conflicts and limitations; a new test case in a values file has no seed, and validation gives each generated value its seed and version; when the session ends CAT moves the draft into the held-out directory with the proposal; a session that reaches its time limit leaves its files for diagnosis and stores no proposal; the presented proposal and delivery read the prompt tests from the draft. | §4.1, §4.7, §6.1, §6.3, D77 | WI-82 | U: `DraftDirectoryTest`, `ProposalSchemaTest`, `ProposalTest`, `TestRevisionTest`, `DeliveryTest`, `OptimizerCoreTest`; E: WI-71's certification start |
 | R-C27 | Contract tools: the contract author's request lists the files that load in trials with their rules, the trial plugins with each project-built one's mappings, and every hook registration of the prompt system and of the trial plugins with its event, matcher and command; the launcher's `contract check` applies every session-end validation to the proposal file and the draft directory as they stand, prints every problem at once with its file and line or JSON path, and prints each prompt test's number of distinct expected outcomes without splitting them into parts; `contract workspace` writes one test case's workspace files into a named directory and prints each file's path, size in bytes, line count and comparison with each trial profile's tool-output limit; the skill does not use either command. | §6.1, §8, D77 | WI-82 | U: `ContractCheckTest`, `ContractFixturesTest`, `CommandsTest`, `ProposalTest`, `CodexSessionsTest`, `ClaudeSessionsTest` |
 | R-C6 | The four scope conditions produce their `certification unavailable` outcomes, before or after a commit. | §6.5 | WI-3, WI-10 | U: `CampaignTransitionsTest`; E: unsupported cases |
-| R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10 | E: E1 loading record per harness |
+| R-C7 | Loading is observed (premise P9) or derived from documented rules, with the limit recorded. | §6.1 | WI-10, WI-96 | E: E1 loading record per harness |
 | R-L1 | One resumable campaign per root and target, across every CAT session directory; binding to the starting harness and the owning session; another session, in either harness, shows the campaign and its owning session and refuses every other command for it, and a second campaign for its target, naming the session to resume, without any state change. | §4.1, §7, D17 | WI-3, WI-13, WI-84 | U: `CampaignRegistryTest`, `OptimizerCoreTest`; E: cross-harness, cross-session |
 | R-L2 | Revision creates a new lineage; the incumbent is measured again as a new baseline; allowance continues. | §7 | WI-3 | U: `CampaignTransitionsTest` |
 | R-L3 | Revision during formal testing waits for a safe checkpoint; a stopped attempt never resumes. | §7 | WI-3, WI-9 | U: `CampaignTransitionsTest`, `DriverTest` |
@@ -2684,6 +2686,23 @@ The riskiest pure code, built first.
 	raw tab.
 - **Exit:** the full build passes; the Claude E1 run's `start` produces a proposal.
 
+### WI-96 — Claude imports as derived sources
+
+- **Problem:** in the Claude E1 run, the target `CLAUDE.md` holds only `@AGENTS.md`, and every rule is in `AGENTS.md`.
+	Trials load `AGENTS.md` through that import, but CAT did not list imported files among the derived prompt sources,
+	so the prompt author's edit of `AGENTS.md` raised an `outside_prompt_sources` authority warning on both requirements
+	it needed, and the campaign could only edit the one-line `CLAUDE.md`.
+- **Change:** the Claude adapter lists, after each of `CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md`, the
+	project files that it imports through `@path`, and the files that those import, for at most four hops, as Claude
+	Code documents. A relative path resolves against the importing file's directory, a backslash keeps a space in the
+	path, and an import in a code span or fenced code block is not followed. Only an import that resolves to a file in
+	the project is listed; a home-directory or other external import needs the user's approval in Claude Code and is
+	not listed.
+- **Tests:** `ClaudeSessionsTest.derivesImportedInstructions`, which failed before the change by listing only
+	`CLAUDE.md`.
+- **Exit:** the full build passes; a fresh Claude E1 run lists `AGENTS.md` as a derived source, and its prompt author
+	edits `AGENTS.md` without an authority warning.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2823,7 +2842,8 @@ blocks only the part of a work item that it names.
 | WI-93 | WI-66 |
 | WI-94 | WI-66 |
 | WI-95 | WI-8 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93 and WI-95. |
+| WI-96 | WI-10 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95 and WI-96. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
