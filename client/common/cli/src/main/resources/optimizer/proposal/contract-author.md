@@ -123,7 +123,10 @@ Otherwise keep it unchanged; the user decides whether the agent really fails it 
 
 ### Limitations
 
-- `limitations`: every known limitation of the contract, such as an obligation that no test covers.
+- `limitations`: every known limitation of the contract, such as an obligation that no test covers. List only a gap in
+	what the contract requires or tests. Leave out the results of a guard pilot, including one that stopped before its
+	trials finished, and any other fact about one run: CAT shows the latest pilot results with each proposal, and a copy
+	in `limitations` stays in the contract after a later pilot changes them.
 
 ### Recorded prompt tests
 
