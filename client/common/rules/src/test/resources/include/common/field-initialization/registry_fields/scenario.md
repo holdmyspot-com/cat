@@ -22,22 +22,22 @@ that callers register, in registration order, and has the methods `register(self
 
 - **kind**: effect
 - **description**: For request 1: The property that holds the registered names receives its empty array in its
-  declaration, not through an assignment in the constructor.
+	declaration, not through an assignment in the constructor.
 
 ### parameter_field_assigned_in_constructor
 
 - **kind**: guard
 - **description**: For request 1: The property that holds the owner's name is assigned from the constructor parameter
-  in the constructor, either by an assignment or by a constructor parameter property.
+	in the constructor, either by an assignment or by a constructor parameter property.
 
 ### per_object_collection
 
 - **kind**: guard
 - **description**: For request 2: Each object gets its own list of names; the class does not hold that list in a
-  class attribute that every object shares.
+	class attribute that every object shares.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects
-  `rules/include/common/field-initialization.md` before its first governed action.
+	`rules/include/common/field-initialization.md` before its first governed action.

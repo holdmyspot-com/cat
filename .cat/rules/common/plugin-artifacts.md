@@ -7,11 +7,11 @@ paths:
 ## Design Goals
 
 - Keep published plugin artifacts complete and installable: the target harness accepts their packaged layout and every
-  artifact path they reference resolves within the published artifact.
+	artifact path they reference resolves within the published artifact.
 - Keep each plugin-facing skill description, hook response, launcher result, and command output valid for the
-  documented metadata, schema, permitted values, and event semantics of its target harness.
+	documented metadata, schema, permitted values, and event semantics of its target harness.
 - Keep repository development rules out of published plugin artifacts so an installed plugin contains only guidance that
-  applies to its end-user environment.
+	applies to its end-user environment.
 
 ## Guidance
 

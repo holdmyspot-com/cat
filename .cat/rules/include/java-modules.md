@@ -27,16 +27,16 @@ tests.
 ### Test Module and Package Names
 
 - Name a test module after the main module it tests, with `.test` appended: `com.holdmyspot.cat.codex.cli.test` tests
-  `com.holdmyspot.cat.codex.cli`.
+	`com.holdmyspot.cat.codex.cli`.
 - Name a test package after the main package it tests, with `.test` appended: `CodexRunnerTest`, which tests
-  `com.holdmyspot.cat.codex.runner.CodexRunner`, belongs to `com.holdmyspot.cat.codex.runner.test`, and a test of
-  the base package `com.holdmyspot.cat.codex` belongs to `com.holdmyspot.cat.codex.test`. Place a test in the
-  package of the main type it tests, even when that differs from the package of related tests.
+	`com.holdmyspot.cat.codex.runner.CodexRunner`, belongs to `com.holdmyspot.cat.codex.runner.test`, and a test of
+	the base package `com.holdmyspot.cat.codex` belongs to `com.holdmyspot.cat.codex.test`. Place a test in the
+	package of the main type it tests, even when that differs from the package of related tests.
 - Place a test-support package that tests no main package, such as fakes or shared contracts, under the package whose
-  tests use it, also ending in `.test`: `com.holdmyspot.cat.common.runner.fakes.test`.
+	tests use it, also ending in `.test`: `com.holdmyspot.cat.common.runner.fakes.test`.
 - Place test resources that a test reads by a relative name in the resource directory of that test's package, such as
-  `com/holdmyspot/cat/common/optimizer/proposal/test/`. Resource directories count as packages, and a test module
-  must not contain a package that another module also contains.
+	`com/holdmyspot/cat/common/optimizer/proposal/test/`. Resource directories count as packages, and a test module
+	must not contain a package that another module also contains.
 
 Export each test package that contains TestNG tests to `org.testng`, and export a test-support package only to the test
 modules that reuse it.
@@ -145,12 +145,12 @@ Test through accessible behavior when it proves the required contract. When a te
 its test module cannot reach, decide by what other modules can see:
 
 - A package that the main module exports to no module other than its test module, through a qualified export, may make
-  public the types and members its tests need. Widening them changes no other module's view.
+	public the types and members its tests need. Widening them changes no other module's view.
 - A package that other modules can see keeps its members at their production-required visibility. Expose each member
-  the tests need through a narrow, typed SharedSecrets façade that delegates to it, and export the secrets package only
-  to the test module. A type in such a package that the tests name may become public.
+	the tests need through a narrow, typed SharedSecrets façade that delegates to it, and export the secrets package only
+	to the test module. A type in such a package that the tests name may become public.
 - A test fake that must override a non-public hook cannot use a façade. Make the hook `protected` if its package is
-  exported to other modules, or `public` if only the test module can see it.
+	exported to other modules, or `public` if only the test module can see it.
 
 Do not add a test-only production API, adapter, or mutable seam, and do not export a package to the test module unless
 its tests need it.

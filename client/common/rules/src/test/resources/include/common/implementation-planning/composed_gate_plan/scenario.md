@@ -3,7 +3,7 @@
 ## Variables
 
 - **independent_component**: A component unrelated to interruption, with a complete contract and runnable focused tests,
-  such as `report formatter` or `citation exporter`
+	such as `report formatter` or `citation exporter`
 
 ## Scenario
 
@@ -22,28 +22,28 @@ implement, execute probes or tests, or delegate.
 
 - **kind**: effect
 - **description**: The plan separates the available runner-capability probe from the service-owned
-  admission/ESC/recovery result. It does not accept runner cancellation alone as proof of the finished service's
-  behavior.
+	admission/ESC/recovery result. It does not accept runner cancellation alone as proof of the finished service's
+	behavior.
 
 ### first_runnable_gate
 
 - **kind**: effect
 - **description**: It permits the minimal A/B implementation needed for the composed check, schedules that check at the
-  first runnable boundary, and keeps dependent acceptance conditional until it passes. It permits independent
-  {{independent_component}} work. It does not require a future consumer to exist before assigning the component that
-  produces it.
+	first runnable boundary, and keeps dependent acceptance conditional until it passes. It permits independent
+	{{independent_component}} work. It does not require a future consumer to exist before assigning the component that
+	produces it.
 
 ### planning_guidance_before_decisions
 
 - **kind**: effect
 - **description**: The retained events establish a successful read of `rules/include/common/implementation-planning.md`
-  before the first project inspection or decision about behavior coverage, assignments, dependencies, or checks. A
-  failed lookup, substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately
-  from guidance selection.
+	before the first project inspection or decision about behavior coverage, assignments, dependencies, or checks. A
+	failed lookup, substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately
+	from guidance selection.
 
 ### evidence_and_scope
 
 - **kind**: effect
 - **description**: Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept
-  alternative decompositions whose stated dependencies and checks satisfy the request; do not grade by literal phrases.
-  Keep guidance selection or delivery unverified when the retained events do not establish it.
+	alternative decompositions whose stated dependencies and checks satisfy the request; do not grade by literal phrases.
+	Keep guidance selection or delivery unverified when the retained events do not establish it.

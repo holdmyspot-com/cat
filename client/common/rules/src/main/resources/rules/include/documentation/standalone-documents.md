@@ -8,10 +8,10 @@ depends-on:
 ## Design Goals
 
 - Let each section of a product, legal, or workflow document, an overview, release notes, or a changelog support the
-  decision, right, obligation, or action that its reader brings to it, without the history of how the document was
-  produced.
+	decision, right, obligation, or action that its reader brings to it, without the history of how the document was
+	produced.
 - Let every reader resolve a location that a document names: a checkout location from the project root and a
-  user-owned location from the reader's own home directory.
+	user-owned location from the reader's own home directory.
 
 ## Guidance
 

@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Let a Java test exercise a production-required non-public behavior directly when its public caller adds unrelated
-  work, without widening the supported API or substituting different test-only behavior.
+	work, without widening the supported API or substituting different test-only behavior.
 
 ## Guidance
 

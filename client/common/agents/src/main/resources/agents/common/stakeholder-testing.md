@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Identify evidence-backed verification gaps that prevent required behavior from being established, or approve the
-  declared change when its evidence is sufficient.
+	declared change when its evidence is sufficient.
 
 ## Guidance
 

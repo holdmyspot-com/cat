@@ -9,7 +9,7 @@ paths:
 ## Design Goals
 
 - Route Java-specific guidance after a task enters a Java project or source file, and load each focused rule only when
-  its decision arises.
+	its decision arises.
 
 ## Guidance
 

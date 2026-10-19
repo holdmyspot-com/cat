@@ -19,15 +19,15 @@ On Windows, run these commands in Git Bash, which Claude Code on Windows uses to
 
 ```bash
 curl -fsSL \
-  https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh | sh
+	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh | sh
 ```
 
 To install into a custom Claude Code configuration directory, set `CLAUDE_CONFIG_DIR`:
 
 ```bash
 curl -fsSL \
-  https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh \
-  | CLAUDE_CONFIG_DIR=/path/to/claude-home sh
+	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh \
+	| CLAUDE_CONFIG_DIR=/path/to/claude-home sh
 ```
 
 </details>
@@ -37,15 +37,15 @@ curl -fsSL \
 
 ```bash
 curl -fsSL \
-  https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh | sh
+	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh | sh
 ```
 
 To install into a custom Codex home directory, set `CODEX_HOME`:
 
 ```bash
 curl -fsSL \
-  https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh \
-  | CODEX_HOME=/path/to/codex-home sh
+	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh \
+	| CODEX_HOME=/path/to/codex-home sh
 ```
 
 </details>
@@ -76,16 +76,16 @@ harness's plugin mechanism. Start or resume a session after installation.
 
 ```bash
 curl -fsSL \
-  "https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/"\
-  "bootstrap-uninstall-claude.sh" | sh
+	"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/"\
+	"bootstrap-uninstall-claude.sh" | sh
 ```
 
 #### Codex
 
 ```bash
 curl -fsSL \
-  "https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/"\
-  "bootstrap-uninstall-codex.sh" | sh
+	"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/"\
+	"bootstrap-uninstall-codex.sh" | sh
 ```
 
 #### Codex on Windows

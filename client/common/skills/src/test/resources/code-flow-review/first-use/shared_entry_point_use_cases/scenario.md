@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that, when several use cases start at the same entry point, the first reply's overview still tells the user
-  that they are separate behaviors, each started by its own actor action, and not consecutive steps of one flow.
+	that they are separate behaviors, each started by its own actor action, and not consecutive steps of one flow.
 
 ## Variables
 
@@ -20,8 +20,8 @@ I changed `cli.py`, the `{{tool_name}}` command line. The change is saved as `ch
 
 - **kind**: effect
 - **description**: Before the first use case's steps, the reply says that the listed use cases are separate behaviors
-  that each start with their own actor action, and that they are not consecutive steps of one flow, even though they
-  share the `main` entry point.
+	that each start with their own actor action, and that they are not consecutive steps of one flow, even though they
+	share the `main` entry point.
 
 ### one_row_per_command
 

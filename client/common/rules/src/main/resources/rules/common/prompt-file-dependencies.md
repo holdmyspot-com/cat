@@ -8,11 +8,11 @@ paths:
 
 - Ensure a prompt file receives each definition it relies on before the file uses that definition.
 - Keep dependency metadata out of default reader context while making its authoring contract available with a rule
-  source file.
+	source file.
 - Keep lazy routing direct and authoritative: one observable trigger reaches one target rule rather than a duplicate
-  index or a routing-only intermediate.
+	index or a routing-only intermediate.
 - Keep the text that a direct rule shares across platforms in one file, so that an edit to it reaches the rule on every
-  platform, while each platform still receives only its own commands.
+	platform, while each platform still receives only its own commands.
 
 ## Guidance
 

@@ -4,7 +4,7 @@
 
 - Use self-contained Java tests that demonstrate behavior without duplicating external-tool coverage.
 - Keep every Java test eligible for the project's configured parallel execution; test isolation must come from owned
-  inputs and collaborators, not from reducing concurrency.
+	inputs and collaborators, not from reducing concurrency.
 - Keep smoke scenarios focused on integration or lifecycle behavior not already established by a unit test.
 
 ## Guidance

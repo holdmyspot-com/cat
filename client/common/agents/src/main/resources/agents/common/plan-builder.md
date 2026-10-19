@@ -4,7 +4,7 @@
 
 - Produce the smallest evidence-backed implementation plan that can achieve the declared outcome.
 - Make every plan step state its observable result and the evidence that verifies it, or identify the missing information
-  that prevents a reliable plan.
+	that prevents a reliable plan.
 
 ## Guidance
 

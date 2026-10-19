@@ -3,13 +3,13 @@
 ## Design Goals
 
 - Let agents translate a design into implementation work whose required outcomes remain covered and whose connected
-  execution paths are feasible, while ready assignments contain the decisions and evidence their executors need.
+	execution paths are feasible, while ready assignments contain the decisions and evidence their executors need.
 - Make decomposition, ordering, detail, ownership, and verification choices respond to the work's dependencies and
-  uncertainty, with stated reasons that include coordination and rework without claiming an unmeasured speed advantage.
+	uncertainty, with stated reasons that include coordination and rework without claiming an unmeasured speed advantage.
 - Keep the executable plan current when evidence changes a design premise or task dependency, preserving valid work and
-  exposing what must be decided before dependent implementation can begin.
+	exposing what must be decided before dependent implementation can begin.
 - Cover consequential user-experience transitions and actor goals without requiring redundant documents or treating a
-  coverage representation as a mandatory assignment boundary.
+	coverage representation as a mandatory assignment boundary.
 
 ## Guidance
 
@@ -19,16 +19,16 @@ is already available:
 
 1. If the plan includes work that changes observable behavior, read TDD first:
 
-   ```bash
-   cat "$CAT_PLUGIN_ROOT/rules/include/common/tdd.md"
-   ```
+	```bash
+	cat "$CAT_PLUGIN_ROOT/rules/include/common/tdd.md"
+	```
 
-   This applies when your own task is read-only: the trigger is the behavior the plan assigns. TDD owns when test-first
-   is required, what establishes a behavioral red result, how unresolved contracts or unavailable test boundaries affect
-   readiness, and verification before handoff.
+	This applies when your own task is read-only: the trigger is the behavior the plan assigns. TDD owns when test-first
+	is required, what establishes a behavioral red result, how unresolved contracts or unavailable test boundaries affect
+	readiness, and verification before handoff.
 2. Lazy load `../../common/intermediate-vs-terminal-goals.md`, `./backward-design.md`, and
-   `./design-quality.md`. Those rules own terminal acceptance, design validation, and compatible
-   implementation dependencies.
+	`./design-quality.md`. Those rules own terminal acceptance, design validation, and compatible
+	implementation dependencies.
 
 An agent-authored design receives the same checks as any other design; its author's confidence or approval is not
 evidence that its premises are established.
@@ -88,13 +88,13 @@ A whole journey, whole use case, screen, or individual interaction is not automa
 alternatives that could change a dependency, verification boundary, ownership boundary, or exposure to rework:
 
 - Use a behavior slice when exercising its connected path can resolve a consequential integration or design question
-  before further implementation depends on the answer.
+	before further implementation depends on the answer.
 - Use a component, shared capability, or coherent batch when its shared internals, compatibility constraints, or atomic
-  transition need one consistent implementation and can be checked together. Such an assignment need not be directly
-  user-visible. Keep the later consuming behavior and its integration check visible in the plan.
+	transition need one consistent implementation and can be checked together. Such an assignment need not be directly
+	user-visible. Keep the later consuming behavior and its integration check visible in the plan.
 - Use a focused investigation when an unresolved premise changes which implementation is valid. Name the decision its
-  result resolves and the implementation work that depends on it; an investigation result is not implementation
-  completion.
+	result resolves and the implementation work that depends on it; an investigation result is not implementation
+	completion.
 
 These units can coexist in one plan. Distinguish required prerequisites from a preferred order. Place a decision's
 evidence-producing work before implementation that relies on its answer, at the earliest boundary the governing design

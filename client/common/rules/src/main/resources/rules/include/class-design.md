@@ -7,9 +7,9 @@ depends-on:
 ## Design Goals
 
 - Make each component's responsibility, lifecycle, ownership, safety, and concurrency guarantees explicit, and keep its
-  API and collaboration boundaries compatible with them.
+	API and collaboration boundaries compatible with them.
 - Make components replaceable and testable only where a supported variation or external integration needs a boundary,
-  without exposing unsafe convenience paths, test-only production responsibilities, or trivial indirection.
+	without exposing unsafe convenience paths, test-only production responsibilities, or trivial indirection.
 - Keep public contracts faithful to their domain constraints so callers cannot supply values the domain excludes.
 
 ## Guidance

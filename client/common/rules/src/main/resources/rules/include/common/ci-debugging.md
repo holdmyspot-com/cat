@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Select the fastest available reproduction boundary that can distinguish a suspected CI or hosted-workflow failure
-  without treating a locally different execution as evidence of the hosted result.
+	without treating a locally different execution as evidence of the hosted result.
 - Preserve hosted acceptance evidence when the required platform, identity, artifact, or service boundary is unavailable
-  locally or is part of the required outcome.
+	locally or is part of the required outcome.
 
 ## Guidance
 

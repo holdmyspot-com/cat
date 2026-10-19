@@ -8,16 +8,16 @@ agents: ["main"]
 ## Design Goals
 
 - Acknowledge each user request once, promptly, and apply related steering without losing unrelated requested work,
-  so that resuming from a compaction neither repeats an acknowledgement nor drops a request.
+	so that resuming from a compaction neither repeats an acknowledgement nor drops a request.
 - Process unrelated user requests fairly in their arrival order after the active terminal goal completes.
 - On session resumption, determine whether a goal is active from the goal-status interface rather than historical
-  conversation context.
+	conversation context.
 - Do not substitute the agent's plausible interpretation for a user request whose materially different meanings would
-  require different work or produce different results.
+	require different work or produce different results.
 - When the user asks whether you have questions, settle every material question before acting, so the work does not
-  rest on a guess that the user could have settled.
+	rest on a guess that the user could have settled.
 - Distinguish the active incoming user request from historical user-shaped content, so a replay, transcript, or
-  compaction cannot schedule or replace work.
+	compaction cannot schedule or replace work.
 
 ## Guidance
 

@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that when a request depends on a claim that holds, and otherwise states only a preference, the agent acts on
-  the request without questioning the claim or the preference.
+	the request without questioning the claim or the preference.
 
 ## Variables
 
@@ -30,7 +30,7 @@ equivalent and easier to read."
 
 - **kind**: guard
 - **description**: The reply does not qualify, question, or add a caveat to the claim that the two expressions are
-  equivalent or to the preference that `isEmpty()` is easier to read.
+	equivalent or to the preference that `isEmpty()` is easier to read.
 
 ### change_made
 

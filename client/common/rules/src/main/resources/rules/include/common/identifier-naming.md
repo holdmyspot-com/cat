@@ -7,15 +7,15 @@ depends-on:
 ## Design Goals
 
 - Make every affected type, function, and method name communicate the responsibility or behavior and the target that
-  its contract, callers, and implementation establish, and verify that across all comparable identifiers rather than by
-  searching for particular name fragments.
+	its contract, callers, and implementation establish, and verify that across all comparable identifiers rather than by
+	searching for particular name fragments.
 - Make every affected variable declared outside a function body, such as a field, constant, or module-level variable,
-  name what its value represents and the role the code gives it, so a reader can tell it apart from any other value of
-  the same kind without reading the code that uses it.
+	name what its value represents and the role the code gives it, so a reader can tell it apart from any other value of
+	the same kind without reading the code that uses it.
 - Keep a type's name accurate after its responsibility changes, so readers do not infer an earlier or narrower job from
-  a name that no longer describes the current one.
+	a name that no longer describes the current one.
 - Make the names of related functions and methods use the same words for the behavior they share and matched words for
-  the part that differs, so a reader can tell from the names alone how their behavior differs.
+	the part that differs, so a reader can tell from the names alone how their behavior differs.
 
 ## Guidance
 

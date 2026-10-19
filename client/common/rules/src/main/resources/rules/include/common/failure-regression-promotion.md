@@ -3,11 +3,11 @@
 ## Design Goals
 
 - Turn each confirmed, reproducible user-owned prompt, rule, or workflow failure into the smallest evidence-backed
-  correction at its owning decision boundary and regression scenarios that a campaign can test for its return.
+	correction at its owning decision boundary and regression scenarios that a campaign can test for its return.
 - Make that correction on the first qualifying failure without halting the user's task for a certification campaign,
-  and leave certifying the corrected guidance to a campaign that the user chooses to start.
+	and leave certifying the corrected guidance to a campaign that the user chooses to start.
 - Keep regression scenarios coherent by consolidating cases that make the same reader decision, rather than
-  accumulating one standalone scenario per incident.
+	accumulating one standalone scenario per incident.
 
 ## Guidance
 
@@ -21,11 +21,11 @@ available delivery evidence, and direct regression case.
 Classify the attribution before changing guidance:
 
 - If an existing rule already directs the correct decision but was not loaded, delivered, or applied, repair that
-  earliest routing or delivery boundary. Do not duplicate its requirement in a new rule.
+	earliest routing or delivery boundary. Do not duplicate its requirement in a new rule.
 - If no applicable rule directs the required decision, or its wording leaves a supported branch ambiguous, amend the
-  owned authoritative rule or create a focused companion only when its trigger and reader decision differ.
+	owned authoritative rule or create a focused companion only when its trigger and reader decision differ.
 - If the failure belongs to an implementation, external dependency, or unsupported observation rather than user-owned
-  guidance, repair or report the responsible component or dependency without inventing a rule change.
+	guidance, repair or report the responsible component or dependency without inventing a rule change.
 
 For every correction to user-owned prompt, rule, or workflow guidance, record regression scenarios before resuming
 dependent work: the reported case, a meaningful analogous case, and a dissimilar case that must not receive unrelated
@@ -43,13 +43,13 @@ Write `scenario.md` with these sections and no others:
 
 - `# <Title>`, optionally followed by `## Design Goals`, which says what the scenario proves.
 - `## Variables`: one `- **<name>**: <description>` pair per variable, with a snake_case name. Declare at least one
-  variable, such as a file name, a value that the turn asks about or part of a turn's wording, and choose them so that
-  different values lead to different expected outcomes.
+	variable, such as a file name, a value that the turn asks about or part of a turn's wording, and choose them so that
+	different values lead to different expected outcomes.
 - `## Scenario`: the turn's text, or `### Turn <n>` subsections numbered from 1 when there are several turns. State the
-  situation that the agent faces in the turn itself.
+	situation that the agent faces in the turn itself.
 - `## Assertions`: one `### <id>` subsection per assertion, with a snake_case id, holding `- **kind**: effect`, or
-  `- **kind**: guard` for behavior that holds without the corrected guidance, then `- **description**: ` and the
-  statement.
+	`- **kind**: guard` for behavior that holds without the corrected guidance, then `- **description**: ` and the
+	statement.
 
 A pair's value continues on following lines indented by two spaces.
 

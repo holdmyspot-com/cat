@@ -1,17 +1,17 @@
 --- a/cli.py
 +++ b/cli.py
 @@ -20,9 +20,13 @@
-         json.dump(notes, file)
+ 		json.dump(notes, file)
  
  
 +def _clean(text):
-+    return " ".join(text.split())
++	return " ".join(text.split())
 +
 +
  def add_note(text):
-     notes = _load()
--    notes.append(text)
-+    notes.append(_clean(text))
-     _save(notes)
-     print("Added note", len(notes))
+ 	notes = _load()
+-	notes.append(text)
++	notes.append(_clean(text))
+ 	_save(notes)
+ 	print("Added note", len(notes))
  

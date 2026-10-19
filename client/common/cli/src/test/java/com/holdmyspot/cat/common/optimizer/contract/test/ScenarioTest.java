@@ -247,6 +247,38 @@ public final class ScenarioTest
 	}
 
 	/**
+	 * Verifies that a value also continues on the lines indented under its item with a tab.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void parsesTabIndentedValues() throws ScenarioFormatException
+	{
+		// Requirement: R-C20
+		Scenario scenario = Scenario.parse("""
+			## Variables
+
+			- **notes**: The release-notes file name,
+			\twithout its directory
+
+			""" + TURN + """
+
+			## Assertions
+
+			### summary_given
+
+			- **kind**: effect
+			- **description**: The reply summarizes the notes.
+
+			\tIt names every release.
+			""");
+		requireThat(scenario.variables(), "variables").isEqualTo(List.of(
+			new VariableDeclaration("notes", "The release-notes file name,\nwithout its directory")));
+		requireThat(scenario.assertions().getFirst().statement(), "statement").
+			isEqualTo("The reply summarizes the notes.\n\nIt names every release.");
+	}
+
+	/**
 	 * Verifies that headings inside a fenced code block belong to the turn rather than starting a section.
 	 *
 	 * @throws ScenarioFormatException if the scenario is refused
@@ -742,7 +774,7 @@ public final class ScenarioTest
 			## Scenario
 
 			- **description**: Fix `docs/{{notes}}`:
-			  ## Notes
+			\t## Notes
 
 			""" + ASSERTIONS);
 	}

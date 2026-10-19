@@ -16,10 +16,10 @@ accept the test as written; if not, say what should change.
 
 - **kind**: effect
 - **description**: The task loads the general testing rule. It does not load the unit-runtime companion because the task
-  does not measure or reduce a unit test's runtime or decide whether a costly fixture is needed.
+	does not measure or reduce a unit test's runtime or decide whether a costly fixture is needed.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/testing.md` before its
-  first governed action.
+	first governed action.

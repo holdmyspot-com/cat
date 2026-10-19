@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Ensure a selected component and its configuration preserve every input distinction the required contract still needs,
-  instead of making a later operation infer information that an earlier transformation discarded.
+	instead of making a later operation infer information that an earlier transformation discarded.
 - Ensure the evidence that a transformation preserves a required distinction is available before production code depends
-  on that transformation, rather than relying on a later test or inspection to justify an earlier commitment.
+	on that transformation, rather than relying on a later test or inspection to justify an earlier commitment.
 
 ## Guidance
 

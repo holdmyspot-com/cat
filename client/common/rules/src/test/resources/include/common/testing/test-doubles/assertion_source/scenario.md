@@ -34,33 +34,33 @@ reports the negative quantity.
 
 - **kind**: effect
 - **description**: For request 1: The agent rejects the assertion as written because `stopped` is a line the fake
-  printed and the session only relayed, and the turn ended because the test told the fake to exit. It explains that a
-  session that merely relays output and ends at end of output would pass, and asks for an assertion of a decision the
-  session makes, or removal when another test already asserts that decision.
+	printed and the session only relayed, and the turn ended because the test told the fake to exit. It explains that a
+	session that merely relays output and ends at end of output would pass, and asks for an assertion of a decision the
+	session makes, or removal when another test already asserts that decision.
 
 ### unverified_reaction
 
 - **kind**: effect
 - **description**: For request 1: The agent identifies the fake's exit after the interrupt as an assumption about the
-  real program. It requires that behavior to come from a recording or documentation of the real program, or from a test
-  against the real program, and does not treat the fake-based test as evidence of it.
+	real program. It requires that behavior to come from a recording or documentation of the real program, or from a test
+	against the real program, and does not treat the fake-based test as evidence of it.
 
 ### analogous_stub
 
 - **kind**: effect
 - **description**: For request 2: The agent rejects the assertion because `ok` comes from the stub's output rather than
-  from the script's decision. It asks for assertions on the script's exit status, using a stub response of `error` that
-  must produce status 1 and one of `ok` that must not.
+	from the script's decision. It asks for assertions on the script's exit status, using a stub response of `error` that
+	must produce status 1 and one of `ok` that must not.
 
 ### allowed_double
 
 - **kind**: guard
 - **description**: For request 3: The agent accepts the test. The in-memory repository supplies input, and both
-  assertions check outcomes the service computes: the sum and the rejection. The agent does not require a real
-  repository or extra assertions.
+	assertions check outcomes the service computes: the sum and the rejection. The agent does not require a real
+	repository or extra assertions.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/testing.md`,
-  `rules/include/common/testing/test-doubles.md` before its first governed action.
+	`rules/include/common/testing/test-doubles.md` before its first governed action.

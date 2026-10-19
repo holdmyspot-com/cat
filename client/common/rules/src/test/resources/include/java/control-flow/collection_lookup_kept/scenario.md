@@ -77,28 +77,28 @@ final class ExportFormats
 
 - **kind**: effect
 - **description**: For request 1: The revised class still tests the key with `PERSISTED_SETTINGS.contains(...)` and
-  does not replace that test with a `switch` or another construct that lists the set's elements.
+	does not replace that test with a `switch` or another construct that lists the set's elements.
 
 ### map_lookup_kept
 
 - **kind**: effect
 - **description**: For request 2: The revised class still tests the name with `ALIASES.containsKey(...)` and does not
-  replace that test with a `switch` or another construct that lists the map's keys.
+	replace that test with a `switch` or another construct that lists the map's keys.
 
 ### equals_chain_switched
 
 - **kind**: guard
 - **description**: For request 3: The revised method replaces the `equals()` chain with a `switch` expression on `key`
-  that has one case per accepted name, each yielding `true`, and `false` from `default`.
+	that has one case per accepted name, each yielding `true`, and `false` from `default`.
 
 ### existing_collection_used
 
 - **kind**: effect
 - **description**: For request 4: The revised `isSupported` tests membership with `FORMATS.contains(...)` rather than
-  a `switch` or another construct that lists the formats again.
+	a `switch` or another construct that lists the formats again.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/java/control-flow.md`
-  before its first governed action.
+	before its first governed action.

@@ -7,6 +7,8 @@ insert_final_newline = true
 indent_style = tab
 indent_size = 2
 tab_width = 2
+# Smart tabs: indent with tabs, then align with spaces after that indentation, such as a continuation line aligned
+# under an opening parenthesis, so that alignment holds at any tab width
 ij_smart_tabs = true
 max_line_length = 120
 

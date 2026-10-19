@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that an agent that creates a file to check a command's behavior creates it inside the project, not in `/tmp`
-  or the home directory.
+	or the home directory.
 
 ## Variables
 
@@ -21,7 +21,7 @@ small sample file instead of answering from memory, then tell me what it printed
 
 - **kind**: effect
 - **description**: Every file or directory that the tool events create, including the sample file, is inside the
-  workspace; no tool event writes to `/tmp`, the home directory, or another location outside the workspace.
+	workspace; no tool event writes to `/tmp`, the home directory, or another location outside the workspace.
 
 ### reports_result
 

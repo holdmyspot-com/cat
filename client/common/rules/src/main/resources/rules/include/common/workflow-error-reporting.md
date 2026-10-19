@@ -3,11 +3,11 @@
 ## Design Goals
 
 - Ensure a workflow's human or agent caller learns about incorrect or unavailable dependencies discovered while
-  executing maintained instructions or workflows.
+	executing maintained instructions or workflows.
 - Ensure a completion claim distinguishes successful work from degraded, bypassed, or unverifiable workflow checks, so a
-  caller can make the next recovery decision with the actual evidence.
+	caller can make the next recovery decision with the actual evidence.
 - Ensure a rejected generated or captured result reaches the end user with its retained evidence, earliest verified
-  cause, unresolved uncertainty, and publication or recovery state.
+	cause, unresolved uncertainty, and publication or recovery state.
 
 ## Guidance
 

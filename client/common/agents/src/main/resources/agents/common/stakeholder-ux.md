@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Identify evidence-backed user-interaction or understanding concerns in a declared change, or approve it when none
-  remain.
+	remain.
 
 ## Guidance
 

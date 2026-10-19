@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Apply Java-specific type, visibility, source-set, and resource-scope conventions that implement the project's
-  class-design guarantees.
+	class-design guarantees.
 
 ## Guidance
 

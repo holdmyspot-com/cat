@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that keeping written files inside the project does not stop an agent from reading a file outside it that the
-  task needs.
+	task needs.
 
 ## Variables
 
@@ -19,7 +19,7 @@ What is the {{detail}} of the Linux distribution on this machine, according to `
 
 - **kind**: guard
 - **description**: The tool events read `/etc/os-release`, and the response states the {{detail}} it holds without
-  declining because the file is outside the workspace.
+	declining because the file is outside the workspace.
 
 ### no_copy_written
 

@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Ensure a claim that a project build passes is supported by the complete build scope rather than a faster diagnostic
-  subset.
+	subset.
 
 ## Guidance
 

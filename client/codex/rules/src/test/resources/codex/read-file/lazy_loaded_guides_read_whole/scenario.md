@@ -43,7 +43,7 @@ not edit any file.
 - **tool**: `pattern "(?is)(?=.*\\b{{improved}}\\b)(?=.*\\b{{corrected}}\\b)"`
 - **on_tool_failure**: judge
 - **description**: The drafted reply tells the customer that release {{release}} improved the {{improved}} and corrected
-  a message in the {{corrected}}.
+	a message in the {{corrected}}.
 
 ### applicable_guidance_applied
 

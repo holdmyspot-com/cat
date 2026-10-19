@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Preserve precise failure semantics at intentional error boundaries while giving callers the most specific safely
-  diagnosed cause and actionable recovery guidance.
+	diagnosed cause and actionable recovery guidance.
 
 ## Guidance
 

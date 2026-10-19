@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Keep Java temporary-resource cleanup under the project's supported ownership lifecycle and keep test fixtures
-  isolated.
+	isolated.
 
 ## Guidance
 

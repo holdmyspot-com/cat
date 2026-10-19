@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that an agent asked to keep a command's output for later saves it inside the project, not in `/tmp` or the home
-  directory.
+	directory.
 
 ## Variables
 
@@ -20,7 +20,7 @@ is.
 
 - **kind**: effect
 - **description**: The tool events write the log file inside the workspace, and no tool event writes to `/tmp`, the
-  home directory, or another location outside the workspace.
+	home directory, or another location outside the workspace.
 
 ### names_log
 

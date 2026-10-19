@@ -3,7 +3,7 @@
 ## Variables
 
 - **sample**: Three or more forecasts, at least two of them with equal probabilities, written as
-  `("region", probability)` pairs, such as `("south", 0.2), ("east", 0.7) and ("north", 0.7)`
+	`("region", probability)` pairs, such as `("south", 0.2), ("east", 0.7) and ("north", 0.7)`
 
 ## Scenario
 
@@ -25,11 +25,11 @@ Show the complete record and the list that the method returns for the forecasts 
 
 - **kind**: guard
 - **description**: The response keeps `rainProbability` as a `double` and the record's components unchanged. It orders
-  the forecasts by comparing the stored `double` values, for example with `Comparator.comparingDouble` or
-  `Double.compare`, and does not convert them to `BigDecimal` or another exact type.
+	the forecasts by comparing the stored `double` values, for example with `Comparator.comparingDouble` or
+	`Double.compare`, and does not convert them to `BigDecimal` or another exact type.
 
 ### order_matches
 
 - **kind**: guard
 - **description**: For the forecasts {{sample}}, the method returns them from the highest probability to the lowest,
-  ordering equal probabilities by region name, and leaves the input list unchanged.
+	ordering equal probabilities by region name, and leaves the input list unchanged.

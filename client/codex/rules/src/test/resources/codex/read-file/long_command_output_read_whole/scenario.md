@@ -29,7 +29,7 @@ file.
 - **kind**: effect
 - **tool**: `read-in-full logs/service.log`
 - **description**: Every line that `sh scripts/service-log.sh` prints, which are the lines of `logs/service.log`,
-  reaches the agent through its tool output before it answers.
+	reaches the agent through its tool output before it answers.
 
 ### reason_given
 

@@ -3,23 +3,23 @@
 ## Design Goals
 
 - Ensure each substantive, independently readable prompt file declares goals that remain complete, accurate, and
-  executable for its supported use cases and durable outcomes, translating claims of complete, explicit, or mechanically
-  auditable coverage into evidence and validation that creation, regeneration, or revision can enforce.
+	executable for its supported use cases and durable outcomes, translating claims of complete, explicit, or mechanically
+	auditable coverage into evidence and validation that creation, regeneration, or revision can enforce.
 - Make every Design Goal concrete enough to derive a direct passing and failing acceptance case without inventing its
-  actor, trigger, promised result, proof, or an independently selectable scope category, while stating the durable
-  invariant rather than an example-specific inventory of inputs or mechanisms.
+	actor, trigger, promised result, proof, or an independently selectable scope category, while stating the durable
+	invariant rather than an example-specific inventory of inputs or mechanisms.
 - Ensure a Design Goal governing a choice among alternatives names the evidence-based selection outcome without
-  predetermining a branch that only the reported example selected.
+	predetermining a branch that only the reported example selected.
 - Ensure an artifact's Design Goals form one coherent contract: identify and repair duplicate, overlapping,
-  contradictory, and prerequisite-dependent goals before relying on them to derive guidance or verification.
+	contradictory, and prerequisite-dependent goals before relying on them to derive guidance or verification.
 - Place each new or changed normative prompt requirement in the authoritative prompt file for its reader decision and
-  trigger, creating a focused companion only when no existing prompt file governs that decision.
+	trigger, creating a focused companion only when no existing prompt file governs that decision.
 - Express guidance compactly without hiding an independently actionable obligation, its condition, its evidence, or
-  rationale the intended reader needs to apply it.
+	rationale the intended reader needs to apply it.
 - Apply iterative generalization to compaction only when evidence proves a shared invariant preserves every existing
-  reader decision; retain uncertain wording and report the possible improvement instead.
+	reader decision; retain uncertain wording and report the possible improvement instead.
 - When test runs measure an artifact's compliance, measure each conditional obligation where its trigger is absent too,
-  so wording that applies the obligation beyond its trigger fails a test instead of passing every one.
+	so wording that applies the obligation beyond its trigger fails a test instead of passing every one.
 
 ## Guidance
 

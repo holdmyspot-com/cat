@@ -1,148 +1,148 @@
 {
-  "format_version" : 1,
-  "test_cases" : [ {
-    "values" : {
-      "notes" : "release-notes.md",
-      "change" : "The exporter now stops with an error unless each call passes an explicit destination.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -1009267621759882911,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The exporter now stops with an error unless each call passes an explicit destination."
-  }, {
-    "values" : {
-      "notes" : "changes_2.md",
-      "change" : "The importer now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 2850016355770173913,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The importer now rejects calls without an explicit destination; callers must supply one."
-  }, {
-    "values" : {
-      "notes" : "changes_3.md",
-      "change" : "The validator now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 907630457404480570,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The validator now rejects calls without an explicit destination; callers must supply one."
-  }, {
-    "values" : {
-      "notes" : "changes_4.md",
-      "change" : "The uploader now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 6388352556334001821,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The uploader now rejects calls without an explicit destination; callers must supply one."
-  }, {
-    "values" : {
-      "notes" : "changes_5.md",
-      "change" : "The retry policy now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -3586044548690702330,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The retry policy now rejects calls without an explicit destination; callers must supply one."
-  }, {
-    "values" : {
-      "notes" : "changes_6.md",
-      "change" : "The parser now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -6764510413143567428,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The parser now rejects calls without an explicit destination; callers must supply one."
-  }, {
-    "values" : {
-      "notes" : "changes_7.md",
-      "change" : "The logging now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -5446726737313777798,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The logging now rejects calls without an explicit destination; callers must supply one."
-  }, {
-    "values" : {
-      "notes" : "changes_8.md",
-      "change" : "The cache now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -9006710241160081313,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The cache now rejects calls without an explicit destination; callers must supply one."
-  }, {
-    "values" : {
-      "notes" : "changes_9.md",
-      "change" : "The exporter now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 4616533467102560720,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The exporter now rejects calls without an explicit destination; callers must supply one."
-  }, {
-    "values" : {
-      "notes" : "changes_10.md",
-      "change" : "The CLI now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -1320595792510083960,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The CLI now rejects calls without an explicit destination; callers must supply one."
-  }, {
-    "values" : {
-      "notes" : "changes_11.md",
-      "change" : "The configuration loader now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 4922367899122716607,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The configuration loader now rejects calls without an explicit destination; callers must supply one."
-  }, {
-    "values" : {
-      "notes" : "changes_12.md",
-      "change" : "The scheduler now rejects calls without an explicit destination; callers must supply one.",
-      "before" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -3501131664069281274,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.296: The scheduler now rejects calls without an explicit destination; callers must supply one."
-  } ]
+	"format_version" : 1,
+	"test_cases" : [ {
+		"values" : {
+			"notes" : "release-notes.md",
+			"change" : "The exporter now stops with an error unless each call passes an explicit destination.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -1009267621759882911,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The exporter now stops with an error unless each call passes an explicit destination."
+	}, {
+		"values" : {
+			"notes" : "changes_2.md",
+			"change" : "The importer now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 2850016355770173913,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The importer now rejects calls without an explicit destination; callers must supply one."
+	}, {
+		"values" : {
+			"notes" : "changes_3.md",
+			"change" : "The validator now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 907630457404480570,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The validator now rejects calls without an explicit destination; callers must supply one."
+	}, {
+		"values" : {
+			"notes" : "changes_4.md",
+			"change" : "The uploader now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 6388352556334001821,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The uploader now rejects calls without an explicit destination; callers must supply one."
+	}, {
+		"values" : {
+			"notes" : "changes_5.md",
+			"change" : "The retry policy now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -3586044548690702330,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The retry policy now rejects calls without an explicit destination; callers must supply one."
+	}, {
+		"values" : {
+			"notes" : "changes_6.md",
+			"change" : "The parser now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -6764510413143567428,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The parser now rejects calls without an explicit destination; callers must supply one."
+	}, {
+		"values" : {
+			"notes" : "changes_7.md",
+			"change" : "The logging now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -5446726737313777798,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The logging now rejects calls without an explicit destination; callers must supply one."
+	}, {
+		"values" : {
+			"notes" : "changes_8.md",
+			"change" : "The cache now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -9006710241160081313,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The cache now rejects calls without an explicit destination; callers must supply one."
+	}, {
+		"values" : {
+			"notes" : "changes_9.md",
+			"change" : "The exporter now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 4616533467102560720,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The exporter now rejects calls without an explicit destination; callers must supply one."
+	}, {
+		"values" : {
+			"notes" : "changes_10.md",
+			"change" : "The CLI now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -1320595792510083960,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The CLI now rejects calls without an explicit destination; callers must supply one."
+	}, {
+		"values" : {
+			"notes" : "changes_11.md",
+			"change" : "The configuration loader now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 4922367899122716607,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The configuration loader now rejects calls without an explicit destination; callers must supply one."
+	}, {
+		"values" : {
+			"notes" : "changes_12.md",
+			"change" : "The scheduler now rejects calls without an explicit destination; callers must supply one.",
+			"before" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -3501131664069281274,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.296: The scheduler now rejects calls without an explicit destination; callers must supply one."
+	} ]
 }

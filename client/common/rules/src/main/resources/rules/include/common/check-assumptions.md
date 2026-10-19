@@ -3,22 +3,22 @@
 ## Design Goals
 
 - Ensure every conclusion, recommendation, rule, procedure, and delegated guidance relies only on prerequisites the
-  reader can verify or obtain through an explicit mechanism, including required authority, rule routing, prior-run
-  handoff, or a deferred-action trigger.
+	reader can verify or obtain through an explicit mechanism, including required authority, rule routing, prior-run
+	handoff, or a deferred-action trigger.
 - Ensure a direct operation on a named artifact uses a target established by an authoritative locator, rather than a
-  plausible filename guessed from memory or resemblance.
+	plausible filename guessed from memory or resemblance.
 - Keep evidence gathering within the reader's usable context by requesting the smallest authoritative observation that
-  establishes each premise, while retaining a full artifact outside the reader context only when later deterministic
-  inspection needs it.
+	establishes each premise, while retaining a full artifact outside the reader context only when later deterministic
+	inspection needs it.
 - Ensure a claim that a callable capability is absent is based on the complete authoritative interface for the current
-  environment, not on an abbreviated display or the absence of one local executable.
+	environment, not on an abbreviated display or the absence of one local executable.
 <!-- Agents previously treated an `exec`-sandbox tool catalog as the authoritative delegation interface and converted
      that partial observation into false launch and blocking conclusions. Each consequential decision must instead be
      justified by the governing interface and receipt at the boundary that owns it. -->
 - Keep operation selection, acceptance, recovery, workflow-state changes, and consequential claims within an
-  evidence-gated procedure: identify the required condition and authoritative contract or interface; use the smallest
-  authorized action or observation that can establish it; classify matching evidence while retaining unresolved
-  conditions as unknown; and take only the transition or recovery that the evidence permits.
+	evidence-gated procedure: identify the required condition and authoritative contract or interface; use the smallest
+	authorized action or observation that can establish it; classify matching evidence while retaining unresolved
+	conditions as unknown; and take only the transition or recovery that the evidence permits.
 - Let a user distinguish an established answer from an answer that remains unknown after the available research.
 
 ## Guidance
@@ -33,9 +33,9 @@ it true or executable. Classify each premise as one of these:
 
 1. An observed fact: identify the authoritative evidence that establishes it and when that evidence was checked.
 2. A condition the workflow creates: identify its responsible actor, creation step, storage location, lifetime,
-   verification, and the point at which the reader retrieves it.
+	verification, and the point at which the reader retrieves it.
 3. An external condition: identify the required authority, actor, dependency, or decision and do not imply that it is
-   already available.
+	already available.
 
 Before selecting an operation, accepting a result, retrying, choosing a fallback, changing workflow state, or making a
 consequential claim, identify the required condition and the contract that governs that decision. Check that the

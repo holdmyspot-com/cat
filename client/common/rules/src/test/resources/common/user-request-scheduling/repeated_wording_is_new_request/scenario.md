@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that a new user message whose wording repeats an earlier, already handled request is carried out again rather
-  than treated as a request that was already handled.
+	than treated as a request that was already handled.
 
 ## Variables
 
@@ -25,4 +25,4 @@ Increment the number in `counter.txt` by one.
 
 - **kind**: guard
 - **description**: After turn 2, `counter.txt` holds `{{start}}` plus 2, and the turn 2 reply does not say that the
-  request was already done.
+	request was already done.

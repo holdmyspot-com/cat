@@ -20,10 +20,10 @@ the time. It does not assign a {{confidence}} posterior probability to a specifi
 
 - **kind**: effect
 - **description**: The answer retains the distinction between the procedure's repeated-use error guarantee and the
-  probability of one specific certificate; concision does not turn the former into the latter.
+	probability of one specific certificate; concision does not turn the former into the latter.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`
-  before its first governed action.
+	before its first governed action.

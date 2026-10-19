@@ -9,9 +9,9 @@ depends-on:
 ## Design Goals
 
 - When code declares a variable outside a function body, such as a field, constant, or module-level variable, and its
-  name, type, and initial value do not tell a reader unfamiliar with the project what the value represents, what
-  decides that value, or what the code does with it, the declaration carries an explanation that answers each of those
-  questions; a declaration whose name, type, and value already answer them carries no comment that restates them.
+	name, type, and initial value do not tell a reader unfamiliar with the project what the value represents, what
+	decides that value, or what the code does with it, the declaration carries an explanation that answers each of those
+	questions; a declaration whose name, type, and value already answer them carries no comment that restates them.
 
 ## Guidance
 
@@ -20,12 +20,12 @@ reader who sees only the declaration and has not read the code that uses it. Exp
 following that its name, type, and initial value leave that reader unable to state:
 
 - **What the value represents:** the record, message, file, external system, or domain set its contents come from, with
-  the unit and the scope that a quantity covers.
+	the unit and the scope that a quantity covers.
 - **What decides the value:** the limit, specification, measurement, or selection criterion that sets a scalar value or
-  admits a collection's entries, so a maintainer can tell whether to change the value and whether a new candidate
-  belongs.
+	admits a collection's entries, so a maintainer can tell whether to change the value and whether a new candidate
+	belongs.
 - **What the code does with it:** the decision or behavior it controls, such as whether listed entries are required,
-  allowed, kept, removed, or ignored, when the name does not already say so.
+	allowed, kept, removed, or ignored, when the name does not already say so.
 
 For example, `FIELDS = {"hook_event_name", "turn_id", "transcript_path"}` says neither which input these fields belong
 to nor why exactly these are listed. Its declaration must state that they are the top-level hook-input fields that the

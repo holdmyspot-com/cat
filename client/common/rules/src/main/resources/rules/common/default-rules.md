@@ -6,10 +6,10 @@ agents: ["main", "subagents"]
 ## Design Goals
 
 - Route a design, implementation, or review decision to the foundational Design Quality and Backward Design guidance,
-  and each specialized decision to its focused rule, before the reader makes it, without loading that guidance into
-  sessions that make no such decision.
+	and each specialized decision to its focused rule, before the reader makes it, without loading that guidance into
+	sessions that make no such decision.
 - Route an input-preservation decision from the stated contract before project inspection or candidate selection can
-  commit to a transformation that might discard the needed distinction.
+	commit to a transformation that might discard the needed distinction.
 - Make each required route read complete before the task action it governs, without prescribing how the file is read.
 
 ## Guidance

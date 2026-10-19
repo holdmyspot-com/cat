@@ -5,7 +5,7 @@
 - Centralize repeated constants behind meaningful names and one authoritative definition.
 - Keep maintained resource-layout and protocol identifiers authoritative even before more than one consumer uses them.
 - Keep constants in a readable, semantically meaningful form until an interface requires a different
-  representation.
+	representation.
 
 ## Guidance
 
@@ -30,14 +30,14 @@ or documentation; do not leave it inline merely because a second consumer has no
 to a one-off language- or library-required separator whose value is not part of a maintained contract.
 
 - Extract only values whose repeated use expresses one shared concept and whose responsible component has authority to
-  define it.
+	define it.
 - Name a value for its meaning, not its representation or one caller's use.
 - Keep a value in the smallest module, component, or harness that needs it. Promote it to a shared common layer only
-  when both its value and meaning are harness-neutral.
+	when both its value and meaning are harness-neutral.
 - Keep harness-specific values in their harness-specific layer. Do not place them in common or create a common
-  abstraction that exposes harness details.
+	abstraction that exposes harness details.
 - Do not extract a one-off, language- or protocol-required literal, value clearer at its use site, or coincidentally
-  equal values that may evolve independently.
+	equal values that may evolve independently.
 
 A constant is correct when changing its definition intentionally updates every reference governed by the same
 concept, and changing one reference independently would be a defect.

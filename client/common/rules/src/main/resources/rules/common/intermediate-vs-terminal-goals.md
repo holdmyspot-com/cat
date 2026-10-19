@@ -3,27 +3,27 @@
 ## Design Goals
 
 - Keep workflow execution directed at the user-authorized terminal outcome when new tasks, repairs, or discoveries arise
-  during the work.
+	during the work.
 - Prevent intermediate success or a partial scope from being reported or treated as completion without evidence for the
-  terminal outcome across the complete user-authorized scope, including every required terminal gate.
+	terminal outcome across the complete user-authorized scope, including every required terminal gate.
 - Require every terminal gate to be closed only by evidence that directly establishes its own claim, distinguishing an
-  available prerequisite from an executed behavior and its required effect.
+	available prerequisite from an executed behavior and its required effect.
 - Keep goal status tied to user-authorized constraints and unavailable external prerequisites, rather than to the
-  executor's temporary turn, context, polling, or duration limits.
+	executor's temporary turn, context, polling, or duration limits.
 - Keep a locally creatable prerequisite and its unrun local acceptance gate from being mistaken for an unavailable
-  external prerequisite.
+	external prerequisite.
 <!-- A delegate's local `BLOCKED` label was previously treated as authority to stop the parent goal even when the
      parent could repair the handoff, clarify the plan, or take another in-scope recovery action. -->
 - Keep a recoverable child response from changing an active goal's status merely because its response uses a
-  `BLOCKED` label.
+	`BLOCKED` label.
 <!-- Different tool and handoff failures were previously counted together as one blocker without proving one unavailable
      external prerequisite or exhausting the recovery that its owner could perform. -->
 - Require a blocked-goal transition to identify the unavailable external prerequisite and exhaust supported in-scope
-  recovery before it can stop the terminal workflow.
+	recovery before it can stop the terminal workflow.
 <!-- A malformed wait was incorrectly treated as evidence that a different launch interface was unavailable, allowing a
      local operation-selection error to stop the terminal workflow. -->
 - Ensure a goal-status transition treats availability as unknown until the named external prerequisite's own
-  authoritative interface establishes it, so an unrelated or invalid local operation cannot create a blocker.
+	authoritative interface establishes it, so an unrelated or invalid local operation cannot create a blocker.
 
 ## Guidance
 

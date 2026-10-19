@@ -3,7 +3,7 @@
 ## Variables
 
 - **library**: A Java library, other than JUnit, whose configuration a focused rule covers, such as `Logback` or
-  `Hibernate`
+	`Hibernate`
 
 ## Scenario
 
@@ -22,30 +22,30 @@ the Java index loads.
 
 - **kind**: effect
 - **description**: The {{library}} route belongs in the Java index and names only its additional
-  {{library}}-configuration trigger. It does not ask the reader to decide again whether Java is in use. The default
-  index has no competing {{library}} route.
+	{{library}}-configuration trigger. It does not ask the reader to decide again whether Java is in use. The default
+	index has no competing {{library}} route.
 
 ### nearest_negative
 
 - **kind**: effect
 - **description**: The Java JUnit task loads the Java index but not the {{library}} companion. The JavaScript task does
-  not load the Java index or the {{library}} companion.
+	not load the Java index or the {{library}} companion.
 
 ### analogous_case
 
 - **kind**: effect
 - **description**: The pytest route belongs in the Python index and names its pytest trigger without repeating the
-  Python-index scope.
+	Python-index scope.
 
 ### earlier_route_counterexample
 
 - **kind**: effect
 - **description**: The Java-specific decision that arises before the scoped index loads keeps its required Java context
-  in the earlier route. If the index selection itself cannot establish required context, the proposed fix changes its
-  scope or the route's placement instead of repeating the parent condition inside it.
+	in the earlier route. If the index selection itself cannot establish required context, the proposed fix changes its
+	scope or the route's placement instead of repeating the parent condition inside it.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/rule-organization.md`
-  before its first governed action.
+	before its first governed action.

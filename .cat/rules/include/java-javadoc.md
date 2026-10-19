@@ -4,7 +4,7 @@
 
 - Apply CAT-specific Javadoc checks and companion-type conventions in addition to the portable plugin guidance.
 - Let a reader scan a Javadoc comment's parameters and its exceptions as columns: within each group of `@param` tags and
-  each group of `@throws` tags, every description starts in the same column.
+	each group of `@throws` tags, every description starts in the same column.
 
 ## Guidance
 

@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Keep CAT's Codex-specific model configuration and prompting guidance aligned with newly relevant official Codex model
-  behavior.
+	behavior.
 
 ## Guidance
 

@@ -7,47 +7,47 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 ## Design Goals
 
 - **Complete coverage:** Every obligation in `design.md` has a requirement ID in
-  [the inventory](#3-requirement-inventory) and at least one named test. Each listed owner closes that requirement in
-  its work item, and no work item closes a requirement it does not own. The final gate ([§9](#9-final-gates)) rejects
-  the feature while any requirement lacks passing evidence at its required tier.
+	[the inventory](#3-requirement-inventory) and at least one named test. Each listed owner closes that requirement in
+	its work item, and no work item closes a requirement it does not own. The final gate ([§9](#9-final-gates)) rejects
+	the feature while any requirement lacks passing evidence at its required tier.
 - **Risk first:** Premises that could change a design decision are probed before dependent code is written. Decisions
-  that are hard to change, such as statistics, persistence and adoption order, are built and proven before features
-  that depend on them.
+	that are hard to change, such as statistics, persistence and adoption order, are built and proven before features
+	that depend on them.
 - **Executable acceptance:** Each work item states its deliverables, the requirement IDs it closes, the tests that prove
-  them and an exit check an agent can run.
+	them and an exit check an agent can run.
 - **Concurrent, cheap tests:** Every work item preserves `design.md` [§10](design.md#10-testability-contract). A change
-  that makes a test depend on shared state, real time or replaying earlier work is rejected in review.
+	that makes a test depend on shared state, real time or replaying earlier work is rejected in review.
 
 ## 1. Working rules for implementers
 
 - **Placement:**
-  - Core code goes in `client/common/cli` under `com.holdmyspot.cat.common.optimizer.<package>`, following
-    `design.md` [§9](design.md#9-architecture).
-  - Harness adapters and `main` classes go in `client/claude/cli` (`com.holdmyspot.cat.claude.optimizer`) and
-    `client/codex/cli` (`com.holdmyspot.cat.codex.optimizer`).
-  - Test builders and fakes go in `client/common/cli` test sources, published through that module's test JAR.
+	- Core code goes in `client/common/cli` under `com.holdmyspot.cat.common.optimizer.<package>`, following
+		`design.md` [§9](design.md#9-architecture).
+	- Harness adapters and `main` classes go in `client/claude/cli` (`com.holdmyspot.cat.claude.optimizer`) and
+		`client/codex/cli` (`com.holdmyspot.cat.codex.optimizer`).
+	- Test builders and fakes go in `client/common/cli` test sources, published through that module's test JAR.
 - **Reuse:** `Git` (`common.git`), the runner API (`common.runner`), the project's Jackson 3 `JsonMapper`
-  conventions, `requirements-java` validation and `TemporaryDirectories`. Do not reimplement a runner, a Git client or a
-  JSON codec.
+	conventions, `requirements-java` validation and `TemporaryDirectories`. Do not reimplement a runner, a Git client or a
+	JSON codec.
 - **Rules:** Follow the CAT rules the session routes for Java, Javadoc, testing, error handling and TDD. Subagents
-  receive the same routing. Write a failing test before each behaviour change.
+	receive the same routing. Write a failing test before each behaviour change.
 - **Requirement tags:** Every test method that proves a requirement carries a comment `// Requirement: R-…` naming each
-  requirement ID it proves. The final gate counts these tags, and gate 8 then removes them.
+	requirement ID it proves. The final gate counts these tags, and gate 8 then removes them.
 - **No references to this plan or `design.md`:** both files are deleted once the implementation is complete (user
-  ruling, 2026-10-01). Code, tests, resources and prompts never cite either file, its section numbers or its
-  identifiers (H, D, G, P, T, E, WI, handoff and trace numbers); they state the rule, number or reason itself. The
-  requirement tags are the only exception until gate 8.
+	ruling, 2026-10-01). Code, tests, resources and prompts never cite either file, its section numbers or its
+	identifiers (H, D, G, P, T, E, WI, handoff and trace numbers); they state the rule, number or reason itself. The
+	requirement tags are the only exception until gate 8.
 - **Test tiers:**
-  - **Unit:** every Java test. It runs in the default build under TestNG parallel methods, and includes file-system and
-    real-Git tests that use test-owned temporary directories. `design.md` [§10](design.md#10-testability-contract) T3
-    governs it: no Java test starts a runner, a harness process or a model (user ruling, 2026-10-01).
-  - **End-to-end:** scripted runs of the installed `prompt-optimizer` skill in each harness against fixture prompt
-    systems. These are the only checks that start nested sessions or a model, and they exercise every port operation
-    in each harness. Fixtures consumed by a runner live under the session's CAT_TEMP directory
-    (`.cat/work/temp` until WI-83, then `.cat/work/<session-id>/temp`), not the system temp directory. Each run
-    records a receipt: commands, versions, outcome, and paths to retained evidence.
+	- **Unit:** every Java test. It runs in the default build under TestNG parallel methods, and includes file-system and
+		real-Git tests that use test-owned temporary directories. `design.md` [§10](design.md#10-testability-contract) T3
+		governs it: no Java test starts a runner, a harness process or a model (user ruling, 2026-10-01).
+	- **End-to-end:** scripted runs of the installed `prompt-optimizer` skill in each harness against fixture prompt
+		systems. These are the only checks that start nested sessions or a model, and they exercise every port operation
+		in each harness. Fixtures consumed by a runner live under the session's CAT_TEMP directory
+		(`.cat/work/temp` until WI-83, then `.cat/work/<session-id>/temp`), not the system temp directory. Each run
+		records a receipt: commands, versions, outcome, and paths to retained evidence.
 - **Build check:** `./mvnw verify` from `client/` is the unrestricted build. A work item is not done until it passes,
-  along with the work item's focused tests.
+	along with the work item's focused tests.
 
 ### 1.1 Models and delegation
 
@@ -58,7 +58,7 @@ every decision that needs judgment.
 
 - integrating each delegated result into the shared tree, one at a time;
 - reviewing each result against its work item's exit check, [§8](#8-test-suite-rules) and `design.md`
-  [§10](design.md#10-testability-contract);
+	[§10](design.md#10-testability-contract);
 - every change to `design.md` or this plan, including premise-gate fallbacks;
 - user decisions and the interactive premise gates;
 - the final gates in [§9](#9-final-gates).
@@ -76,12 +76,12 @@ subagent's model and reasoning effort come from its agent definition, not from t
 **Setup, before WI-0:** the orchestrator adds the tier agents beside CAT's other agents, in the same layout:
 
 - one harness-neutral body, `client/common/agents/src/main/resources/agents/common/optimize.md`, stating the
-  task-contract obligations and the decision rule below. CAT's rules reach the subagent through its start hook, so the
-  body does not repeat them. Update the directory's `README.md`, which says every shared body is read-only.
+	task-contract obligations and the decision rule below. CAT's rules reach the subagent through its start hook, so the
+	body does not repeat them. Update the directory's `README.md`, which says every shared body is read-only.
 - Claude wrappers `client/claude/plugin/src/main/resources/agents/claude/optimize-<tier>.md`, with the model and
-  effort above, the tools `Read, Edit, Write, Bash, Grep, Glob` and an include of the shared body.
+	effort above, the tools `Read, Edit, Write, Bash, Grep, Glob` and an include of the shared body.
 - Codex wrappers `client/codex/plugin/src/main/resources/agents/codex/optimize-<tier>.toml`, named
-  `cat-optimize-<tier>`, with the model and effort above, `sandbox_mode = "workspace-write"` and the same include.
+	`cat-optimize-<tier>`, with the model and effort above, `sandbox_mode = "workspace-write"` and the same include.
 
 It then runs `./mvnw verify`, installs the built plugin through its documented lifecycle, and starts a new session to
 execute the plan. The agents ship in the plugin like CAT's reviewer agents. Before the first delegation, it verifies
@@ -179,11 +179,11 @@ A mismatch is fixed in the agent definition before any delegation.
 **When to delegate:**
 
 - Delegate a work item once every predecessor in [§6](#6-dependency-order) is integrated. Each work item can be
-  verified on its own, and its exit check is its acceptance evidence.
+	verified on its own, and its exit check is its acceptance evidence.
 - Run independent work items concurrently, each in its own isolated worktree created from the same integrated snapshot
-  (`isolation: "worktree"` in Claude Code). At the start these are WI-0's probe scripts, WI-1, WI-2, WI-5 and WI-6.
+	(`isolation: "worktree"` in Claude Code). At the start these are WI-0's probe scripts, WI-1, WI-2, WI-5 and WI-6.
 - Run deterministic checks as scripts, not agents: requirement-tag traceability, the reference audit, and link and
-  anchor checks.
+	anchor checks.
 
 **Task contract:** each delegation states:
 
@@ -202,13 +202,13 @@ reports it.
 
 - **Already determined:** the documents fix the observable behaviour. Implement it.
 - **Internal:** an API, type, data layout, helper structure or test arrangement that changes nothing a user, a
-  statistical claim or a documented interface can observe. The subagent decides. It picks the simplest design that
-  meets every requirement already in `design.md` without later rework, adds no extension point or configuration for a
-  variation no requirement names, and reports the choice and its reason with its result.
+	statistical claim or a documented interface can observe. The subagent decides. It picks the simplest design that
+	meets every requirement already in `design.md` without later rework, adds no extension point or configuration for a
+	variation no requirement names, and reports the choice and its reason with its result.
 - **External:** the choice changes what the user sees, a statistical claim or its error budget, a documented interface,
-  persisted data, or delivery to the base worktree. The subagent stops and reports it with the alternatives it found.
-  The orchestrator decides when the documents' goals and decision records settle it, asks the user when they don't,
-  and records a lasting choice in `design.md` §13.
+	persisted data, or delivery to the base worktree. The subagent stops and reports it with the alternatives it found.
+	The orchestrator decides when the documents' goals and decision records settle it, asks the user when they don't,
+	and records a lasting choice in `design.md` §13.
 
 Judge an option's long-term cost over the lifetime of the requirements that already exist, including their
 maintenance, not over speculative ones. Reject an option whose cost buys protection against no failure that a
@@ -217,11 +217,11 @@ requirement names.
 **Acceptance and escalation:**
 
 - The orchestrator rejects changes outside the allowlist, integrates the result, reruns the exit check on the integrated
-  tree and reviews it.
+	tree and reviews it.
 - A reported design gap returns to the orchestrator. It fixes `design.md` first, then this plan, then relaunches the
-  work item.
+	work item.
 - After two failed attempts at the same exit check, the work item moves up one tier (low, medium, high, xhigh). After
-  two failures at `optimize-xhigh`, the orchestrator takes it over.
+	two failures at `optimize-xhigh`, the orchestrator takes it over.
 
 ## 2. Status
 
@@ -382,180 +382,180 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §1.2, §2.1, §3.1, §3.9, §5, §6.1, §6.4, new §6.6, §9, §12 (P12, P13), §13 (D11, D15, D22–D26) and §14 (G1, G2, G5, G7): trial profiles and cells as the statistical unit; deterministic checks with controls beside semantic judgment under a frozen role profile; a core-task requirement in every test; prompt author failure classification and a per-hunk citation manifest; a minimality pass; candidate-versus-incumbent prompt size and input tokens (user rulings, 2026-10-01). Plan: R-C5 rewritten; R-C8–R-C11, R-D10, R-D11, R-E17, R-E18 and R-I5 added; WI-16–WI-18 added with §1.1 assignments, §6 dependencies and `DriverTest` traces 15–18; WI-15's trial-based scenarios now wait for WI-16–WI-18.
 - `design.md` §3.3 rule 2, §6.6 and D27: development cell tiering; plan R-E3 reworded, R-E19 and WI-19 added with §1.1, §6 and trace 19 (user ruling, 2026-10-01). `design.md` P14 and plan §4: the effort probe tests a pre-stated null hypothesis with the 2×4 exact test, and a non-rejection does not justify dropping efforts.
 - `design.md` §1, §2.1, §2.7, §2.8, §6.4 and §6.5: the outcome table lists `not certified` and says which outcomes close
-  the campaign and what follows each open one; "material category", "material requirement" and "material obligation"
-  became the categories, requirements and obligations of the confirmed contract; a weak round makes 3 attempts for each
-  failing category, as R-D6 counts attempts; `accept without certification` is offered at a stop, a plateau or
-  unavailable certification when the working candidate is not the incumbent. Plan R-D12 says "for that category". All
-  four follow the implementation (found in the convention pass).
+	the campaign and what follows each open one; "material category", "material requirement" and "material obligation"
+	became the categories, requirements and obligations of the confirmed contract; a weak round makes 3 attempts for each
+	failing category, as R-D6 counts attempts; `accept without certification` is offered at a stop, a plateau or
+	unavailable certification when the working candidate is not the incumbent. Plan R-D12 says "for that category". All
+	four follow the implementation (found in the convention pass).
 - `design.md` §1.2, §3.1, §6.4, D29 and H31: a turn's reply is every assistant message of the turn; R-C12 and WI-22 added with §1.1, §2, §6 (user ruling, 2026-10-02, after the first Codex E1 campaign).
 - `design.md` §2.7, D29 and D30: prompt authors prefer prompt files other than `AGENTS.md` and `CLAUDE.md`, and treat a
-  failure in an interim message as a prompt defect, since its wording can be shaped even if it cannot be suppressed;
-  R-D10 cites D30 (user ruling, 2026-10-02).
+	failure in an interim message as a prompt defect, since its wording can be shaped even if it cannot be suppressed;
+	R-D10 cites D30 (user ruling, 2026-10-02).
 - `design.md` §8: a scenario for guidance packaged as a module resource lives in the module's `src/test/resources/`;
-  R-I3 and WI-23 added with §1.1, §2, §6 (user ruling, 2026-10-02).
+	R-I3 and WI-23 added with §1.1, §2, §6 (user ruling, 2026-10-02).
 - `design.md` §8 states R-I5's obligation (locating CAT's files without undefined shell variables), which R-I5 already
-  cited; §9 lists the `CandidateOverlays` port. Plan §7 declares H-13 (needed edits → authority warning) and H-14
-  (candidate overlay), traced from the driver (found in the convention pass).
+	cited; §9 lists the `CandidateOverlays` port. Plan §7 declares H-13 (needed edits → authority warning) and H-14
+	(candidate overlay), traced from the driver (found in the convention pass).
 - `design.md` §2.7, §9, §14 G1 and D28: 3 concurrent prompt author attempts while the working candidate is weak, best accepted attempt promoted; plan R-D12, WI-20 with §1.1, §6 and trace 20 (user ruling, 2026-10-01).
 - `design.md` §3.3 rule 2, §6.6 and §12 P15: each model's lowest-effort active cell is sampled first in development; P15 asks whether developing only in the weakest model's lowest-effort cell suffices for stronger models and higher efforts, tested after a real prompt file is optimized; plan R-E19 and WI-19 updated, §4 P15 probe and §2 row added (user ruling, 2026-10-01).
 - `design.md` §11 H28 and §12 P14 result: a rule without a conflict on `gpt-6-luna` also varies with effort (user request, 2026-10-01).
 - `design.md` §11 H27 and §12 P14 result: the intermediate-pass-rate rerun shows reasoning effort changes compliance (user request, 2026-10-01).
 - `design.md` §12: added P14 (does reasoning effort change compliance?); plan §4 adds its probe and §2 its row (user request, 2026-10-01).
 - §1 and §9 gate 8: the codebase never cites `design.md` or this plan, which are deleted after implementation; the
-  requirement tags stay until the traceability gate passes, then a last commit removes them (user ruling, 2026-10-01).
+	requirement tags stay until the traceability gate passes, then a last commit removes them (user ruling, 2026-10-01).
 - §2: added the plugin-root follow-up (R-I5). Codex tool shells define no `CODEX_HOME`, so the `skill-env.md` derivation always failed (found in WI-15).
 - `design.md` §3.8: the Claude runner interrupts with a stream-json `control_request` (H29). §11: added H29.
 - `design.md` §6.1, §8, D13 and G10; plan R-I3, §1.1, WI-21 and §6: a guidance correction records its regression scenarios under `.cat/tests/`, they are recorded, not tested, until a covering campaign, and CAT refuses a proposal that omits one. Nothing ran the old rule suites once the prompt-evaluation runner was retired (user rulings, 2026-10-02).
 
 - `design.md` §2.7, §14 G1, D30, D33 and D34: an attempt that fixes at least one triggering test case without a
-  regression is promoted, a reduction keeps every fix, the attempts of a round follow distinct approaches, and prompt
-  authors correct an instruction in the file that states it; R-D3, R-D11 and R-D12 reworded, R-D14 and WI-26 added with
-  §1.1, §2 and §6 (user ruling, 2026-10-02, after the E1 `gpt-6-luna`/low plateau).
+	regression is promoted, a reduction keeps every fix, the attempts of a round follow distinct approaches, and prompt
+	authors correct an instruction in the file that states it; R-D3, R-D11 and R-D12 reworded, R-D14 and WI-26 added with
+	§1.1, §2 and §6 (user ruling, 2026-10-02, after the E1 `gpt-6-luna`/low plateau).
 - `design.md` §2.7, §14 G1 and D35: a test case counts as fixed only when the attempt's streak there is unlikely for
-  the working candidate, with up to 4 runs, and a promoted candidate that falls clearly below its predecessor is
-  reverted; R-D3 reworded, R-D15 added to WI-26 (user ruling, 2026-10-02).
+	the working candidate, with up to 4 runs, and a promoted candidate that falls clearly below its predecessor is
+	reverted; R-D3 reworded, R-D15 added to WI-26 (user ruling, 2026-10-02).
 - `design.md` §3.1, §11 H33 and D37: the contract author, judge and prompt author run without CAT's plugin and receive
-  their role's rules in the brief; R-E20 and WI-27 added with §1.1, §2 and §6 (user ruling, 2026-10-02).
+	their role's rules in the brief; R-E20 and WI-27 added with §1.1, §2 and §6 (user ruling, 2026-10-02).
 - `design.md` §3.1, §6.4, §11 H32 and D36: the judge receives a rendered evidence section instead of the trial's log;
-  R-E21 and WI-28 added with §1.1, §2 and §6 (user ruling, 2026-10-02).
+	R-E21 and WI-28 added with §1.1, §2 and §6 (user ruling, 2026-10-02).
 - `design.md` §6.6: the Codex inventory leaves out the `ultra` effort (`max` reasoning plus automatic task
-  delegation), so each model's highest effort is the one below it; the cell counts dropped from 44 to 39.
-  `CodexProfileInventory` skips `ultra`, proved by `CodexProfileInventoryTest` (user ruling, 2026-10-03).
+	delegation), so each model's highest effort is the one below it; the cell counts dropped from 44 to 39.
+	`CodexProfileInventory` skips `ultra`, proved by `CodexProfileInventoryTest` (user ruling, 2026-10-03).
 - `design.md` §1, §1.2, §2.1, §2.5, §2.6, §2.7, §2.8, §3.3 rule 2, §3.9, §6.1, §6.3, §6.6, §8, §12 P15, §13 (D27,
-  D42, D43) and §14 (G2, G3, G4, G8): development, the commit gate and prompt author rounds run only in each category's
-  development cells (its weakest cell, plus any cell where certification failed); the weakest cell is the lowest effort
-  of the least capable model in the scope by the vendors' published capability ranking, found with no trial; the user
-  chooses the certification scope at confirmation from three choices (weakest cell only, every cell of each model
-  family's latest version, or a scope the user describes), with no default; every prompt test varies and its test cases
-  are split into a development part and a held-out part, and only held-out test cases certify or measure the baseline.
-  Plan R-E3, R-E19, R-D1, R-D3, R-D7, R-D9, R-C1, R-C4, R-C11 and R-P4 reworded; R-C15, R-C16 and R-E22 added with
-  WI-32, WI-33, §1.1, §2, §6 and traces 19 and 21; WI-19's tiering is replaced (user rulings, 2026-10-04).
+	D42, D43) and §14 (G2, G3, G4, G8): development, the commit gate and prompt author rounds run only in each category's
+	development cells (its weakest cell, plus any cell where certification failed); the weakest cell is the lowest effort
+	of the least capable model in the scope by the vendors' published capability ranking, found with no trial; the user
+	chooses the certification scope at confirmation from three choices (weakest cell only, every cell of each model
+	family's latest version, or a scope the user describes), with no default; every prompt test varies and its test cases
+	are split into a development part and a held-out part, and only held-out test cases certify or measure the baseline.
+	Plan R-E3, R-E19, R-D1, R-D3, R-D7, R-D9, R-C1, R-C4, R-C11 and R-P4 reworded; R-C15, R-C16 and R-E22 added with
+	WI-32, WI-33, §1.1, §2, §6 and traces 19 and 21; WI-19's tiering is replaced (user rulings, 2026-10-04).
 - `design.md` §1.2, §6.1, §6.3 and §13 (D43): each prompt test marks the key dimensions that carry its content,
-  and test cases split into parts by their key values, so a held-out test case never repeats a development test case's
-  content in a new combination (user ruling, 2026-10-04). Plan R-C16 and WI-33 reworded.
+	and test cases split into parts by their key values, so a held-out test case never repeats a development test case's
+	content in a new combination (user ruling, 2026-10-04). Plan R-C16 and WI-33 reworded.
 - `design.md` §2.8, §3.1, §6.3, §13 (D44) and §14 G4: after an attempt ends with formal failures, a contract author
-  session that sees only development values adds at least 4 development-only key-value combinations per failed test
-  aimed at its failed requirements; they take half of that test's development draws and development counts restart.
-  R-C17 and WI-34 added with §1.1, §2 and §6 (user ruling, 2026-10-04).
+	session that sees only development values adds at least 4 development-only key-value combinations per failed test
+	aimed at its failed requirements; they take half of that test's development draws and development counts restart.
+	R-C17 and WI-34 added with §1.1, §2 and §6 (user ruling, 2026-10-04).
 - `design.md` §3.3 rule 4, §13 (D45) and §14 G8: formal trials open a category's cells in order, development cells
-  first, then each scope cell once every cell below it is certified. R-E23 and WI-35 added with §1.1, §2 and §6; the
-  P15 protocol certifies its cells in the same order (user ruling, 2026-10-04, after two P15 certifications each spent about
-  500 runs in stronger cells before failing in the weakest).
+	first, then each scope cell once every cell below it is certified. R-E23 and WI-35 added with §1.1, §2 and §6; the
+	P15 protocol certifies its cells in the same order (user ruling, 2026-10-04, after two P15 certifications each spent about
+	500 runs in stronger cells before failing in the weakest).
 - `design.md` §6.3 "Held-out content on disk", §13 (D46) and §14 G4: every nested session except the judge runs with
-  its harness sandbox denying reads of the snapshot, the proposal, the trial records and the report. R-E24 and WI-36
-  added with §1.1, §2 and §6, replacing the §2 row "Held-out values on disk".
+	its harness sandbox denying reads of the snapshot, the proposal, the trial records and the report. R-E24 and WI-36
+	added with §1.1, §2 and §6, replacing the §2 row "Held-out values on disk".
 - `design.md` §4.1, §6.3 and D46 revised after WI-36's probes: held-out content lives in a held-out directory and a
-  held-out run root, denied as whole directories to every session whose output reaches development; formal and
-  baseline trials and judges are exempt; a host with the sandbox off is refused. WI-37 added with §1.1, §2 and §6.
+	held-out run root, denied as whole directories to every session whose output reaches development; formal and
+	baseline trials and judges are exempt; a host with the sandbox off is refused. WI-37 added with §1.1, §2 and §6.
 - `design.md` §6.1, §6.3 ("Failure behavior", "Reproduction before tuning"), §2.8, §3.1, D47 and G4: formal failures
-  reach development with their behavior and are reproduced in development, by rounds of replaceable values with
-  stress settings, before any prompt author works on them; CAT pauses after 4 rounds without reproduction. R-C18, R-C19
-  and WI-38 added with §1.1, §2 and §6 (user ruling, 2026-10-04).
+	reach development with their behavior and are reproduced in development, by rounds of replaceable values with
+	stress settings, before any prompt author works on them; CAT pauses after 4 rounds without reproduction. R-C18, R-C19
+	and WI-38 added with §1.1, §2 and §6 (user ruling, 2026-10-04).
 - §4 P15 and the complete-file-reads bar: P15 certifies by the optimizer's rule (`design.md` §2.3, §2.4), not 59/59
-  per task with a stop at the first blocking failure, and numbers its attempts under that rule from 1; p15-60's stopped
-  attempt continues as attempt 1 (user rulings, 2026-10-04).
+	per task with a stop at the first blocking failure, and numbers its attempts under that rule from 1; p15-60's stopped
+	attempt continues as attempt 1 (user rulings, 2026-10-04).
 - WI-37 integrated; its planned `codex sandbox` test became manual evidence, because §8 forbids a test that starts a
-  harness process; Claude validation adds `allowRead` and `bypassPermissions` checks. WI-39 added: reconciliation
-  searched `<campaign>/runs` for leftover runs instead of the run roots.
+	harness process; Claude validation adds `allowRead` and `bypassPermissions` checks. WI-39 added: reconciliation
+	searched `<campaign>/runs` for leftover runs instead of the run roots.
 - WI-40 added: WI-37's validation found that a Claude `sandbox.filesystem.allowRead` in managed, project or host user
-  settings re-allows held-out reads.
+	settings re-allows held-out reads.
 - `design.md` §5, D48 and G5: a change to a command that an unchanged prompt tells the model to run keeps a
-  certification current; a certification is repeated only when the model's behavior must change or the model changes
-  (user ruling, 2026-10-04). No code follows from it: no production path fills `MeasurementCondition.HOST_TOOLS`, so a
-  changed command never makes a result historical. The complete-file-reads delivery fixes `read-file` under it.
+	certification current; a certification is repeated only when the model's behavior must change or the model changes
+	(user ruling, 2026-10-04). No code follows from it: no production path fills `MeasurementCondition.HOST_TOOLS`, so a
+	changed command never makes a result historical. The complete-file-reads delivery fixes `read-file` under it.
 - `design.md` §5, D21 and G5 generalized (user ruling, 2026-10-04): a certification is repeated only when the model's
-  behavior or the desired behavior has changed. The runner and CAT versions are recorded for information; a declared
-  session environment version is material in their place. WI-41 added with §1.1, §2 and §6.
+	behavior or the desired behavior has changed. The runner and CAT versions are recorded for information; a declared
+	session environment version is material in their place. WI-41 added with §1.1, §2 and §6.
 - `design.md` §5, D49 and G5: certification parameters define the desired behavior; a certification stays current
-  after they change only while its claim implies the new one (95% implies 94%, not 96%) (user ruling, 2026-10-04).
-  Added to WI-41.
+	after they change only while its claim implies the new one (95% implies 94%, not 96%) (user ruling, 2026-10-04).
+	Added to WI-41.
 - `design.md` §5, §6.4, D50 and G5: a judge version that CAT declares per harness, and increments whenever a property
-  that can change a verdict changes, identifies the judge; a new judge version makes a certification historical (user
-  ruling, 2026-10-04). WI-42 added with §1.1, §2 and §6.
+	that can change a verdict changes, identifies the judge; a new judge version makes a certification historical (user
+	ruling, 2026-10-04). WI-42 added with §1.1, §2 and §6.
 - `design.md` §4.1, §4.7, §5, D51, G1 and G5: a certified campaign removes its files from `.cat/work/` once its
-  candidate is delivered or the user keeps the incumbent, and delivery writes a certification record of a few kilobytes
-  into the project, from which `status` reports applicability (user rulings, 2026-10-04). WI-43 added with §1.1, §2 and
-  §6.
+	candidate is delivered or the user keeps the incumbent, and delivery writes a certification record of a few kilobytes
+	into the project, from which `status` reports applicability (user rulings, 2026-10-04). WI-43 added with §1.1, §2 and
+	§6.
 - `design.md` §6.3: reproduction trials are targeted and stay out of representative development counts, as WI-38
-  implemented. WI-44 added for the reports' gap that WI-38 found.
+	implemented. WI-44 added for the reports' gap that WI-38 found.
 - `design.md` §5: a target's `status` reports its certification record whenever it has no resumable campaign, and from
-  the other harness the harness-specific conditions are unchecked rather than changed, as WI-43 implemented. R-M6
-  updated.
+	the other harness the harness-specific conditions are unchecked rather than changed, as WI-43 implemented. R-M6
+	updated.
 - `design.md` §4.3, §4.7, D52 and G2: every external file is a read-only member of the prompt family; no choice makes
-  one editable and delivery writes no file outside the project (user ruling, 2026-10-05). WI-45 added with §1.1, §2
-  and §6; E7, WI-6, WI-11 and H-13 updated.
+	one editable and delivery writes no file outside the project (user ruling, 2026-10-05). WI-45 added with §1.1, §2
+	and §6; E7, WI-6, WI-11 and H-13 updated.
 - `design.md` §2.7, the outcome table and D53: a complete round without a promotable attempt keeps the working
-  candidate and resumes its representative trials; `not certified: plateau` requires that candidate to have more than
-  2 failures in a category (user ruling, 2026-10-05). WI-46 added with §1.1, §2 and §6.
+	candidate and resumes its representative trials; `not certified: plateau` requires that candidate to have more than
+	2 failures in a category (user ruling, 2026-10-05). WI-46 added with §1.1, §2 and §6.
 - `design.md` §2.7 "Approaches" and D59: six approaches learned from hand tuning P15's rule join the list, and each
-  round continues a category's approaches where its previous round stopped (user ruling, 2026-10-07). R-D14 reworded;
-  WI-59 added with §1.1, §2 and §6.
+	round continues a category's approaches where its previous round stopped (user ruling, 2026-10-07). R-D14 reworded;
+	WI-59 added with §1.1, §2 and §6.
 - `design.md` §1.2, §2.7, §6.1, §6.3 and D43: "test definition" and "test template" became **prompt test**, and
-  "instance" became **test case**, in the design, this plan and the code. A test case is a prompt test with one value
-  for each variable, so a repeated draw is another trial of that test case, and a further failure of a test
-  case awaiting its diagnostic reruns reproduces the defect (user ruling, 2026-10-09). R-D2 and R-C4 reworded. The
-  campaign format becomes 27 and the proposal format 9, because the frozen judge prompt's placeholder is now
-  `{{test_case}}`; R-C5 gains the test that refuses an older proposal. The judge prompt's wording changed with it, so
-  the judge version becomes 2 in both harnesses (D50).
+	"instance" became **test case**, in the design, this plan and the code. A test case is a prompt test with one value
+	for each variable, so a repeated draw is another trial of that test case, and a further failure of a test
+	case awaiting its diagnostic reruns reproduces the defect (user ruling, 2026-10-09). R-D2 and R-C4 reworded. The
+	campaign format becomes 27 and the proposal format 9, because the frozen judge prompt's placeholder is now
+	`{{test_case}}`; R-C5 gains the test that refuses an older proposal. The judge prompt's wording changed with it, so
+	the judge version becomes 2 in both harnesses (D50).
 - `design.md` §1.2, §6.1, §6.3, D43 and D44: each variable of a prompt test states whether it is
-  **outcome-changing**, meaning that two of its values need different expected outcomes, and the split uses the
-  outcome-changing values. This replaces each prompt test's list of key dimensions and removes the 2026-10-04 default
-  that treated every variable as key when none was listed; a prompt test that marks none is refused (user ruling,
-  2026-10-09). R-C16 and R-C17 reworded, with WI-33 and WI-34. The proposal format becomes 10 and the campaign format
-  28. The contract author, prompt author and failure-values prompts changed their wording with it.
+	**outcome-changing**, meaning that two of its values need different expected outcomes, and the split uses the
+	outcome-changing values. This replaces each prompt test's list of key dimensions and removes the 2026-10-04 default
+	that treated every variable as key when none was listed; a prompt test that marks none is refused (user ruling,
+	2026-10-09). R-C16 and R-C17 reworded, with WI-33 and WI-34. The proposal format becomes 10 and the campaign format
+	28. The contract author, prompt author and failure-values prompts changed their wording with it.
 
 - `design.md` §1–§6, §8–§10, §14 and D60–D66: prompt tests are directories holding `scenario.md` (variables, turns
-  and assertions) and `fixtures/`; test cases carry values and an expected outcome, with filler from generators built
-  into CAT; the split hashes the normalized expected outcome; each cell is one prompt test under one profile, certified
-  at a per-campaign minimum pass rate `p_min` and against control trials per assertion; built-in `tool:` checks and an
-  added expected-outcome assertion replace deterministic checks with controls and the core-task requirement; a guard
-  pilot runs before confirmation; delivery writes the values file (user rulings, 2026-10-10). D23, D24, D43 and D44
-  are revised or superseded. WI-60 to WI-69 added with §1.1, §2 and §6; R-S10, R-S11, R-F7, R-C20 to R-C23, R-W10 and
-  R-W11 added; R-S2, R-S3, R-S6, R-D1, R-D5, R-D7, R-C1 to R-C5, R-C8 to R-C12, R-C16 to R-C18, R-E21 and R-I3
-  reworded. The commit gate's 99% and 98% became `(1 − p_min)/5` and `2·(1 − p_min)/5`, generalizing the 99% ruling.
+	and assertions) and `fixtures/`; test cases carry values and an expected outcome, with filler from generators built
+	into CAT; the split hashes the normalized expected outcome; each cell is one prompt test under one profile, certified
+	at a per-campaign minimum pass rate `p_min` and against control trials per assertion; built-in `tool:` checks and an
+	added expected-outcome assertion replace deterministic checks with controls and the core-task requirement; a guard
+	pilot runs before confirmation; delivery writes the values file (user rulings, 2026-10-10). D23, D24, D43 and D44
+	are revised or superseded. WI-60 to WI-69 added with §1.1, §2 and §6; R-S10, R-S11, R-F7, R-C20 to R-C23, R-W10 and
+	R-W11 added; R-S2, R-S3, R-S6, R-D1, R-D5, R-D7, R-C1 to R-C5, R-C8 to R-C12, R-C16 to R-C18, R-E21 and R-I3
+	reworded. The commit gate's 99% and 98% became `(1 − p_min)/5` and `2·(1 − p_min)/5`, generalizing the 99% ruling.
 - `design.md` §4.2: CAT records a proposal's prompt tests, trial fixtures and derived prompt sources into the fork
-  when it presents the proposal rather than at confirmation, so the guard pilot reads the files that trials will read.
-  Before confirmation a later proposal leaves out files that only earlier proposals needed, keeping their copies;
-  after confirmation the fork only grows, and confirming a revision that needs more files moves the campaign onto the
-  larger fork (user ruling, 2026-10-10, replacing an earlier ruling that day that froze the fork at confirmation).
+	when it presents the proposal rather than at confirmation, so the guard pilot reads the files that trials will read.
+	Before confirmation a later proposal leaves out files that only earlier proposals needed, keeping their copies;
+	after confirmation the fork only grows, and confirming a revision that needs more files moves the campaign onto the
+	larger fork (user ruling, 2026-10-10, replacing an earlier ruling that day that froze the fork at confirmation).
 - `design.md` §2.1, §2.3, §2.4, §2.5, §2.7, §3.3, §6.6 and §13 (D35, D65, D73 revised; D74 to D76 added): at
-  `p_min ≥ 0.95` the minimum pass rate implies the control and incumbent comparisons, so no paired trial runs; a
-  promoted candidate is reverted only when its interval and its predecessor's do not overlap; the readiness gate is
-  now the commit gate (user rulings, 2026-10-14). The §6.6 cost's "at least 93 pairs" was wrong: a guard that
-  both trials of every pair pass needs 105. WI-78 to WI-80 and R-F9 added; R-D1, R-D15, R-F7, R-F8 and R-S11 reworded.
+	`p_min ≥ 0.95` the minimum pass rate implies the control and incumbent comparisons, so no paired trial runs; a
+	promoted candidate is reverted only when its interval and its predecessor's do not overlap; the readiness gate is
+	now the commit gate (user rulings, 2026-10-14). The §6.6 cost's "at least 93 pairs" was wrong: a guard that
+	both trials of every pair pass needs 105. WI-78 to WI-80 and R-F9 added; R-D1, R-D15, R-F7, R-F8 and R-S11 reworded.
 - `design.md` §1.2, §3.1, §4.1, §4.4, §5, §6.1, §6.3, §8, G7, D77 and D78: the contract author writes prompt tests as
-  files in a draft directory that CAT seeds with the recorded ones, and the proposal keeps only what belongs to the
-  contract; CAT derives the files that load, the hook registrations and the mappings before the session and gives the
-  author `contract check` and `contract fixtures`; scenarios gain `## Expected Behavior`; the plugins that trials
-  install come from a committed `prompt.json` in the target's test directory, and `start` builds each plugin the
-  project builds on the fork commit (user rulings, 2026-10-15). WI-81 and WI-82 added with §1.1, §2, §6 and H-15, H-16;
-  R-C26 and R-C27 added; R-W12, R-E20, R-W10 and R-C20 reworded; WI-71 needs both.
+	files in a draft directory that CAT seeds with the recorded ones, and the proposal keeps only what belongs to the
+	contract; CAT derives the files that load, the hook registrations and the mappings before the session and gives the
+	author `contract check` and `contract fixtures`; scenarios gain `## Expected Behavior`; the plugins that trials
+	install come from a committed `prompt.json` in the target's test directory, and `start` builds each plugin the
+	project builds on the fork commit (user rulings, 2026-10-15). WI-81 and WI-82 added with §1.1, §2, §6 and H-15, H-16;
+	R-C26 and R-C27 added; R-W12, R-E20, R-W10 and R-C20 reworded; WI-71 needs both.
 - `design.md` glossary, §4.1, §4.7, §5, §7, D17, D51 and D79: each host session has a work directory,
-  `.cat/work/<session-id>/`, that one component creates with a marker and that a later session start removes once
-  the harness no longer has the session's transcript; a campaign lives in the work directory of the session that
-  starts it, and only that session runs it; certified deliveries append their records to `certifications.json` beside
-  `prompt.json` (user request and rulings, 2026-10-16). WI-83, WI-84 and WI-85 added with §1, §1.1, §2, §6 and H-17;
-  R-W13 added; R-W1, R-L1 and R-M6 reworded. WI-71 needs all three: the session rules that its trials load state
-  `CAT_TEMP`, its campaign must start in the new storage, and its delivery writes the new history.
+	`.cat/work/<session-id>/`, that one component creates with a marker and that a later session start removes once
+	the harness no longer has the session's transcript; a campaign lives in the work directory of the session that
+	starts it, and only that session runs it; certified deliveries append their records to `certifications.json` beside
+	`prompt.json` (user request and rulings, 2026-10-16). WI-83, WI-84 and WI-85 added with §1, §1.1, §2, §6 and H-17;
+	R-W13 added; R-W1, R-L1 and R-M6 reworded. WI-71 needs all three: the session rules that its trials load state
+	`CAT_TEMP`, its campaign must start in the new storage, and its delivery writes the new history.
 - WI-86: the proposal names a trial plugin's files by plugin, leaves the generated `values.json` out of an edited test's
-  difference, describes generated values without a seed or version, and groups certification scope cells by prompt
-  test and profile (user request, 2026-10-17). WI-71's revised proposal needs it.
+	difference, describes generated values without a seed or version, and groups certification scope cells by prompt
+	test and profile (user request, 2026-10-17). WI-71's revised proposal needs it.
 - WI-87: the session work directory becomes the CAT session directory, `.cat/sessions/<session-id>/`, in every path,
-  identifier and text of the repository (user request, 2026-10-17).
+	identifier and text of the repository (user request, 2026-10-17).
 - WI-88: a passing trial's two project copies are deleted once its verdict is recorded, and failed trials keep
-  theirs (user ruling, 2026-10-17). R-W14 added; D51 reworded.
+	theirs (user ruling, 2026-10-17). R-W14 added; D51 reworded.
 - WI-89: a trial's workspace holds the prompt system and its prompt test's `workspace/` directory, whose symbolic
-  links that lead outside it reach the trial as copies of their targets and whose other links stay links, instead of
-  the whole fork with `fixtures/` and glob `patterns` (user rulings, 2026-10-17). §4.4 and §6.3 reworded; D82 and
-  R-W15 added; D67 partly superseded. A prompt test's fixtures are renamed its workspace files, and the trial
-  fixtures the ignored files, without compatibility; the glossary's Fixture entry becomes Workspace file. The
-  contract's ignored files are then retired without compatibility, because a trial receives a file outside the prompt
-  system only through a link in `workspace/` (user ruling, 2026-10-18); D83 added.
+	links that lead outside it reach the trial as copies of their targets and whose other links stay links, instead of
+	the whole fork with `fixtures/` and glob `patterns` (user rulings, 2026-10-17). §4.4 and §6.3 reworded; D82 and
+	R-W15 added; D67 partly superseded. A prompt test's fixtures are renamed its workspace files, and the trial
+	fixtures the ignored files, without compatibility; the glossary's Fixture entry becomes Workspace file. The
+	contract's ignored files are then retired without compatibility, because a trial receives a file outside the prompt
+	system only through a link in `workspace/` (user ruling, 2026-10-18); D83 added.
 - WI-83: the Codex PostToolUse hook deletes a `run-part` output once its last part arrives uncut and no cut part
-  awaits a re-read, and only a file that `run-part` saved (user request, 2026-10-16).
+	awaits a re-read, and only a file that `run-part` saved (user request, 2026-10-16).
 - WI-70's delivery step: the session rules reach Codex through a rules file that the agent reads with `run-part`,
-  and `client/bin/read-file` is already retired (`0615af40f`). WI-71: the general-knowledge prompt test is removed
-  (`a61c0120c`).
+	and `client/bin/read-file` is already retired (`0615af40f`). WI-71: the general-knowledge prompt test is removed
+	(`a61c0120c`).
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -757,8 +757,8 @@ Results (2026-10-01; facts in `design.md` §11 H11–H23, results in `design.md`
 - P1, P2, P3, P4, P5, P10: passed. P10 reached no limit in 662 seconds, so the over-limit behaviour is unobserved.
 - P6: passed on the documented credential fields; only Claude subscription and Codex API-key logins were available.
 - P7: partly passed. Completion and parallelism are observable once the runner fixes in WI-8 land; no Claude grandchild
-  was observed. Fallback applied: Codex trials cannot create child worktrees (H18), recorded as a limit in
-  `design.md` §3.2.
+	was observed. Fallback applied: Codex trials cannot create child worktrees (H18), recorded as a limit in
+	`design.md` §3.2.
 - P8: passed for Claude; failed for Codex. Fallback applied: reconciliation terminates recorded processes (WI-9).
 - P9: failed for instruction files. Fallback applied: documented derivation (WI-10).
 - P11: passed with the extraction rule; Claude fenced every judge response, Codex returned bare JSON.
@@ -776,332 +776,332 @@ the unrestricted build and a review against the testability contract.
 The riskiest pure code, built first.
 
 - **`BettingProcess`:** an immutable value for one side (`ABOVE` or `BELOW`) with its bets and weights. It provides
-  exact `exceeds(S, F, threshold)` using `BigInteger` rationals, with a log-domain shortcut whose safety margin is
-  proven in its Javadoc, and `logValue(S, F)` for display.
+	exact `exceeds(S, F, threshold)` using `BigInteger` rationals, with a log-domain shortcut whose safety margin is
+	proven in its Javadoc, and `logValue(S, F)` for display.
 - **`DecisionBoundaries`:** precomputes, for each `F` up to the cap, the minimum certifying `S` and the maximum
-  clearly-below `S` at `α_i`, and for each category the minimum proven-better `S` and the maximum proven-worse `S` at
-  `K/β_i` against that category's frozen `UI(k)` and `LI(k)`. It is computed once per attempt at commit and persisted
-  with the attempt, so later decisions are lookups.
+	clearly-below `S` at `α_i`, and for each category the minimum proven-better `S` and the maximum proven-worse `S` at
+	`K/β_i` against that category's frozen `UI(k)` and `LI(k)`. It is computed once per attempt at commit and persisted
+	with the attempt, so later decisions are lookups.
 - **`CapCalibration`:** the absorbing-state calculation over `(S, F)`. Certification caps use a 99% planning rate and
-  90% power. It is pure, and its result is persisted.
+	90% power. It is pure, and its result is persisted.
 - **Other contents:** `ErrorBudget`, `ConfidenceBounds` (inversion by bisection), `ExploratoryBounds` (Wilson,
-  Clopper–Pearson) and `Comparison` (difference bounds).
+	Clopper–Pearson) and `Comparison` (difference bounds).
 - **Build:** configure `client/common/cli` to publish its test JAR, which later work items' test builders and fakes
-  use.
+	use.
 - **Closes:** R-S1–R-S8, R-T1 and R-T2. `TestabilityAuditTest` is created here and scans every optimizer package
-  as later work items add them; every work item's exit runs it.
+	as later work items add them; every work item's exit runs it.
 - **Tests:** `CapCalibrationTest` checks the `design.md` §2.4 table and is the only test that runs calibration. Every
-  other test injects small handwritten `DecisionBoundaries`, or uses the `i = 1` table through a test fixture that
-  builds it lazily once per JVM in an immutable holder. That holder is safe under parallel methods: it is computed once
-  and never mutated.
+	other test injects small handwritten `DecisionBoundaries`, or uses the `i = 1` table through a test fixture that
+	builds it lazily once per JVM in an immutable holder. That holder is safe under parallel methods: it is computed once
+	and never mutated.
 - **Exit:** the focused tests pass. Each test's Javadoc tabulates the `design.md` §2.4, §2.5 and §13 numbers that it
-  checks. An independent script computed them during design, with exact rational decision
-  boundaries and a double-precision probability sum. A disagreement is a defect in one of the two: investigate it, and
-  correct `design.md` first if the design value is wrong.
+	checks. An independent script computed them during design, with exact rational decision
+	boundaries and a double-precision probability sum. A disagreement is a defect in one of the two: investigate it, and
+	correct `design.md` first if the design value is wrong.
 
 ### WI-2 — Contract model and generators (`optimizer.contract`)
 
 - **Contents:**
-  - immutable `Contract`, `Category`, `PromptTest` (turn sequence, time limit, applicability, expected behaviour),
-    `Variable`, `JudgeProfile`, `RiskRank` and `TrialFixtures`;
-  - the proposal JSON schema and validation of contract author output;
-  - `Generator`, which validates and draws test cases from a `DrawStream`;
-  - `DrawStream`, a seeded `RandomGenerator` with a persisted seed and position, kept separately for development,
-    formal and baseline draws.
+	- immutable `Contract`, `Category`, `PromptTest` (turn sequence, time limit, applicability, expected behaviour),
+		`Variable`, `JudgeProfile`, `RiskRank` and `TrialFixtures`;
+	- the proposal JSON schema and validation of contract author output;
+	- `Generator`, which validates and draws test cases from a `DrawStream`;
+	- `DrawStream`, a seeded `RandomGenerator` with a persisted seed and position, kept separately for development,
+		formal and baseline draws.
 - **Closes:** R-C3, R-C4, part of R-C1 (schema) and part of R-C5 (profile).
 - **Tests:** `GeneratorTest` covers out-of-contract emission, a probability chi-square check with a fixed seed, and
-  repeated draws of a test case. `DrawStreamTest` covers resume at the same position and independence from outcomes.
-  `DistributionTest` covers balanced weights.
+	repeated draws of a test case. `DrawStreamTest` covers resume at the same position and independence from outcomes.
+	`DistributionTest` covers balanced weights.
 - **Exit:** the focused tests pass.
 
 ### WI-3 — Campaign model and policies (`optimizer.campaign`)
 
 - **Contents:**
-  - immutable `Campaign`, `Lineage`, `Candidate`, `CertificationAttempt`, `CategoryCounts (S, F, batches)`,
-    `LogicalTrial` and `PendingDecision`;
-  - `CampaignTransitions`, a pure function `(state, event) → state`, with events for confirmation, assignment,
-    outcome, promotion, commit, decision, user choice (including keep improvement),
-    revision, cancellation, measurement change and unowned change;
-  - `CommitGate`, `EditOrContinue`, `Promotion`, `Plateau`, `ReviewCheckpoint`, `Baseline`, `DecisionTable`
-    (the `design.md` §2.8 actions), `KeepImprovement`, `Applicability` and `Comparability`;
-  - `Scheduler`, a pure admission plan: given the state, the clock reading, the throttle state and free capacity, it
-    returns the next admissions, each with a category, purpose and snapshot;
-  - `ConcurrencyPolicy`, `Throttle` and the dependence check (`AssumptionCheck`);
-  - `CampaignRegistry`, which decides campaign uniqueness and harness binding over a list of campaign headers;
-  - the port interfaces `SessionPort`, `WorkspacePort` and `HostInterruptSignal` (`design.md` §9), with their fakes in
-    test sources. WI-7 and WI-8 implement them, and WI-9 drives the fakes.
+	- immutable `Campaign`, `Lineage`, `Candidate`, `CertificationAttempt`, `CategoryCounts (S, F, batches)`,
+		`LogicalTrial` and `PendingDecision`;
+	- `CampaignTransitions`, a pure function `(state, event) → state`, with events for confirmation, assignment,
+		outcome, promotion, commit, decision, user choice (including keep improvement),
+		revision, cancellation, measurement change and unowned change;
+	- `CommitGate`, `EditOrContinue`, `Promotion`, `Plateau`, `ReviewCheckpoint`, `Baseline`, `DecisionTable`
+		(the `design.md` §2.8 actions), `KeepImprovement`, `Applicability` and `Comparability`;
+	- `Scheduler`, a pure admission plan: given the state, the clock reading, the throttle state and free capacity, it
+		returns the next admissions, each with a category, purpose and snapshot;
+	- `ConcurrencyPolicy`, `Throttle` and the dependence check (`AssumptionCheck`);
+	- `CampaignRegistry`, which decides campaign uniqueness and harness binding over a list of campaign headers;
+	- the port interfaces `SessionPort`, `WorkspacePort` and `HostInterruptSignal` (`design.md` §9), with their fakes in
+		test sources. WI-7 and WI-8 implement them, and WI-9 drives the fakes.
 - **Test support** (test sources): `CampaignBuilder`, so a test can write, for example,
-  `certificationAttempt(i).category("k", S, F)`.
+	`certificationAttempt(i).category("k", S, F)`.
 - **Closes:** R-S9, R-D1–R-D7, R-F1, R-F2, R-F4, R-F5, the policy side of R-F3 and R-F6, R-E3–R-E6, R-M1, R-M2,
-  R-M4, the policy side of R-M5, R-C6, R-L1–R-L4 and part of R-P2.
+	R-M4, the policy side of R-M5, R-C6, R-L1–R-L4 and part of R-P2.
 - **Tests:** the U proofs named in §3. Each covers both sides of every boundary, with builders only and no I/O.
 - **Exit:** the focused tests pass in under one second each.
 
 ### WI-4 — Campaign store (`optimizer.store`)
 
 - **Contents:** the `CampaignStore` port, with operations for load snapshot, write assignment, write outcome, replace
-  snapshot, list unadopted outcomes and list campaign headers, and `FileCampaignStore`. The file store writes
-  atomically (temporary file, `fsync`, rename) and exposes an injected `WriteStep` hook for fault injection.
+	snapshot, list unadopted outcomes and list campaign headers, and `FileCampaignStore`. The file store writes
+	atomically (temporary file, `fsync`, rename) and exposes an injected `WriteStep` hook for fault injection.
 - **Contents in test sources:** `InMemoryCampaignStore`, and the abstract `CampaignStoreContract` that both
-  implementations extend.
+	implementations extend.
 - **Closes:** R-E1 (persistence), R-W1 (layout and snapshot-only loading), R-L5, and the persistence side of R-S9.
 - **Tests:** `FileCampaignStoreTest` covers a fault after every write step, a reload after each fault, and the
-  invariant that no outcome is duplicated or lost. It also checks that loading reads only `campaign.json`, by
-  replacing the trial records with unreadable files and still loading.
+	invariant that no outcome is duplicated or lost. It also checks that loading reads only `campaign.json`, by
+	replacing the trial records with unreadable files and still loading.
 - **Exit:** the focused tests pass.
 
 ### WI-5 — Shared harness capacity (`common.runner`)
 
 - **Contents:** replace the static `HarnessConcurrencyLimit` with an instance type `HarnessCapacity`:
-  - `of(Path lockDirectory, int maximum, Pause pause)`, `unlimited()`, `acquire()`, `tryAcquire()` and
-    `Permit.close()`;
-  - `main` in `ClaudeRunnerCli` and `CodexRunnerCli` resolves `$HOME/.cat/locks/harness-capacity/<harness>` and
-    passes the instance in;
-  - `CodexRunnerCli` starts acquiring capacity;
-  - `--max-concurrency` keeps its range of 1–16.
-  Follow `contract-retirement.md` for the removed static API.
+	- `of(Path lockDirectory, int maximum, Pause pause)`, `unlimited()`, `acquire()`, `tryAcquire()` and
+		`Permit.close()`;
+	- `main` in `ClaudeRunnerCli` and `CodexRunnerCli` resolves `$HOME/.cat/locks/harness-capacity/<harness>` and
+		passes the instance in;
+	- `CodexRunnerCli` starts acquiring capacity;
+	- `--max-concurrency` keeps its range of 1–16.
+	Follow `contract-retirement.md` for the removed static API.
 - **Closes:** R-E8.
 - **Tests:** `HarnessCapacityTest` uses a test-owned directory and a manual pause. It covers acquisition up to the
-  maximum, `tryAcquire` failing at the maximum, release, and two instances on the same directory sharing slots. E8
-  shows two CAT processes bounded by the shared capacity.
+	maximum, `tryAcquire` failing at the maximum, release, and two instances on the same directory sharing slots. E8
+	shows two CAT processes bounded by the shared capacity.
 - **Exit:** the focused and runner tests pass; `grep` finds no `HarnessConcurrencyLimit` references.
 
 ### WI-6 — Inventory, authority and delivery planning (`optimizer.inventory`)
 
 - **Pure contents:**
-  - `FileInventory` (path, kind, bytes hash, mode, link target), `Overlay` and `Authority`;
-  - `InventoryDiff`, which classifies forbidden operations;
-  - `DeliveryPlan`, a three-way comparison of the fork baseline, the current base and external state with the
-    candidate, producing conflicts or an ordered change list of in-project changes.
+	- `FileInventory` (path, kind, bytes hash, mode, link target), `Overlay` and `Authority`;
+	- `InventoryDiff`, which classifies forbidden operations;
+	- `DeliveryPlan`, a three-way comparison of the fork baseline, the current base and external state with the
+		candidate, producing conflicts or an ordered change list of in-project changes.
 - **I/O contents:** `InventoryScanner`, which scans without following links. This is its only I/O.
 - **Closes:** R-W3, R-W4, R-W7 (diff), R-W8 (plan).
 - **Tests:** `AuthorityTest`, `InventoryDiffTest`, `OverlayTest` and `DeliveryPlanTest`, all in memory.
-  `InventoryScannerTest` uses one temporary tree containing links, modes and ignored files.
+	`InventoryScannerTest` uses one temporary tree containing links, modes and ignored files.
 - **Exit:** the focused tests pass.
 
 ### WI-7 — Workspace I/O (`optimizer.workspace`)
 
 - **Contents:**
-  - `Fork`: clean check, recording, participant copies, the `info/exclude` check, and the detached worktree, all
-    through `Git`;
-  - `StagedSources`: build and delete staged sources, dereference links, report cycles and missing targets, exclude
-    `.cat/work/`;
-  - `AuthoringCopies`: prepare the prompt author's source and capture its delta through `InventoryScanner`;
-  - `LinkReport`.
-  Together they implement WI-3's `WorkspacePort`.
+	- `Fork`: clean check, recording, participant copies, the `info/exclude` check, and the detached worktree, all
+		through `Git`;
+	- `StagedSources`: build and delete staged sources, dereference links, report cycles and missing targets, exclude
+		`.cat/work/`;
+	- `AuthoringCopies`: prepare the prompt author's source and capture its delta through `InventoryScanner`;
+	- `LinkReport`.
+	Together they implement WI-3's `WorkspacePort`.
 - **Closes:** R-W1 (exclude), R-W2, R-W5, R-W6.
 - **Tests:** `ForkTest` runs each Git operation once in a test-owned repository: a dirty-base refusal for each change
-  kind, the exclude added only when needed, and the worktree at `HEAD`. `StagedSourceTest` covers dereferencing,
-  exclusion and fixtures. `LinkReportTest` covers the report. A unit test shows that the runner's project copy
-  accepts a staged source built from a project with links, in both harnesses.
+	kind, the exclude added only when needed, and the worktree at `HEAD`. `StagedSourceTest` covers dereferencing,
+	exclusion and fixtures. `LinkReportTest` covers the report. A unit test shows that the runner's project copy
+	accepts a staged source built from a project with links, in both harnesses.
 - **Exit:** the focused tests pass.
 
 ### WI-8 — Session adapters and host signals (harness modules)
 
 - **Contents:**
-  - `ClaudeSessions` and `CodexSessions` implement `SessionPort` over `ClaudeRunner` and `CodexRunner`. They acquire one
-    `HarnessCapacity` permit per session, pass evidence read-only to judges, collect transcripts and effects, and parse
-    harness events for the observed model, usage and rate limits. They classify outcomes as completed, interrupted at
-    CAT's request (H10) or infrastructure failure.
-  - Credential classification for each harness.
-  - `RolloutInterruptSignal` (Codex) and `TranscriptInterruptSignal` (Claude) implement `HostInterruptSignal` from an
-    injected path and clock.
-  - Shared `SessionPortContract` tests run against the fake and against each adapter fed recorded harness events.
-  - Runner fixes the adapters depend on (`design.md` §11 H17, H19):
-    - the Claude runner ends a turn only when the root reply has arrived and `background_tasks_changed` lists no task,
-      relaying `task_notification` records and the follow-up reply in the same turn;
-    - the Codex runner implements mid-turn interruption with `turn/interrupt`, and fills `assistant_response` from the
-      last completed `agentMessage` item;
-    - both runners treat an interrupt that arrives after the turn ended as a no-op instead of failing.
+	- `ClaudeSessions` and `CodexSessions` implement `SessionPort` over `ClaudeRunner` and `CodexRunner`. They acquire one
+		`HarnessCapacity` permit per session, pass evidence read-only to judges, collect transcripts and effects, and parse
+		harness events for the observed model, usage and rate limits. They classify outcomes as completed, interrupted at
+		CAT's request (H10) or infrastructure failure.
+	- Credential classification for each harness.
+	- `RolloutInterruptSignal` (Codex) and `TranscriptInterruptSignal` (Claude) implement `HostInterruptSignal` from an
+		injected path and clock.
+	- Shared `SessionPortContract` tests run against the fake and against each adapter fed recorded harness events.
+	- Runner fixes the adapters depend on (`design.md` §11 H17, H19):
+		- the Claude runner ends a turn only when the root reply has arrived and `background_tasks_changed` lists no task,
+			relaying `task_notification` records and the follow-up reply in the same turn;
+		- the Codex runner implements mid-turn interruption with `turn/interrupt`, and fills `assistant_response` from the
+			last completed `agentMessage` item;
+		- both runners treat an interrupt that arrives after the turn ended as a no-op instead of failing.
 - **Closes:** R-E6 (parsing), R-E7 (classification), R-E10 (signals), R-E13 (transport), R-E14, R-E15, R-E16, and part
-  of R-M1.
+	of R-M1.
 - **Allowlist note:** the runner fixes above write the runner sources under `client/claude/cli`, `client/codex/cli` and
-  `client/common/cli`.
+	`client/common/cli`.
 - **Tests:** event-parsing tests feed recorded harness event lines captured during WI-0 into the parser as in-memory
-  input.
-  Signal tests use a temporary rollout or transcript file that the test appends to under a manual clock. WI-15's
-  end-to-end runs exercise each operation in both harnesses.
+	input.
+	Signal tests use a temporary rollout or transcript file that the test appends to under a manual clock. WI-15's
+	end-to-end runs exercise each operation in both harnesses.
 - **Exit:** unit tests pass.
 
 ### WI-9 — Driver (`optimizer.execution`)
 
 - **`Driver.step`:** a deterministic loop body. It reads the state through `CampaignStore`, asks `Scheduler` for
-  admissions, writes assignments, starts sessions through `SessionPort`, and consumes completion events from a queue.
-  Then it writes outcomes, starts judges, adopts outcomes in order, applies `CampaignTransitions`, and checks
-  `HostInterruptSignal` and the slice deadline.
+	admissions, writes assignments, starts sessions through `SessionPort`, and consumes completion events from a queue.
+	Then it writes outcomes, starts judges, adopts outcomes in order, applies `CampaignTransitions`, and checks
+	`HostInterruptSignal` and the slice deadline.
 - **`SliceRunner`:** the only class that blocks on real time. It waits on the event queue until the next deadline and
-  is covered by one focused threaded test.
+	is covered by one focused threaded test.
 - **Also:** reconciliation (including terminating the recorded `ownerPid` and `harnessPid` of runs left by an earlier
-  driver, `design.md` §3.8 and H20), the campaign write lock (an injected path; a second driver gets `busy`), the slice
-  cutoff and grace period, the pauses for measurement change and unowned change, the edit-or-continue pause, and the
-  safe-checkpoint handling for revision.
+	driver, `design.md` §3.8 and H20), the campaign write lock (an injected path; a second driver gets `busy`), the slice
+	cutoff and grace period, the pauses for measurement change and unowned change, the edit-or-continue pause, and the
+	safe-checkpoint handling for revision.
 - **Closes:** R-D2, R-D3 (driver side), R-D9, the driver side of R-F6, R-E1, R-E2, R-E5, R-E9, R-E10, R-E11, R-M3,
-  the driver side of R-M5, R-C2, R-L3 and R-W7 (checkpoints).
+	the driver side of R-M5, R-C2, R-L3 and R-W7 (checkpoints).
 - **Tests:**
-  - `DriverTest` uses `InMemoryCampaignStore`, a fake `SessionPort` whose completions the test releases in any order,
-    a fake `WorkspacePort` and a manual clock. Its scenarios are listed in [§7](#7-handoffs-and-use-case-traces).
-  - `ReconciliationTest` starts from builder states that represent each crash point.
-  - `SliceTest` covers cutoff and grace using the manual clock.
-  - No test sleeps.
+	- `DriverTest` uses `InMemoryCampaignStore`, a fake `SessionPort` whose completions the test releases in any order,
+		a fake `WorkspacePort` and a manual clock. Its scenarios are listed in [§7](#7-handoffs-and-use-case-traces).
+	- `ReconciliationTest` starts from builder states that represent each crash point.
+	- `SliceTest` covers cutoff and grace using the manual clock.
+	- No test sleeps.
 - **Exit:** the focused tests pass, and the `DriverTest` suite stays under 10 seconds in total.
 
 ### WI-10 — Contract derivation, judging and authoring prompts
 
 - **Prompts:** the contract author's prompt, the judge prompt and the prompt author's prompt. Each states its role's
-  authority limits from `design.md` §3.1 and §4.3 and its output schema.
+	authority limits from `design.md` §3.1 and §4.3 and its output schema.
 - **Driver handling:** proposal rendering, feedback regeneration and confirmation; loading observation or documented
-  derivation (P9: hooks and Claude's skill inventory are observed, instruction files are derived, H21); the judge and
-  contract author output extraction rule of `design.md` §3.1 (a bare or singly fenced JSON object, H23); the
-  authentication and link warnings in the proposal; and the judge profile freeze.
+	derivation (P9: hooks and Claude's skill inventory are observed, instruction files are derived, H21); the judge and
+	contract author output extraction rule of `design.md` §3.1 (a bare or singly fenced JSON object, H23); the
+	authentication and link warnings in the proposal; and the judge profile freeze.
 - **Closes:** R-C1, R-C2 (rendering), R-C5, R-C6 (detection in proposals), R-C7, R-E7 (warning), R-E13 (schemas).
 - **Tests:** `ProposalTest` uses fixture contract author outputs, valid and invalid, to check every required item and
-  the rejection of aggregate-only summaries. E1 runs the contract author, judge and prompt author in both harnesses.
+	the rejection of aggregate-only summaries. E1 runs the contract author, judge and prompt author in both harnesses.
 - **Exit:** unit tests pass.
 
 ### WI-11 — Delivery executor (`optimizer.delivery`)
 
 - **Contents:** executes a `DeliveryPlan` with a journal through `CampaignStore`, validating each preimage and
-  resuming each change at most once. Reports the result.
+	resuming each change at most once. Reports the result.
 - **Closes:** R-W8 (execution), and the delivery side of R-F3 and R-F6.
 - **Tests:** `DeliveryTest` uses a temporary base and an external directory and covers:
-  - a disjoint base edit surviving;
-  - a same-file conflict stopping before any write;
-  - an injected fault between writes followed by resume;
-  - a concurrent edit detected before its write;
-  - a historical result after a base-only prompt edit;
-  - a kept improvement older than the working candidate, materialized in the optimization worktree and then delivered;
-  - no commit created in the base worktree;
-  - no file written outside the project.
-  It uses real Git only for the final diff report and the no-commit check.
+	- a disjoint base edit surviving;
+	- a same-file conflict stopping before any write;
+	- an injected fault between writes followed by resume;
+	- a concurrent edit detected before its write;
+	- a historical result after a base-only prompt edit;
+	- a kept improvement older than the working candidate, materialized in the optimization worktree and then delivered;
+	- no commit created in the base worktree;
+	- no file written outside the project.
+	It uses real Git only for the final diff report and the no-commit check.
 - **Exit:** the focused tests pass.
 
 ### WI-12 — Reporting (`optimizer.report`)
 
 - **Contents:** `StatusReport`, the JSON status plus the human summary. It includes the four outputs, labels, outcome
-  names, claim wording, limitations, minimum remaining trials, token statistics, the descriptive check by concurrency
-  level, and the keep-improvement choice with its evidence and `UI(k)` values.
+	names, claim wording, limitations, minimum remaining trials, token statistics, the descriptive check by concurrency
+	level, and the keep-improvement choice with its evidence and `UI(k)` values.
 - **Closes:** R-D8, R-E12, R-P1–R-P4, the report side of R-F6, and part of R-W6.
 - **Tests:** `StatusReportTest`, `RemainingWorkTest` (hand-computed cases in both phases) and `AssumptionCheckTest`,
-  all built from builder states.
+	all built from builder states.
 - **Exit:** the focused tests pass.
 
 ### WI-13 — Commands, wiring and distribution
 
 - **Contents:**
-  - `optimizer.cli.Commands` parses `start`, `run`, `status`, `confirm`, `revise`, `choose` and `cancel` and calls the
-    core;
-  - `ClaudePromptOptimizer.main` and `CodexPromptOptimizer.main` resolve `HOME`, the host session environment
-    variables, the capacity, the clock and the store, then wire the adapters;
-  - `prompt-optimizer` launchers for both harnesses in `DistributionMain`;
-  - the slice defaults chosen from P10.
+	- `optimizer.cli.Commands` parses `start`, `run`, `status`, `confirm`, `revise`, `choose` and `cancel` and calls the
+		core;
+	- `ClaudePromptOptimizer.main` and `CodexPromptOptimizer.main` resolve `HOME`, the host session environment
+		variables, the capacity, the clock and the store, then wire the adapters;
+	- `prompt-optimizer` launchers for both harnesses in `DistributionMain`;
+	- the slice defaults chosen from P10.
 - **Closes:** R-I2, R-I4, and part of R-L1 (cross-harness refusal at the command boundary).
 - **Tests:** `CommandsTest` calls the parse-and-dispatch operation in process with a fake core and covers each
-  command, the output schema, and invalid input rejected once at ingress. Distribution tests confirm the launchers
-  exist by running them.
+	command, the output schema, and invalid input rejected once at ingress. Distribution tests confirm the launchers
+	exist by running them.
 - **Exit:** the unit tests pass, and the built artifacts' launchers print the status JSON for `status` on a fixture
-  campaign.
+	campaign.
 
 ### WI-14 — Skill replacement and rule updates
 
 - **Skill:** replace the `skills/prompt-optimizer/first-use.md` body with the `design.md` §8 loop, and update both
-  `SKILL.md` wrappers, including their descriptions and allowed tools.
+	`SKILL.md` wrappers, including their descriptions and allowed tools.
 - **Rules:** apply D13 to `failure-regression-promotion.md` and `default-rules.md`, keeping the route's rule that a
-  subagent reports a confirmed failure to the agent that delegated its work instead of correcting the guidance.
-  Update the test resources that cite the old skill (`check-assumptions/existing_route_before_new_wrapper/scenario.md`,
-  `limitations-and-workarounds/verification.md`). Follow `contract-retirement.md`.
+	subagent reports a confirmed failure to the agent that delegated its work instead of correcting the guidance.
+	Update the test resources that cite the old skill (`check-assumptions/existing_route_before_new_wrapper/scenario.md`,
+	`limitations-and-workarounds/verification.md`). Follow `contract-retirement.md`.
 - **Native tier retirement:** delete the Java tests that start a runner, a harness process or a model
-  (`ClaudeRunnerCliNativeTest`, `ClaudeSessionsNativeTest`, `CodexRunnerCliNativeTest`, `CodexSessionsNativeTest`);
-  make `StagedSourceNativeTest` a unit test over both harnesses; remove the `native` Maven profile, the
-  `cat.test.groups`/`cat.test.excludedGroups` native defaults and `cat.native.harness`. Keep the recorded-event
-  parsing tests. Before deleting the session tests, run `SessionPortContract` against the real `ClaudeSessions` and
-  `CodexSessions` over `FakeHarnessCli` replaying recorded events (`design.md` §10 T3), so the fake stays
-  checked against the real adapters. Each recording names the harness version that produced it. List each deleted
-  assertion with the WI-15 scenario that covers it. Follow `contract-retirement.md`.
-  The existing recordings cannot satisfy every contract check (they are trimmed, and none records an interrupted
-  turn), so the session contract tests, the deletion of `ClaudeSessionsNativeTest` and `CodexSessionsNativeTest` and
-  the removal of the `native` profile and its properties move to WI-15's **Contract tests** step.
+	(`ClaudeRunnerCliNativeTest`, `ClaudeSessionsNativeTest`, `CodexRunnerCliNativeTest`, `CodexSessionsNativeTest`);
+	make `StagedSourceNativeTest` a unit test over both harnesses; remove the `native` Maven profile, the
+	`cat.test.groups`/`cat.test.excludedGroups` native defaults and `cat.native.harness`. Keep the recorded-event
+	parsing tests. Before deleting the session tests, run `SessionPortContract` against the real `ClaudeSessions` and
+	`CodexSessions` over `FakeHarnessCli` replaying recorded events (`design.md` §10 T3), so the fake stays
+	checked against the real adapters. Each recording names the harness version that produced it. List each deleted
+	assertion with the WI-15 scenario that covers it. Follow `contract-retirement.md`.
+	The existing recordings cannot satisfy every contract check (they are trimmed, and none records an interrupted
+	turn), so the session contract tests, the deletion of `ClaudeSessionsNativeTest` and `CodexSessionsNativeTest` and
+	the removal of the `native` profile and its properties move to WI-15's **Contract tests** step.
 - **Closes:** R-I1 (content), R-I3.
 - **Tests:** existing rule tests pass. A reference audit (`grep -rn "prompt-optimizer"`) shows only references to the
-  new skill.
+	new skill.
 - **Exit:** the audit is clean, no Java test starts a runner, a harness process or a model, and the build passes.
 
 ### WI-16 — Trial profiles and cells (user ruling, 2026-10-01)
 
 - **Contract:** `optimizer.contract` gains the profile inventory with its source, bindings (file, model, effort, each
-  optional) and each category's profile set; cells are (category, profile). `ProposalSchema` and the contract hash
-  include them.
+	optional) and each category's profile set; cells are (category, profile). `ProposalSchema` and the contract hash
+	include them.
 - **Inventory:** a `ProfileInventory` port. Codex reads `codex debug models` and keeps the models with visibility
-  `list` and their efforts except `ultra`; Claude reads a plugin resource listing documented aliases and efforts (P12). Each is
-  tested over recorded output.
+	`list` and their efforts except `ultra`; Claude reads a plugin resource listing documented aliases and efforts (P12). Each is
+	tested over recorded output.
 - **Bindings:** read only from Claude skill and subagent frontmatter (`model`, `effort`) and Codex agent TOML
-  (`model`, `model_reasoning_effort`). `inherit` binds nothing; a partial binding fixes one dimension. The
-  core-task requirement is excluded from the profile-set computation.
+	(`model`, `model_reasoning_effort`). `inherit` binds nothing; a partial binding fixes one dimension. The
+	core-task requirement is excluded from the profile-set computation.
 - **Statistics:** every rule in `optimizer.campaign` and `optimizer.statistics` that is per category becomes per cell;
-  `K` counts cells. Commit gate, baseline, commit, error budget, decisions, keep-improvement, the scheduler and the
-  report are keyed by cell.
+	`K` counts cells. Commit gate, baseline, commit, error budget, decisions, keep-improvement, the scheduler and the
+	report are keyed by cell.
 - **Sessions:** `SessionPort` takes the profile. `ClaudeSessions` passes `--model` and `--effort`; `CodexSessions`
-  passes the model and reasoning effort to the bridge. The contract author, judge and prompt author run under the role
-  profile (the `optimize-xhigh` binding per harness); `OptimizerCommandScope.JUDGE_MODEL = "harness-default"` is
-  replaced. The observed profile is recorded per trial and compared per cell (R-E16, D21).
+	passes the model and reasoning effort to the bridge. The contract author, judge and prompt author run under the role
+	profile (the `optimize-xhigh` binding per harness); `OptimizerCommandScope.JUDGE_MODEL = "harness-default"` is
+	replaced. The observed profile is recorded per trial and compared per cell (R-E16, D21).
 - **User control:** a revision may restrict the profile set; the proposal shows inventory, bindings, cells and the
-  minimum session count.
+	minimum session count.
 - **Closes:** R-C10, R-C11, R-E17.
 - **Tests:** `ProfileSetTest` (bound, partially bound and unbound files; `inherit`; a restriction), `ProposalTest`,
-  `SchedulerTest`, `CommitGateTest`, `CommitTest`, `DecisionTableTest` and `StatusReportTest` with a two-cell
-  category, both `*SessionsTest` classes for profile arguments, `MeasurementIdentityTest`. `DriverTest` trace 15.
+	`SchedulerTest`, `CommitGateTest`, `CommitTest`, `DecisionTableTest` and `StatusReportTest` with a two-cell
+	category, both `*SessionsTest` classes for profile arguments, `MeasurementIdentityTest`. `DriverTest` trace 15.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-17 — Deterministic checks and the core-task requirement (user ruling, 2026-10-01)
 
 - **Contract:** each requirement is deterministic or semantic. A deterministic check has a kind from a closed set,
-  belongs to one test and one requirement, takes parameters that may name variable values, and carries a known-good
-  and a known-bad control. CAT adds the core-task requirement (source CAT) to every test; it is semantic unless the
-  test's expected result is mechanical.
+	belongs to one test and one requirement, takes parameters that may name variable values, and carries a known-good
+	and a known-bad control. CAT adds the core-task requirement (source CAT) to every test; it is semantic unless the
+	test's expected result is mechanical.
 - **Controls:** validated at confirmation and when the contract is loaded. A check that fails a control is discarded,
-  its requirement becomes semantic, and the proposal says why.
+	its requirement becomes semantic, and the proposal says why.
 - **Trial outcome:** checks run first on the trial evidence. A trial fails if any check fails; otherwise the judge
-  decides the semantic requirements alone, under the role profile, and cannot override a check. No judge session runs
-  when a check failed or no semantic requirement remains. A failed check's record reaches the prompt author brief.
+	decides the semantic requirements alone, under the role profile, and cannot override a check. No judge session runs
+	when a check failed or no semantic requirement remains. A failed check's record reaches the prompt author brief.
 - **Prompts:** the contract author's prompt marks each requirement and proposes checks with controls; the judge prompt
-  receives only semantic requirements and the deterministic results as evidence.
+	receives only semantic requirements and the deterministic results as evidence.
 - **Closes:** R-C5, R-C8, R-C9.
 - **Tests:** `DeterministicCheckTest` (each kind; each control on both sides; variable values), `ProposalTest`
-  (core-task requirement added; a check with a failing control discarded), `JudgeVerdictTest`, `DriverTest` trace 16.
+	(core-task requirement added; a check with a failing control discarded), `JudgeVerdictTest`, `DriverTest` trace 16.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-17a — Tool calls in session results (follow-up to WI-17, 2026-10-01)
 
 - **Contract:** a completed session result lists the trial's tool calls in the order the harness made them: each call's
-  tool name, its command when the tool runs one, and the command's exit status when the harness reports one. A field the
-  harness does not report stays absent. Claude reports a status only in the form of its result (`design.md` H30), so
-  its adapter reads that recorded form and leaves the status absent for any other. Trial evidence passes the list to the `tool_used`
-  and `exit_status` checks, which then decide on real trials; a check stays undecidable only when the harness reports
-  nothing it needs.
+	tool name, its command when the tool runs one, and the command's exit status when the harness reports one. A field the
+	harness does not report stays absent. Claude reports a status only in the form of its result (`design.md` H30), so
+	its adapter reads that recorded form and leaves the status absent for any other. Trial evidence passes the list to the `tool_used`
+	and `exit_status` checks, which then decide on real trials; a check stays undecidable only when the harness reports
+	nothing it needs.
 - **Adapters:** the Claude adapter reads tool calls from stream-json events and the Codex adapter from app-server
-  events. Each adapter's parsing tests use output recorded from the real harness, and the recording's source and version
-  are documented.
+	events. Each adapter's parsing tests use output recorded from the real harness, and the recording's source and version
+	are documented.
 - **Tests:** each adapter's event tests (a tool call with and without an exit status; a failed command; for Claude, an
-  exit code of 1 that Claude interprets as success, a background command and a denied command), a `TrialEvidence`
-  test, `DriverTest`, where a trial's `tool_used` and `exit_status` checks are decided, and `DeterministicCheckTest` cases
-  where a missing status makes the check undecidable, in a trial and in a check's control.
+	exit code of 1 that Claude interprets as success, a background command and a denied command), a `TrialEvidence`
+	test, `DriverTest`, where a trial's `tool_used` and `exit_status` checks are decided, and `DeterministicCheckTest` cases
+	where a missing status makes the check undecidable, in a trial and in a check's control.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-18 — Prompt author manifest, minimality pass and size report (user ruling, 2026-10-01)
 
 - **Prompt author prompt:** classify each failure as routing, guidance or not guidance; make the smallest
-  evidence-backed correction at the owning boundary, preferring to remove a contradiction over adding emphasis;
-  generalize against analogous and dissimilar cases; emit the manifest.
+	evidence-backed correction at the owning boundary, preferring to remove a contradiction over adding emphasis;
+	generalize against analogous and dissimilar cases; emit the manifest.
 - **Manifest:** extends the prompt author report (`optimizer/prompt-author/report.schema.json`) with each failure's
-  classification and, per changed hunk, the cited failing test cases and the analogous and dissimilar cases. CAT rejects
-  an attempt whose manifest omits a hunk or cites an unknown test case; the attempt is retained like an inventory
-  violation. An attempt that edits nothing produces no candidate; its classifications go to the round's diagnosis and to
-  the review-checkpoint or plateau report.
+	classification and, per changed hunk, the cited failing test cases and the analogous and dissimilar cases. CAT rejects
+	an attempt whose manifest omits a hunk or cites an unknown test case; the attempt is retained like an inventory
+	violation. An attempt that edits nothing produces no candidate; its classifications go to the round's diagnosis and to
+	the review-checkpoint or plateau report.
 - **Minimality pass:** after the promotion runs pass, delta debugging over the attempt's hunks: start with two groups,
-  revert one group, rerun the same promotion runs, keep the reduction if it passes the reduction rule (`design.md` §2.7), otherwise
-  split finer down to single hunks. Its runs are targeted and never counted. The minimal attempt is promoted, and the
-  report names the removed hunks.
+	revert one group, rerun the same promotion runs, keep the reduction if it passes the reduction rule (`design.md` §2.7), otherwise
+	split finer down to single hunks. Its runs are targeted and never counted. The minimal attempt is promoted, and the
+	report names the removed hunks.
 - **Size report:** the status shows the working candidate's and the incumbent's prompt size (bytes and words) and the
-  median input tokens per trial in each cell where both have outcomes.
+	median input tokens per trial in each cell where both have outcomes.
 - **Closes:** R-D10, R-D11, R-E18.
 - **Tests:** `PromptAuthorManifestTest`, `MinimalityTest`, `StatusReportTest`, `DriverTest` traces 17 and 18.
 - **Exit:** unit tests pass; the full build passes.
@@ -1109,7 +1109,7 @@ The riskiest pure code, built first.
 ### WI-19 — Development cell tiering (user ruling, 2026-10-01)
 
 - **Scheduler:** the `design.md` §3.3 rule 2 cell tier and the `design.md` §6.6 screen, active set, lowest-effort
-  priority and widening, in `optimizer.campaign`. The active set is persisted with the campaign and survives restart.
+	priority and widening, in `optimizer.campaign`. The active set is persisted with the campaign and survives restart.
 - **Report:** the status shows each category's active cells and whether development has widened.
 - **Replaced:** WI-32 replaces this tiering (user ruling, 2026-10-04).
 - **Tests:** `SchedulerTest`, `StatusReportTest`, `DriverTest` trace 19.
@@ -1118,9 +1118,9 @@ The riskiest pure code, built first.
 ### WI-20 — Concurrent attempts while the candidate is weak (user ruling, 2026-10-01)
 
 - **Policy:** the `design.md` §2.7 weak test, the 3 concurrent attempts, winner selection and its tie-breaks, in
-  `optimizer.campaign`. The driver starts the attempts concurrently within the shared harness capacity and runs each
-  attempt's promotion runs; only the winner enters the minimality pass. A round that is not weak keeps one attempt at a
-  time.
+	`optimizer.campaign`. The driver starts the attempts concurrently within the shared harness capacity and runs each
+	attempt's promotion runs; only the winner enters the minimality pass. A round that is not weak keeps one attempt at a
+	time.
 - **Report:** the status lists each attempt of a round with its promotion results and whether it won.
 - **Closes:** R-D12.
 - **Tests:** `AttemptSelectionTest`, `StatusReportTest`, `DriverTest` trace 20.
@@ -1129,162 +1129,162 @@ The riskiest pure code, built first.
 ### WI-21 — Regression scenarios (user rulings, 2026-10-02)
 
 - **Location:** a scenario for `<root>/.cat/rules/<path>.md` (`<root>` the project or `${HOME}`) lives in
-  `<root>/.cat/tests/<path>/`; one for other guidance in the project lives in
-  `<project>/.cat/tests/<path relative to the project, without .md>/` (`design.md` §8). One Markdown file per scenario
-  holds the prewritten turns and the expected behaviour.
+	`<root>/.cat/tests/<path>/`; one for other guidance in the project lives in
+	`<project>/.cat/tests/<path relative to the project, without .md>/` (`design.md` §8). One Markdown file per scenario
+	holds the prewritten turns and the expected behaviour.
 - **Proposal:** derivation finds the recorded scenarios of every prompt source, gives them to the contract author, and
-  refuses a proposal in which no test cites one of them, naming each missing scenario (`design.md` §6.1).
+	refuses a proposal in which no test cites one of them, naming each missing scenario (`design.md` §6.1).
 - **Rule:** deliver the approved `failure-regression-promotion.md` text.
 - **Migration:** move every scenario under `client/common/rules/src/test/resources/` to the location above, with the
-  fixtures it uses; retire the 16 `suite.json` files and any note that describes running the retired runner. Follow
-  `contract-retirement.md`.
+	fixtures it uses; retire the 16 `suite.json` files and any note that describes running the retired runner. Follow
+	`contract-retirement.md`.
 - **Closes:** R-I3 (with WI-14).
 - **Tests:** a proposal refusal test, a test that a proposal citing every scenario is accepted, and
-  `RegressionScenariosTest`, which fails when a scenario lies outside `.cat/tests/` or names no existing guidance file.
+	`RegressionScenariosTest`, which fails when a scenario lies outside `.cat/tests/` or names no existing guidance file.
 - **Exit:** unit tests pass; the full build passes; a reference search finds no `suite.json` and no scenario left in the
-  rules module.
+	rules module.
 
 ### WI-28 — Judge evidence section (user ruling, 2026-10-02)
 
 - **Renderer:** one evidence renderer per harness turns the trial's recorded events (Codex app-server events, Claude
-  stream-json) into the `design.md` §6.4 evidence section; file changes come from the effects copy against the staged
-  source. The judge prompt gains an `{evidence}` placeholder; the judge reads no log or transcript path. A frozen judge
-  prompt that still names `{effects}` and `{transcript}` renders with the values those placeholders had.
+	stream-json) into the `design.md` §6.4 evidence section; file changes come from the effects copy against the staged
+	source. The judge prompt gains an `{evidence}` placeholder; the judge reads no log or transcript path. A frozen judge
+	prompt that still names `{effects}` and `{transcript}` renders with the values those placeholders had.
 - **Closes:** R-E21.
 - **Tests:** renderer tests on recorded events of both harnesses (tool call with output and exit status, child activity,
-  hook status, no streaming fragments or injected rules); `JudgePromptTest` for the new and the frozen template.
+	hook status, no streaming fragments or injected rules); `JudgePromptTest` for the new and the frozen template.
 - **Validation:** the new judge reaches the recorded verdict on recorded E1 trials; judge input tokens are compared with
-  the H32 measurement.
+	the H32 measurement.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-29 — Failure impact and fail-fast development (user ruling, 2026-10-03)
 
 - **Triage:** a new role session, run under the role profile without CAT's plugin, receives a failed development
-  trial's test case, reply, evidence section, deterministic results and failure record (judge rationale or check
-  record) and returns `blocking` or `self-recovering` with a rationale in a strict schema. It runs only for failed
-  `DEVELOPMENT` trials; an invalid output reruns it, and a third invalid output records `blocking`.
+	trial's test case, reply, evidence section, deterministic results and failure record (judge rationale or check
+	record) and returns `blocking` or `self-recovering` with a rationale in a strict schema. It runs only for failed
+	`DEVELOPMENT` trials; an invalid output reruns it, and a third invalid output records `blocking`.
 - **Fail-fast:** adopting a blocking development failure discards the working candidate's unadopted development trials
-  (the driver interrupts their sessions), clears any diagnosis and starts a round at once. A self-recovering failure
-  keeps the edit-or-continue path.
+	(the driver interrupts their sessions), clears any diagnosis and starts a round at once. A self-recovering failure
+	keeps the edit-or-continue path.
 - **Persistence:** the trial, the completion event and the retained failure carry the impact; the prompt author brief
-  shows it. Campaign format 12.
+	shows it. Campaign format 12.
 - **Closes:** R-D16.
 - **Tests:** `EditOrContinueTest` and adoption tests for both impacts, a blocking failure during a self-recovering
-  diagnosis, and the discard of unadopted trials; `TriagePromptTest` for the request and the parser; `DriverTest`
-  trace of a blocking failure that interrupts the running development trials and starts the prompt authors; store round
-  trip and older-format reads.
+	diagnosis, and the discard of unadopted trials; `TriagePromptTest` for the request and the parser; `DriverTest`
+	trace of a blocking failure that interrupts the running development trials and starts the prompt authors; store round
+	trip and older-format reads.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-30 — Measured trigger-absent cases (user approval, 2026-10-03)
 
 - **Contract:** the proposal schema gives each requirement a trigger, or marks that it always applies, and each test
-  lists the triggers it leaves absent. Validation refuses a proposal in which a requirement with a trigger has no such
-  test. The contract author brief asks for both.
+	lists the triggers it leaves absent. Validation refuses a proposal in which a requirement with a trigger has no such
+	test. The contract author brief asks for both.
 - **Manifest:** each hunk's dissimilar case is a test identifier of the contract; manifest validation rejects an attempt
-  that names one the contract lacks. The prompt author brief lists the contract's tests by identifier.
+	that names one the contract lacks. The prompt author brief lists the contract's tests by identifier.
 - **Closes:** R-D17.
 - **Tests:** `ProposalTest` for a conditional requirement with and without a trigger-absent test, and one that always
-  applies; `PromptAuthorManifestTest` for a known and an unknown dissimilar test.
+	applies; `PromptAuthorManifestTest` for a known and an unknown dissimilar test.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-31 — Codex models of version 6 or later (user ruling, 2026-10-04)
 
 - **Inventory:** `CodexProfileInventory` keeps a model listed with visibility `list` only when the number after `gpt-`
-  in its slug, up to the next `-` or the end, is a version of 6 or later (`gpt-6-luna`, `gpt-6.1-sol`); it leaves out
-  `gpt-5.5`, `gpt-5.6-sol` and any slug without that form. When no listed model qualifies, inventory fails with the
-  existing diagnostic style, naming the requirement.
+	in its slug, up to the next `-` or the end, is a version of 6 or later (`gpt-6-luna`, `gpt-6.1-sol`); it leaves out
+	`gpt-5.5`, `gpt-5.6-sol` and any slug without that form. When no listed model qualifies, inventory fails with the
+	existing diagnostic style, naming the requirement.
 - **Bindings:** `ProfileInventory` gains `supportsModel(String model)`: `ClaudeProfileInventory` supports every model,
-  and `CodexProfileInventory` supports a model of version 6 or later, by the same slug rule as the inventory.
-  `binding(String)` is unchanged. After reading the staged source's bindings and before it starts the contract author
-  session, the core checks each bound model; when any is unsupported, it starts no session and reports, as it reports a
-  contract author failure, every such file with its model and that the user changes the binding and runs `start` again.
-  A file that binds only its effort, or a supported model, is unaffected. Reading the Codex role profile fails, naming
-  the installed `optimize-xhigh.toml` and its model, when that model is below version 6.
+	and `CodexProfileInventory` supports a model of version 6 or later, by the same slug rule as the inventory.
+	`binding(String)` is unchanged. After reading the staged source's bindings and before it starts the contract author
+	session, the core checks each bound model; when any is unsupported, it starts no session and reports, as it reports a
+	contract author failure, every such file with its model and that the user changes the binding and runs `start` again.
+	A file that binds only its effort, or a supported model, is unaffected. Reading the Codex role profile fails, naming
+	the installed `optimize-xhigh.toml` and its model, when that model is below version 6.
 - **Closes:** R-D18.
 - **Tests:** `CodexProfileInventoryTest` over recorded catalog output with `gpt-5.5`, `gpt-5.6-sol`, `gpt-6-luna`,
-  `gpt-6.1-sol` and an unversioned slug, and `supportsModel` on each form; `ClaudeProfileInventoryTest`, that every
-  model is supported; a core test in which a staged Codex agent TOML binds `gpt-5.6-luna`: no contract author session
-  starts and the report names the file and the model, while a binding to `gpt-6-luna` or an effort-only binding derives.
+	`gpt-6.1-sol` and an unversioned slug, and `supportsModel` on each form; `ClaudeProfileInventoryTest`, that every
+	model is supported; a core test in which a staged Codex agent TOML binds `gpt-5.6-luna`: no contract author session
+	starts and the report names the file and the model, while a binding to `gpt-6-luna` or an effort-only binding derives.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-32 — Development cells and certification scope (user rulings, 2026-10-04)
 
 - **Ranking:** each harness module ships a capability ranking resource: Codex `astra` above `sol` above `luna`
-  (developers.openai.com/api/docs/models, read 2026-10-04), Claude `fable` above `opus` above `sonnet` above `haiku`
-  (platform.claude.com/docs/en/models/overview, read 2026-10-04), each with its address and reading date. A model's
-  family is its name without its version; within a family, an older version ranks below a newer one. Revision feedback
-  may correct or extend the ranking, which the contract then holds. An inventory model whose family is unranked is
-  named in the proposal, and CAT refuses to confirm until the user ranks it.
+	(developers.openai.com/api/docs/models, read 2026-10-04), Claude `fable` above `opus` above `sonnet` above `haiku`
+	(platform.claude.com/docs/en/models/overview, read 2026-10-04), each with its address and reading date. A model's
+	family is its name without its version; within a family, an older version ranks below a newer one. Revision feedback
+	may correct or extend the ranking, which the contract then holds. An inventory model whose family is unranked is
+	named in the proposal, and CAT refuses to confirm until the user ranks it.
 - **Weakest cell:** in `optimizer.campaign`, `CellTier` gives way to the `design.md` §6.6 development cells. A
-  category's weakest cell is, among its cells in the certification scope, the lowest effort of the least capable model;
-  a category with one cell uses it. No trial runs to find it. The 3-trial screen, the active set, the lowest-effort
-  priority and the `widened` latch are removed.
+	category's weakest cell is, among its cells in the certification scope, the lowest effort of the least capable model;
+	a category with one cell uses it. No trial runs to find it. The 3-trial screen, the active set, the lowest-effort
+	priority and the `widened` latch are removed.
 - **Development cells:** the weakest cell, plus each cell where a certification attempt of the lineage adopted a
-  failure. A development trial's failure no longer adds a cell. `Scheduler` rule 2 assigns only development cells,
-  under the coverage floor among them.
-  The commit gate and the §3.9 development minimum sum over development cells; prompt author rounds and the weak test
-  use only them.
+	failure. A development trial's failure no longer adds a cell. `Scheduler` rule 2 assigns only development cells,
+	under the coverage floor among them.
+	The commit gate and the §3.9 development minimum sum over development cells; prompt author rounds and the weak test
+	use only them.
 - **Scope:** the contract holds the certification scope: `WEAKEST_CELL`, `LATEST_VERSIONS`, or a set
-  of inventory cells that revision feedback supplies from the user's own description (refused when a cell is outside
-  the inventory). `confirm` takes the scope as a required argument; the command, `Core.confirm` and
-  `OptimizerCore.confirm` refuse a confirmation without one, naming every choice. `LATEST_VERSIONS` keeps each family's
-  highest listed version. Formal trials, the formal rule and `K` cover the scope's cells only. Baseline targets: 50 in
-  every scope cell, plus 50 in a scope cell below 95% not yet proven deficient.
+	of inventory cells that revision feedback supplies from the user's own description (refused when a cell is outside
+	the inventory). `confirm` takes the scope as a required argument; the command, `Core.confirm` and
+	`OptimizerCore.confirm` refuse a confirmation without one, naming every choice. `LATEST_VERSIONS` keeps each family's
+	highest listed version. Formal trials, the formal rule and `K` cover the scope's cells only. Baseline targets: 50 in
+	every scope cell, plus 50 in a scope cell below 95% not yet proven deficient.
 - **Proposal and report:** the proposal shows the capability ranking with its source, and for each scope its cells,
-  each category's weakest cell and the minimum session count; the confirmation skill presents the three choices with
-  the `design.md` §6.6 tradeoffs, asks the user, and for `other` maps the user's words to cells through `revise` and
-  shows the result for confirmation. The status shows
-  each category's weakest cell (or that it is not yet fixed) and development cells; a weakest-only claim names the
-  profile and says no other profile was certified.
+	each category's weakest cell and the minimum session count; the confirmation skill presents the three choices with
+	the `design.md` §6.6 tradeoffs, asks the user, and for `other` maps the user's words to cells through `revise` and
+	shows the result for confirmation. The status shows
+	each category's weakest cell (or that it is not yet fixed) and development cells; a weakest-only claim names the
+	profile and says no other profile was certified.
 - **Format:** the campaign format version increases; the previous format is refused, as format 2 was.
 - **Closes:** R-E19, R-E22, R-C15, the development-cell part of R-D1, R-E3 and R-D7, the scope part of R-C1 and R-C11,
-  and the scope wording of R-P4.
+	and the scope wording of R-P4.
 - **Tests:** `CapabilityRankingTest`, `CellTierTest`, `SchedulerTest`, `BaselineTest`, `CommitGateTest`,
-  `ProposalTest`, `OptimizerCoreTest`, `StatusReportTest`, the contract and campaign store round trips, `DriverTest`
-  trace 19.
+	`ProposalTest`, `OptimizerCoreTest`, `StatusReportTest`, the contract and campaign store round trips, `DriverTest`
+	trace 19.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-33 — Prompt tests and held-out parts (user ruling, 2026-10-04)
 
 - **Split:** each variable of a prompt test states whether it is outcome-changing (user rulings, 2026-10-04
-  and 2026-10-09). At confirmation CAT draws a random salt, frozen with the contract. In `optimizer.contract`, a test
-  case's part is a hash of its prompt test and its outcome-changing values under the salt, each part with probability ½,
-  so test cases that share outcome-changing values share a part. Variable values are finite lists, so CAT counts each
-  prompt test's distinct outcome-changing combinations per part and refuses the proposal when either count is below 2,
-  naming the prompt test and both counts, or when the prompt test marks no outcome-changing variable; the proposal
-  lists the outcome-changing variables and the counts.
+	and 2026-10-09). At confirmation CAT draws a random salt, frozen with the contract. In `optimizer.contract`, a test
+	case's part is a hash of its prompt test and its outcome-changing values under the salt, each part with probability ½,
+	so test cases that share outcome-changing values share a part. Variable values are finite lists, so CAT counts each
+	prompt test's distinct outcome-changing combinations per part and refuses the proposal when either count is below 2,
+	naming the prompt test and both counts, or when the prompt test marks no outcome-changing variable; the proposal
+	lists the outcome-changing variables and the counts.
 - **Draws:** `Generator.draw` takes the part from the stream kind: development draws development test cases, formal
-  and baseline draws held-out test cases, each uniform over the prompt test's test cases in its part by the frozen
-  probabilities restricted to that part. Targeted runs and promotion runs use development test cases only.
+	and baseline draws held-out test cases, each uniform over the prompt test's test cases in its part by the frozen
+	probabilities restricted to that part. Targeted runs and promotion runs use development test cases only.
 - **Evidence:** `TrialAdoption.adoptDevelopment` no longer adds the incumbent's development outcomes to the baseline;
-  `adoptBaseline` and formal adoption no longer add failures to the regression set. A formal failure reaches
-  development as its cell, prompt test and failed requirements: triage, diagnosis and prompt author briefs never receive
-  a held-out test case, reply or judge rationale. The user's report may show held-out test cases.
+	`adoptBaseline` and formal adoption no longer add failures to the regression set. A formal failure reaches
+	development as its cell, prompt test and failed requirements: triage, diagnosis and prompt author briefs never receive
+	a held-out test case, reply or judge rationale. The user's report may show held-out test cases.
 - **ContractAuthor:** the contract author's prompt asks whether each variable is outcome-changing, so that each test
-  yields at least 2 distinct outcome-changing combinations per part; any wording change to an optimizer prompt is shown
-  to the user before delivery.
+	yields at least 2 distinct outcome-changing combinations per part; any wording change to an optimizer prompt is shown
+	to the user before delivery.
 - **Format:** the contract stores the salt and whether each variable is outcome-changing; the campaign
-  format becomes 15 and every older format is refused, as WI-32 refuses formats before 14.
+	format becomes 15 and every older format is refused, as WI-32 refuses formats before 14.
 - **Closes:** R-C16, R-D9, the part side of R-C4, R-C1, R-D3 and R-D7.
 - **Tests:** `GeneratorTest`, `DrawStreamTest`, `ProposalTest`, `TrialAdoptionTest` (or the adoption cases in
-  `DriverTest`), `DriverTest` trace 21, the prompt author brief tests, the contract store round trip.
+	`DriverTest`), `DriverTest` trace 21, the prompt author brief tests, the contract store round trip.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-38 — Reproduction before tuning (user ruling, 2026-10-04)
 
 - **Behavior:** the proposal lists, per requirement, the behaviors through which it can fail; each deterministic check
-  names its behavior; the judge's verdict names one listed behavior or `other` for each failed requirement;
-  `FailureSummary` carries it. Contract, proposal and campaign formats increase; older ones are refused.
+	names its behavior; the judge's verdict names one listed behavior or `other` for each failed requirement;
+	`FailureSummary` carries it. Contract, proposal and campaign formats increase; older ones are refused.
 - **Groups:** after a failed attempt, formal failures are grouped by cell, test, failed requirement and behavior.
 - **Rounds:** per group, the values contract author writes at least 4 combinations aimed at the behavior; CAT runs up to
-  100 reproduction trials of them in the group's cell, ending the round at 2 failures with that behavior. A reproduced
-  group's values join development as WI-34's do. Otherwise the contract author gets the tried values and their counts,
-  no replies, and its new values replace them. A failed round may repeat under a stress setting the harness offers (a
-  lower effort of the same model; in Codex, a lower tool-output limit); a reproduction there adds that stressed profile
-  as a development cell.
+	100 reproduction trials of them in the group's cell, ending the round at 2 failures with that behavior. A reproduced
+	group's values join development as WI-34's do. Otherwise the contract author gets the tried values and their counts,
+	no replies, and its new values replace them. A failed round may repeat under a stress setting the harness offers (a
+	lower effort of the same model; in Codex, a lower tool-output limit); a reproduction there adds that stressed profile
+	as a development cell.
 - **Pause:** after 4 rounds without reproduction, the group is recorded as not reproduced with its counts and CAT
-  pauses; the user chooses more rounds, a new attempt with the unchanged candidate after the commit gate, or
-  stopping. Prompt authors work on no group before it reproduces.
+	pauses; the user chooses more rounds, a new attempt with the unchanged candidate after the commit gate, or
+	stopping. Prompt authors work on no group before it reproduces.
 - **Closes:** R-C18, R-C19.
 - **Tests:** the cases listed under R-C18 and R-C19.
 - **Exit:** unit tests pass; the full build passes.
@@ -1293,699 +1293,699 @@ The riskiest pure code, built first.
 
 - **Trigger:** a certification attempt ends (`below minimum` or `inconclusive`) with at least one formal failure.
 - **ContractAuthor:** one contract author session per ended attempt receives, for each prompt test with a formal
-  failure, that prompt test with only the development values of its outcome-changing variables (as the prompt author's
-  contract shows them, without the salt) and each failure's cell and failed requirements. It returns at least 4 new
-  outcome-changing combinations per failed test that exercise those requirements, in a strict schema; the contract
-  author's prompt change is shown to the user before delivery.
+	failure, that prompt test with only the development values of its outcome-changing variables (as the prompt author's
+	contract shows them, without the salt) and each failure's cell and failed requirements. It returns at least 4 new
+	outcome-changing combinations per failed test that exercise those requirements, in a strict schema; the contract
+	author's prompt change is shown to the user before delivery.
 - **Validation:** CAT rejects a new outcome-changing value equal to any existing value of its variable, held-out values
-  included, without telling the contract author which part holds the value, and validates the generator as for any test
-  case; a rejected or failed derivation is an infrastructure failure.
+	included, without telling the contract author which part holds the value, and validates the generator as for any test
+	case; a rejected or failed derivation is an infrastructure failure.
 - **Draws:** the added combinations belong to the development part only. Development draws of the test give them,
-  together, half of its probability, and the confirmed development combinations the other half by their frozen
-  probabilities. Formal and baseline draws are unchanged. A failure on an added test case is an ordinary development
-  failure.
+	together, half of its probability, and the confirmed development combinations the other half by their frozen
+	probabilities. Formal and baseline draws are unchanged. A failure on an added test case is an ordinary development
+	failure.
 - **Counts:** the development distribution changed, so every candidate's development counts restart and the
-  commit gate needs new trials.
+	commit gate needs new trials.
 - **State:** the added values are campaign state outside the confirmed contract; the contract identity and the
-  measurement identity are unchanged; the user's report lists them.
+	measurement identity are unchanged; the user's report lists them.
 - **Closes:** R-C17.
 - **Tests:** `DriverTest` (ended attempt to contract author to development draws; restart of counts; no held-out value
-  or salt in the contract author input; the WI-33 recommit loop no longer recommits an unchanged candidate without new
-  development trials for the commit gate), `GeneratorTest`, the contract author brief tests, the campaign store round
-  trip.
+	or salt in the contract author input; the WI-33 recommit loop no longer recommits an unchanged candidate without new
+	development trials for the commit gate), `GeneratorTest`, the contract author brief tests, the campaign store round
+	trip.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-35 — Formal cell order (user ruling, 2026-10-04)
 
 - **Rule:** in the formal phase, `Scheduler` sends a category's formal trials only to its open cells: its development
-  cells, and each other scope cell once every development cell and every scope cell below it are certified. A cell is
-  below another when its model ranks no higher by `CapabilityRanking` and its effort is no higher, and the two differ.
-  Among open cells, the one with the fewest formal outcomes goes first. The category limit applies to the open cells'
-  remaining passes. Baseline trials are not ordered.
+	cells, and each other scope cell once every development cell and every scope cell below it are certified. A cell is
+	below another when its model ranks no higher by `CapabilityRanking` and its effort is no higher, and the two differ.
+	Among open cells, the one with the fewest formal outcomes goes first. The category limit applies to the open cells'
+	remaining passes. Baseline trials are not ordered.
 - **Closes:** R-E23.
 - **Tests:** `SchedulerTest` cases listed under R-E23; a `DriverTest` attempt that fails in the weakest cell dispatches
-  no formal trial elsewhere.
+	no formal trial elsewhere.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-36 — Held-out content unreadable (2026-10-04)
 
 - **Rule:** every nested session except the judge runs with its harness sandbox denying reads of the campaign
-  snapshot, the proposal and the trial records: Claude through `sandbox.filesystem.denyRead` and `Read` deny rules in
-  the session's settings, Codex through deny entries in a permission profile that the thread names. A harness whose
-  session cannot carry the list is refused before the campaign starts.
+	snapshot, the proposal and the trial records: Claude through `sandbox.filesystem.denyRead` and `Read` deny rules in
+	the session's settings, Codex through deny entries in a permission profile that the thread names. A harness whose
+	session cannot carry the list is refused before the campaign starts.
 - **Closes:** R-E24.
 - **Tests:** `ClaudeSessionsTest` and `CodexSessionsTest` cases listed under R-E24.
 - **Validation:** one prompt author session per harness, asked to print the snapshot by its absolute path, gets no
-  content; one development trial per harness still passes.
+	content; one development trial per harness still passes.
 - **Exit:** unit tests pass; the full build passes; the validation holds in both harnesses.
 
 ### WI-39 — Leftover runs in the real run roots (2026-10-04)
 
 - **Defect:** `OptimizerCore` and `DriverHarness` give `LeftoverRuns` `<campaign>/runs`, but runs are written under the
-  harness run root `.cat/work/optimizer-runs/<harness>` and, since WI-37, `<harness>-held-out`. Reconciliation
-  therefore never finds a killed driver's runs, and Codex harness processes that outlive the driver keep running (H20).
+	harness run root `.cat/work/optimizer-runs/<harness>` and, since WI-37, `<harness>-held-out`. Reconciliation
+	therefore never finds a killed driver's runs, and Codex harness processes that outlive the driver keep running (H20).
 - **Fix:** reconciliation searches both run roots. The run roots hold every campaign's runs, so a run counts as left
-  over only when it is still marked `running` and its recorded owner process (`ownerPid`, `ownerStartedAt`) is no
-  longer alive; a run whose owner lives belongs to a running driver, of this or another campaign, and is left alone.
+	over only when it is still marked `running` and its recorded owner process (`ownerPid`, `ownerStartedAt`) is no
+	longer alive; a run whose owner lives belongs to a running driver, of this or another campaign, and is left alone.
 - **Closes:** R-E11 with WI-9.
 - **Tests:** `LeftoverRunsTest`: a running run with a dead owner is found in each root; one with a live owner, a
-  finished run and a manifest without start times are not. `ReconciliationTest` or `DriverTest`: reconciliation passes
-  the session port's run roots, not a campaign directory.
+	finished run and a manifest without start times are not. `ReconciliationTest` or `DriverTest`: reconciliation passes
+	the session port's run roots, not a campaign directory.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-42 — Judge version (user ruling, 2026-10-04)
 
 - **Change:** the judge measurement condition becomes a judge version, a constant per harness reached through the
-  session port, in place of the judge model. CAT increments it in every release that changes the judge's role profile
-  (model and effort), prompt, rubric, decision rule, result schema, or the evidence section rendered for the same harness
-  events. A new judge version makes a certification historical. The campaign format increases and every older format
-  is refused.
+	session port, in place of the judge model. CAT increments it in every release that changes the judge's role profile
+	(model and effort), prompt, rubric, decision rule, result schema, or the evidence section rendered for the same harness
+	events. A new judge version makes a certification historical. The campaign format increases and every older format
+	is refused.
 - **Guard:** each harness module keeps a registry file of its judge versions, each with the hash of the judge profile
-  and of the evidence section rendered for fixed harness events. A test fails when the current hash is not registered
-  under the current version, or when one version has two hashes, so a judge change needs a new version.
+	and of the evidence section rendered for fixed harness events. A test fails when the current hash is not registered
+	under the current version, or when one version has two hashes, so a judge change needs a new version.
 - **Closes:** R-M2 with WI-3 and WI-41.
 - **Tests:** `ApplicabilityTest`: a new judge version makes a certification historical, and an unchanged one keeps it
-  current; the registry test in each harness module; a change to each profile field or to the rendered section changes
-  the hash.
+	current; the registry test in each harness module; a change to each profile field or to the rendered section changes
+	the hash.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-47 — Codex trials record the observed model and effort
 
 - **Change:** `CodexProcess.sendTurn` passes every start-up notification it kept to the listener, in arrival order,
-  before the turn's own notifications, so the bridge forwards them and the optimizer's parser sees `thread/started`.
-  `AppServerEvents` also reads the root thread's `thread/settings/updated` notification: its `threadSettings.model`
-  and `threadSettings.effort` replace the values from `thread/started`, and a later notification replaces an earlier
-  one. A notification for another thread changes nothing.
+	before the turn's own notifications, so the bridge forwards them and the optimizer's parser sees `thread/started`.
+	`AppServerEvents` also reads the root thread's `thread/settings/updated` notification: its `threadSettings.model`
+	and `threadSettings.effort` replace the values from `thread/started`, and a later notification replaces an earlier
+	one. A notification for another thread changes nothing.
 - **Closes:** R-E16 for Codex.
 - **Tests:** `CodexProcessTest`: the listener receives the start-up notifications before the turn's, and the turn
-  archive is unchanged; `AppServerEventsTest`: a session whose `thread/started` reports `medium` and whose
-  `thread/settings/updated` reports `low` reports `low`, and a child thread's settings change nothing.
+	archive is unchanged; `AppServerEventsTest`: a session whose `thread/started` reports `medium` and whose
+	`thread/settings/updated` reports `low` reports `low`, and a child thread's settings change nothing.
 - **Exit:** unit tests pass; the full build passes; the next Codex E1 trial records show the observed model and
-  effort.
+	effort.
 
 ### WI-48 — Every trial session leaves a session record
 
 - **Change:** each trial session end, whatever its result, appends one session record to the trial record: start
-  and end times, concurrency, the campaign's throttle state after the session's rate-limit windows were applied, the
-  windows the session reported, the login class and the reported token usage, if any. The login class is classified
-  once when the driver starts. The session records replace the trial record's token-usage list, raising the format
-  version by one.
+	and end times, concurrency, the campaign's throttle state after the session's rate-limit windows were applied, the
+	windows the session reported, the login class and the reported token usage, if any. The login class is classified
+	once when the driver starts. The session records replace the trial record's token-usage list, raising the format
+	version by one.
 - **Closes:** R-E6's per-trial records, and the login class that E1's receipt shows.
 - **Tests:** `CampaignStoreContract`: a record with session records round-trips, and a file at the earlier version
-  is refused with the start-a-new-campaign message; `DriverTest`: a completed trial and a rate-limited trial each
-  append a session record with the expected values.
+	is refused with the start-a-new-campaign message; `DriverTest`: a completed trial and a rate-limited trial each
+	append a session record with the expected values.
 - **Exit:** unit tests pass; the full build passes; the next E1 trial records show every field.
 
 ### WI-51 — The in-project target of a prompt-source link is editable (user ruling, 2026-10-05)
 
 - **Change:** `Authority` treats an in-project file as a prompt file when a symbolic link at or below a prompt source
-  resolves to it, following link chains through the fork inventory. Such a target accepts content edits and
-  ordinary-file creates and deletes, whether the attempt names the link path or the target path. External targets stay
-  `external_target_read_only`, loader configuration stays `loader_configuration_fixed`, a cycle stays `link_cycle`,
-  and an in-project file that no prompt-source link reaches stays `outside_prompt_sources`. The link report and the
-  prompt author prompt follow from the same authority, so the proposal no longer reports such a link as outside the
-  prompt sources.
+	resolves to it, following link chains through the fork inventory. Such a target accepts content edits and
+	ordinary-file creates and deletes, whether the attempt names the link path or the target path. External targets stay
+	`external_target_read_only`, loader configuration stays `loader_configuration_fixed`, a cycle stays `link_cycle`,
+	and an in-project file that no prompt-source link reaches stays `outside_prompt_sources`. The link report and the
+	prompt author prompt follow from the same authority, so the proposal no longer reports such a link as outside the
+	prompt sources.
 - **Closes:** D54; found by the E7 rerun on 2026-10-05, where the prompt author's prompt listed `docs/handbook.md` as
-  editable, three attempts edited it (`docs/handbook.md -> shared/handbook.md`), and CAT rejected each one as
-  `outside_prompt_sources`, pausing the campaign after 3 prompt author failures.
+	editable, three attempts edited it (`docs/handbook.md -> shared/handbook.md`), and CAT rejected each one as
+	`outside_prompt_sources`, pausing the campaign after 3 prompt author failures.
 - **Tests:** `AuthorityTest`: an edit at a prompt-source link whose target is in the project is authorized, at the
-  link path and at the target path; through a chain of two in-project links; a link whose target is external is
-  `external_target_read_only`; a prompt-source link to loader configuration is `loader_configuration_fixed`; an
-  in-project file that only a non-prompt-source link reaches is `outside_prompt_sources`. `LinkReportTest`: the
-  in-project link of a prompt source reports no limit. A `DriverTest` or authoring test: an attempt that edits the
-  target through the link becomes a candidate.
+	link path and at the target path; through a chain of two in-project links; a link whose target is external is
+	`external_target_read_only`; a prompt-source link to loader configuration is `loader_configuration_fixed`; an
+	in-project file that only a non-prompt-source link reaches is `outside_prompt_sources`. `LinkReportTest`: the
+	in-project link of a prompt source reports no limit. A `DriverTest` or authoring test: an attempt that edits the
+	target through the link becomes a candidate.
 - **Exit:** unit tests pass; the full build passes; the E7 rerun's handbook edits are accepted.
 
 ### WI-50 — A role session that reaches its time limit is an infrastructure failure
 
 - **Change:** when a contract author, judge, triage or prompt author session reaches its time limit, the session's
-  result is `SessionResult.Failed` with the reason "The <role> session reached its <N>-minute time limit", and each
-  role's existing handling of a failed session applies. A trial session that reaches its time limit stays a completed
-  session judged on its behaviour. `start` and `revise` report a contract author session that did not complete by its
-  reason (failed), as interrupted, or as rate-limited until its reset time, never by the result's record text.
+	result is `SessionResult.Failed` with the reason "The <role> session reached its <N>-minute time limit", and each
+	role's existing handling of a failed session applies. A trial session that reaches its time limit stays a completed
+	session judged on its behaviour. `start` and `revise` report a contract author session that did not complete by its
+	reason (failed), as interrupted, or as rate-limited until its reset time, never by the result's record text.
 - **Closes:** R-E13 for a contract author session that reaches its time limit; found by the E7 rerun on 2026-10-05,
-  where the provider streamed the contract author's proposal about 8 times slower than in the previous run, the
-  30-minute limit stopped the output turn, and `start` reported "the final response is not exactly one JSON object".
+	where the provider streamed the contract author's proposal about 8 times slower than in the previous run, the
+	30-minute limit stopped the output turn, and `start` reported "the final response is not exactly one JSON object".
 - **Tests:** `SessionTest` (or the existing session adapter test): a contract author, judge, triage and prompt author
-  session that reaches its time limit is `Failed` with the time-limit reason; a trial session that reaches it is
-  `Completed`. `OptimizerCoreTest` (or the existing `start` test): a contract author session that fails reports its
-  reason and the retry command.
+	session that reaches its time limit is `Failed` with the time-limit reason; a trial session that reaches it is
+	`Completed`. `OptimizerCoreTest` (or the existing `start` test): a contract author session that fails reports its
+	reason and the retry command.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-52 — A trial turn the provider never answered is an infrastructure attempt (user ruling, 2026-10-06)
 
 - **Change:** each harness's event reader records, per turn, whether the model produced any output (a reasoning,
-  reply or tool item, or reported token usage) and whether a hook is still running. When a trial session reaches its
-  time limit in a turn with no model output and no running hook, the session's result is `SessionResult.Failed`
-  with the reason "The trial's turn <N> reached its <M>-minute time limit with no model output", so the driver
-  records an infrastructure attempt and reruns the same logical trial. A timed-out turn with any model output, or
-  with a hook still running, stays a completed session judged on its behaviour.
+	reply or tool item, or reported token usage) and whether a hook is still running. When a trial session reaches its
+	time limit in a turn with no model output and no running hook, the session's result is `SessionResult.Failed`
+	with the reason "The trial's turn <N> reached its <M>-minute time limit with no model output", so the driver
+	records an infrastructure attempt and reruns the same logical trial. A timed-out turn with any model output, or
+	with a hook still running, stays a completed session judged on its behaviour.
 - **Closes:** D55; found by the fresh E1 run on 2026-10-06, where a provider overload (`server_is_overloaded` in the
-  load balancer's log at 05:01:26 UTC) left a Codex trial with no model output after its user message for 60 seconds, and
-  the trial was judged "no reply" and counted toward the plateau.
+	load balancer's log at 05:01:26 UTC) left a Codex trial with no model output after its user message for 60 seconds, and
+	the trial was judged "no reply" and counted toward the plateau.
 - **Tests:** `SessionTest` (or the existing session adapter test): a trial that reaches its time limit with no model
-  output after its user message is `Failed` with the reason; one with a reasoning item, a reply delta, a tool call or
-  token usage is `Completed`; one whose hook started and never completed is `Completed`; a multi-turn trial whose
-  turn 1 replied and whose turn 2 has no output is `Failed`. Event-reader tests for Codex and Claude: each output
-  kind and each hook start and completion sets the per-turn state, using recorded event shapes.
+	output after its user message is `Failed` with the reason; one with a reasoning item, a reply delta, a tool call or
+	token usage is `Completed`; one whose hook started and never completed is `Completed`; a multi-turn trial whose
+	turn 1 replied and whose turn 2 has no output is `Failed`. Event-reader tests for Codex and Claude: each output
+	kind and each hook start and completion sets the per-turn state, using recorded event shapes.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-53 — A rejection or a refusal holds every CAT process of the harness (user rulings, 2026-10-06)
 
 - **Change:**
-  - **Refusal detection.** Each event reader recognizes a provider refusal, an HTTP 403 from the provider or its
-    network edge. Codex: an `error` notification with `willRetry` false whose `codexErrorInfo` holds an
-    `httpStatusCode` of 403 under any key (E8 recorded `httpConnectionFailed`; the retried ones carry
-    `responseStreamDisconnected`). Claude: an error `result` with `api_error_status` 403, read where 429 is read
-    today. A final Codex error with an `httpStatusCode` of 429 is a rate-limit rejection without a reset time: the
-    load balancer answers a request it cannot admit under its account caps with a 429 `rate_limit_error`. `Session`
-    reports a refused session as distinct from a rate-limited one, for every role.
-  - **Shared hold.** `HarnessCapacity` keeps the hold in its harness directory: the time the hold ends and the next
-    hold length. Writes are atomic and serialized by a lock file in the same directory, and a write never moves the
-    end earlier. `acquire` waits and `tryAcquire` returns empty while the hold lasts, for the optimizer and both
-    runner CLIs. An unlimited instance has no hold; a test-owned directory has its own.
-  - **Hold rules.** A rate-limit rejection with a reset time holds until that time. A rejection without one, or a
-    refusal, holds for the next length: 1 minute, doubling for each rejection that follows the end of a hold, up to
-    30 minutes. A rejection that arrives while a hold lasts does not lengthen the sequence. A turn that completes
-    resets the next length to 1 minute. The campaign `Throttle` takes its hold end and backoff from the shared hold
-    rather than keeping its own sequence, and still drops `w` to 1; trial records keep recording the throttle state.
-  - **Driver.** A rejected or refused session runs again after the hold: a trial as the same logical trial, any other
-    role as the same request. Neither counts toward the 3-infrastructure-failure limit. A refusal that follows a
-    30-minute hold pauses the campaign with "The provider refused <harness> requests after a 30-minute hold".
+	- **Refusal detection.** Each event reader recognizes a provider refusal, an HTTP 403 from the provider or its
+		network edge. Codex: an `error` notification with `willRetry` false whose `codexErrorInfo` holds an
+		`httpStatusCode` of 403 under any key (E8 recorded `httpConnectionFailed`; the retried ones carry
+		`responseStreamDisconnected`). Claude: an error `result` with `api_error_status` 403, read where 429 is read
+		today. A final Codex error with an `httpStatusCode` of 429 is a rate-limit rejection without a reset time: the
+		load balancer answers a request it cannot admit under its account caps with a 429 `rate_limit_error`. `Session`
+		reports a refused session as distinct from a rate-limited one, for every role.
+	- **Shared hold.** `HarnessCapacity` keeps the hold in its harness directory: the time the hold ends and the next
+		hold length. Writes are atomic and serialized by a lock file in the same directory, and a write never moves the
+		end earlier. `acquire` waits and `tryAcquire` returns empty while the hold lasts, for the optimizer and both
+		runner CLIs. An unlimited instance has no hold; a test-owned directory has its own.
+	- **Hold rules.** A rate-limit rejection with a reset time holds until that time. A rejection without one, or a
+		refusal, holds for the next length: 1 minute, doubling for each rejection that follows the end of a hold, up to
+		30 minutes. A rejection that arrives while a hold lasts does not lengthen the sequence. A turn that completes
+		resets the next length to 1 minute. The campaign `Throttle` takes its hold end and backoff from the shared hold
+		rather than keeping its own sequence, and still drops `w` to 1; trial records keep recording the throttle state.
+	- **Driver.** A rejected or refused session runs again after the hold: a trial as the same logical trial, any other
+		role as the same request. Neither counts toward the 3-infrastructure-failure limit. A refusal that follows a
+		30-minute hold pauses the campaign with "The provider refused <harness> requests after a 30-minute hold".
 - **Closes:** D57 and the §3.5 rejection hold; found by E8 on 2026-10-06, where 403 bursts failed up
-  to 451 of 474 requests a minute while each refused session reran within a minute.
+	to 451 of 474 requests a minute while each refused session reran within a minute.
 - **Tests:** `AppServerEventsTest` and `StreamJsonEventsTest` on recorded shapes: a final 403 error is a refusal, a
-  retried one (`willRetry` true) is not, a final Codex 429 and a Claude 429 are rate-limit rejections, a 500 stays an
-  error. `HarnessCapacityTest`: a hold set by one instance blocks `tryAcquire` on a second instance over the same
-  directory and ends at its time; a shorter hold never replaces a longer one; the lengths run 1, 2, 4, 8, 16, 30, 30
-  minutes; a completed turn resets them; a rejection during a hold does not double. `DriverTest`: a refused trial reruns as the same logical trial
-  after the hold and three refusals do not pause; a refusal after a 30-minute hold pauses with the message; a refused
-  judge or prompt author request reruns. All with an injected clock and pause; no test sleeps.
+	retried one (`willRetry` true) is not, a final Codex 429 and a Claude 429 are rate-limit rejections, a 500 stays an
+	error. `HarnessCapacityTest`: a hold set by one instance blocks `tryAcquire` on a second instance over the same
+	directory and ends at its time; a shorter hold never replaces a longer one; the lengths run 1, 2, 4, 8, 16, 30, 30
+	minutes; a completed turn resets them; a rejection during a hold does not double. `DriverTest`: a refused trial reruns as the same logical trial
+	after the hold and three refusals do not pause; a refusal after a 30-minute hold pauses with the message; a refused
+	judge or prompt author request reruns. All with an injected clock and pause; no test sleeps.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-55 — Prompt authors receive each failing trial's evidence section (user ruling, 2026-10-06)
 
 - **Change:** `PromptAuthorBrief` carries, for each failure it lists, that trial's evidence section, rendered by the
-  same renderer the judge uses from the trial's retained harness events. `PromptAuthorPrompt` places each section with
-  its failure. A failure whose events are no longer retained says so instead of omitting the section silently. Because a
-  prompt author can start in a later slice than its failure, each development failure persists the paths of its trial's
-  transcript and effects (carried through `CampaignEvent.Complete`, `LogicalTrial` and `Failure`). `campaign.json` and
-  the trial records raise their `format_version` by one, and a file at the earlier version is refused with "start a new
-  campaign". At prompt author start the `Driver` stages the working snapshot, which every development failure belongs
-  to, and renders each failure's section from its persisted paths through the judge's renderer, which takes those paths
-  instead of a `Completed`. A missing transcript or effects directory leaves that failure without a section.
+	same renderer the judge uses from the trial's retained harness events. `PromptAuthorPrompt` places each section with
+	its failure. A failure whose events are no longer retained says so instead of omitting the section silently. Because a
+	prompt author can start in a later slice than its failure, each development failure persists the paths of its trial's
+	transcript and effects (carried through `CampaignEvent.Complete`, `LogicalTrial` and `Failure`). `campaign.json` and
+	the trial records raise their `format_version` by one, and a file at the earlier version is refused with "start a new
+	campaign". At prompt author start the `Driver` stages the working snapshot, which every development failure belongs
+	to, and renders each failure's section from its persisted paths through the judge's renderer, which takes those paths
+	instead of a `Completed`. A missing transcript or effects directory leaves that failure without a section.
 - **Closes:** D56 and open item "prompt authors cannot see trial tool calls"; found by E1, where prompt authors could
-  not tell a mistyped `read-file` path (exit 127) from a skipped read.
+	not tell a mistyped `read-file` path (exit 127) from a skipped read.
 - **Tests:** `PromptAuthorPromptTest`: each failure's section appears with that failure and contains its tool call, exit
-  status and output; two failures from different trials each get their own section; a failure without retained
-  events states it. `DriverTest`: a prompt author started after a failed trial is given that trial's section.
+	status and output; two failures from different trials each get their own section; a failure without retained
+	events states it. `DriverTest`: a prompt author started after a failed trial is given that trial's section.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-56 — Development has no plateau (user ruling, 2026-10-06)
 
 - **Change:** remove `Outcome.PLATEAU`, `PendingDecision.PlateauReached` and `Plateau`. A complete round with no
-  promotable attempt always takes the path that `TrialAdoption.endUnproductiveRound` takes today within the limit:
-  keep the working candidate and its retained attempts, resume its representative trials, restart admissions at a
-  window of 1. A later failure edits again under edit-or-continue. The review checkpoint is the bound; it offers
-  `accept without certification` when the working candidate is not the incumbent. Status and report texts lose the
-  plateau. `campaign.json` raises its `format_version`, and a file at the earlier version is refused with the
-  start-a-new-campaign message, because a stored plateau pause has no meaning now.
+	promotable attempt always takes the path that `TrialAdoption.endUnproductiveRound` takes today within the limit:
+	keep the working candidate and its retained attempts, resume its representative trials, restart admissions at a
+	window of 1. A later failure edits again under edit-or-continue. The review checkpoint is the bound; it offers
+	`accept without certification` when the working candidate is not the incumbent. Status and report texts lose the
+	plateau. `campaign.json` raises its `format_version`, and a file at the earlier version is refused with the
+	start-a-new-campaign message, because a stored plateau pause has no meaning now.
 - **Closes:** D53 and §2.7 "Rounds"; found by E1 and E7, which ended at a plateau after 15 and 5 rounds.
 - **Tests:** `PlateauTest` becomes a test of the round's end: a complete round without a promotion above the failure
-  limit resumes sampling, and the next failure starts a new round. `DriverTest`: a candidate that keeps failing
-  reaches the review checkpoint and stops there, offering `accept without certification`. `FileCampaignStoreTest`:
-  the earlier version is refused. `StatusReportTest` and `DecisionTableTest` lose the plateau rows.
+	limit resumes sampling, and the next failure starts a new round. `DriverTest`: a candidate that keeps failing
+	reaches the review checkpoint and stops there, offering `accept without certification`. `FileCampaignStoreTest`:
+	the earlier version is refused. `StatusReportTest` and `DecisionTableTest` lose the plateau rows.
 - **Exit:** unit tests pass; the full build passes; `grep -ri plateau client/` finds only rejection-test fixtures.
 
 ### WI-57 — A capacity slot stays locked while its permit is open
 
 - **Change:** on Linux, closing any channel on a file releases every POSIX lock that the process holds on that file.
-  `HarnessCapacity.tryAcquire` opens each slot file in turn and closes the channel when the slot is taken; when another
-  permit in the same JVM holds that slot, the close releases that permit's kernel lock while `FileLock.isValid()` stays
-  true. The JVM's own lock table still keeps its sessions apart, so each process stays within the maximum, but other
-  processes see the slots as free and the total across processes is unbounded. `tryAcquire` must never open or close a
-  channel on a slot file that a permit in this JVM holds: a JVM-wide registry of held slots, keyed by the lock
-  directory's real path and guarded like the hold monitor, is consulted before a slot file is opened, and a permit
-  leaves it when it closes. Every other `FileChannel` lock in `client/` (`CampaignLock`, `HarnessRunLock`, the hold
-  lock and any other) is audited for the same open-and-close pattern and fixed the same way where a second channel on
-  a locked file can be opened in the same JVM.
+	`HarnessCapacity.tryAcquire` opens each slot file in turn and closes the channel when the slot is taken; when another
+	permit in the same JVM holds that slot, the close releases that permit's kernel lock while `FileLock.isValid()` stays
+	true. The JVM's own lock table still keeps its sessions apart, so each process stays within the maximum, but other
+	processes see the slots as free and the total across processes is unbounded. `tryAcquire` must never open or close a
+	channel on a slot file that a permit in this JVM holds: a JVM-wide registry of held slots, keyed by the lock
+	directory's real path and guarded like the hold monitor, is consulted before a slot file is opened, and a permit
+	leaves it when it closes. Every other `FileChannel` lock in `client/` (`CampaignLock`, `HarnessRunLock`, the hold
+	lock and any other) is audited for the same open-and-close pattern and fixed the same way where a second channel on
+	a locked file can be opened in the same JVM.
 - **Closes:** R-E8 across processes; found by E8 on 2026-10-06, where campaign b's JVM held 16 open slot permits with
-  12 live sessions while the kernel listed locks on 1 or 2 slot files, and two campaigns never showed more than 7
-  locked slots at once.
+	12 live sessions while the kernel listed locks on 1 or 2 slot files, and two campaigns never showed more than 7
+	locked slots at once.
 - **Tests:** `HarnessCapacityTest`, through an injected slot-file opener: with a permit held on slot 0, a second
-  instance over the same directory takes slot 1 without opening slot 0's file; after either permit closes, the other
-  slot is still never opened by a third instance until its permit closes; at the maximum, `tryAcquire` opens no held
-  slot file. Tests for each other lock the audit fixes. No test starts a process or sleeps.
+	instance over the same directory takes slot 1 without opening slot 0's file; after either permit closes, the other
+	slot is still never opened by a third instance until its permit closes; at the maximum, `tryAcquire` opens no held
+	slot file. Tests for each other lock the audit fixes. No test starts a process or sleeps.
 - **Exit:** unit tests pass; the full build passes; during the E8 rerun, the kernel lists a lock for every open
-  permit.
+	permit.
 
 ### WI-58 — Prompt authors address every kind of failure (user request, 2026-10-07)
 
 - **Change:** the prompt author's prompt has the prompt author group the failures it receives into kinds, by the first
-  action where each failing trial departs from the contract, and correct every routing or guidance kind. A kind that
-  looks like a model limitation, such as a mistyped command or a skipped step, is routing or guidance; `not guidance`
-  covers only a test or contract defect or an infrastructure fault. The prompt author input adds the lineage's earlier
-  manifests with their promotion results. For a kind that an earlier hunk targeted and that failed again, the prompt has
-  the attempt explain why the violated instruction must be followed, by stating the consequence of violating it where
-  the model decides, instead of restating it. The manifest gains a list of kinds (name, failing test cases,
-  classification, the hunks that address it), which replaces the per-failure classification. Manifest validation rejects
-  a received failure outside every kind, a routing or guidance kind without a hunk, and a kind that names an unknown
-  hunk. If a stored campaign file holds manifests, the change raises its format version as WI-56 did.
+	action where each failing trial departs from the contract, and correct every routing or guidance kind. A kind that
+	looks like a model limitation, such as a mistyped command or a skipped step, is routing or guidance; `not guidance`
+	covers only a test or contract defect or an infrastructure fault. The prompt author input adds the lineage's earlier
+	manifests with their promotion results. For a kind that an earlier hunk targeted and that failed again, the prompt has
+	the attempt explain why the violated instruction must be followed, by stating the consequence of violating it where
+	the model decides, instead of restating it. The manifest gains a list of kinds (name, failing test cases,
+	classification, the hunks that address it), which replaces the per-failure classification. Manifest validation rejects
+	a received failure outside every kind, a routing or guidance kind without a hunk, and a kind that names an unknown
+	hunk. If a stored campaign file holds manifests, the change raises its format version as WI-56 did.
 - **Closes:** D58 and §2.7 "Candidate generation and promotion" (steps 1, 3 and 5); R-D10.
 - **Tests:** `PromptAuthorManifestTest`: a manifest with a failure outside every kind, a guidance kind without a hunk,
-  or a kind naming an unknown hunk is rejected; a complete manifest is accepted; a manifest whose kinds are all `not
-  guidance` produces no candidate. The test of the prompt author's prompt: the prompt holds the earlier manifests with
-  their promotion results and states the every-kind rule. `DriverTest`: a rejected attempt is retained and contributes
-  no candidate.
+	or a kind naming an unknown hunk is rejected; a complete manifest is accepted; a manifest whose kinds are all `not
+	guidance` produces no candidate. The test of the prompt author's prompt: the prompt holds the earlier manifests with
+	their promotion results and states the every-kind rule. `DriverTest`: a rejected attempt is retained and contributes
+	no candidate.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-59 — Approaches learned from hand tuning, rotated across rounds (user request, 2026-10-07)
 
 - **Change:** `PromptAuthorApproach` gains six approaches after the first three: remove what the failing replies copied,
-  explain the consequence where the decision is made, offer one form of each action, put text to be copied last on
-  its line, define before use with definitions in agreement, and give the exact text rather than how to build it. A cell's attempts take the approaches in order, each
-  round continuing where the cell's previous rounds stopped and wrapping after the last. The count of earlier attempts
-  is the number of distinct attempt numbers below the round's first reservation for which CAT retained a manifest or a
-  promotion result for that cell.
+	explain the consequence where the decision is made, offer one form of each action, put text to be copied last on
+	its line, define before use with definitions in agreement, and give the exact text rather than how to build it. A cell's attempts take the approaches in order, each
+	round continuing where the cell's previous rounds stopped and wrapping after the last. The count of earlier attempts
+	is the number of distinct attempt numbers below the round's first reservation for which CAT retained a manifest or a
+	promotion result for that cell.
 - **Closes:** D59 and §2.7 "Approaches"; R-D14.
 - **Tests:** `RoundTest`: a round continues from the earlier count and wraps; `OptimizationEvidenceTest`: earlier
-  attempts are counted per cell, once each, below the bound; `DriverTest`: a cell with two earlier attempts gives its
-  next prompt author the third approach; `PromptAuthorTest`: each approach's instruction is rendered.
+	attempts are counted per cell, once each, below the bound; `DriverTest`: a cell with two earlier attempts gives its
+	next prompt author the third approach; `PromptAuthorTest`: each approach's instruction is rendered.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-49 — An answered authority warning stays answered
 
 - **Change:** `Transitions` merges a `WarnAuthority` into a pending `AuthorityWarnings` decision, listing each distinct
-  warning once. When the user chooses `use_authorized_source`, the campaign records the decision's warnings as
-  answered (`answered_warnings` in `campaign.json`, raising its `format_version` by one), and a later
-  `WarnAuthority` drops each answered warning; when none remains, no decision is raised and the attempt ends like any
-  attempt without edits. The prompt author's prompt lists the answered warnings and tells the prompt author that the
-  user declined those edits and that their requirements must be met through the editable prompt sources. The prompt
-  author's prompt's editable prompt sources leave out each link whose resolved target is external; the link stays in the
-  links list.
+	warning once. When the user chooses `use_authorized_source`, the campaign records the decision's warnings as
+	answered (`answered_warnings` in `campaign.json`, raising its `format_version` by one), and a later
+	`WarnAuthority` drops each answered warning; when none remains, no decision is raised and the attempt ends like any
+	attempt without edits. The prompt author's prompt lists the answered warnings and tells the prompt author that the
+	user declined those edits and that their requirements must be met through the editable prompt sources. The prompt
+	author's prompt's editable prompt sources leave out each link whose resolved target is external; the link stays in the
+	links list.
 - **Closes:** R-W4 for repeated warnings; found by E7, where 17 prompt author attempts produced no candidate because
-  each round reported the answered `answer_only_question` and `exact_motto_closing` warnings again.
+	each round reported the answered `answer_only_question` and `exact_motto_closing` warnings again.
 - **Tests:** `TransitionsTest`: two warnings raised while a warning decision is pending give one decision listing each
-  warning once; after `use_authorized_source`, an answered warning raises nothing and a different warning raises a
-  decision; `CampaignStoreContract`: answered warnings round-trip, and a file at the earlier version is refused with
-  the start-a-new-campaign message; `PromptAuthorPromptTest`: the prompt lists each answered warning, and a link to an
-  external file is absent from the editable sources and present among the links.
+	warning once; after `use_authorized_source`, an answered warning raises nothing and a different warning raises a
+	decision; `CampaignStoreContract`: answered warnings round-trip, and a file at the earlier version is refused with
+	the start-a-new-campaign message; `PromptAuthorPromptTest`: the prompt lists each answered warning, and a link to an
+	external file is absent from the editable sources and present among the links.
 - **Exit:** unit tests pass; the full build passes; the E7 rerun reaches an outcome without repeating an answered
-  warning.
+	warning.
 
 ### WI-46 — Development continues after a round without a promotion (user ruling, 2026-10-05)
 
 - **Change:** when a round completes without a promotable attempt, whether every attempt failed its promotion runs, no
-  attempt was accepted, or a revert counted the round as unproductive, CAT checks the working candidate's development
-  counts. If no category has more than `EditOrContinue.FAILURE_LIMIT` failures, the round ends with its attempts and
-  diagnoses retained, the working candidate stays, and representative admissions resume with concurrency restarting at
-  1; a later adopted failure goes through edit-or-continue as usual, and the commit gate commits the candidate once
-  it holds. Otherwise the outcome is `not certified: plateau` as before. The status text for the plateau names the
-  failure limit. Apply this at each place that now reports a plateau.
+	attempt was accepted, or a revert counted the round as unproductive, CAT checks the working candidate's development
+	counts. If no category has more than `EditOrContinue.FAILURE_LIMIT` failures, the round ends with its attempts and
+	diagnoses retained, the working candidate stays, and representative admissions resume with concurrency restarting at
+	1; a later adopted failure goes through edit-or-continue as usual, and the commit gate commits the candidate once
+	it holds. Otherwise the outcome is `not certified: plateau` as before. The status text for the plateau names the
+	failure limit. Apply this at each place that now reports a plateau.
 - **Closes:** R-D6.
 - **Tests:** `TrialAdoptionTest` or the existing plateau tests: a sequential round, a weak round and a revert, each
-  without a promotion, resume sampling while every category has at most 2 failures, and report a plateau when one
-  has 3; a candidate that resumed sampling and then meets the commit gate is committed; `DriverTest`: a campaign
-  whose only round fails continues admitting representative trials; `StatusReportTest`: the plateau text.
+	without a promotion, resume sampling while every category has at most 2 failures, and report a plateau when one
+	has 3; a candidate that resumed sampling and then meets the commit gate is committed; `DriverTest`: a campaign
+	whose only round fails continues admitting representative trials; `StatusReportTest`: the plateau text.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-45 — External files are read-only (user ruling, 2026-10-05)
 
 - **Change:** an external file, reached through a link or read directly, is a read-only member of the prompt family.
-  `Authority` takes no authorized targets and returns `EXTERNAL_TARGET_READ_ONLY` for every operation on an external
-  file; its warnings offer `use_authorized_source`, stop and revise only. Remove the `authorize_target` choice, the
-  `--target` option, `Campaign.authorizedTargets`, the authorized targets in the prompt author brief and prompt, and
-  `authorized_targets` in `campaign.json`, raising its `format_version` by one. Delivery plans and writes in-project
-  changes only: an overlay that changes an external file is refused before any write, and the delivery output has no
-  external change record. Delivery still scans the external files the fork recorded, so a change made to one after
-  the fork makes the result historical.
+	`Authority` takes no authorized targets and returns `EXTERNAL_TARGET_READ_ONLY` for every operation on an external
+	file; its warnings offer `use_authorized_source`, stop and revise only. Remove the `authorize_target` choice, the
+	`--target` option, `Campaign.authorizedTargets`, the authorized targets in the prompt author brief and prompt, and
+	`authorized_targets` in `campaign.json`, raising its `format_version` by one. Delivery plans and writes in-project
+	changes only: an overlay that changes an external file is refused before any write, and the delivery output has no
+	external change record. Delivery still scans the external files the fork recorded, so a change made to one after
+	the fork makes the result historical.
 - **Closes:** R-W4 and R-W8 under the ruling.
 - **Tests:** `AuthorityTest`: a content edit, create, delete, mode change and retarget of an external file each return
-  `EXTERNAL_TARGET_READ_ONLY`, and the warning lists no choice that edits it; `CommandsTest`: `choose <id>
-  authorize_target` and `--target` are rejected as unknown; `CampaignStoreContract`: a stored campaign round-trips
-  without the key, and a file at the earlier version is refused with the start-a-new-campaign message; `DeliveryTest`:
-  an overlay with an external change is refused before any write, and a change to a read-only external participant
-  after the fork makes the result historical; `DriverTest.authorityWarningTrace` updated.
+	`EXTERNAL_TARGET_READ_ONLY`, and the warning lists no choice that edits it; `CommandsTest`: `choose <id>
+	authorize_target` and `--target` are rejected as unknown; `CampaignStoreContract`: a stored campaign round-trips
+	without the key, and a file at the earlier version is refused with the start-a-new-campaign message; `DeliveryTest`:
+	an overlay with an external change is refused before any write, and a change to a read-only external participant
+	after the fork makes the result historical; `DriverTest.authorityWarningTrace` updated.
 - **Exit:** unit tests pass; the full build passes; no supported consumer can reach `authorize_target`,
-  `authorized_targets` or `external_changes`.
+	`authorized_targets` or `external_changes`.
 
 ### WI-44 — Reports cover every development cell (2026-10-04)
 
 - **Defect:** the commit gate covers every development cell, but `RemainingWork.development` iterates the
-  certification scope's cells and `CellReports` the contract's cells. A development cell outside the scope, such as a
-  failure cell under a weakest-only scope or a tool-output stress cell, is missing from the development minimum, and a
-  stress cell from the per-cell report.
+	certification scope's cells and `CellReports` the contract's cells. A development cell outside the scope, such as a
+	failure cell under a weakest-only scope or a tool-output stress cell, is missing from the development minimum, and a
+	stress cell from the per-cell report.
 - **Fix:** each adds the development cells to the cells it iterates, each once, in contract order with a stress cell
-  after its base cell.
+	after its base cell.
 - **Closes:** R-E12 with WI-12.
 - **Tests:** `RemainingWorkTest`: a development cell outside the scope adds its commit-gate minimum; `StatusReportTest`
-  or the cell report test: that cell appears once; a scope cell that is also a development cell is not counted twice.
+	or the cell report test: that cell appears once; a scope cell that is also a development cell is not counted twice.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-43 — Cleanup and certification record (user rulings, 2026-10-04)
 
 - **Record:** when the delivered candidate is certified, the delivery change set writes the certification record to
-  `<project>/.cat/certifications/<target path relative to the project, without its extension>.json`, replacing any
-  earlier one, through the same preflight, journal and preimage checks as the prompt files. It holds the certification
-  index, the scope, each category's counts, the threshold, `α_i` and every measurement condition, with the prompt
-  sources and the contract by hash, and no trial results.
+	`<project>/.cat/certifications/<target path relative to the project, without its extension>.json`, replacing any
+	earlier one, through the same preflight, journal and preimage checks as the prompt files. It holds the certification
+	index, the scope, each category's counts, the threshold, `α_i` and every measurement condition, with the prompt
+	sources and the contract by hash, and no trial results.
 - **Cleanup:** after the delivery's final verification, or when the user keeps the incumbent instead of a regressing
-  certified candidate, CAT removes the optimization worktree, deletes the campaign's runs from both run roots and
-  deletes the campaign directory last. The campaign records the cleanup before it starts, so a fault leaves a campaign
-  that the next command for the target finishes removing. Other campaigns keep their files.
+	certified candidate, CAT removes the optimization worktree, deletes the campaign's runs from both run roots and
+	deletes the campaign directory last. The campaign records the cleanup before it starts, so a fault leaves a campaign
+	that the next command for the target finishes removing. Other campaigns keep their files.
 - **Status:** `status` for a target without a campaign, and a new campaign's proposal, compare the record with the
-  conditions CAT knows there and report current or historical with each changed condition; a condition only a session
-  observes, such as the trial model, is reported as unchecked.
+	conditions CAT knows there and report current or historical with each changed condition; a condition only a session
+	observes, such as the trial model, is reported as unchecked.
 - **Closes:** R-W9, R-M6.
 - **Tests:** `CleanupTest`: each ending removes everything, an uncertified or cancelled campaign keeps its files, and a
-  fault before each step leaves a removal that the next command completes; `CertificationRecordTest`: the record's
-  fields and size for a fixture campaign, and no trial result in it; `DeliveryTest`: the record is in the diff and
-  replaces an earlier one; `ApplicabilityTest`: a record against a changed prompt hash, judge version and session
-  environment version, and an unchecked trial model.
+	fault before each step leaves a removal that the next command completes; `CertificationRecordTest`: the record's
+	fields and size for a fixture campaign, and no trial result in it; `DeliveryTest`: the record is in the diff and
+	replaces an earlier one; `ApplicabilityTest`: a record against a changed prompt hash, judge version and session
+	environment version, and an unchecked trial model.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-41 — Session environment version (user ruling, 2026-10-04)
 
 - **Change:** the runner and CAT versions become information that the identity records and the report shows, never a
-  material or comparability condition. A new material condition, the session environment version, takes their place:
-  a constant per harness, owned by that harness's module and reached through the session port, which CAT changes only
-  in a release that changes what a session's model receives or how its actions take effect. The campaign format
-  increases and every older format is refused.
+	material or comparability condition. A new material condition, the session environment version, takes their place:
+	a constant per harness, owned by that harness's module and reached through the session port, which CAT changes only
+	in a release that changes what a session's model receives or how its actions take effect. The campaign format
+	increases and every older format is refused.
 - **Guard:** each harness module keeps a registry file of its session environment versions, each with the hash of the
-  session settings the runner generates for a fixed input, with paths that differ per run replaced by placeholders: for
-  Claude the isolated `settings.json`, for Codex the configuration and permission profile it writes. A test fails when
-  the current settings' hash is not registered under the current version, or when one version has two hashes, so a
-  settings change needs a new version.
+	session settings the runner generates for a fixed input, with paths that differ per run replaced by placeholders: for
+	Claude the isolated `settings.json`, for Codex the configuration and permission profile it writes. A test fails when
+	the current settings' hash is not registered under the current version, or when one version has two hashes, so a
+	settings change needs a new version.
 - **Parameters:** each certification records its minimum pass rate and its `α_i`. Applicability compares
-  them with the current values: the certification stays current while its minimum pass rate is at least the
-  current one and its `α_i` is at most the current level for its attempt index; otherwise it is historical, and the
-  report names the parameter.
+	them with the current values: the certification stays current while its minimum pass rate is at least the
+	current one and its `α_i` is at most the current level for its attempt index; otherwise it is historical, and the
+	report names the parameter.
 - **Closes:** R-M2 with WI-3.
 - **Tests:** `ApplicabilityTest`: a runner or CAT version change alone leaves a certification current, and a session
-  environment change makes it historical; a recorded threshold above, equal to and below the current one, and an
-  `α_i` below, equal to and above the current level, each give the implied result; `ComparabilityTest`: differing CAT versions do not prevent comparison;
-  `DriverTest`: a CAT version change between trials does not pause; the registry test per harness; the format refusal.
+	environment change makes it historical; a recorded threshold above, equal to and below the current one, and an
+	`α_i` below, equal to and above the current level, each give the implied result; `ComparabilityTest`: differing CAT versions do not prevent comparison;
+	`DriverTest`: a CAT version change between trials does not pause; the registry test per harness; the format refusal.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-40 — Held-out reads re-allowed by `allowRead` (2026-10-04)
 
 - **Defect:** in Claude, `sandbox.filesystem.allowRead` re-allows reads that `sandbox.filesystem.denyRead` denies, and
-  settings files outrank the runner's isolated settings. An entry naming the held-out directory, the held-out run root
-  or a file in them, in managed or project settings, exposes them to every command; the runner also copies the host
-  user's `allowRead` into the isolated settings.
+	settings files outrank the runner's isolated settings. An entry naming the held-out directory, the held-out run root
+	or a file in them, in managed or project settings, exposes them to every command; the runner also copies the host
+	user's `allowRead` into the isolated settings.
 - **Fix:** `start` refuses when managed settings, `.claude/settings.json` or `.claude/settings.local.json` set a
-  non-empty `sandbox.filesystem.allowRead`, as it refuses a non-empty `sandbox.excludedCommands`: entries are refused
-  whatever they name, because which entries re-allow a denied path depends on Claude's path resolution, which CAT does
-  not own. The runner's isolated settings drop `allowRead` whenever the session denies reads.
+	non-empty `sandbox.filesystem.allowRead`, as it refuses a non-empty `sandbox.excludedCommands`: entries are refused
+	whatever they name, because which entries re-allow a denied path depends on Claude's path resolution, which CAT does
+	not own. The runner's isolated settings drop `allowRead` whenever the session denies reads.
 - **Closes:** R-E24 with WI-36 and WI-37.
 - **Tests:** `ClaudeSessionsTest`: each of the three files with a non-empty `allowRead` is refused and names the
-  setting; an empty array is not. The isolated-settings test: a host `allowRead` is dropped when reads are denied and
-  kept when none are.
+	setting; an empty array is not. The isolated-settings test: a host `allowRead` is dropped when reads are denied and
+	kept when none are.
 - **Validation:** the WI-37 Claude probe with project `allowRead` naming the held-out directory: `start` refuses, and
-  the runner session with a host `allowRead` naming it gets no content.
+	the runner session with a host `allowRead` naming it gets no content.
 - **Exit:** unit tests pass; the full build passes; the validation holds.
 
 ### WI-37 — Held-out directory and run root (2026-10-04)
 
 - **Layout:** the snapshot, the proposal and the trial records move into the campaign's `held-out/` directory; the
-  campaign format increases and every older format is refused. Formal and baseline trials and judges run under a
-  held-out run root beside the runner's run root, created before any session starts.
+	campaign format increases and every older format is refused. Formal and baseline trials and judges run under a
+	held-out run root beside the runner's run root, created before any session starts.
 - **Denial:** development trials, targeted runs, triage, diagnosis, prompt authors and the contract author deny reads of
-  both directories as whole directories; formal and baseline trials and judges deny nothing.
+	both directories as whole directories; formal and baseline trials and judges deny nothing.
 - **Refusal:** `start` refuses when the host's settings turn off the sandbox that the denial needs.
 - **Closes:** R-E24 with WI-36.
 - **Tests:** store layout and format refusal; session arguments per role and harness; the refusal. The `codex sandbox`
-  probe that a snapshot replaced by rename stays unreadable is manual evidence, not a test, because no test may start
-  a harness process (§8).
+	probe that a snapshot replaced by rename stays unreadable is manual evidence, not a test, because no test may start
+	a harness process (§8).
 - **Validation:** WI-36's, run after this item, plus, for Claude, that project settings with
-  `sandbox.filesystem.allowRead` naming the held-out directory or `permissions.defaultMode: bypassPermissions` leave
-  it unreadable; if either exposes it, `start` refuses that setting too.
+	`sandbox.filesystem.allowRead` naming the held-out directory or `permissions.defaultMode: bypassPermissions` leave
+	it unreadable; if either exposes it, `start` refuses that setting too.
 - **Exit:** unit tests pass; the full build passes; the validation holds in both harnesses.
 
 ### WI-27 — Role sessions without the plugin, and the path trigger (user ruling, 2026-10-02)
 
 - **Sessions:** the runner settings decide plugin installation per session role: trials install CAT; the contract
-  author, judge and prompt author do not (`design.md` §3.1, D37), in both harnesses.
+	author, judge and prompt author do not (`design.md` §3.1, D37), in both harnesses.
 - **Role rules:** the prompt author and contract author briefs carry their rules' complete text from the installed
-  artifact; the list is declared once.
+	artifact; the list is declared once.
 - **Path trigger:** the rule loader's path-scoped rule text names the rule by its absolute installed path and limits
-  the trigger to files inside the current project, so reading CAT's installed rule files never matches it.
+	the trigger to files inside the current project, so reading CAT's installed rule files never matches it.
 - **Closes:** R-E20.
 - **Tests:** session-argument tests per harness for each role; brief tests for the delivered rules; `ProjectRuleLoaderTest`
-  for the path-trigger text.
+	for the path-trigger text.
 - **Validation:** prompt author promotion and judge verdicts on a short Codex campaign compared with E1.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-26 — Partial promotion and attempt approaches (user ruling, 2026-10-02)
 
 - **Promotion:** an attempt fixes a triggering test case when both of its runs there pass. It is promoted when it fixes
-  at least one triggering test case and fails no regression test case that the working candidate passes; it is rejected
-  as soon as no triggering test case can still be fixed or a regression is certain (`design.md` §2.7, D33). Winner
-  selection among a weak round's accepted attempts is unchanged.
+	at least one triggering test case and fails no regression test case that the working candidate passes; it is rejected
+	as soon as no triggering test case can still be fixed or a regression is certain (`design.md` §2.7, D33). Winner
+	selection among a weak round's accepted attempts is unchanged.
 - **Streak rule:** a triggering test case counts as fixed only when every run passes and `p^k < 0.10`, where `k` is the
-  run count and `p = (s + 1) / (n + 2)` from the working candidate's `s` passes in `n` outcomes on that test case (its
-  representative failure, diagnostic reruns and any other outcome on the same test case). Runs start at 2 and are added
-  one at a time, up to 4, while all pass and the streak is not yet unlikely (`design.md` §2.7, D35).
+	run count and `p = (s + 1) / (n + 2)` from the working candidate's `s` passes in `n` outcomes on that test case (its
+	representative failure, diagnostic reruns and any other outcome on the same test case). Runs start at 2 and are added
+	one at a time, up to 4, while all pass and the streak is not yet unlikely (`design.md` §2.7, D35).
 - **Revert:** the §2.7 revert check and its effect on the round and the plateau (`design.md` §2.7, D35).
 - **Minimality:** a reduction passes when it fixes every triggering test case that the attempt it reduces fixed and
-  fails no regression test case that the working candidate passes.
+	fails no regression test case that the working candidate passes.
 - **Approaches:** each prompt author attempt of a category in a round receives the §2.7 approach for its position in
-  that category's attempts; the prompt author brief and prompt carry it (`design.md` §2.7, D34). `prompt-author.md` step
-  2 corrects an instruction in the file that states it, `AGENTS.md` and `CLAUDE.md` included (D30).
+	that category's attempts; the prompt author brief and prompt carry it (`design.md` §2.7, D34). `prompt-author.md` step
+	2 corrects an instruction in the file that states it, `AGENTS.md` and `CLAUDE.md` included (D30).
 - **Closes:** R-D3 (rule change), R-D11 (reduction rule), R-D14, R-D15.
 - **Tests:** `PromotionTest` (one of two triggering test cases fixed is promoted; none fixed is rejected early; a
-  regression still rejects), `MinimalityTest` (a reduction that loses a fix fails; one that keeps every fix passes),
-  `PromptAuthorTest` (each position's approach is rendered), `DriverTest` (a round's attempts receive distinct
-  approaches; a partially fixing attempt becomes the working candidate).
+	regression still rejects), `MinimalityTest` (a reduction that loses a fix fails; one that keeps every fix passes),
+	`PromptAuthorTest` (each position's approach is rendered), `DriverTest` (a round's attempts receive distinct
+	approaches; a partially fixing attempt becomes the working candidate).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-25 — Resolving conflicts with the user (user ruling, 2026-10-02)
 
 - **Resolutions:** each contract author conflict gains at least two `resolutions` and the `recommended` one with its
-  `reason`; the proposal's `Conflicts` section lists them with the recommended one marked (`design.md` §6.1, D31).
-  `contract-author.md` takes the approved `### Conflicts` wording verbatim.
+	`reason`; the proposal's `Conflicts` section lists them with the recommended one marked (`design.md` §6.1, D31).
+	`contract-author.md` takes the approved `### Conflicts` wording verbatim.
 - **Agent flow:** `first-use.md` takes the approved step 2 and step 4 wording: the agent asks the user to resolve each
-  conflict, naming the recommended resolution, never offers confirmation while one is listed, and passes the answers to
-  `revise`.
+	conflict, naming the recommended resolution, never offers confirmation while one is listed, and passes the answers to
+	`revise`.
 - **Mid-campaign conflicts:** the prompt author manifest gains the `conflict` classification with the requirement ids,
-  each quoted passage with its file, the resolutions and the recommended one. The prompt author brief carries the
-  campaign's edits since confirmation so the prompt author can tell a conflict it inherited from one a campaign edit
-  introduced. CAT rejects a `conflict` report whose quotation is absent from the snapshot confirmed with the contract. A
-  valid report pauses the campaign: no new trials are scheduled, in-flight work finishes, and the choices are each
-  resolution (recommended one marked, with its reason) and `stop`; `revise` with the user's own wording is also
-  accepted. Choosing a resolution runs a revision with it as feedback and returns the revised proposal for confirmation;
-  a running certification attempt then ends `not certified: stopped for contract revision`, and the confirmed revision
-  starts a new lineage (`design.md` §2.7, §7, D32). `prompt-author.md` takes the approved step 1 and step 2 wording
-  verbatim.
+	each quoted passage with its file, the resolutions and the recommended one. The prompt author brief carries the
+	campaign's edits since confirmation so the prompt author can tell a conflict it inherited from one a campaign edit
+	introduced. CAT rejects a `conflict` report whose quotation is absent from the snapshot confirmed with the contract. A
+	valid report pauses the campaign: no new trials are scheduled, in-flight work finishes, and the choices are each
+	resolution (recommended one marked, with its reason) and `stop`; `revise` with the user's own wording is also
+	accepted. Choosing a resolution runs a revision with it as feedback and returns the revised proposal for confirmation;
+	a running certification attempt then ends `not certified: stopped for contract revision`, and the confirmed revision
+	starts a new lineage (`design.md` §2.7, §7, D32). `prompt-author.md` takes the approved step 1 and step 2 wording
+	verbatim.
 - **Closes:** R-C14, R-D13.
 - **Tests:** resolution parsing and rendering; the prompt author conflict report accepted when its quotation is in the
-  confirmed snapshot and rejected when only a campaign edit holds it; the pause and its choices; choosing a resolution
-  yields a revision and, once confirmed, a new lineage; a running certification attempt ends
-  `stopped for contract revision`.
+	confirmed snapshot and rejected when only a campaign edit holds it; the pause and its choices; choosing a resolution
+	yields a revision and, once confirmed, a new lineage; a running certification attempt ends
+	`stopped for contract revision`.
 - **Exit:** unit tests pass; the full build passes; E1 per harness shows the agent asking the user to resolve the
-  motto conflict with a recommended resolution.
+	motto conflict with a recommended resolution.
 
 ### WI-24 — Conflicting requirements block confirmation (user ruling, 2026-10-02)
 
 - **Findings:** the contract author's findings gain a required `conflicts` list. Each entry names at least two contract
-  requirements that no reply can satisfy together and the evidence: the file and the text that show the conflict. The
-  contract author reports a conflict instead of settling which requirement prevails, and drops it from a revision once
-  the user's feedback resolves it (`design.md` §6.1, D31).
+	requirements that no reply can satisfy together and the evidence: the file and the text that show the conflict. The
+	contract author reports a conflict instead of settling which requirement prevails, and drops it from a revision once
+	the user's feedback resolves it (`design.md` §6.1, D31).
 - **Proposal:** a `Conflicts` section lists each conflict, or states that the contract author found none.
 - **Confirmation:** `confirm` is refused while the stored proposal lists a conflict, and the refusal names each conflict
-  and says that feedback must resolve it. Nothing is recorded on refusal.
+	and says that feedback must resolve it. Nothing is recorded on refusal.
 - **Closes:** R-C13.
 - **Tests:** the findings parser accepts a valid conflict and rejects one that names fewer than two requirements or an
-  unknown requirement; the proposal renders the section in both states; `confirm` is refused with a conflict and
-  succeeds after a revision without one.
+	unknown requirement; the proposal renders the section in both states; `confirm` is refused with a conflict and
+	succeeds after a revision without one.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-23 — Module scenario location (user ruling, 2026-10-02)
 
 - **Location:** a scenario for guidance packaged as a module resource, `<module>/src/main/resources/<top>/<path>.md`,
-  lives in `<module>/src/test/resources/<path>/<case>/scenario.md`; `.cat/tests/` keeps the scenarios of project rules,
-  user rules and other project guidance (`design.md` §8).
+	lives in `<module>/src/test/resources/<path>/<case>/scenario.md`; `.cat/tests/` keeps the scenarios of project rules,
+	user rules and other project guidance (`design.md` §8).
 - **Discovery:** derivation finds module scenarios beside `.cat/tests/` ones, so the contract author receives them and a
-  proposal that omits one of a named prompt source is refused. A `scenario.md` belongs to the guidance of its parent's
-  parent directory only, so a nested guidance's scenarios are not attributed to an enclosing one.
+	proposal that omits one of a named prompt source is refused. A `scenario.md` belongs to the guidance of its parent's
+	parent directory only, so a nested guidance's scenarios are not attributed to an enclosing one.
 - **Migration:** move the 61 rule scenarios back to `client/common/rules/src/test/resources/<path>/<case>/scenario.md`
-  with their fixtures at their earlier paths, keeping the current scenario text and fixing each fixture link; move the
-  `first-use.md` scenarios to `client/common/skills/src/test/resources/prompt-optimizer/first-use/<case>/scenario.md`.
-  `suite.json` and `verification.md` stay retired.
+	with their fixtures at their earlier paths, keeping the current scenario text and fixing each fixture link; move the
+	`first-use.md` scenarios to `client/common/skills/src/test/resources/prompt-optimizer/first-use/<case>/scenario.md`.
+	`suite.json` and `verification.md` stay retired.
 - **Closes:** R-I3 (with WI-14, WI-21).
 - **Tests:** discovery of a module scenario and its citation refusal; a nested guidance's scenario stays with it;
-  `RegressionScenariosTest` fails when a module guidance's scenario lies in `.cat/tests/`, or a scenario directory in
-  either location names no existing guidance.
+	`RegressionScenariosTest` fails when a module guidance's scenario lies in `.cat/tests/`, or a scenario directory in
+	either location names no existing guidance.
 - **Exit:** unit tests pass; the full build passes; no scenario of module guidance remains under `.cat/tests/`.
 
 ### WI-22 — Replies include interim messages (user ruling, 2026-10-02)
 
 - **Result:** `SessionResult.Completed` carries each turn's reply as its assistant messages in order, ending with the
-  final response (`design.md` §1.2 Reply, D29). The Codex adapter takes every `agent_message` of the turn; the Claude
-  adapter takes every assistant text block of the turn, including those before a tool call and those of a follow-up
-  that belongs to the turn.
+	final response (`design.md` §1.2 Reply, D29). The Codex adapter takes every `agent_message` of the turn; the Claude
+	adapter takes every assistant text block of the turn, including those before a tool call and those of a follow-up
+	that belongs to the turn.
 - **Checks:** a deterministic check of reply text reads the whole reply: the turn's messages joined in order, so a
-  suffix check still ends at the final response and a forbidden-text check sees an interim message (`design.md` §6.4).
-  Control validation uses the same shape.
+	suffix check still ends at the final response and a forbidden-text check sees an interim message (`design.md` §6.4).
+	Control validation uses the same shape.
 - **Judge:** the `responses` evidence gives each turn's messages in order, and the judge prompt says that every one
-  of them is part of the reply.
+	of them is part of the reply.
 - **Prompt author:** a failure record carries the same reply, so the prompt author sees the interim message that failed.
 - **Stored format:** trial records and the campaign format that hold responses change format; older formats are
-  refused, as before.
+	refused, as before.
 - **Closes:** R-C12.
 - **Tests:** per harness, an adapter test over recorded events with a progress message before a tool call; a check
-  test where a forbidden text appears only in an interim message and a suffix check still passes; a judge request test
-  that shows every message; a prompt author failure-record test.
+	test where a forbidden text appears only in an interim message and a suffix check still passes; a judge request test
+	that shows every message; a prompt author failure-record test.
 - **Exit:** unit tests pass; the full build passes; then E1 restarts on the final build.
 
 ### WI-60 — Minimum pass rate (user ruling, 2026-10-10)
 
 - **Statistics:** every rule that fixed 95% takes the confirmed minimum pass rate `p_min`: `E↑` bets at
-  `r = p_min + (1 − p_min)·c`; for the number of shortfalls `1 − p_min` below `p_min`, `n_short` = 9, 3, 1, `E↓`
-  bets `λ = min(1, n_short·(1 − p_min)/p_min)` against the pass rate `p_min − n_short·(1 − p_min)`;
-  cap calibration uses `r = 1 − (1 − p_min)/5`; and the commit gate, the review checkpoint and the baseline's extra
-  50 trials scale with `1 − p_min` as `design.md` §2.1, §2.3–§2.5 and §2.7 state. Decisions stay exact rationals.
+	`r = p_min + (1 − p_min)·c`; for the number of shortfalls `1 − p_min` below `p_min`, `n_short` = 9, 3, 1, `E↓`
+	bets `λ = min(1, n_short·(1 − p_min)/p_min)` against the pass rate `p_min − n_short·(1 − p_min)`;
+	cap calibration uses `r = 1 − (1 − p_min)/5`; and the commit gate, the review checkpoint and the baseline's extra
+	50 trials scale with `1 − p_min` as `design.md` §2.1, §2.3–§2.5 and §2.7 state. Decisions stay exact rationals.
 - **Contract:** the proposal holds `minimum_pass_rate`, between 0.80 and 0.99 with at most two decimal places, 0.95
-  when the contract author proposes none other; CAT refuses another value. A changed `p_min` is a contract revision, and
-  the certification record holds `p_min`.
+	when the contract author proposes none other; CAT refuses another value. A changed `p_min` is a contract revision, and
+	the certification record holds `p_min`.
 - **Format:** proposal and campaign formats increase; older ones are refused.
 - **Closes:** R-S10, and the `p_min` side of R-S2, R-S3, R-S6, R-D1, R-D5 and R-D7.
 - **Tests:** `BettingProcessTest` (boundaries at `p_min` = 0.8, 0.9, 0.97 and 0.99, and the 0.95 fixtures unchanged),
-  `CapCalibrationTest` (the all-pass minimums 22, 45, 93, 157 and 474 at `α = 2%`), `CommitGateTest`,
-  `ReviewCheckpointTest`, `BaselineTest`, `ProposalSchemaTest` (range, decimals, default).
+	`CapCalibrationTest` (the all-pass minimums 22, 45, 93, 157 and 474 at `α = 2%`), `CommitGateTest`,
+	`ReviewCheckpointTest`, `BaselineTest`, `ProposalSchemaTest` (range, decimals, default).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-61 — Scenario format and test cases (user rulings, 2026-10-10)
 
 - **Loader:** `optimizer.contract` parses a prompt test directory: `scenario.md` with `## Variables` (exactly the
-  columns `Name` and `Description`, single-line cells, `\|` escapes), `## Scenario` (one turn, or `### Turn <n>`
-  subsections from 1), and `## Assertions` (`### <id>` subsections whose body starts with `kind: effect|guard` and an
-  optional `tool:` line). It refuses a missing section, a duplicate or non-snake_case name or id, an unknown key line,
-  a variable named `expected_outcome`, an assertion with that id, an undeclared placeholder and a prompt test with no
-  variable. `{{name}}` is replaced only for declared names.
+	columns `Name` and `Description`, single-line cells, `\|` escapes), `## Scenario` (one turn, or `### Turn <n>`
+	subsections from 1), and `## Assertions` (`### <id>` subsections whose body starts with `kind: effect|guard` and an
+	optional `tool:` line). It refuses a missing section, a duplicate or non-snake_case name or id, an unknown key line,
+	a variable named `expected_outcome`, an assertion with that id, an undeclared placeholder and a prompt test with no
+	variable. `{{name}}` is replaced only for declared names.
 - **Test cases:** a test case holds one value per variable and an expected outcome. A value is text or a generator
-  call `{"generator": "log_lines", "count": N}`; CAT adds `seed` and `version` when the test case is created, giving
-  identical calls different seeds. A generated value is allowed only where a fixture's contents use it.
+	call `{"generator": "log_lines", "count": N}`; CAT adds `seed` and `version` when the test case is created, giving
+	identical calls different seeds. A generated value is allowed only where a fixture's contents use it.
 - **Generators:** `log_lines` version 1 expands `(seed, count)` with `java.util.Random`, built-in templates and a word
-  list into UTF-8 lines ending in `\n`, with timestamps inside 2025. A generator name keeps every version; an unknown
-  name or version is refused.
+	list into UTF-8 lines ending in `\n`, with timestamps inside 2025. A generator name keeps every version; an unknown
+	name or version is refused.
 - **Fixtures:** `fixtures/` is copied to the trial workspace root with placeholders replaced in names and in UTF-8
-  contents and other files copied unchanged; a file-name value must be one valid segment, and a collision with
-  another fixture or the staged source is refused.
+	contents and other files copied unchanged; a file-name value must be one valid segment, and a collision with
+	another fixture or the staged source is refused.
 - **Values file:** `values.json` with `format_version` 1 and `test_cases`, each with `values` and
-  `expected_outcome`; unknown fields are refused; it streams on read.
+	`expected_outcome`; unknown fields are refused; it streams on read.
 - **Regression scenarios:** `RegressionScenarios` loads directories in the new format from both locations.
 - **Closes:** R-C20, R-C21, R-C22, and the loader side of R-I3.
 - **Tests:** `ScenarioTest` (each section and each refusal), `TestCaseTest`, `LogLinesTest` (same bytes for a seed
-  and version across runs, a fixed digest for one seed, timestamps within 2025, line count), `FixturesTest` (name and
-  content substitution, binary file unchanged, invalid name, collision), `ValuesFileTest` (round trip, unknown field,
-  format version), `RegressionScenariosTest`.
+	and version across runs, a fixed digest for one seed, timestamps within 2025, line count), `FixturesTest` (name and
+	content substitution, binary file unchanged, invalid name, collision), `ValuesFileTest` (round trip, unknown field,
+	format version), `RegressionScenariosTest`.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-62 — Split by expected outcome (user ruling, 2026-10-10)
 
 - **Split:** a test case's part is the SHA-256 of the salt and its normalized expected outcome (Unicode NFC, trimmed,
-  each whitespace run one space, lower case under `Locale.ROOT`), each part with probability ½. CAT draws the salt
-  when it first validates a campaign's proposal and keeps it across revisions. A prompt test with fewer than 2 distinct
-  normalized outcomes in either part is refused, naming the test and both counts. Test cases from a committed values
-  file, and new ones sharing a committed outcome, belong to development.
+	each whitespace run one space, lower case under `Locale.ROOT`), each part with probability ½. CAT draws the salt
+	when it first validates a campaign's proposal and keeps it across revisions. A prompt test with fewer than 2 distinct
+	normalized outcomes in either part is refused, naming the test and both counts. Test cases from a committed values
+	file, and new ones sharing a committed outcome, belong to development.
 - **Draws:** uniform over the prompt test's test cases within the part.
 - **Added test cases:** after a failed attempt the contract author writes at least 4 per failed prompt test; CAT
-  refuses one whose normalized outcome equals a held-out one, without saying which part holds it. This replaces the
-  outcome-changing marks of WI-33 and the value checks of WI-34.
+	refuses one whose normalized outcome equals a held-out one, without saying which part holds it. This replaces the
+	outcome-changing marks of WI-33 and the value checks of WI-34.
 - **Closes:** R-C16, R-C17, and the part side of R-C4.
 - **Tests:** `SplitTest` (stable under the salt, near ½ over many outcomes, normalization, committed test cases in
-  development), `ProposalTest` (refusal at 1 outcome in a part), `DriverTest` (an added test case sharing a held-out
-  outcome is refused; no held-out outcome or salt in the contract author input).
+	development), `ProposalTest` (refusal at 1 outcome in a part), `DriverTest` (an added test case sharing a held-out
+	outcome is refused; no held-out outcome or salt in the contract author input).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-63 — Built-in tools, trial record and the expected-outcome assertion (user rulings, 2026-10-10)
 
 - **Built-in tools:** the check kinds become the built-in tools of `design.md` §6.4 with their hyphenated names, plus
-  `file-absent`, `tool-unused`, `no-tool-call`, `read-in-full` and `read-at-most`. Arguments split on spaces with
-  double quotes and `\"`/`\\` escapes, placeholders replaced after splitting, and an optional leading `turn=<n>` for
-  built-in tools that examine replies. Known-good and known-bad controls and discarded checks are removed. Each failed
-  built-in tool names its behavior.
+	`file-absent`, `tool-unused`, `no-tool-call`, `read-in-full` and `read-at-most`. Arguments split on spaces with
+	double quotes and `\"`/`\\` escapes, placeholders replaced after splitting, and an optional leading `turn=<n>` for
+	built-in tools that examine replies. Known-good and known-bad controls and discarded checks are removed. Each failed
+	built-in tool names its behavior.
 - **Trial record:** the WI-28 evidence section becomes the trial record that both the built-in tools and the judge
-  read; a built-in tool whose evidence the harness cannot supply is refused in the proposal.
+	read; a built-in tool whose evidence the harness cannot supply is refused in the proposal.
 - **Assertions:** a trial passes when every assertion passes. CAT adds `expected_outcome`, judged, a guard exactly
-  when every other assertion is a guard. The judge returns a verdict, rationale and behavior per assertion it decides;
-  a failed built-in tool skips the judge; the core-task requirement is removed.
+	when every other assertion is a guard. The judge returns a verdict, rationale and behavior per assertion it decides;
+	a failed built-in tool skips the judge; the core-task requirement is removed.
 - **Judge version:** increases in both harnesses, because the prompt, result schema and decision rule change.
 - **Closes:** R-C5, R-C8, R-C9, R-C12, R-C18 (built-in tool behaviors), R-E21.
 - **Tests:** `BuiltInToolTest` (each built-in tool on both sides, argument splitting and escapes, `turn=`),
-  `TrialRecordTest` per harness over recorded events, `JudgeVerdictTest`, `JudgeProtocolTest`, `DriverTest` (no judge
-  after a failed built-in tool), `ProposalTest` (the added assertion and its kind; an unsupported built-in tool
-  refused).
+	`TrialRecordTest` per harness over recorded events, `JudgeVerdictTest`, `JudgeProtocolTest`, `DriverTest` (no judge
+	after a failed built-in tool), `ProposalTest` (the added assertion and its kind; an unsupported built-in tool
+	refused).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-64 — Prompt tests replace categories (user ruling, 2026-10-10)
 
 - **Model:** `Category` is removed. A cell is a prompt test under one profile; every count, gate, bet, cap, decision,
-  allocation rule, round, approach list, review checkpoint, report and certification record that named a category
-  names a prompt test or its cells. The profile set comes from the requirements that the proposal maps to the test's
-  assertions; the mapping lives in the proposal.
+	allocation rule, round, approach list, review checkpoint, report and certification record that named a category
+	names a prompt test or its cells. The profile set comes from the requirements that the proposal maps to the test's
+	assertions; the mapping lives in the proposal.
 - **Format:** proposal, campaign and certification-record formats increase; older ones are refused.
 - **Closes:** R-C3, R-C10, R-C11, and the per-prompt-test side of R-D6, R-D12, R-D14, R-E3, R-E4, R-E19, R-E22,
-  R-E23, R-F2, R-F6, R-M6, R-P1 and R-P4.
+	R-E23, R-F2, R-F6, R-M6, R-P1 and R-P4.
 - **Tests:** the existing tests of those requirements, rewritten over prompt tests; `ProfileSetTest` (profile set from
-  mapped requirements).
+	mapped requirements).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-65 — Control trials (user ruling, 2026-10-10)
 
 - **Control source:** the incumbent's staged source with every target prompt file emptied to zero bytes; the proposal
-  lists the emptied paths.
+	lists the emptied paths.
 - **Statistics:** `E_ctl↑` and `E_ctl↓` per assertion over `Z = (X − Y + 1)/2` with `m = 0.475` and
-  `f` = 0.25, 0.5, 0.75 and 0.9, as exact rationals, deciding at `1/α_i`.
+	`f` = 0.25, 0.5, 0.75 and 0.9, as exact rationals, deciding at `1/α_i`.
 - **Pairing:** the `j`-th control trial of a cell pairs with its `j`-th candidate formal trial in assignment order
-  and runs that trial's test case; control trials start in a cell only after its minimum-pass-rate part certified
-  (allocation rule 5); extra formal trials run when pairs need them; the pair cap is the cell's cap.
+	and runs that trial's test case; control trials start in a cell only after its minimum-pass-rate part certified
+	(allocation rule 5); extra formal trials run when pairs need them; the pair cap is the cell's cap.
 - **Outcomes:** a cell certifies when its minimum-pass-rate part and every control comparison pass; `E_ctl↓` above
-  `1/α_i` ends the attempt `not certified: below control`; a comparison undecided at the cap leaves the attempt
-  inconclusive. The report shows each assertion's pair counts and status.
+	`1/α_i` ends the attempt `not certified: below control`; a comparison undecided at the cap leaves the attempt
+	inconclusive. The report shows each assertion's pair counts and status.
 - **Closes:** R-S11, R-F7, R-W10, and the control side of R-E3, R-E4 and R-F2.
 - **Tests:** `ControlComparisonTest` (both decisions on fixed `Z` paths, exact boundaries), `SchedulerTest` (no control
-  trial before the cell certifies; pairing order; extra formal trials), `DecisionTableTest` (below control),
-  `StagedSourceTest` (emptied files), `StatusReportTest`.
+	trial before the cell certifies; pairing order; extra formal trials), `DecisionTableTest` (below control),
+	`StagedSourceTest` (emptied files), `StatusReportTest`.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-66 — Guard pilot (user ruling, 2026-10-10)
 
 - **Pilot:** after a proposal validates and before CAT presents it, about 20 control trials per prompt test in its
-  weakest cell, on development test cases only, decided by the proposed decision procedure. A revision reruns it only
-  for prompt tests whose scenario or test cases changed. Pilot trials are targeted: they enter no count and spend no
-  allowance.
+	weakest cell, on development test cases only, decided by the proposed decision procedure. A revision reruns it only
+	for prompt tests whose scenario or test cases changed. Pilot trials are targeted: they enter no count and spend no
+	allowance.
 - **Proposal:** shows each assertion's pilot pass rate and warns on a guard below the minimum pass rate `p_min`; it
-  lists why each failed run ended without a decision; the revise brief carries the latest pilot results.
+	lists why each failed run ended without a decision; the revise brief carries the latest pilot results.
 - **Closes:** R-C23, and the pilot side of R-C2.
 - **Tests:** `GuardPilotTest` (control trials in the weakest cell, tallies, reuse, a rerun of changed tests only, a
-  stop on a rate limit), `OptimizerCoreTest` (the pilot runs before presentation, adds to no count, and its brief
-  reaches the revision), `ProposalTest` (rates and the warning).
+	stop on a rate limit), `OptimizerCoreTest` (the pilot runs before presentation, adds to no count, and its brief
+	reaches the revision), `ProposalTest` (rates and the warning).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-67 — Delivery of test files (user ruling, 2026-10-10)
 
 - **Delivery:** a certified delivery and keeping the incumbent write each confirmed prompt test's `values.json`, with
-  every test case of the campaign, and the `scenario.md` and `fixtures/` of every prompt test that the contract author
-  created or edited, through the journaled steps of WI-11. Staging excludes the confirmed contract's prompt test
-  directories. A campaign that stops without a delivery writes none of them.
+	every test case of the campaign, and the `scenario.md` and `fixtures/` of every prompt test that the contract author
+	created or edited, through the journaled steps of WI-11. Staging excludes the confirmed contract's prompt test
+	directories. A campaign that stops without a delivery writes none of them.
 - **Location:** a prompt test that the contract author created is written under the campaign target's test
-  directory, which the regression-scenario location rules derive from the target, even when its guard assertions check
-  behavior that other guidance governs (user ruling, 2026-10-10).
+	directory, which the regression-scenario location rules derive from the target, even when its guard assertions check
+	behavior that other guidance governs (user ruling, 2026-10-10).
 - **Closes:** R-W11, and the staging side of R-W5.
 - **Tests:** `DeliveryTest` (both endings, a fault between writes, no write on stop), `StagedSourceTest` (test
-  directories excluded).
+	directories excluded).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-68 — Role prompts for prompt tests (user rulings, 2026-10-10)
 
 - **Contract author:** proposes the minimum pass rate `p_min`, the requirement-to-assertion mapping, scenarios in the
-  new format (converting a recorded scenario in an earlier format and showing it as an edit), fixtures, and test cases
-  with values and expected outcomes; its instructions say that `tool:` names CAT's check, list the generators with their
-  words and date range, and include the latest pilot results on revision.
+	new format (converting a recorded scenario in an earlier format and showing it as an edit), fixtures, and test cases
+	with values and expected outcomes; its instructions say that `tool:` names CAT's check, list the generators with their
+	words and date range, and include the latest pilot results on revision.
 - **Judge and prompt author:** the judge decides assertions; prompt authors receive failed assertions, behaviors and
-  check results; neither edits a prompt test.
+	check results; neither edits a prompt test.
 - **Wording:** every prompt wording change is shown to the user before delivery.
 - **Closes:** the prompt side of R-C1, R-C5, R-C18, R-C20 and R-C23.
 - **Tests:** the prompt rendering tests of each role.
@@ -1994,9 +1994,9 @@ The riskiest pure code, built first.
 ### WI-69 — Scenario conversion (user rulings, 2026-10-10)
 
 - **read-file:** convert the Codex `read-file` scenarios to the new format with shared fixtures, drop the sentence
-  "This is an application test.", and rewrite the search question so that each release has one matching line.
+	"This is an application test.", and rewrite the search question so that each release has one matching line.
 - **Other scenarios:** convert every other recorded scenario under `client/**/src/test/resources/` and `.cat/tests/`,
-  and update `failure-regression-promotion.md` to record scenarios in the new format.
+	and update `failure-regression-promotion.md` to record scenarios in the new format.
 - **Closes:** the conversion side of R-I3.
 - **Tests:** `RegressionScenariosTest` loads every recorded scenario without a refusal.
 - **Exit:** unit tests pass; the full build passes.
@@ -2004,233 +2004,233 @@ The riskiest pure code, built first.
 ### WI-70 — Paged command output for Codex (user request, 2026-10-11)
 
 - **Programs:** ship `run-part` and `read-part` as Java launchers of the Codex image (user request, 2026-10-11: Java
-  rather than bash). Like every jlink launcher (user requests, 2026-10-11), they share the caller's `/tmp`, so saved
-  output outlives the call, with only the JVM's performance-data directory private, and they run Java in a UTF-8
-  `LC_CTYPE` when the caller's is not UTF-8, so Java can name files that are not ASCII; `run-part` restores the caller's
-  locale for the command. The plugin ships `bin/run-part` and `bin/read-part`, which start those launchers from the
-  plugin's `client/bin` (user ruling, 2026-10-12), so agents run them from `${CAT_PLUGIN_ROOT}/bin`. `run-part` runs the
-  command on standard input, saves its output and exit status in a new file under the nearest `.cat/work/temp` at or
-  above the command's folder (user ruling, 2026-10-12: no trial writes outside the project), or under `${TMPDIR}` when
-  there is none, and prints the first part; `read-part` prints a later part. Each part fits Codex's 10,000-token exec
-  budget after JSON escaping and ends with a bracketed line that names the command printing the next part, or with
-  `[End of …]` and the exit status.
+	rather than bash). Like every jlink launcher (user requests, 2026-10-11), they share the caller's `/tmp`, so saved
+	output outlives the call, with only the JVM's performance-data directory private, and they run Java in a UTF-8
+	`LC_CTYPE` when the caller's is not UTF-8, so Java can name files that are not ASCII; `run-part` restores the caller's
+	locale for the command. The plugin ships `bin/run-part` and `bin/read-part`, which start those launchers from the
+	plugin's `client/bin` (user ruling, 2026-10-12), so agents run them from `${CAT_PLUGIN_ROOT}/bin`. `run-part` runs the
+	command on standard input, saves its output and exit status in a new file under the nearest `.cat/work/temp` at or
+	above the command's folder (user ruling, 2026-10-12: no trial writes outside the project), or under `${TMPDIR}` when
+	there is none, and prints the first part; `read-part` prints a later part. Each part fits Codex's 10,000-token exec
+	budget after JSON escaping and ends with a bracketed line that names the command printing the next part, or with
+	`[End of …]` and the exit status.
 - **Hook:** add a Codex PostToolUse hook that, when Codex cut a `run-part` or `read-part` result because the agent set
-  `max_output_tokens`, replaces its last bracketed line with an instruction to rerun that command without the limit;
-  every other result passes unchanged. Register and trust it beside the existing hooks.
+	`max_output_tokens`, replaces its last bracketed line with an instruction to rerun that command without the limit;
+	every other result passes unchanged. Register and trust it beside the existing hooks.
 - **Delivery:** the rules stay inline in the SessionStart context; no rules file or pointer is added.
 - **Rule:** replace the text of `read-file.md` with the certified candidate's guidance only after WI-71 certifies it,
-  showing the wording to the user first; then retire `client/bin/read-file`, its bats suite and fixtures, and its
-  distribution entry.
+	showing the wording to the user first; then retire `client/bin/read-file`, its bats suite and fixtures, and its
+	distribution entry.
 - **Tests:** unit tests for both programs (part sizes after JSON escaping, quotes, control bytes and characters that
-  are not ASCII, long lines, reassembly, exit status, usage errors, a missing or binary file, the caller's locale);
-  unit tests for the hook (a cut part, an uncut part, another command); `DistributionMain` launches both; a bats test
-  runs the plugin's `bin/run-part` and the next-part command it names.
-  One bats test covers the template of every jlink launcher (user request, 2026-10-11: no bats test per program): a
-  launcher run through Bubblewrap and one run directly start from a path with spaces in the C locale, the latter naming
-  a file that is not ASCII.
+	are not ASCII, long lines, reassembly, exit status, usage errors, a missing or binary file, the caller's locale);
+	unit tests for the hook (a cut part, an uncut part, another command); `DistributionMain` launches both; a bats test
+	runs the plugin's `bin/run-part` and the next-part command it names.
+	One bats test covers the template of every jlink launcher (user request, 2026-10-11: no bats test per program): a
+	launcher run through Bubblewrap and one run directly start from a path with spaces in the C locale, the latter naming
+	a file that is not ASCII.
 - **Exit:** unit tests and bats pass; the full build passes.
 
 ### WI-71 — Read-file prompt tests (user rulings, 2026-10-08 and 2026-10-11)
 
 - **Commit gate:** before certification, the candidate passes the commit gate in each certification cell (inline
-  rules, 100 runs per task, reading at 99% or more and the latest two batches of 50 at 98% or more; answers no worse
-  than no prompt).
+	rules, 100 runs per task, reading at 99% or more and the latest two batches of 50 at 98% or more; answers no worse
+	than no prompt).
 - **Requirements (user rulings, 2026-10-13):** from the goal that the agent reads a file without truncation and that
-  the prompt harms neither other operations, such as searching, nor lazy loading: a file the task needs reaches the
-  agent whole; a long command output reaches the agent whole; a lazily loaded guide is loaded and reaches the agent
-  whole; a search is not turned into a whole read; no command runs when none is needed; and each answer is no worse
-  than without the prompt, on easy cases.
+	the prompt harms neither other operations, such as searching, nor lazy loading: a file the task needs reaches the
+	agent whole; a long command output reaches the agent whole; a lazily loaded guide is loaded and reaches the agent
+	whole; a search is not turned into a whole read; no command runs when none is needed; and each answer is no worse
+	than without the prompt, on easy cases.
 - **Prompt tests:** a whole long document, one lazily loaded guide read whole, a long command output, a question
-  answered from general knowledge without reading, and a search whose guard test cases the agent passes almost always
-  without the prompt. Every scenario is organic: it never tells the agent the expected outcome or that it is being
-  tested. Each prompt test certifies its reading obligations as effects: the long document, the lazily loaded guide and
-  the long command output reach the agent whole, and the general-knowledge question runs no command. Its answer is a
-  guard: a text check that recognizes the common correct replies, with `on_tool_failure: judge`, on test cases easy
-  enough that the agent answers correctly at least 95% of the time without the prompt, which the guard pilot confirms;
-  the answer each test asks for therefore lies where a truncated read or a search still finds it (user ruling,
-  2026-10-11). The scenarios no longer prescribe how the agent reads (through a named script, each line once) or check
-  the reply's sign-off, which sits where a truncated read can miss it. Where a scenario does judge a drafted customer
-  reply, a note to the requester after the draft, such as a statement that no files were edited or a source link, is not
-  part of the reply (user ruling, 2026-10-11).
+	answered from general knowledge without reading, and a search whose guard test cases the agent passes almost always
+	without the prompt. Every scenario is organic: it never tells the agent the expected outcome or that it is being
+	tested. Each prompt test certifies its reading obligations as effects: the long document, the lazily loaded guide and
+	the long command output reach the agent whole, and the general-knowledge question runs no command. Its answer is a
+	guard: a text check that recognizes the common correct replies, with `on_tool_failure: judge`, on test cases easy
+	enough that the agent answers correctly at least 95% of the time without the prompt, which the guard pilot confirms;
+	the answer each test asks for therefore lies where a truncated read or a search still finds it (user ruling,
+	2026-10-11). The scenarios no longer prescribe how the agent reads (through a named script, each line once) or check
+	the reply's sign-off, which sits where a truncated read can miss it. Where a scenario does judge a drafted customer
+	reply, a note to the requester after the draft, such as a statement that no files were edited or a source link, is not
+	part of the reply (user ruling, 2026-10-11).
 - **Certification:** `gpt-6-luna` at `low`, at `high`, then `gpt-6.1-sol` at `low`, each at `p_min` 0.95, with the
-  readied candidate as attempt 1.
+	readied candidate as attempt 1.
 - **Exit:** certified in all three cells; WI-70's rule step then runs.
 
 ### WI-72 — Judge on tool failure (user rulings, 2026-10-11)
 
 - **Scenario format:** an assertion may declare `on_tool_failure`, `fail` (the default) or `judge`; `judge` needs a
-  `tool`. The proposal schema carries it as `on_tool_failure`, and `scenario.md` writes it only when it is `judge`.
+	`tool`. The proposal schema carries it as `on_tool_failure`, and `scenario.md` writes it only when it is `judge`.
 - **Decision:** a built-in tool that passes still decides its assertion. A failure under `fail` ends the trial without a
-  judge, as before; a failure under `judge` adds the assertion to the judge's list, with the tool's result as evidence
-  rather than a verdict. The guard pilot decides the same way.
+	judge, as before; a failure under `judge` adds the assertion to the judge's list, with the tool's result as evidence
+	rather than a verdict. The guard pilot decides the same way.
 - **Prompts:** the judge prompt says which tool results are evidence only; the contract author prompt says when to give
-  `judge`. The judge version increments in both harnesses.
+	`judge`. The judge version increments in both harnesses.
 - **Exit:** `ScenarioTest`, `ProposalSchemaTest`, `JudgePromptTest`, `DriverTest` and `GuardPilotTest` cover each side;
-  the read-file lazy prompt test's answer assertion can use `judge`.
+	the read-file lazy prompt test's answer assertion can use `judge`.
 
 ### WI-73 — Plugin under test (user ruling, 2026-10-11)
 
 - **Contract:** the proposal schema carries an optional plugin under test: a plugin root (a project directory holding
-  `.codex-plugin/plugin.json` or `.claude-plugin/plugin.json`), or a base directory with mappings from project source
-  directories to plugin directories; and whether trials install CAT, with the contract author's evidence. The contract
-  author prompt says how to find the plugin, its mappings and its dependency on CAT. For WI-71, the mapping is
-  `client/codex/rules/src/main/resources/rules/codex/` onto the plugin's `rules/codex/`, and the base is the installed
-  Codex CAT artifact; the common rules module is not a one-to-one copy, because its build moves the path-scoped rules.
+	`.codex-plugin/plugin.json` or `.claude-plugin/plugin.json`), or a base directory with mappings from project source
+	directories to plugin directories; and whether trials install CAT, with the contract author's evidence. The contract
+	author prompt says how to find the plugin, its mappings and its dependency on CAT. For WI-71, the mapping is
+	`client/codex/rules/src/main/resources/rules/codex/` onto the plugin's `rules/codex/`, and the base is the installed
+	Codex CAT artifact; the common rules module is not a one-to-one copy, because its build moves the path-scoped rules.
 - **Validation:** a mapping whose source file has no file at its plugin path in the base, or in-project prompt files in
-  two plugins, is refused; a mapped file whose content differs from the base's is a warning; the proposal lists the plugin,
-  the differing files, unapproved hooks and the CAT decision.
+	two plugins, is refused; a mapped file whose content differs from the base's is a warning; the proposal lists the plugin,
+	the differing files, unapproved hooks and the CAT decision.
 - **Staging:** CAT copies the base into campaign storage at confirmation; each staged source, and the control source,
-  gets a plugin copy with its mapped files written over the base copy, so a candidate's edit and an emptied control
-  file reach it.
+	gets a plugin copy with its mapped files written over the base copy, so a candidate's edit and an emptied control
+	file reach it.
 - **Runners:** `CodexRunner` and `ClaudeRunner` install a given plugin directory into the trial home under the
-  manifest's name, reuse the user's hook approvals for it, and install CAT only when asked; when the plugin under test
-  is CAT, its copy is the installed CAT, including Codex's agent definitions. Role sessions still run without plugins
-  and read their rules from the installed CAT artifact.
+	manifest's name, reuse the user's hook approvals for it, and install CAT only when asked; when the plugin under test
+	is CAT, its copy is the installed CAT, including Codex's agent definitions. Role sessions still run without plugins
+	and read their rules from the installed CAT artifact.
 - **Identity:** the plugin root, or the base copy's identity and the mappings, and whether trials install CAT, are
-  material conditions.
+	material conditions.
 - **Closes:** R-W12.
 - **Tests:** `ProposalSchemaTest` (both forms, an unknown key), `ProposalTest` (the refusals, the warning, the listed
-  plugin), `StagedSourceTest` (a candidate edit and an emptied control file in the plugin copy, the base unchanged),
-  `MeasurementIdentityTest` (each plugin condition material), `CodexRunnerTest` and `ClaudeRunnerTest` (the plugin
-  copy installed, CAT installed only when asked, hook approvals of the plugin reused), `CodexSessionsTest` and
-  `ClaudeSessionsTest` (trial settings carry the plugin copy, role sessions unchanged).
+	plugin), `StagedSourceTest` (a candidate edit and an emptied control file in the plugin copy, the base unchanged),
+	`MeasurementIdentityTest` (each plugin condition material), `CodexRunnerTest` and `ClaudeRunnerTest` (the plugin
+	copy installed, CAT installed only when asked, hook approvals of the plugin reused), `CodexSessionsTest` and
+	`ClaudeSessionsTest` (trial settings carry the plugin copy, role sessions unchanged).
 - **Exit:** unit tests pass; the full build passes; in WI-71's campaign, a control trial's installed `read-file.md` is
-  empty and a candidate trial's equals the candidate's.
+	empty and a candidate trial's equals the candidate's.
 
 ### WI-74 — Initial project (user ruling, 2026-10-12)
 
 - **Problem:** the reading tools and the file changes compared a trial with its staged source, which holds no fixtures,
-  so `read-in-full` of a fixture was undecidable and the judge saw every fixture as a file that the trial created.
+	so `read-in-full` of a fixture was undecidable and the judge saw every fixture as a file that the trial created.
 - **Runners:** `HarnessRunManager.snapshotProject` copies the run's project, after the fixtures and before the Git
-  baseline, to `initial-project` beside it; `CodexRunner` and `ClaudeRunner` call it for every run.
+	baseline, to `initial-project` beside it; `CodexRunner` and `ClaudeRunner` call it for every run.
 - **Evidence:** a completed session carries its initial project; the trial record's starting file text and
-  `FileChanges` read it, and a retained failure stores it, so `campaign.json` moves to format version 38.
+	`FileChanges` read it, and a retained failure stores it, so `campaign.json` moves to format version 38.
 - **Closes:** R-E21's comparison with the workspace that the trial started with.
 - **Tests:** `HarnessRunManagerTest` (the snapshot keeps the project and fixtures after the project changes),
-  `TrialEvidenceTest` (a fixture's starting text is read, and fixtures are not file changes).
+	`TrialEvidenceTest` (a fixture's starting text is read, and fixtures are not file changes).
 - **Exit:** unit tests pass; the full build passes; the read-file pilot decides `read-in-full` of a fixture.
 
 ### WI-75 — Requirements from the goal, and test revision (user rulings, 2026-10-13)
 
 - **Problem:** the first read-file certification start gave the contract author neither the target nor the user's
-  goal, and sent it all 94 recorded regression scenarios in a 608 KB prompt. Its proposal tested how the bundled
-  scripts work rather than whether a file reaches the agent whole; its correction turn learned of the missing scenario
-  citations only after its schema problem was fixed, so the second refusal ended the start; and its second start timed
-  out. A test that failed for a reason in the test could only be classified *not guidance*, which waits for the user.
+	goal, and sent it all 94 recorded regression scenarios in a 608 KB prompt. Its proposal tested how the bundled
+	scripts work rather than whether a file reaches the agent whole; its correction turn learned of the missing scenario
+	citations only after its schema problem was fixed, so the second refusal ended the start; and its second start timed
+	out. A test that failed for a reason in the test could only be classified *not guidance*, which waits for the user.
 - **Start:** `start` takes an optional goal and stores it with the campaign; the skill passes the user's own words.
-  `start` refuses a target that is not a regular file, naming it, because a campaign optimizes one prompt file.
+	`start` refuses a target that is not a regular file, naming it, because a campaign optimizes one prompt file.
 - **Control source:** control trials and the guard pilot empty only the target prompt file; every other prompt file
-  stays as the incumbent has it, so control trials measure the agent that the user would have without the target.
+	stays as the incumbent has it, so control trials measure the agent that the user would have without the target.
 - **Contract author:** its prompt names the target prompt file, holds the goal and only the target's recorded
-  regression scenarios, and states the requirement derivation of `design.md` §6.1 and the test design rules of §6.3. A
-  requirement's source is the goal or the prompt file that states it; with a goal, a requirement whose source is a
-  prompt file is an extra requirement, which the proposal marks and the user drops through `revise` feedback.
+	regression scenarios, and states the requirement derivation of `design.md` §6.1 and the test design rules of §6.3. A
+	requirement's source is the goal or the prompt file that states it; with a goal, a requirement whose source is a
+	prompt file is an extra requirement, which the proposal marks and the user drops through `revise` feedback.
 - **Validation:** CAT refuses a requirement that no prompt test proves, requires citations only of the target's
-  recorded scenarios, and reports every problem at once, checking the citations even when the schema parse fails.
+	recorded scenarios, and reports every problem at once, checking the citations even when the schema parse fails.
 - **Failure analysis:** the prompt author's *test defect* classification and its manifest check; the test revision
-  session, its validation, new test cases and guard pilot, the new lineage, the attempt outcome
-  `not certified: stopped for test revision`, the return of a sound test's kind, the pause for an unprovable
-  requirement or a requirement change, and the test revision before a review checkpoint stops a cell.
-  `campaign.json` moves to format version 39.
+	session, its validation, new test cases and guard pilot, the new lineage, the attempt outcome
+	`not certified: stopped for test revision`, the return of a sound test's kind, the pause for an unprovable
+	requirement or a requirement change, and the test revision before a review checkpoint stops a cell.
+	`campaign.json` moves to format version 39.
 - **Closes:** R-C24, R-C25, R-D19, the narrowed control source in R-W10 and the new classification in R-D10.
 - **Tests:** `ProposalTest` (a requirement without a prompt test refused; only the target's scenarios sent and required;
-  the goal and target in the prompt; schema and citation problems reported together; extra requirements marked; the
-  control source lists only the target), `CommandsTest` and `OptimizerCoreTest` (`start --goal` stores the goal and
-  passes it to the contract author; `start` refuses a directory; the guard pilot's control source empties only the
-  target; `run` revises a test under a new lineage, records a sound test, pauses on a requirement change whose proposed
-  change revises the contract, and refuses a revision that changes requirements or reuses a test case),
-  `CampaignStoreContract` (the goal survives a reload), `PromptAuthorManifestTest` (a test defect kind without its rule
-  rejected), `DriverTest` and `CampaignTransitionsTest` (a test revision's lineage, attempt outcome, sound report and
-  pause), `StatusReportTest` (the revision's difference and reasons), `StagedSourceTest` (the control source empties
-  only the target).
+	the goal and target in the prompt; schema and citation problems reported together; extra requirements marked; the
+	control source lists only the target), `CommandsTest` and `OptimizerCoreTest` (`start --goal` stores the goal and
+	passes it to the contract author; `start` refuses a directory; the guard pilot's control source empties only the
+	target; `run` revises a test under a new lineage, records a sound test, pauses on a requirement change whose proposed
+	change revises the contract, and refuses a revision that changes requirements or reuses a test case),
+	`CampaignStoreContract` (the goal survives a reload), `PromptAuthorManifestTest` (a test defect kind without its rule
+	rejected), `DriverTest` and `CampaignTransitionsTest` (a test revision's lineage, attempt outcome, sound report and
+	pause), `StatusReportTest` (the revision's difference and reasons), `StagedSourceTest` (the control source empties
+	only the target).
 - **Exit:** unit tests pass; the full build passes; WI-71's certification start, given the user's goal, presents a
-  proposal within its time limit whose requirements are WI-71's.
+	proposal within its time limit whose requirements are WI-71's.
 
 ### WI-76 — Control source without the target's dependents (user ruling, 2026-10-13)
 
 - **Problem:** the control source empties only the target, so a hook or route that exists only to serve the target,
-  such as the Codex PostToolUse hook that repairs `read-part` output, still runs in control trials.
+	such as the Codex PostToolUse hook that repairs `read-part` output, still runs in control trials.
 - **Proposal:** the contract author lists each dependent of the target: its path, the part it removes (a whole file, a
-  hook registration, or an exact span) and the target instruction it serves; it lists nothing that still has a purpose
-  without the target. CAT refuses an entry that names the target, a path outside the prompt system and the plugin under
-  test, or a span that does not occur exactly once, and reports every problem at once. The proposal shows the list.
+	hook registration, or an exact span) and the target instruction it serves; it lists nothing that still has a purpose
+	without the target. CAT refuses an entry that names the target, a path outside the prompt system and the plugin under
+	test, or a span that does not occur exactly once, and reports every problem at once. The proposal shows the list.
 - **Control source:** the target emptied to zero bytes, each listed file deleted, each listed hook registration removed
-  from the plugin copy's hook configuration, each listed span deleted; every other file unchanged. The guard pilot and
-  the formal control trials use it. The control-source limitation names only references in files that stay.
+	from the plugin copy's hook configuration, each listed span deleted; every other file unchanged. The guard pilot and
+	the formal control trials use it. The control-source limitation names only references in files that stay.
 - **Closes:** R-W10's dependents.
 - **Tests:** `ProposalSchemaTest` (the dependents field round trip and an incomplete entry refused), `ContractTest`
-  (ambiguous entries refused; plugin-root and built-plugin removals), `ProposalTest` (the list shown; a removal problem
-  blocks confirmation), `ControlSourceTest` (each removal kind, a file that mentions the target unchanged, and each
-  refusal), `DependentRemovalTest` (each removal kind on file content), `StagedSourceTest` (a built plugin's control copy
-  without its dependents, and a missing dependent refused), `DriverTest` (the committed control snapshot, and control
-  trials' plugin copies), `GuardPilotTest` (the pilot's control trials install the copy without dependents, and a
-  changed list reruns the pilot).
+	(ambiguous entries refused; plugin-root and built-plugin removals), `ProposalTest` (the list shown; a removal problem
+	blocks confirmation), `ControlSourceTest` (each removal kind, a file that mentions the target unchanged, and each
+	refusal), `DependentRemovalTest` (each removal kind on file content), `StagedSourceTest` (a built plugin's control copy
+	without its dependents, and a missing dependent refused), `DriverTest` (the committed control snapshot, and control
+	trials' plugin copies), `GuardPilotTest` (the pilot's control trials install the copy without dependents, and a
+	changed list reruns the pilot).
 - **Exit:** unit tests pass; the full build passes; WI-71's proposal lists the Codex PostToolUse hook as a dependent of
-  the Codex read-file rule.
+	the Codex read-file rule.
 
 ### WI-77 — Per-assertion comparison with the incumbent (user ruling, 2026-10-13)
 
 - **Problem:** a candidate is compared with the incumbent only on whole trials, against frozen bounds from unpaired
-  baseline trials, so it can certify while passing one assertion less often than the incumbent did.
+	baseline trials, so it can certify while passing one assertion less often than the incumbent did.
 - **Incumbent trials:** in a cell whose minimum-pass-rate part certified, and only when the candidate is not the
-  incumbent, the `j`-th incumbent trial runs the incumbent on the test case of the cell's `j`-th candidate formal trial;
-  extra formal trials run to complete pairs up to the cap. Incumbent trials count only toward the incumbent comparisons.
+	incumbent, the `j`-th incumbent trial runs the incumbent on the test case of the cell's `j`-th candidate formal trial;
+	extra formal trials run to complete pairs up to the cap. Incumbent trials count only toward the incumbent comparisons.
 - **Comparison:** `E_inc↑` and `E_inc↓` are the control comparison's e-values over the incumbent pairs, with the same
-  5-point margin and decided at `1/α_i`. A cell certifies only when every assertion's control and incumbent comparisons
-  pass; `E_inc↓` above `1/α_i` ends the attempt `not certified: below incumbent`, which returns to development with
-  the brief's `below_incumbent` entries; when one assertion is below control and another below incumbent at the same
-  adoption, the attempt ends `below control`.
+	5-point margin and decided at `1/α_i`. A cell certifies only when every assertion's control and incumbent comparisons
+	pass; `E_inc↓` above `1/α_i` ends the attempt `not certified: below incumbent`, which returns to development with
+	the brief's `below_incumbent` entries; when one assertion is below control and another below incumbent at the same
+	adoption, the attempt ends `below control`.
 - **Reports:** the status report, the minimum remaining trials, the certification record and the campaign snapshot
-  carry each cell's incumbent pairs beside its control pairs.
+	carry each cell's incumbent pairs beside its control pairs.
 - **Closes:** R-F8, and the incumbent side of R-E3, R-E4 and R-F2.
 - **Tests:** `SchedulerTest` (no incumbent trial before the cell certifies or when the candidate is the incumbent;
-  pairing order; extra formal trials for incumbent pairs; the cell limit), `DecisionTableTest` (the incumbent
-  comparison is the control comparison's statistic; below incumbent; below control first; certification waits for the
-  incumbent; inconclusive at the cap), `CellTierTest` (a cell below incumbent returns to development), `DriverTest`
-  (certification waits for the incumbent comparisons, whose trials stage the incumbent), `StatusReportTest`,
-  `RemainingWorkTest` (incumbent pairs, sharing formal trials with control pairs), `CertificationRecordTest`,
-  `EndedAttemptTest` and `PromptAuthorTest` (the brief's `below_incumbent` entries).
+	pairing order; extra formal trials for incumbent pairs; the cell limit), `DecisionTableTest` (the incumbent
+	comparison is the control comparison's statistic; below incumbent; below control first; certification waits for the
+	incumbent; inconclusive at the cap), `CellTierTest` (a cell below incumbent returns to development), `DriverTest`
+	(certification waits for the incumbent comparisons, whose trials stage the incumbent), `StatusReportTest`,
+	`RemainingWorkTest` (incumbent pairs, sharing formal trials with control pairs), `CertificationRecordTest`,
+	`EndedAttemptTest` and `PromptAuthorTest` (the brief's `below_incumbent` entries).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-78 — Comparisons implied by the minimum pass rate (user ruling, 2026-10-14)
 
 - **Problem:** at `p_min ≥ 0.95` a true minimum-pass-rate claim already makes every control and incumbent comparison
-  true, yet each certified cell still runs paired trials for them, and a guard that both trials pass almost always can
-  leave the attempt inconclusive at the cap.
+	true, yet each certified cell still runs paired trials for them, and a guard that both trials pass almost always can
+	leave the attempt inconclusive at the cap.
 - **Condition:** one place decides whether a campaign compares assertions: only when `p_min` is below
-  `1 − PairedComparison.MARGIN`, 0.95.
+	`1 − PairedComparison.MARGIN`, 0.95.
 - **Certification:** when it does not, a cell certifies as soon as its minimum-pass-rate part certifies; no control or
-  incumbent trial and no extra formal trial for pairs is scheduled, and the minimum remaining trials count none.
+	incumbent trial and no extra formal trial for pairs is scheduled, and the minimum remaining trials count none.
 - **Reports:** the status report and the certification record say that the comparisons follow from the minimum pass
-  rate instead of listing each assertion's comparison as `not run`.
+	rate instead of listing each assertion's comparison as `not run`.
 - **Unchanged:** below 0.95, every comparison, decision and cost of WI-65 and WI-77.
 - **Closes:** R-F9, and the `p_min` condition of R-F7 and R-F8.
 - **Tests:** `DecisionTableTest` (at 0.95 a cell certifies on its minimum-pass-rate part with no pair; below 0.95 it
-  still waits for the comparisons), `SchedulerTest` (no control, incumbent or extra formal trial at 0.95),
-  `RemainingWorkTest`, `StatusReportTest`, `CertificationRecordTest`, `DriverTest` (an attempt at 0.95 certifies with
-  no control or incumbent session).
+	still waits for the comparisons), `SchedulerTest` (no control, incumbent or extra formal trial at 0.95),
+	`RemainingWorkTest`, `StatusReportTest`, `CertificationRecordTest`, `DriverTest` (an attempt at 0.95 certifies with
+	no control or incumbent session).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-79 — Revert by non-overlapping intervals (user ruling, 2026-10-14)
 
 - **Problem:** the revert check compares the promoted candidate's upper bound with its predecessor's observed rate,
-  which carries the predecessor's own sampling error, so it withdraws a candidate as good as its predecessor 25–36% of
-  the time.
+	which carries the predecessor's own sampling error, so it withdraws a candidate as good as its predecessor 25–36% of
+	the time.
 - **Rule:** revert when the promoted candidate's development 95% Wilson upper bound in an addressed cell is below the
-  predecessor's development 95% Wilson lower bound in that cell.
+	predecessor's development 95% Wilson lower bound in that cell.
 - **Storage:** each revert record holds the predecessor's lower bound in place of its observed rate; the campaign
-  format version rises and the launcher fixture follows.
+	format version rises and the launcher fixture follows.
 - **Closes:** R-D15.
 - **Tests:** `RevertTest` (no revert while the intervals overlap, even below the predecessor's observed rate; revert
-  once they do not), `FileCampaignStoreTest` round trip.
+	once they do not), `FileCampaignStoreTest` round trip.
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-80 — Commit gate (user ruling, 2026-10-14)
 
 - **Problem:** "readiness gate" does not say what the gate permits, and "certification gate" would suggest that
-  passing it certifies.
+	passing it certifies.
 - **Rename:** the gate, its class, its remaining-work kind, its report labels and its status JSON key use "commit
-  gate". The Git replay classes and the rules resources, which use "readiness" for another concept, are unchanged.
+	gate". The Git replay classes and the rules resources, which use "readiness" for another concept, are unchanged.
 - **Closes:** R-D1's name.
 - **Tests:** `CommitGateTest` (renamed), `RemainingWorkTest` and `StatusReportTest` (the new kind, labels and key).
 - **Exit:** no optimizer source, test or fixture names the readiness gate; unit tests pass; the full build passes.
@@ -2238,390 +2238,390 @@ The riskiest pure code, built first.
 ### WI-81 — Trial plugins from the prompt test configuration (user rulings, 2026-10-15)
 
 - **Problem:** trials installed the plugin under test that the contract author proposed, and CAT only when the author
-  cited evidence that the plugin depends on it, so a plugin that ships none of the target's files never reached trials.
-  The author read the distribution build to find the mappings, and a built plugin's base was the user's installed
-  copy, which on 2026-10-15 lacked a fix that the build output held (`design.md` §4.4, D78).
+	cited evidence that the plugin depends on it, so a plugin that ships none of the target's files never reached trials.
+	The author read the distribution build to find the mappings, and a built plugin's base was the user's installed
+	copy, which on 2026-10-15 lacked a fix that the build output held (`design.md` §4.4, D78).
 - **Configuration:** a target's prompt test configuration is `prompt.json` in its test directory (`design.md` §8): one
-  key per harness, `claude` or `codex`, each holding `plugins`, a list of entries with `name` and an optional `build`
-  holding `output` (a project directory relative to the project root) and an optional `command` (a non-empty argument
-  list run from the project root). Unknown keys are refused with their JSON path. Staging leaves the configuration out,
-  as it leaves out the prompt test directories.
+	key per harness, `claude` or `codex`, each holding `plugins`, a list of entries with `name` and an optional `build`
+	holding `output` (a project directory relative to the project root) and an optional `command` (a non-empty argument
+	list run from the project root). Unknown keys are refused with their JSON path. Staging leaves the configuration out,
+	as it leaves out the prompt test directories.
 - **Start:** before creating anything, `start` refuses a target whose test directory has no configuration, or whose
-  configuration has no key for the harness running `start`, naming the file to write; and a listed plugin without
-  `build` whose name matches a plugin manifest tracked in the project. After adding the optimization worktree, `start`
-  runs each `build.command` there and stops, showing the exit status and the end of the output, when a command fails or
-  an output lacks the harness's plugin manifest or names another plugin; the target is then startable again, as after a
-  failed derivation. A plugin without `build` is found through the harness's install records (Claude Code's
-  `installed_plugins.json`; Codex's `config.toml` and plugin cache), and `start` refuses unless exactly one installed
-  copy matches. Each output or installed copy is copied into campaign storage as the plugin's base. A revision neither
-  rebuilds nor recopies.
+	configuration has no key for the harness running `start`, naming the file to write; and a listed plugin without
+	`build` whose name matches a plugin manifest tracked in the project. After adding the optimization worktree, `start`
+	runs each `build.command` there and stops, showing the exit status and the end of the output, when a command fails or
+	an output lacks the harness's plugin manifest or names another plugin; the target is then startable again, as after a
+	failed derivation. A plugin without `build` is found through the harness's install records (Claude Code's
+	`installed_plugins.json`; Codex's `config.toml` and plugin cache), and `start` refuses unless exactly one installed
+	copy matches. Each output or installed copy is copied into campaign storage as the plugin's base. A revision neither
+	rebuilds nor recopies.
 - **Mappings:** before the contract author starts, CAT maps each project directory of the prompt system onto each
-  project-built base: to the base directory that holds a file at each of its files' relative paths, choosing the one
-  with the most identical files, or else each file on its own to the base path that holds an identical copy. It lists a
-  participating in-project prompt file that does not load from the project and that no mapping covers, warns on a
-  mapped file whose content differs from the base's, refuses a campaign whose target would not load in trials, and
-  lists every other prompt file that loads in production but not in trials. A file may map into several plugins.
+	project-built base: to the base directory that holds a file at each of its files' relative paths, choosing the one
+	with the most identical files, or else each file on its own to the base path that holds an identical copy. It lists a
+	participating in-project prompt file that does not load from the project and that no mapping covers, warns on a
+	mapped file whose content differs from the base's, refuses a campaign whose target would not load in trials, and
+	lists every other prompt file that loads in production but not in trials. A file may map into several plugins.
 - **Contract:** the proposal schema drops `plugin_under_test`, and the contract author prompt drops its plugin
-  instructions; the campaign records the trial plugins, each with its name, base digest, base source (build command or
-  installed copy) and mappings. Dependents may name a path in a project-built trial plugin and no longer in an
-  installed one. The proposal shows the plugins as `design.md` §6.1 lists them. The proposal and campaign format
-  versions increase, and the launcher fixture follows.
+	instructions; the campaign records the trial plugins, each with its name, base digest, base source (build command or
+	installed copy) and mappings. Dependents may name a path in a project-built trial plugin and no longer in an
+	installed one. The proposal shows the plugins as `design.md` §6.1 lists them. The proposal and campaign format
+	versions increase, and the launcher fixture follows.
 - **Staging and runners:** each staged source, the control source included, has a copy of each project-built trial
-  plugin, its base with its mapped files written over it and, for the control source, its dependents removed.
-  `CodexRunner` and `ClaudeRunner` install exactly the listed plugins into the trial home, a project-built plugin from
-  its staged copy and any other from its base copy, and no other plugin: CAT runs in a trial only when the configuration
-  lists it. Each plugin's hook approvals are reused, and an unapproved Codex hook is a proposal limitation. Role sessions
-  are unchanged.
+	plugin, its base with its mapped files written over it and, for the control source, its dependents removed.
+	`CodexRunner` and `ClaudeRunner` install exactly the listed plugins into the trial home, a project-built plugin from
+	its staged copy and any other from its base copy, and no other plugin: CAT runs in a trial only when the configuration
+	lists it. Each plugin's hook approvals are reused, and an unapproved Codex hook is a proposal limitation. Role sessions
+	are unchanged.
 - **Identity:** each trial plugin's name and base identity, and the build command and mappings of each project-built
-  one, are measurement conditions, replacing the plugin-under-test conditions.
+	one, are measurement conditions, replacing the plugin-under-test conditions.
 - **Configurations:** add `client/codex/rules/src/test/resources/codex/read-file/prompt.json`, listing CAT under
-  `codex` with the project's build command and the Codex distribution output, for WI-71. WI-15's fixtures each gain a
-  configuration in WI-15.
+	`codex` with the project's build command and the Codex distribution output, for WI-71. WI-15's fixtures each gain a
+	configuration in WI-15.
 - **Closes:** R-W12 as reworded, R-E20's trial side, and R-W10's narrowed dependent paths.
 - **Tests:** `PromptConfigurationTest` (each form, each refusal with its JSON path), `CommandsTest` and
-  `OptimizerCoreTest` (`start` refuses a missing configuration or harness key before creating anything, naming the file,
-  and an unbuilt plugin that the project tracks; the build runs in the optimization worktree and never reads the base
-  worktree's build output; a failed command, a missing manifest and another plugin's name stop `start` with the exit
-  status and the end of the output and leave the target startable; a revision does not rebuild),
-  `InstalledPluginsTest` in each harness (one copy, none, two), `PluginMappingTest` (a directory mapping, the most
-  identical directory chosen, the single-file fallback, an uncovered file listed, a file in two plugins, a differing
-  file warned, an unloadable target refused), `StagedSourceTest` (one copy per project-built plugin, the control copy
-  without dependents, the configuration excluded), `ProposalSchemaTest` (`plugin_under_test` refused as unknown),
-  `ProposalTest` (the plugins shown), `MeasurementIdentityTest` (each plugin condition material), `CodexRunnerTest` and
-  `ClaudeRunnerTest` (exactly the listed plugins, two plugins, CAT only when listed, hook approvals reused),
-  `CodexSessionsTest` and `ClaudeSessionsTest` (trial settings carry the plugins, role sessions unchanged). A test that
-  runs a build command runs a fixture program, never Maven.
+	`OptimizerCoreTest` (`start` refuses a missing configuration or harness key before creating anything, naming the file,
+	and an unbuilt plugin that the project tracks; the build runs in the optimization worktree and never reads the base
+	worktree's build output; a failed command, a missing manifest and another plugin's name stop `start` with the exit
+	status and the end of the output and leave the target startable; a revision does not rebuild),
+	`InstalledPluginsTest` in each harness (one copy, none, two), `PluginMappingTest` (a directory mapping, the most
+	identical directory chosen, the single-file fallback, an uncovered file listed, a file in two plugins, a differing
+	file warned, an unloadable target refused), `StagedSourceTest` (one copy per project-built plugin, the control copy
+	without dependents, the configuration excluded), `ProposalSchemaTest` (`plugin_under_test` refused as unknown),
+	`ProposalTest` (the plugins shown), `MeasurementIdentityTest` (each plugin condition material), `CodexRunnerTest` and
+	`ClaudeRunnerTest` (exactly the listed plugins, two plugins, CAT only when listed, hook approvals reused),
+	`CodexSessionsTest` and `ClaudeSessionsTest` (trial settings carry the plugins, role sessions unchanged). A test that
+	runs a build command runs a fixture program, never Maven.
 - **Exit:** unit tests pass; the full build passes; in WI-71's start, CAT builds itself on the fork commit and the
-  proposal names that build output as CAT's base with the mapping of `client/codex/rules/src/main/resources/rules/codex/`.
+	proposal names that build output as CAT's base with the mapping of `client/codex/rules/src/main/resources/rules/codex/`.
 
 ### WI-82 — Prompt tests as files and contract tools (user rulings, 2026-10-15)
 
 - **Problem:** the read-file certification start of 2026-10-15 left no proposal: the contract author reached its
-  30-minute limit after re-typing the turns, variables and assertions of the four recorded scenarios, about 5,000
-  characters, into the proposal JSON and validating nothing until the session ended (`design.md` §6.1, D77).
+	30-minute limit after re-typing the turns, variables and assertions of the four recorded scenarios, about 5,000
+	characters, into the proposal JSON and validating nothing until the session ended (`design.md` §6.1, D77).
 - **Scenario format:** `scenario.md` gains `## Expected Behavior` with `description` and `time_limit_seconds`, between
-  `## Scenario` and `## Assertions`. A recorded scenario without it stays readable; CAT refuses a proposal whose prompt
-  test lacks it. A prompt test's expected behavior and time limit come from its scenario, not from the proposal.
+	`## Scenario` and `## Assertions`. A recorded scenario without it stays readable; CAT refuses a proposal whose prompt
+	test lacks it. A prompt test's expected behavior and time limit come from its scenario, not from the proposal.
 - **Draft directory:** before each contract author session, CAT creates a new draft directory in the session's run
-  directory and copies into it, at its test path, the directory of every recorded prompt test of the target: scenario,
-  `fixtures/` and values file. A revision's draft starts as a copy of the latest proposal's draft; a test revision's
-  draft holds a copy of the prompt test it revises. The request names the draft directory and the proposal file, and
-  asks the author to write each file once it settles it, in the turn that inspects the prompt system; the separate
-  output turn is removed, and the correction turn edits the same files. When the session ends, CAT validates the
-  proposal and the draft, and moves the draft into the held-out directory beside the proposal. A session that reaches
-  its time limit stores no proposal and leaves its files in its run directory for diagnosis.
+	directory and copies into it, at its test path, the directory of every recorded prompt test of the target: scenario,
+	`fixtures/` and values file. A revision's draft starts as a copy of the latest proposal's draft; a test revision's
+	draft holds a copy of the prompt test it revises. The request names the draft directory and the proposal file, and
+	asks the author to write each file once it settles it, in the turn that inspects the prompt system; the separate
+	output turn is removed, and the correction turn edits the same files. When the session ends, CAT validates the
+	proposal and the draft, and moves the draft into the held-out directory beside the proposal. A session that reaches
+	its time limit stores no proposal and leaves its files in its run directory for diagnosis.
 - **Proposal file:** holds only the requirements, each prompt test's directory in the draft with its risk rank, the
-  requirements it proves, the requirements whose trigger it leaves absent, its applicability, the requirement each
-  assertion checks and any interaction it cannot cover, and the minimum pass rate, the judge's rubric and decision
-  rule, the dependents, the conflicts, the limitations and the ignored paths needed as trial fixtures. Test cases live in
-  the values files; a new test case has no seed, and validation gives each generated value its seed and version and
-  writes them into the draft's values file. The proposal format version increases.
+	requirements it proves, the requirements whose trigger it leaves absent, its applicability, the requirement each
+	assertion checks and any interaction it cannot cover, and the minimum pass rate, the judge's rubric and decision
+	rule, the dependents, the conflicts, the limitations and the ignored paths needed as trial fixtures. Test cases live in
+	the values files; a new test case has no seed, and validation gives each generated value its seed and version and
+	writes them into the draft's values file. The proposal format version increases.
 - **Request:** besides the files that load in production with their rules, the request lists the trial plugins with
-  each project-built one's mappings (WI-81), every hook registration of the prompt system and of the trial plugins with
-  its event, matcher and command, the draft directory, the proposal file and the absolute path of the launcher that
-  provides the contract tools.
+	each project-built one's mappings (WI-81), every hook registration of the prompt system and of the trial plugins with
+	its event, matcher and command, the draft directory, the proposal file and the absolute path of the launcher that
+	provides the contract tools.
 - **Contract tools:** the launcher's `contract check` applies every session-end validation to the proposal file and the
-  draft directory as they stand, prints every problem at once with its file and line or its JSON path, prints each
-  prompt test's number of distinct expected outcomes without splitting them into parts, and exits non-zero when it
-  finds a problem. `contract fixtures` writes one test case's workspace files into a directory that the author names,
-  the fixtures that its patterns select with its values substituted and its generator calls expanded, and prints each
-  file's path, size in bytes, line count and comparison with the tool-output limit of each trial profile of the prompt
-  test. Both run inside the contract author's sandbox, read nothing in the held-out directory and write only below the
-  directory they are given; the skill does not use them.
+	draft directory as they stand, prints every problem at once with its file and line or its JSON path, prints each
+	prompt test's number of distinct expected outcomes without splitting them into parts, and exits non-zero when it
+	finds a problem. `contract fixtures` writes one test case's workspace files into a directory that the author names,
+	the fixtures that its patterns select with its values substituted and its generator calls expanded, and prints each
+	file's path, size in bytes, line count and comparison with the tool-output limit of each trial profile of the prompt
+	test. Both run inside the contract author's sandbox, read nothing in the held-out directory and write only below the
+	directory they are given; the skill does not use them.
 - **Presentation and delivery:** the proposal shows each prompt test from the draft as recorded, created, or recorded
-  and edited with a difference from the recorded files, with its test cases and the number of distinct expected outcomes
-  in each part; delivery writes the confirmed draft's prompt tests.
+	and edited with a difference from the recorded files, with its test cases and the number of distinct expected outcomes
+	in each part; delivery writes the confirmed draft's prompt tests.
 - **Prompts:** the contract author prompt, its correction turn, the test revision prompt and `prompt-tests.md` describe
-  writing prompt tests as files in the draft, the contract tools, and writing each file as it is settled. If the judge's
-  rendered input changes, the judge version increases in both harnesses (D50).
+	writing prompt tests as files in the draft, the contract tools, and writing each file as it is settled. If the judge's
+	rendered input changes, the judge version increases in both harnesses (D50).
 - **Closes:** R-C26, R-C27, and R-C20's Expected Behavior section.
 - **Tests:** `ScenarioTest` (the section read, a scenario without it read, a malformed section refused at its line),
-  `ProposalSchemaTest` (the narrowed proposal; a restated prompt test refused as an unknown key), `DraftDirectoryTest`
-  (seeding at test paths, a revision's copy, a test revision's copy, the move into the held-out directory, files kept
-  after a time limit), `ProposalTest` (validation reads the draft; seeds written back; recorded, created and edited
-  marked with differences; a missing recorded prompt test and a missing Expected Behavior refused; problems carry file
-  and line or JSON path), `ContractCheckTest` (the same problems as session-end validation; counts without parts),
-  `ContractFixturesTest` (files, sizes, line counts, each profile's limit; nothing written outside the named
-  directory), `CommandsTest` (both commands listed and parsed), `TestRevisionTest`, `DeliveryTest` (prompt tests from the
-  draft), `OptimizerCoreTest` (`start` seeds a draft and stores it in the held-out directory; a timed-out session stores
-  nothing), `CodexSessionsTest` and `ClaudeSessionsTest` (the contract author session may run the launcher and write the
-  draft and the proposal file).
+	`ProposalSchemaTest` (the narrowed proposal; a restated prompt test refused as an unknown key), `DraftDirectoryTest`
+	(seeding at test paths, a revision's copy, a test revision's copy, the move into the held-out directory, files kept
+	after a time limit), `ProposalTest` (validation reads the draft; seeds written back; recorded, created and edited
+	marked with differences; a missing recorded prompt test and a missing Expected Behavior refused; problems carry file
+	and line or JSON path), `ContractCheckTest` (the same problems as session-end validation; counts without parts),
+	`ContractFixturesTest` (files, sizes, line counts, each profile's limit; nothing written outside the named
+	directory), `CommandsTest` (both commands listed and parsed), `TestRevisionTest`, `DeliveryTest` (prompt tests from the
+	draft), `OptimizerCoreTest` (`start` seeds a draft and stores it in the held-out directory; a timed-out session stores
+	nothing), `CodexSessionsTest` and `ClaudeSessionsTest` (the contract author session may run the launcher and write the
+	draft and the proposal file).
 - **Exit:** unit tests pass; the full build passes; WI-71's certification start, given the user's goal, presents a
-  proposal within the contract author's time limit.
+	proposal within the contract author's time limit.
 
 ### WI-83 — Per-session work directories (user request and rulings, 2026-10-16)
 
 - **Problem:** every session of a project writes into one shared `.cat/work/temp`. The SessionStart hooks put each
-  session's rules in `claude-context/` or `codex-context/` there, agents create their temporary directories there, and
-  `run-part`, the runner commands and the Git replay editor write there. Nothing ties a directory to the session that
-  created it, so nothing can remove a session's files once the session is gone (`design.md` D79).
+	session's rules in `claude-context/` or `codex-context/` there, agents create their temporary directories there, and
+	`run-part`, the runner commands and the Git replay editor write there. Nothing ties a directory to the session that
+	created it, so nothing can remove a session's files once the session is gone (`design.md` D79).
 - **Layout:** each session gets `.cat/work/<session-id>/` for the files CAT writes for it, and
-  `.cat/work/<session-id>/temp/`, which is the session's `CAT_TEMP`. The session's rules file moves to
-  `.cat/work/<session-id>/rules.md`, and each Claude subagent's to `.cat/work/<session-id>/subagents/<agent-id>.md`.
-  `<session-id>` is the harness's session ID in canonical UUID form; CAT refuses any other form, so a session directory
-  never takes the name of another entry of `.cat/work`.
+	`.cat/work/<session-id>/temp/`, which is the session's `CAT_TEMP`. The session's rules file moves to
+	`.cat/work/<session-id>/rules.md`, and each Claude subagent's to `.cat/work/<session-id>/subagents/<agent-id>.md`.
+	`<session-id>` is the harness's session ID in canonical UUID form; CAT refuses any other form, so a session directory
+	never takes the name of another entry of `.cat/work`.
 - **One owner:** a new `SessionWorkDirectory` in `com.holdmyspot.cat.common` is the only code that names `.cat/work`
-  or builds a session directory's path. Hooks obtain it from `HookScope` with the hook input; commands obtain it from
-  `ToolScope`, which reads the session variable. Its first use creates the directory and `temp/`, and writes the marker
-  when none exists: it writes a temporary file in the directory and moves it into place atomically, so concurrent first
-  uses, such as a hook and a command, leave one complete marker, and it never overwrites a marker. It provides the
-  paths inside the directory (`temp/`, the rules files, and WI-84's campaign storage) and the sweep. The
-  harness-specific parts, the session variable, the default configuration directory and the transcript lookup, come
-  from a per-harness value that the harness's scopes supply. `WorkDirectoryAuditTest` fails when any other main source
-  file spells `.cat/work`; code that only excludes the work root, such as `InventoryScanner`, `Fork`, `ForkView` and
-  staging, takes it from a `SessionWorkDirectory` constant.
+	or builds a session directory's path. Hooks obtain it from `HookScope` with the hook input; commands obtain it from
+	`ToolScope`, which reads the session variable. Its first use creates the directory and `temp/`, and writes the marker
+	when none exists: it writes a temporary file in the directory and moves it into place atomically, so concurrent first
+	uses, such as a hook and a command, leave one complete marker, and it never overwrites a marker. It provides the
+	paths inside the directory (`temp/`, the rules files, and WI-84's campaign storage) and the sweep. The
+	harness-specific parts, the session variable, the default configuration directory and the transcript lookup, come
+	from a per-harness value that the harness's scopes supply. `WorkDirectoryAuditTest` fails when any other main source
+	file spells `.cat/work`; code that only excludes the work root, such as `InventoryScanner`, `Fork`, `ForkView` and
+	staging, takes it from a `SessionWorkDirectory` constant.
 - **Marker:** `.cat/work/<session-id>/session.json` holds the harness, the harness's configuration directory as an
-  absolute path (Claude: `CLAUDE_CONFIG_DIR`, else `$HOME/.claude`; Codex: `CODEX_HOME`, else `$HOME/.codex`) and the
-  creation time in UTC.
+	absolute path (Claude: `CLAUDE_CONFIG_DIR`, else `$HOME/.claude`; Codex: `CODEX_HOME`, else `$HOME/.codex`) and the
+	creation time in UTC.
 - **Session ID:** hooks read the hook input's `session_id`. Commands read the variable that the harness sets in tool
-  shells, `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, as the optimizer's interrupt signals already do. A command that
-  writes into `CAT_TEMP` (`run-part`, the runner commands, the Git replay editor) uses the session directory of the
-  nearest CAT project. Without either variable, `run-part` keeps its fallback to `TMPDIR`, `TEMP` or the JVM's temporary
-  directory; a runner command needs `--run-root`, and the Git replay editor refuses; each refusal names both variables.
+	shells, `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, as the optimizer's interrupt signals already do. A command that
+	writes into `CAT_TEMP` (`run-part`, the runner commands, the Git replay editor) uses the session directory of the
+	nearest CAT project. Without either variable, `run-part` keeps its fallback to `TMPDIR`, `TEMP` or the JVM's temporary
+	directory; a runner command needs `--run-root`, and the Git replay editor refuses; each refusal names both variables.
 - **Premise check, first:** in each harness, record the `session_id` of the SessionStart and SubagentStart hook inputs,
-  the session variable in the tool shells of the main agent and of a subagent, the `session_id` after a resume, the
-  configuration-directory variables that hooks and tool shells see, and whether the transcript exists when SessionStart
-  runs. Claude subagents are expected to share the parent's session ID, and so its directory. The check decides which
-  directory a Codex subagent's injected rules name: the one that the subagent's own commands resolve.
+	the session variable in the tool shells of the main agent and of a subagent, the `session_id` after a resume, the
+	configuration-directory variables that hooks and tool shells see, and whether the transcript exists when SessionStart
+	runs. Claude subagents are expected to share the parent's session ID, and so its directory. The check decides which
+	directory a Codex subagent's injected rules name: the one that the subagent's own commands resolve.
 - **Sweep:** after the SessionStart hook obtains its own directory, on every source (startup, resume, clear, compact),
-  it removes every other session directory whose marker is more than 24 hours old and whose transcript the marker's
-  configuration directory no longer holds: for Claude, `projects/*/<session-id>.jsonl`; for Codex,
-  `sessions/**/rollout-*-<session-id>.jsonl` or `archived_sessions/rollout-*-<session-id>.jsonl`, since an archived
-  session can be unarchived. It handles markers of both harnesses. It never removes a directory without a marker. A
-  failed removal is reported on standard error and does not fail the session start. SessionEnd still deletes only the
-  session's rules files; a resume writes them again.
+	it removes every other session directory whose marker is more than 24 hours old and whose transcript the marker's
+	configuration directory no longer holds: for Claude, `projects/*/<session-id>.jsonl`; for Codex,
+	`sessions/**/rollout-*-<session-id>.jsonl` or `archived_sessions/rollout-*-<session-id>.jsonl`, since an archived
+	session can be unarchived. It handles markers of both harnesses. It never removes a directory without a marker. A
+	failed removal is reported on standard error and does not fail the session start. SessionEnd still deletes only the
+	session's rules files; a resume writes them again.
 - **Handoffs:** an agent hands a file to another session by its absolute path. The receiving session reads it in place,
-  or moves it into its own session directory to take over its cleanup.
+	or moves it into its own session directory to take over its cleanup.
 - **Saved output (user request, 2026-10-16):** the Codex PostToolUse hook deletes a `run-part-*` folder once the agent
-  has seen all of its output. It deletes when a `read-part` or `run-part` result that Codex did not cut ends with
-  `[End of <path>]`, and only when `<path>` is `output.txt` in a `run-part-*` folder directly inside a `temp` directory
-  that `SessionWorkDirectory` provides or that `run-part` falls back to, with `output.txt.exit-status` beside it, so a
-  file that the agent named itself is never deleted. When the hook repairs a cut part, it records the part's position
-  in the folder, and clears it when that part comes back uncut; it does not delete while a recorded position remains,
-  so re-reading a cut part still works. A failed deletion is reported on standard error and leaves the result
-  unchanged. A result whose command the hook cannot read, such as a Code Mode script's, and output whose last part the
-  agent never reads stay until the sweep removes the session's directory. Parts are not deleted one by one: they are
-  ranges of one file that `read-part` sizes at each call.
+	has seen all of its output. It deletes when a `read-part` or `run-part` result that Codex did not cut ends with
+	`[End of <path>]`, and only when `<path>` is `output.txt` in a `run-part-*` folder directly inside a `temp` directory
+	that `SessionWorkDirectory` provides or that `run-part` falls back to, with `output.txt.exit-status` beside it, so a
+	file that the agent named itself is never deleted. When the hook repairs a cut part, it records the part's position
+	in the folder, and clears it when that part comes back uncut; it does not delete while a recorded position remains,
+	so re-reading a cut part still works. A failed deletion is reported on standard error and leaves the result
+	unchanged. A result whose command the hook cannot read, such as a Code Mode script's, and output whose last part the
+	agent never reads stay until the sweep removes the session's directory. Parts are not deleted one by one: they are
+	ranges of one file that `read-part` sizes at each call.
 - **Rule text:** the injected `CAT_TEMP` statements (`cat-env.md` for Claude; `temporary-directory.md` for Codex on
-  POSIX and Windows) name the session's directory, with the session ID filled in by the hook. Update
-  `.cat/rules/include/workflow-temporary-resources.md`, the Codex hooks README, and the Javadoc of `HookScope`,
-  `ToolScope` and `CodexRunPart`. These texts load into every trial of the read-file target, so WI-83 lands before
-  WI-71's next certification start.
+	POSIX and Windows) name the session's directory, with the session ID filled in by the hook. Update
+	`.cat/rules/include/workflow-temporary-resources.md`, the Codex hooks README, and the Javadoc of `HookScope`,
+	`ToolScope` and `CodexRunPart`. These texts load into every trial of the read-file target, so WI-83 lands before
+	WI-71's next certification start.
 - **Unchanged:** CAT stops writing `.cat/work/temp`, and neither reads nor deletes what it holds; the user removes it.
 - **Build:** `client/pom.xml`'s `cat.work.temp` becomes the `temp` directory of the session that runs the build, found
-  from the same variables. A build outside a session, such as CI, uses a directory inside the repository that is not
-  `.cat/work/temp` or a session directory and that `clean` removes; the implementer chooses it after confirming that
-  the native runner tests accept it.
+	from the same variables. A build outside a session, such as CI, uses a directory inside the repository that is not
+	`.cat/work/temp` or a session directory and that `clean` removes; the implementer chooses it after confirming that
+	the native runner tests accept it.
 - **Closes:** R-W13.
 - **Tests:** `SessionWorkDirectoryTest` (the directory and marker from a hook input and from each variable; a non-UUID
-  ID refused; concurrent first uses leave one complete marker; an existing marker kept; the refusals without a
-  variable), `SessionSweepTest` (removes a directory whose transcript is gone and whose marker is older than 24 hours,
-  for each harness; keeps one whose transcript exists, an archived Codex one, one with a newer marker and one without a
-  marker; a failed removal reported without failing the start), `WorkDirectoryAuditTest`, `ClaudeSessionStartHookTest`
-  and `CodexSessionStartHookTest` (the directory, the marker, the rules file's path, the injected `CAT_TEMP`),
-  `CodexRunPartTest` (output in the session's `temp`; the fallback without a variable), `HarnessRunnerOptionsTest` and
-  `CodexRunnerCliTest` (the default run root under the session's `temp`; `--run-root` required without a variable),
-  `ToolScopeTest`, `CodexPostToolUseHookTest` (an uncut last part deletes its `run-part-*` folder, from `run-part` and
-  from `read-part`; kept: a cut last part, an uncut last part while a cut part's position is recorded until that part
-  is read uncut, a file outside a `run-part-*` folder, one without `output.txt.exit-status`, and a result that is not a
-  last part; a failed deletion reported with the result unchanged).
+	ID refused; concurrent first uses leave one complete marker; an existing marker kept; the refusals without a
+	variable), `SessionSweepTest` (removes a directory whose transcript is gone and whose marker is older than 24 hours,
+	for each harness; keeps one whose transcript exists, an archived Codex one, one with a newer marker and one without a
+	marker; a failed removal reported without failing the start), `WorkDirectoryAuditTest`, `ClaudeSessionStartHookTest`
+	and `CodexSessionStartHookTest` (the directory, the marker, the rules file's path, the injected `CAT_TEMP`),
+	`CodexRunPartTest` (output in the session's `temp`; the fallback without a variable), `HarnessRunnerOptionsTest` and
+	`CodexRunnerCliTest` (the default run root under the session's `temp`; `--run-root` required without a variable),
+	`ToolScopeTest`, `CodexPostToolUseHookTest` (an uncut last part deletes its `run-part-*` folder, from `run-part` and
+	from `read-part`; kept: a cut last part, an uncut last part while a cut part's position is recorded until that part
+	is read uncut, a file outside a `run-part-*` folder, one without `output.txt.exit-status`, and a result that is not a
+	last part; a failed deletion reported with the result unchanged).
 - **Exit:** unit tests pass; the full build passes in a session and with both variables unset; in each harness, a live
-  session's injected rules name `.cat/work/<session-id>/temp`, that directory and its marker exist, and `run-part` saves
-  its output there; a Codex subagent's `run-part` saves into the directory that its injected rules name; with one
-  session's transcript moved away and its marker's time set back by more than 24 hours, the next SessionStart in the
-  project removes that session's directory and keeps every other one; in a live Codex session, a `run-part` command
-  whose output takes three parts leaves no `run-part-*` folder once the agent has read its last part.
+	session's injected rules name `.cat/work/<session-id>/temp`, that directory and its marker exist, and `run-part` saves
+	its output there; a Codex subagent's `run-part` saves into the directory that its injected rules name; with one
+	session's transcript moved away and its marker's time set back by more than 24 hours, the next SessionStart in the
+	project removes that session's directory and keeps every other one; in a live Codex session, a `run-part` command
+	whose output takes three parts leaves no `run-part-*` folder once the agent has read its last part.
 
 ### WI-84 — Campaigns in the session work directory (user ruling, 2026-10-16)
 
 - **Problem:** the user wants each campaign run by only one session, with its files in that session's work directory
-  (`design.md` §4.1, §7, D17).
+	(`design.md` §4.1, §7, D17).
 - **Storage:** `FileCampaignStore` and the run roots obtain their directories from WI-83's `SessionWorkDirectory`:
-  `.cat/work/<session-id>/optimizer/<campaign-id>/`, `.cat/work/<session-id>/optimizer-runs/<harness>` and its held-out
-  run root. The held-out deny lists follow the new paths. The campaign format version increases; CAT does not read
-  campaigns under the old `.cat/work/optimizer/` and does not delete them.
+	`.cat/work/<session-id>/optimizer/<campaign-id>/`, `.cat/work/<session-id>/optimizer-runs/<harness>` and its held-out
+	run root. The held-out deny lists follow the new paths. The campaign format version increases; CAT does not read
+	campaigns under the old `.cat/work/optimizer/` and does not delete them.
 - **Ownership:** the commands find their own session's campaigns in its directory. For any other campaign, they list
-  every session directory's `optimizer/` read-only: `status` shows the campaign and its owning session, and every other
-  command for it, and `start` for its target while it is resumable, are refused, naming the session and the command
-  that resumes it (`claude --resume <session-id>` or `codex resume <session-id>`), with no state change. The
-  starting-harness binding stays.
+	every session directory's `optimizer/` read-only: `status` shows the campaign and its owning session, and every other
+	command for it, and `start` for its target while it is resumable, are refused, naming the session and the command
+	that resumes it (`claude --resume <session-id>` or `codex resume <session-id>`), with no state change. The
+	starting-harness binding stays.
 - **Sweep:** before removing a session directory that holds a campaign, the sweep removes the campaign's optimization
-  worktree through Git, as the campaign's own cleanup does (R-W9), so the repository keeps no stale worktree entry; a
-  failure leaves that session directory in place and is reported on standard error.
+	worktree through Git, as the campaign's own cleanup does (R-W9), so the repository keeps no stale worktree entry; a
+	failure leaves that session directory in place and is reported on standard error.
 - **Closes:** R-W1's and R-L1's new wording.
 - **Tests:** `FileCampaignStoreTest` (the session's storage), `CampaignRegistryTest` and `OptimizerCoreTest` (a campaign
-  started in one session: `status` from another shows its owner; `run`, a choice, `cancel` and `start` for its target
-  from another session are refused, naming the session, with no state change), `SessionSweepTest` (a deleted session's
-  campaign worktree removed through Git before the directory; a failed worktree removal keeps the directory),
-  `CleanupTest`, `ClaudeSessionsTest` and `CodexSessionsTest` (the deny lists at the new paths), `ForkTest`.
+	started in one session: `status` from another shows its owner; `run`, a choice, `cancel` and `start` for its target
+	from another session are refused, naming the session, with no state change), `SessionSweepTest` (a deleted session's
+	campaign worktree removed through Git before the directory; a failed worktree removal keeps the directory),
+	`CleanupTest`, `ClaudeSessionsTest` and `CodexSessionsTest` (the deny lists at the new paths), `ForkTest`.
 - **Exit:** unit tests pass; the full build passes; WI-71's next certification start creates its campaign under its
-  session's work directory.
+	session's work directory.
 
 ### WI-85 — Certification history beside `prompt.json` (user ruling, 2026-10-16)
 
 - **Problem:** a certified delivery replaces the target's single record under `.cat/certifications/`, so certifying the
-  target in the other harness, or again later, loses the earlier record (`design.md` §4.7, §5, D51).
+	target in the other harness, or again later, loses the earlier record (`design.md` §4.7, §5, D51).
 - **History file:** `certifications.json` in the target's test directory, beside `prompt.json`: a JSON object with a
-  format version and a `records` array, oldest first. A certified delivery appends its record, creating the file when
-  absent, and never changes an earlier record. CAT never writes `prompt.json`. Staging leaves the history out. The old
-  location is dropped without migration: no certified delivery has written a record outside end-to-end fixture
-  projects.
+	format version and a `records` array, oldest first. A certified delivery appends its record, creating the file when
+	absent, and never changes an earlier record. CAT never writes `prompt.json`. Staging leaves the history out. The old
+	location is dropped without migration: no certified delivery has written a record outside end-to-end fixture
+	projects.
 - **Reading:** `status` for a target without a resumable campaign, and a new campaign's proposal, report the latest
-  record of each harness current or historical as before, and list the earlier records as history.
+	record of each harness current or historical as before, and list the earlier records as history.
 - **Closes:** R-M6's new wording.
 - **Tests:** `CertificationHistoryTest` (append to an absent and an existing file; earlier records unchanged; latest per
-  harness; a malformed file refused at its JSON path), `DeliveryTest` (the record appended in the change set),
-  `ApplicabilityTest`, `StagedSourceTest` (the history left out), `CertificationRecordTest`.
+	harness; a malformed file refused at its JSON path), `DeliveryTest` (the record appended in the change set),
+	`ApplicabilityTest`, `StagedSourceTest` (the history left out), `CertificationRecordTest`.
 - **Exit:** unit tests pass; the full build passes; WI-71's certified delivery appends its record to the read-file
-  target's `certifications.json`.
+	target's `certifications.json`.
 
 ### WI-86 — A smaller proposal (user request, 2026-10-17)
 
 - **Problem:** WI-71's attempt-5 proposal is 236 KB. Most of it repeats data without adding items: the absolute
-  campaign-storage path of the base plugin before each of about 70 prompt files (37 KB), each edited test's
-  `values.json` shown as a difference while the test case list below shows the same values (26 KB), a seed and version
-  in every generated value, and every cell identifier of each scope choice (15 KB for one choice).
+	campaign-storage path of the base plugin before each of about 70 prompt files (37 KB), each edited test's
+	`values.json` shown as a difference while the test case list below shows the same values (26 KB), a seed and version
+	in every generated value, and every cell identifier of each scope choice (15 KB for one choice).
 - **Prompt loading:** a file of a trial plugin's base is named by the plugin and its path inside the plugin, for
-  example `` trial plugin `cat`: `rules/common/file-links.md` ``. Only the rendering changes: the stored derived-source
-  path stays absolute, because staging resolves it to tell project files from files outside the project.
+	example `` trial plugin `cat`: `rules/common/file-links.md` ``. Only the rendering changes: the stored derived-source
+	path stays absolute, because staging resolves it to tell project files from files outside the project.
 - **Edited tests:** the difference leaves out `values.json` and says that its values are the test cases listed below.
-  Differences of `scenario.md` and of fixtures stay.
+	Differences of `scenario.md` and of fixtures stay.
 - **Generated values:** shown as the generator and its parameters, for example `log_lines(count 420)`, without the
-  seed or generator version.
+	seed or generator version.
 - **Scope choices:** cells, weakest cells and minimum trials by cell are listed as groups of prompt tests and profiles
-  (for example ``tests `a`, `b` × profiles `p1`, `p2` ``) that cover exactly the listed cells. A group never stands
-  for cells it does not contain, so the listing stays complete rather than a count.
+	(for example ``tests `a`, `b` × profiles `p1`, `p2` ``) that cover exactly the listed cells. A group never stands
+	for cells it does not contain, so the listing stays complete rather than a count.
 - **Tests:** `ProposalTest` (a base-plugin file named by plugin; the stored proposal keeps the absolute path; an edited
-  test's difference without `values.json` and with the note; a generated value without seed; a scope choice whose
-  cells form one group and one whose cells form several, with every cell recoverable from the groups).
+	test's difference without `values.json` and with the note; a generated value without seed; a scope choice whose
+	cells form one group and one whose cells form several, with every cell recoverable from the groups).
 - **Exit:** unit tests pass; the full build passes; WI-71's revised proposal uses the new format.
 
 ### WI-87 — The CAT session directory (user request, 2026-10-17)
 
 - **Problem:** the user wants the directory that holds one host session's files named for that: `.cat/sessions/` in
-  place of `.cat/work/`, and the term "CAT session directory" in place of "session work directory", "CAT work
-  directory" and "work directory" for that concept.
+	place of `.cat/work/`, and the term "CAT session directory" in place of "session work directory", "CAT work
+	directory" and "work directory" for that concept.
 - **Paths:** the owning component builds `.cat/sessions/<session-id>/`; every path inside it keeps its relative name
-  (`temp/`, `session.json`, `rules.md`, `subagents/`, `optimizer/`, `optimizer-runs/`). The root that
-  `InventoryScanner`, `Fork`, `ForkView` and staging exclude becomes `.cat/sessions/`, and so do the local exclude
-  entry that `start` adds and the repository's `.gitignore` entry. CAT still neither writes nor deletes
-  `.cat/work/temp`.
+	(`temp/`, `session.json`, `rules.md`, `subagents/`, `optimizer/`, `optimizer-runs/`). The root that
+	`InventoryScanner`, `Fork`, `ForkView` and staging exclude becomes `.cat/sessions/`, and so do the local exclude
+	entry that `start` adds and the repository's `.gitignore` entry. CAT still neither writes nor deletes
+	`.cat/work/temp`.
 - **Term:** rename the concept throughout the repository: identifiers (`SessionWorkDirectory` becomes
-  `SessionDirectory`, `WorkDirectoryAuditTest` becomes `SessionDirectoryAuditTest`, and likewise each other name of
-  this concept), Javadoc, comments, messages, the injected session rules, plugin rules and skills, `docs/`,
-  `.cat/rules/`, every mention in `design.md`, including its glossary, D17 and D79, and this plan's R-W1, R-W13 and
-  R-L1. Other concepts keep their names, such as a process's working directory and a trial's project. Recorded harness
-  output, such as test transcripts and changelog captures, and the §2 rows that report finished work keep the paths
-  they recorded.
+	`SessionDirectory`, `WorkDirectoryAuditTest` becomes `SessionDirectoryAuditTest`, and likewise each other name of
+	this concept), Javadoc, comments, messages, the injected session rules, plugin rules and skills, `docs/`,
+	`.cat/rules/`, every mention in `design.md`, including its glossary, D17 and D79, and this plan's R-W1, R-W13 and
+	R-L1. Other concepts keep their names, such as a process's working directory and a trial's project. Recorded harness
+	output, such as test transcripts and changelog captures, and the §2 rows that report finished work keep the paths
+	they recorded.
 - **Existing directories (user ruling, 2026-10-17):** each SessionStart moves every `.cat/work/<session-id>/` that
-  holds a marker to `.cat/sessions/<session-id>/`, whichever session wrote it, so campaigns, rules and temporary files
-  keep their owner. It moves each directory with one atomic rename and leaves it in place when the new path exists or the
-  rename fails, reporting that on standard error; the sweep then treats the new path like any other. A directory
-  without a marker and `.cat/work/temp` stay where they are. The project rule that only plugin installation migrates
-  plugin data cannot apply, because installation does not know the user's projects, so `design.md` records this
-  exception. Cost: a session that started before the change and is still running loses its `CAT_TEMP` path, which
-  its rules state, until it resumes.
+	holds a marker to `.cat/sessions/<session-id>/`, whichever session wrote it, so campaigns, rules and temporary files
+	keep their owner. It moves each directory with one atomic rename and leaves it in place when the new path exists or the
+	rename fails, reporting that on standard error; the sweep then treats the new path like any other. A directory
+	without a marker and `.cat/work/temp` stay where they are. The project rule that only plugin installation migrates
+	plugin data cannot apply, because installation does not know the user's projects, so `design.md` records this
+	exception. Cost: a session that started before the change and is still running loses its `CAT_TEMP` path, which
+	its rules state, until it resumes.
 - **Order:** land it before WI-71's revise. The change alters the `CAT_TEMP` path that every trial's rules state, and
-  the revise reruns every pilot anyway (`design.md` D80).
+	the revise reruns every pilot anyway (`design.md` D80).
 - **Tests:** `SessionDirectoryTest` (the directory, `temp/` and marker under `.cat/sessions/`), `SessionSweepTest`,
-  `SessionDirectoryAuditTest` (fails when another main source file spells `.cat/sessions` or `.cat/work`),
-  `ClaudeSessionStartHookTest` and `CodexSessionStartHookTest` (the rules name `.cat/sessions/<session-id>/temp`), the
-  exclusion tests of `InventoryScanner`, `Fork` and staging, `FileCampaignStoreTest`, and the move: at startup and at
-  resume, every old directory with a marker moved with its campaigns, one whose new path exists left in both places
-  unchanged, one without a marker and `.cat/work/temp` left in place.
+	`SessionDirectoryAuditTest` (fails when another main source file spells `.cat/sessions` or `.cat/work`),
+	`ClaudeSessionStartHookTest` and `CodexSessionStartHookTest` (the rules name `.cat/sessions/<session-id>/temp`), the
+	exclusion tests of `InventoryScanner`, `Fork` and staging, `FileCampaignStoreTest`, and the move: at startup and at
+	resume, every old directory with a marker moved with its campaigns, one whose new path exists left in both places
+	unchanged, one without a marker and `.cat/work/temp` left in place.
 - **Exit:** unit tests pass; the full build passes; a search of the repository finds the old term and `.cat/work/<`
-  only in recorded output and §2 history; a live session in each harness gets rules that name
-  `.cat/sessions/<session-id>/temp`, and that directory holds its marker.
+	only in recorded output and §2 history; a live session in each harness gets rules that name
+	`.cat/sessions/<session-id>/temp`, and that directory holds its marker.
 
 ### WI-88 — Delete passing trials' project copies (user ruling, 2026-10-17)
 
 - **Problem:** each trial run keeps two full copies of the staged project, its effects and its initial project, until
-  the campaign's files are removed. In the read-file campaign they took about 230 MB per trial and 276 GB over 1,218
-  runs, yet only a failed trial's copies are read again: a prompt author's evidence section and a diagnosis render
-  them.
+	the campaign's files are removed. In the read-file campaign they took about 230 MB per trial and 276 GB over 1,218
+	runs, yet only a failed trial's copies are read again: a prompt author's evidence section and a diagnosis render
+	them.
 - **Change:** once a trial's passing verdict is recorded, the driver deletes both copies; a guard-pilot control trial
-  loses them once its judge passes every assertion. Failed trials, failed runs and trials whose verdict is not
-  recorded keep them. The transcript and run record stay.
+	loses them once its judge passes every assertion. Failed trials, failed runs and trials whose verdict is not
+	recorded keep them. The transcript and run record stay.
 - **Tests:** a recorded passing development trial's copies are gone and a failed one's remain (`DriverTest`); a pilot
-  keeps exactly the copies of its trials that failed an assertion (`GuardPilotTest`).
+	keeps exactly the copies of its trials that failed an assertion (`GuardPilotTest`).
 - **Exit:** unit tests pass; the full build passes.
 
 ### WI-89 — Minimal trial workspaces (user rulings, 2026-10-17)
 
 - **Problem:** every trial copies the whole fork, about 104 MB per copy in the read-file campaign, although most tests'
-  agents read only their fixtures. The other project files cost disk and time, and they are material that an agent can
-  search or read although the test never chose it. Fixture `patterns` also need a rule for where each matched file
-  lands.
+	agents read only their fixtures. The other project files cost disk and time, and they are material that an agent can
+	search or read although the test never chose it. Fixture `patterns` also need a rule for where each matched file
+	lands.
 - **Change:** each candidate's base source holds only the prompt system: its prompt sources, harness files, loader
-  configuration, `.cat/rules/`, plugin mapping sources and in-project dependents, but no ignored file and no other file
-  of `.cat/` (user ruling, 2026-10-17); an ignored file reaches a trial only through a link. A prompt test's `fixtures/` becomes `workspace/`, the root of each trial's workspace, and `## Fixtures` is retired: a shared or
-  project file reaches a test through a symbolic link in its `workspace/`, which each trial receives as a copy of the
-  link's target, read when the proposal is checked and recorded in the contract as a workspace file. A link to another
-  entry of the same `workspace/` stays a link in each trial and in delivery. CAT refuses links that are absolute,
-  missing, outside the project, cyclic, self-holding, into a prompt test directory or onto a prompt file, and links that
-  Git records but the checkout holds as another kind of file. Drafts resolve links at the test's project path; delivery
-  copies a changed shared file into the test that changed it. Plugin copies and prompt measurement use the base source;
-  the contract author and test revisions keep the whole fork. The guard pilot's stored results record the base
-  selection, so every pilot reruns once. The recorded prompt tests are converted, and the contract author's instructions
-  describe `workspace/` and links. The fixtures terminology is renamed without compatibility (user rulings, 2026-10-17):
-  a prompt test's files are its workspace files (JSON `workspace_files` and `recorded_workspace_files`), the contract's
-  trial fixtures are its ignored files (`ignored_files.paths`), `contract fixtures` becomes `contract workspace`, and
-  the runner's `--fixtures` becomes `--workspace`; a campaign stored before the rename no longer loads. The ignored
-  files are then retired without compatibility (user ruling, 2026-10-18): the proposal's `ignored_files`, the
-  contract's list, the proposal's "Ignored files" section, the contract author's instructions for them and
-  confirmation's refusal of a missing ignored file are removed, because a link in `workspace/` reads its target from
-  the draft or the live project, so the list reached no trial. In-project dependents stay in every trial's base source
-  (user ruling, 2026-10-18).
+	configuration, `.cat/rules/`, plugin mapping sources and in-project dependents, but no ignored file and no other file
+	of `.cat/` (user ruling, 2026-10-17); an ignored file reaches a trial only through a link. A prompt test's `fixtures/` becomes `workspace/`, the root of each trial's workspace, and `## Fixtures` is retired: a shared or
+	project file reaches a test through a symbolic link in its `workspace/`, which each trial receives as a copy of the
+	link's target, read when the proposal is checked and recorded in the contract as a workspace file. A link to another
+	entry of the same `workspace/` stays a link in each trial and in delivery. CAT refuses links that are absolute,
+	missing, outside the project, cyclic, self-holding, into a prompt test directory or onto a prompt file, and links that
+	Git records but the checkout holds as another kind of file. Drafts resolve links at the test's project path; delivery
+	copies a changed shared file into the test that changed it. Plugin copies and prompt measurement use the base source;
+	the contract author and test revisions keep the whole fork. The guard pilot's stored results record the base
+	selection, so every pilot reruns once. The recorded prompt tests are converted, and the contract author's instructions
+	describe `workspace/` and links. The fixtures terminology is renamed without compatibility (user rulings, 2026-10-17):
+	a prompt test's files are its workspace files (JSON `workspace_files` and `recorded_workspace_files`), the contract's
+	trial fixtures are its ignored files (`ignored_files.paths`), `contract fixtures` becomes `contract workspace`, and
+	the runner's `--fixtures` becomes `--workspace`; a campaign stored before the rename no longer loads. The ignored
+	files are then retired without compatibility (user ruling, 2026-10-18): the proposal's `ignored_files`, the
+	contract's list, the proposal's "Ignored files" section, the contract author's instructions for them and
+	confirmation's refusal of a missing ignored file are removed, because a link in `workspace/` reads its target from
+	the draft or the live project, so the list reached no trial. In-project dependents stay in every trial's base source
+	(user ruling, 2026-10-18).
 - **Tests:** a staged source holds only the files that a selection names (`StagedSourceTest`); the base selection
-  holds the prompt system and nothing else (`TrialSelectionTest`); a prompt test's `workspace/` files and links are
-  read, placeholders apply only to test-root files, and each refused link and an unknown section are refused
-  (`PromptTestFilesTest`, `ScenarioTest`); the proposal lists links and records them (`ProposalTest`,
-  `ProposalSchemaTest`); a link inside `workspace/` stays a link in trials and delivery (`TestWorkspacesTest`,
-  `DeliveryTest`, `DeliveryPlanTest`); a link onto a prompt file is refused (`OptimizerCoreTest`); control
-  trials of a test receive its links and a stored pilot from another selection reruns (`GuardPilotTest`); delivery
-  replaces a changed shared link with a copy (`DeliveryTest`); a proposal with `ignored_files` is refused
-  (`ProposalSchemaTest`), and the fork records a proposal's derived sources that Git ignores, not other ignored files
-  (`OptimizerCoreTest`).
+	holds the prompt system and nothing else (`TrialSelectionTest`); a prompt test's `workspace/` files and links are
+	read, placeholders apply only to test-root files, and each refused link and an unknown section are refused
+	(`PromptTestFilesTest`, `ScenarioTest`); the proposal lists links and records them (`ProposalTest`,
+	`ProposalSchemaTest`); a link inside `workspace/` stays a link in trials and delivery (`TestWorkspacesTest`,
+	`DeliveryTest`, `DeliveryPlanTest`); a link onto a prompt file is refused (`OptimizerCoreTest`); control
+	trials of a test receive its links and a stored pilot from another selection reruns (`GuardPilotTest`); delivery
+	replaces a changed shared link with a copy (`DeliveryTest`); a proposal with `ignored_files` is refused
+	(`ProposalSchemaTest`), and the fork records a proposal's derived sources that Git ignores, not other ignored files
+	(`OptimizerCoreTest`).
 - **Exit:** unit tests pass; the full build passes; WI-71's guard pilots rerun on the new workspaces.
 
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
-  - **E1:** a dirty base is refused; the deficient fixture's proposal lists its conflict, confirmation is refused
-    until a resolution is chosen, and the fixture then improves to `certified` and is delivered as a Git diff, with a
-    disjoint base edit surviving. Its receipt also shows, per harness: the contract author's proposal is schema-valid,
-    has requirements and names the instruction file as a derived source; each judge verdict is schema-valid, carries a
-    rationale and leaves the evidence unchanged; each prompt author attempt changes only prompt sources; and the
-    per-trial records hold the observed model, the login class, rate-limit state and the loading record. These replace
-    the retired native tests.
-  - **E2:** ESC mid-slice, then resume with no lost or duplicated outcomes, the certification index kept, and Codex
-    stopping within 15 seconds.
-  - **E3:** an explicit stop leaves the base unchanged; explicit uncertified acceptance is labelled
-    `not certified` and delivered through the same choose-and-deliver path that keeping an improvement uses. Keeping
-    an improvement is covered by `DriverTest` traces 12 and 13 and `DeliveryTest`, because a certification attempt
-    ends uncertified only after hundreds of trials.
-  - **E4:** unsupported cases: a remote governing instruction, an image-output requirement, a response-contingent
-    obligation, and a persistent-write path.
-  - **E5:** a trial uses a host tool, and one uses child subagents with child worktrees.
-  - **E6:** a cross-harness invocation is refused without any state change.
-  - **E7:** a project with in-project and external links shows the link report; a prompt author's needed edit to an
-    external file raises an authority warning that offers no way to edit it, and delivery leaves every external file
-    unchanged.
-  - **E8:** two concurrent CAT processes are bounded by the shared capacity.
+	- **E1:** a dirty base is refused; the deficient fixture's proposal lists its conflict, confirmation is refused
+		until a resolution is chosen, and the fixture then improves to `certified` and is delivered as a Git diff, with a
+		disjoint base edit surviving. Its receipt also shows, per harness: the contract author's proposal is schema-valid,
+		has requirements and names the instruction file as a derived source; each judge verdict is schema-valid, carries a
+		rationale and leaves the evidence unchanged; each prompt author attempt changes only prompt sources; and the
+		per-trial records hold the observed model, the login class, rate-limit state and the loading record. These replace
+		the retired native tests.
+	- **E2:** ESC mid-slice, then resume with no lost or duplicated outcomes, the certification index kept, and Codex
+		stopping within 15 seconds.
+	- **E3:** an explicit stop leaves the base unchanged; explicit uncertified acceptance is labelled
+		`not certified` and delivered through the same choose-and-deliver path that keeping an improvement uses. Keeping
+		an improvement is covered by `DriverTest` traces 12 and 13 and `DeliveryTest`, because a certification attempt
+		ends uncertified only after hundreds of trials.
+	- **E4:** unsupported cases: a remote governing instruction, an image-output requirement, a response-contingent
+		obligation, and a persistent-write path.
+	- **E5:** a trial uses a host tool, and one uses child subagents with child worktrees.
+	- **E6:** a cross-harness invocation is refused without any state change.
+	- **E7:** a project with in-project and external links shows the link report; a prompt author's needed edit to an
+		external file raises an authority warning that offers no way to edit it, and delivery leaves every external file
+		unchanged.
+	- **E8:** two concurrent CAT processes are bounded by the shared capacity.
 - **Recordings:** each run saves its harness event streams, untrimmed, with the harness version. They replace the
-  contract tests' recordings, and the contract tests then pass on them (`design.md` §10 T3). Save at least one
-  completed multi-turn session per role and an interrupted turn (from E2) per harness.
+	contract tests' recordings, and the contract tests then pass on them (`design.md` §10 T3). Save at least one
+	completed multi-turn session per role and an interrupted turn (from E2) per harness.
 - **Contract tests (moved from WI-14):** once a harness's recordings exist, add `<Harness>SessionsContractTest`, which
-  runs every `SessionPortContract` check against the real adapter over `FakeHarnessCli` replaying them. Delivering an
-  interrupt to the fake needs a signal seam in the adapter, because `FakeHarnessCli.pid()` has no process to signal.
-  Replace `codex/cli/src/test/resources/optimizer/codex-hooks.jsonl`, which names no harness version, with a
-  recording that does. Then delete that harness's `*SessionsNativeTest`, and after both harnesses, remove the
-  `native` profile, `cat.test.groups`, `cat.test.excludedGroups`, `cat.native.harness` and `cat.work.temp`.
+	runs every `SessionPortContract` check against the real adapter over `FakeHarnessCli` replaying them. Delivering an
+	interrupt to the fake needs a signal seam in the adapter, because `FakeHarnessCli.pid()` has no process to signal.
+	Replace `codex/cli/src/test/resources/optimizer/codex-hooks.jsonl`, which names no harness version, with a
+	recording that does. Then delete that harness's `*SessionsNativeTest`, and after both harnesses, remove the
+	`native` profile, `cat.test.groups`, `cat.test.excludedGroups`, `cat.native.harness` and `cat.work.temp`.
 - **Order:** run every step in Codex first; start Claude only after Codex passes all of E1–E8 (user ruling,
-  2026-10-01).
+	2026-10-01).
 - **Fixtures:** small prompt systems under `client/common/cli/src/test/resources/optimizer/e2e/`, with a deliberately
-  deficient rule, a rule that is easy to satisfy, a link fixture and an unsupported-case fixture. Lower the cost
-  through the contract's category count, not by weakening the statistics: use 1–2 categories.
+	deficient rule, a rule that is easy to satisfy, a link fixture and an unsupported-case fixture. Lower the cost
+	through the contract's category count, not by weakening the statistics: use 1–2 categories.
 - **Closes:** every E proof in §3, and the G1–G10 gates of `design.md` §14.
 - **Exit:** see [§9](#9-final-gates).
 
@@ -2748,50 +2748,50 @@ distinct from the harness-evidence IDs `Hn` of `design.md` §11.
 Use-case traces that `DriverTest` must cover, each as one test that starts from builder state:
 
 1. **Certify:** confirmation, then development to the commit gate, commit, all-pass formal, certified, delivery
-   requested.
+	requested.
 2. **Edit after a failure:** a failure, a reproduced rerun, an edit, promotion runs, a new working candidate with
-   counts at zero and the window back to 1.
+	counts at zero and the window back to 1.
 3. **Continue after a failure:** a failure, 3 passing reruns, continue with the window back to 1 and doubling after
-   that.
+	that.
 4. **Out-of-order completion:** in formal, trial 3 completes before trial 2 and the decision waits for trial 2.
-   Post-decision outcomes are recorded but don't change the decision.
+	Post-decision outcomes are recorded but don't change the decision.
 5. **Crash:** a crash after the outcome write but before adoption, then reconciliation adopts it once.
 6. **Interrupt:** a host interrupt mid-slice stops admissions, interrupts sessions and persists state.
 7. **Inconclusive:** a certification attempt reaches its cap, then returns to development.
 8. **Rate limit:** a rate-limit rejection drops the window to 1, holds admissions until reset, then reruns the same
-   logical trial.
+	logical trial.
 9. **Unowned change:** an unowned worktree change pauses until the user decides.
 10. **Revision during formal:** a revision requested mid-attempt waits for drain; the stopped attempt never resumes.
 11. **Busy:** a second driver receives `busy`.
 12. **Keep improvement:** a certification attempt reaches its cap with one category proven better and the others
-    certified or at 100 or more outcomes. CAT pauses with `keep improvement`, `optimize further` and `stop`; after a
-    restart the choice is still pending; `keep improvement` requests delivery of that attempt's snapshot, labelled
-    `improved, not certified`.
+	certified or at 100 or more outcomes. CAT pauses with `keep improvement`, `optimize further` and `stop`; after a
+	restart the choice is still pending; `keep improvement` requests delivery of that attempt's snapshot, labelled
+	`improved, not certified`.
 13. **Best candidate so far:** an attempt qualifies, the user chooses `optimize further`, a later candidate's
-    attempt also qualifies with a lower weakest-category bound, and a third attempt fails. At the stop, CAT offers
-    `keep improvement` for the first candidate, and keeping it materializes that candidate before delivery.
+	attempt also qualifies with a lower weakest-category bound, and a third attempt fails. At the stop, CAT offers
+	`keep improvement` for the first candidate, and keeping it materializes that candidate before delivery.
 14. **Measurement change during formal:** mid-attempt, a run reports a different model. Its record holds no outcome
-    and CAT pauses with `MEASUREMENT_CHANGED`. Restoring reruns the same test case and the attempt continues. A second
-    change followed by a new measurement identity ends the attempt `not certified: testing environment changed`,
-    returns to development and starts a new incumbent baseline. A qualifying attempt from before the change is offered
-    separately, labelled historical.
+	and CAT pauses with `MEASUREMENT_CHANGED`. Restoring reruns the same test case and the attempt continues. A second
+	change followed by a new measurement identity ends the attempt `not certified: testing environment changed`,
+	returns to development and starts a new incumbent baseline. A qualifying attempt from before the change is offered
+	separately, labelled historical.
 15. **Cells:** a category whose file is unbound runs under two profiles; each cell has its own counts, commit gate,
-    commit and decision, and a trial runs under its cell's profile while the judge runs under the role profile.
+	commit and decision, and a trial runs under its cell's profile while the judge runs under the role profile.
 16. **Deterministic failure:** a trial fails a deterministic check, no judge session runs, and the failed check's
-    record reaches the prompt author brief.
+	record reaches the prompt author brief.
 17. **Manifest rejection:** a prompt author attempt with an uncited hunk is retained with no candidate, and the next
-    attempt runs.
+	attempt runs.
 18. **Minimality:** a promoted attempt with one unneeded hunk is reduced to the needed hunks, the reduction's runs are
-    not counted, and the report names the removed hunk.
+	not counted, and the report names the removed hunk.
 19. **Development cells:** with the latest-versions scope, development samples only the weakest cell from the
-    ranking, the candidate passes the commit gate there and is committed; a formal failure in another scope cell makes
-    it a development cell, and the next commit needs the commit gate there too.
+	ranking, the candidate passes the commit gate there and is committed; a formal failure in another scope cell makes
+	it a development cell, and the next commit needs the commit gate there too.
 20. **Concurrent attempts:** a weak working candidate's round starts 3 attempts; two pass the promotion rule and the one
-    with more passing promotion runs is minimized and promoted, while the others are retained; once the candidate is no
-    longer weak, the next round makes one attempt.
+	with more passing promotion runs is minimized and promoted, while the others are retained; once the candidate is no
+	longer weak, the next round makes one attempt.
 21. **Held-out test cases:** development, targeted runs and prompt author briefs see only development test cases; formal
-    and baseline trials draw only held-out ones; after a failed attempt the prompt author brief names the failure's
-    cell, test and requirements but holds no held-out test case, reply or rationale.
+	and baseline trials draw only held-out ones; after a failed attempt the prompt author brief names the failure's
+	cell, test and requirements but holds no held-out test case, reply or rationale.
 
 ## 8. Test-suite rules
 
@@ -2799,21 +2799,21 @@ These rules restate `design.md` §10 as checks for reviewers:
 
 - The only test that runs `CapCalibration` is `CapCalibrationTest`.
 - The only tests that run real Git are `ForkTest`, `DeliveryTest` (final diff and no-commit check),
-  `InventoryScannerTest` (ignored files) and `GitTest` (the process adapter's exit status and argument passing). Outside
-  the optimizer, the git-replay package keeps one real-Git test per Git operation, each under 1 second:
-  `BackupTest.recordsAndDeletesBackupBranch`, `HistoryTest.inventoriesSourcePathStates`, three
-  `EditorPatchWorkflowTest` patch-adaptation and draft-tree tests, `ReplayExecutionTest.replaysOrderedBatchesWithMatchingTag`,
-  `FinalizationTest.publishAndVerifyGitReceipt` and the two `OutputGatesTest` worktree-lifecycle tests. Every other test
-  asserts the commands CAT builds or its decisions from captured Git output (user ruling, 2026-10-02: assume Git works
-  as documented).
+	`InventoryScannerTest` (ignored files) and `GitTest` (the process adapter's exit status and argument passing). Outside
+	the optimizer, the git-replay package keeps one real-Git test per Git operation, each under 1 second:
+	`BackupTest.recordsAndDeletesBackupBranch`, `HistoryTest.inventoriesSourcePathStates`, three
+	`EditorPatchWorkflowTest` patch-adaptation and draft-tree tests, `ReplayExecutionTest.replaysOrderedBatchesWithMatchingTag`,
+	`FinalizationTest.publishAndVerifyGitReceipt` and the two `OutputGatesTest` worktree-lifecycle tests. Every other test
+	asserts the commands CAT builds or its decisions from captured Git output (user ruling, 2026-10-02: assume Git works
+	as documented).
 - No Java test starts a runner, a harness process or a model. Only the WI-15 end-to-end runs start nested sessions.
 - No test class has a non-`final` field or mutable shared fixture. No test reads `HOME`, `user.home` or the current
-  directory.
+	directory.
 - No production class reachable from a unit test calls `Thread.sleep`.
 - A fake has only behaviour its shared contract checks, and that contract also runs against the real adapter
-  (`design.md` §10 T3). Reviewers check this; there is no coverage tool (user ruling, 2026-10-01).
+	(`design.md` §10 T3). Reviewers check this; there is no coverage tool (user ruling, 2026-10-01).
 - A unit test that takes 1 second or longer records its reason in its Javadoc (`design.md` §10 T7). Without one, it is a
-  review defect. Every integration lists the tests at or over 1 second from the surefire reports.
+	review defect. Every integration lists the tests at or over 1 second from the surefire reports.
 
 ## 9. Final gates
 
@@ -2822,22 +2822,22 @@ unrun; an unrun gate is unmet.
 
 1. **Build:** `./mvnw verify` from `client/` passes.
 2. **Traceability:**
-   - Every requirement ID in §3 appears in at least one `// Requirement:` tag in a test that ran and passed in the tier
-     its proof names. An agent checks this by extracting the IDs from this file and the tags from the sources and
-     test reports.
-   - No ID is untagged, and no tag names an unknown ID.
-   - Every E proof has a receipt from WI-15.
+	- Every requirement ID in §3 appears in at least one `// Requirement:` tag in a test that ran and passed in the tier
+		its proof names. An agent checks this by extracting the IDs from this file and the tags from the sources and
+		test reports.
+	- No ID is untagged, and no tag names an unknown ID.
+	- Every E proof has a receipt from WI-15.
 3. **No model in Java tests:** an audit finds no Java test that starts a runner, a harness process or a model, and no
-   `native` test group or Maven profile.
+	`native` test group or Maven profile.
 4. **End-to-end:** E1–E8 pass in both harnesses through the installed artifacts.
 5. **Design acceptance:** each G1–G10 row of `design.md` §14 maps to passing evidence from gates 1–4.
 6. **Testability audit:** the §8 rules hold, and the G9 check, unit tests run with `HOME` and `user.home` pointing at a
-   nonexistent directory, passes.
+	nonexistent directory, passes.
 7. **Documentation:** `design.md` §11 and §12 reflect the WI-0 results; decisions changed during implementation are
-   recorded in §13; this plan's §2 shows every work item done.
+	recorded in §13; this plan's §2 shows every work item done.
 8. **Standalone codebase:** after gates 1–7 pass, a last commit removes every `// Requirement:` tag, and a search of
-   `client/`, `docs/` and `.cat/` finds no reference to `design.md`, this plan, or their section numbers and
-   identifiers (§1).
+	`client/`, `docs/` and `.cat/` finds no reference to `design.md`, this plan, or their section numbers and
+	identifiers (§1).
 
 A mock-only run, a successful contract extraction, a candidate diff or a statistical unit test is intermediate
 evidence. None of them proves the product outcome by itself.

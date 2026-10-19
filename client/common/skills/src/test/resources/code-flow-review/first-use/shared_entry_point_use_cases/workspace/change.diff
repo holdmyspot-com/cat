@@ -4,45 +4,45 @@
  
  
  def add_note(text):
-+    if not text.strip():
-+        print("A note needs text", file=sys.stderr)
-+        return 1
-     notes = _load()
-     notes.append(text)
-     _save(notes)
-     print("Added note", len(notes))
-+    return 0
++	if not text.strip():
++		print("A note needs text", file=sys.stderr)
++		return 1
+ 	notes = _load()
+ 	notes.append(text)
+ 	_save(notes)
+ 	print("Added note", len(notes))
++	return 0
  
  
  def list_notes():
 @@ -34,9 +38,13 @@
  
  def remove_note(number):
-     notes = _load()
-+    if not 1 <= number <= len(notes):
-+        print("There is no note", number, file=sys.stderr)
-+        return 1
-     del notes[number - 1]
-     _save(notes)
-     print("Removed note", number)
-+    return 0
+ 	notes = _load()
++	if not 1 <= number <= len(notes):
++		print("There is no note", number, file=sys.stderr)
++		return 1
+ 	del notes[number - 1]
+ 	_save(notes)
+ 	print("Removed note", number)
++	return 0
  
  
  def main(argv):
 @@ -47,12 +55,11 @@
-     commands.add_parser("remove").add_argument("number", type=int)
-     arguments = parser.parse_args(argv)
-     if arguments.command == "add":
--        add_note(arguments.text)
--    elif arguments.command == "list":
-+        return add_note(arguments.text)
-+    if arguments.command == "list":
-         list_notes()
--    else:
--        remove_note(arguments.number)
--    return 0
-+        return 0
-+    return remove_note(arguments.number)
+ 	commands.add_parser("remove").add_argument("number", type=int)
+ 	arguments = parser.parse_args(argv)
+ 	if arguments.command == "add":
+-		add_note(arguments.text)
+-	elif arguments.command == "list":
++		return add_note(arguments.text)
++	if arguments.command == "list":
+ 		list_notes()
+-	else:
+-		remove_note(arguments.number)
+-	return 0
++		return 0
++	return remove_note(arguments.number)
  
  
  if __name__ == "__main__":

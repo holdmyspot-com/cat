@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Make every created or revised Git commit message identify its observable change without requiring readers to inspect
-  the diff.
+	the diff.
 - Keep message wording and type classification consistent across CAT Git workflows without prescribing an unnecessary
-  grammatical style.
+	grammatical style.
 
 ## Guidance
 

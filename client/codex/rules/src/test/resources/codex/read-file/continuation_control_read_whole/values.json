@@ -1,160 +1,160 @@
 {
-  "format_version" : 1,
-  "test_cases" : [ {
-    "values" : {
-      "notes" : "archivé 1.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : 1143301266203481600,
-        "count" : 420
-      },
-      "record" : "connection pool exhausted",
-      "entry" : "archive_$vault_1"
-    },
-    "expected_outcome" : "connection pool exhausted; archive_$vault_1"
-  }, {
-    "values" : {
-      "notes" : "archivé 2.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : 3577330892985566735,
-        "count" : 420
-      },
-      "record" : "archival certificate expired",
-      "entry" : "archive_$vault_2"
-    },
-    "expected_outcome" : "archival certificate expired; archive_$vault_2"
-  }, {
-    "values" : {
-      "notes" : "archivé 3.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : 2155394091928406662,
-        "count" : 420
-      },
-      "record" : "settlement key revoked",
-      "entry" : "archive_$vault_3"
-    },
-    "expected_outcome" : "settlement key revoked; archive_$vault_3"
-  }, {
-    "values" : {
-      "notes" : "archivé 4.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : 785076947651975137,
-        "count" : 420
-      },
-      "record" : "quorum lease expired",
-      "entry" : "archive_$vault_4"
-    },
-    "expected_outcome" : "quorum lease expired; archive_$vault_4"
-  }, {
-    "values" : {
-      "notes" : "archivé 5.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : 6610810799036592377,
-        "count" : 420
-      },
-      "record" : "custodian approval withdrawn",
-      "entry" : "archive_$vault_5"
-    },
-    "expected_outcome" : "custodian approval withdrawn; archive_$vault_5"
-  }, {
-    "values" : {
-      "notes" : "archivé 6.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : -3022720244287628445,
-        "count" : 420
-      },
-      "record" : "vault seal broken",
-      "entry" : "archive_$vault_6"
-    },
-    "expected_outcome" : "vault seal broken; archive_$vault_6"
-  }, {
-    "values" : {
-      "notes" : "archivé 7.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : -5648019465901568548,
-        "count" : 420
-      },
-      "record" : "treasury lock unavailable",
-      "entry" : "archive_$vault_7"
-    },
-    "expected_outcome" : "treasury lock unavailable; archive_$vault_7"
-  }, {
-    "values" : {
-      "notes" : "archivé 8.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : -9011745736371549568,
-        "count" : 420
-      },
-      "record" : "escrow signature invalid",
-      "entry" : "archive_$vault_8"
-    },
-    "expected_outcome" : "escrow signature invalid; archive_$vault_8"
-  }, {
-    "values" : {
-      "notes" : "archivé 9.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : 5451870666739910008,
-        "count" : 420
-      },
-      "record" : "reservation window expired",
-      "entry" : "archive_$vault_9"
-    },
-    "expected_outcome" : "reservation window expired; archive_$vault_9"
-  }, {
-    "values" : {
-      "notes" : "archivé 10.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : 643481690184591562,
-        "count" : 420
-      },
-      "record" : "reconciliation checksum mismatched",
-      "entry" : "archive_$vault_10"
-    },
-    "expected_outcome" : "reconciliation checksum mismatched; archive_$vault_10"
-  }, {
-    "values" : {
-      "notes" : "archivé 11.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : -2256126764136493909,
-        "count" : 420
-      },
-      "record" : "journal volume unavailable",
-      "entry" : "archive_$vault_11"
-    },
-    "expected_outcome" : "journal volume unavailable; archive_$vault_11"
-  }, {
-    "values" : {
-      "notes" : "archivé 12.log",
-      "before" : {
-        "generator" : "log_lines",
-        "version" : 1,
-        "seed" : 3895370616240434577,
-        "count" : 420
-      },
-      "record" : "settlement manifest missing",
-      "entry" : "archive_$vault_12"
-    },
-    "expected_outcome" : "settlement manifest missing; archive_$vault_12"
-  } ]
+	"format_version" : 1,
+	"test_cases" : [ {
+		"values" : {
+			"notes" : "archivé 1.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : 1143301266203481600,
+				"count" : 420
+			},
+			"record" : "connection pool exhausted",
+			"entry" : "archive_$vault_1"
+		},
+		"expected_outcome" : "connection pool exhausted; archive_$vault_1"
+	}, {
+		"values" : {
+			"notes" : "archivé 2.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : 3577330892985566735,
+				"count" : 420
+			},
+			"record" : "archival certificate expired",
+			"entry" : "archive_$vault_2"
+		},
+		"expected_outcome" : "archival certificate expired; archive_$vault_2"
+	}, {
+		"values" : {
+			"notes" : "archivé 3.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : 2155394091928406662,
+				"count" : 420
+			},
+			"record" : "settlement key revoked",
+			"entry" : "archive_$vault_3"
+		},
+		"expected_outcome" : "settlement key revoked; archive_$vault_3"
+	}, {
+		"values" : {
+			"notes" : "archivé 4.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : 785076947651975137,
+				"count" : 420
+			},
+			"record" : "quorum lease expired",
+			"entry" : "archive_$vault_4"
+		},
+		"expected_outcome" : "quorum lease expired; archive_$vault_4"
+	}, {
+		"values" : {
+			"notes" : "archivé 5.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : 6610810799036592377,
+				"count" : 420
+			},
+			"record" : "custodian approval withdrawn",
+			"entry" : "archive_$vault_5"
+		},
+		"expected_outcome" : "custodian approval withdrawn; archive_$vault_5"
+	}, {
+		"values" : {
+			"notes" : "archivé 6.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : -3022720244287628445,
+				"count" : 420
+			},
+			"record" : "vault seal broken",
+			"entry" : "archive_$vault_6"
+		},
+		"expected_outcome" : "vault seal broken; archive_$vault_6"
+	}, {
+		"values" : {
+			"notes" : "archivé 7.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : -5648019465901568548,
+				"count" : 420
+			},
+			"record" : "treasury lock unavailable",
+			"entry" : "archive_$vault_7"
+		},
+		"expected_outcome" : "treasury lock unavailable; archive_$vault_7"
+	}, {
+		"values" : {
+			"notes" : "archivé 8.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : -9011745736371549568,
+				"count" : 420
+			},
+			"record" : "escrow signature invalid",
+			"entry" : "archive_$vault_8"
+		},
+		"expected_outcome" : "escrow signature invalid; archive_$vault_8"
+	}, {
+		"values" : {
+			"notes" : "archivé 9.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : 5451870666739910008,
+				"count" : 420
+			},
+			"record" : "reservation window expired",
+			"entry" : "archive_$vault_9"
+		},
+		"expected_outcome" : "reservation window expired; archive_$vault_9"
+	}, {
+		"values" : {
+			"notes" : "archivé 10.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : 643481690184591562,
+				"count" : 420
+			},
+			"record" : "reconciliation checksum mismatched",
+			"entry" : "archive_$vault_10"
+		},
+		"expected_outcome" : "reconciliation checksum mismatched; archive_$vault_10"
+	}, {
+		"values" : {
+			"notes" : "archivé 11.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : -2256126764136493909,
+				"count" : 420
+			},
+			"record" : "journal volume unavailable",
+			"entry" : "archive_$vault_11"
+		},
+		"expected_outcome" : "journal volume unavailable; archive_$vault_11"
+	}, {
+		"values" : {
+			"notes" : "archivé 12.log",
+			"before" : {
+				"generator" : "log_lines",
+				"version" : 1,
+				"seed" : 3895370616240434577,
+				"count" : 420
+			},
+			"record" : "settlement manifest missing",
+			"entry" : "archive_$vault_12"
+		},
+		"expected_outcome" : "settlement manifest missing; archive_$vault_12"
+	} ]
 }

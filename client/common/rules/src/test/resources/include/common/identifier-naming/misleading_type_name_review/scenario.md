@@ -3,7 +3,7 @@
 ## Variables
 
 - **store_class**: The name of a class that originally held only a session token and now persists all of a client's
-  authentication state, such as `SessionFile`
+	authentication state, such as `SessionFile`
 
 ## Scenario
 
@@ -54,20 +54,20 @@ public final class DeviceLoginPoller { ... }
 
 - **kind**: effect
 - **description**: For request 1: The review reports that the name `{{store_class}}` no longer communicates the class's
-  responsibility of persisting the client's authentication state, and proposes a name based on that responsibility,
-  such as an authentication store.
+	responsibility of persisting the client's authentication state, and proposes a name based on that responsibility,
+	such as an authentication store.
 
 ### coherent_responsibility_retained
 
 - **kind**: guard
 - **description**: For request 1: The review does not recommend splitting `{{store_class}}` into separate classes as
-  the correction for its name; it may raise a split only for a reason other than the name.
+	the correction for its name; it may raise a split only for a reason other than the name.
 
 ### mechanism_name_retained
 
 - **kind**: guard
 - **description**: For request 1: The review does not ask to rename `QueueFile`, whose file-backed queue is its
-  responsibility.
+	responsibility.
 
 ### clear_name_retained
 
@@ -78,10 +78,10 @@ public final class DeviceLoginPoller { ... }
 
 - **kind**: guard
 - **description**: For request 2: The review does not ask to rename `SyncManager` or any other type that the change
-  does not add, rename, or give a different responsibility.
+	does not add, rename, or give a different responsibility.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/identifier-naming.md`
-  before its first governed action.
+	before its first governed action.

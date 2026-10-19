@@ -37,7 +37,7 @@ On Windows, run the Codex installer from PowerShell:
 
 ```powershell
 & ([scriptblock]::Create([IO.File]::ReadAllText(
-  "$PWD\client\common\distribution\target\runtime\codex\install\install-codex.ps1"))) `
+	"$PWD\client\common\distribution\target\runtime\codex\install\install-codex.ps1"))) `
   -Source client\common\distribution\target\runtime\codex
 ```
 
@@ -50,9 +50,9 @@ Run the external launcher and installer boundary tests:
 
 ```bash
 bats client/common/distribution/src/test/bats/bootstrap-common.bats \
-  client/common/distribution/src/test/bats/bootstrap-claude.bats \
-  client/common/distribution/src/test/bats/bootstrap-codex.bats \
-  client/common/distribution/src/test/bats/jlink-launchers.bats
+	client/common/distribution/src/test/bats/bootstrap-claude.bats \
+	client/common/distribution/src/test/bats/bootstrap-codex.bats \
+	client/common/distribution/src/test/bats/jlink-launchers.bats
 ```
 
 Java tests call production classes directly. Bats is reserved for shell, installer, and generated-launcher boundaries

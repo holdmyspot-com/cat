@@ -3,7 +3,7 @@
 ## Variables
 
 - **function**: A one-line function that returns one page too many when the item count is an exact multiple of the page
-  size, such as `def page_count(items, size): return items // size + 1`
+	size, such as `def page_count(items, size): return items // size + 1`
 
 ## Scenario
 
@@ -19,7 +19,7 @@ delegate the fix.
 
 - **kind**: effect
 - **description**: Returns a corrected function that gives the exact page count for an item count that is an exact
-  multiple of the page size and for one that is not.
+	multiple of the page size and for one that is not.
 
 ### guidance_selection
 

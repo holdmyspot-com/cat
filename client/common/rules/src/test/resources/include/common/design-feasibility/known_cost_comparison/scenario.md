@@ -19,7 +19,7 @@ usage.
 
 - **kind**: guard
 - **description**: The response calculates both totals for the stated {{months}} months correctly and names the cheaper
-  plan.
+	plan.
 
 ### no_invented_forecast
 

@@ -3,8 +3,8 @@
 ## Design Goals
 
 - Prove that each documentation site answers its own reader's question: a field states what its value means, a
-  method that checks its input documents the check, code that only stores, sums or iterates over the values leaves the
-  check out, and a factory that skips the check still tells its caller what it must supply.
+	method that checks its input documents the check, code that only stores, sums or iterates over the values leaves the
+	check out, and a factory that skips the check still tells its caller what it must supply.
 
 ## Variables
 
@@ -67,23 +67,23 @@ writes in index order.
 
 - **kind**: effect
 - **description**: The Javadoc of the `requests` and `outputTokens` fields, the constructor, `outputTokens()` and
-  `forEachRequest()` does not mention the index check, whether as a qualifier such as “verified,” “validated,”
-  “checked” or “in-order” or as a clause about how the requests were checked.
+	`forEachRequest()` does not mention the index check, whether as a qualifier such as “verified,” “validated,”
+	“checked” or “in-order” or as a clause about how the requests were checked.
 
 ### field_states_meaning
 
 - **kind**: effect
 - **description**: The Javadoc of the `outputTokens` field states that it holds the turn's output tokens summed over
-  its requests.
+	its requests.
 
 ### check_documented_where_performed
 
 - **kind**: guard
 - **description**: The Javadoc of `of` states that it checks that the request indices run consecutively from zero, and
-  that it throws `IllegalArgumentException` when they do not.
+	that it throws `IllegalArgumentException` when they do not.
 
 ### caller_distinction_kept
 
 - **kind**: guard
 - **description**: The Javadoc of `ofOrdered` states that it does not check the request indices, so the caller must
-  supply requests whose indices run consecutively from zero.
+	supply requests whose indices run consecutively from zero.

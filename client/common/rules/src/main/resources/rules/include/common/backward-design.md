@@ -7,17 +7,17 @@ depends-on:
 ## Design Goals
 
 - Start with the terminal observable outcome and its acceptance evidence, distinguish it from preparation, staging, and
-  other intermediate state, derive the concrete conditions required to achieve it, and reverse those conditions into an
-  executable sequence.
+	other intermediate state, derive the concrete conditions required to achieve it, and reverse those conditions into an
+	executable sequence.
 - Start with a concrete case or failure, compare meaningful similar and dissimilar cases—including a case that reaches
-  the same outcome through a different mechanism when the proposed invariant names a mechanism and the nearest allowed
-  case inside a proposed broader scope—retain the narrowest invariant that explains them without imposing unrelated
-  obligations, and distinguish that invariant from the case-specific examples that validate it.
+	the same outcome through a different mechanism when the proposed invariant names a mechanism and the nearest allowed
+	case inside a proposed broader scope—retain the narrowest invariant that explains them without imposing unrelated
+	obligations, and distinguish that invariant from the case-specific examples that validate it.
 - Derive the smallest reliable change that satisfies the outcome conditions and established invariant while preserving
-  required constraints.
+	required constraints.
 - Apply this derivation to code-design decisions—including APIs, data representations, module boundaries, lifecycle,
-  error handling, and concurrency—as well as prompt and workflow decisions; do not turn a mechanical edit that
-  preserves an established design into an unnecessary redesign.
+	error handling, and concurrency—as well as prompt and workflow decisions; do not turn a mechanical edit that
+	preserves an established design into an unnecessary redesign.
 
 ## Guidance
 

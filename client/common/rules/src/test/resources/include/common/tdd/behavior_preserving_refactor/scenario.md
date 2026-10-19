@@ -3,7 +3,7 @@
 ## Variables
 
 - **extracted_code**: The existing code that the developer extracts into a private helper, such as `parsing expression`
-  or `date-normalization loop`
+	or `date-normalization loop`
 
 ## Scenario
 
@@ -17,8 +17,8 @@ behavioral change yet and asks whether a deliberately failing new test is requir
 
 - **kind**: guard
 - **description**: The response permits the behavior-preserving extraction without inventing a failing behavior test. It
-  requires the existing focused tests to remain passing and a red-test gate if a subsequent edit changes observable
-  behavior.
+	requires the existing focused tests to remain passing and a red-test gate if a subsequent edit changes observable
+	behavior.
 
 ### guidance_selection
 

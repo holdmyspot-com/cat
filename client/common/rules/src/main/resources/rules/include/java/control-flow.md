@@ -4,7 +4,7 @@
 
 - Make closed sets of named Java cases explicit, complete, and easy to extend.
 - Keep each closed set defined in one place, so that converting a comparison chain never copies a collection's
-  elements into a second list that must change with it.
+	elements into a second list that must change with it.
 
 ## Guidance
 

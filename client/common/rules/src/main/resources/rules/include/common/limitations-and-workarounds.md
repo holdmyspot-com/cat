@@ -3,14 +3,14 @@
 ## Design Goals
 
 - Evaluate the owning workflow before treating an absent condition or helper interface as an outcome boundary, then
-  select the smallest evidence-supported feasible path without assuming unavailable authority and with reversal or
-  removal where applicable.
+	select the smallest evidence-supported feasible path without assuming unavailable authority and with reversal or
+	removal where applicable.
 - Distinguish an external blocker from unfinished, difficult, or high-volume authorized work, so a workflow does not
-  stop while its next supported action remains available.
+	stop while its next supported action remains available.
 <!-- A nested CLI rejected a protected parent socket directory, and the explanation treated access to that resource
      as necessary without establishing why independent execution needed it. -->
 - Preserve applicable boundaries when an attempted path is refused; distinguish a necessary authorized prerequisite
-  from an unnecessary dependency or an intended restriction before choosing a repair.
+	from an unnecessary dependency or an intended restriction before choosing a repair.
 
 ## Guidance
 
@@ -30,11 +30,11 @@ Before describing a limitation, moving to a workaround, or asking the user to ac
 from the required observable outcome and classify the condition using available evidence:
 
 1. It is currently absent but can be created, configured, provisioned, published, enabled, or integrated within the
-   task's authorized scope.
+	task's authorized scope.
 2. It is currently absent and requires an external action, authority, dependency, or constraint that concretely blocks
-   providing it within that scope.
+	providing it within that scope.
 3. It is genuinely unavailable for the requested outcome because objective evidence establishes an inherent or
-   applicable external limitation.
+	applicable external limitation.
 
 For the first classification, include providing the condition as a candidate path; do not treat its absence as a reason
 to exclude it. For the second and third classifications, identify the concrete blocking evidence and its effect on the

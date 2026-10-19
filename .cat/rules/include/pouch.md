@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Model dependencies and resources by the lifecycle that owns them, so callers receive stable values and cleanup occurs
-  at the correct boundary.
+	at the correct boundary.
 - Ensure code that participates in a pouch-managed lifecycle uses the dependencies configured for that lifecycle rather
-  than silently creating competing instances.
+	than silently creating competing instances.
 
 ## Guidance
 

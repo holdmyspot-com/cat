@@ -10,9 +10,9 @@
 Run only an installed, version-compatible Claude CAT artifact. Resolve it from the documented Claude installation root:
 
 - The Claude configuration directory is the value of the `CLAUDE_CONFIG_DIR` environment variable or, when that is
-  unset or empty, `.claude` in the user's home directory.
+	unset or empty, `.claude` in the user's home directory.
 - The marketplace root is the value of `CAT_CLAUDE_MARKETPLACE_ROOT` or, when that is unset or empty,
-  `plugins/cat-marketplace` in the Claude configuration directory.
+	`plugins/cat-marketplace` in the Claude configuration directory.
 - The artifact, `<claude-artifact>`, is `plugins/cat` in the marketplace root.
 - The runner, `<claude-runner>`, is the launcher `bin/claude-runner` in the artifact.
 

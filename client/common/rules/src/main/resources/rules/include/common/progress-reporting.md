@@ -3,10 +3,10 @@
 ## Design Goals
 
 - Let a user follow a multi-minute task through concrete completed and remaining work, using only available reporting
-  opportunities and observed current-task evidence to improve estimates.
+	opportunities and observed current-task evidence to improve estimates.
 - Avoid repetitive unchanged-state updates while keeping the work that the agent performs visible and promptly
-  reporting a meaningful state change, and send no regular report while the agent waits for a state change that
-  something else produces.
+	reporting a meaningful state change, and send no regular report while the agent waits for a state change that
+	something else produces.
 
 ## Guidance
 
@@ -40,7 +40,7 @@ Format every regular progress report in this order:
 - List the components, or a component hierarchy, with one `X/Y` completion count and state per item.
 - After the list, write `Current estimated remaining time: about <human-friendly duration>.`
 - Then state whether the estimate increased or decreased from the previous report, by a human-friendly duration, and the
-  observed reason. For the first estimate, state that no prior estimate exists.
+	observed reason. For the first estimate, state that no prior estimate exists.
 
 Render a duration under one hour in minutes. At one hour or more, render hours and remaining minutes. Above 24 hours,
 also render days, then remaining hours and minutes. Omit a zero-valued smaller unit; for example, write `about 45

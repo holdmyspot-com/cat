@@ -17,10 +17,10 @@ Improve the wording of this status update without changing its meaning:
 
 - **kind**: guard
 - **description**: The revised update retains the established conclusion that every {{item}} was hashed and represented
-  in the manifest; it does not narrow the set merely because the paragraph uses universal wording.
+	in the manifest; it does not narrow the set merely because the paragraph uses universal wording.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`
-  before its first governed action.
+	before its first governed action.

@@ -3,7 +3,7 @@
 ## Variables
 
 - **interim_message**: The interim message with which each failing reply opened before the agent read the handbook, such
-  as `I'll check the team handbook for the required closing motto.`
+	as `I'll check the team handbook for the required closing motto.`
 
 ## Scenario
 
@@ -27,8 +27,8 @@ Fill the prompt author's prompt with the contract, three such failures and the a
 
 - **kind**: effect
 - **description**: The edit addresses the message the agent sends before reading the handbook, by its wording or by
-  whether it is sent, so that every message of the reply stays within the answer-only rule. The final response still
-  closes with the motto.
+	whether it is sent, so that every message of the reply stays within the answer-only rule. The final response still
+	closes with the motto.
 
 ### motto_stays_in_handbook
 

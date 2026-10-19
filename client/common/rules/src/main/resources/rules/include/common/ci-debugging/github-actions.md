@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Make a GitHub Actions diagnostic run exercise the failed boundary without consuming runner minutes on independent
-  expensive jobs.
+	expensive jobs.
 - Preserve the complete platform matrix and all required gates as release-acceptance evidence rather than silently
-  weakening them during diagnosis.
+	weakening them during diagnosis.
 
 ## Guidance
 

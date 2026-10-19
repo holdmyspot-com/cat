@@ -3,10 +3,10 @@
 ## Design Goals
 
 - Make each unit test do only the work needed to prove its claimed behavior, with execution ideally under one second.
-  Accept a longer measured runtime when further speed would sacrifice the behavior being tested or require production
-  changes that violate other quality or readability rules.
+	Accept a longer measured runtime when further speed would sacrifice the behavior being tested or require production
+	changes that violate other quality or readability rules.
 - When slow tests overlap or combine independently provable claims, preserve every distinct claim while reducing total
-  work across the tests that prove them.
+	work across the tests that prove them.
 
 ## Guidance
 

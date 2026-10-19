@@ -3,14 +3,14 @@
 ## Design Goals
 
 - Test observable behavior with isolated, controlled inputs and state, ensuring each claim, exercised boundary, and
-  assertion describe that same outcome rather than an implementation or artifact shape.
+	assertion describe that same outcome rather than an implementation or artifact shape.
 - Ensure an artifact-wide audit finds every executable verification artifact whose claimed outcome is not directly
-  exercised and observed.
+	exercised and observed.
 - Make application behavior directly and safely testable in the same process by passing environmental dependencies
-  explicitly when shared process state would otherwise prevent isolation.
+	explicitly when shared process state would otherwise prevent isolation.
 - Keep test-support behavior at the narrowest boundary that can establish the claimed outcome. Prefer a direct
-  primary-language operation with test-owned inputs and collaborators over a fixture process; reserve a script or
-  native-process fixture for a claim about that boundary's own behavior.
+	primary-language operation with test-owned inputs and collaborators over a fixture process; reserve a script or
+	native-process fixture for a claim about that boundary's own behavior.
 - Verify meaningful changes efficiently with the narrowest relevant test and the complete suite before handoff.
 
 ## Guidance

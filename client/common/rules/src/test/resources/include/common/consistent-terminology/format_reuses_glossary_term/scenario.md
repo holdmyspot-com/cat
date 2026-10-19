@@ -3,7 +3,7 @@
 ## Variables
 
 - **term**: The glossary's term for a named slot in a prompt test's turns, in lower case, such as `variation dimension`
-  or `test parameter`
+	or `test parameter`
 
 ## Scenario
 
@@ -22,11 +22,11 @@ short example file with one test that has two such slots, and explain each secti
 
 - **kind**: effect
 - **description**: The response uses one term for the named slot throughout its example and explanation. It either
-  reuses the glossary's term or proposes a replacement that it says should also replace the glossary term, the JSON
-  names, or both; it does not introduce a second name for the slot while leaving the glossary term in place.
+	reuses the glossary's term or proposes a replacement that it says should also replace the glossary term, the JSON
+	names, or both; it does not introduce a second name for the slot while leaving the glossary term in place.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects
-  `rules/include/common/consistent-terminology.md` before its first governed action.
+	`rules/include/common/consistent-terminology.md` before its first governed action.

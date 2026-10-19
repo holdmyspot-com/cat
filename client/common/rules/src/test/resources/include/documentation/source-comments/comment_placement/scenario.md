@@ -3,7 +3,7 @@
 ## Variables
 
 - **input**: The external input that the Java method validates, such as `an external input` or
-  `a user-supplied file path`
+	`a user-supplied file path`
 
 ## Scenario
 
@@ -27,36 +27,36 @@ Should either be relocated solely because explanatory comments normally belong a
 
 - **kind**: effect
 - **description**: For request 1: The response puts the explanatory HTML comment immediately above the guidance
-  paragraph it explains, rather than leaving it below the preceding Design Goal or floating above an intervening
-  heading.
+	paragraph it explains, rather than leaving it below the preceding Design Goal or floating above an intervening
+	heading.
 
 ### preserve_rule
 
 - **kind**: guard
 - **description**: For request 1: The response preserves the guidance and goal; it does not drop the comment or change
-  product behavior to satisfy style.
+	product behavior to satisfy style.
 
 ### comment_follows_subject
 
 - **kind**: effect
 - **description**: For request 2: The comment moves directly above the method declaration it explains (including its
-  annotations), rather than remaining after it or being mistaken for an explanation of the next method.
+	annotations), rather than remaining after it or being mistaken for an explanation of the next method.
 
 ### no_mechanical_wide_move
 
 - **kind**: guard
 - **description**: For request 2: The response identifies the comment's actual subject instead of moving every comment
-  in the file indiscriminately.
+	in the file indiscriminately.
 
 ### preserve_syntax_bound_positions
 
 - **kind**: guard
 - **description**: For request 3: The response does not relocate the include directive or a clear same-line comment
-  merely to impose the position rule for standalone explanatory comments. It distinguishes syntax-controlled placement
-  from prose explaining a following paragraph or declaration.
+	merely to impose the position rule for standalone explanatory comments. It distinguishes syntax-controlled placement
+	from prose explaining a following paragraph or declaration.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/documentation/source-comments.md`
-  before its first governed action.
+	before its first governed action.

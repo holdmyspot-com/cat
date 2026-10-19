@@ -5,12 +5,12 @@
 - Preserve exact, repeatable monetary amounts and rates through every calculation.
 - Make currency, scale, and rounding decisions explicit wherever a monetary result becomes observable.
 - Select a suitable built-in facility or established dependency before custom monetary arithmetic, using the option
-  whose required operations preserve the contract with the smallest necessary configuration and proof burden.
+	whose required operations preserve the contract with the smallest necessary configuration and proof burden.
 - Report a newly added money-library dependency to the user.
 - Treat an unresolved acquisition of a suitable dependency as a block, rather than replacing it with custom arithmetic.
 - Prevent an API from offering an approximate monetary value as a convenient alternative to an exact one.
 - Ensure a caller can determine an operation's accepted monetary inputs and exact result without inferring its units,
-  currency scope, rate meaning, operation order, scale, or rounding policy.
+	currency scope, rate meaning, operation order, scale, or rounding policy.
 
 ## Guidance
 

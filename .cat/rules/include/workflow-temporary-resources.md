@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Keep every workflow-created artifact that is not intended for commit beneath the CAT temporary root resolved once by
-  the owning pouch scope, whether its consumer is the current invocation or a later workflow.
+	the owning pouch scope, whether its consumer is the current invocation or a later workflow.
 - Preserve required uncommitted evidence until its last recorded consumer finishes, then remove it through an explicit
-  cleanup owner rather than treating either invocation completion or an ignored directory as its lifecycle boundary.
+	cleanup owner rather than treating either invocation completion or an ignored directory as its lifecycle boundary.
 
 ## Guidance
 

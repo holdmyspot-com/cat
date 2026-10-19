@@ -3,15 +3,15 @@
 ## Design Goals
 
 - Let each intended reader understand the observable situation, make the required decision, and act correctly without
-  translating project-specific shorthand; for a rule or prompt, the executing agent is the primary reader and a user
-  must still be able to audit the same guidance.
+	translating project-specific shorthand; for a rule or prompt, the executing agent is the primary reader and a user
+	must still be able to audit the same guidance.
 - Use the shortest response that preserves the answer, required action, decision-relevant evidence, material conditions,
-  and readability at the reader's requested level of detail.
+	and readability at the reader's requested level of detail.
 - Keep a status update faithful to its evidence by distinguishing confirmation that the planned action still applies
-  from evidence that requires a correction.
+	from evidence that requires a correction.
 - Distinguish advisory guidance from an enforcement boundary when reporting how a change addresses a failure.
 - Let each reader find, where they meet the text, the answer to the question they bring there, without facts that serve
-  another reader or place.
+	another reader or place.
 
 ## Guidance
 

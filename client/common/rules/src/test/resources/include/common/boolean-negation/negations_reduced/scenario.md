@@ -23,10 +23,10 @@ public record AccessDecision(Authorization authorization, String authorizationFa
 
 ```typescript
 function nextBatch(queue: Job[]): Job[] | undefined {
-  if (!(queue.length !== 0)) {
-    return undefined;
-  }
-  return queue.splice(0, {{batch_size}});
+	if (!(queue.length !== 0)) {
+		return undefined;
+	}
+	return queue.splice(0, {{batch_size}});
 }
 ```
 
@@ -36,19 +36,19 @@ function nextBatch(queue: Job[]): Job[] | undefined {
 
 - **kind**: effect
 - **description**: For request 1: The validation condition contains no comparison of two conditions in which both sides
-  are negated, such as `(authorization == Authorization.DENIED) != (authorizationFailure != null)`. An equivalent such
-  as `(authorization == Authorization.DENIED) == (authorizationFailure == null)`, or separate checks for the two
-  requirements, satisfies this assertion.
+	are negated, such as `(authorization == Authorization.DENIED) != (authorizationFailure != null)`. An equivalent such
+	as `(authorization == Authorization.DENIED) == (authorizationFailure == null)`, or separate checks for the two
+	requirements, satisfies this assertion.
 
 ### negated_comparison_simplified
 
 - **kind**: effect
 - **description**: For request 2: The approved version tests the empty queue directly, such as `queue.length === 0`,
-  rather than negating `queue.length !== 0`, and still returns `undefined` for an empty queue and the first
-  {{batch_size}} jobs otherwise.
+	rather than negating `queue.length !== 0`, and still returns `undefined` for an empty queue and the first
+	{{batch_size}} jobs otherwise.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/boolean-negation.md`
-  before its first governed action.
+	before its first governed action.

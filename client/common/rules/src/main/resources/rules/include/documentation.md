@@ -8,12 +8,12 @@ depends-on:
 ## Design Goals
 
 - Explain each maintained product, legal, workflow, configuration, or callable interface's observable behavior,
-  constraints, rights, obligations, and consequences clearly enough for its intended reader to act correctly.
+	constraints, rights, obligations, and consequences clearly enough for its intended reader to act correctly.
 - Keep replaceable implementation choices outside the documented interface unless they change a decision the intended
-  reader must make, so an internal choice does not become a contract that later implementations must preserve.
+	reader must make, so an internal choice does not become a contract that later implementations must preserve.
 - Let the reader of each kind of documentation site, such as a type, callable, parameter, value, comment, or document
-  section, find there the content listed for that kind of site, and find each other fact at the site whose reader uses
-  it.
+	section, find there the content listed for that kind of site, and find each other fact at the site whose reader uses
+	it.
 
 ## Contract Boundary
 
@@ -53,11 +53,11 @@ The goal of each kind of site:
 
 - A module, file, or type: what it represents or is responsible for, and when a reader uses it.
 - A method, function, constructor, script, command, or configuration entry: what it does or returns for its caller,
-  the inputs it accepts, the results it returns, and the failures it reports.
+	the inputs it accepts, the results it returns, and the failures it reports.
 - A parameter: its effect on the result. A return value: each result and when it occurs. An error or exception: the
-  condition that causes it.
+	condition that causes it.
 - A field, property, record component, constant, or variable: what one value represents, with its unit and the scope it
-  covers, what decides it, and what the code does with it, wherever its name, type, and value leave these unclear.
+	covers, what decides it, and what the code does with it, wherever its name, type, and value leave these unclear.
 - A source comment: why the code beside it does something that the code does not make obvious.
 - A document section: the decision, right, obligation, or action that its reader needs it to support.
 

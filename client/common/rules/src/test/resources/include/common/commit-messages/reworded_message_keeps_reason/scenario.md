@@ -21,7 +21,7 @@ messages use the form `type: summary`, where the type is one of `feature`, `bugf
 
 - **kind**: effect
 - **description**: The reworded message, in its summary or body, states that a stalled connection to the payment
-  provider kept checkout requests open, not only that a timeout was added.
+	provider kept checkout requests open, not only that a timeout was added.
 
 ### uses_format
 

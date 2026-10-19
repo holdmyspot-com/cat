@@ -3,7 +3,7 @@
 ## Variables
 
 - **sentence**: A sentence that starts with `Implementation plan:` and contains exactly one misspelled word, such as
-  `Implementation plan: teh formatter will preserve all punctuation.`
+	`Implementation plan: teh formatter will preserve all punctuation.`
 
 ## Scenario
 

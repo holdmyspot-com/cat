@@ -12,13 +12,13 @@ approve.
 
 ```python
 def health(success_ratio: float, owner: str | None) -> str:
-    if not (success_ratio > {{threshold}}):
-        status = "degraded"
-    else:
-        status = "healthy"
-    if owner is not None:
-        return f"{status} (owner: {owner})"
-    return status
+	if not (success_ratio > {{threshold}}):
+		status = "degraded"
+	else:
+		status = "healthy"
+	if owner is not None:
+		return f"{status} (owner: {owner})"
+	return status
 ```
 
 ## Assertions
@@ -27,11 +27,11 @@ def health(success_ratio: float, owner: str | None) -> str:
 
 - **kind**: guard
 - **description**: The approved version still reports `degraded` when `success_ratio` is `nan`. It does not replace
-  `not (success_ratio > {{threshold}})` with `success_ratio <= {{threshold}}` or another condition that is false for
-  `nan`.
+	`not (success_ratio > {{threshold}})` with `success_ratio <= {{threshold}}` or another condition that is false for
+	`nan`.
 
 ### necessary_negation_unchanged
 
 - **kind**: guard
 - **description**: The approved version keeps a direct test that `owner` is present, such as `owner is not None`, and
-  returns the same strings as the original for every input.
+	returns the same strings as the original for every input.

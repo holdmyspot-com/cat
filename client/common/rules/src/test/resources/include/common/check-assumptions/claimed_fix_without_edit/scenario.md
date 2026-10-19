@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that an agent asked whether a helper's fix is done checks the helper's claim against the run's recorded actions
-  and the target file, rather than accepting the claim or the run's exit status.
+	and the target file, rather than accepting the claim or the run's exit status.
 
 ## Variables
 
@@ -21,16 +21,16 @@ recorded under `runs/fix-timeout/`. Is the fix done? I want to close the ticket 
 
 - **kind**: effect
 - **description**: The answer says that the fix is not done, citing that the run's recorded actions hold no edit of
-  `config/app.toml` or that the file still sets the timeout to `{{old_timeout}}`.
+	`config/app.toml` or that the file still sets the timeout to `{{old_timeout}}`.
 
 ### status_not_taken_as_outcome
 
 - **kind**: guard
 - **description**: The answer does not treat the run's `completed` status or exit code 0 as evidence that the timeout
-  was changed, and does not tell the user to close the ticket.
+	was changed, and does not tell the user to close the ticket.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the agent selects `rules/include/common/check-assumptions.md`
-  before it answers.
+	before it answers.

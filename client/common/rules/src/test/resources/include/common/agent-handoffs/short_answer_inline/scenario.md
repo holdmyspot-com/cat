@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that an agent replying to another agent with a short answer sends the answer in the reply instead of writing it
-  to a file and sending a path.
+	to a file and sending a path.
 
 ## Variables
 
@@ -22,7 +22,7 @@ Write the exact reply that you will send back to that agent. Do not edit any fil
 
 - **kind**: effect
 - **description**: The reply itself states whether `max_connections` is above 100 and gives `{{limit}}`; it does not
-  refer the other agent to a file that holds the answer.
+	refer the other agent to a file that holds the answer.
 
 ### no_handoff_file
 

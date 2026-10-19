@@ -28,17 +28,17 @@ target allows in {{batch_trials}} trials, rounded down to a whole number of fail
 
 - **kind**: guard
 - **description**: For request 1: The method computes the rate in `double` arithmetic after converting `target` once. It
-  does not perform `BigDecimal` arithmetic and then convert the result to `double` when returning it.
+	does not perform `BigDecimal` arithmetic and then convert the result to `double` when returning it.
 
 ### exact_consumer_stays_exact
 
 - **kind**: effect
 - **description**: For request 2: The method computes the limit with exact arithmetic, such as `BigDecimal` or integer
-  arithmetic on the rate's hundredths, through the rounding down. It does not compute `{{limit_factor}} × (1 − target)`
-  as a `double` before taking the floor, so every target yields the exact floor.
+	arithmetic on the rate's hundredths, through the rounding down. It does not compute `{{limit_factor}} × (1 − target)`
+	as a `double` before taking the floor, so every target yields the exact floor.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/numeric-precision.md`
-  before its first governed action.
+	before its first governed action.

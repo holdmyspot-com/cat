@@ -9,9 +9,9 @@ paths:
 
 - Ship each harness a complete skill whose frontmatter it supports while maintaining shared skill instructions once.
 - Keep a repeatedly selected skill's `SKILL.md` limited to routing, so its full `first-use.md` instructions are read on
-  first use in the current conversation context and read again only after that context resets or is compacted.
+	first use in the current conversation context and read again only after that context resets or is compacted.
 - Word each Codex skill once for every platform, although Codex runs commands in PowerShell on Windows and in a POSIX
-  shell elsewhere.
+	shell elsewhere.
 
 ## Guidance
 

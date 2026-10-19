@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Ensure that retrying an externally durable operation after an unknown result does not create a second logical
-  operation or duplicate external effect.
+	operation or duplicate external effect.
 
 ## Guidance
 

@@ -3,13 +3,13 @@
 ## Design Goals
 
 - Prove that when the user asks about a report already in the conversation, the agent answers from that report before
-  consulting any other source, and marks what the report does not establish as an inference.
+	consulting any other source, and marks what the report does not establish as an inference.
 
 ## Variables
 
 - **database_size**: The size of the database that the backup job copies, such as `2 GB` or `3.5 GB`.
 - **archive_size**: The size of the archive that the retried backup produced, many times the database size, such as
-  `41 GB` or `60 GB`.
+	`41 GB` or `60 GB`.
 
 ## Scenario
 
@@ -33,11 +33,11 @@ The user now writes: "What about this sequence of events seems suspicious and po
 
 - **kind**: effect
 - **description**: The turn's first reply answers the question from the report's facts, naming at least one of these
-  inconsistencies: the archive is far larger than the database, or the job reported success with exit status 0
-  although the archive never reached storage. No tool call or file read occurs before that reply.
+	inconsistencies: the archive is far larger than the database, or the job reported success with exit status 0
+	although the archive never reached storage. No tool call or file read occurs before that reply.
 
 ### inferences_marked
 
 - **kind**: guard
 - **description**: Each cause that the reply offers beyond what the report states, such as why the archive grew, is
-  presented as a possibility to confirm rather than as an established fact.
+	presented as a possibility to confirm rather than as an established fact.

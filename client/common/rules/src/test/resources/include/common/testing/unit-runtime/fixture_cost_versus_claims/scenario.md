@@ -3,7 +3,7 @@
 ## Variables
 
 - **failure_count**: The number of consecutive failures after which the production configuration opens the breaker, a
-  whole number between 10 and 200
+	whole number between 10 and 200
 
 ## Scenario
 
@@ -47,69 +47,69 @@ Decide what the probe test needs.
 
 - **kind**: effect
 - **description**: For request 1: The agent maps each claim to an existing failure-capable assertion before deciding
-  whether the 150-outcome fixture is needed. It does not infer that the separate 19-second test is necessary merely
-  because the policy uses three batches. The aggregate selector check proves the selection decision; the larger campaign
-  check proves the stated publication and assignment interaction.
+	whether the 150-outcome fixture is needed. It does not infer that the separate 19-second test is necessary merely
+	because the policy uses three batches. The aggregate selector check proves the selection decision; the larger campaign
+	check proves the stated publication and assignment interaction.
 
 ### unique_recovery_claim
 
 - **kind**: effect
 - **description**: For request 1: The agent keeps retry and missing-index recovery covered. It looks for a focused
-  production responsibility or narrow test-access boundary that lets those behaviors be tested with fewer records,
-  rather than dropping the assertions or repeating the full predecessor campaign. It retains expensive integration only
-  for a distinct claim that such a focused check and the existing campaign check cannot prove.
+	production responsibility or narrow test-access boundary that lets those behaviors be tested with fewer records,
+	rather than dropping the assertions or repeating the full predecessor campaign. It retains expensive integration only
+	for a distinct claim that such a focused check and the existing campaign check cannot prove.
 
 ### shared_claim
 
 - **kind**: effect
 - **description**: For request 2: The agent recognizes that the existing 700-record assertion and direct policy test
-  already cover the next-page choice. It does not keep 500 decoded records solely to repeat that choice.
+	already cover the next-page choice. It does not keep 500 decoded records solely to repeat that choice.
 
 ### distinct_recovery
 
 - **kind**: effect
 - **description**: For request 2: The agent preserves missing-index recovery in a focused check at the smallest real
-  production boundary capable of proving it, or identifies a distinct interaction that still requires an integrated
-  fixture. It compares total suite work rather than moving all decoding into a second large test.
+	production boundary capable of proving it, or identifies a distinct interaction that still requires an integrated
+	fixture. It compares total suite work rather than moving all decoding into a second large test.
 
 ### boundary_remains_proved
 
 - **kind**: effect
 - **description**: For request 3: The agent keeps a failure-capable check of the exact public limit using the required
-  input count. It does not treat path traversal in the 700-item test as proof, or replace the 500-item public-boundary
-  claim with a one-item processing test.
+	input count. It does not treat path traversal in the 700-item test as proof, or replace the 500-item public-boundary
+	claim with a one-item processing test.
 
 ### necessary_work_only
 
 - **kind**: effect
 - **description**: For request 3: The agent still removes unrelated per-item work where the boundary does not require
-  it. It accepts a longer measured runtime only if further reduction would lose the rejection claim or violate quality
-  and readability constraints.
+	it. It accepts a longer measured runtime only if further reduction would lose the rejection claim or violate quality
+	and readability constraints.
 
 ### pass_through_threshold
 
 - **kind**: effect
 - **description**: For request 4: The agent identifies that the test's claim is the order of transitions, and that no
-  assertion of that test would fail if the readiness count or the formal attempt's stopping boundary changed. It starts
-  the driver from builder state at each threshold, or with the smallest valid minimum pass rate, instead of simulating
-  193 trials, and leaves the threshold values to their direct tests.
+	assertion of that test would fail if the readiness count or the formal attempt's stopping boundary changed. It starts
+	the driver from builder state at each threshold, or with the smallest valid minimum pass rate, instead of simulating
+	193 trials, and leaves the threshold values to their direct tests.
 
 ### justification_names_own_claim
 
 - **kind**: effect
 - **description**: For request 4: The agent rejects the existing Javadoc reason, because a production threshold that the
-  test passes through does not justify its runtime. If the test still takes over a second, the recorded reason names the
-  assertion of that test that needs the remaining work.
+	test passes through does not justify its runtime. If the test still takes over a second, the recorded reason names the
+	assertion of that test that needs the remaining work.
 
 ### analogous_pass_through
 
 - **kind**: effect
 - **description**: For request 5: The agent reaches the open state directly or configures a failure count of one, rather
-  than sending {{failure_count}} failing requests. It does not treat the production count of {{failure_count}} as
-  required, because the direct test claims that value.
+	than sending {{failure_count}} failing requests. It does not treat the production count of {{failure_count}} as
+	required, because the direct test claims that value.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/testing.md`,
-  `rules/include/common/testing/unit-runtime.md` before its first governed action.
+	`rules/include/common/testing/unit-runtime.md` before its first governed action.

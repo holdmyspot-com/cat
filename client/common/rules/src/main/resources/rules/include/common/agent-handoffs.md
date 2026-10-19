@@ -8,10 +8,10 @@ correction round made it send the whole proposal again, its context filled, comp
 re-reading it in one command returned output trimmed to a fraction of its size, so the author could not correct it.
 -->
 - When information passes between agents, keep each agent's context to what its next decision needs: content that is
-  large, revised over rounds, or read by several recipients crosses the boundary as a durable artifact that the
-  recipient can read, and the recipient reads only the parts it needs.
+	large, revised over rounds, or read by several recipients crosses the boundary as a durable artifact that the
+	recipient can read, and the recipient reads only the parts it needs.
 - Let an agent revise a large artifact without rewriting or re-reading all of it, and let it recover the artifact
-  after its context is compacted or reset.
+	after its context is compacted or reset.
 
 ## Guidance
 
@@ -19,12 +19,12 @@ Before sending information to another agent, such as a delegated task, a returne
 message to another session, choose how it crosses the boundary:
 
 - **Inline**: send the content in the message when it is short enough for the recipient to read in one tool output
-  and no one will revise it after this message, such as a verdict, a short list of findings, or a quoted excerpt.
+	and no one will revise it after this message, such as a verdict, a short list of findings, or a quoted excerpt.
 - **Artifact**: otherwise, write the content to a file that the recipient can read and send its path, what it
-  contains, and which parts the recipient's decision needs. This applies when the content would approach the
-  recipient's tool-output limit, will be revised across rounds, or will be read by more than one recipient. Confirm
-  that the recipient can read the path: a remote session, another machine, or a sandbox that denies the path cannot.
-  When it cannot, use a store that both can reach, or send the content inline in parts that each fit.
+	contains, and which parts the recipient's decision needs. This applies when the content would approach the
+	recipient's tool-output limit, will be revised across rounds, or will be read by more than one recipient. Confirm
+	that the recipient can read the path: a remote session, another machine, or a sandbox that denies the path cannot.
+	When it cannot, use a store that both can reach, or send the content inline in parts that each fit.
 
 When designing a workflow or protocol whose agents exchange such content, make the artifact the exchange: the producer
 writes or edits the file, and the consumer reads the file rather than parsing the producer's final message. Do not

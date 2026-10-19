@@ -23,27 +23,27 @@ and acceptance boundaries. Remain read-only: do not implement, execute probes or
 
 - **kind**: effect
 - **description**: The plan recognizes that fixed per-definition counts with potentially different success probabilities
-  do not establish the consumer's IID Bernoulli premise. A valid binary result schema is insufficient.
+	do not establish the consumer's IID Bernoulli premise. A valid binary result schema is insufficient.
 
 ### supported_correction
 
 - **kind**: effect
 - **description**: It resolves the handoff before declaring statistical work ready: for example, independently draw test
-  definitions from a frozen distribution with replacement, or establish a different valid procedure for the required
-  claim. It retains fixed stopping, probabilities confirmed before outcomes, and a consumer-boundary check. It does not
-  claim planned tests ran or that fresh incidental wording proves independence.
+	definitions from a frozen distribution with replacement, or establish a different valid procedure for the required
+	claim. It retains fixed stopping, probabilities confirmed before outcomes, and a consumer-boundary check. It does not
+	claim planned tests ran or that fresh incidental wording proves independence.
 
 ### planning_guidance_before_decisions
 
 - **kind**: effect
 - **description**: The retained events establish a successful read of `rules/include/common/implementation-planning.md`
-  before the first project inspection or decision about behavior coverage, assignments, dependencies, or checks. A
-  failed lookup, substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately
-  from guidance selection.
+	before the first project inspection or decision about behavior coverage, assignments, dependencies, or checks. A
+	failed lookup, substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately
+	from guidance selection.
 
 ### evidence_and_scope
 
 - **kind**: effect
 - **description**: Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept
-  alternative decompositions whose stated dependencies and checks satisfy the request; do not grade by literal phrases.
-  Keep guidance selection or delivery unverified when the retained events do not establish it.
+	alternative decompositions whose stated dependencies and checks satisfy the request; do not grade by literal phrases.
+	Keep guidance selection or delivery unverified when the retained events do not establish it.

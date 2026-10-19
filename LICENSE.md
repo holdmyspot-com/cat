@@ -30,7 +30,7 @@ support.
 **Building a product with CAT?**
 - If your product runs CAT for your users (like a code formatting SaaS), each user needs their own license.
 - If you're just using CAT internally to keep your own codebase tidy, your customers don't need licenses - only your
-  team does.
+	team does.
 
 **About forks** - If someone forks CAT, commercial users still need to get their license from me (the original author).
 This keeps things fair and prevents someone from just repackaging the project.
@@ -69,10 +69,10 @@ advantage or monetary compensation. This includes, but is not limited to:
 - Use by a for-profit company or organization
 - Use by employees in the course of their employment (covered under employer's license)
 - Use by contractors performing work for a licensed organization (covered under that organization's license while
-  performing such work)
+	performing such work)
 - Use in developing, testing, or deploying commercial products or services
 - Use in providing paid consulting or professional services (requires consultant's own license unless client provides
-  access under their license)
+	access under their license)
 
 **"Core Use"** means use of Core Features by a single individual user, regardless of whether that use is personal or
 commercial. Core Use is free and does not require a paid license, but is limited to a single user seat.
@@ -116,13 +116,13 @@ without purchasing a license. This grant covers Core Features only and excludes 
 **Payment and Renewal Terms:**
 
 - **Pro licenses** are billed monthly or annually at Your choice. Annual billing provides two months free (pay for 10
-  months, receive 12 months of access).
+	months, receive 12 months of access).
 - **Enterprise licenses** are billed annually. Volume discounts may be available for large deployments; contact the
-  Licensor for details.
+	Licensor for details.
 - Licenses renew automatically unless cancelled at least thirty (30) days before the renewal date. You may cancel at
-  any time through Your account dashboard.
+	any time through Your account dashboard.
 - Upon cancellation or non-renewal, paid features will be disabled at the end of the current billing period. Your data
-  and configurations will be retained for ninety (90) days to allow for reactivation or export.
+	and configurations will be retained for ninety (90) days to allow for reactivation or export.
 
 **Payment Failure**: If a payment fails, the Licensor will attempt to process the payment up to three (3) times over a
 fourteen (14) day period. You will receive email notification of each failed attempt. If payment cannot be collected
@@ -178,15 +178,15 @@ This ensures that:
 You must:
 
 1. **Preserve Notices**: Keep all copyright, license, and attribution notices intact in all copies and Derivative
-   Works.
+	Works.
 
 2. **Include License**: Distribute copies of this license with any distribution of the Software or Derivative Works.
 
 3. **State Changes**: If You distribute a Derivative Work, clearly indicate that changes were made and provide
-   attribution to the original Software.
+	attribution to the original Software.
 
 4. **No Trademark Rights**: This license does not grant any rights to use the Licensor's trademarks, trade names, or
-   service marks.
+	service marks.
 
 ## No Circumvention
 

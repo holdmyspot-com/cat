@@ -10,7 +10,7 @@ depends-on:
 ## Design Goals
 
 - Apply Java-specific Javadoc coverage, tags, placement, and syntax without duplicating the language-neutral
-  documentation contract.
+	documentation contract.
 
 ## Guidance
 

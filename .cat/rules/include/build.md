@@ -4,9 +4,9 @@
 
 - Make local builds and tests reproducible with the repository's supported Maven entry points.
 - Keep CAT's supported build, test, serialization, and validation technologies consistent across maintained code and
-  tests.
+	tests.
 - Complete a population of isolated build snapshots efficiently without letting one snapshot's result alter another
-  snapshot's execution.
+	snapshot's execution.
 
 ## Guidance
 

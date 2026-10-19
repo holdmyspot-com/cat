@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Keep shared code coding-harness-neutral while providing every supported coding harness with equivalent feasible
-  functionality.
+	functionality.
 
 ## Guidance
 

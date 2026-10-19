@@ -3,7 +3,7 @@
 ## Variables
 
 - **agents**: The agents in CAT's installed inventory, none of which implements code, such as
-  `read-only plan-builder, plan-review, and stakeholder-review agents`
+	`read-only plan-builder, plan-review, and stakeholder-review agents`
 
 ## Scenario
 
@@ -20,10 +20,10 @@ harness separately provides a generic worker agent.
 
 - **kind**: effect
 - **description**: The answer leads with “No,” distinguishes CAT's agents from the harness worker, and does not add
-  implementation history, an unrelated feature list, or multiple restatements of the conclusion.
+	implementation history, an unrelated feature list, or multiple restatements of the conclusion.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`
-  before its first governed action.
+	before its first governed action.

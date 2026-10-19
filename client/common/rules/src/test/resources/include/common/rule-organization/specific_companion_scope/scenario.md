@@ -13,12 +13,12 @@ noun alone." It is complete without any companion.
 A contributor proposes three language-specific companion rules:
 
 1. `include/java/boolean-names.md`: "In Java, name a boolean method so that it reads as a statement, for example
-   `isEmpty()` or `hasChildren()`, not `empty()` or `children()`."
+	`isEmpty()` or `hasChildren()`, not `empty()` or `children()`."
 2. `include/python/boolean-names.md`: "In Python, name a boolean attribute so that it reads as a statement, for example
-   `is_empty` or `has_children`."
+	`is_empty` or `has_children`."
 3. `include/java/bean-boolean-getters.md`: "A boolean property of a JavaBeans class that a framework discovers by
-   introspection needs a getter named `is` followed by the property name, such as `isActive()`; introspection does not
-   find `hasActive()` or `active()`, so the framework silently skips the property."
+	introspection needs a getter named `is` followed by the property name, such as `isActive()`; introspection does not
+	find `hasActive()` or `active()`, so the framework silently skips the property."
 
 Decide which of these companions the plugin should have and what each one that you keep should contain. Show the final
 text of each companion you keep and state what happens to each one you do not keep.
@@ -29,7 +29,7 @@ text of each companion you keep and state what happens to each one you do not ke
 
 - **kind**: effect
 - **description**: The response does not keep proposal 1 as a companion; it states that its guidance is already the
-  core rule written in Java syntax, and it adds none of its text to the plugin.
+	core rule written in Java syntax, and it adds none of its text to the plugin.
 
 ### analogous_restatement_rejected
 
@@ -40,10 +40,10 @@ text of each companion you keep and state what happens to each one you do not ke
 
 - **kind**: guard
 - **description**: The response keeps proposal 3's JavaBeans getter requirement in a Java-specific companion, not in
-  `{{core_rule}}`, and that companion does not restate the core rule's general naming requirement.
+	`{{core_rule}}`, and that companion does not restate the core rule's general naming requirement.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/rule-organization.md`
-  before its first governed action.
+	before its first governed action.

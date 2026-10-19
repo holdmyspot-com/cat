@@ -12,26 +12,26 @@ them.
 Write every test by these rules:
 
 - It proves its requirements: its assertions check the requirements' outcomes, not a mechanism that a prompt file
-  prescribes, unless a requirement names that mechanism.
+	prescribes, unless a requirement names that mechanism.
 - It needs the least work that can still fail its requirements: the smallest inputs, turns and actions under which a
-  requirement can still fail. Size each workspace file from the specific way that the requirement fails: when the
-  failure is reading only the first part that a tool returns, make the document just over one part; when it is reading
-  only the first lines, make it just over that many lines. A document many times that size adds cost without adding a
-  way to fail, and a workspace file that the requirement does not concern needs only the content that the turn uses.
+	requirement can still fail. Size each workspace file from the specific way that the requirement fails: when the
+	failure is reading only the first part that a tool returns, make the document just over one part; when it is reading
+	only the first lines, make it just over that many lines. A document many times that size adds cost without adding a
+	way to fail, and a workspace file that the requirement does not concern needs only the content that the turn uses.
 - It is organic: no turn, workspace file or file name tells the agent the expected outcome or that it is being tested.
 
 Each item of `tests` gives:
 
 - `directory`: the test's directory relative to the draft directory, with `/` separators. Its last name is the test's
-  identifier, in lowercase words joined by underscores;
+	identifier, in lowercase words joined by underscores;
 - `risk_rank`: 1 for the riskiest test; tests may share a rank;
 - `requirement_ids`: the requirements it proves. Every requirement needs a test that lists it; CAT refuses a proposal
-  with a requirement that no test lists;
+	with a requirement that no test lists;
 - `absent_triggers`: the requirements whose `trigger` this test leaves absent, so that a compliant response does not
-  take the action they oblige, or an empty list. Name only requirements that have a trigger;
+	take the action they oblige, or an empty list. Name only requirements that have a trigger;
 - `applicability`: the conditions under which those requirements apply to a trial;
 - `assertions`: one item for each assertion of the test's `scenario.md`, giving its `id` and the `requirement_id`
-  whose compliance it shows. Give each requirement that the test proves at least one assertion;
+	whose compliance it shows. Give each requirement that the test proves at least one assertion;
 - `uncovered_interactions`: every material interaction this test cannot cover.
 
 For each requirement with a `trigger`, write at least one test whose turns leave the trigger absent, whose expected
@@ -49,11 +49,11 @@ sections in this order. Each key-value pair is a list item `- **<key>**: <value>
 continues on lines indented by two spaces.
 
 - `## Variables`: one pair per variable, `- **<name>**: <description>`, whose description says what the value
-  represents.
+	represents.
 - `## Scenario`: the complete prewritten user turn, or, when the test has several turns, one `### Turn <n>` subsection
-  per turn, numbered from 1.
+	per turn, numbered from 1.
 - `## Expected Behavior`: the pairs `description`, what a compliant response does, observable in text, file effects or
-  tool effects, and `time_limit_seconds`, how long a compliant agent needs, with margin.
+	tool effects, and `time_limit_seconds`, how long a compliant agent needs, with margin.
 - `## Assertions`: one `### <id>` subsection per assertion, holding its pairs as Assertions below describes.
 
 Where a variable's value is inserted, write `{{` and `}}` around the variable's name, as in `{{tone}}`. A placeholder
@@ -74,16 +74,16 @@ every test case's values differ.
 
 ```json
 {
-  "format_version": 1,
-  "test_cases": [
-    {
-      "values": {
-        "notes": "release-notes.md",
-        "before": {"generator": "log_lines", "count": 18000}
-      },
-      "expected_outcome": "2025-03-04"
-    }
-  ]
+	"format_version": 1,
+	"test_cases": [
+		{
+			"values": {
+				"notes": "release-notes.md",
+				"before": {"generator": "log_lines", "count": 18000}
+			},
+			"expected_outcome": "2025-03-04"
+		}
+	]
 }
 ```
 
@@ -103,12 +103,12 @@ call in `values.json`, so two calls with the same parameters produce different c
 call that already has them, so that its content stays the same.
 
 - Write bulk content as a generator call, never as typed text: any text beyond the facts that decide the expected
-  outcome and the context that the turn needs.
+	outcome and the context that the turn needs.
 - Use a generated value only in a workspace file's content. CAT refuses one in a turn, an assertion or a workspace
-  file's path.
+	file's path.
 - Generated content never decides a test case's expected outcome: only the values and workspace text that you write do.
-  Write each fact that decides it with a word that the generator's output never contains, or a date or number outside
-  the output's range, so that the generated content never repeats or contradicts the fact.
+	Write each fact that decides it with a word that the generator's output never contains, or a date or number outside
+	the output's range, so that the generated content never repeats or contradicts the fact.
 
 The generators, with every word, date and number that their output can contain:
 
@@ -122,22 +122,22 @@ placeholders in each one's path and content. Each is a workspace file: use one w
 the test case decides, or a file of the project that the turn works on.
 
 - To give a trial a file or directory that lies elsewhere in the project, including one that Git ignores, put a
-  symbolic link in `workspace/` whose target, relative to the link's directory, is that file or directory. The trial
-  receives a copy of the target at the link's path. Write the target as it resolves from the test's path in the
-  project: a target that the draft directory does not hold is read from the project.
+	symbolic link in `workspace/` whose target, relative to the link's directory, is that file or directory. The trial
+	receives a copy of the target at the link's path. Write the target as it resolves from the test's path in the
+	project: a target that the draft directory does not hold is read from the project.
 - To share a file among several tests, put it in the test root outside every test's directory, and link it from the
-  `workspace/` of each test that needs it.
+	`workspace/` of each test that needs it.
 - A link whose target is another file or directory of the same `workspace/` stays a link in the trial, so the turn sees
-  the same paths related the same way. When that target is itself a link to a file outside `workspace/`, the target
-  becomes a copy and the first link still points to it.
+	the same paths related the same way. When that target is itself a link to a file outside `workspace/`, the target
+	becomes a copy and the first link still points to it.
 - CAT refuses a link whose target is absolute, missing, outside the project or in a cycle of links, and a link that
-  reaches a prompt test's directory or a prompt file: every trial already receives the prompt files that it measures.
-  `workspace/` holds only regular files, directories and symbolic links.
+	reaches a prompt test's directory or a prompt file: every trial already receives the prompt files that it measures.
+	`workspace/` holds only regular files, directories and symbolic links.
 - A workspace file's path stays outside `.git`, and must not name a file that every trial already receives, such as
-  a prompt file.
+	a prompt file.
 - A value inserted into a path or a link target must be a single name: not empty, not `.` or `..`, and without `/`,
-  `\`, control characters or any of `< > : " | ? *`. CAT refuses a test case that breaks this rule or whose
-  workspace paths collide.
+	`\`, control characters or any of `< > : " | ? *`. CAT refuses a test case that breaks this rule or whose
+	workspace paths collide.
 - Write workspace files as UTF-8 text.
 
 ### Assertions
@@ -148,13 +148,13 @@ which the judge decides: the reply's result matches the test case's expected out
 assertion holds these pairs:
 
 - `kind`: `guard` when an agent passes the assertion almost always even when the target prompt files are empty, such
-  as answering a search question correctly; it protects an operation that the prompts must not harm. `effect` when the
-  prompts exist to make the assertion true, such as reading a long file whole. Any assertion that is not a guard is an
-  effect;
+	as answering a search question correctly; it protects an operation that the prompts must not harm. `effect` when the
+	prompts exist to make the assertion true, such as reading a long file whole. Any assertion that is not a guard is an
+	effect;
 - `tool`, when a built-in tool decides the assertion: its name and arguments in one code span, such as
-  `` `read-in-full logs/service.log` ``. Leave the pair out when the judge decides the assertion;
+	`` `read-in-full logs/service.log` ``. Leave the pair out when the judge decides the assertion;
 - `on_tool_failure`, only with `tool`: what a failure of the tool means: `fail` when the failure fails the trial,
-  which is the meaning when the pair is absent; `judge` when the judge then decides the assertion from its description;
+	which is the meaning when the pair is absent; `judge` when the judge then decides the assertion from its description;
 - `description`: what the assertion requires, in words that the judge can decide from the trial's record.
 
 `tool` names one of CAT's built-in tools, never a tool of the agent under test: `tool-used Read` is CAT's built-in tool
@@ -201,13 +201,13 @@ The launcher {{launcher}} provides two commands. Run them from the current direc
 directory or the proposal file.
 
 - `{{launcher}} contract check {{context_file}}` checks the proposal file and the draft directory together, as CAT
-  does when the session ends, apart from the split of each test's expected outcomes between the parts, which CAT draws
-  only then. It prints every problem at once, each with the file and line or the JSON path of the proposal file that
-  it concerns, and exits with a non-zero status when there is one. It also prints, for each test, how many distinct
-  expected outcomes its test cases have.
+	does when the session ends, apart from the split of each test's expected outcomes between the parts, which CAT draws
+	only then. It prints every problem at once, each with the file and line or the JSON path of the proposal file that
+	it concerns, and exits with a non-zero status when there is one. It also prints, for each test, how many distinct
+	expected outcomes its test cases have.
 - `{{launcher}} contract workspace {{context_file}} <test directory> <test case number> <output directory>` writes the
-  workspace files of one test case, counted from 1 in `values.json`, into a new output directory outside the draft
-  directory, with its values inserted and its generator calls expanded. Give the test directory as the test's
-  `directory` in the proposal file, relative to the draft directory. For each file it prints the path, the size in
-  bytes, the number of lines and how the size compares with the tool-output limit of each trial profile, so that you
-  can size each workspace file by the rules above.
+	workspace files of one test case, counted from 1 in `values.json`, into a new output directory outside the draft
+	directory, with its values inserted and its generator calls expanded. Give the test directory as the test's
+	`directory` in the proposal file, relative to the draft directory. For each file it prints the path, the size in
+	bytes, the number of lines and how the size compares with the tool-output limit of each trial profile, so that you
+	can size each workspace file by the rules above.

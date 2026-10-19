@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Identify evidence-backed legal, policy, privacy, or attribution concerns in a declared change, or approve it when
-  none remain.
+	none remain.
 
 ## Guidance
 

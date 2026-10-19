@@ -27,36 +27,36 @@ closes the channel. Show the whole class.
 
 - **kind**: effect
 - **description**: For request 1: When the code that creates the `HttpClient` from a URI alone passes it to the
-  constructor and that constructor throws, that same code closes the client and then lets the constructor's exception
-  propagate.
+	constructor and that constructor throws, that same code closes the client and then lets the constructor's exception
+	propagate.
 
 ### supplied_client_left_open
 
 - **kind**: guard
 - **description**: For request 1: The constructor that receives an `HttpClient` from its caller does not close that
-  client when it rejects `baseUri`.
+	client when it rejects `baseUri`.
 
 ### construction_failure_reported
 
 - **kind**: guard
 - **description**: For request 1: When closing the client after a failed construction itself throws, the caller still
-  receives the constructor's exception, with the close failure attached to it, such as by `addSuppressed`, instead of
-  the close failure.
+	receives the constructor's exception, with the close failure attached to it, such as by `addSuppressed`, instead of
+	the close failure.
 
 ### successful_client_kept_open
 
 - **kind**: guard
 - **description**: For request 1: After the constructor succeeds, the code that created the client returns the new
-  object without closing the client.
+	object without closing the client.
 
 ### own_channel_released_on_failure
 
 - **kind**: effect
 - **description**: For request 2: When the constructor cannot take the lock, it closes the `FileChannel` that it opened
-  before the failure leaves the constructor.
+	before the failure leaves the constructor.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects
-  `rules/include/common/construction-failure-cleanup.md` before its first governed action.
+	`rules/include/common/construction-failure-cleanup.md` before its first governed action.

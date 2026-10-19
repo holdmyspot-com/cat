@@ -9,10 +9,10 @@ depends-on:
 ## Design Goals
 
 - Let a reader unfamiliar with the project understand the observable contract of a type, method, function, script,
-  command, or configuration entry, including its inputs, results, state changes, and failures, without reading its
-  implementation.
+	command, or configuration entry, including its inputs, results, state changes, and failures, without reading its
+	implementation.
 - Let a caller learn from a callable's documentation every result it can receive, what each means and when it occurs,
-  without reading the implementation.
+	without reading the implementation.
 - Let a caller find the failures that its own invalid input causes before the failures that valid input can still meet.
 
 ## Guidance

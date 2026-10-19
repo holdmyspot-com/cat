@@ -7,11 +7,11 @@ depends-on:
 ## Design Goals
 
 - For every workflow that records progress for later use across retries, resumptions, or actors, converge on its
-  terminal acceptance state through one authoritative, evidence-backed transition record. Each accepted transition
-  preserves or advances verified state, or explicitly invalidates only the affected state with its reason and
-  replacement path; stale, duplicate, or conflicting work cannot replace verified progress.
+	terminal acceptance state through one authoritative, evidence-backed transition record. Each accepted transition
+	preserves or advances verified state, or explicitly invalidates only the affected state with its reason and
+	replacement path; stale, duplicate, or conflicting work cannot replace verified progress.
 - Complete independent work units with the highest verified bounded concurrency that preserves their isolated state,
-  evidence, and failure visibility rather than serializing them without a dependency.
+	evidence, and failure visibility rather than serializing them without a dependency.
 
 ## Guidance
 

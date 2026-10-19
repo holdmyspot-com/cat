@@ -3,13 +3,13 @@
 ## Design Goals
 
 - Let an ordinary Claude Code agent use a file shipped in CAT's installed plugin, such as a launcher, rule, or skill,
-  from the plugin directory that its session context states, because Claude Code tool shells define no variable that
-  names that directory.
+	from the plugin directory that its session context states, because Claude Code tool shells define no variable that
+	names that directory.
 - Let the agent name the project directory and its session's temporary directory inside the project from what its
-  session context states, because Claude Code tool shells define no variable that names them, and create, remove, and
-  move temporary files there with standard commands.
+	session context states, because Claude Code tool shells define no variable that names them, and create, remove, and
+	move temporary files there with standard commands.
 - Keep every file the agent writes inside the project directory unless the user names another location, so its scratch
-  files, probe inputs, and saved command output stay where the user expects them and can remove them.
+	files, probe inputs, and saved command output stay where the user expects them and can remove them.
 
 ## Guidance
 

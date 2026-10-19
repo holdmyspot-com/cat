@@ -1,26 +1,26 @@
 {
-  "format_version": 1,
-  "source": "CAT's Claude inventory resource, from Claude Code 2.1.287: `claude --help` and the CLI's model catalog",
-  "models": [
-    {
-      "model": "opus",
-      "efforts": ["low", "medium", "high", "xhigh", "max"],
-      "documentation": "`claude --help` names the alias under --model and the efforts under --effort; the model catalog lists claude-opus-5-5 with these efforts"
-    },
-    {
-      "model": "fable",
-      "efforts": ["low", "medium", "high", "xhigh", "max"],
-      "documentation": "`claude --help` names the alias under --model and the efforts under --effort; the model catalog lists claude-fable-5-1 with these efforts"
-    },
-    {
-      "model": "sonnet",
-      "efforts": ["low", "medium", "high", "xhigh", "max"],
-      "documentation": "`claude --help` names the alias under --model and the efforts under --effort; the model catalog lists claude-sonnet-5-5 with these efforts"
-    },
-    {
-      "model": "haiku",
-      "efforts": [],
-      "documentation": "the changelog names the haiku alias (ANTHROPIC_DEFAULT_HAIKU_MODEL); the model catalog lists claude-haiku-4-5-20251001 without effort options, so it has no effort dimension"
-    }
-  ]
+	"format_version": 1,
+	"source": "CAT's Claude inventory resource, from Claude Code 2.1.287: `claude --help` and the CLI's model catalog",
+	"models": [
+		{
+			"model": "opus",
+			"efforts": ["low", "medium", "high", "xhigh", "max"],
+			"documentation": "`claude --help` names the alias under --model and the efforts under --effort; the model catalog lists claude-opus-5-5 with these efforts"
+		},
+		{
+			"model": "fable",
+			"efforts": ["low", "medium", "high", "xhigh", "max"],
+			"documentation": "`claude --help` names the alias under --model and the efforts under --effort; the model catalog lists claude-fable-5-1 with these efforts"
+		},
+		{
+			"model": "sonnet",
+			"efforts": ["low", "medium", "high", "xhigh", "max"],
+			"documentation": "`claude --help` names the alias under --model and the efforts under --effort; the model catalog lists claude-sonnet-5-5 with these efforts"
+		},
+		{
+			"model": "haiku",
+			"efforts": [],
+			"documentation": "the changelog names the haiku alias (ANTHROPIC_DEFAULT_HAIKU_MODEL); the model catalog lists claude-haiku-4-5-20251001 without effort options, so it has no effort dimension"
+		}
+	]
 }

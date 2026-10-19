@@ -89,7 +89,7 @@ public final class PromptAuthorTest
 			"Other attempts for this cell may follow other approaches. Follow this one in every edit you make:\n\n" +
 			expected + "\n\n### How to edit").
 			contains("When the failing replies\n" +
-				"   violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or " +
+				"\tviolated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or " +
 				"`CLAUDE.md` included:").
 			doesNotContain("{{approach}}");
 	}
@@ -164,7 +164,7 @@ public final class PromptAuthorTest
 			Map.of(), "", List.of(), List.of(), List.of());
 		requireThat(prompt.request(brief, COPY).turns().getFirst(), "editingInstructions").
 			contains("When the failing replies\n" +
-				"   violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or " +
+				"\tviolated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or " +
 				"`CLAUDE.md` included:");
 	}
 
@@ -539,7 +539,7 @@ public final class PromptAuthorTest
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
 		requireThat(turn, "turn").contains("- The user declined these edits outside your authority. Do not report " +
-			"them again; meet each one's requirement through\n  the editable prompt sources above instead:\n\n" +
+			"them again; meet each one's requirement through\n\tthe editable prompt sources above instead:\n\n" +
 			"- requirement R1: shared.md -> " + Path.of("/external/shared.md").toAbsolutePath() +
 			" (external_target_read_only)\n" +
 			"- requirement R2: .claude/settings.json (loader_configuration_fixed)\n");
@@ -578,7 +578,7 @@ public final class PromptAuthorTest
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
-		requireThat(turn, "turn").contains("prompt\n  sources:\n\n- CLAUDE.md\n\n").
+		requireThat(turn, "turn").contains("prompt\n\tsources:\n\n- CLAUDE.md\n\n").
 			contains("resolve to these targets:\n\n- shared.md -> " + Path.of("/external/shared.md").toAbsolutePath() +
 				"\n");
 	}
@@ -598,7 +598,7 @@ public final class PromptAuthorTest
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
-		requireThat(turn, "turn").contains("prompt\n  sources:\n\n- none\n\n");
+		requireThat(turn, "turn").contains("prompt\n\tsources:\n\n- none\n\n");
 	}
 
 	/**
@@ -616,7 +616,7 @@ public final class PromptAuthorTest
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
-		requireThat(turn, "turn").contains("prompt\n  sources:\n\n- AGENTS.md\n- CLAUDE.md\n\n").
+		requireThat(turn, "turn").contains("prompt\n\tsources:\n\n- AGENTS.md\n- CLAUDE.md\n\n").
 			contains("resolve to these targets:\n\n- AGENTS.md -> CLAUDE.md\n");
 	}
 

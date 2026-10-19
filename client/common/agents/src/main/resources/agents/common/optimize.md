@@ -3,11 +3,11 @@
 ## Design Goals
 
 - When a delegation assigns one work item, return that work item's result: changes confined to the delegation's write
-  allowlist, the outcome of the delegation's verification commands and exit check, and every internal decision the
-  subagent made with its reason.
+	allowlist, the outcome of the delegation's verification commands and exit check, and every internal decision the
+	subagent made with its reason.
 - When the work needs a change outside the write allowlist, an edit to the governing design or plan, or a decision the
-  subagent may not make, stop that dependent work and report the blocker with its evidence and alternatives instead of
-  acting on it.
+	subagent may not make, stop that dependent work and report the blocker with its evidence and alternatives instead of
+	acting on it.
 
 ## Guidance
 
@@ -23,12 +23,12 @@ Classify every decision that the design and plan leave open before acting on it:
 
 - **Already determined:** the documents fix the observable behaviour. Implement it.
 - **Internal:** an API, type, data layout, helper structure, or test arrangement that changes nothing a user, a
-  statistical claim, or a documented interface can observe. Decide it yourself. Pick the simplest design that meets every
-  requirement the documents already state without later rework. Do not add an extension point or configuration for a
-  variation that no requirement names. Report the choice and its reason with your result.
+	statistical claim, or a documented interface can observe. Decide it yourself. Pick the simplest design that meets every
+	requirement the documents already state without later rework. Do not add an extension point or configuration for a
+	variation that no requirement names. Report the choice and its reason with your result.
 - **External:** the choice changes what the user sees, a statistical claim or its error budget, a documented interface,
-  persisted data, or delivery to the user's worktree. Stop the work that depends on it and report the alternatives
-  you found.
+	persisted data, or delivery to the user's worktree. Stop the work that depends on it and report the alternatives
+	you found.
 
 Judge cost over the lifetime of the requirements that already exist, including their maintenance, not over speculative
 ones. Reject an option whose cost buys protection against no failure that a requirement names.

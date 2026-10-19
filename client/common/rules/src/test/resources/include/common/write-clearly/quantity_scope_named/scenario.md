@@ -3,12 +3,12 @@
 ## Design Goals
 
 - Prove that the description of a quantity that combines several values names the scope that bounds it beside the
-  quantity, and leaves out how the code avoids counting a value twice.
+	quantity, and leaves out how the code avoids counting a value twice.
 
 ## Variables
 
 - **quantity_field**: The name of a `long` field that accumulates output tokens, such as `outputTokens` or
-  `generatedTokens`.
+	`generatedTokens`.
 
 ## Scenario
 
@@ -53,14 +53,14 @@ Write the Javadoc for the `{{quantity_field}}` field. Show only the field and it
 
 - **kind**: effect
 - **description**: The Javadoc says that `{{quantity_field}}` holds the output tokens of the selected turn, summed over
-  that turn's responses, and places the selected turn beside the quantity so that it cannot be read as a total across
-  the session.
+	that turn's responses, and places the selected turn beside the quantity so that it cannot be read as a total across
+	the session.
 
 ### duplicate_handling_left_out
 
 - **kind**: effect
 - **description**: The Javadoc does not describe how repeated usage events or message IDs are skipped, such as by
-  saying that a response counts once or that duplicates are ignored.
+	saying that a response counts once or that duplicates are ignored.
 
 ### quantity_identified
 

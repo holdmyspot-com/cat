@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Identify evidence-backed security-property or attack-path concerns in a declared change, or approve it when none
-  remain.
+	remain.
 
 ## Guidance
 

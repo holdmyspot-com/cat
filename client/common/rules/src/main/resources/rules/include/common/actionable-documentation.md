@@ -3,8 +3,8 @@
 ## Design Goals
 
 - Ensure an artifact-wide documentation audit verifies that each document enables its reader to make the required
-  decisions, not merely that documentation is present or syntactically valid, and excludes facts that do not support
-  those decisions.
+	decisions, not merely that documentation is present or syntactically valid, and excludes facts that do not support
+	those decisions.
 
 ## Guidance
 

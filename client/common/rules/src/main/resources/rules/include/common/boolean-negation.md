@@ -3,9 +3,9 @@
 ## Design Goals
 
 - A boolean expression states its condition with the fewest negations among the forms that are equivalent for every
-  value its operands can take, so a reader learns when it is true without cancelling negations mentally.
+	value its operands can take, so a reader learns when it is true without cancelling negations mentally.
 - A rewrite that removes a negation preserves the expression's result for every operand value and the surrounding
-  statement's structure, so readability never changes behavior.
+	statement's structure, so readability never changes behavior.
 
 ## Guidance
 
@@ -15,10 +15,10 @@ condition (such as `isNotEmpty` or `notFound`). If an equivalent form of the sam
 that form. For example:
 
 - When comparing two conditions, cancel a negation on each side: write
-  `(authorization == DENIED) == (failure == null)` rather than `(authorization == DENIED) != (failure != null)`. In
-  general, `P != not Q` is `P == Q`, and `not P != not Q` is `P != Q`.
+	`(authorization == DENIED) == (failure == null)` rather than `(authorization == DENIED) != (failure != null)`. In
+	general, `P != not Q` is `P == Q`, and `not P != not Q` is `P != Q`.
 - Apply a negation to the comparison it negates: write `count == 0` rather than `!(count != 0)`, and `count <= 0`
-  rather than `!(count > 0)` when `count` is an integer.
+	rather than `!(count > 0)` when `count` is an integer.
 - Use the positive predicate when one exists: write `isEmpty(list)` rather than `!isNotEmpty(list)`.
 - Distribute a negation when that removes negations: write `a && b` rather than `!(!a || !b)`.
 

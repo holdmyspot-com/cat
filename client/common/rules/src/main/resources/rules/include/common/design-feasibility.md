@@ -3,25 +3,25 @@
 ## Design Goals
 
 - Warn before implementation when a requested guarantee requires a fact, authority, or decision that the stated inputs
-  cannot determine.
+	cannot determine.
 - Prevent an agent from silently replacing an unsupported requested guarantee with a narrower scope, a
-  proposal-and-approval workflow, or another feasible alternative; require the user to choose that alternative before
-  the agent creates a tracked issue, a plan, or an implementation for it, and make the alternative's supplied authority
-  or surrendered guarantee explicit.
+	proposal-and-approval workflow, or another feasible alternative; require the user to choose that alternative before
+	the agent creates a tracked issue, a plan, or an implementation for it, and make the alternative's supplied authority
+	or surrendered guarantee explicit.
 - Distinguish an impossible guarantee from a feasible design that needs an additional authoritative input, and from a
-  best-effort inference that must not be described as reliable automation.
+	best-effort inference that must not be described as reliable automation.
 - Prevent an implementation from treating its own inferred output as proof of a business, specification, or other
-  external decision.
+	external decision.
 - Prevent a forecast objective such as minimizing expected cost from being accepted as an executable stopping or
-  strategy-selection policy without a defined predictor, uncertainty decision, and fallback.
+	strategy-selection policy without a defined predictor, uncertainty decision, and fallback.
 <!--
 Two instruction-loading probes showed that one host exposed file bytes only when a command explicitly read them, while
 another reported a selected instruction path without its bytes. Neither observation proved what the native loader
 consumed, so this goal requires checking the consumer-side evidence before a design claims content consumption.
 -->
 - Before building a feature that relies on another program's or service's records, check that those records show the
-  event or input the feature needs to prove. If they do not, identify what remains unproven instead of assuming the
-  record exists.
+	event or input the feature needs to prove. If they do not, identify what remains unproven instead of assuming the
+	record exists.
 
 ## Guidance
 
@@ -53,11 +53,11 @@ executable, require its design to identify:
 - the candidate actions and the observable boundary where one must be selected;
 - every feature the predictor may inspect and the operation that supplies it;
 - the predictor or statistical method that owns the estimate, its applicable reference population, and evidence that
-  its predictions are calibrated for that population;
+	its predictions are calibrated for that population;
 - how the decision represents uncertainty and the condition that makes a forecast too uncertain or inapplicable;
 - the loss, threshold, or comparison that selects one candidate action from the forecast; and
 - the bounded fallback when required data is absent, the case is outside the calibrated population, or the forecast
-  cannot support the decision.
+	cannot support the decision.
 
 Keep the predictor and decision policy in authoritative automation. An agent may interpret their structured result or
 explain the selected action, but it must not replace an absent estimate, calibration result, uncertainty policy, or
@@ -68,15 +68,15 @@ goal to minimize expected cost does not establish that the workflow can find the
 Treat the following as warning signals that require this test:
 
 - The feature must classify intent, support status, business meaning, ownership, priority, feature boundaries, or
-  another subjective/specification decision, but its allowed inputs are only code, history, or generated artifacts.
+	another subjective/specification decision, but its allowed inputs are only code, history, or generated artifacts.
 - The feature claims to work for arbitrary user projects while the required decision depends on project-specific
-  contracts, audiences, workflows, or terminology that no supplied specification defines.
+	contracts, audiences, workflows, or terminology that no supplied specification defines.
 - The feature must prove its own inferred label, mapping, or grouping correct, but no independent check, regression,
-  authoritative contract, or user approval can reject a wrong result.
+	authoritative contract, or user approval can reject a wrong result.
 - The feature must compare identities or equivalence classes but no canonical representation or approved mapping exists.
 - The requested guarantee excludes the only actor or authority that can supply the needed decision.
 - The proposed acceptance check can show that the feature ran, but cannot distinguish a correct result from a convincing
-  incorrect one.
+	incorrect one.
 
 Do not issue a feasibility warning merely because work is difficult, slow, novel, or unimplemented. Issue it only when
 the information-sufficiency test, an unavailable authority, or an untestable acceptance condition establishes the gap.

@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Every type that an exported Java API element names in its signature is accessible to each module that can read the
-  element, so that module can use the element without an access error or a "not exported from module" warning.
+	element, so that module can use the element without an access error or a "not exported from module" warning.
 - Resolving an inaccessible type reference makes accessible only the types meant to be supported API, after their
-  security and compatibility consequences have been evaluated, and makes no other type accessible as a side effect.
+	security and compatibility consequences have been evaluated, and makes no other type accessible as a side effect.
 
 ## Guidance
 
@@ -22,11 +22,11 @@ Resolve each inaccessible type with the first applicable change:
 
 1. When no module outside this one needs the element, reduce its visibility or move it to a non-exported package.
 2. When callers need only a capability of the type, name an accessible type that provides it instead, such as an
-   exported interface that the type implements or a Java platform type. Add a new exported interface only when it is
-   a narrower, stable contract that the callers need.
+	exported interface that the type implements or a Java platform type. Add a new exported interface only when it is
+	a narrower, stable contract that the callers need.
 3. When callers need the type itself, export it. Move it to an exported package whose responsibility it fits, or, more
-   rarely, export its current package. Use a qualified export when only named modules need it. A type that is not
-   public must also become public.
+	rarely, export its current package. Use a qualified export when only named modules need it. A type that is not
+	public must also become public.
 
 Before making a type public or exporting a type or a package, list each type that the change makes accessible outside the module, including
 the other public types of an exported package. Keep a type that callers are not meant to use out of the exported

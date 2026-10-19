@@ -13,11 +13,11 @@ that goal instead. This made the comment's subject unclear, so the goal requires
 actual subject.
 -->
 - Let readers identify which code or prose an explanatory comment describes without guessing whether it applies to
-  the preceding or following item.
+	the preceding or following item.
 - Make a comment that justifies a Design Goal state the known situation that prompted the goal, and leave an unknown
-  origin unclaimed rather than invent one.
+	origin unclaimed rather than invent one.
 - Let a maintainer learn from the comment beside a deliberate divergence from the normal approach why the divergence
-  is required and what would fail without it, so that it is neither removed nor copied incorrectly.
+	is required and what would fail without it, so that it is neither removed nor copied incorrectly.
 
 ## Guidance
 

@@ -20,9 +20,9 @@ findings=$(find src -name '*.ts' | sort | while read -r file; do
 			asyncFunctions[name] = 1
 		}
 	' src/api.ts "$file"
-done)
-if [ -n "$findings" ]; then
+		done)
+		if [ -n "$findings" ]; then
 	echo "$findings"
 	exit 1
-fi
-echo "No findings."
+		fi
+		echo "No findings."

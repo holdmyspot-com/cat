@@ -4,7 +4,7 @@
 
 - Let the user read every time and date that an agent presents to them without converting it from UTC or another zone.
 - Keep every time that an agent writes for a file, tool, or shared record in one unambiguous zone, so a later reader or
-  program does not depend on the session's local zone.
+	program does not depend on the session's local zone.
 
 ## Guidance
 

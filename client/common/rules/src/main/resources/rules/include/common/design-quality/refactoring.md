@@ -7,9 +7,9 @@ depends-on:
 ## Design Goals
 
 - Complete each coherent refactoring boundary efficiently by batching its related edits for a shared source or target
-  file without merging unrelated responsibilities.
+	file without merging unrelated responsibilities.
 - Reduce refactoring wall time through dependency-closed parallel work and controlled integration without weakening
-  design review or verification.
+	design review or verification.
 
 ## Guidance
 

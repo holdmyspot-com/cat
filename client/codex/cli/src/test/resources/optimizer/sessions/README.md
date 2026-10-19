@@ -30,21 +30,21 @@ The CAT driver sends `turn/interrupt` to its in-flight trial session; the record
 Substitutions made:
 
 - The optimizer run's enclosing `.cat/work` path becomes `/recorded/project`; the four run identifiers become
-  `run-trial`, `run-judge`, `run-author` and `run-deriver`.
+	`run-trial`, `run-judge`, `run-author` and `run-deriver`.
 - The interrupt recording's enclosing `.cat/work` path becomes `/recorded/project`; its run identifier becomes
-  `run-interrupt`, and its referenced trial run identifier becomes `run-interrupt-trial`.
+	`run-interrupt`, and its referenced trial run identifier becomes `run-interrupt-trial`.
 - The child capture's `/home/gili/cat-client/worktrees/v1.0-wi17a/.cat/work/temp/tool-events-recording` path becomes
-  `/recorded/child`.
+	`/recorded/child`.
 - Other `/home/gili/cat-client` prefixes become `/recorded/host`; remaining `/home/gili` prefixes become
-  `/recorded/user`.
+	`/recorded/user`.
 - Root thread and session identifiers become `trial-thread`, `judge-thread`, `author-thread`, `deriver-thread` or
-  `root-thread`; the interrupt thread and session identifiers become `interrupt-thread`, and the recorded child thread
-  becomes `child-thread`.
+	`root-thread`; the interrupt thread and session identifiers become `interrupt-thread`, and the recorded child thread
+	becomes `child-thread`.
 - Turn and other UUID identifiers become stable `identifier-N` or `recorded-identifier-N` values. Agent-message item
-  identifiers become `message-ROLE-N`; command item identifiers become `exec-identifier-N`, and command
-  process identifiers become `process`.
+	identifiers become `message-ROLE-N`; command item identifiers become `exec-identifier-N`, and command
+	process identifiers become `process`.
 - Finding identifier `ac2fdab9e671697abf0df9d199023489cda88fdcd355b0f58477b17c15ddab86` becomes
-  `finding-placeholder`.
+	`finding-placeholder`.
 
 Connection-local JSON-RPC response IDs retain their recorded values: 4 for the first role turn and interrupt turn,
 5 for the second deriver turn and the interrupt request. All other recorded fields and values remain unchanged.

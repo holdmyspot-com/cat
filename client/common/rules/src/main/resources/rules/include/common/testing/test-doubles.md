@@ -3,10 +3,10 @@
 ## Design Goals
 
 - A test that uses a test double fails when the production behavior it claims to verify is wrong, because each
-  assertion's expected outcome comes from a decision or transformation of the production code rather than from data or
-  effects that the double or the test scripted.
+	assertion's expected outcome comes from a decision or transformation of the production code rather than from data or
+	effects that the double or the test scripted.
 - A double behaves as recorded or documented evidence shows the real dependency behaves, and a test that uses it is not
-  presented as evidence of how that real dependency behaves.
+	presented as evidence of how that real dependency behaves.
 
 ## Guidance
 

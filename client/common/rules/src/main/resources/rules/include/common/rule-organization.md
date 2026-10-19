@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Let readers find the guidance for one durable rule, prompt, skill, command, or workflow decision without unrelated
-  topics obscuring it or forcing unnecessary routing layers.
+	topics obscuring it or forcing unnecessary routing layers.
 - Keep each rule or prompt requirement in its governing prompt file and make every route actionable from an observable
-  condition.
+	condition.
 - Keep rule and prompt changes focused, nonduplicative, and verifiable across their complete applicable corpus.
 
 ## Guidance
@@ -93,7 +93,7 @@ After adding or changing a rule or prompt, review the resulting applicable corpu
 - Every local lazy-load target and referenced rule file exists.
 - Every external-file reference names only the file and its purpose; its mutable values remain in the authoritative file.
 - Routing is unambiguous: no duplicate top-level rule, contradictory instruction, or overlapping path rule changes the
-  intended guidance unexpectedly.
+	intended guidance unexpectedly.
 - Rule examples comply with the rules they demonstrate.
 - Removed or renamed rules have no stale references.
 

@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Identify evidence-backed resource-use and responsiveness concerns in a declared change, or approve it when none
-  remain.
+	remain.
 
 ## Guidance
 

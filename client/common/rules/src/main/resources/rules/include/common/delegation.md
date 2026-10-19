@@ -3,18 +3,18 @@
 ## Design Goals
 
 - Allocate workflow work to the least costly authority that can verify or decide it: deterministic work to authoritative
-  automation, bounded review to independently checkable delegation, and high-judgment decisions to the authority able to
-  evaluate them.
+	automation, bounded review to independently checkable delegation, and high-judgment decisions to the authority able to
+	evaluate them.
 - Isolate delegated writes and integrate them through one parent-owned boundary so concurrent verification cannot grant
-  one delegate authority over another delegate's files.
+	one delegate authority over another delegate's files.
 <!-- Parent launch and handoff failures were previously misreported as executor failure or unavailable external state,
      causing recovery to stop at the wrong responsible boundary. -->
 - Require a parent to classify an observed delegated outcome before selecting recovery, so an unreadable handoff or
-  parent launch mistake cannot be reported as an executor failure or an unavailable external prerequisite.
+	parent launch mistake cannot be reported as an executor failure or an unavailable external prerequisite.
 <!-- A parent repeatedly made placeholder tool calls while direct delegation was available, then treated the absence of
      a launch receipt as a launch failure. -->
 - Ensure a required delegate launch uses its documented direct operation and receipt before any wait, recovery, or
-  status conclusion, so an unrelated tool result cannot be mistaken for a launch attempt.
+	status conclusion, so an unrelated tool result cannot be mistaken for a launch attempt.
 - Wait for a live delegate by blocking until it returns, rather than observing it at intervals.
 
 ## Guidance

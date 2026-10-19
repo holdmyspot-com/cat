@@ -3,13 +3,13 @@
 ## Design Goals
 
 - Preserve ownership of a started external operation until its recorded terminal result establishes whether the
-  required work completed, failed, or was interrupted.
+	required work completed, failed, or was interrupted.
 - Preserve verified work after an owner interruption by resuming only the claimed work that lacks a recorded terminal
-  result when the workflow retains an executable plan.
+	result when the workflow retains an executable plan.
 - Keep a command's outcome observable when a descendant retains its terminal channel after the command itself has
-  returned.
+	returned.
 - Use a durable-job mechanism only when the execution environment documents a terminal-status contract that can be
-  retained and verified.
+	retained and verified.
 
 ## Guidance
 

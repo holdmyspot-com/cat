@@ -6,7 +6,7 @@ agents: ["main", "subagents"]
 ## Design Goals
 
 - Route each project-specific reader decision directly to its authoritative rule before the reader takes the governed
-  action.
+	action.
 - Keep project routes narrow enough that unrelated work does not receive policy it cannot apply.
 
 ## Guidance

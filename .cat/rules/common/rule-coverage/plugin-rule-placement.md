@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Put guidance in the rule layer where every intended reader can apply it without unavailable repository-specific
-  context.
+	context.
 
 ## Guidance
 

@@ -1,6 +1,6 @@
 {
-  "format_version": 1,
-  "address": "https://platform.claude.com/docs/en/models/overview",
-  "read": "2026-10-04",
-  "families": ["fable", "opus", "sonnet", "haiku"]
+	"format_version": 1,
+	"address": "https://platform.claude.com/docs/en/models/overview",
+	"read": "2026-10-04",
+	"families": ["fable", "opus", "sonnet", "haiku"]
 }

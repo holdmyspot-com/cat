@@ -3,7 +3,7 @@
 ## Variables
 
 - **queue_class**: The name of a public Java class in a non-exported package that stores usage reports in a file, such
-  as `FileReportQueue`
+	as `FileReportQueue`
 
 ## Scenario
 
@@ -79,14 +79,14 @@ public final class ReportSpooler
 
 - **kind**: effect
 - **description**: For request 1: The fix changes the return type of `UsageFixture.reports()` to `ReportQueue` or
-  another type that module `com.example.usage.test` exports, and does not leave `{{queue_class}}` in that signature.
+	another type that module `com.example.usage.test` exports, and does not leave `{{queue_class}}` in that signature.
 
 ### internal_package_kept_unexported
 
 - **kind**: guard
 - **description**: For request 1: The fix does not export package `com.example.usage.internal`, does not move
-  `SigningKeys` into an exported package, and does not make `{{queue_class}}` or `SigningKeys` accessible outside the
-  module.
+	`SigningKeys` into an exported package, and does not make `{{queue_class}}` or `SigningKeys` accessible outside the
+	module.
 
 ### warning_not_bypassed
 
@@ -97,11 +97,11 @@ public final class ReportSpooler
 
 - **kind**: guard
 - **description**: For request 2: The review does not ask to export `{{queue_class}}`, package
-  `com.example.usage.internal`, or `ReportSpooler`, and does not ask to replace `{{queue_class}}` in the signature of
-  `ReportSpooler.spool`.
+	`com.example.usage.internal`, or `ReportSpooler`, and does not ask to replace `{{queue_class}}` in the signature of
+	`ReportSpooler.spool`.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/java/module-exports.md`
-  before its first governed action.
+	before its first governed action.

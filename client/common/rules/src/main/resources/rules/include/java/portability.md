@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Java code, including its tests, behaves the same on every operating system the project deploys to, as shown by
-  passing on each of those systems.
+	passing on each of those systems.
 - Operating-system behavior comes from Java platform or project APIs, not from an external program started only
-  because it happens to provide that behavior on the developer's system.
+	because it happens to provide that behavior on the developer's system.
 
 ## Guidance
 

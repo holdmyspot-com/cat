@@ -4,7 +4,7 @@
 
 - Centralize CAT environment access behind explicit project abstractions.
 - Ensure each CAT value used by a CLI or hook derives from its harness's documented native environment contract and
-  cannot be overridden by a locally defined CAT environment variable.
+	cannot be overridden by a locally defined CAT environment variable.
 
 ## Guidance
 

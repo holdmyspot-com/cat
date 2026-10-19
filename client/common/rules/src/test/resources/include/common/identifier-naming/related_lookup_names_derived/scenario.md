@@ -40,35 +40,35 @@ accessor that returns that path.
 
 - **kind**: effect
 - **description**: For request 1: Both proposed method names state that the selected test run is restricted to the
-  given module, for example with a `ForModule` phrase, so neither name reads as the first or last test run in the whole
-  log.
+	given module, for example with a `ForModule` phrase, so neither name reads as the first or last test run in the whole
+	log.
 
 ### related_names_matched
 
 - **kind**: effect
 - **description**: For request 1: The two proposed method names use the same words in the same order except for one
-  pair of matched words of one kind that states the selection, such as `First` and `Last`.
+	pair of matched words of one kind that states the selection, such as `First` and `Last`.
 
 ### returned_value_named
 
 - **kind**: effect
 - **description**: For request 1: The proposed method names identify the returned value as the line number of the
-  entry that starts the selected test run, not as the test run itself.
+	entry that starts the selected test run, not as the test run itself.
 
 ### checked_input_omitted
 
 - **kind**: guard
 - **description**: For request 1: Neither proposed method name contains a word for the expected project, which the
-  methods only check.
+	methods only check.
 
 ### accessor_unqualified
 
 - **kind**: guard
 - **description**: For request 2: The proposed accessor name does not repeat `BuildLog` or another word that the record
-  already supplies, such as `getBuildLogPath`.
+	already supplies, such as `getBuildLogPath`.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/identifier-naming.md`
-  before its first governed action.
+	before its first governed action.

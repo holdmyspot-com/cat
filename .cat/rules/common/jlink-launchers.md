@@ -8,7 +8,7 @@ paths:
 
 - Let every program that a generated jlink launcher starts name any file, whatever the caller's locale.
 - Give every program the same view of the file system as its caller, so files it writes for a later call or reads on the
-  caller's behalf are where the caller expects them.
+	caller's behalf are where the caller expects them.
 - Test the launcher template that all jlink launchers share once, rather than once for each program or harness.
 - Start every program on Windows with the same JVM options and the same arguments as on Linux and macOS.
 

@@ -3,8 +3,8 @@
 ## Design Goals
 
 - Prove that, when a change runs through several public functions that different actor actions call, the first reply's
-  overview tells the user that the listed use cases are separate behaviors, each started by its own actor action, and
-  not consecutive steps of one flow.
+	overview tells the user that the listed use cases are separate behaviors, each started by its own actor action, and
+	not consecutive steps of one flow.
 
 ## Variables
 
@@ -21,16 +21,16 @@ Use the code-flow-review skill to review the change.
 
 - **kind**: effect
 - **description**: Before the first use case's steps, the reply says that the listed use cases are separate behaviors
-  that each start with their own actor action, and that they are not consecutive steps of one flow.
+	that each start with their own actor action, and that they are not consecutive steps of one flow.
 
 ### one_row_per_actor_action
 
 - **kind**: guard
 - **description**: The overview lists starting a login, waiting for its approval, checking the status and logging out
-  as different use cases.
+	as different use cases.
 
 ### first_use_case_only
 
 - **kind**: guard
 - **description**: The reply presents the steps of the first use case only, then asks the user to ask questions about
-  it or approve it before the next use case.
+	it or approve it before the next use case.

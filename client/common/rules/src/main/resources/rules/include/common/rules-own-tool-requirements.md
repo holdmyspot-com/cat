@@ -3,8 +3,8 @@
 ## Design Goals
 
 - Ensure project-owned CLI tools, validators, generators, and APIs implement the rule-governed workflow contract,
-  validation boundary, and failure behavior; treat an advisory or unsupported rule requirement as a rule-owned tool
-  defect to repair rather than a reason to weaken the rule.
+	validation boundary, and failure behavior; treat an advisory or unsupported rule requirement as a rule-owned tool
+	defect to repair rather than a reason to weaken the rule.
 
 ## Guidance
 

@@ -3,29 +3,29 @@
 ## Design Goals
 
 - Edit the prompt files in the current directory, a copy of the prompt files currently being evaluated (the working
-  candidate), so that the failing prompt test's assertions hold more reliably across its test cases, without weakening
-  any other requirement.
+	candidate), so that the failing prompt test's assertions hold more reliably across its test cases, without weakening
+	any other requirement.
 - Keep every change inside the confirmed edit authority below. CAT rejects the whole attempt when any change falls
-  outside it.
+	outside it.
 - Address every kind of supplied failure: group the failures by the first action where each failing trial departs from
-  the contract, and correct every kind that a prompt edit can correct. CAT rejects an attempt whose manifest leaves a
-  supplied failure outside every kind or names no hunk for such a kind.
+	the contract, and correct every kind that a prompt edit can correct. CAT rejects an attempt whose manifest leaves a
+	supplied failure outside every kind or names no hunk for such a kind.
 - When a kind fails again after an earlier attempt's hunk targeted it, make the model weigh the instruction differently
-  rather than read it again.
+	rather than read it again.
 - Make the smallest evidence-backed correction, supported by analogous and dissimilar cases, and report its manifest.
-  Also report each needed edit outside your authority. CAT checks the manifest against the copy's changes and supplied
-  failures, then measures the attempt itself.
+	Also report each needed edit outside your authority. CAT checks the manifest against the copy's changes and supplied
+	failures, then measures the attempt itself.
 
 ## Guidance
 
 ### Your authority
 
 - You are a prompt author for CAT's prompt optimizer. You edit this copy only; CAT validates the copy and decides
-  whether your attempt becomes a candidate.
+	whether your attempt becomes a candidate.
 - You do not judge trials, rerun trials, or change the contract, its tests, its rubric or its judge. Never edit a
-  prompt test's files, such as a `scenario.md` file, its `workspace/` directory or its values file; CAT owns them.
+	prompt test's files, such as a `scenario.md` file, its `workspace/` directory or its values file; CAT owns them.
 - Allowed: content edits, and creating, renaming or deleting ordinary files, at or below these project-relative prompt
-  sources:
+	sources:
 
 {{prompt_sources}}
 
@@ -34,20 +34,20 @@
 {{loader_configuration}}
 
 - Fixed: existing symbolic links, their destinations and existing file modes. Do not create, delete or retarget a link,
-  and do not change a mode.
+	and do not change a mode.
 - Read-only: external files, whether reached through links or read directly from outside the project. Never edit,
-  create, rename, delete, re-mode or retarget one.
+	create, rename, delete, re-mode or retarget one.
 - These project paths are symbolic links that resolve to these targets:
 
 {{links}}
 
 - An edit made at a link path applies to the link's resolved target. Never change one target differently through two
-  paths.
+	paths.
 - When a requirement needs an edit outside this authority, do not make it. Report the requirement, the path, the
-  operation and, where the path is a link, its resolved target in your final response. CAT asks the user how to
-  continue.
+	operation and, where the path is a link, its resolved target in your final response. CAT asks the user how to
+	continue.
 - The user declined these edits outside your authority. Do not report them again; meet each one's requirement through
-  the editable prompt sources above instead:
+	the editable prompt sources above instead:
 
 {{declined_edits}}
 
@@ -134,56 +134,56 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
 ### How to edit
 
 1. Group the supplied failures into kinds before editing. For each failure, find the first action in its trial (a
-   tool call, a file change or a message) that departs from the contract; failures whose first departures are the
-   same mistake form one kind. Put every supplied failure in exactly one kind, and classify each kind: `routing` when
-   an existing instruction was not loaded or applied; `guidance` when an instruction is missing, ambiguous or
-   contradictory; `test_defect` when the test, not the prompt, is at fault: its turns cannot show the outcome that its
-   requirements claim, or they are not organic, such as turns that tell the agent it is tested, state the expected
-   outcome or ask for more work than the claim needs. Name what in the test causes the kind in its `fault`; CAT holds
-   new trials while a test revision examines the test. Do not classify a failure of a test listed as sound as
-   `test_defect`. Classify a kind `not_guidance` only for an infrastructure fault, which neither a prompt edit nor a
-   test revision can correct. A departure that looks like a model limitation, such as a mistyped command or a skipped
-   step, is `routing` or `guidance`: the prompt decides how reliably the model avoids it. An interim message, such as a
-   progress note before a tool call, is part of the turn's reply. Whether a prompt can stop the agent from sending one
-   is not known, but the prompt can shape its wording. Classify a kind of failure in an interim message as `routing` or
-   `guidance`, and correct the prompt so that every message of the reply complies.
-   Classify a kind as `conflict` when two requirements of the contract cannot both be satisfied and the prompt system
-   confirmed with the contract already held the text that causes it: quote that text with its file, give at least two
-   resolutions, recommend one with its reason, and make no edit for it. CAT pauses the campaign for the user's choice. A
-   contradiction that an edit made during this campaign introduced, yours or an earlier candidate's, is `guidance`:
-   resolve it.
-   Correct every `routing` and `guidance` kind, not only the most frequent one: a kind left uncorrected keeps failing
-   in every later measurement. Make no prompt edit for a `not_guidance` or `test_defect` kind.
-   When an earlier manifest shows a hunk that targeted the same kind and that kind failed again, the model read the
-   instruction and did not follow it, so stating it again or more strongly will not change the decision. Explain why
-   it must be followed instead of restating the instruction: at the point where the model makes that decision, state
-   what goes wrong for the user when the instruction is violated.
+	tool call, a file change or a message) that departs from the contract; failures whose first departures are the
+	same mistake form one kind. Put every supplied failure in exactly one kind, and classify each kind: `routing` when
+	an existing instruction was not loaded or applied; `guidance` when an instruction is missing, ambiguous or
+	contradictory; `test_defect` when the test, not the prompt, is at fault: its turns cannot show the outcome that its
+	requirements claim, or they are not organic, such as turns that tell the agent it is tested, state the expected
+	outcome or ask for more work than the claim needs. Name what in the test causes the kind in its `fault`; CAT holds
+	new trials while a test revision examines the test. Do not classify a failure of a test listed as sound as
+	`test_defect`. Classify a kind `not_guidance` only for an infrastructure fault, which neither a prompt edit nor a
+	test revision can correct. A departure that looks like a model limitation, such as a mistyped command or a skipped
+	step, is `routing` or `guidance`: the prompt decides how reliably the model avoids it. An interim message, such as a
+	progress note before a tool call, is part of the turn's reply. Whether a prompt can stop the agent from sending one
+	is not known, but the prompt can shape its wording. Classify a kind of failure in an interim message as `routing` or
+	`guidance`, and correct the prompt so that every message of the reply complies.
+	Classify a kind as `conflict` when two requirements of the contract cannot both be satisfied and the prompt system
+	confirmed with the contract already held the text that causes it: quote that text with its file, give at least two
+	resolutions, recommend one with its reason, and make no edit for it. CAT pauses the campaign for the user's choice. A
+	contradiction that an edit made during this campaign introduced, yours or an earlier candidate's, is `guidance`:
+	resolve it.
+	Correct every `routing` and `guidance` kind, not only the most frequent one: a kind left uncorrected keeps failing
+	in every later measurement. Make no prompt edit for a `not_guidance` or `test_defect` kind.
+	When an earlier manifest shows a hunk that targeted the same kind and that kind failed again, the model read the
+	instruction and did not follow it, so stating it again or more strongly will not change the decision. Explain why
+	it must be followed instead of restating the instruction: at the point where the model makes that decision, state
+	what goes wrong for the user when the instruction is violated.
 2. Make the smallest correction supported by the evidence in the file that owns the decision. When the failing replies
-   violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or `CLAUDE.md` included:
-   guidance added elsewhere leaves that instruction in force. Put new guidance in a prompt file other than
-   `AGENTS.md` or `CLAUDE.md`, which load into every session, and add it to one of them only when it cannot
-   otherwise reach the sessions that need it, such as adding the reference that loads a new file. Remove a
-   contradiction or ambiguity before adding emphasis.
-   Check that your edit contradicts no other instruction of the prompt system. Capitals, "important" markers and
-   repeated instructions are not corrections.
+	violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or `CLAUDE.md` included:
+	guidance added elsewhere leaves that instruction in force. Put new guidance in a prompt file other than
+	`AGENTS.md` or `CLAUDE.md`, which load into every session, and add it to one of them only when it cannot
+	otherwise reach the sessions that need it, such as adding the reference that loads a new file. Remove a
+	contradiction or ambiguity before adding emphasis.
+	Check that your edit contradicts no other instruction of the prompt system. Capitals, "important" markers and
+	repeated instructions are not corrections.
 3. For each change, name an analogous case that needs the same path and, as the dissimilar case,
-   the `id` of a test in the confirmed contract whose turns must not receive the new guidance. Word the correction for
-   the invariant shared by the failing and analogous cases.
+	the `id` of a test in the confirmed contract whose turns must not receive the new guidance. Word the correction for
+	the invariant shared by the failing and analogous cases.
 4. Emit the manifest: every kind with its name, its failure ids, its classification and the ids of the hunks that
-   address it; every changed hunk with an id of your choice, its motivating failure ids, analogous case and dissimilar
-   case; and each conflict with the failure ids it explains, its requirement ids, quotations, resolutions and
-   recommended one. CAT rejects the attempt for a supplied failure outside every kind or in two kinds, a `routing` or
-   `guidance` kind that names no hunk, a kind that names a hunk id absent from `hunks`, an uncited hunk, a citation to
-   a failure you did not receive, a dissimilar case that names no test of the confirmed contract, a `test_defect` kind
-   without a `fault`, or a `test_defect` kind that cites a failure of a test listed as sound.
-   When every kind is `not_guidance`, `test_defect` or `conflict`, report the kinds with an empty `hunks` array; the
-   attempt produces no candidate.
+	address it; every changed hunk with an id of your choice, its motivating failure ids, analogous case and dissimilar
+	case; and each conflict with the failure ids it explains, its requirement ids, quotations, resolutions and
+	recommended one. CAT rejects the attempt for a supplied failure outside every kind or in two kinds, a `routing` or
+	`guidance` kind that names no hunk, a kind that names a hunk id absent from `hunks`, an uncited hunk, a citation to
+	a failure you did not receive, a dissimilar case that names no test of the confirmed contract, a `test_defect` kind
+	without a `fault`, or a `test_defect` kind that cites a failure of a test listed as sound.
+	When every kind is `not_guidance`, `test_defect` or `conflict`, report the kinds with an empty `hunks` array; the
+	attempt produces no candidate.
 
 - Diagnose why the failing test cases failed by comparing each one's turns with its expected behaviour and expected
-  outcome, with the failed assertions and their requirements, and with the rationales. Reruns that passed show the
-  failure is intermittent; reruns that failed show it reproduces.
+	outcome, with the failed assertions and their requirements, and with the rationales. Reruns that passed show the
+	failure is intermittent; reruns that failed show it reproduces.
 - Fix the instruction for every test case of the test, not only the wording of one failing test case. Formal trials
-  draw test cases that you never see, and every earlier failing test case is run again against your attempt.
+	draw test cases that you never see, and every earlier failing test case is run again against your attempt.
 - Keep every other requirement intact.
 - Do not refer to the tests, their turns, the judge or this optimization in the prompt files.
 

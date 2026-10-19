@@ -10,12 +10,12 @@ paths:
 ## Design Goals
 
 - Keep CAT's project rules, bundled rule sources, and harness-specific source directories distinct so every reader gets
-  guidance that is available in its own repository and runtime context.
+	guidance that is available in its own repository and runtime context.
 - Interpret a request to simplify a maintained rule, route, or workflow as a request to reduce the guidance its reader
-  receives before each decision while preserving every decision when it becomes necessary, rather than as a request to
-  shorten a report about that guidance.
+	receives before each decision while preserving every decision when it becomes necessary, rather than as a request to
+	shorten a report about that guidance.
 - Ensure a simplified route gives each reader decision only the smallest authoritative guidance needed when that
-  decision first arises, rather than preserving or discarding a whole loaded route as an indivisible unit.
+	decision first arises, rather than preserving or discarding a whole loaded route as an indivisible unit.
 
 ## Guidance
 

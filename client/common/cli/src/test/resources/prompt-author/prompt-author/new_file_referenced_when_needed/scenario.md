@@ -3,7 +3,7 @@
 ## Variables
 
 - **question**: A support question whose answer is a quantity that the supplied failures stated in non-SI units, such as
-  `How far is the office from the station?`
+	`How far is the office from the station?`
 
 ## Scenario
 
@@ -25,4 +25,4 @@ beside it, and run the prompt author in a copy of the project.
 
 - **kind**: effect
 - **description**: `AGENTS.md` changes only by the reference that tells the agent when to read the new file, and the
-  manifest cites the failures for both hunks.
+	manifest cites the failures for both hunks.

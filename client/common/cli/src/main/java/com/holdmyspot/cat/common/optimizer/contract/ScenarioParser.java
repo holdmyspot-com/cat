@@ -46,9 +46,9 @@ final class ScenarioParser
 	 */
 	private static final Pattern ITEM = Pattern.compile("- \\*\\*([^*]+)\\*\\*:(.*)");
 	/**
-	 * The indentation of the lines that continue a pair's value.
+	 * Matches the indentation of a line that continues a pair's value: a tab or two spaces.
 	 */
-	private static final String INDENT = "  ";
+	private static final Pattern INDENT = Pattern.compile("^(?:\t|  )");
 	/**
 	 * Matches the opening of a fenced code block, capturing its fence.
 	 */
@@ -294,7 +294,7 @@ final class ScenarioParser
 
 	/**
 	 * Reads the key-value pairs of a range of lines. Each pair is an item {@code - **key**: value} whose value continues
-	 * on the following blank lines and lines indented by two spaces.
+	 * on the following blank lines and lines indented by a tab or two spaces.
 	 *
 	 * @param start the index of the first line
 	 * @param end   the index of the line after the last
@@ -326,10 +326,13 @@ final class ScenarioParser
 			}
 			else if (line.isBlank())
 				value.add("");
-			else if (key != null && line.startsWith(INDENT))
-				value.add(line.substring(INDENT.length()));
 			else
-				throw error(i, prose);
+			{
+				Matcher indent = INDENT.matcher(line);
+				if (key == null || !indent.lookingAt())
+					throw error(i, prose);
+				value.add(line.substring(indent.end()));
+			}
 		}
 		if (key != null)
 			pairs.add(new Pair(key, keyLine, end, String.join("\n", value).strip()));

@@ -3,12 +3,12 @@
 ## Design Goals
 
 - Prove that when a request depends on a claim that two forms of code are equivalent, and the claim holds only under a
-  condition, the agent tells the requester that condition instead of adopting the claim as stated.
+	condition, the agent tells the requester that condition instead of adopting the claim as stated.
 
 ## Variables
 
 - **exception**: The checked exception that opening the scope throws, such as `AuthorizationException` or
-  `QuotaExceededException`.
+	`QuotaExceededException`.
 
 ## Scenario
 
@@ -53,11 +53,11 @@ The user writes:
 
 - **kind**: effect
 - **description**: The reply tells the user that the two forms are equivalent only when neither the try block's body
-  nor the resource's `close()` can throw `{{exception}}`, or equivalently that the combined `catch` also catches that
-  exception from the body or from `close()`, after the scope has closed.
+	nor the resource's `close()` can throw `{{exception}}`, or equivalently that the combined `catch` also catches that
+	exception from the body or from `close()`, after the scope has closed.
 
 ### rule_limited_to_condition
 
 - **kind**: guard
 - **description**: If the agent writes or proposes the rule, the rule applies the rewrite only when the body and
-  `close()` cannot throw the caught exception; it does not require the rewrite unconditionally.
+	`close()` cannot throw the caught exception; it does not require the rewrite unconditionally.

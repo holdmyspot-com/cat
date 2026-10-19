@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Let a reader of the history learn why each commit was made, not only what it changed, without asking its author or
-  finding a discussion that the history does not record.
+	finding a discussion that the history does not record.
 
 ## Guidance
 

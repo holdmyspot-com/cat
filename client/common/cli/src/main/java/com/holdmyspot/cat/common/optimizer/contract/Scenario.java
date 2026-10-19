@@ -211,7 +211,7 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 	}
 
 	/**
-	 * Appends a key-value pair whose value continues on lines indented by two spaces.
+	 * Appends a key-value pair whose value continues on lines indented by a tab.
 	 *
 	 * @param text  the text to append to
 	 * @param key   the key
@@ -227,7 +227,7 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 		for (int i = 1; i < lines.length; ++i)
 		{
 			if (!lines[i].isEmpty())
-				text.append("  ").append(lines[i]);
+				text.append('\t').append(lines[i]);
 			text.append('\n');
 		}
 	}

@@ -29,34 +29,34 @@ our audit log stores. Keep the entry names in a field or constant. The construct
 
 - **kind**: effect
 - **description**: For request 1: a comment or documentation string at the declaration of the module-level constant
-  states that its codes are the statuses that the payment gateway documents as transient failures.
+	states that its codes are the statuses that the payment gateway documents as transient failures.
 
 ### filter_behavior
 
 - **kind**: guard
 - **description**: For request 2: `filter` returns only the `event`, `delivery_id` and `timestamp` entries plus
-  `received_at`.
+	`received_at`.
 
 ### retained_entries_explained
 
 - **kind**: effect
 - **description**: For request 2: a comment or documentation string at the declaration of the entry names states that
-  they are the entries the audit log stores and that `filter` keeps only those entries.
+	they are the entries the audit log stores and that `filter` keeps only those entries.
 
 ### descriptive_names
 
 - **kind**: effect
 - **description**: Neither the status-code constant nor the entry-name field or constant is named only after its
-  container or element kind, such as `CODES`, `FIELDS`, `NAMES`, `KEYS` or `VALUES`.
+	container or element kind, such as `CODES`, `FIELDS`, `NAMES`, `KEYS` or `VALUES`.
 
 ### clock_not_restated
 
 - **kind**: effect
 - **description**: For request 2: the field that holds the clock has no comment or documentation string that only
-  restates its name or type.
+	restates its name or type.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/documentation/declared-values.md`
-  before its first governed action.
+	before its first governed action.

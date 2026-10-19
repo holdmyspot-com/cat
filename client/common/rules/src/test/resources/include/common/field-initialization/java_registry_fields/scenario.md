@@ -45,22 +45,22 @@ public final class TaskQueue
 
 - **kind**: effect
 - **description**: For request 1: The field that holds the registered names receives its empty collection in its
-  declaration, not through an assignment in the constructor or an instance initializer block.
+	declaration, not through an assignment in the constructor or an instance initializer block.
 
 ### parameter_field_assigned_in_constructor
 
 - **kind**: guard
 - **description**: For request 1: The field that holds the owner's name is assigned from the constructor parameter in
-  the constructor.
+	the constructor.
 
 ### validated_field_stays_in_constructor
 
 - **kind**: guard
 - **description**: For request 2: `limit` is still assigned in the constructor after its validation, and the class
-  accepts exactly `limit` tasks; any other change to the constructor leaves each new queue's state unchanged.
+	accepts exactly `limit` tasks; any other change to the constructor leaves each new queue's state unchanged.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects
-  `rules/include/common/field-initialization.md` before its first governed action.
+	`rules/include/common/field-initialization.md` before its first governed action.

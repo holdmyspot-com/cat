@@ -27,17 +27,17 @@ An open booking accepts changes. A closed booking does not.
 
 - **kind**: effect
 - **description**: For request 1: The answer uses a compact visual comparison, such as a table, that lets the customer
-  compare all three states on the three requested attributes without searching several prose paragraphs. It preserves
-  the hold's acceptance condition and does not repeat the complete comparison in prose.
+	compare all three states on the three requested attributes without searching several prose paragraphs. It preserves
+	the hold's acceptance condition and does not repeat the complete comparison in prose.
 
 ### simple_contrast_stays_simple
 
 - **kind**: guard
 - **description**: For request 2: The answer states the difference accurately in one short sentence. It does not add a
-  table, timeline, or diagram that makes this simple contrast harder to read.
+	table, timeline, or diagram that makes this simple contrast harder to read.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`
-  before its first governed action.
+	before its first governed action.

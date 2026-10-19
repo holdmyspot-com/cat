@@ -6,7 +6,7 @@ agents: ["main", "subagents"]
 ## Design Goals
 
 - Ensure every agent resolves task-determined companion guidance before accessing the artifact or performing the
-  operation that guidance governs, rather than treating an initial routing-index read as complete.
+	operation that guidance governs, rather than treating an initial routing-index read as complete.
 
 ## Guidance
 

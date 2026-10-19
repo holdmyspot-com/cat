@@ -3,7 +3,7 @@
 ## Variables
 
 - **chain**: A Java method chain of three or more invocations with one space before one of its `.` selectors, such as
-  `records.filter(this::accepted) .map(this::encode).toList()`
+	`records.filter(this::accepted) .map(this::encode).toList()`
 
 ## Scenario
 
@@ -27,16 +27,16 @@ return values.stream().map(this::transform).filter(this::accepted).toList();
 
 - **kind**: effect
 - **description**: For request 1: The response removes the whitespace before the selector while retaining the chain's
-  method order.
+	method order.
 
 ### newline_before_selector_is_allowed
 
 - **kind**: guard
 - **description**: For request 2: The response may put each selector on a new line before its `.`; it does not require
-  the entire chain to remain on one line or insert spaces before a selector on a line.
+	the entire chain to remain on one line or insert spaces before a selector on a line.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects
-  `rules/include/common/method-chain-layout.md` before its first governed action.
+	`rules/include/common/method-chain-layout.md` before its first governed action.

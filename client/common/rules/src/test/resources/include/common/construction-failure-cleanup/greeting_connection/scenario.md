@@ -23,7 +23,7 @@ Show the whole module.
 
 - **kind**: effect
 - **description**: `connect` closes the socket it opened when `{{connection_class}}(...)` raises, and then re-raises
-  the constructor's exception.
+	the constructor's exception.
 
 ### supplied_socket_left_open
 
@@ -34,10 +34,10 @@ Show the whole module.
 
 - **kind**: guard
 - **description**: After `{{connection_class}}(...)` succeeds, `connect` returns the new object without closing the
-  socket, for example without a `with` block around the socket that closes it on return.
+	socket, for example without a `with` block around the socket that closes it on return.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects
-  `rules/include/common/construction-failure-cleanup.md` before its first governed action.
+	`rules/include/common/construction-failure-cleanup.md` before its first governed action.

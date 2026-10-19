@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Preserve established Java semantics and edge-case behavior by using an existing API when it satisfies the required
-  contract.
+	contract.
 - Avoid duplicate implementation and maintenance of behavior that a standard or project API already owns.
 
 ## Guidance

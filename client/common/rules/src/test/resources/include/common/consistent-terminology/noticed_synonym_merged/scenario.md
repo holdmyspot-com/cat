@@ -3,7 +3,7 @@
 ## Variables
 
 - **synonym**: Another name that the Javadoc uses for the documented retention period, such as `retention window` or
-  `storage lifetime`
+	`storage lifetime`
 
 ## Scenario
 
@@ -38,16 +38,16 @@ returns how many days remain before a deleted report can no longer be restored.
 
 - **kind**: effect
 - **description**: For request 1: The response reports that the Javadoc's **{{synonym}}** names the same concept as the
-  documented **retention period**, chooses one of the two terms, and says the other should be replaced.
+	documented **retention period**, chooses one of the two terms, and says the other should be replaced.
 
 ### distinct_concepts_kept
 
 - **kind**: guard
 - **description**: For request 2: The description uses **grace period** for the restore window and does not merge it
-  with the retention period.
+	with the retention period.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects
-  `rules/include/common/consistent-terminology.md` before its first governed action.
+	`rules/include/common/consistent-terminology.md` before its first governed action.

@@ -9,7 +9,7 @@ depends-on:
 
 - Make Bash functions and Bats tests understandable to their intended readers without inspecting their implementation.
 - Keep Bash behavior shared by several entry scripts in one documented library while each entry retains only its own
-  adaptation at the execution boundary.
+	adaptation at the execution boundary.
 
 ## Bash Function Documentation
 

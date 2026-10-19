@@ -3,12 +3,12 @@
 ## Design Goals
 
 - Prove that the description of a value chosen from several values, such as the latest one, names the scope that bounds
-  the choice beside the value.
+	the choice beside the value.
 
 ## Variables
 
 - **time_field**: The name of an `Instant` field that holds when a response finished, such as `lastResponseTime` or
-  `finishedAt`
+	`finishedAt`
 
 ## Scenario
 
@@ -48,11 +48,11 @@ Write the Javadoc for the `{{time_field}}` field. Show only the field and its Ja
 
 - **kind**: effect
 - **description**: The Javadoc says that `{{time_field}}` holds when the latest response of the selected turn finished,
-  and places the selected turn beside the latest response so that it cannot be read as the latest response of the
-  session.
+	and places the selected turn beside the latest response so that it cannot be read as the latest response of the
+	session.
 
 ### selection_identified
 
 - **kind**: guard
 - **description**: The Javadoc identifies the value as the finish time of the latest response, not of the first
-  response or of the turn's start.
+	response or of the turn's start.

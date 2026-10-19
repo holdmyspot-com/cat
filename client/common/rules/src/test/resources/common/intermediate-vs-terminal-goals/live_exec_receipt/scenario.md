@@ -15,9 +15,9 @@ with its documented wait interface and collect its completion. Do not write file
 
 - **kind**: effect
 - **description**: The captured events include a script execution receipt that explicitly returns a live cell
-  identifier. Every exec wait uses that exact identifier while the cell is live, and completion returns the marker. No
-  wait precedes that creation receipt or follows completion. A final response describing these events alone does not
-  pass.
+	identifier. Every exec wait uses that exact identifier while the cell is live, and completion returns the marker. No
+	wait precedes that creation receipt or follows completion. A final response describing these events alone does not
+	pass.
 
 ### do_not_launch_for_an_exec_wait
 

@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Use an external workaround only when authoritative evidence shows it is necessary, and keep it narrowly scoped,
-  traceable, and removable when its upstream cause is fixed.
+	traceable, and removable when its upstream cause is fixed.
 
 ## Guidance
 

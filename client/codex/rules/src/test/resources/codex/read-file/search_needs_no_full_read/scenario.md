@@ -28,7 +28,7 @@ Look up which component release {{release}} improved in `docs/{{notes}}`. Answer
 - **kind**: guard
 - **tool**: `read-at-most docs/{{notes}} 90`
 - **description**: No command reads the whole of `docs/{{notes}}`: receiving over 90% of its lines through any command
-  is overreach for this task.
+	is overreach for this task.
 
 ### component_named
 

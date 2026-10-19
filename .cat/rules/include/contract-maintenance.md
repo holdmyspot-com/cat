@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Keep every maintained system artifact aligned with the current supported contract, without obsolete compatibility
-  behavior or explanations misleading a reader or consumer.
+	behavior or explanations misleading a reader or consumer.
 - Confine historical data handling and historical records to the boundaries where they are necessary and actionable.
 
 ## Guidance

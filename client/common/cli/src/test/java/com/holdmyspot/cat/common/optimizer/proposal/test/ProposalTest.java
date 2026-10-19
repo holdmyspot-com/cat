@@ -1475,7 +1475,7 @@ public final class ProposalTest
 		requireThat(listed, "listed").
 			contains("\n- `cat`, built by the project, with these project paths written over it: `source/rules` → " +
 				"`rules/codex`\n- `tools@market`, installed by the user\n");
-		requireThat(none, "none").contains("each one that the project builds,\n  are:\n\nnone\n\n");
+		requireThat(none, "none").contains("each one that the project builds,\n\tare:\n\nnone\n\n");
 	}
 
 	/**
@@ -1502,7 +1502,7 @@ public final class ProposalTest
 			contains("the draft directory `" + DraftDirectory.name(PROMPT_SYSTEM) + "`").
 			contains("the proposal file `" + OutputFile.name(PROMPT_SYSTEM) + "`").
 			contains("`" + LAUNCHER + " contract workspace ");
-		requireThat(none, "none").contains("with the file that\n  registers it:\n\nnone\n\n");
+		requireThat(none, "none").contains("with the file that\n\tregisters it:\n\nnone\n\n");
 	}
 
 	/**

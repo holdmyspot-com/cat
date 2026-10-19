@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Correct a prevention proposal that is itself wrong without conflating that meta-level mistake with the operational
-  failure it was meant to prevent.
+	failure it was meant to prevent.
 - Give the project developer the related questions, evidence-backed answers, and proposed ownership needed to assess
-  whether governing guidance should change.
+	whether governing guidance should change.
 
 ## Guidance
 

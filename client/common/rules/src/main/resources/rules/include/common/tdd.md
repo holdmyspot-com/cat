@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Preserve a focused behavioral test's contract from its demonstrated failure before production implementation through
-  the implementation and relevant verification that make it pass.
+	the implementation and relevant verification that make it pass.
 - Make the decision to use TDD explicit before the first production-behavior edit, rather than relying on the task's
-  label or the agent's implicit classification.
+	label or the agent's implicit classification.
 
 ## Guidance
 

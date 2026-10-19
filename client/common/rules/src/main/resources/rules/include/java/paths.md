@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Keep a filesystem path typed as `Path` while Java code holds it, so the compiler tells paths apart from other text
-  and path operations follow the platform's rules rather than string manipulation.
+	and path operations follow the platform's rules rather than string manipulation.
 
 ## Guidance
 
@@ -17,7 +17,7 @@ concatenation, `split` or `String.startsWith`.
 Keep a `String` only for a strong reason, and state it beside the declaration when the code does not make it obvious:
 
 - The value names a path in a namespace that the local filesystem does not define, such as a Git path, an archive entry,
-  a URL path or a path on another machine. A `Path` would apply the local operating system's separators and naming
-  rules to it.
+	a URL path or a path on another machine. A `Path` would apply the local operating system's separators and naming
+	rules to it.
 - The declaration is the text form that an external format or API defines, such as a component of a record that maps a
-  JSON document, and the code converts it to a `Path` as soon as it reads it.
+	JSON document, and the code converts it to a `Path` as soon as it reads it.

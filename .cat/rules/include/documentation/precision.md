@@ -3,9 +3,9 @@
 ## Design Goals
 
 - Provide operationally precise documentation that lets each audience complete its supported workflow without mixing in
-  another audience's instructions.
+	another audience's instructions.
 - Organize instructional flows so readers can follow shared decisions, alternatives, and their rejoining next steps
-  without inferring the structure.
+	without inferring the structure.
 
 ## Guidance
 

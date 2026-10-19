@@ -3,12 +3,12 @@
 ## Design Goals
 
 - When code creates a resource that must be released and passes it to a constructor that fails, the code that created
-  the resource releases it; after the constructor succeeds, the new object owns the resource and the caller does not
-  release it separately.
+	the resource releases it; after the constructor succeeds, the new object owns the resource and the caller does not
+	release it separately.
 - When a constructor fails, it releases each resource it created itself and leaves every resource its caller supplied
-  unreleased for the caller to release.
+	unreleased for the caller to release.
 - When releasing a resource after a construction failure also fails, the caller of the creating code still receives the
-  construction failure, with the release failure attached to it.
+	construction failure, with the release failure attached to it.
 
 ## Guidance
 

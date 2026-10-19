@@ -3,12 +3,12 @@
 ## Design Goals
 
 - Prove that text written for one reader and place answers the question that reader brings there and leaves out true
-  facts that serve another reader, using an error message that a user reads in a terminal.
+	facts that serve another reader, using an error message that a user reads in a terminal.
 
 ## Variables
 
 - **limit_field**: The name of a configuration entry that limits a wait in seconds, such as `connect_timeout` or
-  `idle_timeout`
+	`idle_timeout`
 
 ## Scenario
 
@@ -25,16 +25,16 @@ Write the error message that the tool prints for this user. Show only the messag
 
 - **kind**: effect
 - **description**: The message names `deploy.yaml`, the `{{limit_field}}` entry, the rejected value `-5`, and the
-  accepted range from 1 to 600 seconds, so the user can correct the file.
+	accepted range from 1 to 600 seconds, so the user can correct the file.
 
 ### other_place_facts_left_out
 
 - **kind**: effect
 - **description**: The message does not mention the incident, when or why the check was added, the earlier wait that
-  never ended, or that the YAML parser converts quoted numbers before the check runs.
+	never ended, or that the YAML parser converts quoted numbers before the check runs.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/write-clearly.md`
-  before its first governed action.
+	before its first governed action.

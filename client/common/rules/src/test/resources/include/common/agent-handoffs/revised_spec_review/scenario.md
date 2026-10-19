@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that an agent passing a document that other agents will review and revise names it by path instead of copying
-  it into the message, and asks the reviewer to locate each problem so the fixer can read only that part.
+	it into the message, and asks the reviewer to locate each problem so the fixer can read only that part.
 
 ## Variables
 
@@ -23,16 +23,16 @@ edit any file.
 
 - **kind**: effect
 - **description**: The message to the reviewer identifies the specification by its path `docs/api-spec.md` and does not
-  copy the specification's endpoint descriptions into the message.
+	copy the specification's endpoint descriptions into the message.
 
 ### problems_located
 
 - **kind**: effect
 - **description**: The message asks the reviewer to give each problem's location in the specification, such as its
-  heading, endpoint or line.
+	heading, endpoint or line.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the agent selects `rules/include/common/agent-handoffs.md` before
-  it writes the message.
+	it writes the message.

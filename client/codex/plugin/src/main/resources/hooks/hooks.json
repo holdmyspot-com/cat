@@ -1,41 +1,41 @@
 {
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "^(startup|resume|clear|compact)$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$PLUGIN_ROOT/hooks/session-start.sh\"",
-            "commandWindows": "& \"$env:PLUGIN_ROOT\\hooks\\session-start.cmd\"",
-            "additionalContextLimit": 0
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "^Bash$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$PLUGIN_ROOT/hooks/post-tool-use.sh\"",
-            "commandWindows": "$ProgressPreference = 'SilentlyContinue'; $OutputEncoding = New-Object Text.UTF8Encoding $false; $hookEvent = (New-Object IO.StreamReader ([Console]::OpenStandardInput()), $OutputEncoding).ReadToEnd(); if ($hookEvent -match 'run-part|read-part') { $hookEvent | & \"$env:PLUGIN_ROOT\\hooks\\post-tool-use.cmd\" }"
-          }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$PLUGIN_ROOT/hooks/subagent-start.sh\"",
-            "commandWindows": "& \"$env:PLUGIN_ROOT\\hooks\\subagent-start.cmd\"",
-            "additionalContextLimit": 0
-          }
-        ]
-      }
-    ]
-  }
+	"hooks": {
+		"SessionStart": [
+			{
+				"matcher": "^(startup|resume|clear|compact)$",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"$PLUGIN_ROOT/hooks/session-start.sh\"",
+						"commandWindows": "& \"$env:PLUGIN_ROOT\\hooks\\session-start.cmd\"",
+						"additionalContextLimit": 0
+					}
+				]
+			}
+		],
+		"PostToolUse": [
+			{
+				"matcher": "^Bash$",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"$PLUGIN_ROOT/hooks/post-tool-use.sh\"",
+						"commandWindows": "$ProgressPreference = 'SilentlyContinue'; $OutputEncoding = New-Object Text.UTF8Encoding $false; $hookEvent = (New-Object IO.StreamReader ([Console]::OpenStandardInput()), $OutputEncoding).ReadToEnd(); if ($hookEvent -match 'run-part|read-part') { $hookEvent | & \"$env:PLUGIN_ROOT\\hooks\\post-tool-use.cmd\" }"
+					}
+				]
+			}
+		],
+		"SubagentStart": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"$PLUGIN_ROOT/hooks/subagent-start.sh\"",
+						"commandWindows": "& \"$env:PLUGIN_ROOT\\hooks\\subagent-start.cmd\"",
+						"additionalContextLimit": 0
+					}
+				]
+			}
+		]
+	}
 }

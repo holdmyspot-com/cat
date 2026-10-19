@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Resolve a warning, lint or static-analysis finding, or other diagnostic by correcting what it reports whenever an
-  in-scope change can do so while preserving supported behavior, so suppression never hides a fixable problem.
+	in-scope change can do so while preserving supported behavior, so suppression never hides a fixable problem.
 - Keep any unavoidable suppression narrow, explained, and visible to a later reader.
 
 ## Guidance

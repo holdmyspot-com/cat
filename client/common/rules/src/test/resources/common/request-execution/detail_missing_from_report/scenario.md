@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Prove that when the user asks about a detail that a report in the conversation does not contain, the agent obtains
-  it from the source instead of answering from the report alone.
+	it from the source instead of answering from the report alone.
 
 ## Variables
 
@@ -28,4 +28,4 @@ The user now writes: "Which tables were in the retry's archive, and how large wa
 
 - **kind**: guard
 - **description**: Before stating which tables the archive contained or their sizes, the agent reads the job's logs or
-  another source that records them; it does not present table names or sizes that no source it read in the turn shows.
+	another source that records them; it does not present table names or sizes that no source it read in the turn shows.

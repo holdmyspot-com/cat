@@ -4,9 +4,9 @@
 
 - Keep Maven configuration centralized, reproducible, and consistent with project conventions.
 - Run complete Maven verification with quiet routine output, actionable failure diagnostics, and an explicit
-  evidence-backed reason for any normal-output exception.
+	evidence-backed reason for any normal-output exception.
 - Verify the current working tree while reusing results for unchanged inputs; repeat completed operations only when
-  the required evidence calls for fresh execution or a known cache limitation invalidates reuse.
+	the required evidence calls for fresh execution or a known cache limitation invalidates reuse.
 
 ## Guidance
 

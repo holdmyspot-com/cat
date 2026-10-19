@@ -3,37 +3,37 @@
 ## Design Goals
 
 - Classify a reported or observed failure from its complete available chronological record—including any recorded
-  decision explanation—while separating that evidence from unavailable private reasoning or platform input; isolate its
-  earliest controllable cause and correct it rather than masking a downstream symptom.
+	decision explanation—while separating that evidence from unavailable private reasoning or platform input; isolate its
+	earliest controllable cause and correct it rather than masking a downstream symptom.
 - Guard each reproducible, correctable failure with the smallest executable check of the claimed behavior, so the same
-  defect cannot silently return.
+	defect cannot silently return.
 - Derive prevention controls from the failure predicate, verify them against the reported failure and meaningful
-  variants, and retain only the smallest control that provides the required coverage.
+	variants, and retain only the smallest control that provides the required coverage.
 - Distinguish an unavailable prerequisite from a failure or unknown result while acquiring a known prerequisite, so a
-  fallback cannot silently replace a required capability.
+	fallback cannot silently replace a required capability.
 - Converge recurring or high-impact failure decisions through independently challengeable, evidence-backed acceptance
-  conditions.
+	conditions.
 - Prevent a retry from concealing an incomplete or unexpectedly ended workflow, by requiring its cause and any
-  controllable correction to be established before replacement work begins.
+	controllable correction to be established before replacement work begins.
 - Diagnose a claimed instruction violation against the product the instruction governs, so an intermediate description
-  is not mistaken for a prohibited action unless reader-visible language is itself the required product.
+	is not mistaken for a prohibited action unless reader-visible language is itself the required product.
 <!-- A formatter ignored its requested path filter and corrupted multiline logical operators in a dirty worktree.
      The general prevention covers every multi-artifact mutation with an unproven write set. -->
 - Keep an unverified multi-artifact mutation recoverable without discarding pre-existing dirty-worktree content, even
-  when its actual write set expands beyond the declared scope or it produces invalid artifacts.
+	when its actual write set expands beyond the declared scope or it produces invalid artifacts.
 <!-- Earlier prevention attempted to forbid false conclusions without identifying the unsupported transition that
      produced them, leaving an agent no evidence-based recovery procedure to follow. -->
 - Locate the first unjustified decision in a failure's causal sequence by comparing actual actions and observations
-  with the governing contract, so prevention repairs the component or rule responsible for that decision.
+	with the governing contract, so prevention repairs the component or rule responsible for that decision.
 <!-- Telling an agent that a worker's local failure must not block its parent goal did not prevent it from inferring
      that the worker's report established global impossibility. A prevention must replace that unsupported inference
      with the evidence-based decision that selects its conclusion. -->
 - Make a prevention for an uncertain consequential judgment an explicit evidence-gated decision procedure, rather than
-  only a prohibition or desired conclusion, so it governs new cases that share the same faulty inference.
+	only a prohibition or desired conclusion, so it governs new cases that share the same faulty inference.
 - Make progress in an iterative workflow monotonic: retain resolved acceptance conditions across rounds, so a later
-  candidate cannot appear to improve while reintroducing a failure that an earlier candidate had removed.
+	candidate cannot appear to improve while reintroducing a failure that an earlier candidate had removed.
 - Keep an active failure investigation under its evidence-gathering owner until terminal evidence selects its outcome,
-  so an observation timeout or impatience cannot replace its causal result with a premature conclusion.
+	so an observation timeout or impatience cannot replace its causal result with a premature conclusion.
 
 ## Guidance
 

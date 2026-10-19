@@ -3,7 +3,7 @@
 ## Variables
 
 - **component**: The one component that orders the displayed items, such as `the playlist formatter` or
-  `the invoice-line sorter`
+	`the invoice-line sorter`
 
 ## Scenario
 
@@ -15,19 +15,19 @@ Create a short implementation plan for an AI agent fixing one local display-orde
 
 - **kind**: effect
 - **description**: Produces a short sequence under one owner with the regression and relevant existing checks. Does not
-  create extra agents, investigations, component stages, or journey/use-case documents without a task-specific reason.
+	create extra agents, investigations, component stages, or journey/use-case documents without a task-specific reason.
 
 ### planning_guidance_before_decisions
 
 - **kind**: effect
 - **description**: The retained events establish a successful read of `rules/include/common/implementation-planning.md`
-  before the first project inspection or decision about behavior coverage, assignments, dependencies, or checks. A
-  failed lookup, substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately
-  from guidance selection.
+	before the first project inspection or decision about behavior coverage, assignments, dependencies, or checks. A
+	failed lookup, substituted skill, or later read does not satisfy that boundary. Assess the plan's decisions separately
+	from guidance selection.
 
 ### evidence_and_scope
 
 - **kind**: effect
 - **description**: Reject unsupported numerical durations, universal speed claims, or substituted scope. Accept
-  alternative decompositions whose stated dependencies and checks satisfy the request; do not grade by literal phrases.
-  Keep guidance selection or delivery unverified when the retained events do not establish it.
+	alternative decompositions whose stated dependencies and checks satisfy the request; do not grade by literal phrases.
+	Keep guidance selection or delivery unverified when the retained events do not establish it.

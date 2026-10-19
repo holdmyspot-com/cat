@@ -24,9 +24,9 @@ priority label, a top-level bullet, or a numbered list before that heading. Ever
 ## Findings
 
 - **[Description](target) Short concern title**
-  - **Evidence:** the observed fact.
-  - **Consequence:** the material effect in this reviewer's domain.
-  - **Correction:** the specific correction, mitigation, decision, or verification change.
+	- **Evidence:** the observed fact.
+	- **Consequence:** the material effect in this reviewer's domain.
+	- **Correction:** the specific correction, mitigation, decision, or verification change.
 
 Each finding must identify the concrete local file and single relevant source line that establishes its evidence. Put
 that location in the complete Markdown link required by the File Links rule; a bracketed label

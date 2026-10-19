@@ -1,172 +1,172 @@
 {
-  "format_version" : 1,
-  "test_cases" : [ {
-    "values" : {
-      "release" : "4.1",
-      "improved" : "report builder",
-      "corrected" : "parser",
-      "sign_off" : "Release Desk",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 337452505999855765,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.1 improved the report builder and corrected a message in the parser. -- Release Desk"
-  }, {
-    "values" : {
-      "release" : "4.2",
-      "improved" : "importer",
-      "corrected" : "logging",
-      "sign_off" : "Migration Desk",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 1135263148734197154,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.2 improved the importer and corrected a message in the logging. -- Migration Desk"
-  }, {
-    "values" : {
-      "release" : "4.3",
-      "improved" : "validator",
-      "corrected" : "cache",
-      "sign_off" : "Delivery Team",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 887953274690249880,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.3 improved the validator and corrected a message in the cache. -- Delivery Team"
-  }, {
-    "values" : {
-      "release" : "4.4",
-      "improved" : "uploader",
-      "corrected" : "exporter",
-      "sign_off" : "Customer Desk",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -7010674315622357642,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.4 improved the uploader and corrected a message in the exporter. -- Customer Desk"
-  }, {
-    "values" : {
-      "release" : "4.5",
-      "improved" : "retry policy",
-      "corrected" : "CLI",
-      "sign_off" : "Operations Team",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -8904525742155413511,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.5 improved the retry policy and corrected a message in the CLI. -- Operations Team"
-  }, {
-    "values" : {
-      "release" : "4.6",
-      "improved" : "parser",
-      "corrected" : "configuration loader",
-      "sign_off" : "Platform Team",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 3268284545619442237,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.6 improved the parser and corrected a message in the configuration loader. -- Platform Team"
-  }, {
-    "values" : {
-      "release" : "4.7",
-      "improved" : "logging",
-      "corrected" : "scheduler",
-      "sign_off" : "Support Desk",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -1140310933456174509,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.7 improved the logging and corrected a message in the scheduler. -- Support Desk"
-  }, {
-    "values" : {
-      "release" : "4.8",
-      "improved" : "cache",
-      "corrected" : "report builder",
-      "sign_off" : "Release Team",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -2940371735461455330,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.8 improved the cache and corrected a message in the report builder. -- Release Team"
-  }, {
-    "values" : {
-      "release" : "4.9",
-      "improved" : "exporter",
-      "corrected" : "importer",
-      "sign_off" : "Client Desk",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 3351655694008870930,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.9 improved the exporter and corrected a message in the importer. -- Client Desk"
-  }, {
-    "values" : {
-      "release" : "4.10",
-      "improved" : "CLI",
-      "corrected" : "validator",
-      "sign_off" : "Service Team",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -1592645471725216386,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.10 improved the CLI and corrected a message in the validator. -- Service Team"
-  }, {
-    "values" : {
-      "release" : "4.11",
-      "improved" : "configuration loader",
-      "corrected" : "uploader",
-      "sign_off" : "Delivery Desk",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : -502765479898280268,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.11 improved the configuration loader and corrected a message in the uploader. -- Delivery Desk"
-  }, {
-    "values" : {
-      "release" : "4.173",
-      "improved" : "scheduler",
-      "corrected" : "retry policy",
-      "sign_off" : "Migration Team",
-      "guide_sections" : {
-        "generator" : "markdown_sections",
-        "version" : 1,
-        "seed" : 6539873034880805235,
-        "count" : 144
-      }
-    },
-    "expected_outcome" : "Release 4.173 improved the scheduler and corrected a message in the retry policy. Callers must pass an explicit exporter destination. -- Migration Team"
-  } ]
+	"format_version" : 1,
+	"test_cases" : [ {
+		"values" : {
+			"release" : "4.1",
+			"improved" : "report builder",
+			"corrected" : "parser",
+			"sign_off" : "Release Desk",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 337452505999855765,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.1 improved the report builder and corrected a message in the parser. -- Release Desk"
+	}, {
+		"values" : {
+			"release" : "4.2",
+			"improved" : "importer",
+			"corrected" : "logging",
+			"sign_off" : "Migration Desk",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 1135263148734197154,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.2 improved the importer and corrected a message in the logging. -- Migration Desk"
+	}, {
+		"values" : {
+			"release" : "4.3",
+			"improved" : "validator",
+			"corrected" : "cache",
+			"sign_off" : "Delivery Team",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 887953274690249880,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.3 improved the validator and corrected a message in the cache. -- Delivery Team"
+	}, {
+		"values" : {
+			"release" : "4.4",
+			"improved" : "uploader",
+			"corrected" : "exporter",
+			"sign_off" : "Customer Desk",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -7010674315622357642,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.4 improved the uploader and corrected a message in the exporter. -- Customer Desk"
+	}, {
+		"values" : {
+			"release" : "4.5",
+			"improved" : "retry policy",
+			"corrected" : "CLI",
+			"sign_off" : "Operations Team",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -8904525742155413511,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.5 improved the retry policy and corrected a message in the CLI. -- Operations Team"
+	}, {
+		"values" : {
+			"release" : "4.6",
+			"improved" : "parser",
+			"corrected" : "configuration loader",
+			"sign_off" : "Platform Team",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 3268284545619442237,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.6 improved the parser and corrected a message in the configuration loader. -- Platform Team"
+	}, {
+		"values" : {
+			"release" : "4.7",
+			"improved" : "logging",
+			"corrected" : "scheduler",
+			"sign_off" : "Support Desk",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -1140310933456174509,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.7 improved the logging and corrected a message in the scheduler. -- Support Desk"
+	}, {
+		"values" : {
+			"release" : "4.8",
+			"improved" : "cache",
+			"corrected" : "report builder",
+			"sign_off" : "Release Team",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -2940371735461455330,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.8 improved the cache and corrected a message in the report builder. -- Release Team"
+	}, {
+		"values" : {
+			"release" : "4.9",
+			"improved" : "exporter",
+			"corrected" : "importer",
+			"sign_off" : "Client Desk",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 3351655694008870930,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.9 improved the exporter and corrected a message in the importer. -- Client Desk"
+	}, {
+		"values" : {
+			"release" : "4.10",
+			"improved" : "CLI",
+			"corrected" : "validator",
+			"sign_off" : "Service Team",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -1592645471725216386,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.10 improved the CLI and corrected a message in the validator. -- Service Team"
+	}, {
+		"values" : {
+			"release" : "4.11",
+			"improved" : "configuration loader",
+			"corrected" : "uploader",
+			"sign_off" : "Delivery Desk",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : -502765479898280268,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.11 improved the configuration loader and corrected a message in the uploader. -- Delivery Desk"
+	}, {
+		"values" : {
+			"release" : "4.173",
+			"improved" : "scheduler",
+			"corrected" : "retry policy",
+			"sign_off" : "Migration Team",
+			"guide_sections" : {
+				"generator" : "markdown_sections",
+				"version" : 1,
+				"seed" : 6539873034880805235,
+				"count" : 144
+			}
+		},
+		"expected_outcome" : "Release 4.173 improved the scheduler and corrected a message in the retry policy. Callers must pass an explicit exporter destination. -- Migration Team"
+	} ]
 }

@@ -5,7 +5,7 @@
 - Keep Java exceptions semantically precise and preserve all meaningful failure context.
 - Keep exception handling next to the operation that failed unless later control flow genuinely needs the failure.
 - Handle a try-with-resources resource's opening failure in that statement's own catch clause, rather than a separate
-  try statement, whenever doing so cannot change which failures the handler receives or when it runs.
+	try statement, whenever doing so cannot change which failures the handler receives or when it runs.
 
 ## Guidance
 

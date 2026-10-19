@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Let Java tests prove decisions that depend on the current time without waiting for wall-clock time to pass, while
-  retaining real execution boundaries when those boundaries are the behavior being tested.
+	retaining real execution boundaries when those boundaries are the behavior being tested.
 
 ## Guidance
 

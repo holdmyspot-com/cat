@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Ensure every operation and type-construction boundary rejects parameter values that violate its required constraints
-  before it can create an invalid object or cause a caller-visible side effect.
+	before it can create an invalid object or cause a caller-visible side effect.
 
 ## Guidance
 

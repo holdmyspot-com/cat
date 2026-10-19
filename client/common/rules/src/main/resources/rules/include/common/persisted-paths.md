@@ -3,10 +3,10 @@
 ## Design Goals
 
 - A file path that code persists still names the same file after the project is moved, renamed, or checked out at
-  another location, because it is stored relative to the project root or to an established directory whose location
-  is a fixed path relative to the project root.
+	another location, because it is stored relative to the project root or to an established directory whose location
+	is a fixed path relative to the project root.
 - A persisted path names the same file whichever operating system wrote it and whichever reads it, because it
-  separates names with `/`.
+	separates names with `/`.
 
 ## Guidance
 
@@ -18,7 +18,7 @@ Before persisting a path, choose its base:
 
 - the project root; or
 - an established directory: a directory whose location the code derives from the project root by a fixed relative path,
-  such as the project's work or data directory.
+	such as the project's work or data directory.
 
 Store the path relative to that base, and make the base explicit in the record's schema, for example through the field
 name or its documentation, so that the code that reads the record resolves the path against the same base. When reading
@@ -35,6 +35,6 @@ base.
 Verify with tests that:
 
 - write the record in one copy of the project, move the project to another location, read the record there, and
-  resolve each persisted path to the moved project's files; and
+	resolve each persisted path to the moved project's files; and
 - check that a stored path built from several names separates them with `/`, and run on each operating system the
-  project supports.
+	project supports.

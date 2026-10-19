@@ -37,8 +37,8 @@ Give a key several values either as nested list items or as code spans separated
 
 ```markdown
 - **key**:
-  - value1
-  - value2
+	- value1
+	- value2
 - **key**: `value 1`, `value2`
 ```
 

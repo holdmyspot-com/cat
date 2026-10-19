@@ -3,17 +3,17 @@
 ## Design Goals
 
 - When a task needs a state change that something else produces, such as a hosted build finishing, a background
-  process exiting or a subagent returning, one wait per change, started as soon as the change is needed, is the only
-  check of whether it has occurred. The agent keeps doing in-scope work that does not depend on the change and blocks
-  on the wait once that work runs out, instead of checking the state or reporting progress at intervals.
+	process exiting or a subagent returning, one wait per change, started as soon as the change is needed, is the only
+	check of whether it has occurred. The agent keeps doing in-scope work that does not depend on the change and blocks
+	on the wait once that work runs out, instead of checking the state or reporting progress at intervals.
 - While the agent waits with no other work, it wakes only when a wait limit passes or the awaited change occurs.
 - A query for a fact other than whether the change has occurred, such as a failed job's log, stays available whenever
-  the agent's work needs it.
+	the agent's work needs it.
 - A wait that reaches its deadline ends with the last state it observed, while one that has not exited five minutes
-  after its deadline is terminated and started again, so a stuck wait neither holds the agent indefinitely nor ends
-  before the operation's result or deadline.
+	after its deadline is terminated and started again, so a stuck wait neither holds the agent indefinitely nor ends
+	before the operation's result or deadline.
 - When any of several state changes would let the agent continue, the agent acts on the first one to occur without
-  waiting for the others.
+	waiting for the others.
 
 ## Guidance
 
@@ -26,18 +26,18 @@ wait operation, wait on that operation. Otherwise, such as for a hosted build, a
 `"${CAT_PLUGIN_ROOT}/bin/wait-until"`:
 
 - Give it the operation as `--check '<command>'`: a command that looks up the operation's state once, through its
-  documented status interface, prints that state, and exits with 0 when the operation succeeded, 1 when it failed, or
-  75 while it has not finished. When a documented command already blocks until the operation finishes and exits with
-  its result, such as `gh run watch <run> --exit-status`, give it as `--watch '<command>'` instead. The commands run in
-  your shell, in the current folder.
+	documented status interface, prints that state, and exits with 0 when the operation succeeded, 1 when it failed, or
+	75 while it has not finished. When a documented command already blocks until the operation finishes and exits with
+	its result, such as `gh run watch <run> --exit-status`, give it as `--watch '<command>'` instead. The commands run in
+	your shell, in the current folder.
 - Give it `--deadline <duration>`, such as `--deadline 40m`: the operation's own time limit, such as a workflow job's
-  `timeout-minutes`, plus a margin. When the operation declares no limit, base the deadline on its observed or
-  documented duration and state that basis. A check repeats every 30 seconds unless you give another
-  `--interval <duration>`.
+	`timeout-minutes`, plus a margin. When the operation declares no limit, base the deadline on its observed or
+	documented duration and state that basis. A check repeats every 30 seconds unless you give another
+	`--interval <duration>`.
 - `wait-until` exits as soon as the operation finishes, printing `succeeded: <command>` or `failed: <command>` and the
-  command's last output, with status 0 or 1 respectively. When the deadline passes first, it prints each command's last
-  output and exits with 124. When a command cannot start, or a check exits with another status three times in a row,
-  it prints that command's output and exits with 3.
+	command's last output, with status 0 or 1 respectively. When the deadline passes first, it prints each command's last
+	output and exits with 124. When a command cannot start, or a check exits with another status three times in a row,
+	it prints that command's output and exits with 3.
 
 Start the wait before any other work. Start `wait-until` in the background: as a process whose exit the harness
 reports to you, or else as one that you can later wait on through the harness's wait operation. Until the wait ends,

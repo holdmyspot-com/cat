@@ -1,12 +1,12 @@
 --- a/license.py
 +++ b/license.py
 @@ -14,14 +14,16 @@
-         return json.load(response)
+ 		return json.load(response)
  
  
 -def activate(sku, state):
 +def activate(sku, state, platform):
-     """Activates the license and returns the state that the editor stores for the next activation.
+ 	"""Activates the license and returns the state that the editor stores for the next activation.
  
      sku: the edition that the user bought, such as "pro" or "team".
      state: the data that the editor stored for this plugin at its last activation, or None the first time; the
@@ -14,14 +14,14 @@
 +    platform: the editor family that runs the plugin, "vscode" or "jetbrains"; each family's marketplace sells its
 +        own licenses, so the service checks the license against that marketplace's sales.
      """
--    reply = _post("/activate", {"sku": sku, "state": state})
-+    reply = _post("/activate", {"sku": sku, "state": state, "platform": platform})
-     if reply.get("status") != "active":
-         raise RuntimeError("The license is not active: " + reply.get("reason", "unknown reason"))
-     return reply["state"]
+-	reply = _post("/activate", {"sku": sku, "state": state})
++	reply = _post("/activate", {"sku": sku, "state": state, "platform": platform})
+ 	if reply.get("status") != "active":
+ 		raise RuntimeError("The license is not active: " + reply.get("reason", "unknown reason"))
+ 	return reply["state"]
 @@ -30,4 +32,4 @@
  def on_load(editor):
-     """Called by the editor when it loads the plugin."""
-     state = editor.read_plugin_state()
--    editor.write_plugin_state(activate(EDITION, state))
-+    editor.write_plugin_state(activate(EDITION, state, editor.family))
+ 	"""Called by the editor when it loads the plugin."""
+ 	state = editor.read_plugin_state()
+-	editor.write_plugin_state(activate(EDITION, state))
++	editor.write_plugin_state(activate(EDITION, state, editor.family))

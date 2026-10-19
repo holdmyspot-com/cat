@@ -3,11 +3,11 @@
 ## Design Goals
 
 - Give each Java type a thread-safety contract that matches its intended concurrent use, with state types that keep
-  that contract and no thread-safe types added only as speculative protection.
+	that contract and no thread-safe types added only as speculative protection.
 - Let a caller learn from a type's documentation whether it may use the type concurrently and which state the type
-  protects, including how long the type keeps any mutable argument that the caller must then not change.
+	protects, including how long the type keeps any mutable argument that the caller must then not change.
 - Let a caller that holds an interface or abstract class rely on its documented thread safety of implementations: every
-  implementation meets it, and it claims only what the type can guarantee.
+	implementation meets it, and it claims only what the type can guarantee.
 
 ## Guidance
 

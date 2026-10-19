@@ -5,7 +5,7 @@
 <!-- A valid skill instruction can interrupt requested work, but users previously had no direct way to distinguish that
      requirement from an agent's interpretation or locate the operative companion instruction. -->
 - Let the user identify and assess the exact skill instruction behind a permission request, pause, unfinished requested
-  work, or divergence from the user's intent, including whether the effect is required or inferred.
+	work, or divergence from the user's intent, including whether the effect is required or inferred.
 
 ## Guidance
 

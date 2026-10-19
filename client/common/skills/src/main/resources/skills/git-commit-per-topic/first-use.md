@@ -3,73 +3,73 @@
 ## Design Goals
 
 - Require complete, explicit semantic intent before changing Git history: persist every reviewer-declared semantic
-  unit's placement, exclusion, or combination decision in a manifest-local artifact that is evidence-backed and
-  independently auditable.
+	unit's placement, exclusion, or combination decision in a manifest-local artifact that is evidence-backed and
+	independently auditable.
 - Ensure a commit-per-topic completion claim covers the exact user-authorized branch range, or an explicitly verified
-  fixed prefix completed under the same governing rule, rather than an apparently tidy log or current worktree
-  increment.
+	fixed prefix completed under the same governing rule, rather than an apparently tidy log or current worktree
+	increment.
 - Ensure a commit-per-topic invocation uses one identified, current workflow and launcher revision, with auditable
-  source-neutral topic-reviewer handoff evidence and planner challenge evidence rather than a cached prompt or asserted
-  reviewer independence.
+	source-neutral topic-reviewer handoff evidence and planner challenge evidence rather than a cached prompt or asserted
+	reviewer independence.
 - Reconstruct an authorized Git-history range into the smallest buildable feature or bug-fix commits that each make an
-  observable user or developer change. Discover candidate topics from observable user and developer results and affected
-  responsibilities across the entire range, rather than from source commits, paths, components, or product labels, so
-  equivalent content reaches the same boundaries regardless of input commit partition.
+	observable user or developer change. Discover candidate topics from observable user and developer results and affected
+	responsibilities across the entire range, rather than from source commits, paths, components, or product labels, so
+	equivalent content reaches the same boundaries regardless of input commit partition.
 - Make the rewritten history read as if a developer introduced one working feature or bug fix at a time. Every
-  replacement commit must build, make its claimed user or developer-visible change, pass its focused acceptance check,
-  and contain only the implementation, tests, documentation, configuration, and registration needed for that change.
+	replacement commit must build, make its claimed user or developer-visible change, pass its focused acceptance check,
+	and contain only the implementation, tests, documentation, configuration, and registration needed for that change.
 - Prevent a command, API, installer, user interface, background job, rule, or other claimed capability from appearing as
-  a feature before its complete supported activation path reaches its observable result.
+	a feature before its complete supported activation path reaches its observable result.
 - Establish candidate-topic boundaries by enumerating the complete universe of independently observable behaviors and
-  bug fixes, then falsifying each candidate-topic combination with a removal or split counterfactual. Retain a
-  combination only when an evidence-backed, specific dependency prevents its behaviors from being separately buildable
-  and passing their focused acceptance checks.
+	bug fixes, then falsifying each candidate-topic combination with a removal or split counterfactual. Retain a
+	combination only when an evidence-backed, specific dependency prevents its behaviors from being separately buildable
+	and passing their focused acceptance checks.
 - Derive every composite delivery's candidate universe from a behavior-and-acceptance matrix, not an umbrella product
-  outcome. Enumerate each independently observable user or developer change—including a command, install or uninstall
-  flow, event-hook rule injection, exposed agent family, resolvable skill or help command, reader-facing documentation
-  or legal material, and a build or development-tool workflow—and retain each as a candidate unless a recorded pairwise
-  blocker proves it cannot work in any split-enabling snapshot. Treat several members as one contract only when users or
-  developers select them through one release surface for one stated purpose and one acceptance check proves the set is
-  complete. Sharing a directory, package, or installer does not make a family.
+	outcome. Enumerate each independently observable user or developer change—including a command, install or uninstall
+	flow, event-hook rule injection, exposed agent family, resolvable skill or help command, reader-facing documentation
+	or legal material, and a build or development-tool workflow—and retain each as a candidate unless a recorded pairwise
+	blocker proves it cannot work in any split-enabling snapshot. Treat several members as one contract only when users or
+	developers select them through one release surface for one stated purpose and one acceptance check proves the set is
+	complete. Sharing a directory, package, or installer does not make a family.
 - Require candidate discovery to reach a recorded fixed point: after every split, re-examine every resulting candidate
-  for newly exposed behaviors or contracts and do not declare outputs until a complete pass finds no new candidate.
+	for newly exposed behaviors or contracts and do not declare outputs until a complete pass finds no new candidate.
 - Prevent a preliminary behavior inventory from being represented to a user as a final topic list. A topic list is final
-  only after iterative decomposition has reached its recorded fixed point and the independent inventory is reconciled.
+	only after iterative decomposition has reached its recorded fixed point and the independent inventory is reconciled.
 - Presume a candidate spanning more than one independently testable behavior or contract is composite. Retain it only
-  after the inventory and adversarial review record a removal test and smallest split-enabling artifact set for every
-  behavior, together with the exact missing final-state prerequisite that prevents each split; a shared build, plugin,
-  distribution, installer, path set, or product label is never that prerequisite.
+	after the inventory and adversarial review record a removal test and smallest split-enabling artifact set for every
+	behavior, together with the exact missing final-state prerequisite that prevents each split; a shared build, plugin,
+	distribution, installer, path set, or product label is never that prerequisite.
 - Prevent source commits, proposed output names, source-review classifications, and broad component labels from priming
-  candidate discovery. Freeze an independently derived behavior inventory before any reviewer sees a proposed topic plan
-  or classifies a source as whole, split, or absorbed.
+	candidate discovery. Freeze an independently derived behavior inventory before any reviewer sees a proposed topic plan
+	or classifies a source as whole, split, or absorbed.
 - Ensure one source-neutral topic reviewer discovers the candidate-topic universe from the immutable inventory and raw
-  diffs before the planner assigns units, names outputs, or captures patches. The planner may challenge a missing or
-  composite candidate topic, but may not replace the reviewed universe with a second independently worded inventory.
+	diffs before the planner assigns units, names outputs, or captures patches. The planner may challenge a missing or
+	composite candidate topic, but may not replace the reviewed universe with a second independently worded inventory.
 - Prevent any artifact category—especially prior planning, replay, test, generated-input, or workflow-evidence
-  material—from being silently excluded from a whole-range behavior inventory; every immutable inventory item must
-  receive a concrete semantic-unit decision or an evidence-backed explicit exclusion.
+	material—from being silently excluded from a whole-range behavior inventory; every immutable inventory item must
+	receive a concrete semantic-unit decision or an evidence-backed explicit exclusion.
 - Make every retained combination auditable at the behavior level: a source-wide conclusion is valid only after every
-  independently observable outcome in that source has been enumerated, challenged as a possible split, and either
-  retained separately or linked to a specific missing prerequisite.
+	independently observable outcome in that source has been enumerated, challenged as a possible split, and either
+	retained separately or linked to a specific missing prerequisite.
 - Treat mechanical validity, structural ledger coverage, source or adversarial review completion, and a preserved final
-  tree as confirmation that the declared replay executed correctly, never as proof that candidate discovery is complete,
-  semantic placement is correct, or topic decomposition has converged.
+	tree as confirmation that the declared replay executed correctly, never as proof that candidate discovery is complete,
+	semantic placement is correct, or topic decomposition has converged.
 - Preserve a recoverable backup, the intended final tree, Git identity, per-commit build and behavioral checks, and
-  final quality gates.
+	final quality gates.
 - When verification fails, revisit only the earliest placement decision that the failure proves incomplete; do not
-  broaden a repair for replay convenience.
+	broaden a repair for replay convenience.
 - Reject an incomplete, ambiguous, generic, or unauditable semantic plan before it can create replacement commits.
 - Make candidate-topic boundary evidence monotonic: downstream challenge resolution, ledger, output planning, repair,
-  and replay may split a reviewed candidate topic but may not collapse, omit, or reclassify a `separate` decision. A
-  combination is valid only when both reviewer matrices explicitly record it as `combined` with its missing
-  prerequisite.
+	and replay may split a reviewed candidate topic but may not collapse, omit, or reclassify a `separate` decision. A
+	combination is valid only when both reviewer matrices explicitly record it as `combined` with its missing
+	prerequisite.
 - Make candidate discovery produce the smallest independently selectable and accepted behavior boundaries before
-  reconciliation. Reconciliation compares and refines those boundaries; it never chooses a broader product, release,
-  package, or source-shaped candidate in their place.
+	reconciliation. Reconciliation compares and refines those boundaries; it never chooses a broader product, release,
+	package, or source-shaped candidate in their place.
 - Prevent a non-empty root commit from becoming a catch-all bootstrap topic. A root build setup is valid only when it
-  establishes an otherwise empty reactor and normal build command; planning material, future-consumed helpers, shared
-  assets, tests, rules, and implementation must be placed with their first working behavior unless a concrete,
-  failure-capable split test proves an exact missing prerequisite.
+	establishes an otherwise empty reactor and normal build command; planning material, future-consumed helpers, shared
+	assets, tests, rules, and implementation must be placed with their first working behavior unless a concrete,
+	failure-capable split test proves an exact missing prerequisite.
 
 ## Prepare the replay
 
@@ -144,10 +144,10 @@ decisions in `MANIFEST.scope-attestation.json`; preserve the user-authorization 
 packet as well:
 
 1. **Whole range** — the manifest covers every commit in the user-authorized branch range. For a full branch, use
-   `--root` and the captured tip.
+	`--root` and the captured tip.
 2. **Fixed prefix** — the user explicitly named the exact earlier normalized prefix and stated that it was completed
-   under the same rule revision; record the committed artifact and verification that its unchanged commit IDs form the
-   prefix. Review every later source.
+	under the same rule revision; record the committed artifact and verification that its unchanged commit IDs form the
+	prefix. Review every later source.
 
 Commit subjects, a tidy-looking log, an earlier agent statement, a successful build, or a coherent uncommitted change
 are not fixed-prefix evidence. If the fixed-prefix record is absent or any condition cannot be verified, select the
@@ -341,17 +341,17 @@ Work backward from the desired history. For each candidate topic and its observa
 
 1. Start with the smallest real behavior a fresh user can install and use, or one bug fix a user can observe.
 2. Trace backward through implementation, callers, necessary helpers, tests, documentation, configuration, packaging,
-   planning, performance work, style, refactoring, and corrections.
+	planning, performance work, style, refactoring, and corrections.
 3. Include every hunk that corrects, explains, tests, configures, packages, formats, plans, or otherwise completes that
-   responsibility. Keep a helper with its first meaningful in-commit consumer.
+	responsibility. Keep a helper with its first meaningful in-commit consumer.
 4. Create a standalone topic only when a hunk introduces one genuinely new end-to-end feature or bug fix with its own
-   user-visible behavior, or one documented supported developer command that invokes it and produces a usable project
-   build or release artifact. A user feature must have its real harness entry point, tests, plugin artifacts,
-   distribution, and installer support. A developer feature must include its command integration and end-to-end artifact
-   check. Removing either kind must leave no earlier feature incomplete. A new rule, convention, helper, or abstraction
-   alone is not enough: fold it into the first feature or command it changes or enables. A capability is not present
-   until a fresh user or developer can traverse its supported activation path to the claimed result. For a rule, that
-   result is a fresh supported session receiving the rule in context.
+	user-visible behavior, or one documented supported developer command that invokes it and produces a usable project
+	build or release artifact. A user feature must have its real harness entry point, tests, plugin artifacts,
+	distribution, and installer support. A developer feature must include its command integration and end-to-end artifact
+	check. Removing either kind must leave no earlier feature incomplete. A new rule, convention, helper, or abstraction
+	alone is not enough: fold it into the first feature or command it changes or enables. A capability is not present
+	until a fresh user or developer can traverse its supported activation path to the claimed result. For a rule, that
+	result is a fresh supported session receiving the rule in context.
 5. Repeat until every hunk has an earliest dependency-complete destination.
 
 Use iterative generalization: start with the smallest observable result, expand only while a prerequisite is required,
@@ -624,7 +624,7 @@ not say `revert`. For each proposed cancellation, prove all of the following:
 1. The later units remove every observable effect of the earlier units in the reconstructed final tree.
 2. No retained responsibility requires an earlier unit, an intermediate state, or a side effect of that work.
 3. Removing both units leaves the affected destination snapshots dependency-complete and preserves the captured final
-   tree.
+	tree.
 
 Record the original and undoing units, their before-and-after snapshots, the retained responsibilities checked, and the
 final-tree comparison in the hunk ledger. If the proof succeeds and each logical output contains only net-zero work,
@@ -938,72 +938,72 @@ if placement changes, prepare a replacement manifest, import only still-valid re
 plan before recording a replacement witness.
 
 1. Expand the range when a ledger origin lies earlier than the initially selected range. Group all hunks by recorded
-   destination, not source commit, path, or commit type.
+	destination, not source commit, path, or commit type.
 2. Before creating any output or replaying, compare the prepared manifest's source inventory with the semantic placement
-   ledger. Every source transition, including additions, deletions, and cross-path equivalents, must be covered by
-   ledger units; do not infer a placement from a message, type, age, path set, or previous rewrite. Resolve every source
-   through the same authorized manifest. Run `origin-review-scaffold` and path-transition facts as mechanical candidate
-   discovery after a ledger or manifest change, and do not replay until the ledger is complete, compatible projections
-   are recorded, and preflight proves their structural coverage.
+	ledger. Every source transition, including additions, deletions, and cross-path equivalents, must be covered by
+	ledger units; do not infer a placement from a message, type, age, path set, or previous rewrite. Resolve every source
+	through the same authorized manifest. Run `origin-review-scaffold` and path-transition facts as mechanical candidate
+	discovery after a ledger or manifest change, and do not replay until the ledger is complete, compatible projections
+	are recorded, and preflight proves their structural coverage.
 3. Verify each destination batch is a dependency-complete vertical slice: helpers have meaningful in-commit use, tests
-   do not precede what they verify, and public boundaries have understandable contracts. For every claimed capability,
-   start at its supported entry point from that destination snapshot and verify its stated result; a build or internal
-   unit test cannot replace this check. For a rule-injection batch, verify the intended rule reaches session context.
-   For every earlier responsibility changed by a later test deletion or replacement, inspect its reconstructed snapshot:
-   it must not retain a test removed solely because it violates the final testing convention. Every such removal must
-   either be folded into the responsibility that introduced the test or have a recorded distinct-contract exception.
+	do not precede what they verify, and public boundaries have understandable contracts. For every claimed capability,
+	start at its supported entry point from that destination snapshot and verify its stated result; a build or internal
+	unit test cannot replace this check. For a rule-injection batch, verify the intended rule reaches session context.
+	For every earlier responsibility changed by a later test deletion or replacement, inspect its reconstructed snapshot:
+	it must not retain a test removed solely because it violates the final testing convention. Every such removal must
+	either be folded into the responsibility that introduced the test or have a recorded distinct-contract exception.
 4. For every source, declare ordered reviewer-authored **hunk batches**. A batch is one opaque patch artifact assigned
-   to one output. It declares its source, destination, proof, immutable patch path and SHA-256, and source
-   reconstruction. A mixed source has one batch per destination. The same path may occur in batches for several outputs;
-   do not coalesce them because they share a source or file. Each batch retained later must cite the earliest candidate
-   that lacks its prerequisite. The CLI must not identify, classify, rename-detect, fuzzy-match, or regenerate hunks.
+	to one output. It declares its source, destination, proof, immutable patch path and SHA-256, and source
+	reconstruction. A mixed source has one batch per destination. The same path may occur in batches for several outputs;
+	do not coalesce them because they share a source or file. Each batch retained later must cite the earliest candidate
+	that lacks its prerequisite. The CLI must not identify, classify, rename-detect, fuzzy-match, or regenerate hunks.
 5. A source reconstruction proves each source's original parent-to-source transition. When destination batches apply
-   unchanged to the source parent, list those batches in authored order. When an earlier destination needs a patch for
-   an earlier version of a file, first preserve the source's original complete patch with
-   `record-source-patch-reconstruction`; do not use the earlier-file patch to claim original-source reconstruction. Then
-   prepare a manifest-local candidate file containing the intended version of the reviewed path and run
-   `git-topic-replay capture-target-adapted-path-patch MANIFEST SOURCE PATCH TARGET_TREE PATH CANDIDATE_FILE`.
-   `TARGET_TREE` is the earlier commit or tree the patch must update. The command creates the patch relative to that
-   tree and proves it applies there. The reviewer remains responsible for selecting the change and intended path
-   contents; do not write a patch directly or manually construct a batch. Path inventory is an immutable cross-check,
-   not the placement authority.
+	unchanged to the source parent, list those batches in authored order. When an earlier destination needs a patch for
+	an earlier version of a file, first preserve the source's original complete patch with
+	`record-source-patch-reconstruction`; do not use the earlier-file patch to claim original-source reconstruction. Then
+	prepare a manifest-local candidate file containing the intended version of the reviewed path and run
+	`git-topic-replay capture-target-adapted-path-patch MANIFEST SOURCE PATCH TARGET_TREE PATH CANDIDATE_FILE`.
+	`TARGET_TREE` is the earlier commit or tree the patch must update. The command creates the patch relative to that
+	tree and proves it applies there. The reviewer remains responsible for selecting the change and intended path
+	contents; do not write a patch directly or manually construct a batch. Path inventory is an immutable cross-check,
+	not the placement authority.
 6. Derive `whole` only when one source's ledger units use one destination batch and `split` when they use two or more
-   destination batches. Derive `absorbed` when every unit belongs in earlier outputs and the source's historical output
-   is discarded. An absorbed source may have no batch when an earlier-file batch already contains its state; retain its
-   original source patch reconstruction as deterministic proof. Do not use path-level placement, correction, `outputs`,
-   or `absorbed_outputs` fields as placement authorities.
+	destination batches. Derive `absorbed` when every unit belongs in earlier outputs and the source's historical output
+	is discarded. An absorbed source may have no batch when an earlier-file batch already contains its state; retain its
+	original source patch reconstruction as deterministic proof. Do not use path-level placement, correction, `outputs`,
+	or `absorbed_outputs` fields as placement authorities.
 7. Assemble retained outputs in final-history order. For each output, write one reviewer-authored JSON batch file whose
-   entries contain only the reviewed batch identifier, source hash, and manifest-relative patch path. Run
-   `git-topic-replay record-output MANIFEST OUTPUT BATCH_FILE`. If a placement changes an earlier output, replace its
-   reviewed batch file and rebuild every later output witness from that point.
+	entries contain only the reviewed batch identifier, source hash, and manifest-relative patch path. Run
+	`git-topic-replay record-output MANIFEST OUTPUT BATCH_FILE`. If a placement changes an earlier output, replace its
+	reviewed batch file and rebuild every later output witness from that point.
 
-   After `seal-output-plan` succeeds, prefer `git-topic-replay record-planned-output MANIFEST OUTPUT` for a retained
-   output. It records exactly the next sealed batch declarations without creating a reviewer-maintained duplicate batch
-   file. Use `discard-output` for the next sealed discarded output.
+	After `seal-output-plan` succeeds, prefer `git-topic-replay record-planned-output MANIFEST OUTPUT` for a retained
+	output. It records exactly the next sealed batch declarations without creating a reviewer-maintained duplicate batch
+	file. Use `discard-output` for the next sealed discarded output.
 8. Run `git-topic-replay replay MANIFEST` and use its returned values and failure diagnostic as authoritative. For a
-   non-root replay, require `git merge-base --is-ancestor REBASE_BASE HEAD` to succeed and require the first replacement
-   output's direct parent to equal `REBASE_BASE`. For a `--root` replay, require the first replacement output to have no
-   parent. These checks prevent a correct final tree from concealing disconnected replacement history. The CLI creates
-   all replacement commits from an isolated index and advances the branch only after every output witness matches, so an
-   interrupted invocation leaves the checked-out source branch unchanged. Rerun the same command only after its
-   diagnostic confirms that the manifest and recorded backup remain valid. Do not set `GIT_SEQUENCE_EDITOR`, transform a
-   todo with shell, AWK, sed, or an editor, pick a source commit, or manually recreate a batch.
+	non-root replay, require `git merge-base --is-ancestor REBASE_BASE HEAD` to succeed and require the first replacement
+	output's direct parent to equal `REBASE_BASE`. For a `--root` replay, require the first replacement output to have no
+	parent. These checks prevent a correct final tree from concealing disconnected replacement history. The CLI creates
+	all replacement commits from an isolated index and advances the branch only after every output witness matches, so an
+	interrupted invocation leaves the checked-out source branch unchanged. Rerun the same command only after its
+	diagnostic confirms that the manifest and recorded backup remain valid. Do not set `GIT_SEQUENCE_EDITOR`, transform a
+	todo with shell, AWK, sed, or an editor, pick a source commit, or manually recreate a batch.
 9. Run `git-topic-replay origin-review-audit MANIFEST` after replay. Review every reported later exact-path change
-   against its recorded same-unit or different-unit decision before accepting the rewritten history.
+	against its recorded same-unit or different-unit decision before accepting the rewritten history.
 10. On failure, stop and follow the CLI diagnostic before correcting the reviewed artifact. Run focused checks for the
-    repaired output and downstream outputs whose trees, prerequisites, tests, configuration, or documentation can
-    change. After the final successful replay and `origin-review-audit`, run each required full quality gate once as
-    `git-topic-replay run-gate MANIFEST GATE_NAME COMMAND...`. Then run `git-topic-replay verify-identity REBASE_BASE
-    HEAD NAME EMAIL` using the user-approved policy, followed by `git-topic-replay finalize MANIFEST` and
-    `git-topic-replay verify-finalization MANIFEST REBASE_BASE HEAD`. `HEAD` is resolved to its commit ID by the
-    launcher, so the documented symbolic-ref form is valid. Finalization writes an atomic receipt before it removes the
-    recorded backup; verification must bind the current `HEAD`, ordered replacement chain, manifest, and retained review
-    and gate artifacts to that receipt. A reword-only rebase, a copied history, a matching final tree, or an absent
-    receipt means the history is unreviewed: prepare a fresh whole-range replay rather than claiming it is organized by
-    topic. Retain the named manifest directory and its receipt with the review packet; a receipt is not cross-invocation
-    evidence if those artifacts are discarded. If cleanup fails after receipt publication, restore the recorded backup
-    and rerun `finalize`; it revalidates the existing receipt before retrying only backup cleanup. Consume each CLI
-    result or diagnostic; do not duplicate its verification, recovery, or cleanup procedure in this skill.
+	repaired output and downstream outputs whose trees, prerequisites, tests, configuration, or documentation can
+	change. After the final successful replay and `origin-review-audit`, run each required full quality gate once as
+	`git-topic-replay run-gate MANIFEST GATE_NAME COMMAND...`. Then run `git-topic-replay verify-identity REBASE_BASE
+	HEAD NAME EMAIL` using the user-approved policy, followed by `git-topic-replay finalize MANIFEST` and
+	`git-topic-replay verify-finalization MANIFEST REBASE_BASE HEAD`. `HEAD` is resolved to its commit ID by the
+	launcher, so the documented symbolic-ref form is valid. Finalization writes an atomic receipt before it removes the
+	recorded backup; verification must bind the current `HEAD`, ordered replacement chain, manifest, and retained review
+	and gate artifacts to that receipt. A reword-only rebase, a copied history, a matching final tree, or an absent
+	receipt means the history is unreviewed: prepare a fresh whole-range replay rather than claiming it is organized by
+	topic. Retain the named manifest directory and its receipt with the review packet; a receipt is not cross-invocation
+	evidence if those artifacts are discarded. If cleanup fails after receipt publication, restore the recorded backup
+	and rerun `finalize`; it revalidates the existing receipt before retrying only backup cleanup. Consume each CLI
+	result or diagnostic; do not duplicate its verification, recovery, or cleanup procedure in this skill.
 
 Within the same active invocation, a failed replay may reuse its sealed prefix only after `git-topic-replay
 validate-sealed-prefix MANIFEST` succeeds. A sealed prefix is the contiguous sequence of earlier outputs whose batches
@@ -1047,41 +1047,41 @@ successful cleanup.
 ## Verification
 
 1. Reinspect every placement and challenge item. Verify the destination is the first chronological candidate with all
-   recorded prerequisites, each rejected earlier candidate lacks its specifically recorded prerequisite, and every
-   adversarial disagreement has evidence-backed resolution.
+	recorded prerequisites, each rejected earlier candidate lacks its specifically recorded prerequisite, and every
+	adversarial disagreement has evidence-backed resolution.
 2. For every moved, renamed, delete/add-replaced, or extracted unit, inspect the destination historical snapshot. Verify
-   it contains the unit and its first meaningful consumer, and that no later commit exists solely to supply its helper,
-   correction, test, documentation, configuration, or other implementation context. For a claimed capability, the first
-   meaningful consumer is its supported activation path; verify that a fresh user or developer can reach the stated
-   result from the destination snapshot and that no later commit first supplies that path. For rule assets or a loader,
-   verify that a fresh session receives the rule in context.
+	it contains the unit and its first meaningful consumer, and that no later commit exists solely to supply its helper,
+	correction, test, documentation, configuration, or other implementation context. For a claimed capability, the first
+	meaningful consumer is its supported activation path; verify that a fresh user or developer can reach the stated
+	result from the destination snapshot and that no later commit first supplies that path. For rule assets or a loader,
+	verify that a fresh session receives the rule in context.
 3. Reinspect every remaining commit hunk by hunk. Verify it is an independent coherent topic or has an explicit
-   placement-proof exception; do not rely on commit type, source scope, file overlap, rename detection, or final-tree
-   equivalence.
+	placement-proof exception; do not rely on commit type, source scope, file overlap, rename detection, or final-tree
+	equivalence.
 4. Re-run `origin-candidates` and verify that every reported candidate has one recorded review, selected output, and
-   evidence for every rejected earlier output. A source-level atomicity review cannot provide this evidence.
+	evidence for every rejected earlier output. A source-level atomicity review cannot provide this evidence.
 5. For every mixed source that changes an existing file, verify that each earlier output contains every batch whose
-   prerequisites it has, and each later output contains only batches with a cited unavailable earlier prerequisite.
-   Verify the batches reconstruct the source transition exactly once without relying on shared-path placement.
+	prerequisites it has, and each later output contains only batches with a cited unavailable earlier prerequisite.
+	Verify the batches reconstruct the source transition exactly once without relying on shared-path placement.
 6. Before finalizing, repeat the post-replay ancestry check: a non-root replay must descend from `REBASE_BASE` and have
-   it as the first replacement output's direct parent; a `--root` replay's first replacement output must have no parent.
-   Invoke `git-topic-replay finalize MANIFEST` only after the required quality gates pass, then require
-   `git-topic-replay verify-finalization MANIFEST REBASE_BASE HEAD` to succeed. Treat its result or diagnostic as
-   authoritative; correct a failed reviewed artifact with evidence and restart. Do not accept changed commit messages as
-   evidence of semantic decomposition.
+	it as the first replacement output's direct parent; a `--root` replay's first replacement output must have no parent.
+	Invoke `git-topic-replay finalize MANIFEST` only after the required quality gates pass, then require
+	`git-topic-replay verify-finalization MANIFEST REBASE_BASE HEAD` to succeed. Treat its result or diagnostic as
+	authoritative; correct a failed reviewed artifact with evidence and restart. Do not accept changed commit messages as
+	evidence of semantic decomposition.
 7. Verify every destination is understandable, independently buildable, and able to demonstrate its claimed user or
-   developer-visible behavior without a later corrective commit. After replay, run the normal build through
-   `git-topic-replay run-output-gate MANIFEST per-output-build COMMAND...` and its focused acceptance check through
-   `git-topic-replay run-declared-output-acceptance MANIFEST` for every retained output. The declared commands must
-   exercise the named build or focused behavior; a no-op or mere log-producing command is not gate evidence. Stop at the
-   first failure, preserve its diagnostic worktree, and reopen the earliest incomplete feature. A failure proves only
-   the missing condition named by its diagnostic; it does not justify combining unrelated candidates. Recheck the
-   candidate inventory and move only the hunk whose recorded earliest destination requires that condition, then rebuild
-   and re-review the affected suffix.
+	developer-visible behavior without a later corrective commit. After replay, run the normal build through
+	`git-topic-replay run-output-gate MANIFEST per-output-build COMMAND...` and its focused acceptance check through
+	`git-topic-replay run-declared-output-acceptance MANIFEST` for every retained output. The declared commands must
+	exercise the named build or focused behavior; a no-op or mere log-producing command is not gate evidence. Stop at the
+	first failure, preserve its diagnostic worktree, and reopen the earliest incomplete feature. A failure proves only
+	the missing condition named by its diagnostic; it does not justify combining unrelated candidates. Recheck the
+	candidate inventory and move only the hunk whose recorded earliest destination requires that condition, then rebuild
+	and re-review the affected suffix.
 8. Verify the rewritten tip preserves the recorded tree exactly unless an explicit, approved difference is recorded.
 9. Run `git diff --check`, the full build, and any additional required final quality gates through `git-topic-replay
-   run-gate MANIFEST GATE_NAME COMMAND...`, so the CLI preserves gate output and diagnoses failures for either a human
-   or agent caller. Verify the approved identity through `git-topic-replay verify-identity REBASE_BASE HEAD NAME EMAIL`.
+	run-gate MANIFEST GATE_NAME COMMAND...`, so the CLI preserves gate output and diagnoses failures for either a human
+	or agent caller. Verify the approved identity through `git-topic-replay verify-identity REBASE_BASE HEAD NAME EMAIL`.
 
 ## Per-Commit Build Gate
 

@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Identify evidence-backed contract gaps or unintended contract changes in a declared change, or approve it when none
-  remain.
+	remain.
 
 ## Guidance
 

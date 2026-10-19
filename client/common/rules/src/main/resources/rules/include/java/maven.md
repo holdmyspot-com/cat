@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Maven builds locate the project's root directory through a publicly supported property, so they keep working when
-  Maven changes its internal properties.
+	Maven changes its internal properties.
 
 ## Guidance
 

@@ -10,7 +10,7 @@ paths:
 
 - Keep prompt references actionable without duplicating mutable details from their authoritative sources.
 - Make a routing entry select its target from an observable condition that exists before the target's outcome, rather
-  than restating that outcome or the target's contents.
+	than restating that outcome or the target's contents.
 
 ## Guidance
 

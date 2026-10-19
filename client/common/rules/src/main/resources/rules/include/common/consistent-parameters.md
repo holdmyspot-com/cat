@@ -3,11 +3,11 @@
 ## Design Goals
 
 - Let a caller who knows one operation of an API predict the parameters of its related operations: inputs that play the
-  same role have the same name and come in the same relative order in every related operation that the task defines or
-  changes.
+	same role have the same name and come in the same relative order in every related operation that the task defines or
+	changes.
 - Leave the order of an existing operation's parameters, and any name that its callers pass, unchanged unless the task
-  already changes that operation's signature or the user asks for it, so that alignment never breaks a caller as a side
-  effect; report each remaining inconsistency instead.
+	already changes that operation's signature or the user asks for it, so that alignment never breaks a caller as a side
+	effect; report each remaining inconsistency instead.
 
 ## Guidance
 

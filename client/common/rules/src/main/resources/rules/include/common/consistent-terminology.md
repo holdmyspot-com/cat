@@ -3,10 +3,10 @@
 ## Design Goals
 
 - Ensure every shared concept has one defined term that readers can recognize consistently across source code,
-  configuration, documentation, commands, and rules.
+	configuration, documentation, commands, and rules.
 - Keep terms precise without treating ordinary local names or externally required vocabulary as corpus-wide terms.
 - Merge two terms for one concept into the better of them as soon as the duplication is noticed, so synonyms do not
-  accumulate while the reader assumes they name different concepts.
+	accumulate while the reader assumes they name different concepts.
 
 ## Guidance
 

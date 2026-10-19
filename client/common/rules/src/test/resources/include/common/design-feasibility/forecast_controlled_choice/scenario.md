@@ -3,7 +3,7 @@
 ## Variables
 
 - **service**: The kind of unattended service that chooses between repairing a component now and waiting, with its
-  article, such as `an unattended maintenance service` or `a fleet scheduling service`
+	article, such as `an unattended maintenance service` or `a fleet scheduling service`
 
 ## Scenario
 
@@ -25,32 +25,32 @@ or rule for cases outside its evidence.
 
 - **kind**: effect
 - **description**: For request 1: The response does not treat “minimize expected combined cost” as an executable
-  stopping rule. It identifies the missing observable inputs, forecasting method or owner, calibration evidence,
-  uncertainty decision, and behavior when a reliable forecast is unavailable.
+	stopping rule. It identifies the missing observable inputs, forecasting method or owner, calibration evidence,
+	uncertainty decision, and behavior when a reliable forecast is unavailable.
 
 ### unsupported_judgment
 
 - **kind**: effect
 - **description**: For request 1: The response does not assign the missing prediction or stopping decision to an agent's
-  unaudited judgment. It either requests the missing product decision or proposes an explicitly labeled, testable
-  fallback whose tradeoff the user can choose.
+	unaudited judgment. It either requests the missing product decision or proposes an explicitly labeled, testable
+	fallback whose tradeoff the user can choose.
 
 ### analogous_forecast_contract
 
 - **kind**: effect
 - **description**: For request 2: The response identifies that the service cannot execute the promised choice from the
-  stated inputs. It requires a defined predictor with calibration and uncertainty evidence or narrows the claim to a
-  named fallback policy.
+	stated inputs. It requires a defined predictor with calibration and uncertainty evidence or narrows the claim to a
+	named fallback policy.
 
 ### observable_decision
 
 - **kind**: effect
 - **description**: For request 2: Any proposed automatic path names the actions being compared, the observable values
-  used at the decision boundary, the rule that selects an action, and what happens when the forecast is missing or too
-  uncertain.
+	used at the decision boundary, the rule that selects an action, and what happens when the forecast is missing or too
+	uncertain.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/design-feasibility.md`
-  before its first governed action.
+	before its first governed action.

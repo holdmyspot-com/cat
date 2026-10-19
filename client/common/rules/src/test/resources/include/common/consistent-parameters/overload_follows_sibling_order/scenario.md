@@ -3,12 +3,12 @@
 ## Design Goals
 
 - Prove that a new overload takes the inputs it shares with its sibling in the sibling's order and under role names,
-  and that an edit which leaves every signature unchanged does not reorder an existing operation's parameters.
+	and that an edit which leaves every signature unchanged does not reorder an existing operation's parameters.
 
 ## Variables
 
 - **event_type**: The name of the class that a hook parses from its standard input, such as `HookEvent` or
-  `ToolEvent`.
+	`ToolEvent`.
 
 ## Scenario
 
@@ -60,22 +60,22 @@ public final class Archive
 
 - **kind**: effect
 - **description**: For request 1: the new public `handle` overload declares the `HarnessScope` parameter before the
-  `{{event_type}}` parameter, as the existing `handle` declares its scope before its event.
+	`{{event_type}}` parameter, as the existing `handle` declares its scope before its event.
 
 ### overload_uses_role_names
 
 - **kind**: effect
 - **description**: For request 1: the new overload names its `HarnessScope` parameter `scope` and its `{{event_type}}`
-  parameter `event`, matching the names of the existing overload's parameters in the same roles.
+	parameter `event`, matching the names of the existing overload's parameters in the same roles.
 
 ### unchanged_signature_kept
 
 - **kind**: guard
 - **description**: For request 2: the answer's `load` method keeps the parameter order `(Path file, Charset charset)`;
-  the answer does not reorder the parameters of `load` or `save`. It may mention that their orders differ.
+	the answer does not reorder the parameters of `load` or `save`. It may mention that their orders differ.
 
 ### guidance_selection
 
 - **kind**: effect
 - **description**: The retained events establish that the executor selects
-  `rules/include/common/consistent-parameters.md` before its first governed action.
+	`rules/include/common/consistent-parameters.md` before its first governed action.
