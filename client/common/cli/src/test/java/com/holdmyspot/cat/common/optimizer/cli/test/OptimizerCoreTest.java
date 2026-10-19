@@ -2654,7 +2654,8 @@ public final class OptimizerCoreTest
 			Path root = repository.root();
 			writeBuildProgram(root);
 			configure(root, buildConfiguration("cat", 0, "out"));
-			repository.sessions().setPluginSources(List.of(Path.of("rules/common/default-rules.md")));
+			Path rule = Path.of("rules/common/default-rules.md");
+			repository.sessions().setPluginSources(List.of(rule));
 			repository.sessions().setProductionOnlySources(List.of(new DerivedSource("/home/user/.cat/rules/own.md",
 				"CAT injects this rule into every session")));
 
@@ -2662,8 +2663,9 @@ public final class OptimizerCoreTest
 
 			String request = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getFirst().turns().
 				getFirst();
+			// The request names each file by its absolute path, which uses the platform's separator
 			requireThat(request, "request").contains("`CLAUDE.md`: ").
-				contains("rules/common/default-rules.md`: CAT injects this rule into every session").
+				contains(rule + "`: CAT injects this rule into every session").
 				doesNotContain("own.md");
 		}
 	}
