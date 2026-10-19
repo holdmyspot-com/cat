@@ -655,7 +655,7 @@ public final class DeliveryTest
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
 			requireThat(history(fixture).records(), "records").isEqualTo(List.of(record(3), RECORD));
 			requireThat(delivered.diff(), "diff").contains("+++ b/" + PortablePaths.text(RECORD_FILE)).
-				contains("+    \"certification_index\" : 1").doesNotContain("-    \"certification_index\"");
+				contains("+\t\t\"certification_index\" : 1").doesNotContain("-\t\t\"certification_index\"");
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
 		}
 	}

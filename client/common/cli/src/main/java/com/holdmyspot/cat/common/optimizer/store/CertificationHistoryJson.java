@@ -103,7 +103,7 @@ public final class CertificationHistoryJson
 		ArrayNode records = root.putArray(RECORDS);
 		for (CertificationRecord record : history.records())
 			writeRecord(records.addObject(), record);
-		return json.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
+		return JsonFiles.write(json, root);
 	}
 
 	/**

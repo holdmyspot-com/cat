@@ -1,12 +1,15 @@
 package com.holdmyspot.cat.common.optimizer.store;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.util.DefaultIndenter;
+import tools.jackson.core.util.DefaultPrettyPrinter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -17,6 +20,13 @@ import tools.jackson.databind.json.JsonMapper;
  */
 final class JsonFiles
 {
+	/**
+	 * Puts each object member on its own line, indented with one tab per nesting level, and keeps each array's
+	 * elements on the array's line.
+	 */
+	private static final DefaultPrettyPrinter TAB_INDENTED = new DefaultPrettyPrinter().withObjectIndenter(
+		new DefaultIndenter("\t", DefaultIndenter.SYS_LF));
+
 	/**
 	 * Prevents instantiation.
 	 */
@@ -73,6 +83,20 @@ final class JsonFiles
 	static void replace(JsonMapper json, Path file, JsonNode document, Consumer<WriteStep> afterStep)
 		throws IOException
 	{
-		AtomicFiles.replace(file, json.writerWithDefaultPrettyPrinter().writeValueAsBytes(document), afterStep);
+		AtomicFiles.replace(file, write(json, document), afterStep);
+	}
+
+	/**
+	 * Returns the bytes of a document as campaign storage writes it.
+	 *
+	 * @param json the JSON mapper
+	 * @param document the document
+	 * @return the document's UTF-8 bytes, with each object member on its own line and indented with tabs, ending
+	 *   with a line separator
+	 */
+	static byte[] write(JsonMapper json, JsonNode document)
+	{
+		String text = json.writer().with(TAB_INDENTED).writeValueAsString(document) + DefaultIndenter.SYS_LF;
+		return text.getBytes(StandardCharsets.UTF_8);
 	}
 }
