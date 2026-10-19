@@ -2687,7 +2687,7 @@ The riskiest pure code, built first.
 	interrupt to the fake needs a signal seam in the adapter, because `FakeHarnessCli.pid()` has no process to signal.
 	Replace `codex/cli/src/test/resources/optimizer/codex-hooks.jsonl`, which names no harness version, with a
 	recording that does. Then delete that harness's `*SessionsNativeTest`, and after both harnesses, remove the
-	`native` profile, `cat.test.groups`, `cat.test.excludedGroups`, `cat.native.harness` and `cat.work.temp`.
+	`native` profile, `cat.test.groups`, `cat.test.excludedGroups`, `cat.native.harness` and `cat.session.temp`.
 - **Order:** run every step in Claude first; start Codex only after Claude passes all of E1–E8 (user ruling,
 	2026-10-19, which reverses the Codex-first order of 2026-10-01). The Codex E1 and E7 campaigns that were in
 	progress then continue to their end.
