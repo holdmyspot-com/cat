@@ -10,6 +10,8 @@
 - Keep a status update faithful to its evidence by distinguishing confirmation that the planned action still applies
 	from evidence that requires a correction.
 - Distinguish advisory guidance from an enforcement boundary when reporting how a change addresses a failure.
+- Let a reader of text that states a behavior they would not predict see which assumption fails and why, through a
+	concrete case, and tell what was observed from causes that remain unknown.
 - Let each reader find, where they meet the text, the answer to the question they bring there, without facts that serve
 	another reader or place.
 
@@ -125,11 +127,16 @@ may name the mechanism directly.
 
 ## Explain Causes and Evidence
 
-When explaining a non-obvious order, cleanup, guard, workaround, handoff, or failed operation, give the shortest causal
-sequence before naming its mechanism: the relevant starting state, the action, the artifact or value it affects, the
-later action, and the safe or failed result. State how the later action obtains each needed value—for example through
-an argument, durable artifact, child-process inheritance, or newly created value. Do not say an earlier action merely
-“left” a value available. A direct action that has no non-obvious consequence does not need an invented failure story.
+When text states or depends on a behavior that its intended reader would not predict, such as one identifier shared by
+several items, or a non-obvious order, cleanup, guard, workaround, handoff, or failed operation, name the assumption
+that would lead that reader to expect a different result. Then, before naming the mechanism, trace one concrete case
+that disproves it as the shortest causal sequence: the starting state and the trigger, each action with the artifact or
+value it affects, and the safe or failed result. When no such case is known, name the evidence that established the
+behavior and say that the sequence producing it is unknown; do not state the behavior without either.
+State how a later action obtains each needed value—for example through an argument, durable artifact, child-process
+inheritance, or newly created value. Do not say an earlier action merely “left” a value available. Say which steps were
+observed; when a step's internal cause was not observed, call it unknown instead of supplying a plausible mechanism. A
+behavior that the reader would already predict needs no assumed misconception or invented failure story.
 
 When an operation runs after work moves to another process, directory, or other state, name the information it needs and
 how that information reaches the new location. If the new location does not receive it, say so and state the resulting
