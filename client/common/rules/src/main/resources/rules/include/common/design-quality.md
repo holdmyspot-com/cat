@@ -41,7 +41,7 @@ A design must:
 - Define externally observable behavior before implementation details, including normal results, failure behavior,
 	lifecycle effects, and boundary conditions.
 - Provide tests that establish each required observable outcome and meaningful failure path. When designing or reviewing
-	those tests, first lazy load `common/testing.md` for the canonical test-boundary, isolation, and artifact guidance.
+	those tests, first lazy load `testing.md` for the canonical test-boundary, isolation, and artifact guidance.
 
 Before accepting a costly guarantee or its enforcement, distinguish the user-requested outcome from any stronger
 promise introduced by the design. Trace the stronger promise to explicit user authority or a necessary consequence of

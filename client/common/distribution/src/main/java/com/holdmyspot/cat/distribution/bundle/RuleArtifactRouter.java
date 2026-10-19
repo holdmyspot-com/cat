@@ -38,8 +38,9 @@ public final class RuleArtifactRouter
 	}
 
 	/**
-	 * Moves each path-scoped direct rule below {@code rules/include}, removes its frontmatter, and creates direct prose
-	 * that tells a harness when to load it.
+	 * Moves each path-scoped direct rule below {@code rules/include}, removes its frontmatter, rewrites its relative
+	 * references to packaged rules so that they resolve from its new location, and creates direct prose that tells a
+	 * harness when to load it.
 	 *
 	 * @param artifact a non-null assembled plugin artifact
 	 * @param yamlMapper a non-null YAML parser
@@ -132,7 +133,7 @@ public final class RuleArtifactRouter
 					continue;
 				Path target = artifact.resolve("rules/include").resolve(directory.getFileName()).resolve(file.getFileName());
 				Files.createDirectories(target.getParent());
-				writeNew(artifact, target, rule.body());
+				writeNew(artifact, target, RuleReferences.relocate(rule.body(), file, target, artifact.resolve("rules")));
 				Files.delete(file);
 				routes.add(new Route(artifact.relativize(target).toString().replace('\\', '/'), rule.paths()));
 			}

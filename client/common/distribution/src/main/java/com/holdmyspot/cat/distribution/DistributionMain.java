@@ -13,6 +13,7 @@ import com.holdmyspot.cat.distribution.bundle.ModuleDescriptorPatcher;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
 import com.holdmyspot.cat.distribution.bundle.ReleasePackager;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
+import com.holdmyspot.cat.distribution.bundle.RuleReferences;
 import com.holdmyspot.cat.distribution.license.LegalMaterialsBuilder;
 import com.holdmyspot.cat.distribution.license.ThirdPartyComponent;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
@@ -244,6 +245,8 @@ public final class DistributionMain
 			RuleArtifactRouter.route(claudeRoot, scope.yaml());
 			RuleArtifactRouter.route(codexRoot, scope.yaml());
 		}
+		RuleReferences.requireResolvable(claudeRoot);
+		RuleReferences.requireResolvable(codexRoot);
 
 		ReleasePackager packager = new ReleasePackager(PluginInfo.CAT_VERSION);
 		Path claudeArchive = packager.packageArtifact("claude", platform, claudeRoot, releaseDirectory);
