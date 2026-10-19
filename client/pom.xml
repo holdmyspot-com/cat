@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>io.github.cowwoc.cat</groupId>
+	<groupId>com.holdmyspot.cat</groupId>
 	<artifactId>client</artifactId>
 	<version>1.0</version>
 	<packaging>pom</packaging>
@@ -75,72 +75,72 @@
 				<version>${commons-compress.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-common-agents</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-common-cli</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-common-plugin</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-common-skills</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-common-rules</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-distribution</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-claude-cli</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-claude-plugin</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-claude-rules</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-claude-skills</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-codex-cli</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-codex-skills</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-codex-rules</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>io.github.cowwoc.cat</groupId>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-codex-plugin</artifactId>
 				<version>${project.version}</version>
 			</dependency>

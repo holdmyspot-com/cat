@@ -5,7 +5,7 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>io.github.cowwoc.cat</groupId>
+		<groupId>com.holdmyspot.cat</groupId>
 		<artifactId>client</artifactId>
 		<version>1.0</version>
 		<relativePath>../../pom.xml</relativePath>
@@ -17,7 +17,7 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-distribution</artifactId>
 		</dependency>
 	</dependencies>

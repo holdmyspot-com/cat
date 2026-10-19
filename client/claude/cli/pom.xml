@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>io.github.cowwoc.cat</groupId>
+		<groupId>com.holdmyspot.cat</groupId>
 		<artifactId>client-claude</artifactId>
 		<version>1.0</version>
 	</parent>
@@ -18,7 +18,7 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-cli</artifactId>
 		</dependency>
 		<dependency>
@@ -38,12 +38,12 @@
 			<artifactId>testng</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-claude-plugin</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-cli</artifactId>
 			<version>${project.version}</version>
 			<type>test-jar</type>

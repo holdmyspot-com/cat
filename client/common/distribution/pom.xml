@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>io.github.cowwoc.cat</groupId>
+		<groupId>com.holdmyspot.cat</groupId>
 		<artifactId>client</artifactId>
 		<version>1.0</version>
 		<relativePath>../../pom.xml</relativePath>
@@ -19,55 +19,55 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-agents</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-cli</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-plugin</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-skills</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-rules</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-claude-cli</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-claude-plugin</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-claude-rules</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-claude-skills</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-codex-cli</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-codex-skills</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-codex-rules</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cowwoc.cat</groupId>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-codex-plugin</artifactId>
 		</dependency>
 		<dependency>
