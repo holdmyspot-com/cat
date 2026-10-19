@@ -59,8 +59,11 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -650,14 +653,15 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * A rate limit stops the pilot from starting another session, and every unfinished test records why it stopped,
-	 * so that the stored result is not reused.
+	 * A session that the provider rejects because of a rate limit, or refuses, runs again once the harness's shared
+	 * hold ends: a trial with the same test case, and a judge without spending one of its attempts, so that every
+	 * test's pilot still decides all of its trials.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
 	 */
 	@Test
-	public void rateLimitStopsPilot() throws IOException, InterruptedException
+	public void rejectedSessionRunsAgain() throws IOException, InterruptedException
 	{
 		// Requirement: R-C23
 		Contract contract = TierFixtures.tieredContract();
@@ -665,7 +669,50 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-limit"));
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
-			sessions.limitTrials();
+			Hold hold = new Hold(Instant.EPOCH, 0);
+			sessions.reject(SessionRole.TRIAL, List.of(new SessionResult.RateLimited(hold, List.of()),
+				new SessionResult.Refused(hold, false, List.of())));
+			sessions.reject(SessionRole.JUDGE, Collections.nCopies(Driver.JUDGE_ATTEMPTS,
+				new SessionResult.RateLimited(hold, List.of())));
+			Overlay control = control();
+
+			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 1).
+				run(contract, List.of(), control, Set.of(), SELECTION, Map.of(), new SplittableRandom(9));
+
+			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
+			requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS * pilots.size() + 2);
+			requireThat(trials.get(1).turns(), "secondTurns").isEqualTo(trials.get(0).turns());
+			requireThat(trials.get(2).turns(), "thirdTurns").isEqualTo(trials.get(0).turns());
+			for (PromptTest test : contract.tests())
+			{
+				PilotResult pilot = pilots.get(test.id());
+				requireThat(pilot.trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
+				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				requireThat(pilot.stopReason(), "stopReason").isNull();
+				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), pilot.control()), "applies").
+					isTrue();
+			}
+		}
+	}
+
+	/**
+	 * A refusal that follows a 30-minute hold stops the pilot from starting another session, because waiting does not
+	 * fix it, and every unfinished test records why it stopped, so that the stored result is not reused.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void refusalAfterLongestHoldStopsPilot() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-refusal"));
+			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			sessions.reject(SessionRole.TRIAL, List.of(new SessionResult.Refused(new Hold(Instant.EPOCH, 5), true,
+				List.of())));
 			Overlay control = control();
 
 			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 1).
@@ -675,7 +722,7 @@ public final class GuardPilotTest
 			for (PromptTest test : contract.tests())
 			{
 				PilotResult pilot = pilots.get(test.id());
-				requireThat(pilot.stopReason(), "stopReason").contains("rate limit");
+				requireThat(pilot.stopReason(), "stopReason").contains("30-minute hold");
 				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), pilot.control()), "applies").
 					isFalse();
 			}
@@ -806,7 +853,7 @@ public final class GuardPilotTest
 		private final Function<SessionRequest, String> replies;
 		private final List<SessionRequest> requests = new ArrayList<>();
 		private final List<SessionResult.Completed> trials = new ArrayList<>();
-		private boolean limitTrials;
+		private final Map<SessionRole, Deque<SessionResult>> rejections = new EnumMap<>(SessionRole.class);
 		private volatile int sessionEnvironmentVersion = 1;
 		private volatile int judgeVersion = 1;
 
@@ -843,13 +890,17 @@ public final class GuardPilotTest
 		}
 
 		/**
-		 * Makes the provider reject every trial session because of a rate limit.
+		 * Makes the provider reject or refuse the next sessions of a role, which end with the given results in order;
+		 * later sessions of the role run as usual.
+		 *
+		 * @param role    the role
+		 * @param results the results of the rejected or refused sessions
 		 */
-		void limitTrials()
+		void reject(SessionRole role, List<SessionResult> results)
 		{
 			synchronized (requests)
 			{
-				limitTrials = true;
+				rejections.computeIfAbsent(role, _ -> new ArrayDeque<>()).addAll(results);
 			}
 		}
 
@@ -884,16 +935,20 @@ public final class GuardPilotTest
 		public SessionHandle start(SessionRequest request)
 		{
 			int number;
-			boolean limited;
+			SessionResult rejection;
 			synchronized (requests)
 			{
 				requests.add(request);
 				number = requests.size();
-				limited = limitTrials;
+				Deque<SessionResult> queued = rejections.get(request.role());
+				if (queued == null)
+					rejection = null;
+				else
+					rejection = queued.pollFirst();
 			}
 			SessionResult result;
-			if (request.role() == SessionRole.TRIAL && limited)
-				result = new SessionResult.RateLimited(new Hold(Instant.EPOCH, 0), List.of());
+			if (rejection != null)
+				result = rejection;
 			else if (request.role() == SessionRole.TRIAL)
 			{
 				SessionResult.Completed trial = completed(number, replies.apply(request));

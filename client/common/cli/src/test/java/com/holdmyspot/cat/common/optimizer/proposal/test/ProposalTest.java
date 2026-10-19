@@ -1392,7 +1392,7 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that a pilot that a rate limit stopped says why and how to finish it.
+	 * Verifies that a pilot that a refusal stopped says why and how to finish it.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -1403,7 +1403,7 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
 			SALT);
 		Contract contract = derived.contract();
-		String reason = "The provider rejected a pilot session because of a rate limit.";
+		String reason = "The provider refused a pilot session after a 30-minute hold.";
 		PilotResult safety = pilot(contract, "safety", "asks_before_deleting", 3, List.of(), reason);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,

@@ -141,8 +141,10 @@ public final class GuardPilot
 	 * unchanged, so a revision reruns only the tests whose definition changed or whose earlier pilot has a failed run,
 	 * and every test once the trials' projects or the sessions change what the model receives or how the judge
 	 * decides. A test whose cell is unknown, or that
-	 * has no development test case, has no pilot. When the provider rejects or refuses a session, the pilot starts no
-	 * further session and each unfinished test's result records why it stopped.
+	 * has no development test case, has no pilot. A session that the provider rejects because of a rate limit, or
+	 * refuses, runs again once the harness's shared hold ends: a trial with the same test case, and a judge without
+	 * spending one of its attempts. A refusal that follows a 30-minute hold starts no further session, because waiting
+	 * does not fix it, and each unfinished test's result records why the pilot stopped.
 	 *
 	 * @param contract the proposed contract
 	 * @param plugins the campaign's trial plugins, which every trial installs
@@ -388,7 +390,7 @@ public final class GuardPilot
 		}
 
 		/**
-		 * Draws each pilot's test cases, then runs their sessions until every trial ends or a session is rejected.
+		 * Draws each pilot's test cases, then runs their sessions until every trial ends or the pilot stops.
 		 *
 		 * @throws IOException if a passing trial's project copies cannot be deleted. No further session starts, and the
 		 *   failure is thrown once the running sessions end.
@@ -450,7 +452,7 @@ public final class GuardPilot
 		}
 
 		/**
-		 * Starts queued sessions while capacity is free and no session was rejected.
+		 * Starts queued sessions while capacity is free and the pilot has not stopped.
 		 */
 		private void startSessions()
 		{
@@ -508,9 +510,9 @@ public final class GuardPilot
 			{
 				case null -> trial.pilot().failed("The trial session failed: " + Driver.describe(failure));
 				case SessionResult.Completed completed -> decideTools(trial, completed);
-				case SessionResult.RateLimited _ ->
-					stop("The provider rejected a pilot session because of a rate limit.");
-				case SessionResult.Refused _ -> stop("The provider refused a pilot session.");
+				// The trial reruns once the harness's shared hold ends
+				case SessionResult.RateLimited _ -> queue.addFirst(trial);
+				case SessionResult.Refused refused -> refused(trial, refused);
 				case SessionResult.Interrupted _ -> trial.pilot().failed("The trial session was interrupted");
 				case SessionResult.Failed failed -> trial.pilot().failed(failed.reason());
 			}
@@ -590,9 +592,9 @@ public final class GuardPilot
 					}
 					decided(judging, judgment.get());
 				}
-				case SessionResult.RateLimited _ ->
-					stop("The provider rejected a pilot session because of a rate limit.");
-				case SessionResult.Refused _ -> stop("The provider refused a pilot session.");
+				// A rate limit is not a failure of the judge, which reruns once the shared hold ends
+				case SessionResult.RateLimited _ -> queue.addFirst(judging);
+				case SessionResult.Refused refused -> refused(judging, refused);
 				case SessionResult.Interrupted _ -> sessionFailed(judging, "The judge session was interrupted");
 				case SessionResult.Failed failed -> sessionFailed(judging, failed.reason());
 			}
@@ -655,6 +657,21 @@ public final class GuardPilot
 				case JudgeJob judging -> judging.pilot().failed("The judge failed " + Driver.JUDGE_ATTEMPTS +
 					" times. Last failure: " + reason);
 			}
+		}
+
+		/**
+		 * Consumes a session that the provider refused. The session runs again once the harness's shared hold ends,
+		 * unless the refusal followed a hold of the longest length.
+		 *
+		 * @param job     the session's work
+		 * @param refused the session's result
+		 */
+		private void refused(Job job, SessionResult.Refused refused)
+		{
+			if (refused.afterLongestHold())
+				stop("The provider refused a pilot session after a 30-minute hold.");
+			else
+				queue.addFirst(job);
 		}
 
 		/**
