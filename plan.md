@@ -21,10 +21,10 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 ## 1. Working rules for implementers
 
 - **Placement:**
-  - Core code goes in `client/common/cli` under `io.github.cowwoc.cat.common.optimizer.<package>`, following
+  - Core code goes in `client/common/cli` under `com.holdmyspot.cat.common.optimizer.<package>`, following
     `design.md` [§9](design.md#9-architecture).
-  - Harness adapters and `main` classes go in `client/claude/cli` (`io.github.cowwoc.cat.claude.optimizer`) and
-    `client/codex/cli` (`io.github.cowwoc.cat.codex.optimizer`).
+  - Harness adapters and `main` classes go in `client/claude/cli` (`com.holdmyspot.cat.claude.optimizer`) and
+    `client/codex/cli` (`com.holdmyspot.cat.codex.optimizer`).
   - Test builders and fakes go in `client/common/cli` test sources, published through that module's test JAR.
 - **Reuse:** `Git` (`common.git`), the runner API (`common.runner`), the project's Jackson 3 `JsonMapper`
   conventions, `requirements-java` validation and `TemporaryDirectories`. Do not reimplement a runner, a Git client or a
@@ -2360,7 +2360,7 @@ The riskiest pure code, built first.
   `.cat/work/<session-id>/rules.md`, and each Claude subagent's to `.cat/work/<session-id>/subagents/<agent-id>.md`.
   `<session-id>` is the harness's session ID in canonical UUID form; CAT refuses any other form, so a session directory
   never takes the name of another entry of `.cat/work`.
-- **One owner:** a new `SessionWorkDirectory` in `io.github.cowwoc.cat.common` is the only code that names `.cat/work`
+- **One owner:** a new `SessionWorkDirectory` in `com.holdmyspot.cat.common` is the only code that names `.cat/work`
   or builds a session directory's path. Hooks obtain it from `HookScope` with the hook input; commands obtain it from
   `ToolScope`, which reads the session variable. Its first use creates the directory and `temp/`, and writes the marker
   when none exists: it writes a temporary file in the directory and moves it into place atomically, so concurrent first

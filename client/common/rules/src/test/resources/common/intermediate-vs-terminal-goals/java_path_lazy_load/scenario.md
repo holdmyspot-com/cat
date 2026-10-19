@@ -8,7 +8,7 @@
 ## Variables
 
 - **java_file**: The project-relative path of a Java production source file in the current project that declares one
-  public class, such as `client/common/cli/src/main/java/io/github/cowwoc/cat/common/ProjectRuleLoader.java`
+  public class, such as `client/common/cli/src/main/java/com/holdmyspot/cat/common/ProjectRuleLoader.java`
 
 ## Scenario
 

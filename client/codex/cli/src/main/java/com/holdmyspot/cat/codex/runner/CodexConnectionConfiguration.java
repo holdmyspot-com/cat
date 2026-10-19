@@ -1,0 +1,438 @@
+package com.holdmyspot.cat.codex.runner;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.Platform;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Copies the connection settings needed by an isolated Codex process without inheriting host customization state.
+ */
+public final class CodexConnectionConfiguration
+{
+	private static final int MAXIMUM_CONFIGURATION_BYTES = 1_048_576;
+	private static final String STARTUP_UPDATE_CHECK = "check_for_update_on_startup = false";
+	static final String RUNNER_PERMISSION_PROFILE = "cat-runner";
+	private static final String VALIDATOR_PERMISSION_PROFILE = "cat-validator";
+	private static final String DENIED_READS_PERMISSION_PROFILE = "cat-denied-reads";
+	private static final String TEMPORARY_DIRECTORY = ":tmpdir";
+	private static final Set<String> CONNECTION_SETTINGS = Set.of("forced_login_method", "model",
+		"model_reasoning_effort", "openai_base_url");
+	private static final Pattern NETWORK_ACCESS = Pattern.compile("^network_access\\s*=\\s*(true|false)\\s*(?:#.*)?$");
+	static final List<String> CAT_HOOK_KEYS = List.of("cat@cat:hooks/hooks.json:session_start:0:0",
+		"cat@cat:hooks/hooks.json:subagent_start:0:0", "cat@cat:hooks/hooks.json:post_tool_use:0:0");
+	private static final Pattern TRUSTED_HASH = Pattern.compile(
+		"(?m)^trusted_hash\\s*=\\s*\\\"(sha256:[0-9a-f]{64})\\\"\\s*$");
+
+	/**
+	 * Copies supported top-level connection settings from a host Codex configuration and disables Codex's startup update
+	 * check in the isolated configuration.
+	 *
+	 * @param source the host configuration file
+	 * @param destination the isolated configuration file
+	 * @throws IOException if configuration I/O fails
+	 */
+	public static void copy(Path source, Path destination) throws IOException
+	{
+		copy(source, destination, null, destination.getParent().resolve("tmp"));
+	}
+
+	/**
+	 * Copies supported connection settings and makes one verified npm cache available to nested shell commands.
+	 *
+	 * <p>
+	 * Codex starts its own sandboxed shell processes. Passing a cache variable to the app server alone does not make
+	 * it available to those shells, so a plain {@code npm install} can instead select the read-only default cache and
+	 * fail before it reaches the registry. This configuration gives every shell the verified cache path and grants that
+	 * path the matching workspace-write authority.
+	 *
+	 * @param source the host configuration file
+	 * @param destination the isolated configuration file
+	 * @param npmCache the verified writable npm cache, or {@code null} when no nested package acquisition is needed
+	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
+	 * @throws IOException if configuration I/O fails
+	 */
+	public static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory) throws IOException
+	{
+		copy(source, destination, npmCache, temporaryDirectory, 0, Platform.current());
+	}
+
+	/**
+	 * Copies supported connection settings, makes one verified npm cache available to nested shell commands and
+	 * limits the tokens that the session keeps of each tool output. On Windows, the configuration prefers Codex's MXC
+	 * sandbox where the system offers it.
+	 *
+	 * @param source the host configuration file
+	 * @param destination the isolated configuration file
+	 * @param npmCache the verified writable npm cache, or {@code null} when no nested package acquisition is needed
+	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
+	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
+	 *   Codex's default
+	 * @param platform the platform that the session runs on
+	 * @throws IOException if configuration I/O fails
+	 */
+	public static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory,
+		int toolOutputTokenLimit, Platform platform) throws IOException
+	{
+		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
+		StringBuilder copied = new StringBuilder(256).append(STARTUP_UPDATE_CHECK).append(System.lineSeparator()).
+			append("default_permissions = \"").append(RUNNER_PERMISSION_PROFILE).append('"').
+			append(System.lineSeparator());
+		// A top-level key must precede every table
+		if (toolOutputTokenLimit > 0)
+			copied.append("tool_output_token_limit = ").append(toolOutputTokenLimit).append(System.lineSeparator());
+		String networkAccess = null;
+		if (Files.isRegularFile(source))
+		{
+			String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+			for (String line : configuration.lines().toList())
+			{
+				String trimmed = line.stripLeading();
+				if (trimmed.startsWith("["))
+					break;
+				int equals = trimmed.indexOf('=');
+				if (equals < 1)
+					continue;
+				String name = trimmed.substring(0, equals).strip();
+				if (CONNECTION_SETTINGS.contains(name))
+					copied.append(line).append(System.lineSeparator());
+			}
+
+			networkAccess = workspaceWriteNetworkAccess(configuration);
+		}
+		if (networkAccess != null || npmCache != null)
+		{
+			copied.append(System.lineSeparator()).append("[sandbox_workspace_write]").append(System.lineSeparator());
+			if (networkAccess != null)
+				copied.append("network_access = ").append(networkAccess).append(System.lineSeparator());
+			if (npmCache != null)
+				copied.append("writable_roots = [\"").append(toml(npmCache)).append("\"]").append(System.lineSeparator());
+		}
+		if (npmCache != null)
+		{
+			copied.append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator()).
+				append("NPM_CONFIG_CACHE = \"").append(toml(npmCache)).append('"').append(System.lineSeparator());
+		}
+		else
+			copied.append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
+		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator());
+		if (platform.isWindows())
+		{
+			// Without an administrator's setup, Windows offers only Codex's unelevated sandbox, which refuses a profile
+			// that denies reads, and MXC, which enforces it
+			copied.append(System.lineSeparator()).append("[features]").append(System.lineSeparator()).
+				append("prefer_mxc = true").append(System.lineSeparator());
+		}
+		appendRunnerProfile(copied, destination.getParent(), npmCache, temporaryDirectory, networkAccess);
+		Files.createDirectories(destination.getParent());
+		Files.writeString(destination, copied.toString());
+	}
+
+	/**
+	 * Gives the nested process's own runtime state the same narrowly scoped write authority as its project workspace.
+	 *
+	 * <p>
+	 * The harness shell starts from the copied project, while the runner deliberately puts its credentials, session
+	 * state, plugins, and configuration in a sibling isolated home. A workspace-only profile cannot initialize that
+	 * shell because its required home lies outside the workspace. The child profile extends the built-in workspace
+	 * profile and adds only the newly created isolated home, the harness temporary directory, and the shared
+	 * dependency cache. It never extends the host's own permission profiles: they grant the host's Codex home, CAT user
+	 * directory and other workspaces, which a nested session must neither change nor see. Codex's Linux sandbox creates
+	 * its process lock and scratch state under the harness temporary directory before a shell command can run, so it
+	 * needs the same temporary-directory authority as the parent workspace-write sandbox. Its temporary directory is
+	 * created inside the runner-owned home beneath CAT work storage, rather than granting global {@code /tmp}; the
+	 * harness sandbox uses it before the first shell command can run.
+	 * <p>
+	 * A thread that names a profile ignores {@code [sandbox_workspace_write]}, and the built-in workspace profile denies
+	 * network access, so the profile carries the parent's explicit workspace-write network policy.
+	 *
+	 * @param configuration the isolated configuration being assembled
+	 * @param isolatedHome the fresh runtime home that the runner owns
+	 * @param npmCache the verified shared dependency cache, or {@code null} when no cache was supplied
+	 * @param temporaryDirectory the fresh harness temporary directory owned by the runner
+	 * @param networkAccess {@code true} or {@code false} when the parent declares a workspace-write network policy, or
+	 *   {@code null} when it does not
+	 */
+	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, Path npmCache,
+		Path temporaryDirectory, String networkAccess)
+	{
+		assert configuration != null;
+		assert isolatedHome != null;
+		assert temporaryDirectory != null;
+		configuration.append(System.lineSeparator()).append("[permissions.").append(RUNNER_PERMISSION_PROFILE).
+			append(']').append(System.lineSeparator()).append("extends = \":workspace\"").
+			append(System.lineSeparator()).append("[permissions.").append(RUNNER_PERMISSION_PROFILE).
+			append(".filesystem]").append(System.lineSeparator()).append('"').append(toml(isolatedHome)).
+			append("\" = \"write\"").append(System.lineSeparator()).append('"').append(TEMPORARY_DIRECTORY).
+			append("\" = \"write\"").
+			append(System.lineSeparator());
+		if (npmCache != null)
+			configuration.append('"').append(toml(npmCache)).append("\" = \"write\"").append(System.lineSeparator());
+		if (networkAccess != null)
+		{
+			configuration.append("[permissions.").append(RUNNER_PERMISSION_PROFILE).append(".network]").
+				append(System.lineSeparator()).append("enabled = ").append(networkAccess).append(System.lineSeparator());
+		}
+	}
+
+	/**
+	 * Escapes one filesystem path for a TOML basic string.
+	 *
+	 * @param path the path to render
+	 * @return a TOML-safe absolute path value
+	 */
+	private static String toml(Path path)
+	{
+		assert path != null;
+		return path.toAbsolutePath().normalize().toString().replace("\\", "\\\\").replace("\"", "\\\"");
+	}
+
+	/**
+	 * Adds the permission profile that a session's thread runs under.
+	 *
+	 * @param destination the isolated Codex configuration
+	 * @param readOnlyEvidence the completed evidence directories and files that the session may read but not change
+	 * @param deniedReads the existing files and directories that the session must not read
+	 * @return the profile that the thread names, or an empty string if the thread uses the workspace-write sandbox
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if the isolated configuration cannot be updated
+	 */
+	public static String addSessionProfile(Path destination, List<Path> readOnlyEvidence, List<Path> deniedReads)
+		throws IOException
+	{
+		requireThat(destination, "destination").isNotNull();
+		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
+		requireThat(deniedReads, "deniedReads").isNotNull();
+		String profile = "";
+		if (!readOnlyEvidence.isEmpty())
+		{
+			addValidatorProfile(destination, readOnlyEvidence);
+			profile = VALIDATOR_PERMISSION_PROFILE;
+		}
+		if (deniedReads.isEmpty())
+			return profile;
+		if (profile.isEmpty())
+			profile = RUNNER_PERMISSION_PROFILE;
+		addDeniedReadsProfile(destination, profile, deniedReads);
+		return DENIED_READS_PERMISSION_PROFILE;
+	}
+
+	/**
+	 * Adds the profile that denies a session reading files and directories.
+	 *
+	 * @param destination the isolated Codex configuration
+	 * @param parentProfile the profile whose permissions the session otherwise has
+	 * @param deniedReads the files and directories to deny; a path that no longer exists is skipped
+	 * @throws IOException if the isolated configuration cannot be updated
+	 */
+	private static void addDeniedReadsProfile(Path destination, String parentProfile, List<Path> deniedReads)
+		throws IOException
+	{
+		String configuration = BoundedInput.readUtf8(destination, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		if (!configuration.contains("[permissions." + RUNNER_PERMISSION_PROFILE + "]"))
+			throw new IOException("Denying reads requires the CAT runner permission profile");
+		String section = "[permissions." + DENIED_READS_PERMISSION_PROFILE;
+		StringBuilder profile = new StringBuilder(configuration).append(System.lineSeparator()).append(section).
+			append(']').append(System.lineSeparator()).append("extends = \"").append(parentProfile).append('"').
+			append(System.lineSeparator()).append(section).append(".filesystem]").append(System.lineSeparator());
+		for (Path deniedRead : deniedReads)
+		{
+			// Codex's Linux sandbox creates an empty placeholder at a missing denied path while the session runs, which
+			// would block CAT from creating that path. Denying the real path also covers every symbolic-link alias.
+			if (Files.notExists(deniedRead))
+				continue;
+			profile.append('"').append(toml(deniedRead.toRealPath())).append("\" = \"deny\"").
+				append(System.lineSeparator());
+		}
+		Files.writeString(destination, profile.toString());
+	}
+
+	/**
+	 * Adds the profile used when an independent validator reads completed executor evidence.
+	 *
+	 * @param destination the isolated Codex configuration
+	 * @param evidenceRoots the completed evidence directories and files
+	 * @throws IOException if the isolated configuration cannot be updated
+	 */
+	public static void addValidatorProfile(Path destination, List<Path> evidenceRoots) throws IOException
+	{
+		requireThat(evidenceRoots, "evidenceRoots").isNotEmpty();
+		String configuration = BoundedInput.readUtf8(destination, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		if (!configuration.contains("[permissions." + RUNNER_PERMISSION_PROFILE + "]"))
+			throw new IOException("Read-only validator evidence requires the CAT runner permission profile");
+		// A validator's verdict is credible only if the harness can read executor evidence but cannot rewrite it.
+		Files.writeString(destination, configuration + System.lineSeparator() + "[permissions." +
+			VALIDATOR_PERMISSION_PROFILE + "]" + System.lineSeparator() + "extends = \"" + RUNNER_PERMISSION_PROFILE +
+			"\"" + System.lineSeparator() + "[permissions." + VALIDATOR_PERMISSION_PROFILE + ".filesystem]" +
+			System.lineSeparator() + evidencePermissions(evidenceRoots));
+	}
+
+	/**
+	 * Renders the exact read-only authority needed for completed evidence.
+	 *
+	 * @param evidenceRoots the completed evidence directories and files
+	 * @return TOML filesystem permission entries
+	 * @throws IOException if an evidence entry cannot be canonicalized
+	 */
+	private static String evidencePermissions(List<Path> evidenceRoots) throws IOException
+	{
+		StringBuilder result = new StringBuilder();
+		for (Path evidenceRoot : evidenceRoots)
+		{
+			String quotedEvidenceRoot = evidenceRoot.toRealPath().toString().replace("\\", "\\\\").replace("\"", "\\\"");
+			result.append('"').append(quotedEvidenceRoot).append("\" = \"read\"").append(System.lineSeparator());
+		}
+		return result.toString();
+	}
+
+	/**
+	 * Extracts the parent workspace-write sandbox's explicit network-access policy.
+	 *
+	 * @param configuration the complete parent Codex configuration
+	 * @return {@code true} or {@code false} when the parent declares the policy, or {@code null} when it does not
+	 */
+	private static String workspaceWriteNetworkAccess(String configuration)
+	{
+		assert configuration != null;
+		boolean inWorkspaceWriteSandbox = false;
+		for (String line : configuration.lines().toList())
+		{
+			String trimmed = line.strip();
+			if (trimmed.startsWith("["))
+			{
+				inWorkspaceWriteSandbox = trimmed.equals("[sandbox_workspace_write]");
+				continue;
+			}
+
+			if (!inWorkspaceWriteSandbox)
+				continue;
+			Matcher networkAccess = NETWORK_ACCESS.matcher(trimmed);
+			if (networkAccess.matches())
+				return networkAccess.group(1);
+		}
+		return null;
+	}
+
+	/**
+	 * Copies the host's existing approvals for CAT's hooks into an isolated Codex home.
+	 * <p>
+	 * The copied value is only an expected hook hash. Codex compares it against the installed artifact's current hook
+	 * hash before execution, so a changed hook remains untrusted.
+	 *
+	 * @param source the host Codex configuration file
+	 * @param destination the isolated Codex configuration file
+	 * @throws IOException if configuration I/O fails
+	 */
+	public static void copyTrustedCatHooks(Path source, Path destination) throws IOException
+	{
+		if (!Files.isRegularFile(source))
+			return;
+		String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		StringBuilder approvals = new StringBuilder(256);
+		for (String key : CAT_HOOK_KEYS)
+		{
+			Pattern statePattern = Pattern.compile("(?ms)^\\[hooks\\.state\\.\\\"" + Pattern.quote(key) +
+				"\\\"]\\R(.*?)(?=^\\[|\\z)");
+			Matcher state = statePattern.matcher(configuration);
+			if (!state.find())
+				continue;
+			Matcher hash = TRUSTED_HASH.matcher(state.group(1));
+			if (!hash.find())
+				continue;
+			approvals.append(System.lineSeparator()).append("[hooks.state.\"").append(key).append("\"]").
+				append(System.lineSeparator()).append("trusted_hash = \"").append(hash.group(1)).append('"').
+				append(System.lineSeparator());
+		}
+		if (approvals.isEmpty())
+			return;
+		Files.createDirectories(destination.getParent());
+		Files.writeString(destination, approvals.toString(), java.nio.file.StandardOpenOption.CREATE,
+			java.nio.file.StandardOpenOption.APPEND);
+	}
+
+	/**
+	 * Copies the user's approvals of a plugin's hooks into an isolated configuration, under the run-local marketplace
+	 * that bears the plugin's name. Codex keys an approval by the plugin, its marketplace and the hook, and rejects an
+	 * approval whose recorded hash differs from the hook's normalized declaration, so an approval of another version of
+	 * the hook gives it no trust.
+	 *
+	 * @param source the host configuration file
+	 * @param destination the isolated configuration file
+	 * @param plugin the plugin's manifest name
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code plugin} is blank
+	 * @throws IOException if configuration I/O fails
+	 */
+	public static void copyTrustedHooks(Path source, Path destination, String plugin) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
+		requireThat(destination, "destination").isNotNull();
+		requireThat(plugin, "plugin").isNotBlank();
+		// The user's approval names the marketplace that the user installed the plugin from; the run-local marketplace
+		// bears the plugin's name instead, so each approval is rewritten under it
+		StringBuilder approvals = new StringBuilder(256);
+		for (Entry<String, String> approval : pluginHookApprovals(source, plugin).entrySet())
+		{
+			approvals.append(System.lineSeparator()).append("[hooks.state.\"").append(plugin).append('@').
+				append(plugin).append(':').append(approval.getKey()).append("\"]").append(System.lineSeparator()).
+				append("trusted_hash = \"").append(approval.getValue()).append('"').append(System.lineSeparator());
+		}
+		if (approvals.isEmpty())
+			return;
+		Files.createDirectories(destination.getParent());
+		Files.writeString(destination, approvals.toString(), java.nio.file.StandardOpenOption.CREATE,
+			java.nio.file.StandardOpenOption.APPEND);
+	}
+
+	/**
+	 * Returns the user's approvals of a plugin's hooks, from any marketplace. Codex keys an approval by
+	 * {@code <plugin>@<marketplace>:<hook>}, where {@code <hook>} is the hooks file relative to the plugin directory,
+	 * the event in snake case, the matcher group's index and the handler's index, separated by colons.
+	 *
+	 * @param source the host configuration file
+	 * @param plugin the plugin's manifest name
+	 * @return each approved hook's key without the plugin and marketplace, mapped to the hash that the user approved,
+	 *   in configuration order; empty if {@code source} is not a file
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code plugin} is blank
+	 * @throws IOException if the configuration cannot be read
+	 */
+	public static Map<String, String> pluginHookApprovals(Path source, String plugin) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
+		requireThat(plugin, "plugin").isNotBlank();
+		Map<String, String> approvals = new LinkedHashMap<>();
+		if (!Files.isRegularFile(source))
+			return approvals;
+		String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		Matcher state = Pattern.compile("(?ms)^\\[hooks\\.state\\.\"" + Pattern.quote(plugin) +
+			"@[^:\"]+:([^\"]+)\"]\\R(.*?)(?=^\\[|\\z)").matcher(configuration);
+		while (state.find())
+		{
+			Matcher hash = TRUSTED_HASH.matcher(state.group(2));
+			if (hash.find())
+				approvals.put(state.group(1), hash.group(1));
+		}
+		return approvals;
+	}
+
+	/**
+	 * Prevents construction of utility class instances.
+	 */
+	private CodexConnectionConfiguration()
+	{
+	}
+}

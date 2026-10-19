@@ -2209,7 +2209,7 @@ prompt files include that guidance; its contract then holds every recorded scena
 
 ## 9. Architecture
 
-The harness-neutral core lives in `client/common/cli` under `io.github.cowwoc.cat.common.optimizer`. Harness adapters
+The harness-neutral core lives in `client/common/cli` under `com.holdmyspot.cat.common.optimizer`. Harness adapters
 and launchers live in `client/claude/cli` and `client/codex/cli`.
 
 | Package | Responsibility | Kind |

@@ -1,14 +1,14 @@
-module io.github.cowwoc.cat.claude.cli
+module com.holdmyspot.cat.claude.cli
 {
-	requires io.github.cowwoc.cat.common.cli;
+	requires com.holdmyspot.cat.common.cli;
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;
 
-	exports io.github.cowwoc.cat.claude to io.github.cowwoc.cat.claude.cli.test;
-	exports io.github.cowwoc.cat.claude.optimizer;
-	exports io.github.cowwoc.cat.claude.runner to io.github.cowwoc.cat.claude.cli.test;
-	exports io.github.cowwoc.cat.claude.secrets to io.github.cowwoc.cat.claude.cli.test;
+	exports com.holdmyspot.cat.claude to com.holdmyspot.cat.claude.cli.test;
+	exports com.holdmyspot.cat.claude.optimizer;
+	exports com.holdmyspot.cat.claude.runner to com.holdmyspot.cat.claude.cli.test;
+	exports com.holdmyspot.cat.claude.secrets to com.holdmyspot.cat.claude.cli.test;
 
-	provides io.github.cowwoc.cat.common.SessionHarness with io.github.cowwoc.cat.claude.ClaudeSessionHarness;
+	provides com.holdmyspot.cat.common.SessionHarness with com.holdmyspot.cat.claude.ClaudeSessionHarness;
 }

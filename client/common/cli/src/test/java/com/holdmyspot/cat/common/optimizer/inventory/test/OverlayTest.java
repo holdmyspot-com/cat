@@ -1,0 +1,190 @@
+package com.holdmyspot.cat.common.optimizer.inventory.test;
+
+import static com.holdmyspot.cat.common.optimizer.inventory.test.Inventories.EXECUTABLE;
+import static com.holdmyspot.cat.common.optimizer.inventory.test.Inventories.READ_WRITE;
+import static com.holdmyspot.cat.common.optimizer.inventory.test.Inventories.content;
+import static com.holdmyspot.cat.common.optimizer.inventory.test.Inventories.file;
+import static com.holdmyspot.cat.common.optimizer.inventory.test.Inventories.inventory;
+import static com.holdmyspot.cat.common.optimizer.inventory.test.Inventories.link;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
+import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
+import com.holdmyspot.cat.common.optimizer.inventory.OverlayEntry.Delete;
+import com.holdmyspot.cat.common.optimizer.inventory.OverlayEntry.Write;
+
+import java.nio.file.Path;
+import java.util.Map;
+
+import org.testng.annotations.Test;
+
+/**
+ * Verifies candidate overlays, their identities and the snapshots they describe.
+ */
+public final class OverlayTest
+{
+	/**
+	 * Creates the test.
+	 */
+	public OverlayTest()
+	{
+	}
+
+	/**
+	 * Verifies that two overlays holding the same edits have the same candidate identity regardless of the order in
+	 * which the edits were recorded.
+	 */
+	@Test
+	public void identityIgnoresRecordingOrder()
+	{
+		// Requirement: R-W3
+		FileInventory fork = inventory(Map.of("prompts/a.md", file("a"), "prompts/b.md", file("b")));
+
+		Overlay first = Overlay.of(fork).
+			write(Path.of("prompts/a.md"), content("A"), READ_WRITE).
+			delete(Path.of("prompts/b.md"));
+		Overlay second = Overlay.of(fork).
+			delete(Path.of("prompts/b.md")).
+			write(Path.of("prompts/a.md"), content("A"), READ_WRITE);
+
+		requireThat(first.identity(), "first").isEqualTo(second.identity());
+	}
+
+	/**
+	 * Verifies that different overlay content on the same fork produces different candidate identities.
+	 */
+	@Test
+	public void identityDependsOnOverlay()
+	{
+		// Requirement: R-W3
+		FileInventory fork = inventory(Map.of("prompts/a.md", file("a")));
+
+		Overlay first = Overlay.of(fork).write(Path.of("prompts/a.md"), content("A"), READ_WRITE);
+		Overlay second = Overlay.of(fork).write(Path.of("prompts/a.md"), content("B"), READ_WRITE);
+		Overlay created = Overlay.of(fork).write(Path.of("prompts/new.md"), content("A"), READ_WRITE);
+		Overlay executable = Overlay.of(fork).write(Path.of("prompts/new.md"), content("A"), EXECUTABLE);
+
+		requireThat(first.identity(), "first").isNotEqualTo(second.identity(), "second");
+		requireThat(first.identity(), "first").isNotEqualTo(created.identity(), "created");
+		requireThat(created.identity(), "created").isNotEqualTo(executable.identity(), "executable");
+		requireThat(first.identity(), "first").isNotEqualTo(Overlay.of(fork).identity(), "incumbent");
+	}
+
+	/**
+	 * Verifies that the same overlay applied to forks with different recorded content produces different candidate
+	 * identities.
+	 */
+	@Test
+	public void identityDependsOnFork()
+	{
+		// Requirement: R-W3
+		FileInventory fork = inventory(Map.of("prompts/a.md", file("a"), "prompts/b.md", file("b")));
+		FileInventory otherFork = inventory(Map.of("prompts/a.md", file("a"), "prompts/b.md", file("other")));
+
+		Overlay candidate = Overlay.of(fork).write(Path.of("prompts/a.md"), content("A"), READ_WRITE);
+		Overlay otherCandidate = Overlay.of(otherFork).write(Path.of("prompts/a.md"), content("A"), READ_WRITE);
+
+		requireThat(candidate.identity(), "candidate").isNotEqualTo(otherCandidate.identity(), "otherCandidate");
+		requireThat(Overlay.of(fork).identity(), "incumbent").isNotEqualTo(Overlay.of(otherFork).identity(),
+			"otherIncumbent");
+	}
+
+	/**
+	 * Verifies that moving an overlay onto a fork that holds every file of its own fork, and more, keeps its edits and
+	 * gives it the larger fork's identity, and that a fork that lacks one of its files is refused.
+	 */
+	@Test
+	public void ontoLargerForkKeepsEdits()
+	{
+		// Requirement: R-W3
+		FileInventory fork = inventory(Map.of("prompts/a.md", file("a"), "prompts/b.md", file("b")));
+		FileInventory larger = inventory(Map.of("prompts/a.md", file("a"), "prompts/b.md", file("b"),
+			"tests/fixture.md", file("fixture")));
+		Overlay candidate = Overlay.of(fork).
+			write(Path.of("prompts/a.md"), content("A"), READ_WRITE).
+			delete(Path.of("prompts/b.md"));
+
+		Overlay moved = candidate.onto(larger);
+
+		requireThat(moved.fork(), "fork").isEqualTo(larger);
+		requireThat(moved.entries(), "entries").isEqualTo(candidate.entries());
+		requireThat(moved.identity(), "identity").isNotEqualTo(candidate.identity(), "candidate");
+		FileInventory smaller = inventory(Map.of("prompts/a.md", file("a")));
+		try
+		{
+			candidate.onto(smaller);
+			throw new AssertionError("A fork that lacks a file of the overlay's fork must be refused.");
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").contains(Path.of("prompts/b.md").toString());
+		}
+	}
+
+	/**
+	 * Verifies that restoring an edited file's recorded content removes the edit, so the candidate is again the
+	 * incumbent.
+	 */
+	@Test
+	public void revertRestoresIncumbent()
+	{
+		// Requirement: R-W3
+		FileInventory fork = inventory(Map.of("prompts/a.md", file("a")));
+
+		Overlay reverted = Overlay.of(fork).
+			write(Path.of("prompts/a.md"), content("A"), READ_WRITE).
+			write(Path.of("prompts/a.md"), content("a"), READ_WRITE).
+			write(Path.of("prompts/new.md"), content("new"), READ_WRITE).
+			delete(Path.of("prompts/new.md"));
+
+		requireThat(reverted.entries(), "entries").isEmpty();
+		requireThat(reverted.identity(), "reverted").isEqualTo(Overlay.of(fork).identity());
+	}
+
+	/**
+	 * Verifies that an overlay records content edits, creates and deletes relative to its fork, and that its snapshot
+	 * applies them to the fork's inventory.
+	 */
+	@Test
+	public void snapshotAppliesEntries()
+	{
+		FileInventory fork = inventory(Map.of(
+			"prompts/a.md", file("a"),
+			"prompts/old.md", file("old"),
+			"README.md", file("readme")));
+
+		Overlay candidate = Overlay.of(fork).
+			write(Path.of("prompts/a.md"), content("A"), READ_WRITE).
+			delete(Path.of("prompts/old.md")).
+			write(Path.of("prompts/new.md"), content("old"), EXECUTABLE);
+
+		requireThat(candidate.entries(), "entries").isEqualTo(Map.of(
+			Path.of("prompts/a.md"), new Write(content("A"), READ_WRITE),
+			Path.of("prompts/old.md"), new Delete(),
+			Path.of("prompts/new.md"), new Write(content("old"), EXECUTABLE)));
+		requireThat(candidate.snapshot(), "snapshot").isEqualTo(inventory(Map.of(
+			"prompts/a.md", file("A"),
+			"prompts/new.md", file("old", EXECUTABLE),
+			"README.md", file("readme"))));
+	}
+
+	/**
+	 * Verifies that an overlay rejects an edit at a path that the fork reaches through a symbolic link, because the
+	 * edit belongs to the link's resolved target.
+	 */
+	@Test
+	public void rejectsWriteAtLinkPath()
+	{
+		FileInventory fork = inventory(Map.of("prompts/a.md", file("a"), "alias.md", link("prompts/a.md")));
+
+		try
+		{
+			Overlay.of(fork).write(Path.of("alias.md"), content("A"), READ_WRITE);
+			throw new AssertionError("An edit at a link path must be refused.");
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").contains("alias.md").contains(Path.of("prompts/a.md").toString());
+		}
+	}
+}

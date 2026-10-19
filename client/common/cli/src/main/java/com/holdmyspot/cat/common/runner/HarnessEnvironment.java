@@ -1,0 +1,136 @@
+package com.holdmyspot.cat.common.runner;
+
+import com.holdmyspot.cat.common.Platform;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+
+/**
+ * Builds the minimal environment inherited by isolated harness processes.
+ */
+public final class HarnessEnvironment
+{
+	/**
+	 * Copies only generic operating-system variables and removes CAT/harness home state.
+	 * <p>
+	 * On Windows, the copy also holds {@code USERPROFILE}, {@code LOCALAPPDATA}, {@code TEMP}, {@code TMP},
+	 * {@code PATHEXT} and {@code SystemDrive}. Windows programs read the user's home directory from
+	 * {@code USERPROFILE} and its local data folder from {@code LOCALAPPDATA}; a program without {@code TEMP} and
+	 * {@code TMP} puts its temporary files in the Windows directory, which a user cannot write; PowerShell finds a
+	 * program by its name without an extension only with an extension that {@code PATHEXT} lists; and Codex's MXC
+	 * sandbox, the only Windows sandbox that denies reads without an administrator's setup, does not start without
+	 * {@code SystemDrive} and {@code LOCALAPPDATA}.
+	 *
+	 * @param source the host environment
+	 *
+	 * @return the scrubbed environment
+	 */
+	public static Map<String, String> scrub(Map<String, String> source)
+	{
+		requireThat(source, "source").isNotNull();
+		Map<String, String> result = new HashMap<>();
+		copy(source, result, "PATH");
+		copy(source, result, "HOME");
+		copy(source, result, "LANG");
+		copy(source, result, "LC_ALL");
+		copy(source, result, "TERM");
+		if (Platform.current().isWindows())
+		{
+			copy(source, result, "USERPROFILE");
+			copy(source, result, "LOCALAPPDATA");
+			copy(source, result, "TEMP");
+			copy(source, result, "TMP");
+			copy(source, result, "PATHEXT");
+			copy(source, result, "SystemDrive");
+		}
+		return Map.copyOf(result);
+	}
+
+	/**
+	 * Copies explicitly approved authentication variables into an isolated environment.
+	 *
+	 * @param source the host environment
+	 *
+	 * @param destination the mutable isolated environment
+	 *
+	 * @param names the approved authentication variable names
+	 */
+	public static void copyAllowed(Map<String, String> source, Map<String, String> destination, Set<String> names)
+	{
+		requireThat(source, "source").isNotNull();
+		requireThat(destination, "destination").isNotNull();
+		requireThat(names, "names").isNotNull();
+		for (String name : names)
+		{
+			requireThat(name, "name").isNotBlank();
+			copy(source, destination, name);
+		}
+	}
+
+	/**
+	 * Gives a child process a home directory. The environment names it in {@code HOME} and, on Windows, also in
+	 * {@code USERPROFILE}, which Windows programs read instead of {@code HOME}. On Windows, the environment also names
+	 * the home's {@code AppData\Local} in {@code LOCALAPPDATA}, where Windows programs keep a user's local data and
+	 * without which Codex's MXC sandbox does not start; the folder need not exist.
+	 *
+	 * @param environment the mutable isolated environment
+	 *
+	 * @param home the child's home directory
+	 */
+	public static void setHomeDirectory(Map<String, String> environment, Path home)
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireThat(home, "home").isNotNull();
+		environment.put("HOME", home.toString());
+		Platform platform = Platform.current();
+		environment.put(platform.homeVariable(), home.toString());
+		if (platform.isWindows())
+			environment.put("LOCALAPPDATA", home.resolve("AppData").resolve("Local").toString());
+	}
+
+	/**
+	 * Stops Git commands in an owned project copy from discovering a repository in the host's parent directories.
+	 *
+	 * @param environment the mutable isolated environment
+	 *
+	 * @param runDirectory the owned directory immediately above the copied project
+	 */
+	public static void preventGitDiscoveryAbove(Map<String, String> environment, Path runDirectory)
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireThat(runDirectory, "runDirectory").isNotNull();
+		if (!runDirectory.isAbsolute())
+			throw new IllegalArgumentException("runDirectory must be absolute");
+		environment.put("GIT_CEILING_DIRECTORIES", runDirectory.toString());
+	}
+
+	/**
+	 * Prevents construction of utility class instances.
+	 */
+	private HarnessEnvironment()
+	{
+	}
+
+	/**
+	 * Copies a non-blank environment value.
+	 *
+	 * @param source the source environment
+	 *
+	 * @param destination the destination environment
+	 *
+	 * @param name the variable name
+	 */
+	private static void copy(Map<String, String> source, Map<String, String> destination, String name)
+	{
+		assert source != null;
+		assert destination != null;
+		assert name != null;
+		String value = source.get(name);
+		if (value != null && !value.isBlank())
+			destination.put(name, value);
+	}
+}

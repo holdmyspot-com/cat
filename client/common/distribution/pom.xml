@@ -142,7 +142,7 @@
 							<goal>java</goal>
 						</goals>
 						<configuration>
-							<mainClass>io.github.cowwoc.cat.distribution.DistributionMain</mainClass>
+							<mainClass>com.holdmyspot.cat.distribution.DistributionMain</mainClass>
 							<arguments>
 								<argument>${project.basedir}/../../..</argument>
 								<argument>${project.build.directory}/modules</argument>

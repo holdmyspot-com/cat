@@ -26,16 +26,16 @@ tests.
 
 ### Test Module and Package Names
 
-- Name a test module after the main module it tests, with `.test` appended: `io.github.cowwoc.cat.codex.cli.test` tests
-  `io.github.cowwoc.cat.codex.cli`.
+- Name a test module after the main module it tests, with `.test` appended: `com.holdmyspot.cat.codex.cli.test` tests
+  `com.holdmyspot.cat.codex.cli`.
 - Name a test package after the main package it tests, with `.test` appended: `CodexRunnerTest`, which tests
-  `io.github.cowwoc.cat.codex.runner.CodexRunner`, belongs to `io.github.cowwoc.cat.codex.runner.test`, and a test of
-  the base package `io.github.cowwoc.cat.codex` belongs to `io.github.cowwoc.cat.codex.test`. Place a test in the
+  `com.holdmyspot.cat.codex.runner.CodexRunner`, belongs to `com.holdmyspot.cat.codex.runner.test`, and a test of
+  the base package `com.holdmyspot.cat.codex` belongs to `com.holdmyspot.cat.codex.test`. Place a test in the
   package of the main type it tests, even when that differs from the package of related tests.
 - Place a test-support package that tests no main package, such as fakes or shared contracts, under the package whose
-  tests use it, also ending in `.test`: `io.github.cowwoc.cat.common.runner.fakes.test`.
+  tests use it, also ending in `.test`: `com.holdmyspot.cat.common.runner.fakes.test`.
 - Place test resources that a test reads by a relative name in the resource directory of that test's package, such as
-  `io/github/cowwoc/cat/common/optimizer/proposal/test/`. Resource directories count as packages, and a test module
+  `com/holdmyspot/cat/common/optimizer/proposal/test/`. Resource directories count as packages, and a test module
   must not contain a package that another module also contains.
 
 Export each test package that contains TestNG tests to `org.testng`, and export a test-support package only to the test
@@ -47,12 +47,12 @@ Name a module after its implementation namespace. Declare direct module dependen
 packages intended for use by other modules; keep implementation details unexported.
 
 ```java
-module io.github.cowwoc.cat.codex.cli
+module com.holdmyspot.cat.codex.cli
 {
-	requires io.github.cowwoc.cat.common.cli;
+	requires com.holdmyspot.cat.common.cli;
 	requires io.github.cowwoc.requirements13.java;
 
-	exports io.github.cowwoc.cat.codex;
+	exports com.holdmyspot.cat.codex;
 }
 ```
 
@@ -64,11 +64,11 @@ follows the rules under Tests.
 
 Use the SharedSecrets approach through a topic-specific façade in the module whose internals it exposes. Place every
 public access interface and `<Topic>Secrets` façade in that module's unexported `<module-base-package>.secrets` package,
-such as `io.github.cowwoc.cat.distribution.secrets`. Do not export a secrets package by default. If a named external
+such as `com.holdmyspot.cat.distribution.secrets`. Do not export a secrets package by default. If a named external
 module must use a specific secret, add a qualified export to that module—and no others:
 
 ```java
-exports io.github.cowwoc.cat.distribution.secrets to other.module;
+exports com.holdmyspot.cat.distribution.secrets to other.module;
 ```
 
 A module may define multiple façades; do not centralize unrelated access points in another module. The façade exposes
