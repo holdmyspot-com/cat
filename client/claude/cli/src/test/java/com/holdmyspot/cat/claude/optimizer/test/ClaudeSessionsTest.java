@@ -885,6 +885,57 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that the files that an instruction file imports through {@code @path} are listed after it, resolved
+	 * against the importing file's directory, for at most four hops; and that a path in a code span or fenced code
+	 * block, an email address, a missing file, a file outside the project and a file already listed are left out.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void derivesImportedInstructions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-imports-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Map<String, String> files = Map.of(
+				"CLAUDE.md", """
+					@AGENTS.md
+					Mention `@docs/span.md` or write to user@example.com, but read @docs/design\\ notes.md first.
+					```
+					@docs/fenced.md
+					```
+					@docs/a.md @docs/missing.md @../outside.md
+					""",
+				"AGENTS.md", "Answer briefly. @CLAUDE.md",
+				"docs/a.md", "@b.md",
+				"docs/b.md", "@c.md",
+				"docs/c.md", "@d.md",
+				"docs/d.md", "@e.md",
+				"docs/e.md", "Too deep",
+				"docs/design notes.md", "Design",
+				"docs/span.md", "Span",
+				"docs/fenced.md", "Fenced");
+			for (Map.Entry<String, String> file : files.entrySet())
+			{
+				Path path = project.resolve(file.getKey());
+				Files.createDirectories(path.getParent());
+				Files.writeString(path, file.getValue());
+			}
+			Files.writeString(root.resolve("outside.md"), "Outside");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			ClaudeSessions sessions = ClaudeSessionsSecrets.access().newClaudeSessions(settings, (_, _, _) ->
+			{
+			});
+
+			requireThat(sessions.loadedSources(project, List.of()).trials().stream().map(DerivedSource::path).toList(),
+				"paths").isEqualTo(List.of("CLAUDE.md", "AGENTS.md", "docs/design notes.md", "docs/a.md", "docs/b.md",
+				"docs/c.md", "docs/d.md"));
+		}
+	}
+
+	/**
 	 * Verifies that the hooks that Claude Code trials register are those of the project's shared and local settings,
 	 * of each plugin's {@code hooks/hooks.json}, of each hooks file that its manifest names and of each declaration
 	 * that its manifest holds inline; that a settings file that is not valid JSON registers none; and that a hooks file

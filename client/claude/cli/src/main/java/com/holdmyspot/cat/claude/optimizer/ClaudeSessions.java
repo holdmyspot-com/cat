@@ -18,12 +18,18 @@ import com.holdmyspot.cat.claude.secrets.ClaudeSessionsAccess;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import tools.jackson.core.JacksonException;
@@ -81,6 +87,23 @@ public final class ClaudeSessions extends RunnerSessions
 	 */
 	private static final List<String> PROJECT_SETTINGS = List.of(".claude/settings.json",
 		".claude/settings.local.json");
+	/**
+	 * The number of hops that Claude Code follows from an instruction file through the files that it imports.
+	 */
+	private static final int IMPORT_HOPS = 4;
+	/**
+	 * An {@code @path} import: an {@code @} at the start of the text or after whitespace, then a path that ends at the
+	 * first space that no backslash precedes. The path is group 1.
+	 */
+	private static final Pattern IMPORT = Pattern.compile("(?<!\\S)@((?:\\\\ |\\S)+)");
+	/**
+	 * A Markdown code span: a run of backticks, the code, and a run of backticks of the same length.
+	 */
+	private static final Pattern CODE_SPAN = Pattern.compile("(`+).*?(?<!`)\\1(?!`)");
+	/**
+	 * The line that opens or closes a fenced Markdown code block.
+	 */
+	private static final Pattern FENCE = Pattern.compile("^ {0,3}(```|~~~)");
 	private final List<Path> managedSettings;
 
 	/**
@@ -255,19 +278,24 @@ public final class ClaudeSessions extends RunnerSessions
 	 * {@inheritDoc}
 	 * <p>
 	 * Claude Code reads {@code CLAUDE.md}, {@code .claude/CLAUDE.md} and {@code CLAUDE.local.md} at the project root,
-	 * and the Markdown rules below {@code .claude/rules}. The files that a listed file imports are not listed.
+	 * and the Markdown rules below {@code .claude/rules}. Each of those three files is followed by the files that it
+	 * imports through {@code @path}, and the files that those import in turn, for at most four hops. An import in a
+	 * Markdown code span or fenced code block is not followed, and only an import that resolves to a file in the project
+	 * is listed. The imports of a rule below {@code .claude/rules} are not listed.
 	 */
 	@Override
 	protected List<DerivedSource> instructionFiles(Path project) throws IOException
 	{
 		requireThat(project, "project").isNotNull();
 		List<DerivedSource> files = new ArrayList<>();
+		Set<String> listed = new HashSet<>();
 		for (String name : List.of("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"))
 		{
-			if (Files.isRegularFile(project.resolve(name)))
+			if (Files.isRegularFile(project.resolve(name)) && listed.add(name))
 			{
 				files.add(new DerivedSource(name, "Claude Code reads " + name + " at the project root in every " +
 					"session"));
+				addImports(project, name, IMPORT_HOPS, files, listed);
 			}
 		}
 		Path rules = project.resolve(".claude/rules");
@@ -289,6 +317,77 @@ public final class ClaudeSessions extends RunnerSessions
 				"session, or when the agent reads a file that its paths match"));
 		}
 		return files;
+	}
+
+	/**
+	 * Lists the project files that an instruction file imports, each followed by the files that it imports in turn.
+	 *
+	 * @param project the project's root directory
+	 * @param name the importing file's path relative to {@code project}, with {@code /} separators
+	 * @param hops the number of import hops that remain
+	 * @param files the list that receives each imported file
+	 * @param listed the paths that are already listed; each imported file's path is added to it
+	 * @throws IOException if a file cannot be read
+	 */
+	private static void addImports(Path project, String name, int hops, List<DerivedSource> files,
+		Set<String> listed) throws IOException
+	{
+		if (hops == 0)
+			return;
+		Path file = project.resolve(name);
+		// Bytes that are not valid UTF-8 become replacement characters, so an imported file that is not text does not
+		// stop the listing
+		String text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+		boolean fenced = false;
+		for (String line : (Iterable<String>) text.lines()::iterator)
+		{
+			if (FENCE.matcher(line).find())
+			{
+				fenced = !fenced;
+				continue;
+			}
+			if (fenced)
+				continue;
+			Matcher matcher = IMPORT.matcher(CODE_SPAN.matcher(line).replaceAll(" "));
+			while (matcher.find())
+			{
+				String reference = matcher.group(1);
+				Optional<String> imported = projectFile(project, file.getParent(), reference.replace("\\ ", " "));
+				if (imported.isEmpty() || !listed.add(imported.get()))
+					continue;
+				files.add(new DerivedSource(imported.get(), "Claude Code imports " + imported.get() + " into " + name +
+					" through @" + reference));
+				addImports(project, imported.get(), hops - 1, files, listed);
+			}
+		}
+	}
+
+	/**
+	 * Resolves an import's path to a file in the project.
+	 *
+	 * @param project the project's root directory
+	 * @param directory the directory of the importing file, which a relative path resolves against
+	 * @param path the imported path, without its escapes
+	 * @return the file's path relative to {@code project}, with {@code /} separators, or empty when the path names the
+	 *   home directory, is not a valid path, or does not resolve to a regular file in the project
+	 */
+	private static Optional<String> projectFile(Path project, Path directory, String path)
+	{
+		if (path.startsWith("~"))
+			return Optional.empty();
+		Path file;
+		try
+		{
+			file = directory.resolve(path).normalize();
+		}
+		catch (InvalidPathException _)
+		{
+			return Optional.empty();
+		}
+		Path root = project.normalize();
+		if (!file.startsWith(root) || !Files.isRegularFile(file))
+			return Optional.empty();
+		return Optional.of(root.relativize(file).toString().replace(file.getFileSystem().getSeparator(), "/"));
 	}
 
 	@Override
