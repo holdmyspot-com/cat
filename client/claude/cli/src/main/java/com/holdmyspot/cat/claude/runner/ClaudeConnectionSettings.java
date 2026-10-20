@@ -41,6 +41,12 @@ public final class ClaudeConnectionSettings
 	 * permission setting.
 	 */
 	private static final List<String> PERMISSION_RESTRICTIONS = List.of("deny", "ask");
+	/**
+	 * The permission rules that the isolated settings allow, whatever the parent's settings say. Claude Code asks the
+	 * user before using the {@code Skill} tool, and a nested instance has no user to answer, so without this rule a
+	 * trial could use none of the skills of the prompt system it measures.
+	 */
+	private static final List<String> PERMISSION_GRANTS = List.of("Skill");
 	private static final Set<String> CONNECTION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN");
 
@@ -86,7 +92,8 @@ public final class ClaudeConnectionSettings
 	 * The resulting file retains the parent sandbox network and filesystem policies, the parent's permission rules
 	 * that deny a tool or ask before using it, and CAT-owned environment values. It does not retain the parent's
 	 * permission grants, such as its allow rules, added directories and default permission mode, so the isolated
-	 * instance cannot use them to reach the parent's directories.
+	 * instance cannot use them to reach the parent's directories. It allows the {@code Skill} tool instead, which the
+	 * isolated instance has no user to approve.
 	 * Outside Windows, it requires a sandbox and forbids commands outside it, whatever the parent's settings say. On
 	 * Windows, it retains all of the parent's sandbox settings instead and requires no sandbox. Host settings must not
 	 * control other isolated-instance behavior. It also denies the instance reading each of
@@ -159,6 +166,7 @@ public final class ClaudeConnectionSettings
 			}
 		}
 		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
+		permissions(settings).set("allow", mapper.valueToTree(PERMISSION_GRANTS));
 		allowWritesToInvocationHome(filesystem, claudeHome);
 		denyReads(settings, filesystem, deniedReads);
 		excludeInstructionsAbove(settings, isolationRoot, platform);
@@ -185,15 +193,22 @@ public final class ClaudeConnectionSettings
 		{
 			JsonNode rules = parentPermissions.path(restriction);
 			if (rules.isArray())
-			{
-				ObjectNode permissions;
-				if (settings.path("permissions").isObject())
-					permissions = (ObjectNode) settings.get("permissions");
-				else
-					permissions = settings.putObject("permissions");
-				permissions.set(restriction, rules.deepCopy());
-			}
+				permissions(settings).set(restriction, rules.deepCopy());
 		}
+	}
+
+	/**
+	 * Returns the {@code permissions} settings of the isolated settings, adding them if they are absent.
+	 *
+	 * @param settings the isolated settings
+	 * @return the permission settings
+	 */
+	private static ObjectNode permissions(ObjectNode settings)
+	{
+		assert settings != null;
+		if (settings.path("permissions").isObject())
+			return (ObjectNode) settings.get("permissions");
+		return settings.putObject("permissions");
 	}
 
 	/**
@@ -239,12 +254,7 @@ public final class ClaudeConnectionSettings
 			return;
 		filesystem.remove("allowRead");
 		ArrayNode sandboxDenials = array(filesystem, "denyRead");
-		ObjectNode permissions;
-		if (settings.path("permissions").isObject())
-			permissions = (ObjectNode) settings.get("permissions");
-		else
-			permissions = settings.putObject("permissions");
-		ArrayNode permissionDenials = array(permissions, "deny");
+		ArrayNode permissionDenials = array(permissions(settings), "deny");
 		for (Path deniedRead : deniedReads)
 		{
 			sandboxDenials.add(deniedRead.toString());
