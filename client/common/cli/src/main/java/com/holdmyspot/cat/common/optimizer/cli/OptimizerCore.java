@@ -73,6 +73,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
+import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
@@ -120,6 +121,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.SplittableRandom;
+import java.util.StringJoiner;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
@@ -318,6 +320,27 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
+	 * Refuses a prompt system that refers to a file that trials cannot receive, such as an import of a missing file,
+	 * because its trials would silently run without that file.
+	 *
+	 * @param root the project root
+	 * @throws CommandRefusedException if the prompt system refers to such a file; the message names each reference
+	 * @throws IOException if a prompt file cannot be read
+	 */
+	private void requireReachableReferences(Path root) throws CommandRefusedException, IOException
+	{
+		List<UnreachableReference> unreachable = scope.sessions().loadedSources(root, List.of()).unreachable();
+		if (unreachable.isEmpty())
+			return;
+		StringJoiner message = new StringJoiner("\n", "Trials receive only the project's files, so they cannot " +
+			"receive these files that the prompt system refers to:\n",
+			"\nMove each file into the project, or remove the reference, then run `start` again.");
+		for (UnreachableReference reference : unreachable)
+			message.add("- " + reference.describe());
+		throw new CommandRefusedException(message.toString());
+	}
+
+	/**
 	 * Refuses a target that lies outside the project or is the project itself.
 	 *
 	 * @param root the project root
@@ -486,8 +509,10 @@ public final class OptimizerCore implements Core
 			HexFormat.of().toHexDigits(scope.random().nextInt()).substring(Integer.BYTES * 2 - RANDOM_ID_DIGITS);
 		Path directory = campaignDirectory(id);
 		Path relative = root.relativize(target);
-		// The configuration is checked before anything is created, so a refusal leaves nothing behind
+		// The configuration and the prompt system's references are checked before anything is created, so a refusal
+		// leaves nothing behind
 		List<PromptConfiguration.ConfiguredPlugin> configured = configuredPlugins(root, relative);
+		requireReachableReferences(root);
 		ForkView fork;
 		try
 		{

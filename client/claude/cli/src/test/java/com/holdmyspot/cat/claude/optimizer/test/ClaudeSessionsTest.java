@@ -27,6 +27,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
+import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
@@ -932,6 +933,38 @@ public final class ClaudeSessionsTest
 			requireThat(sessions.loadedSources(project, List.of()).trials().stream().map(DerivedSource::path).toList(),
 				"paths").isEqualTo(List.of("CLAUDE.md", "AGENTS.md", "docs/design notes.md", "docs/a.md", "docs/b.md",
 				"docs/c.md", "docs/d.md"));
+		}
+	}
+
+	/**
+	 * Verifies that an import of a missing file, and an import of a file outside the project, are reported as
+	 * references that trials cannot receive, while an import that resolves in the project and a mention that names no
+	 * file, such as a package scope, are not.
+	 */
+	@Test
+	public void reportsUnreachableImports() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-imports-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.writeString(project.resolve("CLAUDE.md"), """
+				@AGENTS.md
+				Install @types/node, then read @docs/missing.md and @../outside.md and @~/notes.md first
+				""");
+			Files.writeString(project.resolve("AGENTS.md"), "@./gone.txt");
+			Files.writeString(root.resolve("outside.md"), "Outside");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			ClaudeSessions sessions = ClaudeSessionsSecrets.access().newClaudeSessions(settings, (_, _, _) ->
+			{
+			});
+
+			requireThat(sessions.loadedSources(project, List.of()).unreachable(), "unreachable").isEqualTo(List.of(
+				new UnreachableReference("AGENTS.md", "./gone.txt", UnreachableReference.Problem.MISSING),
+				new UnreachableReference("CLAUDE.md", "docs/missing.md", UnreachableReference.Problem.MISSING),
+				new UnreachableReference("CLAUDE.md", "../outside.md", UnreachableReference.Problem.OUTSIDE_PROJECT),
+				new UnreachableReference("CLAUDE.md", "~/notes.md", UnreachableReference.Problem.OUTSIDE_PROJECT)));
 		}
 	}
 

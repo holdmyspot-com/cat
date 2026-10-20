@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.PluginManifest;
@@ -218,7 +219,7 @@ public abstract class RunnerSessions implements SessionPort
 			if (!trialKeys.contains(entry.getKey()))
 				productionOnly.add(entry.getValue());
 		}
-		return new LoadedSources(production, trials, productionOnly);
+		return new LoadedSources(production, trials, productionOnly, unreachableReferences(root));
 	}
 
 	/**
@@ -490,6 +491,20 @@ public abstract class RunnerSessions implements SessionPort
 	 * @throws IOException if the project cannot be read
 	 */
 	protected abstract List<DerivedSource> instructionFiles(Path project) throws IOException;
+
+	/**
+	 * Returns the references in the harness's instruction files to files that trials cannot receive, such as an import
+	 * of a missing file.
+	 *
+	 * @param project the absolute, normalized project root
+	 * @return the references, in loading order; this implementation returns none, for a harness whose instruction
+	 *   files cannot refer to other files
+	 * @throws IOException if an instruction file exists but cannot be read
+	 */
+	protected List<UnreachableReference> unreachableReferences(Path project) throws IOException
+	{
+		return List.of();
+	}
 
 	/**
 	 * Returns the runner options that pass a request's read-only evidence.

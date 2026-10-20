@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsAccess;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
@@ -287,6 +288,39 @@ public final class ClaudeSessions extends RunnerSessions
 	protected List<DerivedSource> instructionFiles(Path project) throws IOException
 	{
 		requireThat(project, "project").isNotNull();
+		return instructionFiles(project, new ArrayList<>());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Claude Code silently skips an import that names no file, so an import is reported only when it is written as a
+	 * file path: when it starts with {@code ./}, {@code ../}, {@code /} or {@code ~}, or its last segment holds a dot,
+	 * as in {@code @docs/missing.md}. A mention such as the package scope {@code @types/node} is not reported. An import
+	 * that names the home directory, or resolves outside the project, is reported whether or not its file exists.
+	 */
+	@Override
+	protected List<UnreachableReference> unreachableReferences(Path project) throws IOException
+	{
+		requireThat(project, "project").isNotNull();
+		List<UnreachableReference> unreachable = new ArrayList<>();
+		instructionFiles(project, unreachable);
+		return unreachable;
+	}
+
+	/**
+	 * Lists the instruction files that Claude Code reads from the project, as {@link #instructionFiles(Path)}
+	 * describes.
+	 *
+	 * @param project the project's root directory
+	 * @param unreachable the list that receives each import, as {@link #unreachableReferences(Path)} describes, whose
+	 *   file trials cannot receive
+	 * @return the instruction files, in loading order
+	 * @throws IOException if a file cannot be read
+	 */
+	private static List<DerivedSource> instructionFiles(Path project, List<UnreachableReference> unreachable)
+		throws IOException
+	{
 		List<DerivedSource> files = new ArrayList<>();
 		Set<String> listed = new HashSet<>();
 		for (String name : List.of("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"))
@@ -295,7 +329,7 @@ public final class ClaudeSessions extends RunnerSessions
 			{
 				files.add(new DerivedSource(name, "Claude Code reads " + name + " at the project root in every " +
 					"session"));
-				addImports(project, name, IMPORT_HOPS, files, listed);
+				addImports(project, name, IMPORT_HOPS, files, listed, unreachable);
 			}
 		}
 		Path rules = project.resolve(".claude/rules");
@@ -327,10 +361,11 @@ public final class ClaudeSessions extends RunnerSessions
 	 * @param hops the number of import hops that remain
 	 * @param files the list that receives each imported file
 	 * @param listed the paths that are already listed; each imported file's path is added to it
+	 * @param unreachable the list that receives each import whose file trials cannot receive
 	 * @throws IOException if a file cannot be read
 	 */
 	private static void addImports(Path project, String name, int hops, List<DerivedSource> files,
-		Set<String> listed) throws IOException
+		Set<String> listed, List<UnreachableReference> unreachable) throws IOException
 	{
 		if (hops == 0)
 			return;
@@ -352,29 +387,47 @@ public final class ClaudeSessions extends RunnerSessions
 			while (matcher.find())
 			{
 				String reference = matcher.group(1);
-				Optional<String> imported = projectFile(project, file.getParent(), reference.replace("\\ ", " "));
-				if (imported.isEmpty() || !listed.add(imported.get()))
-					continue;
-				files.add(new DerivedSource(imported.get(), "Claude Code imports " + imported.get() + " into " + name +
-					" through @" + reference));
-				addImports(project, imported.get(), hops - 1, files, listed);
+				String path = reference.replace("\\ ", " ");
+				switch (resolve(project, file.getParent(), path))
+				{
+					case Resolution.InProject inProject ->
+					{
+						String imported = inProject.path();
+						if (!listed.add(imported))
+							continue;
+						files.add(new DerivedSource(imported, "Claude Code imports " + imported + " into " + name +
+							" through @" + reference));
+						addImports(project, imported, hops - 1, files, listed, unreachable);
+					}
+					case Resolution.Unreachable(UnreachableReference.Problem problem) ->
+					{
+						UnreachableReference entry = new UnreachableReference(name, path, problem);
+						if (!unreachable.contains(entry))
+							unreachable.add(entry);
+					}
+					case Resolution.NoFile _ ->
+					{
+					}
+				}
 			}
 		}
 	}
 
 	/**
-	 * Resolves an import's path to a file in the project.
+	 * Resolves an import's path.
 	 *
 	 * @param project the project's root directory
 	 * @param directory the directory of the importing file, which a relative path resolves against
 	 * @param path the imported path, without its escapes
-	 * @return the file's path relative to {@code project}, with {@code /} separators, or empty when the path names the
-	 *   home directory, is not a valid path, or does not resolve to a regular file in the project
+	 * @return the file in the project, the reason that trials cannot receive a file that the path names, or
+	 *   {@link Resolution.NoFile} for a path that is not written as a file path and names no file
 	 */
-	private static Optional<String> projectFile(Path project, Path directory, String path)
+	private static Resolution resolve(Path project, Path directory, String path)
 	{
+		boolean filePath = path.startsWith("./") || path.startsWith("../") || path.startsWith("/") ||
+			path.startsWith("~") || path.substring(path.lastIndexOf('/') + 1).contains(".");
 		if (path.startsWith("~"))
-			return Optional.empty();
+			return new Resolution.Unreachable(UnreachableReference.Problem.OUTSIDE_PROJECT);
 		Path file;
 		try
 		{
@@ -382,12 +435,54 @@ public final class ClaudeSessions extends RunnerSessions
 		}
 		catch (InvalidPathException _)
 		{
-			return Optional.empty();
+			return new Resolution.NoFile();
 		}
 		Path root = project.normalize();
-		if (!file.startsWith(root) || !Files.isRegularFile(file))
-			return Optional.empty();
-		return Optional.of(root.relativize(file).toString().replace(file.getFileSystem().getSeparator(), "/"));
+		if (!file.startsWith(root))
+		{
+			if (filePath)
+				return new Resolution.Unreachable(UnreachableReference.Problem.OUTSIDE_PROJECT);
+			return new Resolution.NoFile();
+		}
+		if (Files.isRegularFile(file))
+		{
+			return new Resolution.InProject(root.relativize(file).toString().
+				replace(file.getFileSystem().getSeparator(), "/"));
+		}
+		if (filePath && Files.notExists(file))
+			return new Resolution.Unreachable(UnreachableReference.Problem.MISSING);
+		return new Resolution.NoFile();
+	}
+
+	/**
+	 * What an import's path names.
+	 */
+	private sealed interface Resolution
+	{
+		/**
+		 * A regular file in the project.
+		 *
+		 * @param path the file's path relative to the project, with {@code /} separators
+		 */
+		record InProject(String path) implements Resolution
+		{
+		}
+
+		/**
+		 * A file that trials cannot receive.
+		 *
+		 * @param problem why trials cannot receive it
+		 */
+		record Unreachable(UnreachableReference.Problem problem) implements Resolution
+		{
+		}
+
+		/**
+		 * No file, such as a mention that is not written as a file path, or a directory.
+		 */
+		record NoFile() implements Resolution
+		{
+		}
 	}
 
 	@Override

@@ -16,9 +16,11 @@ import java.util.List;
  *   that a mapping copies from the project into a plugin is named as the project's file
  * @param productionOnly the names, as {@code production} lists them, of the files that load in production but not in
  *   trials
+ * @param unreachable the references in the files that load in trials to files that trials cannot receive, in loading
+ *   order
  */
 public record LoadedSources(List<DerivedSource> production, List<DerivedSource> trials,
-	List<String> productionOnly)
+	List<String> productionOnly, List<UnreachableReference> unreachable)
 {
 	/**
 	 * Creates the loaded sources.
@@ -26,6 +28,7 @@ public record LoadedSources(List<DerivedSource> production, List<DerivedSource> 
 	 * @param production the files that a session of the user's harness loads, with the rule that loads each
 	 * @param trials the files that a trial loads with the campaign's trial plugins, with the rule that loads each
 	 * @param productionOnly the names of the files that load in production but not in trials
+	 * @param unreachable the references in the files that load in trials to files that trials cannot receive
 	 * @throws NullPointerException if any argument is null
 	 */
 	public LoadedSources
@@ -33,8 +36,10 @@ public record LoadedSources(List<DerivedSource> production, List<DerivedSource> 
 		requireThat(production, "production").isNotNull();
 		requireThat(trials, "trials").isNotNull();
 		requireThat(productionOnly, "productionOnly").isNotNull();
+		requireThat(unreachable, "unreachable").isNotNull();
 		production = List.copyOf(production);
 		trials = List.copyOf(trials);
 		productionOnly = List.copyOf(productionOnly);
+		unreachable = List.copyOf(unreachable);
 	}
 }

@@ -69,6 +69,7 @@ import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
+import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractContext;
@@ -684,6 +685,10 @@ public final class OptimizerCoreTest
 		 * The prompt files that {@link #loadedSources(Path, List)} returns as loading in production but not in trials.
 		 */
 		private volatile List<DerivedSource> productionOnlySources = List.of();
+		/**
+		 * The references that {@link #loadedSources(Path, List)} returns as unreachable from trials.
+		 */
+		private volatile List<UnreachableReference> unreachable = List.of();
 
 		@Override
 		public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
@@ -705,7 +710,7 @@ public final class OptimizerCoreTest
 						"CAT injects this rule into every session"));
 				}
 			}
-			return new LoadedSources(production, trials, productionOnly);
+			return new LoadedSources(production, trials, productionOnly, unreachable);
 		}
 
 		/**
@@ -716,6 +721,16 @@ public final class OptimizerCoreTest
 		void setProductionOnlySources(List<DerivedSource> sources)
 		{
 			productionOnlySources = List.copyOf(sources);
+		}
+
+		/**
+		 * Sets the references that trials cannot receive.
+		 *
+		 * @param references the references
+		 */
+		void setUnreachable(List<UnreachableReference> references)
+		{
+			unreachable = List.copyOf(references);
 		}
 
 		/**
@@ -2350,6 +2365,34 @@ public final class OptimizerCoreTest
 				contains(PortablePaths.text(PromptConfiguration.location(Path.of("CLAUDE.md")))).
 				contains("no \"claude\" key");
 			requireThat(contents(repository.root()), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} refuses a prompt system that refers to files that trials cannot receive, naming each
+	 * reference, before it creates anything or starts a session.
+	 */
+	@Test
+	public void startRefusesUnreachableReferences() throws Exception
+	{
+		// Requirement: R-C28
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.sessions().setUnreachable(List.of(
+				new UnreachableReference("CLAUDE.md", "docs/missing.md", UnreachableReference.Problem.MISSING),
+				new UnreachableReference("CLAUDE.md", "~/notes.md", UnreachableReference.Problem.OUTSIDE_PROJECT)));
+			Map<String, String> before = contents(repository.root());
+
+			String message = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+
+			requireThat(message, "message").
+				contains("CLAUDE.md refers to docs/missing.md, which does not exist.").
+				contains("CLAUDE.md refers to ~/notes.md, which lies outside the project.");
+			requireThat(contents(repository.root()), "contents").isEqualTo(before);
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR), "sessions").isEmpty();
 		}
 	}
 
