@@ -4,7 +4,8 @@
 
 - Prove that a condition whose meaning its operands do not state is tested through a local boolean named for that
 	meaning, even when the name is used once; that a condition which already reads as its meaning, or that a message
-	beside it explains, stays inline; and that naming a condition keeps the guard that protects a later operand.
+	visually close to it explains, stays inline; and that naming a condition keeps the guard that protects a later
+	operand.
 
 ## Variables
 

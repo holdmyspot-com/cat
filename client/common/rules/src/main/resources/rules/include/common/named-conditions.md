@@ -6,7 +6,7 @@
 	say it: a condition that combines several tests, compares with a value whose meaning is not visible, or encodes a
 	business rule.
 - Name a condition only when the name adds meaning, so a condition that already reads as what it means, or that a
-	message beside it explains, stays inline.
+	message visually close to it explains, stays inline.
 - Keep the code's behavior: naming a condition never evaluates an operand that the original condition skipped.
 
 ## Guidance
@@ -36,11 +36,11 @@ if (subscription.isActive() && !subscription.autoRenews() &&
 ```
 
 When a branch of the condition, whether the one it selects or the `else` branch, emits a message about it shortly
-after the condition, close enough that a reader sees both together, let that message explain the condition instead of
-a named boolean. A message is a log entry at any level, an exception's message, or an error or warning that a user
-sees. Begin the message with a brief statement of what the condition, or its opposite in the `else` branch, means,
-then add what the reader needs to act on it. This holds when the condition combines several tests: the statement
-covers what they mean together. For example, write:
+after the condition, visually close enough that a reader links the message to the condition at a glance, let that
+message explain the condition instead of a named boolean. A message is a log entry at any level, an exception's
+message, or an error or warning that a user sees. Begin the message with a brief statement of what the condition, or
+its opposite in the `else` branch, means, then add what the reader needs to act on it. This holds when the condition
+combines several tests: the statement covers what they mean together. For example, write:
 
 ```java
 if (sessions.stream().anyMatch(session -> session.account().equals(account) && session.isOpen()))
