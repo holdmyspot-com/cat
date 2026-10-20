@@ -262,6 +262,53 @@ public final class CodexSessions extends RunnerSessions
 	/**
 	 * {@inheritDoc}
 	 * <p>
+	 * Codex reads the user's hooks from {@code hooks.json} in its home directory, and the user's plugins and MCP
+	 * servers from the {@code plugins} and {@code mcp_servers} tables of {@code config.toml} there. An entry whose
+	 * {@code enabled} key is {@code false} is disabled.
+	 */
+	@Override
+	protected UserConfiguration userConfiguration() throws IOException
+	{
+		Path home = settings().configurationDirectory();
+		Path configuration = home.resolve("config.toml");
+		JsonNode root = JsonMapper.builder().build().missingNode();
+		if (Files.isRegularFile(configuration))
+		{
+			try
+			{
+				root = TomlMapper.builder().build().readTree(Files.readString(configuration));
+			}
+			catch (JacksonException _)
+			{
+				// Codex starts no plugin or server from a configuration that it cannot parse
+			}
+		}
+		return new UserConfiguration(home.resolve("hooks.json"), enabledEntries(root.path("plugins")), configuration,
+			enabledEntries(root.path("mcp_servers")));
+	}
+
+	/**
+	 * Lists the entries of a configuration table that are not disabled.
+	 *
+	 * @param table the table that maps each entry's name to its settings; any other value holds no entry
+	 * @return the names of the entries whose {@code enabled} key is not {@code false}, in declaration order
+	 */
+	private static List<String> enabledEntries(JsonNode table)
+	{
+		List<String> names = new ArrayList<>();
+		if (!table.isObject())
+			return names;
+		for (String name : table.propertyNames())
+		{
+			if (table.get(name).path("enabled").asBoolean(true))
+				names.add(name);
+		}
+		return names;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
 	 * Codex registers the hooks of each hooks file that the manifest's {@code hooks} property names and of each
 	 * declaration that the property holds inline, or of {@code hooks/hooks.json} if the manifest declares no hooks.
 	 */

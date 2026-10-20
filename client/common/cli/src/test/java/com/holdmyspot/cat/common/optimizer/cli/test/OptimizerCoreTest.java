@@ -712,7 +712,7 @@ public final class OptimizerCoreTest
 						"CAT injects this rule into every session"));
 				}
 			}
-			return new LoadedSources(production, trials, productionOnly, unreachable);
+			return new LoadedSources(production, trials, productionOnly, List.of(), unreachable);
 		}
 
 		/**

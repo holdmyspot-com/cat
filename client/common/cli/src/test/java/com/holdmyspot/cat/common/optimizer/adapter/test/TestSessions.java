@@ -154,6 +154,14 @@ final class TestSessions extends RunnerSessions
 	}
 
 	@Override
+	protected UserConfiguration userConfiguration()
+	{
+		Path directory = settings().configurationDirectory();
+		return new UserConfiguration(directory.resolve("hooks.json"), List.of(), directory.resolve("servers.json"),
+			List.of());
+	}
+
+	@Override
 	protected List<McpServer> projectMcpServers(Path project)
 	{
 		return List.of();

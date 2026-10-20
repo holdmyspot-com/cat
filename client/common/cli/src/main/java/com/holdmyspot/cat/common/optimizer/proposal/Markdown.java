@@ -756,7 +756,8 @@ public final class Markdown
 	/**
 	 * Shows the trial plugins that each trial installs and where each comes from, each project directory or file that
 	 * trials write over a project-built plugin, each mapped file whose content differs from the base's, each prompt
-	 * file that no mapping covers and each file that loads in production but not in trials.
+	 * file that no mapping covers, each file that loads in production but not in trials and each hook, plugin and MCP
+	 * server of the user's harness configuration that trials do not run.
 	 */
 	private void trialPlugins()
 	{
@@ -809,6 +810,16 @@ public final class Markdown
 			text.append("\nThese files load in the user's sessions of the harness but not in trials:\n\n");
 			for (String path : plugin.productionOnly())
 				text.append("- `").append(path).append("`\n");
+		}
+		if (!plugin.homeOnly().isEmpty())
+		{
+			text.append("\nThese hooks, plugins and MCP servers of the user's harness configuration run in the user's " +
+				"sessions but not in trials:\n\n");
+			for (String entry : plugin.homeOnly())
+			{
+				text.append("- ").append(Character.toUpperCase(entry.charAt(0))).append(entry.substring(1)).
+					append('\n');
+			}
 		}
 	}
 

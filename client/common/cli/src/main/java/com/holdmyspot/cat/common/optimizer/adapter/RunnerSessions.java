@@ -197,6 +197,11 @@ public abstract class RunnerSessions implements SessionPort
 	 * CAT is the first trial plugin whose manifest name is CAT's, and its rules are read from its base with each mapped
 	 * project file written over its mapped path, as trials install them. A file of CAT's installation is compared
 	 * across the two lists by its path relative to the installation.
+	 * <p>
+	 * Trials run with a new, empty harness home, so every hook of the user's harness configuration, every plugin that
+	 * it enables and no trial plugin holds, and every MCP server that it declares runs in production only. An enabled
+	 * plugin is held by a trial plugin of the same name, or, for a plugin that the project builds, of the same name
+	 * without its marketplace.
 	 */
 	@Override
 	public final LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException
@@ -258,7 +263,102 @@ public abstract class RunnerSessions implements SessionPort
 			if (!trialKeys.contains(entry.getKey()))
 				productionOnly.add(entry.getValue());
 		}
-		return new LoadedSources(production, trials, productionOnly, unreachableReferences(root));
+		return new LoadedSources(production, trials, productionOnly, homeOnly(plugins), unreachableReferences(root));
+	}
+
+	/**
+	 * Lists what the user's harness configuration adds to the user's sessions but not to trials.
+	 *
+	 * @param plugins the campaign's trial plugins with their base copies
+	 * @return each hook of the user's hooks file, each plugin that the configuration enables and no trial plugin
+	 *   holds, and each MCP server of the configuration, in that order, as a sentence fragment that names it and,
+	 *   for a hook or an MCP server, the file that declares it
+	 * @throws IOException if a configuration file exists but cannot be read
+	 */
+	private List<String> homeOnly(List<PluginBase> plugins) throws IOException
+	{
+		UserConfiguration user = userConfiguration();
+		Set<String> entries = new LinkedHashSet<>();
+		Optional<JsonNode> content = readHooksFile(user.hooksFile(), JsonMapper.builder().build());
+		if (content.isPresent())
+		{
+			String file = PortablePaths.text(user.hooksFile());
+			for (DeclaredHook hook : declaredHooks(content.get().path("hooks")))
+			{
+				String command = hook.command().map(text -> " `" + text + "`").orElse("");
+				entries.add("the " + hook.event() + " hook" + command + " of `" + file + "`");
+			}
+		}
+
+		Set<String> installed = new HashSet<>();
+		Set<String> built = new HashSet<>();
+		for (PluginBase base : plugins)
+		{
+			TrialPlugin plugin = base.plugin();
+			if (plugin.isProjectBuilt())
+				built.add(plugin.name());
+			else
+				installed.add(plugin.name());
+		}
+		for (String plugin : user.plugins())
+		{
+			int separator = plugin.indexOf('@');
+			String withoutMarketplace;
+			if (separator < 0)
+				withoutMarketplace = plugin;
+			else
+				withoutMarketplace = plugin.substring(0, separator);
+			if (!installed.contains(plugin) && !built.contains(withoutMarketplace))
+				entries.add("the plugin `" + plugin + "`");
+		}
+
+		String serversFile = PortablePaths.text(user.serversFile());
+		for (String server : user.servers())
+			entries.add("the MCP server `" + server + "` of `" + serversFile + "`");
+		return List.copyOf(entries);
+	}
+
+	/**
+	 * Reads what the user's harness configuration adds to each of the user's sessions. A file that does not exist or
+	 * cannot be parsed adds nothing.
+	 *
+	 * @return the configuration
+	 * @throws IOException if a configuration file exists but cannot be read
+	 */
+	protected abstract UserConfiguration userConfiguration() throws IOException;
+
+	/**
+	 * What the user's harness configuration adds to each of the user's sessions.
+	 *
+	 * @param hooksFile   the file that declares the user's hooks
+	 * @param plugins     the plugins that the configuration enables, each as {@code <plugin>@<marketplace>}, in
+	 *                    declaration order
+	 * @param serversFile the file that declares the user's MCP servers
+	 * @param servers     the names of the MCP servers that the configuration declares and does not disable, in
+	 *                    declaration order
+	 */
+	public record UserConfiguration(Path hooksFile, List<String> plugins, Path serversFile, List<String> servers)
+	{
+		/**
+		 * Creates a configuration.
+		 *
+		 * @param hooksFile   the file that declares the user's hooks
+		 * @param plugins     the plugins that the configuration enables, each as {@code <plugin>@<marketplace>}, in
+		 *                    declaration order
+		 * @param serversFile the file that declares the user's MCP servers
+		 * @param servers     the names of the MCP servers that the configuration declares and does not disable, in
+		 *                    declaration order
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		public UserConfiguration
+		{
+			requireThat(hooksFile, "hooksFile").isNotNull();
+			requireThat(plugins, "plugins").isNotNull();
+			requireThat(serversFile, "serversFile").isNotNull();
+			requireThat(servers, "servers").isNotNull();
+			plugins = List.copyOf(plugins);
+			servers = List.copyOf(servers);
+		}
 	}
 
 	/**

@@ -1198,7 +1198,7 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
 			SALT).withDerivedSources(sources);
 		PluginCheck check = new PluginCheck(List.of(builtPlugin()), List.of(), List.of(), List.of(), List.of(),
-			Map.of("cat", base));
+			List.of(), Map.of("cat", base));
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), check).render();
@@ -1439,8 +1439,9 @@ public final class ProposalTest
 	/**
 	 * Verifies that the proposal lists each trial plugin with the source of its base, the project paths that trials
 	 * write over a project-built plugin, each mapped file whose content differs from the base's, each prompt file that
-	 * no mapping covers and each file that loads in production but not in trials, and that a campaign without trial
-	 * plugins says that trials install none.
+	 * no mapping covers, each file that loads in production but not in trials and each hook, plugin and MCP server of
+	 * the user's harness configuration that trials do not run, and that a campaign without trial plugins says that
+	 * trials install none.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -1451,7 +1452,8 @@ public final class ProposalTest
 		PluginCheck check = new PluginCheck(List.of(builtPlugin(), installedPlugin()),
 			List.of(Path.of("docs/extra.md")), List.of(new PluginMapping.Difference("cat",
 				Path.of("source/rules/read-file.md"), Path.of("rules/codex/read-file.md"))),
-			List.of("/home/user/.codex/AGENTS.md"), List.of(), Map.of());
+			List.of("/home/user/.codex/AGENTS.md"), List.of("the SessionStart hook `~/start.sh` of " +
+				"`/home/user/.codex/hooks.json`", "the plugin `extra@market`"), List.of(), Map.of());
 
 		String text = pluginProposal(check).render();
 		String none = pluginProposal(PluginCheck.NONE).render();
@@ -1463,7 +1465,10 @@ public final class ProposalTest
 			contains("Warning: the content of these mapped files differs from the base's").
 			contains("- `source/rules/read-file.md` → `cat` `rules/codex/read-file.md`\n").
 			contains("never reaches trials:\n\n- `docs/extra.md`\n").
-			contains("but not in trials:\n\n- `/home/user/.codex/AGENTS.md`\n");
+			contains("but not in trials:\n\n- `/home/user/.codex/AGENTS.md`\n").
+			contains("\nThese hooks, plugins and MCP servers of the user's harness configuration run in the user's " +
+				"sessions but not in trials:\n\n- The SessionStart hook `~/start.sh` of `/home/user/.codex/hooks.json`\n" +
+				"- The plugin `extra@market`\n");
 		requireThat(none, "none").contains("\n## Trial plugins\n\nTrials install no plugin.\n");
 	}
 
@@ -1527,9 +1532,9 @@ public final class ProposalTest
 	public void listsUnapprovedPluginHooks() throws InvalidProposalException
 	{
 		Proposal unapproved = pluginProposal(new PluginCheck(List.of(builtPlugin()), List.of(), List.of(), List.of(),
-			List.of("cat SessionStart `./log.sh`", "cat PostToolUse `./check.sh`"), Map.of()));
+			List.of(), List.of("cat SessionStart `./log.sh`", "cat PostToolUse `./check.sh`"), Map.of()));
 		Proposal approved = pluginProposal(new PluginCheck(List.of(builtPlugin()), List.of(), List.of(), List.of(),
-			List.of(), Map.of()));
+			List.of(), List.of(), Map.of()));
 
 		requireThat(unapproved.contract().limitations(), "unapproved").contains(
 			"Trials do not run these hooks of the trial plugins, because the user has not approved them in " +

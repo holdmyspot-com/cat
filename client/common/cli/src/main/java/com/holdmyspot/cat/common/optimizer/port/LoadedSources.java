@@ -7,7 +7,8 @@ import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import java.util.List;
 
 /**
- * The prompt files that load although no harness event reports them, in production and in trials.
+ * The prompt files that load although no harness event reports them, in production and in trials, and what the user's
+ * harness configuration adds to the user's sessions but not to trials.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -16,11 +17,13 @@ import java.util.List;
  *   that a mapping copies from the project into a plugin is named as the project's file
  * @param productionOnly the names, as {@code production} lists them, of the files that load in production but not in
  *   trials
+ * @param homeOnly each hook, plugin and MCP server of the user's harness configuration that the user's sessions run
+ *   and trials do not, as a sentence fragment that names it and the file that declares it
  * @param unreachable the references in the files that load in trials to files that trials cannot receive, in loading
  *   order
  */
 public record LoadedSources(List<DerivedSource> production, List<DerivedSource> trials,
-	List<String> productionOnly, List<UnreachableReference> unreachable)
+	List<String> productionOnly, List<String> homeOnly, List<UnreachableReference> unreachable)
 {
 	/**
 	 * Creates the loaded sources.
@@ -28,6 +31,8 @@ public record LoadedSources(List<DerivedSource> production, List<DerivedSource> 
 	 * @param production the files that a session of the user's harness loads, with the rule that loads each
 	 * @param trials the files that a trial loads with the campaign's trial plugins, with the rule that loads each
 	 * @param productionOnly the names of the files that load in production but not in trials
+	 * @param homeOnly each hook, plugin and MCP server of the user's harness configuration that the user's sessions
+	 *   run and trials do not
 	 * @param unreachable the references in the files that load in trials to files that trials cannot receive
 	 * @throws NullPointerException if any argument is null
 	 */
@@ -36,10 +41,12 @@ public record LoadedSources(List<DerivedSource> production, List<DerivedSource> 
 		requireThat(production, "production").isNotNull();
 		requireThat(trials, "trials").isNotNull();
 		requireThat(productionOnly, "productionOnly").isNotNull();
+		requireThat(homeOnly, "homeOnly").isNotNull();
 		requireThat(unreachable, "unreachable").isNotNull();
 		production = List.copyOf(production);
 		trials = List.copyOf(trials);
 		productionOnly = List.copyOf(productionOnly);
+		homeOnly = List.copyOf(homeOnly);
 		unreachable = List.copyOf(unreachable);
 	}
 }

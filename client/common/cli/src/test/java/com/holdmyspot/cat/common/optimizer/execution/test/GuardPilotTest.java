@@ -1052,7 +1052,7 @@ public final class GuardPilotTest
 		@Override
 		public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
 		{
-			return new LoadedSources(List.of(), List.of(), List.of(), List.of());
+			return new LoadedSources(List.of(), List.of(), List.of(), List.of(), List.of());
 		}
 
 		@Override

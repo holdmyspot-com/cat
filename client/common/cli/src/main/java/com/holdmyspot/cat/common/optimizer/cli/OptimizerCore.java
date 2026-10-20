@@ -2111,8 +2111,8 @@ public final class OptimizerCore implements Core
 		}
 		PluginMapping.Coverage coverage = PluginMapping.check(inventory, promptFiles,
 			loadsFromProject(root, bases, promptFiles), plugins, baseFiles);
-		return new PluginCheck(plugins, coverage.uncovered(), coverage.differing(), loaded.productionOnly(), hooks,
-			baseDirectories);
+		return new PluginCheck(plugins, coverage.uncovered(), coverage.differing(), loaded.productionOnly(),
+			loaded.homeOnly(), hooks, baseDirectories);
 	}
 
 	/**

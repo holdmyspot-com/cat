@@ -8,6 +8,7 @@ import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
@@ -874,6 +875,64 @@ public final class CodexSessionsTest
 			LoadedSources loaded = sessions.loadedSources(project, List.of());
 			requireThat(loaded.trials(), "trials").isEqualTo(expected);
 			requireThat(loaded.production(), "production").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Verifies that the user's sessions, but not trials, run each hook of the user's {@code hooks.json}, each plugin
+	 * that the user's configuration enables and the trial plugins do not hold, and each MCP server that the user's
+	 * configuration does not disable.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void listsUserConfigurationThatTrialsLack() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-user-configuration-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path configuration = root.resolve("codex");
+			write(configuration.resolve("hooks.json"), """
+				{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "~/start.sh"}]}]}}""");
+			write(configuration.resolve("config.toml"), """
+				[mcp_servers.docs]
+				command = "node"
+
+				[mcp_servers.docs.tools.search]
+				approval_mode = "approve"
+
+				[mcp_servers.web]
+				url = "https://example.com/mcp"
+
+				[mcp_servers.off]
+				command = "off"
+				enabled = false
+
+				[plugins."tools@market"]
+				enabled = true
+
+				[plugins."extra@market"]
+				enabled = true
+
+				[plugins."off@market"]
+				enabled = false
+				""");
+			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
+				new TrialPlugin.Installed(), List.of()), root.resolve("tools")));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), configuration, HarnessCapacity.unlimited(), Clock.systemUTC());
+			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+
+			String hooksFile = PortablePaths.text(configuration.resolve("hooks.json"));
+			String configurationFile = PortablePaths.text(configuration.resolve("config.toml"));
+			requireThat(sessions.loadedSources(project, plugins).homeOnly(), "homeOnly").isEqualTo(List.of(
+				"the SessionStart hook `~/start.sh` of `" + hooksFile + "`",
+				"the plugin `extra@market`",
+				"the MCP server `docs` of `" + configurationFile + "`",
+				"the MCP server `web` of `" + configurationFile + "`"));
 		}
 	}
 

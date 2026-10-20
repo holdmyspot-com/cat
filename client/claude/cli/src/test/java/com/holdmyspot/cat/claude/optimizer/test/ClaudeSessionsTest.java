@@ -8,6 +8,7 @@ import com.holdmyspot.cat.claude.ClaudeSessionHarness;
 import com.holdmyspot.cat.claude.optimizer.ClaudeSessions;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
@@ -1013,6 +1014,46 @@ public final class ClaudeSessionsTest
 			LoadedSources loaded = sessions.loadedSources(project, List.of());
 			requireThat(loaded.trials(), "trials").isEqualTo(expected);
 			requireThat(loaded.production(), "production").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Verifies that the user's sessions, but not trials, run each hook of the user's settings, each plugin that the
+	 * settings enable and the trial plugins do not hold, and each MCP server of the user's configuration.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void listsUserConfigurationThatTrialsLack() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-user-configuration-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path configuration = root.resolve("home/.claude");
+			write(configuration.resolve("settings.json"), """
+				{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "~/start.sh"}]}], \
+				"Stop": [{"hooks": [{"type": "prompt", "prompt": "Check"}]}]}, \
+				"enabledPlugins": {"tools@market": true, "extra@market": true, "off@market": false}}""");
+			write(root.resolve("home/.claude.json"), """
+				{"mcpServers": {"docs": {"command": "node", "args": ["docs.js"]}, \
+				"web": {"type": "http", "url": "https://example.com/mcp"}}}""");
+			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
+				new TrialPlugin.Installed(), List.of()), root.resolve("tools")));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), configuration, HarnessCapacity.unlimited(), Clock.systemUTC());
+			ClaudeSessions sessions = ClaudeSessionsSecrets.access().newClaudeSessions(settings, (_, _, _) ->
+			{
+			});
+
+			String settingsFile = PortablePaths.text(configuration.resolve("settings.json"));
+			String serversFile = PortablePaths.text(root.resolve("home/.claude.json"));
+			requireThat(sessions.loadedSources(project, plugins).homeOnly(), "homeOnly").isEqualTo(List.of(
+				"the SessionStart hook `~/start.sh` of `" + settingsFile + "`",
+				"the Stop hook of `" + settingsFile + "`",
+				"the plugin `extra@market`",
+				"the MCP server `docs` of `" + serversFile + "`",
+				"the MCP server `web` of `" + serversFile + "`"));
 		}
 	}
 

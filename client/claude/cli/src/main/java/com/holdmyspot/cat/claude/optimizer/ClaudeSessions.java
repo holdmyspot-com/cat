@@ -572,6 +572,55 @@ public final class ClaudeSessions extends RunnerSessions
 	/**
 	 * {@inheritDoc}
 	 * <p>
+	 * Claude Code reads the user's hooks and enabled plugins from {@code settings.json} in its configuration
+	 * directory, and the user's MCP servers from the {@code mcpServers} object of {@code .claude.json}, which lies in
+	 * the configuration directory if {@code CLAUDE_CONFIG_DIR} names it and next to it otherwise. The servers that
+	 * {@code .claude.json} declares for one project are not listed.
+	 */
+	@Override
+	protected UserConfiguration userConfiguration() throws IOException
+	{
+		Path directory = settings().configurationDirectory();
+		JsonMapper json = JsonMapper.builder().build();
+		Path settingsFile = directory.resolve("settings.json");
+		List<String> plugins = new ArrayList<>();
+		JsonNode enabled = readHooksFile(settingsFile, json).map(node -> node.path("enabledPlugins")).
+			orElse(json.missingNode());
+		if (enabled.isObject())
+		{
+			for (String name : enabled.propertyNames())
+			{
+				if (enabled.get(name).asBoolean(false))
+					plugins.add(name);
+			}
+		}
+
+		String configured = settings().environment().get("CLAUDE_CONFIG_DIR");
+		Path serversFile;
+		if (configured == null || configured.isBlank())
+			serversFile = directory.resolveSibling(".claude.json");
+		else
+			serversFile = directory.resolve(".claude.json");
+		List<String> servers = new ArrayList<>();
+		if (Files.isRegularFile(serversFile))
+		{
+			try
+			{
+				JsonNode declared = json.readTree(Files.readString(serversFile)).path("mcpServers");
+				if (declared.isObject())
+					servers.addAll(declared.propertyNames());
+			}
+			catch (JacksonException _)
+			{
+				// Claude Code starts no server from a configuration that it cannot parse
+			}
+		}
+		return new UserConfiguration(settingsFile, plugins, serversFile, servers);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
 	 * Claude Code registers the hooks of the plugin's {@code hooks/hooks.json}, of each hooks file that the manifest's
 	 * {@code hooks} property names and of each declaration that the property holds inline.
 	 */

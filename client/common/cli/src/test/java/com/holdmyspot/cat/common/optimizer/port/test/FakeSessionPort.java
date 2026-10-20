@@ -51,7 +51,7 @@ public final class FakeSessionPort implements SessionPort
 	 * Returns the files that load in a project, which {@link #loadedSources(Path, List)} reports.
 	 */
 	private volatile Function<Path, LoadedSources> loading = _ -> new LoadedSources(List.of(), List.of(), List.of(),
-		List.of());
+		List.of(), List.of());
 
 	/**
 	 * Creates a port that has started no sessions and whose host login is not identified.

@@ -5140,7 +5140,7 @@ public final class DriverTest
 				{
 					throw new UncheckedIOException(e);
 				}
-				return new LoadedSources(loaded, loaded, List.of(), unreachable);
+				return new LoadedSources(loaded, loaded, List.of(), List.of(), unreachable);
 			});
 			harness.promptAuthors(request -> harness.edit(request, DriverHarness.PROMPT, text));
 			try (Driver driver = harness.open())
