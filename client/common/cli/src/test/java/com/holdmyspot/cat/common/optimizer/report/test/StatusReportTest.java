@@ -1179,10 +1179,10 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Verifies that the outcome names match the design's table exactly.
+	 * Verifies that the report labels every campaign outcome exactly as listed, in declaration order.
 	 */
 	@Test
-	public void outcomeLabelsMatchTheDesign()
+	public void labelsEveryOutcomeInOrder()
 	{
 		// Requirement: R-P3
 		// The campaign outcome labels, in declaration order

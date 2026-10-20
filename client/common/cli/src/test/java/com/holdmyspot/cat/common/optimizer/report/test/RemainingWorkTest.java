@@ -70,7 +70,7 @@ public final class RemainingWorkTest
 	}
 
 	/**
-	 * Verifies the design's all-pass minima that the hand computations below rely on.
+	 * Verifies the all-pass minimum of attempt 1, 93 trials per cell, that the hand computations below rely on.
 	 */
 	@Test
 	public void allPassMinimumOfAttemptOne()

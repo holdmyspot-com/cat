@@ -86,7 +86,7 @@ public final class ScenarioTest
 	}
 
 	/**
-	 * Verifies that the design's example parses into its variables, its one turn and its assertion with a
+	 * Verifies that a single-turn scenario parses into its variables, its one turn and its assertion with a
 	 * {@code tool}.
 	 *
 	 * @throws ScenarioFormatException if the scenario is refused

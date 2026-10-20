@@ -216,8 +216,8 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Verifies that the valid fixture proposal is accepted and becomes the contract that it describes, with every
-	 * item that the design requires the proposal to list.
+	 * Verifies that the valid fixture proposal is accepted and becomes the contract that it describes, including every
+	 * item that a proposal must list.
 	 *
 	 * @throws InvalidProposalException if the fixture proposal is rejected
 	 */
@@ -522,11 +522,11 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Verifies that a proposal that omits any item that the design requires it to list is rejected and that the
-	 * problem names the omitted location.
+	 * Verifies that a proposal that omits any item that a proposal must list is rejected and that the problem names
+	 * the omitted location.
 	 *
 	 * @param description the omitted item
-	 * @param path the location of the omitted item
+	 * @param path        the location of the omitted item
 	 */
 	@Test(dataProvider = "requiredItems")
 	public void rejectsOmittedItem(String description, String[] path)
