@@ -2972,27 +2972,35 @@ The riskiest pure code, built first.
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
-	- **E1:** a dirty base is refused; the deficient fixture's proposal lists its conflict, confirmation is refused
+	- **E1:** the deficient fixture's proposal lists its conflict, confirmation is refused
 		until a resolution is chosen, and the fixture then improves to `certified` and is delivered as a Git diff, with a
 		disjoint base edit surviving. Its receipt also shows, per harness: the contract author's proposal is schema-valid,
 		has requirements and names the instruction file as a derived source; each judge verdict is schema-valid, carries a
 		rationale and leaves the evidence unchanged; each prompt author attempt changes only prompt sources; and the
 		per-trial records hold the observed model, the login class, rate-limit state and the loading record. These replace
 		the retired native tests.
-	- **E2:** ESC mid-slice, then resume with no lost or duplicated outcomes, the certification index kept, and Codex
-		stopping within 15 seconds.
+	- **E2:** ESC mid-slice, with Codex stopping within 15 seconds; the run's interrupted turn is saved as a recording.
+		Unit tests replay that recording to show that resuming loses or duplicates no outcome and keeps the
+		certification index.
 	- **E3:** an explicit stop leaves the base unchanged; explicit uncertified acceptance is labelled
 		`not certified` and delivered through the same choose-and-deliver path that keeping an improvement uses. Keeping
 		an improvement is covered by `DriverTest` traces 12 and 13 and `DeliveryTest`, because a certification attempt
 		ends uncertified only after hundreds of trials.
 	- **E4:** unsupported cases: a remote governing instruction, an image-output requirement, a response-contingent
 		obligation, and a persistent-write path.
-	- **E5:** a trial uses a host tool, and one uses child subagents with child worktrees.
+	- **E5:** a trial uses a host tool, and one uses child subagents with child worktrees. One trial writes a file that
+		its judge decides on; that trial and a text-output trial, each with its judge session, are saved as recordings
+		that a unit test judges from.
 	- **E6:** a cross-harness invocation is refused without any state change.
 	- **E7:** a project with in-project and external links shows the link report; a prompt author's needed edit to an
 		external file raises an authority warning that offers no way to edit it, and delivery leaves every external file
 		unchanged.
 	- **E8:** two concurrent CAT processes are bounded by the shared capacity.
+- **Unit evidence instead of live runs (user ruling, 2026-10-20, D91):** these §14 claims are proven by Java tests,
+	not by an E scenario: the dirty-base refusal (`ForkTest`, on a real repository); removing a campaign's files after
+	the incumbent is kept and finishing an interrupted removal (driver and delivery tests); a prompt test's fixtures with
+	a generated value; a failed built-in tool, with and without `on_tool_failure: judge`; paired control trials; and
+	the eligible read-only-credential and disposable-fixture trials.
 - **Recordings:** each run saves its harness event streams, untrimmed, with the harness version. They replace the
 	contract tests' recordings, and the contract tests then pass on them (`design.md` §10 T3). Save at least one
 	completed multi-turn session per role and an interrupted turn (from E2) per harness.
