@@ -489,7 +489,23 @@ public final class OptimizerCore implements Core
 			campaign = withTrialPlugins(root, store, campaign, fork,
 				configuredPlugins(root, relativeTarget(root, campaign)));
 		}
-		Optional<DerivedProposal> stored = stored(root, campaign);
+		Optional<DerivedProposal> stored;
+		try
+		{
+			stored = validatedProposal(root, campaign);
+		}
+		catch (InvalidProposalException e)
+		{
+			// A proposal that no longer validates against the project cannot be confirmed or revised, so only a new
+			// derivation lets the campaign continue
+			CommandResult derived = derive(root, store, campaign, fork, null, null);
+			String message = "The stored proposal no longer validates against the project, so the contract author " +
+				"derived a new one. The stored proposal's problems: " + String.join("; ", e.problems());
+			if (derived.message() != null)
+				message += "\n" + derived.message();
+			return new CommandResult(derived.status(), derived.harness(), derived.proposal(), derived.delivery(),
+				message);
+		}
 		if (stored.isPresent())
 			return present(root, store, campaign, fork, stored.get());
 		return derive(root, store, campaign, fork, null, null);
@@ -2131,24 +2147,52 @@ public final class OptimizerCore implements Core
 	 * @param root the project root
 	 * @param campaign the campaign
 	 * @return the proposal, or empty if none is stored
-	 * @throws IOException if the stored proposal cannot be read or no longer validates
+	 * @throws IOException if the stored proposal cannot be read or no longer validates against the project
 	 */
 	private Optional<DerivedProposal> stored(Path root, Campaign campaign) throws IOException
 	{
-		Optional<ProposalFile.Stored> stored = new ProposalFile(heldOutDirectory(campaign.header().id()),
-			scope.json(), scope.fileReplacer()).read();
-		if (stored.isEmpty())
-			return Optional.empty();
 		try
 		{
-			ProposalFile.Stored proposal = stored.get();
-			return Optional.of(proposal.restore(contractAuthor(root, campaign).proposal(proposal.derivation(),
-				proposal.draft(), proposal.observedSources(), proposal.profiles(), proposal.salt())));
+			return validatedProposal(root, campaign);
 		}
 		catch (InvalidProposalException e)
 		{
-			throw new IOException("The stored proposal is invalid: " + String.join("; ", e.problems()), e);
+			throw new IOException("The stored proposal no longer validates against the project: " +
+				String.join("; ", e.problems()) + ". Run `start` to derive a new proposal.", e);
 		}
+	}
+
+	/**
+	 * Reads the stored proposal and validates it against the project.
+	 *
+	 * @param root     the project root
+	 * @param campaign the campaign
+	 * @return the proposal, or empty if none is stored
+	 * @throws IOException              if the stored proposal cannot be read
+	 * @throws InvalidProposalException if the stored proposal no longer validates against the project. The exception
+	 *                                  lists every problem found.
+	 */
+	private Optional<DerivedProposal> validatedProposal(Path root, Campaign campaign)
+		throws IOException, InvalidProposalException
+	{
+		Optional<ProposalFile.Stored> stored = storedProposal(campaign);
+		if (stored.isEmpty())
+			return Optional.empty();
+		ProposalFile.Stored proposal = stored.get();
+		return Optional.of(proposal.restore(contractAuthor(root, campaign).proposal(proposal.derivation(),
+			proposal.draft(), proposal.observedSources(), proposal.profiles(), proposal.salt())));
+	}
+
+	/**
+	 * Reads the stored proposal without validating it.
+	 *
+	 * @param campaign the campaign
+	 * @return the proposal, or empty if none is stored
+	 * @throws IOException if the stored proposal cannot be read
+	 */
+	private Optional<ProposalFile.Stored> storedProposal(Campaign campaign) throws IOException
+	{
+		return new ProposalFile(heldOutDirectory(campaign.header().id()), scope.json(), scope.fileReplacer()).read();
 	}
 
 	/**
@@ -2327,9 +2371,11 @@ public final class OptimizerCore implements Core
 	 */
 	private Set<Path> promptSources(Path root, Campaign campaign) throws IOException
 	{
-		Optional<DerivedProposal> derived = stored(root, campaign);
-		if (derived.isPresent())
-			return promptSources(root, campaign, derived.get());
+		// Validating the proposal would not change its derived sources, and skipping it lets cancel and status work on
+		// a proposal that no longer validates
+		Optional<ProposalFile.Stored> stored = storedProposal(campaign);
+		if (stored.isPresent())
+			return promptSources(root, campaign, stored.get().derivedSources());
 		return Set.of(relativeTarget(root, campaign));
 	}
 
@@ -2342,6 +2388,19 @@ public final class OptimizerCore implements Core
 	 * @return the sources, relative to the project
 	 */
 	private Set<Path> promptSources(Path root, Campaign campaign, DerivedProposal derived)
+	{
+		return promptSources(root, campaign, derived.derivedSources());
+	}
+
+	/**
+	 * Returns a campaign's in-project prompt sources: its target and every in-project derived source.
+	 *
+	 * @param root     the project root
+	 * @param campaign the campaign
+	 * @param derived  the derived sources
+	 * @return the sources, relative to the project
+	 */
+	private Set<Path> promptSources(Path root, Campaign campaign, List<DerivedSource> derived)
 	{
 		Set<Path> sources = new LinkedHashSet<>();
 		sources.add(relativeTarget(root, campaign));

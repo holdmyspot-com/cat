@@ -2966,6 +2966,78 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that {@code cancel} and {@code status} work on a campaign whose stored proposal no longer validates, so
+	 * the user is never left with a campaign that no command can end.
+	 *
+	 * @throws Exception if the owned repository or store fails
+	 */
+	@Test
+	public void cancelIgnoresInvalidProposal() throws Exception
+	{
+		// Requirement: R-I2
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			invalidateProposal(repository, id);
+
+			requireThat(repository.core().status(id).status().lifecycle(), "reported").isEqualTo(Lifecycle.ACTIVE);
+			CommandResult cancelled = repository.core().cancel(id);
+			requireThat(cancelled.status().lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
+		}
+	}
+
+	/**
+	 * Verifies that resuming a campaign whose stored proposal no longer validates derives a new proposal and tells
+	 * the user why, instead of failing on every later {@code start}.
+	 *
+	 * @throws Exception if the owned repository or store fails
+	 */
+	@Test
+	public void resumeDerivesAgainForInvalidProposal() throws Exception
+	{
+		// Requirement: R-I2
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			invalidateProposal(repository, id);
+
+			CommandResult resumed = repository.core().start(Path.of("CLAUDE.md"));
+			requireThat(resumed.status().campaignId(), "campaignId").isEqualTo(id);
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "contractAuthors").
+				isEqualTo(2);
+			requireThat(resumed.message(), "message").contains("no longer validates").contains("$.judge");
+			requireThat(resumed.proposal(), "proposal").isNotNull();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+		}
+	}
+
+	/**
+	 * Removes the judge from a campaign's stored proposal, which stands in for a change to the project that the
+	 * stored proposal no longer validates against.
+	 *
+	 * @param repository               the test project
+	 * @param id                       the campaign's identifier
+	 * @throws IOException             if the proposal file cannot be read or written
+	 * @throws CommandRefusedException if the host session's CAT session directory cannot be opened
+	 */
+	private static void invalidateProposal(Repository repository, String id)
+		throws IOException, CommandRefusedException
+	{
+		Path file = repository.directory(id).resolve("held_out/proposal.json");
+		ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
+		ObjectNode derivation = (ObjectNode) JSON.readTree(stored.get("derivation").asString());
+		derivation.remove("judge");
+		stored.put("derivation", JSON.writeValueAsString(derivation));
+		Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
+	}
+
+	/**
 	 * Verifies that the fork of a confirmed campaign holds the derived sources that Git ignores or that lie outside
 	 * the project, so trials never read them live. The session port lists the derived sources when the contract author
 	 * finishes, and the stored proposal keeps them for the confirmation.
