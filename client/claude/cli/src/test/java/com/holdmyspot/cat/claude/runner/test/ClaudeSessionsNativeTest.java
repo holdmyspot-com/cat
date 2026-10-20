@@ -1,6 +1,5 @@
 package com.holdmyspot.cat.claude.runner.test;
 
-import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
@@ -15,7 +14,6 @@ import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
-import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
@@ -47,7 +45,8 @@ import org.testng.annotations.Test;
  * Tests {@link ClaudeSessions} against a real Claude process, using model {@code haiku} to limit cost.
  * <p>
  * The tests run only in the {@code native} group, with {@code -Dcat.native.harness=claude}. They live in the runner
- * test package because they read the host's credential location, which optimizer sources must not do.
+ * test package because they read the host's credential location, which optimizer sources must not do. They cover only
+ * interrupts; {@code ClaudeSessionsContractTest} replays recorded sessions for the other checks.
  */
 public final class ClaudeSessionsNativeTest
 {
@@ -175,32 +174,6 @@ public final class ClaudeSessionsNativeTest
 	}
 
 	/**
-	 * Verifies that a real session completes with evidence of every turn.
-	 *
-	 * @throws Exception if the contract check fails
-	 */
-	@Test(groups = "native", timeOut = 900_000)
-	public void completesWithEvidenceOfEveryTurn() throws Exception
-	{
-		// Requirement: R-E13
-		// Requirement: R-E16
-		// Requirement: R-E6
-		contract().completesWithEvidenceOfEveryTurn();
-	}
-
-	/**
-	 * Verifies that a real judge leaves read-only evidence unchanged.
-	 *
-	 * @throws Exception if the contract check fails
-	 */
-	@Test(groups = "native", timeOut = 900_000)
-	public void judgeLeavesReadOnlyEvidenceUnchanged() throws Exception
-	{
-		// Requirement: R-E13
-		contract().judgeLeavesReadOnlyEvidenceUnchanged();
-	}
-
-	/**
 	 * Verifies that an interrupt during a real turn ends the session as interrupted.
 	 *
 	 * @throws Exception if the contract check fails
@@ -210,134 +183,6 @@ public final class ClaudeSessionsNativeTest
 	{
 		// Requirement: R-E15
 		contract().interruptEndsARunningTurnAsInterrupted();
-	}
-
-	/**
-	 * Verifies that an interrupt after a real session ended changes nothing.
-	 *
-	 * @throws Exception if the contract check fails
-	 */
-	@Test(groups = "native", timeOut = 900_000)
-	public void interruptAfterTheEndChangesNothing() throws Exception
-	{
-		// Requirement: R-E15
-		contract().interruptAfterTheEndChangesNothing();
-	}
-
-	/**
-	 * Verifies that the model comes from harness events rather than from the alias that CAT passed, and that the usage
-	 * and rate-limit windows are read from the same events.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(groups = "native", timeOut = 900_000)
-	public void reportsTheObservedModelUsageAndWindows() throws Exception
-	{
-		// Requirement: R-E16
-		// Requirement: R-E6
-		try (HarnessSubject subject = open())
-		{
-			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT,
-				subject.workspace(), List.of(subject.quickPrompt()), List.of(), LIMIT, PROFILE));
-
-			SessionResult result = await(session);
-
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(completed.model(), "model").startsWith("claude-").contains("haiku");
-			long inputTokens = completed.usage().input() + completed.usage().cachedInput();
-			requireThat(inputTokens, "usage.input").isGreaterThan(0L);
-			for (RateLimitWindow window : completed.windows())
-			{
-				requireThat(window.utilization(), "utilization").isBetween(0.0, true, 1.0, true);
-			}
-		}
-	}
-
-	/**
-	 * Verifies that the port classifies the login of the host that runs the test, before any session starts, from key
-	 * names and types only.
-	 *
-	 * @throws Exception if the credentials cannot be inspected
-	 */
-	@Test(groups = "native", timeOut = 900_000)
-	public void classifiesTheHostLogin() throws Exception
-	{
-		// Requirement: R-E7
-		try (HarnessSubject subject = open())
-		{
-			HostLogin login = subject.port().hostLogin();
-
-			requireThat(login, "login").isNotEqualTo(HostLogin.UNKNOWN);
-		}
-	}
-
-	/**
-	 * Verifies the port's host-login contract against the real adapter.
-	 *
-	 * @throws Exception if the contract check fails
-	 */
-	@Test(groups = "native", timeOut = 900_000)
-	public void reportsTheHostLoginWithoutASession() throws Exception
-	{
-		// Requirement: R-E7
-		contract().reportsTheHostLoginWithoutASession();
-	}
-
-	/**
-	 * Verifies that each role runs as a session of its own, through the runner.
-	 *
-	 * @throws Exception if a session fails
-	 */
-	@Test(groups = "native", timeOut = 1_800_000)
-	public void runsOneSessionPerRole() throws Exception
-	{
-		// Requirement: R-E13
-		try (HarnessSubject subject = open())
-		{
-			for (SessionRole role : SessionRole.values())
-			{
-				SessionHandle session = subject.port().start(new SessionRequest(role, partOf(role), subject.workspace(),
-					List.of(subject.quickPrompt()), List.of(), LIMIT, PROFILE));
-
-				SessionResult result = await(session);
-
-				requireThat(result, role + ".result").isInstanceOf(SessionResult.Completed.class);
-				int responses = ((SessionResult.Completed) result).responses().size();
-				requireThat(responses, role + ".responses.size()").isEqualTo(1);
-			}
-		}
-	}
-
-	/**
-	 * Verifies that a session whose root turn starts a background child waits for the child, so that the child's
-	 * work and the follow-up turn belong to the same session.
-	 *
-	 * @throws Exception if the session fails
-	 */
-	@Test(groups = "native", timeOut = 1_800_000)
-	public void waitsForABackgroundChild() throws Exception
-	{
-		// Requirement: R-E14
-		try (HarnessSubject subject = open())
-		{
-			String prompt = "Use the Agent tool with run_in_background set to true to start exactly one subagent. " +
-				"The subagent's only job is to create the file child.txt in the current directory, containing the " +
-				"text child-done, and then reply done. Do not create the file yourself. After you start the " +
-				"subagent, reply with the single word started.";
-			SessionHandle session = subject.port().start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT,
-				subject.workspace(), List.of(prompt), List.of(), LIMIT, PROFILE));
-
-			SessionResult result = await(session);
-
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			SessionResult.Completed completed = (SessionResult.Completed) result;
-			String transcript = Files.readString(completed.transcript(), UTF_8);
-			requireThat(transcript, "transcript").contains("\"task_started\"").contains("\"task_notification\"");
-			Path child = completed.effects().resolve("child.txt");
-			requireThat(Files.isRegularFile(child), "child.txt.exists").isTrue();
-			requireThat(Files.readString(child, UTF_8), "child.txt").contains("child-done");
-		}
 	}
 
 	/**
