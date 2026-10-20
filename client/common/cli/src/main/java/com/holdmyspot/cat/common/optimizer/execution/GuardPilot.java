@@ -463,7 +463,7 @@ public final class GuardPilot
 				{
 					case TrialJob trial -> new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
 						trial.testCase().turns(), List.of(), trial.pilot().test.timeLimit(), trial.pilot().cell.profile(),
-						TestWorkspace.of(trial.pilot().test, trial.testCase().testCase()), plugins);
+						TestWorkspace.of(trial.pilot().test, trial.testCase().testCase()), plugins, Optional.empty(), true);
 					case JudgeJob judging -> judge.request(contract.judge(), judging.testCase(), judging.trial(),
 						judging.judged(), judging.results(), judging.section());
 				};

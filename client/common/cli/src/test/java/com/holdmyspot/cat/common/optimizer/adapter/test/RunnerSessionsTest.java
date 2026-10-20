@@ -256,6 +256,40 @@ public final class RunnerSessionsTest
 	}
 
 	/**
+	 * Verifies that a trial that runs on the control source passes the harness's control-source options and that
+	 * another trial does not.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void passesControlSourceOptions()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-W10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+				arguments, List.of(Turn.replies("ok")));
+
+			for (boolean controlSource : List.of(true, false))
+			{
+				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(), Optional.empty(),
+					controlSource)));
+			}
+
+			requireThat(arguments.get(0), "control").contains("--control-source");
+			requireThat(arguments.get(1), "formal").doesNotContain("--control-source");
+		}
+	}
+
+	/**
 	 * Verifies that a trial installs exactly its trial plugins: the first one that is CAT as CAT, and each other one as
 	 * a plugin; that a trial without trial plugins installs none, not even CAT, whatever the settings say; and that a
 	 * session in another role installs none.

@@ -793,6 +793,14 @@ public abstract class RunnerSessions implements SessionPort
 	protected abstract List<String> readOnlyArguments(List<Path> evidence);
 
 	/**
+	 * Returns the runner options of a trial that runs on the control source, where the target prompt file is empty.
+	 *
+	 * @return the options that keep the harness from loading another instruction file in place of the emptied one,
+	 *   empty if the harness loads none
+	 */
+	protected abstract List<String> controlSourceArguments();
+
+	/**
 	 * {@inheritDoc}
 	 * <p>
 	 * The registrations are those of the project's hook files, in the order that {@link #projectHookFiles()} lists

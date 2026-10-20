@@ -49,8 +49,8 @@ public final class ClaudeSessionEnvironmentVersionTest
 
 	/**
 	 * Verifies that the declared session environment version is registered with the hash of the isolated settings
-	 * that the runner writes for a fixed host configuration, so that changing those settings requires a decision about
-	 * the version.
+	 * that the runner writes for a fixed host configuration, for a trial and for a control trial, so that changing
+	 * those settings requires a decision about the version.
 	 *
 	 * @throws IOException if the settings or the registry cannot be read or written
 	 */
@@ -88,22 +88,42 @@ public final class ClaudeSessionEnvironmentVersionTest
 				}
 				""", UTF_8);
 
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(),
+				List.of(deniedFile, deniedDirectory, hostProject));
+			List<Path> dependencyCaches = List.of(root.resolve("host-home/.npm"), root.resolve("host-home/.m2"));
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"),
-				List.of(root.resolve("host-home/.npm"), root.resolve("host-home/.m2")), run.directory(),
-				ClaudeRunner.sessionDeniedReads(manager, run, List.of(), List.of(deniedFile, deniedDirectory, hostProject)),
+				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads,
+				Platform.LINUX_X64);
+			Path controlDestination = root.resolve("isolated/control-settings.json");
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, controlDestination, claudeTemporaryDirectory,
+				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "claude-md",
 				Platform.LINUX_X64);
 
-			// Run directories differ per run, so the hash covers the settings with their root and the run's identifier
-			// replaced
-			String settings = replaceRoot(withoutExcludesAboveRoot(scope.json(),
-				Files.readString(destination, UTF_8).replace("\r\n", "\n"), root), root).replace(run.id(), "<run>");
+			String settings = normalize(scope.json(), destination, root, run) + "\n" +
+				normalize(scope.json(), controlDestination, root, run);
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(root, root, List::of, "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			int version = new ClaudeSessions(sessionSettings).sessionEnvironmentVersion();
 			VersionRegistry.requireRegistered(REGISTRY, "session environment", version,
 				VersionRegistry.hash(settings));
 		}
+	}
+
+	/**
+	 * Returns the content of a settings file with its root and its run's identifier replaced, because run directories
+	 * differ per run.
+	 *
+	 * @param json     the JSON mapper that wrote the settings
+	 * @param file     the settings file
+	 * @param root     the root
+	 * @param run      the run
+	 * @return the normalized settings
+	 * @throws IOException if the file cannot be read
+	 */
+	private static String normalize(JsonMapper json, Path file, Path root, HarnessRun run) throws IOException
+	{
+		return replaceRoot(withoutExcludesAboveRoot(json, Files.readString(file, UTF_8).replace("\r\n", "\n"), root),
+			root).replace(run.id(), "<run>");
 	}
 
 	/**

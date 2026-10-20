@@ -329,6 +329,12 @@ public final class CodexSessions extends RunnerSessions
 		return List.of();
 	}
 
+	@Override
+	protected List<String> controlSourceArguments()
+	{
+		return List.of();
+	}
+
 	/**
 	 * Creates the bridge that runs the real runner.
 	 *

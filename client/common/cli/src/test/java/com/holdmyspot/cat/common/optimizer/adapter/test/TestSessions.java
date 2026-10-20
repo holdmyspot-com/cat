@@ -130,6 +130,12 @@ final class TestSessions extends RunnerSessions
 	}
 
 	@Override
+	protected List<String> controlSourceArguments()
+	{
+		return List.of("--control-source");
+	}
+
+	@Override
 	protected List<Path> projectHookFiles()
 	{
 		return List.of();

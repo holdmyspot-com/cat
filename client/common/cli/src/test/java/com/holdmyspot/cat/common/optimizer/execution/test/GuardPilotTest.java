@@ -98,8 +98,8 @@ public final class GuardPilotTest
 	private final JsonMapper json = JsonMapper.builder().build();
 
 	/**
-	 * The pilot runs 20 control trials of each prompt test in its weakest cell, of development test cases only, and
-	 * counts how often the judge passed each assertion.
+	 * The pilot runs 20 control trials of each prompt test in its weakest cell, on the control source and of
+	 * development test cases only, and counts how often the judge passed each assertion.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
@@ -107,7 +107,7 @@ public final class GuardPilotTest
 	@Test
 	public void runsControlTrialsInWeakestCell() throws IOException, InterruptedException
 	{
-		// Requirement: R-C23
+		// Requirement: R-C23, R-W10
 		Contract contract = TierFixtures.tieredContract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -127,6 +127,7 @@ public final class GuardPilotTest
 			{
 				requireThat(request.part(), "part").isEqualTo(Part.DEVELOPMENT);
 				requireThat(request.source(), "source").isEqualTo(source);
+				requireThat(request.controlSource(), "controlSource").isTrue();
 			}
 			requireThat(sessions.requests(SessionRole.TRIAL).stream().
 				filter(request -> request.profile().equals(new TrialProfile("small", "high"))).count(),

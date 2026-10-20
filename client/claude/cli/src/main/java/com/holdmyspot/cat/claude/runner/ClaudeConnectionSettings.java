@@ -137,6 +137,36 @@ public final class ClaudeConnectionSettings
 		List<Path> deniedReads, Platform platform)
 		throws IOException
 	{
+		writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
+			isolationRoot, deniedReads, "", platform);
+	}
+
+	/**
+	 * Writes settings for an isolated Claude instance, as
+	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, Platform)} does,
+	 * except that {@code instructionFilesMode}, when it is not empty, decides which instruction files the instance
+	 * loads in place of the parent's choice.
+	 *
+	 * @param scope                    services shared for the runner process lifetime
+	 * @param source                   the host Claude settings file
+	 * @param destination              the isolated Claude settings file
+	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
+	 * @param claudeHome               the CAT-owned home directory for the isolated Claude process
+	 * @param dependencyCaches         the parent's shared dependency caches that the isolated instance may write
+	 * @param isolationRoot            the directory above which the isolated instance loads no instruction file
+	 * @param deniedReads              the existing files and directories that the isolated instance must not read
+	 * @param instructionFilesMode     the choice of which instruction files load, such as {@code claude-md}, or an
+	 *                                 empty string to keep the parent's choice
+	 * @param platform                 the platform that the isolated instance runs on
+	 * @throws NullPointerException if {@code instructionFilesMode} is null
+	 * @throws IOException          if settings I/O fails
+	 */
+	public static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
+		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
+		List<Path> deniedReads, String instructionFilesMode, Platform platform)
+		throws IOException
+	{
+		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
 		JsonMapper mapper = scope.json();
 		ObjectNode settings = mapper.createObjectNode();
 		ObjectNode environment = settings.putObject("env");
@@ -183,7 +213,10 @@ public final class ClaudeConnectionSettings
 			}
 		}
 		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
-		copyInstructionFilesMode(parentSettings, settings);
+		if (instructionFilesMode.isEmpty())
+			copyInstructionFilesMode(parentSettings, settings);
+		else
+			putInstructionFilesMode(settings, instructionFilesMode);
 		permissions(settings).set("allow", mapper.valueToTree(PERMISSION_GRANTS));
 		List<String> writablePaths = new ArrayList<>();
 		writablePaths.add(claudeHome.toString());
@@ -271,8 +304,21 @@ public final class ClaudeConnectionSettings
 		Optional<String> mode = instructionFilesMode(parentSettings);
 		if (mode.isEmpty())
 			return;
+		putInstructionFilesMode(settings, mode.get());
+	}
+
+	/**
+	 * Sets the choice of which instruction files Claude Code loads.
+	 *
+	 * @param settings the isolated settings
+	 * @param mode     the choice
+	 */
+	private static void putInstructionFilesMode(ObjectNode settings, String mode)
+	{
+		assert settings != null;
+		assert mode != null;
 		settings.putObject("pluginConfigs").putObject(INSTRUCTION_FILES_PLUGIN).putObject("options").
-			put(INSTRUCTION_FILES_OPTION, mode.get());
+			put(INSTRUCTION_FILES_OPTION, mode);
 	}
 
 	/**

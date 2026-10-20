@@ -33,10 +33,12 @@ import java.util.Optional;
  * @param plugins the plugin directories that a trial installs, and no other plugin; empty for every other session
  * @param followUp chooses at most one turn to send after the last of {@code turns}, from the replies so far; that
  *   turn gets a time limit of its own as long as {@code timeLimit}. Empty to end the session after {@code turns}.
+ * @param controlSource {@code true} if the session is a trial that runs on the control source, where the target prompt
+ *   file is empty; the harness then loads no other instruction file in its place
  */
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 	Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
-	Optional<FollowUp> followUp)
+	Optional<FollowUp> followUp, boolean controlSource)
 {
 	/**
 	 * Creates a request whose workspace receives no files.
@@ -107,7 +109,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	}
 
 	/**
-	 * Creates a request.
+	 * Creates a request that does not run on the control source.
 	 *
 	 * @param role the kind of work that the session performs
 	 * @param part the part of the contract whose content the session may read
@@ -124,6 +126,34 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
 	 *   author is not {@link Part#DEVELOPMENT}, if a session other than a trial or the contract author receives files,
 	 *   or if a session other than a trial installs plugins
+	 */
+	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
+		Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
+		Optional<FollowUp> followUp)
+	{
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp, false);
+	}
+
+	/**
+	 * Creates a request.
+	 *
+	 * @param role the kind of work that the session performs
+	 * @param part the part of the contract whose content the session may read
+	 * @param source the directory that the session works in
+	 * @param turns the complete turn sequence, sent one turn at a time
+	 * @param readOnly paths that the session may read but never write, such as a judge's evidence
+	 * @param timeLimit how long the session may run before its remaining turns are abandoned
+	 * @param profile the model and reasoning effort that the session starts under
+	 * @param files the files that the workspace receives on top of {@code source} before the first turn
+	 * @param plugins the plugin directories that a trial installs, and no other plugin
+	 * @param followUp chooses at most one turn to send after the last of {@code turns}
+	 * @param controlSource {@code true} if the session is a trial that runs on the control source
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
+	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
+	 *   author is not {@link Part#DEVELOPMENT}, if a session other than a trial or the contract author receives files,
+	 *   if a session other than a trial installs plugins, or if a session other than a trial runs on the control
+	 *   source
 	 */
 	public SessionRequest
 	{
@@ -150,6 +180,8 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 			throw new IllegalArgumentException("A " + role + " session receives no files");
 		if (role != SessionRole.TRIAL && !plugins.isEmpty())
 			throw new IllegalArgumentException("A " + role + " session installs no plugin");
+		if (role != SessionRole.TRIAL && controlSource)
+			throw new IllegalArgumentException("A " + role + " session does not run on the control source");
 		turns = List.copyOf(turns);
 		plugins = List.copyOf(plugins);
 		readOnly = List.copyOf(readOnly);

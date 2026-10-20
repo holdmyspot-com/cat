@@ -71,7 +71,7 @@ public final class ClaudeSessions extends RunnerSessions
 	 * session's model receives or how its actions take effect, and register the new version with the hash of the
 	 * settings that the runner generates.
 	 */
-	private static final int SESSION_ENVIRONMENT_VERSION = 8;
+	private static final int SESSION_ENVIRONMENT_VERSION = 9;
 	/**
 	 * The version of the judge that Claude sessions run. Increment it in every release that changes the judge's role
 	 * profile, prompt, rubric, decision rule or result schema, or the evidence section rendered for the same harness
@@ -675,6 +675,19 @@ public final class ClaudeSessions extends RunnerSessions
 		for (Path path : evidence)
 			arguments.addAll(List.of("--read-only-evidence", path.toString()));
 		return arguments;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Claude Code treats an empty {@code CLAUDE.md} as missing and, by default, loads the project's {@code AGENTS.md}
+	 * in its place. {@code AGENTS.md} is Codex's prompt file, not Claude's, so a control trial loads only
+	 * {@code CLAUDE.md} files.
+	 */
+	@Override
+	protected List<String> controlSourceArguments()
+	{
+		return List.of("--instruction-files", "claude-md");
 	}
 
 	/**

@@ -1,5 +1,6 @@
 # The session environment versions that ClaudeSessions has declared, one per line, each followed by the SHA-256 hash
-# of the isolated settings.json that the runner writes for the fixed input of ClaudeSessionEnvironmentVersionTest.
+# of the isolated settings.json that the runner writes for the fixed input of ClaudeSessionEnvironmentVersionTest;
+# from version 9, of the settings of a trial and of a control trial.
 # When the hash changes, increment the version in ClaudeSessions and add a line for the new version.
 1 64141dc5affd2bf1315df6ef22b109e7ed3ce35b80a06b46766dd26e4c403b60
 2 ca4b4ecda94fc8294d21f198f06f00ed36329fa47888ebeadd658d3d821c171c
@@ -9,3 +10,4 @@
 6 41d38e15f468aaad06432550d0d1377c4e9ae47f30e75e883a4a4e75636549e9
 7 b2cb4b1b585a1139d158822f29f81bf02cc8381b79754d85d1c7a782c35b1545
 8 e79b42e8318660bb9f6f415ffc417358191e29161902560de1dd5d8eaab54a7d
+9 d5cee18be7c182aa3c14d6b82ec3fc3400e644f4230ebd3adfd9ab5f121a2895

@@ -506,6 +506,64 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
+	 * Verifies that a requested choice of which instruction files load replaces the parent's choice.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void requestedInstructionFilesModeWins() throws IOException
+	{
+		// Requirement: R-W10
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-instruction-files-"));
+			Path source = root.resolve("settings.json");
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+			Files.writeString(source, """
+				{"pluginConfigs": {"cc-plugin-agents-md@builtin": {"options": {"instructionFiles": "agents-md"}}}}
+				""");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(), "claude-md",
+				Platform.LINUX_X64);
+
+			JsonNode pluginConfigs = scope.json().readTree(Files.readString(destination)).path("pluginConfigs");
+			requireThat(pluginConfigs, "pluginConfigs").isEqualTo(scope.json().readTree("""
+				{"cc-plugin-agents-md@builtin": {"options": {"instructionFiles": "claude-md"}}}
+				"""));
+		}
+	}
+
+	/**
+	 * Verifies that a requested choice of which instruction files load applies when the parent makes none.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void requestedModeWithoutParentMode() throws IOException
+	{
+		// Requirement: R-W10
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-instruction-files-"));
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("settings.json"), destination,
+				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory,
+				List.of(), "claude-md", Platform.LINUX_X64);
+
+			JsonNode pluginConfigs = scope.json().readTree(Files.readString(destination)).path("pluginConfigs");
+			requireThat(pluginConfigs, "pluginConfigs").isEqualTo(scope.json().readTree("""
+				{"cc-plugin-agents-md@builtin": {"options": {"instructionFiles": "claude-md"}}}
+				"""));
+		}
+	}
+
+	/**
 	 * Verifies that isolated settings leave the choice of instruction files at Claude Code's default when the parent
 	 * makes none.
 	 *

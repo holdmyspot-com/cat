@@ -117,11 +117,12 @@ public final class ClaudeRunnerCli
 				HarnessTemporaryRoot.from(scope));
 			ClaudeAgentDefinition agent = loadAgent(options.artifact(), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
+			String instructionFilesMode = instructionFilesMode(args);
 			FileReplacer replacer = FileReplacer.sleeping();
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(), replacer);
 			manager.deleteStaleRuns(HarnessRunManager.DEFAULT_RETENTION);
-			serve(options, agent, readOnlyEvidence, manager, input, output, environment, scope.json(), replacer,
-				capacityForMaximum.apply(options.maximumConcurrency()));
+			serve(options, agent, readOnlyEvidence, instructionFilesMode, manager, input, output, environment,
+				scope.json(), replacer, capacityForMaximum.apply(options.maximumConcurrency()));
 		}
 	}
 
@@ -131,6 +132,8 @@ public final class ClaudeRunnerCli
 	 * @param options parsed shared bridge options
 	 * @param agent optional direct CAT agent
 	 * @param readOnlyEvidence completed executor evidence visible without write authority
+	 * @param instructionFilesMode the choice of which instruction files load, or an empty string to keep the parent's
+	 *   choice
 	 * @param manager owned-run lifecycle manager
 	 * @param input bridge input
 	 * @param output bridge output when no durable destination was requested
@@ -141,12 +144,13 @@ public final class ClaudeRunnerCli
 	 * @throws IOException if bridge execution or retained-evidence writing fails
 	 */
 	private static void serve(HarnessRunnerOptions options, ClaudeAgentDefinition agent, List<Path> readOnlyEvidence,
-		HarnessRunManager manager,
+		String instructionFilesMode, HarnessRunManager manager,
 		Reader input, Writer output,
 		Map<String, String> environment, tools.jackson.databind.json.JsonMapper json, FileReplacer replacer,
 		HarnessCapacity capacity) throws IOException
 	{
 		assert options != null;
+		assert instructionFilesMode != null;
 		assert manager != null;
 		assert input != null;
 		assert output != null;
@@ -161,7 +165,7 @@ public final class ClaudeRunnerCli
 				environment,
 				options.model(),
 				options.effort(), agent, options.installCat(), options.includeUserRules(), readOnlyEvidence,
-				options.deniedReads());
+				options.deniedReads(), instructionFilesMode);
 			HarnessRunnerBridge.serve(starter, manager, options, json, replacer, input, output);
 		}
 	}
@@ -266,6 +270,27 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
+	 * Extracts the optional choice of which instruction files Claude Code loads, such as {@code claude-md}.
+	 *
+	 * @param args the command-line arguments
+	 * @return the choice, or an empty string to keep the parent's choice
+	 * @throws IllegalArgumentException if {@code --instruction-files} has no value
+	 */
+	private static String instructionFilesMode(String[] args)
+	{
+		assert args != null;
+		for (int index = 0; index < args.length; ++index)
+		{
+			if (!args[index].equals("--instruction-files"))
+				continue;
+			if (index + 1 == args.length || args[index + 1].startsWith("--"))
+				throw new IllegalArgumentException("Missing value for --instruction-files");
+			return args[index + 1];
+		}
+		return "";
+	}
+
+	/**
 	 * Removes Claude-specific options before shared option parsing.
 	 *
 	 * @param args the command-line arguments
@@ -276,7 +301,8 @@ public final class ClaudeRunnerCli
 		List<String> result = new ArrayList<>(args.length);
 		for (int index = 0; index < args.length; ++index)
 		{
-			if (args[index].equals("--read-only-evidence") || args[index].equals("--agent"))
+			if (args[index].equals("--read-only-evidence") || args[index].equals("--agent") ||
+				args[index].equals("--instruction-files"))
 			{
 				index += 1;
 				continue;

@@ -113,7 +113,7 @@ public final class ClaudeRunner
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
 		return start(artifact, project, null, List.of(), manager, executable, environment, model, "", null, installCat,
-			true, List.of(), List.of());
+			true, List.of(), List.of(), "");
 	}
 
 	/**
@@ -134,13 +134,15 @@ public final class ClaudeRunner
 	 * @param includeUserRules whether CAT copies the parent user's rules into the isolated home
 	 * @param readOnlyEvidence executor evidence exposed through added directories
 	 * @param deniedReads the files and directories that the session must not read
+	 * @param instructionFilesMode the choice of which instruction files load, such as {@code claude-md}, or an empty
+	 *   string to keep the parent's choice
 	 * @return the live run session
 	 * @throws IOException if startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, boolean includeUserRules, List<Path> readOnlyEvidence,
-		List<Path> deniedReads) throws IOException
+		List<Path> deniedReads, String instructionFilesMode) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -150,6 +152,7 @@ public final class ClaudeRunner
 		requireThat(environment, "environment").isNotNull();
 		requireThat(model, "model").isNotNull();
 		requireThat(effort, "effort").isNotNull();
+		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		HarnessArtifact.validate(artifact, MANIFEST);
@@ -193,7 +196,7 @@ public final class ClaudeRunner
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
 				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome,
 				caches.directories(), run.directory(), sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads),
-				Platform.current());
+				instructionFilesMode, Platform.current());
 			HarnessEnvironment.setHomeDirectory(isolatedEnvironment, isolatedProcessHome);
 			isolatedEnvironment.put("CLAUDE_CONFIG_DIR", isolatedConfiguration.toString());
 			// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after

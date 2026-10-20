@@ -800,6 +800,41 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that a trial on the control source loads only {@code CLAUDE.md} files, so that Claude Code does not load
+	 * {@code AGENTS.md} in place of the emptied target, and that another trial keeps the user's choice.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void controlTrialLoadsOnlyClaudeMd()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-W10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+				arguments, List.of(Turn.replies("ok")));
+
+			for (boolean controlSource : List.of(true, false))
+			{
+				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(), Optional.empty(),
+					controlSource)));
+			}
+
+			requireThat(ScriptedHarness.optionValue(arguments.get(0), "--instruction-files"), "control").
+				isEqualTo("claude-md");
+			requireThat(arguments.get(1), "formal").doesNotContain("--instruction-files");
+		}
+	}
+
+	/**
 	 * Verifies that CAT classifies its requested interrupt as Interrupted and retains the parsed windows when the
 	 * bridge supplies a terminal completion. ResultMessage documents cancellation after interrupt; the test makes no
 	 * claim about the native harness's stop timing.

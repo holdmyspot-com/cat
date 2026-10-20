@@ -3549,8 +3549,9 @@ public final class DriverTest
 	}
 
 	/**
-	 * Control trials install a copy of a project-built trial plugin without the target's dependents in the plugin, and
-	 * every other trial installs the copy with them. Each cell starts one control pair short of passing.
+	 * Control trials run on the control source and install a copy of a project-built trial plugin without the target's
+	 * dependents in the plugin, and every other trial installs the copy with them. Each cell starts one control pair
+	 * short of passing.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -3589,11 +3590,13 @@ public final class DriverTest
 			for (SessionRequest trial : trials)
 			{
 				PluginRemovals expected = PluginRemovals.NONE;
-				if (harness.snapshot(trial).equals(control))
+				boolean onControl = harness.snapshot(trial).equals(control);
+				if (onControl)
 				{
 					expected = removals;
 					++controlTrials;
 				}
+				requireThat(trial.controlSource(), "controlSource").isEqualTo(onControl);
 				requireThat(trial.plugins(), "plugins").isEqualTo(List.of(
 					harness.workspace().pluginCopy(plugin, trial.source(), expected)));
 			}
