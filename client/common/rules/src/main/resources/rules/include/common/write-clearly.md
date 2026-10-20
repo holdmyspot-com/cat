@@ -181,9 +181,12 @@ use the focused unexpected-result guidance instead.
 
 Before finalizing, read the actual draft—not only this rule. For every internal label, compound relationship label, or
 workflow term, either replace it with the artifact, relationship, and action it hides or define it where it first
-appears. Confirm that the intended reader can paraphrase each sentence, identify the required action or decision, and
-understand every necessary specialized term without opening another artifact. Rewrite any sentence that fails that
-check.
+appears. Its first appearance is the first use in the text being drafted: a definition in an earlier reply, message,
+or document does not count, because the reader may not remember it. When the text asks the reader to choose, give each
+project label that the choice names, such as a scenario, goal, work-item, or decision identifier, a short gloss of what
+it covers, so the reader can choose without looking the label up. Confirm that the intended reader can paraphrase each
+sentence, identify the required action or decision, and understand every necessary specialized term without opening
+another artifact. Rewrite any sentence that fails that check.
 
 When the draft repeats an exact identifier, path, command, input, or other machine-readable value that determines the
 reported result or next action, copy it from the evidence and compare every repeated occurrence with that evidence
