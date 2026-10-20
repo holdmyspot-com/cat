@@ -189,6 +189,8 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-102 | `optimize-low` | Changes what the proposal lists as running only in the user's sessions; an error hides a hook, plugin or MCP server that trials do not run. |
 | WI-103 | `optimize-low` | Changes which instruction files a nested Claude session loads; an error lets a trial load the user's project instructions or drops the trial's own. |
 | WI-104 | `optimize-low` | Changes the `PROMPT_SOURCES` measurement value of Claude trials; an error drops a file-sourced skill, agent or plugin from the measurement or keeps a built-in one whose presence varies between sessions. |
+| WI-105 | `optimize-low` | Changes which entries of a harness root pruning treats as runs; an error leaves a terminal run's runtime in place or makes pruning fail on an entry that is not a run. |
+| WI-106 | `optimize-low` | Adds a bundled rule and its route; an error makes agents add parentheses that change an expression's grouping, or omit them where the user expects them. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -385,6 +387,8 @@ requirement names.
 | WI-102 | Done: both adapters list, with the files that load only in the user's sessions, each hook of the user's harness hooks file (Claude `settings.json` in the configuration directory, Codex `hooks.json` in its home), each plugin that the user's configuration enables and no trial plugin holds (Claude `enabledPlugins`, Codex `[plugins]` tables not disabled; a project-built trial plugin holds the plugin of its name without the marketplace), and each MCP server of the user's configuration (Claude `.claude.json` `mcpServers`, user scope only; Codex `[mcp_servers]` tables not disabled). The proposal shows them under the trial plugins. Coverage: `ClaudeSessionsTest.listsUserConfigurationThatTrialsLack`, `CodexSessionsTest.listsUserConfigurationThatTrialsLack`, `ProposalTest.listsTrialPlugins`; all three failed before the change. Commit `2e3e9dfa85`; full build passed (2960 tests, 0 failures, 10 skipped; 84 s; no test took 1 s). |
 | WI-103 | Done: the Claude runner's isolated settings exclude, through `claudeMdExcludes`, the `CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md` and `.claude/rules/**` of every directory above the run directory, so a trial no longer loads the user's project instructions; the session environment version is 4. Coverage: `ClaudeConnectionSettingsTest.excludesInstructionsAboveIsolationRoot`, which failed before the change; `ClaudeSessionEnvironmentVersionTest` hashes only the excludes at or below its root, since the directories above it differ between machines. Commit `416005eeaa`; full build passed (2961 tests, 0 failures, 10 skipped; 103 s; at or over 1 s: `TestabilityAuditTest.onlyMainReadsEnvironment` 1.20 s, untouched). Live (Claude Code 2.1.304, Haiku, the Claude plugin reinstalled from that build): a directory held all four files, and a session that the installed `claude-runner` started in a run root below it loaded only its own project's `CLAUDE.md`; a bare `claude` session there loaded all five. The Windows form of the patterns, with forward slashes, is untested. |
 | WI-104 | Done (user decision, 2026-10-20): the Claude `PROMPT_SOURCES` value lists only plugins whose `init` path is not `builtin`, skills and agents in those plugins' namespaces, and skills, commands and agents that the session project's `.claude/skills`, `.claude/commands` or `.claude/agents` files declare by path or frontmatter `name`; built-in and account skills, agents and plugins are left out, and the harness version still identifies them. Coverage: `StreamJsonPromptSourcesTest.omitsBuiltInSources` and `StreamJsonPromptSourcesTest.listsProjectSkillsAndAgents`, which both failed before the change. Commit `74f6b41f7b`; full build passed (2963 tests, 0 failures, 10 skipped; 56 s while Codex campaigns ran; at or over 1 s, all untouched: four `RunnerSessionsTest` time-limit tests at 2.47–2.48 s, `DriverTest.attemptLoadsOnlyReceivedFiles` 2.13 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.18 s). |
+| WI-105 | Done: `HarnessRunManager.pruneTerminalRuntimes` skips entries of the harness root whose names are not generated run identifiers. Every guard-pilot trial of the fresh Claude E1 campaign `20261020T023203Z-628bcb` failed with `harness and id must be generated runner identifiers`, because an empty `.claude` directory had appeared in the harness root `optimizer-runs/claude/claude`. Empty `.claude` directories also appeared in every directory above the trial runs up to `/home/gili/cat/worktrees`, which the previous E1 run (before WI-103) did not show; small sandboxed sessions with and without `claudeMdExcludes` did not reproduce them, so their cause is open. Coverage: `HarnessRunManagerTest.pruneSkipsEntriesThatAreNotRuns`, which failed with the campaign's error before the change. Commit `016cecf66f`; full build passed (2964 tests, 0 failures, 10 skipped; 58 s; none at or over 1 s). |
+| WI-106 | Done (user request, 2026-10-20): the bundled rule `include/common/operator-precedence.md`, routed from the default rules, has agents parenthesize an expression where two different binary or conditional operators meet, keeping the language's grouping, except for conventions every reader knows; it reports an expression whose grouping looks unintended instead of regrouping it. Prompt tests `mixed_operators_grouped` and `conventional_precedence_kept` are committed and not yet run. Commit `888475617f`; full build passed (2963 tests, 0 failures, 10 skipped; 63 s; at or over 1 s only the untouched `DriverTest.attemptLoadsOnlyReceivedFiles` at 1.21 s; the rule is packaged in both runtimes). |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -2821,6 +2825,24 @@ The riskiest pure code, built first.
 - **Tests:** `StreamJsonPromptSourcesTest.omitsBuiltInSources`, `StreamJsonPromptSourcesTest.listsProjectSkillsAndAgents`.
 - **Exit:** the full build passes and both tests failed before the change.
 
+### WI-105 — Pruning skips entries that are not runs (WI-15 E1 finding, 2026-10-20)
+
+- **Problem:** an empty `.claude` directory appeared in a Claude harness root during a campaign, and pruning treated it
+	as a run, so every later trial session failed and the guard pilot decided no trial.
+- **Change:** pruning a harness root skips entries whose names are not generated run identifiers.
+- **Tests:** `HarnessRunManagerTest.pruneSkipsEntriesThatAreNotRuns`.
+- **Exit:** the full build passes and the test failed before the change.
+
+### WI-106 — Operator precedence rule (user request, 2026-10-20)
+
+- **Problem:** agents write conditions such as `count == 0 || reason != null && !isTerminal(reason)`, whose reader must
+	recall which operator binds more tightly.
+- **Change:** a bundled rule, routed from the default rules, has agents add parentheses that show the grouping the
+	language applies where different operators meet, skip conventional precedence, and report rather than regroup an
+	expression whose grouping looks unintended.
+- **Tests:** prompt tests `mixed_operators_grouped` and `conventional_precedence_kept`.
+- **Exit:** the full build passes with the rule packaged in both runtimes.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2969,7 +2991,8 @@ blocks only the part of a work item that it names.
 | WI-102 | WI-81 |
 | WI-103 | WI-5 |
 | WI-104 | WI-5 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102 and WI-103, WI-104. |
+| WI-105 | WI-5 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104 and WI-105. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
