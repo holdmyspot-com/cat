@@ -156,6 +156,11 @@ public final class OptimizerCore implements Core
 	 * The largest prompt test configuration that CAT reads.
 	 */
 	private static final int MAXIMUM_CONFIGURATION_BYTES = 1_048_576;
+	/**
+	 * The typical length of one line that the loader configuration's identity digests: a file's path and its content
+	 * hash, or the user's loader settings.
+	 */
+	private static final int LOADER_LINE_CAPACITY = 128;
 	private final OptimizerCommandScope scope;
 	private final ProposalSchema schema;
 	/**
@@ -2395,16 +2400,18 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns the identity of the loader configuration files.
+	 * Returns the identity of the loader configuration: the files and the user's settings that decide which prompt
+	 * files load. The digest of a user who sets none is the digest of the files alone.
 	 *
 	 * @param files reads the files
-	 * @return a digest of the files' paths and contents
-	 * @throws IOException if a file cannot be read
+	 * @return a digest of the files' paths and contents and of the user's settings
+	 * @throws IOException if a file or the user's settings cannot be read
 	 */
 	private String loaderConfiguration(Entries files) throws IOException
 	{
-		StringBuilder lines = new StringBuilder();
-		for (Path path : scope.loaderConfiguration().stream().sorted().toList())
+		List<Path> paths = scope.loaderConfiguration().stream().sorted().toList();
+		StringBuilder lines = new StringBuilder(LOADER_LINE_CAPACITY * (paths.size() + 1));
+		for (Path path : paths)
 		{
 			lines.append(PortablePaths.text(path)).append('=');
 			Optional<FileEntry> entry = files.entry(path);
@@ -2421,6 +2428,9 @@ public final class OptimizerCore implements Core
 			}
 			lines.append('\n');
 		}
+		Optional<String> userSettings = scope.userLoaderSettings();
+		if (userSettings.isPresent())
+			lines.append("user settings=").append(userSettings.get()).append('\n');
 		return Sha256.of(lines.toString().getBytes(StandardCharsets.UTF_8)).hex();
 	}
 }

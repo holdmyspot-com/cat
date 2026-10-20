@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.random.RandomGenerator;
 
 /**
@@ -185,6 +186,16 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	protected abstract List<Path> loaderConfiguration();
+
+	/**
+	 * Returns the user's harness settings, outside the project, that decide which prompt files the harness's trials
+	 * load.
+	 *
+	 * @return the settings as text, or empty if the user sets none
+	 * @throws IOException           if the user's settings cannot be read
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	protected abstract Optional<String> userLoaderSettings() throws IOException;
 
 	/**
 	 * Returns the forks of the project's campaigns.

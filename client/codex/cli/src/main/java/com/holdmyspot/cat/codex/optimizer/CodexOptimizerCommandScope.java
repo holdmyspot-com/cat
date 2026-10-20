@@ -147,6 +147,13 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		return home;
 	}
 
+	@Override
+	protected Optional<String> userLoaderSettings()
+	{
+		ensureOpen();
+		return Optional.empty();
+	}
+
 	/**
 	 * Creates the port that runs nested sessions through the Codex runner.
 	 *

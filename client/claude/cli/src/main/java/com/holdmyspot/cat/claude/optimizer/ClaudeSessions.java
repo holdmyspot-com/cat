@@ -71,7 +71,7 @@ public final class ClaudeSessions extends RunnerSessions
 	 * session's model receives or how its actions take effect, and register the new version with the hash of the
 	 * settings that the runner generates.
 	 */
-	private static final int SESSION_ENVIRONMENT_VERSION = 7;
+	private static final int SESSION_ENVIRONMENT_VERSION = 8;
 	/**
 	 * The version of the judge that Claude sessions run. Increment it in every release that changes the judge's role
 	 * profile, prompt, rubric, decision rule or result schema, or the evidence section rendered for the same harness

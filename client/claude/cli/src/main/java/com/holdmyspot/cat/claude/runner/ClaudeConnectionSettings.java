@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -28,10 +29,19 @@ public final class ClaudeConnectionSettings
 	private static final int MAXIMUM_SETTINGS_BYTES = 1_048_576;
 	/**
 	 * The instruction files that Claude Code loads from each directory above its working directory, relative to that
-	 * directory, as glob patterns.
+	 * directory, as glob patterns. They include the {@code AGENTS.md} files that Claude Code loads when the project has
+	 * no {@code CLAUDE.md} of its own.
 	 */
 	private static final List<String> ANCESTOR_INSTRUCTIONS = List.of("CLAUDE.md", "CLAUDE.local.md",
-		".claude/CLAUDE.md", ".claude/rules/**");
+		".claude/CLAUDE.md", ".claude/rules/**", "AGENTS.md", ".claude/AGENTS.md");
+	/**
+	 * The identifier of Claude Code's built-in plugin that decides which instruction files load.
+	 */
+	private static final String INSTRUCTION_FILES_PLUGIN = "cc-plugin-agents-md@builtin";
+	/**
+	 * The option of {@link #INSTRUCTION_FILES_PLUGIN} that decides which instruction files load.
+	 */
+	private static final String INSTRUCTION_FILES_OPTION = "instructionFiles";
 	/**
 	 * The characters that a glob pattern treats as syntax.
 	 */
@@ -107,7 +117,9 @@ public final class ClaudeConnectionSettings
 	 * <p>
 	 * Claude Code loads the instruction files of every directory above its working directory. A run directory can lie
 	 * inside another project, such as the project whose prompts CAT measures, so the settings exclude every
-	 * instruction file above {@code isolationRoot} through {@code claudeMdExcludes}.
+	 * instruction file above {@code isolationRoot} through {@code claudeMdExcludes}. The settings keep the parent's
+	 * choice of which instruction files load, such as {@code AGENTS.md} beside or in place of {@code CLAUDE.md}, so
+	 * that the isolated instance loads the instruction files that the parent's sessions load.
 	 *
 	 * @param scope services shared for the runner process lifetime
 	 * @param source the host Claude settings file
@@ -171,6 +183,7 @@ public final class ClaudeConnectionSettings
 			}
 		}
 		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
+		copyInstructionFilesMode(parentSettings, settings);
 		permissions(settings).set("allow", mapper.valueToTree(PERMISSION_GRANTS));
 		List<String> writablePaths = new ArrayList<>();
 		writablePaths.add(claudeHome.toString());
@@ -204,6 +217,62 @@ public final class ClaudeConnectionSettings
 			if (rules.isArray())
 				permissions(settings).set(restriction, rules.deepCopy());
 		}
+	}
+
+	/**
+	 * Returns the choice of which instruction files Claude Code loads that a settings file makes, such as whether it
+	 * loads {@code AGENTS.md} beside or in place of {@code CLAUDE.md}.
+	 *
+	 * @param json   reads the settings
+	 * @param source the settings file
+	 * @return the choice, or empty if the file does not exist or makes none
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException          if the file cannot be read or is not JSON
+	 */
+	public static Optional<String> instructionFilesMode(JsonMapper json, Path source) throws IOException
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(source, "source").isNotNull();
+		if (!Files.isRegularFile(source))
+			return Optional.empty();
+		return instructionFilesMode(json.readTree(BoundedInput.readUtf8(source, MAXIMUM_SETTINGS_BYTES,
+			"Claude settings")));
+	}
+
+	/**
+	 * Returns the choice of which instruction files Claude Code loads that settings make.
+	 *
+	 * @param settings the settings, or a missing node if there are none
+	 * @return the choice, or empty if the settings make none
+	 */
+	private static Optional<String> instructionFilesMode(JsonNode settings)
+	{
+		assert settings != null;
+		JsonNode mode = settings.path("pluginConfigs").path(INSTRUCTION_FILES_PLUGIN).path("options").
+			path(INSTRUCTION_FILES_OPTION);
+		if (!mode.isString())
+			return Optional.empty();
+		return Optional.of(mode.stringValue());
+	}
+
+	/**
+	 * Copies the parent's choice of which instruction files Claude Code loads, such as whether it loads
+	 * {@code AGENTS.md} beside or in place of {@code CLAUDE.md}, so that the isolated instance loads the instruction
+	 * files that the parent's sessions load. No other plugin configuration is copied. Does nothing if the parent makes
+	 * no such choice.
+	 *
+	 * @param parentSettings the parent's settings, or a missing node if it has none
+	 * @param settings       the isolated settings
+	 */
+	private static void copyInstructionFilesMode(JsonNode parentSettings, ObjectNode settings)
+	{
+		assert parentSettings != null;
+		assert settings != null;
+		Optional<String> mode = instructionFilesMode(parentSettings);
+		if (mode.isEmpty())
+			return;
+		settings.putObject("pluginConfigs").putObject(INSTRUCTION_FILES_PLUGIN).putObject("options").
+			put(INSTRUCTION_FILES_OPTION, mode.get());
 	}
 
 	/**

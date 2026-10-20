@@ -1485,6 +1485,35 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that the loader configuration that a started campaign records includes the user's settings that decide
+	 * which prompt files load: two campaigns whose projects are alike record different loader configurations when only
+	 * one user sets them.
+	 */
+	@Test
+	public void startRecordsUserLoaderSettings() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-M1
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository unset = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			Repository set = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			set.scope().userLoaderSettings("instructionFiles=claude-md");
+
+			String unsetId = unset.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			String setId = set.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			String unsetConfiguration = unset.load(unsetId).identity().values().
+				get(MeasurementCondition.LOADER_CONFIGURATION);
+			requireThat(set.load(setId).identity().values().get(MeasurementCondition.LOADER_CONFIGURATION),
+				"loaderConfiguration").isNotEqualTo(unsetConfiguration);
+		}
+	}
+
+	/**
 	 * Verifies that a stored campaign without a ceiling loads the default.
 	 */
 	@Test

@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -62,6 +63,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	private final InMemoryForks forks;
 	private final S sessions;
 	private final FakeProfileInventory profiles = new FakeProfileInventory();
+	private String userLoaderSettings;
 
 	/**
 	 * Creates a scope whose sessions end only when the test ends them.
@@ -224,6 +226,25 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	{
 		ensureOpen();
 		return List.of(Path.of(".claude/settings.json"));
+	}
+
+	@Override
+	protected Optional<String> userLoaderSettings()
+	{
+		ensureOpen();
+		return Optional.ofNullable(userLoaderSettings);
+	}
+
+	/**
+	 * Sets the user's settings that decide which prompt files the harness loads.
+	 *
+	 * @param userLoaderSettings the settings
+	 * @throws NullPointerException if {@code userLoaderSettings} is null
+	 */
+	void userLoaderSettings(String userLoaderSettings)
+	{
+		requireThat(userLoaderSettings, "userLoaderSettings").isNotNull();
+		this.userLoaderSettings = userLoaderSettings;
 	}
 
 	@Override

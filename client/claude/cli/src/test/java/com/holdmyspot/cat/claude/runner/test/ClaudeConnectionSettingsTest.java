@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 
@@ -457,12 +458,119 @@ public final class ClaudeConnectionSettingsTest
 			String escapedProject = root + "/project\\[1\\]";
 			requireThat(excludes, "excludes").containsAll(List.of(escapedProject + "/CLAUDE.md",
 				escapedProject + "/CLAUDE.local.md", escapedProject + "/.claude/CLAUDE.md",
-				escapedProject + "/.claude/rules/**", escapedProject + "/.cat/runs/CLAUDE.md", "/CLAUDE.md",
-				"/.claude/rules/**"));
+				escapedProject + "/.claude/rules/**", escapedProject + "/AGENTS.md", escapedProject + "/.claude/AGENTS.md",
+				escapedProject + "/.cat/runs/CLAUDE.md", "/CLAUDE.md", "/.claude/rules/**", "/AGENTS.md"));
 			for (String exclude : excludes)
 			{
 				requireThat(exclude, "exclude").doesNotStartWith(escapedProject + "/.cat/runs/run/");
 			}
+		}
+	}
+
+	/**
+	 * Verifies that isolated settings keep the parent's choice of which instruction files Claude Code loads, and no
+	 * other plugin configuration.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void keepsInstructionFilesMode() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-instruction-files-"));
+			Path source = root.resolve("settings.json");
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+			Files.writeString(source, """
+				{
+				  "pluginConfigs": {
+				    "cc-plugin-agents-md@builtin": {
+				      "options": {"instructionFiles": "claude-md-and-agents-md", "unrelated": "value"}
+				    },
+				    "reviewer@market": {"options": {"token": "secret"}}
+				  }
+				}
+				""");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(),
+				Platform.LINUX_X64);
+
+			JsonNode pluginConfigs = scope.json().readTree(Files.readString(destination)).path("pluginConfigs");
+			requireThat(pluginConfigs, "pluginConfigs").isEqualTo(scope.json().readTree("""
+				{"cc-plugin-agents-md@builtin": {"options": {"instructionFiles": "claude-md-and-agents-md"}}}
+				"""));
+		}
+	}
+
+	/**
+	 * Verifies that isolated settings leave the choice of instruction files at Claude Code's default when the parent
+	 * makes none.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void omitsUnsetInstructionFilesMode() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-instruction-files-"));
+			Path source = root.resolve("settings.json");
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+			Files.writeString(source, """
+				{"pluginConfigs": {"reviewer@market": {"options": {"token": "secret"}}}}
+				""");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(),
+				Platform.LINUX_X64);
+
+			requireThat(scope.json().readTree(Files.readString(destination)).has("pluginConfigs"), "pluginConfigs").
+				isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the choice of which instruction files load is read from the settings file that makes it.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void readsInstructionFilesMode() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path source = cleanup.add(Files.createTempDirectory("cat-claude-instruction-files-")).
+				resolve("settings.json");
+			Files.writeString(source, """
+				{"pluginConfigs": {"cc-plugin-agents-md@builtin": {"options": {"instructionFiles": "claude-md"}}}}
+				""");
+
+			requireThat(ClaudeConnectionSettings.instructionFilesMode(scope.json(), source), "mode").
+				isEqualTo(Optional.of("claude-md"));
+		}
+	}
+
+	/**
+	 * Verifies that a settings file that does not exist makes no choice of which instruction files load.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void absentSettingsMakeNoInstructionFilesMode() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path source = cleanup.add(Files.createTempDirectory("cat-claude-instruction-files-")).
+				resolve("settings.json");
+
+			requireThat(ClaudeConnectionSettings.instructionFilesMode(scope.json(), source), "mode").isEmpty();
 		}
 	}
 

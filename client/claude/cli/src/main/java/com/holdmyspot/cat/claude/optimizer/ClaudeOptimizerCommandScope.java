@@ -16,6 +16,7 @@ import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.secrets.ClaudeOptimizerCommandScopeAccess;
 import com.holdmyspot.cat.claude.ClaudeSessionHarness;
 import com.holdmyspot.cat.claude.secrets.ClaudeOptimizerCommandScopeSecrets;
@@ -146,6 +147,14 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		ensureOpen();
 		return home;
+	}
+
+	@Override
+	protected Optional<String> userLoaderSettings() throws IOException
+	{
+		ensureOpen();
+		return ClaudeConnectionSettings.instructionFilesMode(json(), configurationDirectory.resolve("settings.json")).
+			map(mode -> "instructionFiles=" + mode);
 	}
 
 	/**
