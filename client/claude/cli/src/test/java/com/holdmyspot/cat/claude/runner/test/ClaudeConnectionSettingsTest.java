@@ -84,8 +84,10 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies isolated settings enforce runner-owned safety flags, retain the parent's sandbox policy, and set CAT-owned
-	 * Claude environment values.
+	 * Verifies isolated settings enforce runner-owned safety flags, retain the parent's sandbox policy and the rules
+	 * that deny or ask for the parent's permission, and set CAT-owned Claude environment values. They do not retain the
+	 * parent's grants: its allow rules, its added directories and its default permission mode, which would let the
+	 * isolated instance read and write the parent's directories, such as the project whose prompts CAT measures.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -118,6 +120,8 @@ public final class ClaudeConnectionSettingsTest
 				  "permissions": {
 				    "additionalDirectories": ["/workspace"],
 				    "allow": ["Bash(*)", "Write(//workspace/**)"],
+				    "ask": ["Bash(rm *)"],
+				    "defaultMode": "auto",
 				    "deny": ["Read(//secrets/**)"]
 				  }
 				}
@@ -135,12 +139,12 @@ public final class ClaudeConnectionSettingsTest
 				"workspaceWrite").isEqualTo("/workspace");
 			requireThat(result.path("sandbox").path("filesystem").path("denyRead").path(0).asString(),
 				"secretRead").isEqualTo("/secrets");
-			requireThat(result.path("permissions").path("allow").path(0).asString(), "allowedCommand").
-				isEqualTo("Bash(*)");
-			requireThat(result.path("permissions").path("allow").path(1).asString(), "allowedWrite").
-				isEqualTo("Write(//workspace/**)");
-			requireThat(result.path("permissions").path("deny").path(0).asString(), "deniedRead").
-				isEqualTo("Read(//secrets/**)");
+			requireThat(strings(result.path("permissions").path("deny")), "deny").
+				isEqualTo(List.of("Read(//secrets/**)"));
+			requireThat(strings(result.path("permissions").path("ask")), "ask").isEqualTo(List.of("Bash(rm *)"));
+			requireThat(result.path("permissions").has("allow"), "allow").isFalse();
+			requireThat(result.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
+			requireThat(result.path("permissions").has("defaultMode"), "defaultMode").isFalse();
 			requireThat(result.path("env").path("DISABLE_AUTOUPDATER").asString(), "autoUpdater").isEqualTo("1");
 			requireThat(result.path("env").path("CLAUDE_CODE_TMPDIR").asString(), "temporaryDirectory").
 				isEqualTo(claudeTemporaryDirectory.toString());

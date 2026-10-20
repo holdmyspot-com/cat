@@ -120,7 +120,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		ensureOpen();
 		if (sessions == null)
 		{
-			sessions = sessions(environment, home, runRoot(), artifact, configurationDirectory,
+			sessions = sessions(environment, home, hostProject(), runRoot(), artifact, configurationDirectory,
 				this::heldOutDirectories, clock());
 		}
 		return sessions;
@@ -152,6 +152,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 *
 	 * @param environment            the process environment
 	 * @param home                   the user's home directory
+	 * @param hostProject            the project of the host session, which holds the run root
 	 * @param runRoot                the directory that holds the runs of the host session's campaigns
 	 * @param artifact               the complete Codex artifact that nested sessions install
 	 * @param configurationDirectory the host's Codex configuration directory
@@ -159,12 +160,13 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param clock                  the clock
 	 * @return the port
 	 */
-	private static SessionPort sessions(Map<String, String> environment, Path home, Path runRoot, Path artifact,
-		Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock)
+	private static SessionPort sessions(Map<String, String> environment, Path home, Path hostProject, Path runRoot,
+		Path artifact, Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock)
 	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, heldOut, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS_ID,
-				HarnessCapacity.MAXIMUM_CONCURRENCY), clock, Optional.of(ProjectRuleLoader.rulesDirectory(home)));
+				HarnessCapacity.MAXIMUM_CONCURRENCY), clock, Optional.of(ProjectRuleLoader.rulesDirectory(home)),
+			hostProject);
 		return new CodexSessions(settings);
 	}
 

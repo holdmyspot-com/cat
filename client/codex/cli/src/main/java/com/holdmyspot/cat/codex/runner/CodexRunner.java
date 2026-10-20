@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -310,19 +311,20 @@ public final class CodexRunner
 	 * read the runner's records of its own run or of any other run, the workspace files of any run, or the login. The
 	 * method creates the session log directory, because the sandbox skips a denied path that does not exist yet.
 	 * <p>
-	 * The result names the run root itself rather than each path under it, which also denies the runs that start after
-	 * the session. Every platform's sandbox still lets the session read and write its project and home inside the
-	 * denied root, but the Linux sandbox would also hide read-only evidence there, so a Linux session with evidence
-	 * under the run root is denied each other file and directory by its own path instead.
+	 * The result names the run root and each directory that the caller denies rather than each path under them, which
+	 * also denies the runs that start after the session. Every platform's sandbox still lets the session read and write
+	 * its project and home inside a denied directory, such as the project that holds the run root, but the Linux
+	 * sandbox would also hide read-only evidence there, so a Linux session with evidence under a denied directory is
+	 * denied each other file and directory under it by its own path instead.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @param platform the platform that the session runs on
-	 * @return the paths to deny
+	 * @return the paths to deny, each once
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the run root cannot be listed or the session log directory cannot be created
+	 * @throws IOException if a denied directory cannot be listed or the session log directory cannot be created
 	 */
 	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform) throws IOException
@@ -333,19 +335,23 @@ public final class CodexRunner
 		requireThat(deniedReads, "deniedReads").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		Path home = run.directory().resolve("home");
-		List<Path> result = new ArrayList<>(deniedReads);
-		if (!(platform.isLinux() && containsAny(manager.root(), readOnlyEvidence)))
+		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
+		accessible.add(run.directory().resolve("project"));
+		accessible.add(home);
+		Set<Path> result = new LinkedHashSet<>();
+		List<Path> directories = new ArrayList<>(deniedReads);
+		directories.add(manager.root());
+		for (Path denied : directories)
 		{
-			// Codex lists every denied path in the model's instructions and omits the rest of a long list, and the
-			// omission led trial agents to refuse reading their own project
-			result.add(manager.root());
-		}
-		else
-		{
-			List<Path> accessible = new ArrayList<>(readOnlyEvidence);
-			accessible.add(run.directory().resolve("project"));
-			accessible.add(home);
-			result.addAll(manager.deniedReads(accessible));
+			Path directory = denied.toAbsolutePath().normalize();
+			if (platform.isLinux() && HarnessRunManager.containsAny(directory, readOnlyEvidence))
+				result.addAll(HarnessRunManager.deniedReads(directory, accessible));
+			else
+			{
+				// Codex lists every denied path in the model's instructions and omits the rest of a long list, and the
+				// omission led trial agents to refuse reading their own project
+				result.add(denied);
+			}
 		}
 		// The session's events are the same record as the run's artifacts, kept by Codex instead of the runner
 		result.add(Files.createDirectories(home.resolve("sessions")));
@@ -353,24 +359,7 @@ public final class CodexRunner
 		Path login = home.resolve("auth.json");
 		if (Files.exists(login, NOFOLLOW_LINKS))
 			result.add(login);
-		return result;
-	}
-
-	/**
-	 * Indicates whether a directory contains any of several paths.
-	 *
-	 * @param directory an absolute, normalized directory
-	 * @param paths the paths
-	 * @return {@code true} if a path, once made absolute and normalized, lies at or under {@code directory}
-	 */
-	private static boolean containsAny(Path directory, List<Path> paths)
-	{
-		for (Path path : paths)
-		{
-			if (path.toAbsolutePath().normalize().startsWith(directory))
-				return true;
-		}
-		return false;
+		return List.copyOf(result);
 	}
 
 	/**

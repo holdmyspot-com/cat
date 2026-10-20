@@ -67,7 +67,7 @@ public final class CodexSessions extends RunnerSessions
 	 * session's model receives or how its actions take effect, and register the new version with the hash of the
 	 * configuration, permission profile and developer instructions that the runner gives a session.
 	 */
-	private static final int SESSION_ENVIRONMENT_VERSION = 6;
+	private static final int SESSION_ENVIRONMENT_VERSION = 7;
 	/**
 	 * The version of the judge that Codex sessions run. Increment it in every release that changes the judge's role
 	 * profile, prompt, rubric, decision rule or result schema, or the evidence section rendered for the same harness

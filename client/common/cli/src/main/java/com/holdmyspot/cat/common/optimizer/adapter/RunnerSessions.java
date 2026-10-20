@@ -1150,10 +1150,12 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param clock the clock for time limits
 	 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they load
 	 *   none
+	 * @param hostProject the project of the host session that starts the sessions, whose files no session may read
+	 *   except those of its own run and the evidence that it reads, or {@code null} to deny no project's files
 	 */
 	public record Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
 		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
-		Optional<Path> userRules)
+		Optional<Path> userRules, Path hostProject)
 	{
 		/**
 		 * Creates settings.
@@ -1170,8 +1172,12 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param clock the clock for time limits
 		 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they
 		 *   load none
-		 * @throws NullPointerException if any argument is null
-		 * @throws IllegalArgumentException if {@code runRoot} is not absolute or is a file system root
+		 * @param hostProject the project of the host session that starts the sessions, whose files no session may
+		 *   read except those of its own run and the evidence that it reads, or {@code null} to deny no project's
+		 *   files
+		 * @throws NullPointerException if any argument other than {@code hostProject} is null
+		 * @throws IllegalArgumentException if {@code runRoot} or {@code hostProject} are not absolute, or
+		 *   {@code runRoot} is a file system root
 		 */
 		public Settings
 		{
@@ -1187,11 +1193,42 @@ public abstract class RunnerSessions implements SessionPort
 			requireThat(userRules, "userRules").isNotNull();
 			runRoot = runRoot.normalize();
 			requireThat(runRoot.getFileName(), "runRoot.getFileName()").isNotNull();
+			if (hostProject != null)
+			{
+				requireThat(hostProject.isAbsolute(), "hostProject.isAbsolute").isTrue();
+				hostProject = hostProject.normalize();
+			}
 			environment = Map.copyOf(environment);
 		}
 
 		/**
-		 * Creates settings whose trials load no user rules.
+		 * Creates settings that deny no project's files.
+		 *
+		 * @param artifact the complete harness artifact that the runner validates and installs
+		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
+		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
+		 * @param executable the harness executable, or blank for the harness's default command
+		 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
+		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
+		 * @param environment the host environment that the runner scrubs for the session
+		 * @param configurationDirectory the host's harness configuration directory, which holds the login
+		 * @param capacity the shared capacity from which every session takes one permit
+		 * @param clock the clock for time limits
+		 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they
+		 *   load none
+		 * @throws NullPointerException if any argument is null
+		 * @throws IllegalArgumentException if {@code runRoot} is not absolute or is a file system root
+		 */
+		public Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
+			Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
+			Optional<Path> userRules)
+		{
+			this(artifact, runRoot, heldOut, executable, installCat, environment, configurationDirectory, capacity,
+				clock, userRules, null);
+		}
+
+		/**
+		 * Creates settings whose trials load no user rules and that deny no project's files.
 		 *
 		 * @param artifact the complete harness artifact that the runner validates and installs
 		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part

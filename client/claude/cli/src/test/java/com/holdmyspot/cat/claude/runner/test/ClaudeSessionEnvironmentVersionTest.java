@@ -66,12 +66,14 @@ public final class ClaudeSessionEnvironmentVersionTest
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
 			Path deniedFile = Files.writeString(root.resolve("campaign.json"), "{}");
 			Path deniedDirectory = Files.createDirectory(root.resolve("trials"));
-			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			Path hostProject = Files.createDirectories(root.resolve("project"));
+			Files.writeString(hostProject.resolve("CLAUDE.md"), "Follow the handbook.", UTF_8);
+			HarnessRunManager manager = new HarnessRunManager(hostProject.resolve("runs"), Clock.systemUTC());
 			HarnessRun run = manager.create("claude");
 			manager.snapshotProject(run);
 			Files.writeString(Files.createDirectories(run.directory().resolve("home/.claude")).
 				resolve(".credentials.json"), "{}");
-			Files.createDirectories(root.resolve("runs/workspaces"));
+			Files.createDirectories(hostProject.resolve("runs/workspaces"));
 			Files.writeString(source, """
 				{
 				  "env": {"ANTHROPIC_BASE_URL": "https://host.example"},
@@ -86,7 +88,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
 				claudeTemporaryDirectory.resolve("home"), run.directory(),
-				ClaudeRunner.sessionDeniedReads(manager, run, List.of(), List.of(deniedFile, deniedDirectory)),
+				ClaudeRunner.sessionDeniedReads(manager, run, List.of(), List.of(deniedFile, deniedDirectory, hostProject)),
 				Platform.LINUX_X64);
 
 			// Run directories differ per run, so the hash covers the settings with their root and the run's identifier

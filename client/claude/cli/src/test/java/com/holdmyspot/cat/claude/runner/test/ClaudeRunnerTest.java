@@ -273,4 +273,47 @@ public final class ClaudeRunnerTest
 				evidence.directory().resolve(".lock"), workspaces));
 		}
 	}
+
+	/**
+	 * Verifies that a session whose run root lies inside a project that the caller denies is denied every file and
+	 * directory of that project except the directories that lead to its run and evidence, each path once. The session
+	 * can still read its project, its home, its Claude temporary directory and the evidence that it validates, but not
+	 * the files of the project around them.
+	 *
+	 * @throws IOException if the run cannot be created
+	 */
+	@Test
+	public void deniesProjectAroundRunRoot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path project = cleanup.add(Files.createTempDirectory(temporary, "cat-user-project-"));
+			Path instructions = Files.writeString(project.resolve("CLAUDE.md"), "Follow the handbook.");
+			Path documents = Files.createDirectories(project.resolve("docs"));
+			Path session = Files.createDirectories(project.resolve(".cat/sessions/session-1"));
+			Path otherSession = Files.createDirectories(project.resolve(".cat/sessions/session-2"));
+			Path campaigns = Files.createDirectories(session.resolve("campaigns"));
+			Path root = Files.createDirectories(session.resolve("optimizer-runs/claude"));
+			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/claude-held_out"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRun run = manager.create("claude");
+			Path directory = run.directory();
+			manager.snapshotProject(run);
+			Files.createDirectories(directory.resolve("claude"));
+			Files.createDirectories(directory.resolve("home"));
+			HarnessRun evidence = manager.create("claude");
+			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
+
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+				List.of(project));
+
+			requireThat(deniedReads.size(), "deniedReads.size()").isEqualTo(Set.copyOf(deniedReads).size());
+			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(instructions, documents,
+				otherSession, campaigns, heldOutRoot, directory.resolve("artifacts"), directory.resolve("run.json"),
+				directory.resolve(".lock"), directory.resolve("initial-project"),
+				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
+				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock")));
+		}
+	}
 }

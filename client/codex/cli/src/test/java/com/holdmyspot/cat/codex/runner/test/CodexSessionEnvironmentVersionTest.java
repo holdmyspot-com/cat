@@ -61,11 +61,13 @@ public final class CodexSessionEnvironmentVersionTest
 			Path npmCache = Files.createDirectories(root.resolve("npm-cache"));
 			Path evidence = Files.createDirectories(root.resolve("evidence"));
 			Path deniedFile = Files.writeString(root.resolve("campaign.json"), "{}");
-			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			Path hostProject = Files.createDirectories(root.resolve("project"));
+			Files.writeString(hostProject.resolve("AGENTS.md"), "Follow the handbook.", UTF_8);
+			HarnessRunManager manager = new HarnessRunManager(hostProject.resolve("runs"), Clock.systemUTC());
 			HarnessRun run = manager.create("codex");
 			manager.snapshotProject(run);
 			Files.writeString(run.directory().resolve("home/auth.json"), "{}");
-			Files.createDirectories(root.resolve("runs/workspaces"));
+			Files.createDirectories(hostProject.resolve("runs/workspaces"));
 			Files.writeString(source, """
 				openai_base_url = "http://localhost:2455/backend-api/codex"
 				forced_login_method = "api"
@@ -90,7 +92,7 @@ public final class CodexSessionEnvironmentVersionTest
 			CodexConnectionConfiguration.copy(source, destination, npmCache, temporaryDirectory, 0,
 				Platform.LINUX_X64);
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
-				CodexRunner.sessionDeniedReads(manager, run, List.of(evidence), List.of(deniedFile),
+				CodexRunner.sessionDeniedReads(manager, run, List.of(evidence), List.of(deniedFile, hostProject),
 					Platform.LINUX_X64));
 			CodexConnectionConfiguration.copyTrustedCatHooks(source, destination);
 

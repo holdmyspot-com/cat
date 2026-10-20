@@ -534,6 +534,8 @@ final class Session implements SessionHandle
 	/**
 	 * Builds the runner's command-line options. A trial installs exactly the request's plugins: the first one whose
 	 * manifest name is CAT's is installed as CAT, and each other one as a plugin. Other sessions install no plugin.
+	 * Every session is denied reading the host session's project, except its own run and the evidence that it reads,
+	 * and a session of the development part is also denied reading the held-out locations.
 	 *
 	 * @param workspace the directory that holds the trial's workspace files, or {@code null} if there are none
 	 * @return the options
@@ -575,6 +577,13 @@ final class Session implements SessionHandle
 		{
 			for (Path path : heldOut)
 				arguments.addAll(List.of("--deny-read", path.toString()));
+		}
+		Path hostProject = settings.hostProject();
+		if (hostProject != null)
+		{
+			// The run root lies inside the host project, so the runner denies every file of the project except the
+			// session's own run and evidence
+			arguments.addAll(List.of("--deny-read", hostProject.toString()));
 		}
 		return arguments;
 	}

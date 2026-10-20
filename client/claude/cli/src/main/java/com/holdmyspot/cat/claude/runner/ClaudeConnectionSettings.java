@@ -35,6 +35,12 @@ public final class ClaudeConnectionSettings
 	 * The characters that a glob pattern treats as syntax.
 	 */
 	private static final String GLOB_SYNTAX = "\\*?[]{}()!+@";
+	/**
+	 * The lists of rules in Claude Code's {@code permissions} settings that restrict tools: those that deny a tool and
+	 * those that ask the user before using it. The isolated settings copy these from the parent and no other
+	 * permission setting.
+	 */
+	private static final List<String> PERMISSION_RESTRICTIONS = List.of("deny", "ask");
 	private static final Set<String> CONNECTION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN");
 
@@ -77,8 +83,10 @@ public final class ClaudeConnectionSettings
 	 * Writes settings for an isolated Claude instance.
 	 *
 	 * <p>
-	 * The resulting file retains the parent sandbox network and filesystem policies, the permissions that give the
-	 * nested Claude instance access to its project and invocation-local home, and CAT-owned environment values.
+	 * The resulting file retains the parent sandbox network and filesystem policies, the parent's permission rules
+	 * that deny a tool or ask before using it, and CAT-owned environment values. It does not retain the parent's
+	 * permission grants, such as its allow rules, added directories and default permission mode, so the isolated
+	 * instance cannot use them to reach the parent's directories.
 	 * Outside Windows, it requires a sandbox and forbids commands outside it, whatever the parent's settings say. On
 	 * Windows, it retains all of the parent's sandbox settings instead and requires no sandbox. Host settings must not
 	 * control other isolated-instance behavior. It also denies the instance reading each of
@@ -150,9 +158,7 @@ public final class ClaudeConnectionSettings
 				sandbox.set("filesystem", filesystem);
 			}
 		}
-		JsonNode parentPermissions = parentSettings.path("permissions");
-		if (parentPermissions.isObject())
-			settings.set("permissions", parentPermissions.deepCopy());
+		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
 		allowWritesToInvocationHome(filesystem, claudeHome);
 		denyReads(settings, filesystem, deniedReads);
 		excludeInstructionsAbove(settings, isolationRoot, platform);
@@ -161,6 +167,33 @@ public final class ClaudeConnectionSettings
 		Files.createDirectories(claudeHome);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, mapper.writeValueAsString(settings));
+	}
+
+	/**
+	 * Copies the parent's rules that deny a tool or ask before using it. The parent's grants, such as its allow rules,
+	 * added directories and default permission mode, are not copied: they would let the isolated instance read and
+	 * write the parent's directories.
+	 *
+	 * @param parentPermissions the parent's {@code permissions} settings, or a missing node if it has none
+	 * @param settings          the isolated settings
+	 */
+	private static void copyPermissionRestrictions(JsonNode parentPermissions, ObjectNode settings)
+	{
+		assert parentPermissions != null;
+		assert settings != null;
+		for (String restriction : PERMISSION_RESTRICTIONS)
+		{
+			JsonNode rules = parentPermissions.path(restriction);
+			if (rules.isArray())
+			{
+				ObjectNode permissions;
+				if (settings.path("permissions").isObject())
+					permissions = (ObjectNode) settings.get("permissions");
+				else
+					permissions = settings.putObject("permissions");
+				permissions.set(restriction, rules.deepCopy());
+			}
+		}
 	}
 
 	/**

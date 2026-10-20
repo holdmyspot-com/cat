@@ -470,4 +470,53 @@ public final class CodexRunnerTest
 				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock"), workspaces));
 		}
 	}
+
+	/**
+	 * Verifies that on Linux a session that validates evidence inside a project that the caller denies is denied each
+	 * other file and directory of that project by its own path, each path once, because the sandbox would hide
+	 * read-only evidence inside a denied directory. On macOS and Windows the session is denied the whole project and
+	 * the whole run root, because their sandboxes keep the session's project, home and evidence readable inside them.
+	 *
+	 * @throws IOException if the run cannot be created
+	 */
+	@Test
+	public void deniesProjectBesideEvidence() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path project = cleanup.add(Files.createTempDirectory(temporary, "cat-user-project-"));
+			Path instructions = Files.writeString(project.resolve("AGENTS.md"), "Follow the handbook.");
+			Path documents = Files.createDirectories(project.resolve("docs"));
+			Path session = Files.createDirectories(project.resolve(".cat/sessions/session-1"));
+			Path otherSession = Files.createDirectories(project.resolve(".cat/sessions/session-2"));
+			Path campaigns = Files.createDirectories(session.resolve("campaigns"));
+			Path root = Files.createDirectories(session.resolve("optimizer-runs/codex"));
+			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRun run = manager.create("codex");
+			Path directory = run.directory();
+			manager.snapshotProject(run);
+			HarnessRun evidence = manager.create("codex");
+			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
+
+			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+				List.of(project), Platform.LINUX_X64);
+
+			requireThat(deniedReads.size(), "deniedReads.size()").isEqualTo(Set.copyOf(deniedReads).size());
+			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(instructions, documents,
+				otherSession, campaigns, heldOutRoot, directory.resolve("artifacts"), directory.resolve("run.json"),
+				directory.resolve(".lock"), directory.resolve("initial-project"), directory.resolve("home/sessions"),
+				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
+				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock")));
+			for (Platform platform : List.of(Platform.MACOS_ARM64, Platform.WINDOWS_X64))
+			{
+				deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+					List.of(project), platform);
+
+				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(project, root,
+					directory.resolve("home/sessions")));
+			}
+		}
+	}
 }

@@ -322,6 +322,25 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	}
 
 	/**
+	 * Returns the project of the host session that runs this command, which holds the run root.
+	 *
+	 * @return the project root
+	 * @throws IllegalStateException if this scope is closed
+	 * @throws IOException if the working directory is not inside a Git repository or cannot be resolved
+	 */
+	protected final Path hostProject() throws IOException
+	{
+		try
+		{
+			return projectRoot();
+		}
+		catch (CommandRefusedException e)
+		{
+			throw new IOException(e.getMessage(), e);
+		}
+	}
+
+	/**
 	 * Lists the {@code held_out} directories of the campaigns of every session of the project.
 	 *
 	 * @return the real paths of those that exist

@@ -246,15 +246,18 @@ public final class ClaudeRunner
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
 	 * file and directory under the run root except the session's project, home, Claude temporary directory and
 	 * evidence, and the login that the runner copied into the session's home. The session therefore cannot read the
-	 * runner's records of its own run or of any other run, the workspace files of any run, or the login.
+	 * runner's records of its own run or of any other run, the workspace files of any run, or the login. A denied
+	 * directory that holds the session's project, home, Claude temporary directory or evidence, such as the project
+	 * that holds the run root, is replaced by every file and directory under it except those and the directories that
+	 * lead to them.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads the files and directories that the caller denies the session reading
-	 * @return the paths to deny
+	 * @return the paths to deny, each once
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the run root cannot be listed
+	 * @throws IOException if the run root or a denied directory cannot be listed
 	 */
 	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads) throws IOException
@@ -268,13 +271,22 @@ public final class ClaudeRunner
 		accessible.add(run.directory().resolve("project"));
 		accessible.add(home);
 		accessible.add(run.directory().resolve("claude"));
-		List<Path> result = new ArrayList<>(deniedReads);
+		Set<Path> result = new LinkedHashSet<>();
+		for (Path denied : deniedReads)
+		{
+			Path directory = denied.toAbsolutePath().normalize();
+			// Denying a directory that holds the session's own files would deny those files too
+			if (HarnessRunManager.containsAny(directory, accessible))
+				result.addAll(HarnessRunManager.deniedReads(directory, accessible));
+			else
+				result.add(denied);
+		}
 		result.addAll(manager.deniedReads(accessible));
 		// The Claude process reads the login itself; the denial confines only the session's tools and commands
 		Path login = home.resolve(".claude").resolve(".credentials.json");
 		if (Files.exists(login, NOFOLLOW_LINKS))
 			result.add(login);
-		return result;
+		return List.copyOf(result);
 	}
 
 	/**

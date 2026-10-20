@@ -488,18 +488,57 @@ public final class HarnessRunManager
 	 */
 	public List<Path> deniedReads(List<Path> accessible) throws IOException
 	{
+		return deniedReads(root, accessible);
+	}
+
+	/**
+	 * Returns the existing files and directories under a directory that a harness session must not read: all of them
+	 * except the files and directories that the session uses, their contents, and the directories that contain them. A
+	 * file or directory that is created after this method returns is not included.
+	 *
+	 * @param directory  an absolute, normalized directory
+	 * @param accessible the files and directories that the session reads or writes; those outside {@code directory}
+	 *   are ignored
+	 * @return the paths to deny, none of which contains another, or an empty list if {@code directory} is not a
+	 *   directory
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a directory cannot be listed
+	 */
+	public static List<Path> deniedReads(Path directory, List<Path> accessible) throws IOException
+	{
+		requireThat(directory, "directory").isNotNull();
 		requireThat(accessible, "accessible").isNotNull();
 		List<Path> kept = new ArrayList<>();
 		for (Path path : accessible)
 		{
 			Path normalized = path.toAbsolutePath().normalize();
-			if (normalized.startsWith(root))
+			if (normalized.startsWith(directory))
 				kept.add(normalized);
 		}
 		List<Path> denied = new ArrayList<>();
-		if (Files.isDirectory(root, NOFOLLOW_LINKS))
-			addDeniedReads(root, kept, denied);
+		if (Files.isDirectory(directory, NOFOLLOW_LINKS))
+			addDeniedReads(directory, kept, denied);
 		return denied;
+	}
+
+	/**
+	 * Indicates whether a directory contains any of several paths.
+	 *
+	 * @param directory an absolute, normalized directory
+	 * @param paths     the paths
+	 * @return {@code true} if a path, once made absolute and normalized, lies at or under {@code directory}
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static boolean containsAny(Path directory, List<Path> paths)
+	{
+		requireThat(directory, "directory").isNotNull();
+		requireThat(paths, "paths").isNotNull();
+		for (Path path : paths)
+		{
+			if (path.toAbsolutePath().normalize().startsWith(directory))
+				return true;
+		}
+		return false;
 	}
 
 	/**

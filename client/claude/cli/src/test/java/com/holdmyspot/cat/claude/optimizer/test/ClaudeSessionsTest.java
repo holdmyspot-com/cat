@@ -309,6 +309,53 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that every session passes the host session's project to the runner through {@code --deny-read}, so
+	 * that the session cannot read the project's files around its own run.
+	 *
+	 * @param role the session's role
+	 * @param part the part that the session may read
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(dataProvider = "sessionParts", timeOut = 120_000)
+	public void deniesHostProjectReads(SessionRole role, Part part)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-host-project-")).
+				toRealPath();
+			Path source = Files.createDirectories(project.resolve("source"));
+			Path artifact = RoleRuleFixtures.write(project.resolve("artifact"));
+			Path runRoot = project.resolve(".cat/sessions/session-1/optimizer-runs/claude");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, List::of, "", false,
+				Map.of(), project, HarnessCapacity.unlimited(), Clock.systemUTC(), Optional.empty(), project);
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			ClaudeSessions sessions = ClaudeSessionsSecrets.access().newClaudeSessions(settings, (options, input, output) ->
+			{
+				arguments.add(options);
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
+					List.of(Turn.replies("ok")), input, output);
+			});
+
+			SessionResult result = await(sessions.start(new SessionRequest(role, part, source, List.of("brief"),
+				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			List<String> denied = new ArrayList<>();
+			List<String> options = arguments.get(0);
+			for (int i = 0; i < options.size() - 1; ++i)
+			{
+				if (options.get(i).equals("--deny-read"))
+					denied.add(options.get(i + 1));
+			}
+			requireThat(denied, "denied").contains(project.toString());
+		}
+	}
+
+	/**
 	 * Verifies that a contract author session receives its draft directory and the context file of the contract tools as
 	 * the workspace files that the runner copies into the session's project, that nothing passes the project read-only,
 	 * and that the runner denies the session reading only the held-out locations, so that the session may run the
