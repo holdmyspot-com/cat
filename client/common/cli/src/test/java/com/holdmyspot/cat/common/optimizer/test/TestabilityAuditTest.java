@@ -63,13 +63,14 @@ public final class TestabilityAuditTest
 	 */
 	private static final Pattern SLEEP = Pattern.compile("\\.\\s*sleep\\s*[(;]|::\\s*sleep(?![\\w$])");
 	/**
-	 * Matches a read of the process environment.
+	 * Matches a read of the process environment. The word boundary is checked after the literal, because a pattern
+	 * that starts with a literal lets the matcher skip to its occurrences instead of trying every offset.
 	 */
-	private static final Pattern GETENV = Pattern.compile("(?<![\\w$])getenv(?![\\w$])");
+	private static final Pattern GETENV = Pattern.compile("getenv(?<![\\w$]getenv)(?![\\w$])");
 	/**
-	 * Matches the declaration of a {@code main} method.
+	 * Matches the declaration of a {@code main} method. Like {@link #GETENV}, it starts with a literal.
 	 */
-	private static final Pattern MAIN = Pattern.compile("(?<![\\w$])static\\s+void\\s+main\\s*\\(");
+	private static final Pattern MAIN = Pattern.compile("static(?<![\\w$]static)\\s+void\\s+main\\s*\\(");
 	/**
 	 * The literals that name the user's home directory.
 	 */

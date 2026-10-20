@@ -293,6 +293,8 @@ record JavaSource(String code, List<Literal> literals, List<Field> fields)
 		if (isInitializer)
 			return new Frame(Kind.OTHER, parentheses, true, brace + 1);
 		frame.startDeclaration(brace + 1);
+		if (!mayDeclareType(declaration))
+			return new Frame(Kind.OTHER, parentheses, false, brace + 1);
 		Matcher keyword = TYPE_KEYWORD.matcher(declaration);
 		if (keyword.find())
 		{
@@ -306,6 +308,19 @@ record JavaSource(String code, List<Literal> literals, List<Field> fields)
 		if (RECORD_KEYWORD.matcher(declaration).find())
 			return new Frame(Kind.CLASS, parentheses, false, brace + 1);
 		return new Frame(Kind.OTHER, parentheses, false, brace + 1);
+	}
+
+	/**
+	 * Indicates whether a declaration contains the text of a keyword that declares a type. Most braces open statement
+	 * blocks, and checking the text first spares them the keyword expressions, which otherwise dominate parsing.
+	 *
+	 * @param declaration the text before a brace
+	 * @return {@code false} if the declaration cannot declare a type
+	 */
+	private static boolean mayDeclareType(String declaration)
+	{
+		return declaration.contains("class") || declaration.contains("interface") || declaration.contains("enum") ||
+			declaration.contains("record");
 	}
 
 	/**
