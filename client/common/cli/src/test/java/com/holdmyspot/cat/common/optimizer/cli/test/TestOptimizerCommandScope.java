@@ -2,7 +2,9 @@ package com.holdmyspot.cat.common.optimizer.cli.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.cli.HarnessVersion;
@@ -166,6 +168,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	{
 		ensureOpen();
 		return clock;
+	}
+
+	@Override
+	public FileReplacer fileReplacer()
+	{
+		ensureOpen();
+		return Yielding.fileReplacer();
 	}
 
 	@Override

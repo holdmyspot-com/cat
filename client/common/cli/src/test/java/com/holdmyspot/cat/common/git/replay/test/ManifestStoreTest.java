@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -39,7 +40,8 @@ public final class ManifestStoreTest
 			Path externalManifest = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
 				"cat-topic-replay-")).resolve("manifest.json");
 			ManifestStore<ManifestStore.Manifest> store =
-				new ManifestStore<>(temporaryRoot, ReplayJson.newMapper(), ManifestStore.Manifest.class);
+				new ManifestStore<>(temporaryRoot, ReplayJson.newMapper(), Yielding.fileReplacer(),
+				ManifestStore.Manifest.class);
 
 			try
 			{
@@ -67,7 +69,7 @@ public final class ManifestStoreTest
 				"cat-session-temporary-root-"));
 			Path manifestFile = temporaryRoot.resolve("replay/manifest.json");
 			ManifestStore<FixtureManifest> store = new ManifestStore<>(temporaryRoot,
-				ReplayJson.newMapper(), FixtureManifest.class);
+				ReplayJson.newMapper(), Yielding.fileReplacer(), FixtureManifest.class);
 			FixtureManifest expected = new FixtureManifest(5, List.of("source"));
 
 			store.write(manifestFile, expected);

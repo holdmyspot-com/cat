@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.git.replay.ActionPairAssessment;
 import com.holdmyspot.cat.common.git.replay.ActionResultMatrix;
@@ -79,7 +80,7 @@ public final class EditorTest
 		{
 			Path replay = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-output-"));
 			Path manifest = writeManifest(replay);
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(replay, replay);
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(replay, replay, Yielding.fileReplacer());
 			Path outputs = replay.resolve("topic-outputs.json");
 			Files.writeString(outputs, "[{\"id\":\"feature\",\"subject\":\"feature: add feature\"}]\n");
 			try
@@ -294,7 +295,7 @@ public final class EditorTest
 		{
 			Path replay = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-collapse-"));
 			Path manifest = writeManifest(replay);
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(replay, replay);
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(replay, replay, Yielding.fileReplacer());
 			recordCandidateUniverseEvidence(manifest);
 			write(manifest, "independent", "independent_", 2, "separate");
 			recordIndependentReviewAttestation(manifest);
@@ -396,7 +397,8 @@ public final class EditorTest
 			ReplayJson.newMapper().writeValue(reviewFile.toFile(), reviews);
 			SourceReviewValidation validation = new SourceReviewValidation();
 			validation.validateInput(manifest, reviews, true);
-			ManifestStore<BatchManifest> manifests = new ManifestStore<>(root, ReplayJson.newMapper(), BatchManifest.class);
+			ManifestStore<BatchManifest> manifests = new ManifestStore<>(root, ReplayJson.newMapper(),
+				Yielding.fileReplacer(), BatchManifest.class);
 
 			new SourceReviewRecording(new Git(root), ReplayJson.newMapper(), validation, manifests).
 				recordBatches(manifestFile, List.of(reviewFile));
@@ -496,7 +498,7 @@ public final class EditorTest
 			Path manifest = OriginReviewFixtures.writeManifest(ReplayJson.newMapper(), repository, false, "release.yml");
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-			new GitTopicReplayEditor(repository, repository).writeOriginCandidates(manifest, output);
+			new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer()).writeOriginCandidates(manifest, output);
 
 			requireThat(output.toString(StandardCharsets.UTF_8), "originCandidates").contains("release.yml");
 		}
@@ -516,7 +518,7 @@ public final class EditorTest
 			Path manifest = OriginReviewFixtures.writeManifest(ReplayJson.newMapper(), repository, false, "release.yml");
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-			new GitTopicReplayEditor(repository, repository).writeOriginCandidates(manifest, output);
+			new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer()).writeOriginCandidates(manifest, output);
 
 			JsonNode candidate = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8)).path(0);
 			requireThat(candidate.has("inventory_id"), "hasInventoryId").isTrue();
@@ -538,7 +540,7 @@ public final class EditorTest
 			Path manifest = OriginReviewFixtures.writeManifest(JsonMapper.builder().build(), repository, false,
 				"release.yml");
 
-			new GitTopicReplayEditor(repository, repository).writeOriginCandidates(manifest,
+			new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer()).writeOriginCandidates(manifest,
 				new ByteArrayOutputStream());
 		}
 	}
@@ -564,7 +566,7 @@ public final class EditorTest
 
 			try
 			{
-				new GitTopicReplayEditor(replay, replay).invalidateOutputSuffix(manifest, "output_1");
+				new GitTopicReplayEditor(replay, replay, Yielding.fileReplacer()).invalidateOutputSuffix(manifest, "output_1");
 				throw new AssertionError("Expected a sealed output plan to reject in-place invalidation");
 			}
 			catch (IOException e)

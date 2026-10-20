@@ -6,6 +6,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
+import com.holdmyspot.cat.common.ExecutableFiles;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
@@ -115,9 +117,10 @@ public final class ClaudeRunnerCli
 				HarnessTemporaryRoot.from(scope));
 			ClaudeAgentDefinition agent = loadAgent(options.artifact(), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
-			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
+			FileReplacer replacer = FileReplacer.sleeping();
+			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(), replacer);
 			manager.deleteStaleRuns(HarnessRunManager.DEFAULT_RETENTION);
-			serve(options, agent, readOnlyEvidence, manager, input, output, environment, scope.json(),
+			serve(options, agent, readOnlyEvidence, manager, input, output, environment, scope.json(), replacer,
 				capacityForMaximum.apply(options.maximumConcurrency()));
 		}
 	}
@@ -133,14 +136,15 @@ public final class ClaudeRunnerCli
 	 * @param output bridge output when no durable destination was requested
 	 * @param environment host environment
 	 * @param json the operation-owned receipt mapper
+	 * @param replacer replaces the receipt
 	 * @param capacity the shared harness capacity
 	 * @throws IOException if bridge execution or retained-evidence writing fails
 	 */
 	private static void serve(HarnessRunnerOptions options, ClaudeAgentDefinition agent, List<Path> readOnlyEvidence,
 		HarnessRunManager manager,
 		Reader input, Writer output,
-		Map<String, String> environment, tools.jackson.databind.json.JsonMapper json, HarnessCapacity capacity)
-		throws IOException
+		Map<String, String> environment, tools.jackson.databind.json.JsonMapper json, FileReplacer replacer,
+		HarnessCapacity capacity) throws IOException
 	{
 		assert options != null;
 		assert manager != null;
@@ -148,16 +152,17 @@ public final class ClaudeRunnerCli
 		assert output != null;
 		assert environment != null;
 		assert json != null;
+		assert replacer != null;
 		assert capacity != null;
 		try (HarnessCapacity.Permit _ = capacity.acquire())
 		{
-			HarnessRunStarter starter = () -> new ClaudeRunner().start(
+			HarnessRunStarter starter = () -> new ClaudeRunner(ExecutableFiles.sleeping()).start(
 				options.artifact(), options.project(), options.workspace(), options.plugins(), manager, options.executable(),
 				environment,
 				options.model(),
 				options.effort(), agent, options.installCat(), options.includeUserRules(), readOnlyEvidence,
 				options.deniedReads());
-			HarnessRunnerBridge.serve(starter, manager, options, json, input, output);
+			HarnessRunnerBridge.serve(starter, manager, options, json, replacer, input, output);
 		}
 	}
 

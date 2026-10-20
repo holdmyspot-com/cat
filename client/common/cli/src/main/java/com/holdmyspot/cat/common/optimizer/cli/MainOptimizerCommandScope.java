@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionDirectory;
@@ -41,7 +42,8 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 	private final List<Path> loaderConfiguration;
 	private final Reference<JsonMapper> json = LazyReference.create(() -> JsonMapper.builder().build());
 	private final Reference<RandomGenerator> random = LazyReference.create(RandomGenerator::getDefault);
-	private final Reference<Forks> forks = LazyReference.create(GitForks::new);
+	private final Reference<FileReplacer> fileReplacer = LazyReference.create(FileReplacer::sleeping);
+	private final Reference<Forks> forks = LazyReference.create(() -> new GitForks(fileReplacer.getValue()));
 
 	/**
 	 * Creates an open scope.
@@ -84,6 +86,13 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 	{
 		ensureOpen();
 		return Clock.systemUTC();
+	}
+
+	@Override
+	public final FileReplacer fileReplacer()
+	{
+		ensureOpen();
+		return fileReplacer.getValue();
 	}
 
 	@Override

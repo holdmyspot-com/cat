@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.cli.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.Platform;
@@ -401,7 +402,7 @@ public final class OptimizerCoreTest
 			Path target = root.resolve("CLAUDE.md");
 			Files.writeString(target, "Be brief.\n");
 			Header header = new Header("campaign-1", root, target, Harness.CLAUDE, Lifecycle.ACTIVE);
-			new FileCampaignStore(root.resolve(SessionDirectory.ROOT).resolve("optimizer"), JSON).
+			new FileCampaignStore(root.resolve(SessionDirectory.ROOT).resolve("optimizer"), JSON, Yielding.fileReplacer()).
 				replaceSnapshot(new Builder().header(header).confirmed().build());
 			try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(Harness.CLAUDE, root))
 			{
@@ -2379,7 +2380,7 @@ public final class OptimizerCoreTest
 			requireThat(campaign.isConfirmed(), "confirmed").isTrue();
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
-				repository.scope().json()).require(campaign.incumbent().snapshot());
+				repository.scope().json(), Yielding.fileReplacer()).require(campaign.incumbent().snapshot());
 			fork.workspace().stage(incumbent, Set.of());
 			requireThat(incumbent.snapshot().entries().keySet(), "stagedFiles").contains(Path.of("CLAUDE.md"));
 		}
@@ -2991,7 +2992,7 @@ public final class OptimizerCoreTest
 				contains(outside).doesNotContain(Path.of(".env.example"));
 			Campaign campaign = repository.load(id);
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
-				repository.scope().json()).require(campaign.incumbent().snapshot());
+				repository.scope().json(), Yielding.fileReplacer()).require(campaign.incumbent().snapshot());
 			requireThat(incumbent.snapshot().entries().keySet(), "stagedFiles").contains(Path.of("extra.local.md")).
 				contains(outside);
 		}
@@ -3107,7 +3108,7 @@ public final class OptimizerCoreTest
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
-				repository.scope().json()).require(repository.load(id).incumbent().snapshot());
+				repository.scope().json(), Yielding.fileReplacer()).require(repository.load(id).incumbent().snapshot());
 			requireThat(incumbent.snapshot().entries().keySet(), "incumbentFiles").
 				doesNotContain(Path.of("extra.local.md"));
 		}
@@ -3150,7 +3151,7 @@ public final class OptimizerCoreTest
 			requireThat(campaign.development().working(), "working").isEqualTo(campaign.incumbent());
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
-				repository.scope().json()).require(campaign.incumbent().snapshot());
+				repository.scope().json(), Yielding.fileReplacer()).require(campaign.incumbent().snapshot());
 			requireThat(incumbent.snapshot().entries().keySet(), "incumbentFiles").contains(Path.of("late.local.md")).
 				contains(Path.of("CLAUDE.md"));
 		}
@@ -3535,7 +3536,7 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			Path directory = repository.directory(id);
 			requireThat(repository.forks().exists(directory), "forkBefore").isTrue();
-			FileCampaignStore.recordRemoval(repository.campaigns(), id);
+			FileCampaignStore.recordRemoval(repository.campaigns(), id, Yielding.fileReplacer());
 
 			CommandRefusedException refusal = null;
 			try
@@ -3946,7 +3947,7 @@ public final class OptimizerCoreTest
 			Files.writeString(repository.root().resolve(rule), "Be kind.\n");
 			configure(repository.root(), rule, NO_PLUGINS);
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			FileCampaignStore.recordRemoval(repository.campaigns(), id);
+			FileCampaignStore.recordRemoval(repository.campaigns(), id, Yielding.fileReplacer());
 			Path worktree = repository.directory(id).resolve("worktree");
 			repository.forks().denyRemoval();
 			String warning = "Could not remove the files of campaign " + id + ": " + worktree +

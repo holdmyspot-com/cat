@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static com.holdmyspot.cat.codex.optimizer.test.RecordedAppServer.recorded;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -82,7 +83,8 @@ public final class CodexSessionsContractTest
 	private static CodexSessions port(Path root, Bridge bridge)
 	{
 		return CodexSessionsSecrets.access().newCodexSessions(new RunnerSessions.Settings(root, root.resolve("runs"),
-			List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC()), bridge);
+			List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
+			bridge);
 	}
 
 	/**

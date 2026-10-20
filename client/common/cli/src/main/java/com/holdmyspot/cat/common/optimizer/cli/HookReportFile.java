@@ -2,7 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.optimizer.proposal.HookReport;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -32,20 +32,24 @@ final class HookReportFile
 	private static final int FORMAT_VERSION = 1;
 	private final Path file;
 	private final JsonMapper json;
+	private final FileReplacer replacer;
 
 	/**
 	 * Creates the file's accessor.
 	 *
 	 * @param directory the campaign's directory
 	 * @param json      the JSON mapper
+	 * @param replacer  replaces the file
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	HookReportFile(Path directory, JsonMapper json)
+	HookReportFile(Path directory, JsonMapper json, FileReplacer replacer)
 	{
 		requireThat(directory, "directory").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		this.file = directory.resolve(NAME);
 		this.json = json;
+		this.replacer = replacer;
 	}
 
 	/**
@@ -75,7 +79,7 @@ final class HookReportFile
 		Path temporary = file.resolveSibling(NAME + ".tmp");
 		Files.writeString(temporary, json.writerWithDefaultPrettyPrinter().writeValueAsString(root),
 			StandardCharsets.UTF_8);
-		PortableFiles.replace(temporary, file);
+		replacer.replace(temporary, file);
 	}
 
 	/**

@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.claude.optimizer.test.RecordedClaude.recorded;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -75,7 +76,8 @@ public final class ClaudeSessionsContractTest
 	private static ClaudeSessions port(Path root, Bridge bridge)
 	{
 		return ClaudeSessionsSecrets.access().newClaudeSessions(new RunnerSessions.Settings(root, root.resolve("runs"),
-			List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC()), bridge);
+			List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
+			bridge);
 	}
 
 	/**

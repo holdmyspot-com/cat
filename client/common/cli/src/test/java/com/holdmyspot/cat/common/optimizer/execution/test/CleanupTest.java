@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.execution.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -421,7 +422,7 @@ public final class CleanupTest
 			Header header = built.header();
 			if (!header.id().equals(OTHER))
 				built = builder.header(header(CAMPAIGN, header.lifecycle())).build();
-			new FileCampaignStore(campaigns, JSON).replaceSnapshot(built);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).replaceSnapshot(built);
 			return built;
 		}
 
@@ -444,7 +445,7 @@ public final class CleanupTest
 		 */
 		Cleanup cleanup(Consumer<Cleanup.Step> beforeStep)
 		{
-			return new Cleanup(base, campaigns, forks, runRoots, JSON, beforeStep);
+			return new Cleanup(base, campaigns, forks, runRoots, JSON, Yielding.fileReplacer(), beforeStep);
 		}
 
 		/**
@@ -455,7 +456,7 @@ public final class CleanupTest
 		 */
 		Cleanup cleanup(Forks forks)
 		{
-			return new Cleanup(base, campaigns, forks, runRoots, JSON, NO_HOOK);
+			return new Cleanup(base, campaigns, forks, runRoots, JSON, Yielding.fileReplacer(), NO_HOOK);
 		}
 
 		/**

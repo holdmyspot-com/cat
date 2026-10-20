@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.runner.CodexCuratedPluginCache;
@@ -61,7 +62,7 @@ public final class CodexCuratedPluginCacheTest
 			Files.createDirectories(parentHome.resolve(".tmp/plugins/.git"));
 			Path isolatedHome = root.resolve("isolated");
 
-			boolean seeded = CodexCuratedPluginCache.seed(parentHome, isolatedHome, Map.of());
+			boolean seeded = CodexCuratedPluginCache.seed(parentHome, isolatedHome, Map.of(), Yielding.executableFiles());
 
 			requireThat(seeded, "seeded").isFalse();
 			requireThat(Files.exists(isolatedHome.resolve(".tmp")), "isolatedTemporaryDirectory").isFalse();

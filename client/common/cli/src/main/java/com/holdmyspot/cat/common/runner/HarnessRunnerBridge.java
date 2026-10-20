@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.runner;
 
+import com.holdmyspot.cat.common.FileReplacer;
+
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
@@ -385,6 +387,8 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param json the operation-owned JSON mapper that writes the receipt
 	 *
+	 * @param replacer replaces the receipt
+	 *
 	 * @param input the JSONL client input
 	 *
 	 * @param output the JSONL client output when the options name no output file
@@ -394,17 +398,18 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if the bridge protocol, harness, lifecycle, transcript or receipt I/O fails
 	 */
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, HarnessRunnerOptions options,
-		JsonMapper json, Reader input, Writer output) throws IOException
+		JsonMapper json, FileReplacer replacer, Reader input, Writer output) throws IOException
 	{
 		requireThat(manager, "manager").isNotNull();
 		requireThat(options, "options").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		if (options.output() == null)
 			return serve(starter, manager, options.keepRun(), input, output);
 		HarnessRun run = serve(starter, manager, options.keepRun(), input, options.output());
 		if (options.receipt() != null)
 		{
-			HarnessRunReceipt.write(json, options.receipt(), run, options.output());
+			HarnessRunReceipt.write(json, replacer, options.receipt(), run, options.output());
 			manager.pruneRuntime(run);
 		}
 		return run;

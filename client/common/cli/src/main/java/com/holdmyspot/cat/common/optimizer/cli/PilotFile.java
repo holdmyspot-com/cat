@@ -2,7 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -41,20 +41,24 @@ final class PilotFile
 	private static final int FORMAT_VERSION = 2;
 	private final Path file;
 	private final JsonMapper json;
+	private final FileReplacer replacer;
 
 	/**
 	 * Creates a pilot file.
 	 *
 	 * @param heldOut the campaign's {@code held_out} directory
 	 * @param json the operation-owned JSON mapper
+	 * @param replacer replaces the file
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	PilotFile(Path heldOut, JsonMapper json)
+	PilotFile(Path heldOut, JsonMapper json, FileReplacer replacer)
 	{
 		requireThat(heldOut, "heldOut").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		this.file = heldOut.resolve(NAME);
 		this.json = json;
+		this.replacer = replacer;
 	}
 
 	/**
@@ -99,7 +103,7 @@ final class PilotFile
 		Path temporary = file.resolveSibling(NAME + ".tmp");
 		Files.writeString(temporary, json.writerWithDefaultPrettyPrinter().writeValueAsString(root),
 			StandardCharsets.UTF_8);
-		PortableFiles.replace(temporary, file);
+		replacer.replace(temporary, file);
 	}
 
 	/**

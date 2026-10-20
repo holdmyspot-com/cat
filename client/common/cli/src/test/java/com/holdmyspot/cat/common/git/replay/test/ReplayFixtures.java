@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.git.replay.GitTopicReplayEditor;
 import com.holdmyspot.cat.common.git.replay.History;
 import java.io.IOException;
@@ -40,7 +41,7 @@ final class ReplayFixtures
 	static GitTopicReplayEditor editor(Path repository)
 	{
 		return new GitTopicReplayEditor(repository,
-			repository.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp"));
+			repository.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp"), Yielding.fileReplacer());
 	}
 
 	/**

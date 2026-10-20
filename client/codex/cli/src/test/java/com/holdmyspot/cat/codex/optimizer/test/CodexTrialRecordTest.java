@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
@@ -109,7 +110,7 @@ public final class CodexTrialRecordTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trial-record-"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC());
+				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = new CodexSessions(settings);
 			Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1, SANDBOX_ERROR)));
 			Recorded record = new Recorded(sessions.readEvidence(transcript), Map.of());
@@ -142,7 +143,7 @@ public final class CodexTrialRecordTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trial-record-"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC());
+				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = new CodexSessions(settings);
 			Map<String, String> initial = Map.of("error.log", SANDBOX_ERROR);
 			Path whole = RecordedTrial.write(Files.createDirectories(root.resolve("whole")), EVENTS,

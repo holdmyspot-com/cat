@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -303,7 +304,8 @@ public final class EditorReplayFinalizationTest
 	 */
 	private static OutputPlanSealing sealing(JsonMapper json, Path directory, OriginPlanFixtures.Facts facts)
 	{
-		ManifestStore<BatchManifest> manifests = new ManifestStore<>(directory, json, BatchManifest.class);
+		ManifestStore<BatchManifest> manifests = new ManifestStore<>(directory, json, Yielding.fileReplacer(),
+			BatchManifest.class);
 		Git git = new Git(directory);
 		History history = new History(directory, git);
 		PatchArtifacts patches = new PatchArtifacts();

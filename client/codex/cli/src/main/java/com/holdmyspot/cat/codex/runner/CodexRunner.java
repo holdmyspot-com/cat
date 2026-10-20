@@ -5,6 +5,7 @@ import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
@@ -54,6 +55,7 @@ public final class CodexRunner
 	 * The system's shared temporary directory, which the app-server replaces with a private one.
 	 */
 	private static final Path TMP = Path.of("/tmp");
+	private final ExecutableFiles executables;
 	private final ProcessStarter processes;
 
 	/**
@@ -77,21 +79,28 @@ public final class CodexRunner
 
 	/**
 	 * Creates a Codex artifact runner.
+	 *
+	 * @param executables runs the app-server's and the setup commands' files
+	 * @throws NullPointerException if {@code executables} is null
 	 */
-	public CodexRunner()
+	public CodexRunner(ExecutableFiles executables)
 	{
-		this(HarnessProcessStarter::start);
+		this(executables, (command, workingDirectory, environment) ->
+			HarnessProcessStarter.start(command, workingDirectory, environment, executables));
 	}
 
 	/**
 	 * Creates a Codex artifact runner that starts the app-server through {@code processes}.
 	 *
-	 * @param processes starts the app-server process
-	 * @throws NullPointerException if {@code processes} is null
+	 * @param executables runs the setup commands' files
+	 * @param processes   starts the app-server process
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	CodexRunner(ProcessStarter processes)
+	CodexRunner(ExecutableFiles executables, ProcessStarter processes)
 	{
+		requireThat(executables, "executables").isNotNull();
 		requireThat(processes, "processes").isNotNull();
+		this.executables = executables;
 		this.processes = processes;
 	}
 
@@ -205,7 +214,8 @@ public final class CodexRunner
 			if (workspace != null)
 				manager.copyWorkspace(workspace, run);
 			manager.snapshotProject(run);
-			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment);
+			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment,
+				executables);
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = codexHome(environment);
@@ -225,7 +235,8 @@ public final class CodexRunner
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
 			Path worktree = run.directory().resolve("project");
 			installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome, isolatedEnvironment,
-				(setup, step) -> HarnessCommand.execute(setup, worktree, isolatedEnvironment, manager, run, step));
+				executables, (setup, step) -> HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables,
+					manager, run, step));
 			List<String> appServer = appServerCommand(executable, installCat || !trialPlugins.isEmpty());
 			List<String> command = bubblewrap(environment).
 				map(bubblewrap -> withPrivateTmp(appServer, bubblewrap, run.directory())).
@@ -375,6 +386,7 @@ public final class CodexRunner
 	 * @param hostHome the user's Codex home, whose configuration holds the hook approvals
 	 * @param isolatedHome the isolated Codex home
 	 * @param isolatedEnvironment the isolated environment, which seeding CAT's curated plugin cache runs in
+	 * @param executables runs Git while seeding CAT's curated plugin cache
 	 * @param commands runs the commands that add each marketplace and each plugin
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code executable} is blank
@@ -382,8 +394,8 @@ public final class CodexRunner
 	 *   agents cannot be copied or a command fails
 	 */
 	public static void installPlugins(String executable, Path artifact, boolean installCat, List<Path> trialPlugins,
-		Path hostHome, Path isolatedHome, Map<String, String> isolatedEnvironment, SetupCommands commands)
-		throws IOException
+		Path hostHome, Path isolatedHome, Map<String, String> isolatedEnvironment, ExecutableFiles executables,
+		SetupCommands commands) throws IOException
 	{
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(artifact, "artifact").isNotNull();
@@ -391,6 +403,7 @@ public final class CodexRunner
 		requireThat(hostHome, "hostHome").isNotNull();
 		requireThat(isolatedHome, "isolatedHome").isNotNull();
 		requireThat(isolatedEnvironment, "isolatedEnvironment").isNotNull();
+		requireThat(executables, "executables").isNotNull();
 		requireThat(commands, "commands").isNotNull();
 		Path hostConfiguration = hostHome.resolve("config.toml");
 		Path isolatedConfiguration = isolatedHome.resolve("config.toml");
@@ -404,7 +417,7 @@ public final class CodexRunner
 		if (installCat)
 		{
 			CodexConnectionConfiguration.copyTrustedCatHooks(hostConfiguration, isolatedConfiguration);
-			CodexCuratedPluginCache.seed(hostHome, isolatedHome, isolatedEnvironment);
+			CodexCuratedPluginCache.seed(hostHome, isolatedHome, isolatedEnvironment, executables);
 			// Codex resolves custom agents from CODEX_HOME/agents, not the installed plugin. Copy the definitions from
 			// this run's artifact so delegated agents receive the same CAT contract as the primary isolated process,
 			// rather than an unrelated version from the host's global Codex home.

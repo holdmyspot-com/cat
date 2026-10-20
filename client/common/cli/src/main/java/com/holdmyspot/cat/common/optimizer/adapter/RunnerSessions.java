@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.adapter;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.RuleSource;
@@ -1148,6 +1149,7 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param configurationDirectory the host's harness configuration directory, which holds the login
 	 * @param capacity the shared capacity from which every session takes one permit
 	 * @param clock the clock for time limits
+	 * @param replacer replaces the files of the sessions' runs
 	 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they load
 	 *   none
 	 * @param hostProject the project of the host session that starts the sessions, whose files no session may read
@@ -1155,7 +1157,7 @@ public abstract class RunnerSessions implements SessionPort
 	 */
 	public record Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
 		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
-		Optional<Path> userRules, Path hostProject)
+		FileReplacer replacer, Optional<Path> userRules, Path hostProject)
 	{
 		/**
 		 * Creates settings.
@@ -1170,6 +1172,7 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param configurationDirectory the host's harness configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit
 		 * @param clock the clock for time limits
+		 * @param replacer replaces the files of the sessions' runs
 		 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they
 		 *   load none
 		 * @param hostProject the project of the host session that starts the sessions, whose files no session may
@@ -1190,6 +1193,7 @@ public abstract class RunnerSessions implements SessionPort
 			requireThat(configurationDirectory, "configurationDirectory").isNotNull();
 			requireThat(capacity, "capacity").isNotNull();
 			requireThat(clock, "clock").isNotNull();
+			requireThat(replacer, "replacer").isNotNull();
 			requireThat(userRules, "userRules").isNotNull();
 			runRoot = runRoot.normalize();
 			requireThat(runRoot.getFileName(), "runRoot.getFileName()").isNotNull();
@@ -1214,6 +1218,7 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param configurationDirectory the host's harness configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit
 		 * @param clock the clock for time limits
+		 * @param replacer replaces the files of the sessions' runs
 		 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they
 		 *   load none
 		 * @throws NullPointerException if any argument is null
@@ -1221,10 +1226,10 @@ public abstract class RunnerSessions implements SessionPort
 		 */
 		public Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
 			Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
-			Optional<Path> userRules)
+			FileReplacer replacer, Optional<Path> userRules)
 		{
 			this(artifact, runRoot, heldOut, executable, installCat, environment, configurationDirectory, capacity,
-				clock, userRules, null);
+				clock, replacer, userRules, null);
 		}
 
 		/**
@@ -1240,14 +1245,16 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param configurationDirectory the host's harness configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit
 		 * @param clock the clock for time limits
+		 * @param replacer replaces the files of the sessions' runs
 		 * @throws NullPointerException if any argument is null
 		 * @throws IllegalArgumentException if {@code runRoot} is not absolute or is a file system root
 		 */
 		public Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
-			Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock)
+			Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
+			FileReplacer replacer)
 		{
 			this(artifact, runRoot, heldOut, executable, installCat, environment, configurationDirectory, capacity,
-				clock, Optional.empty());
+				clock, replacer, Optional.empty());
 		}
 
 		/**

@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
@@ -51,7 +52,7 @@ public final class HarnessRunManagerTest
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Path output = root.resolve("result.json");
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.complete(run, output, "{\"text\":\"done\"}");
@@ -74,7 +75,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC()).create("harness");
+			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			if (run.directory().getFileSystem().supportedFileAttributeViews().contains("posix"))
 			{
 				requireThat(Files.getPosixFilePermissions(run.directory()), "permissions").isEqualTo(
@@ -97,7 +98,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			Files.writeString(run.directory().resolve("project/source.txt"), "source");
 			Files.writeString(run.directory().resolve("artifacts/turn-1.events"), "events");
@@ -128,7 +129,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun terminal = manager.create("harness");
 			Files.writeString(terminal.directory().resolve("home/cache.txt"), "cache");
 			Files.writeString(terminal.directory().resolve("project/source.txt"), "source");
@@ -158,7 +159,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun terminal = manager.create("harness");
 			Files.writeString(terminal.directory().resolve("home/cache.txt"), "cache");
 			manager.markCompleted(terminal);
@@ -186,7 +187,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.fail(run, "harness failed");
@@ -210,7 +211,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			Path manifestPath = run.directory().resolve("run.json");
 			String inactiveOwnerManifest = Files.readString(manifestPath).replaceFirst(
@@ -238,7 +239,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			Path manifestPath = run.directory().resolve("run.json");
 			manager.fail(run, "harness exited with exit status 2");
@@ -266,7 +267,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			manager.fail(run, "test cleanup");
 
@@ -289,7 +290,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			Files.writeString(run.directory().resolve("run.json"), "{}");
 
@@ -310,7 +311,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			int tooLarge = HarnessRunManagerSecrets.access().maximumManifestBytes() + 1;
 			Files.write(run.directory().resolve("run.json"), new byte[tooLarge]);
@@ -332,7 +333,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			try (HarnessRunLock lock = manager.acquireLock(run))
 			{
@@ -355,7 +356,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.deleteRun("harness", run.id());
@@ -375,7 +376,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.deleteRun(run);
@@ -395,7 +396,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.markCompleted(run);
@@ -417,7 +418,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.recordHarnessProcess(run, 12_345, Instant.parse("2026-07-29T00:00:00Z"));
@@ -447,7 +448,7 @@ public final class HarnessRunManagerTest
 			Path project = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-project-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.initialize(run, artifact, project, "structured_protocol", List.of("harness", "--api-key", "secret"));
@@ -476,7 +477,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.writeCommandOutput(run, "marketplace-add", "setup output", "setup error");
@@ -502,7 +503,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.writeTurnOutput(run, 1, new HarnessProcessResult(0, "harness events", "harness error"));
@@ -526,7 +527,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			requireThat(Files.readString(run.directory().resolve("run.json")), "initialManifest").
@@ -553,7 +554,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.appendTurnEvent(run, 1, "{\"type\":\"progress\"}");
@@ -581,7 +582,8 @@ public final class HarnessRunManagerTest
 			Files.createDirectories(project.resolve(".git"));
 			Files.writeString(project.resolve(".git/config"), "source-only metadata");
 			Files.writeString(project.resolve("unrelated.md"), "uncommitted change");
-			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.copyProject(project, run);
@@ -613,7 +615,8 @@ public final class HarnessRunManagerTest
 			Files.writeString(project.resolve("guide.md"), "project guide");
 			Path workspaces = Files.createDirectories(root.resolve("workspaces/docs"));
 			Files.writeString(workspaces.resolve("notes.md"), "fixture notes");
-			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			manager.copyProject(root.resolve("project"), run);
 
@@ -658,7 +661,8 @@ public final class HarnessRunManagerTest
 			Path linkDirectory = Files.createDirectories(root.resolve("workspaces/draft/workspace/docs"));
 			Path target = Path.of("../../../docs/handbook.md");
 			Files.createSymbolicLink(linkDirectory.resolve("handbook.md"), target);
-			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			manager.copyProject(root.resolve("project"), run);
 
@@ -703,7 +707,8 @@ public final class HarnessRunManagerTest
 			Files.writeString(project.resolve("guide.md"), "project guide");
 			Path workspaces = Files.createDirectories(root.resolve("workspaces/docs"));
 			Files.writeString(workspaces.resolve("notes.md"), "fixture notes");
-			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			manager.copyProject(root.resolve("project"), run);
 			manager.copyWorkspace(root.resolve("workspaces"), run);
@@ -740,7 +745,7 @@ public final class HarnessRunManagerTest
 			Path script = project.resolve("build.sh");
 			Files.writeString(script, "#!/bin/sh\n");
 			Files.setPosixFilePermissions(script, Set.of(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.copyProject(project, run);
@@ -764,7 +769,7 @@ public final class HarnessRunManagerTest
 				"cat-project-"));
 			Files.writeString(project.resolve("README.md"), "project");
 			Path root = project.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp/runner-runs");
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
 			manager.copyProject(project, run);
@@ -789,7 +794,7 @@ public final class HarnessRunManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			HarnessRun other = manager.create("harness");
 			HarnessRun evidence = manager.create("harness");
@@ -828,11 +833,11 @@ public final class HarnessRunManagerTest
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRunManager oldManager = new HarnessRunManager(root, oldClock);
+			HarnessRunManager oldManager = new HarnessRunManager(root, oldClock, Yielding.fileReplacer());
 			HarnessRun run = oldManager.create("harness");
 			oldManager.fail(run, "failed");
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(root, currentClock);
+			HarnessRunManager manager = new HarnessRunManager(root, currentClock, Yielding.fileReplacer());
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
@@ -854,7 +859,7 @@ public final class HarnessRunManagerTest
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock clock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(root, clock);
+			HarnessRunManager manager = new HarnessRunManager(root, clock, Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			manager.fail(run, "failed");
 			Files.setLastModifiedTime(run.directory(), FileTime.from(
@@ -880,12 +885,12 @@ public final class HarnessRunManagerTest
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRun run = new HarnessRunManager(root, oldClock).create("harness");
+			HarnessRun run = new HarnessRunManager(root, oldClock, Yielding.fileReplacer()).create("harness");
 			Path manifest = run.directory().resolve("run.json");
 			String content = Files.readString(manifest).replaceFirst("\"owner_pid\": [0-9]+", "\"owner_pid\": 999999");
 			Files.writeString(manifest, content);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-20T00:00:01Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(root, currentClock);
+			HarnessRunManager manager = new HarnessRunManager(root, currentClock, Yielding.fileReplacer());
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
@@ -912,7 +917,7 @@ public final class HarnessRunManagerTest
 			FakeProcessLiveness processLiveness = new FakeProcessLiveness(12_345,
 				Instant.parse("2026-07-20T00:00:01Z"));
 			HarnessRunManager oldManager = HarnessRunManagerSecrets.access().newHarnessRunManager(root, oldClock,
-				processLiveness);
+				Yielding.fileReplacer(), processLiveness);
 			HarnessRun run = oldManager.create("harness");
 			oldManager.recordHarnessProcess(run, 12_345, Instant.parse("2026-07-20T00:00:01Z"));
 			Path manifest = run.directory().resolve("run.json");
@@ -921,7 +926,7 @@ public final class HarnessRunManagerTest
 			Files.writeString(manifest, orphanedManifest);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
 			HarnessRunManager manager = HarnessRunManagerSecrets.access().newHarnessRunManager(root, currentClock,
-				processLiveness);
+				Yielding.fileReplacer(), processLiveness);
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
@@ -945,9 +950,9 @@ public final class HarnessRunManagerTest
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRun run = new HarnessRunManager(root, oldClock).create("harness");
+			HarnessRun run = new HarnessRunManager(root, oldClock, Yielding.fileReplacer()).create("harness");
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(root, currentClock);
+			HarnessRunManager manager = new HarnessRunManager(root, currentClock, Yielding.fileReplacer());
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
@@ -969,11 +974,11 @@ public final class HarnessRunManagerTest
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRunManager oldManager = new HarnessRunManager(root, oldClock);
+			HarnessRunManager oldManager = new HarnessRunManager(root, oldClock, Yielding.fileReplacer());
 			HarnessRun run = oldManager.create("harness");
 			oldManager.fail(run, "failed");
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(root, currentClock);
+			HarnessRunManager manager = new HarnessRunManager(root, currentClock, Yielding.fileReplacer());
 
 			try (HarnessRunLock lock = manager.acquireLock(run))
 			{

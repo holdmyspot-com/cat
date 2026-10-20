@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -135,6 +136,6 @@ public final class CodexReceivedResultsTest
 	private static CodexSessions sessions(Path root)
 	{
 		return new CodexSessions(new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(), root,
-			HarnessCapacity.unlimited(), Clock.systemUTC()));
+			HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()));
 	}
 }

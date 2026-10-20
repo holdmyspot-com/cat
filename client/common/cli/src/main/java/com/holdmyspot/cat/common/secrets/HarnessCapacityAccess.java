@@ -1,8 +1,8 @@
 package com.holdmyspot.cat.common.secrets;
 
 import com.holdmyspot.cat.common.LockFileOpener;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.Pause;
 
 import java.nio.file.Path;
 import java.time.Clock;

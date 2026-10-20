@@ -2,6 +2,8 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileReplacer;
+
 import java.io.IOException;
 import java.io.PrintStream;
 import java.time.Clock;
@@ -66,7 +68,8 @@ public final class HarnessRunnerMaintenance
 			out.println(HarnessDependencyCache.verifyNpm(environment));
 			return;
 		}
-		HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
+		HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(),
+			FileReplacer.sleeping());
 		switch (options.operation())
 		{
 			case DELETE_RUN -> manager.deleteRun(harness, options.runId());

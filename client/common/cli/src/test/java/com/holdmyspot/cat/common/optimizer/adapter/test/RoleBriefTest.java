@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.adapter.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -81,7 +82,7 @@ public final class RoleBriefTest
 			++turns;
 		List<Turn> replies = Collections.nCopies(turns, Turn.replies("ok"));
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "", true,
-			Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
 				replies, input, output, prompts));

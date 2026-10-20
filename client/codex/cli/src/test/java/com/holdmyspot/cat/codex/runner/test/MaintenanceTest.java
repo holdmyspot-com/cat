@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
@@ -39,7 +40,7 @@ public final class MaintenanceTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
 				"maintenance-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			manager.markCompleted(run);
 
@@ -62,7 +63,7 @@ public final class MaintenanceTest
 		{
 			Path temporaryRoot = Files.createDirectories(TEMP);
 			Path root = cleanup.add(Files.createTempDirectory(temporaryRoot, "maintenance-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Files.writeString(run.directory().resolve("home/cache.txt"), "cache");
 			Path evidence = run.directory().resolve("project/source.txt");

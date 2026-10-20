@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -49,6 +50,7 @@ public final class Fork implements ForkView
 	private final Workspace workspace;
 	private final Path worktree;
 	private final boolean excludeAdded;
+	private final FileReplacer replacer;
 
 	/**
 	 * Creates a fork.
@@ -57,8 +59,10 @@ public final class Fork implements ForkView
 	 * @param selection the participants recorded after creation that the fork's files hold
 	 * @param worktree the optimization worktree's directory
 	 * @param excludeAdded {@code true} if creating the fork appended CAT's session directories to the local exclude
+	 * @param replacer replaces the stored participant selection
 	 */
-	private Fork(ForkTree recorded, ParticipantSelection selection, Path worktree, boolean excludeAdded)
+	private Fork(ForkTree recorded, ParticipantSelection selection, Path worktree, boolean excludeAdded,
+		FileReplacer replacer)
 	{
 		this.recorded = recorded;
 		this.selection = selection;
@@ -66,6 +70,7 @@ public final class Fork implements ForkView
 		this.workspace = new Workspace(tree, recorded.directory().getParent(), worktree);
 		this.worktree = worktree;
 		this.excludeAdded = excludeAdded;
+		this.replacer = replacer;
 	}
 
 	/**
@@ -79,6 +84,7 @@ public final class Fork implements ForkView
 	 * @param participants ignored paths and ignored files relative to {@code base}, and absolute paths outside it, that
 	 *   take part in the campaign; tracked files, and the existing targets outside {@code base} that recorded links
 	 *   reach, always take part
+	 * @param replacer replaces the fork's stored participant selection
 	 * @return the fork
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code base} is not the top-level directory of its repository, or a
@@ -86,11 +92,13 @@ public final class Fork implements ForkView
 	 * @throws WorkspaceException if the base has uncommitted changes or a participant does not exist
 	 * @throws IOException if Git fails or the files cannot be copied
 	 */
-	public static Fork create(Path base, Path campaign, Set<Path> participants) throws IOException
+	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer)
+		throws IOException
 	{
 		requireThat(base, "base").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(participants, "participants").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		Path normalizedBase = base.toAbsolutePath().normalize();
 		Path normalizedCampaign = campaign.toAbsolutePath().normalize();
 		Git git = new Git(normalizedBase);
@@ -111,7 +119,7 @@ public final class Fork implements ForkView
 		{
 			git.run("worktree", "add", "--detach", worktree.toString(), "HEAD");
 			worktreeAdded = true;
-			Fork fork = new Fork(tree, ParticipantSelection.NONE, worktree, excludeAdded);
+			Fork fork = new Fork(tree, ParticipantSelection.NONE, worktree, excludeAdded, replacer);
 			// Git checks out the tracked files only, so write the participants and the recorded modes as well
 			fork.workspace.materialize(Overlay.of(fork.tree.inventory()));
 			return fork;
@@ -235,7 +243,8 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Removes what {@link #create(Path, Path, Set)} created after it recorded the files, so that a retry starts clean.
+	 * Removes what {@link #create(Path, Path, Set, FileReplacer)} created after it recorded the files, so that a retry
+	 * starts clean.
 	 * The local exclude line stays, because removing it would let campaign files dirty the base. A failure to undo is
 	 * attached to the original failure as a suppressed exception.
 	 *
@@ -289,25 +298,28 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Opens a fork that {@link #create(Path, Path, Set)} created earlier, for example to resume a campaign.
+	 * Opens a fork that {@link #create(Path, Path, Set, FileReplacer)} created earlier, for example to resume a
+	 * campaign.
 	 *
 	 * @param base the base worktree
 	 * @param campaign the campaign storage directory
+	 * @param replacer replaces the fork's stored participant selection
 	 * @return the fork, which reports that it did not add the local exclude
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws WorkspaceException if the campaign holds no fork
 	 * @throws IOException if the recorded files cannot be read
 	 */
-	public static Fork open(Path base, Path campaign) throws IOException
+	public static Fork open(Path base, Path campaign, FileReplacer replacer) throws IOException
 	{
 		requireThat(base, "base").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		Path normalizedCampaign = campaign.toAbsolutePath().normalize();
 		ForkTree tree = ForkTree.open(base, normalizedCampaign);
 		Path worktree = worktreeOf(normalizedCampaign);
 		if (!Files.isDirectory(worktree))
 			throw new WorkspaceException("The campaign directory " + campaign + " holds no optimization worktree.");
-		return new Fork(tree, ParticipantSelection.read(normalizedCampaign), worktree, false);
+		return new Fork(tree, ParticipantSelection.read(normalizedCampaign), worktree, false, replacer);
 	}
 
 	/**
@@ -430,13 +442,13 @@ public final class Fork implements ForkView
 
 		Path campaign = recorded.directory().getParent();
 		ParticipantSelection[] next = {selection.select(chosen)};
-		next[0].write(campaign);
+		next[0].write(campaign, replacer);
 		ForkTree extended = recorded.extend(base, chosen, target ->
 		{
 			next[0] = next[0].withTarget(target);
-			next[0].write(campaign);
+			next[0].write(campaign, replacer);
 		});
-		Fork fork = new Fork(extended, next[0], worktree, excludeAdded);
+		Fork fork = new Fork(extended, next[0], worktree, excludeAdded, replacer);
 		fork.workspace.materialize(Overlay.of(fork.tree.inventory()));
 		return fork;
 	}
@@ -460,15 +472,15 @@ public final class Fork implements ForkView
 
 		Path campaign = recorded.directory().getParent();
 		ParticipantSelection[] stored = {ParticipantSelection.read(campaign).withAdded(chosen)};
-		stored[0].write(campaign);
+		stored[0].write(campaign, replacer);
 		ForkTree extended = recorded.extend(base, chosen, target ->
 		{
 			stored[0] = stored[0].withTarget(target);
-			stored[0].write(campaign);
+			stored[0].write(campaign, replacer);
 		});
 		Set<Path> held = new HashSet<>(selection.selected());
 		held.addAll(chosen);
-		return new Fork(extended, stored[0].withSelected(held), worktree, excludeAdded);
+		return new Fork(extended, stored[0].withSelected(held), worktree, excludeAdded, replacer);
 	}
 
 	@Override
@@ -481,7 +493,7 @@ public final class Fork implements ForkView
 			if (selection.added().contains(participant))
 				held.add(participant);
 		}
-		return new Fork(recorded, selection.withSelected(held), worktree, excludeAdded);
+		return new Fork(recorded, selection.withSelected(held), worktree, excludeAdded, replacer);
 	}
 
 	/**
@@ -497,8 +509,8 @@ public final class Fork implements ForkView
 		ParticipantSelection stored = ParticipantSelection.read(campaign).withAdded(selection.added());
 		FileInventory current = recorded.reachableFrom(stored::holds).inventory();
 		if (!current.equals(tree.inventory()))
-			stored.writeVersion(campaign, current.identity());
-		stored.withSelected(selection.selected()).write(campaign);
+			stored.writeVersion(campaign, current.identity(), replacer);
+		stored.withSelected(selection.selected()).write(campaign, replacer);
 	}
 
 	@Override

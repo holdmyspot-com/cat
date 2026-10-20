@@ -4,6 +4,7 @@ import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.optimizer.cli.HarnessVersion;
@@ -121,7 +122,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		if (sessions == null)
 		{
 			sessions = sessions(environment, home, hostProject(), runRoot(), artifact, configurationDirectory,
-				this::heldOutDirectories, clock());
+				this::heldOutDirectories, clock(), fileReplacer());
 		}
 		return sessions;
 	}
@@ -165,14 +166,16 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param configurationDirectory the host's Codex configuration directory
 	 * @param heldOut                lists the campaigns' held-out directories
 	 * @param clock                  the clock
+	 * @param replacer               replaces the files of the sessions' runs
 	 * @return the port
 	 */
 	private static SessionPort sessions(Map<String, String> environment, Path home, Path hostProject, Path runRoot,
-		Path artifact, Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock)
+		Path artifact, Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock,
+		FileReplacer replacer)
 	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, heldOut, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS_ID,
-				HarnessCapacity.MAXIMUM_CONCURRENCY), clock, Optional.of(ProjectRuleLoader.rulesDirectory(home)),
+				HarnessCapacity.MAXIMUM_CONCURRENCY), clock, replacer, Optional.of(ProjectRuleLoader.rulesDirectory(home)),
 			hostProject);
 		return new CodexSessions(settings);
 	}

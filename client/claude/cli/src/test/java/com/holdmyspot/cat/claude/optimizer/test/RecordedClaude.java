@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -93,7 +94,7 @@ final class RecordedClaude implements Bridge
 	public void serve(List<String> arguments, Reader input, Writer output) throws IOException
 	{
 		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--run-root"));
-		HarnessRunManager manager = new HarnessRunManager(runRoot, Clock.systemUTC());
+		HarnessRunManager manager = new HarnessRunManager(runRoot, Clock.systemUTC(), Yielding.fileReplacer());
 		HarnessRun completed = HarnessRunnerBridge.serve(() ->
 		{
 			HarnessRun run = manager.create("claude");

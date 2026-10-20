@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.git.replay.BatchManifest;
 import com.holdmyspot.cat.common.git.replay.ManifestStore;
@@ -47,7 +48,8 @@ public final class PatchApplicationTest
 			Files.writeString(patchFile, "immutable source patch\n");
 			PatchArtifacts patches = new PatchArtifacts();
 			PatchApplication patchApplication = new PatchApplication(new Git(temporaryRoot),
-				new ManifestStore<>(temporaryRoot, ReplayJson.newMapper(), BatchManifest.class), patches);
+				new ManifestStore<>(temporaryRoot, ReplayJson.newMapper(), Yielding.fileReplacer(), BatchManifest.class),
+				patches);
 			SourceReconstruction reconstruction = new SourceReconstruction("source", null,
 				patches.declare(manifestFile, patchFile), "before-tree", "after-tree");
 			patchApplication.recordVerifiedSourceTree(reconstruction, "after-tree");

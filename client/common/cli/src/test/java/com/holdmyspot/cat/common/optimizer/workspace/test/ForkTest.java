@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.workspace.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.EXECUTABLE;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.READ_WRITE;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.file;
@@ -169,7 +170,7 @@ public final class ForkTest
 
 			try
 			{
-				Fork.create(base, campaign, Set.of());
+				Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
 				throw new AssertionError("A dirty base must be refused: " + change);
 			}
 			catch (WorkspaceException e)
@@ -196,7 +197,7 @@ public final class ForkTest
 			Path base = repository(root);
 			writeFile(base.resolve(".cat/sessions/temp/earlier.txt"), "earlier", READ_WRITE);
 
-			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of());
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
 
 			requireThat(fork.excludeAdded(), "excludeAdded").isTrue();
 		}
@@ -217,7 +218,7 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 			Path campaign = base.resolve(CAMPAIGNS + "/c1");
-			Fork.create(base, campaign, Set.of());
+			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
 			Git git = new Git(base);
 			requireThat(worktreeCount(git), "worktreesBefore").isEqualTo(2L);
 
@@ -256,7 +257,7 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 
-			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of());
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
 
 			requireThat(fork.excludeAdded(), "excludeAdded").isTrue();
 			requireThat(Files.readAllLines(excludeFile(base), UTF_8).stream().filter(EXCLUDE_LINE::equals).count(),
@@ -283,7 +284,7 @@ public final class ForkTest
 			Files.writeString(excludeFile(base), ".cat/sessions\n", UTF_8, StandardOpenOption.APPEND);
 			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
 
-			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of());
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
 
 			requireThat(fork.excludeAdded(), "excludeAdded").isFalse();
 			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
@@ -304,8 +305,8 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 
-			Fork first = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of());
-			Fork second = Fork.create(base, base.resolve(CAMPAIGNS + "/c2"), Set.of());
+			Fork first = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
+			Fork second = Fork.create(base, base.resolve(CAMPAIGNS + "/c2"), Set.of(), Yielding.fileReplacer());
 
 			requireThat(first.excludeAdded(), "firstAdded").isTrue();
 			requireThat(second.excludeAdded(), "secondAdded").isFalse();
@@ -332,7 +333,8 @@ public final class ForkTest
 			Git git = new Git(base);
 			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
 
-			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(Path.of("ignored.md"), external));
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(Path.of("ignored.md"), external),
+				Yielding.fileReplacer());
 
 			Path worktreeDirectory = base.resolve(CAMPAIGNS + "/c1/worktree");
 			// The base is listed first, with its commit on the line that starts with "HEAD "
@@ -371,7 +373,7 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			Forks forks = new GitForks();
+			Forks forks = new GitForks(Yielding.fileReplacer());
 			ForkView fork = forks.open(base, campaign).selectParticipants(base, Set.of(Path.of("ignored.md")));
 
 			ForkView narrowed = fork.selectParticipants(base, Set.of());
@@ -411,7 +413,7 @@ public final class ForkTest
 			Files.createSymbolicLink(base.resolve("ignored.md"), only);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			Forks forks = new GitForks();
+			Forks forks = new GitForks(Yielding.fileReplacer());
 			ForkView fork = forks.open(base, campaign).selectParticipants(base, Set.of(Path.of("ignored.md"), alias));
 			requireThat(fork.inventory().entries().keySet(), "selected").contains(only).contains(shared);
 
@@ -443,7 +445,7 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			Forks forks = new GitForks();
+			Forks forks = new GitForks(Yielding.fileReplacer());
 			FileInventory earlier = forks.open(base, campaign).inventory();
 
 			ForkView extended = forks.open(base, campaign).extend(base, Set.of(Path.of("ignored.md")));
@@ -482,7 +484,7 @@ public final class ForkTest
 			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			Forks forks = new GitForks();
+			Forks forks = new GitForks(Yielding.fileReplacer());
 			ForkView fork = forks.open(base, campaign);
 
 			ForkView extended = fork.selectParticipants(base, Set.of(Path.of("ignored.md"), Path.of("prompt.md"),
@@ -526,7 +528,8 @@ public final class ForkTest
 			Path base = repository(root);
 			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
 
-			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(Path.of("ignored.md"), external));
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(Path.of("ignored.md"), external),
+				Yielding.fileReplacer());
 
 			FileInventory inventory = fork.inventory();
 			requireThat(inventory.root(), "root").isEqualTo(base);
@@ -539,7 +542,7 @@ public final class ForkTest
 			requireThat(inventory.entries().get(external), "external").isEqualTo(file("shared"));
 			requireThat(inventory.entries().keySet().stream().filter(path -> path.startsWith(".cat")).toList(),
 				"campaignFiles").isEmpty();
-			requireThat(Fork.open(base, base.resolve(CAMPAIGNS + "/c1")).inventory(), "reopened").
+			requireThat(Fork.open(base, base.resolve(CAMPAIGNS + "/c1"), Yielding.fileReplacer()).inventory(), "reopened").
 				isEqualTo(inventory);
 		}
 	}
@@ -561,7 +564,7 @@ public final class ForkTest
 
 			try
 			{
-				Fork.create(base, campaign, Set.of(Path.of("missing.md")));
+				Fork.create(base, campaign, Set.of(Path.of("missing.md")), Yielding.fileReplacer());
 				throw new AssertionError("A missing participant must stop the fork");
 			}
 			catch (WorkspaceException e)
@@ -595,7 +598,7 @@ public final class ForkTest
 
 			try
 			{
-				Fork.create(base, campaign, Set.of(external));
+				Fork.create(base, campaign, Set.of(external), Yielding.fileReplacer());
 				throw new AssertionError("A failure while materializing must fail the fork");
 			}
 			catch (WorkspaceException e)
@@ -612,7 +615,7 @@ public final class ForkTest
 			requireThat(Files.readAllLines(excludeFile(base), UTF_8), "exclude").contains(EXCLUDE_LINE);
 			Files.delete(blocker);
 
-			Fork.create(base, campaign, Set.of(external));
+			Fork.create(base, campaign, Set.of(external), Yielding.fileReplacer());
 
 			requireThat(campaign.resolve("worktree"), "worktree").isDirectory();
 			requireThat(git.lines("worktree", "list"), "retryWorktrees").size().isEqualTo(2);
@@ -639,7 +642,7 @@ public final class ForkTest
 
 			try
 			{
-				Fork.create(base, campaign, Set.of());
+				Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
 				throw new AssertionError("A worktree directory that is not empty must fail the fork");
 			}
 			catch (IOException e)
@@ -651,7 +654,7 @@ public final class ForkTest
 			requireThat(Files.readString(foreign, UTF_8), "foreign").isEqualTo("not CAT's");
 			Files.delete(foreign);
 
-			Fork.create(base, campaign, Set.of());
+			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
 
 			requireThat(campaign.resolve("worktree/prompt.md"), "prompt").isRegularFile();
 		}
@@ -680,7 +683,7 @@ public final class ForkTest
 
 			try
 			{
-				Fork.create(base, campaign, Set.of());
+				Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
 				throw new AssertionError("A Git failure of the ignore check must propagate");
 			}
 			catch (IOException e)

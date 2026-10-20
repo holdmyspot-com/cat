@@ -3,6 +3,7 @@ package com.holdmyspot.cat.codex.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
 
@@ -33,14 +34,17 @@ public final class CodexCuratedPluginCache
 	 * @param parentHome the parent Codex home that may contain a curated snapshot
 	 * @param isolatedHome the fresh child Codex home
 	 * @param environment the isolated command environment
+	 * @param executables runs Git
 	 * @return {@code true} if an isolated snapshot was created, or {@code false} when ordinary Codex synchronization
 	 *         must proceed
 	 */
-	public static boolean seed(Path parentHome, Path isolatedHome, Map<String, String> environment)
+	public static boolean seed(Path parentHome, Path isolatedHome, Map<String, String> environment,
+		ExecutableFiles executables)
 	{
 		requireThat(parentHome, "parentHome").isNotNull();
 		requireThat(isolatedHome, "isolatedHome").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(executables, "executables").isNotNull();
 		Path parentTemporaryDirectory = parentHome.resolve(".tmp");
 		Path parentRepository = parentTemporaryDirectory.resolve("plugins");
 		Path parentRevision = parentTemporaryDirectory.resolve("plugins.sha");
@@ -63,8 +67,9 @@ public final class CodexCuratedPluginCache
 		try
 		{
 			Files.createDirectories(childTemporaryDirectory);
-			HarnessCommand.execute(cloneCommand(parentRepository, childRepository), isolatedHome, environment);
-			HarnessCommand.execute(checkoutCommand(revision), childRepository, environment);
+			HarnessCommand.execute(cloneCommand(parentRepository, childRepository), isolatedHome, environment,
+				executables);
+			HarnessCommand.execute(checkoutCommand(revision), childRepository, environment, executables);
 			Files.writeString(childTemporaryDirectory.resolve("plugins.sha"), revision + System.lineSeparator());
 			return true;
 		}

@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayRepository.fastImport;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayRepository.initializeRepository;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayRepository.invocationDirectory;
@@ -71,7 +72,7 @@ public final class ReplayExecutionTest
 			PatchArtifacts patches = new PatchArtifacts();
 			BatchManifest manifest = createManifest(manifestFile, base, history, patches);
 			ManifestStore<BatchManifest> manifests = new ManifestStore<>(manifestFile.getParent(), ReplayJson.newMapper(),
-				BatchManifest.class);
+				Yielding.fileReplacer(), BatchManifest.class);
 			manifests.write(manifestFile, manifest);
 
 			String rewrittenTip = new ReplayExecution(git, new History(repository, git), manifests, patches).

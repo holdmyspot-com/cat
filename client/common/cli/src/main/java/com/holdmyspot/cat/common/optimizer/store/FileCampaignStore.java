@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.store;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
@@ -61,6 +62,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private static final String DELETING_PREFIX = ".deleting-";
 	private final Path campaigns;
 	private final JsonMapper json;
+	private final FileReplacer replacer;
 	private final CampaignJson codec;
 	private final DeliveryJournalJson journalCodec;
 	private final Consumer<WriteStep> afterStep;
@@ -70,11 +72,12 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	 *
 	 * @param campaigns the directory that holds the campaigns
 	 * @param json the JSON mapper
+	 * @param replacer replaces the store's files
 	 * @throws NullPointerException if any argument is null
 	 */
-	public FileCampaignStore(Path campaigns, JsonMapper json)
+	public FileCampaignStore(Path campaigns, JsonMapper json, FileReplacer replacer)
 	{
-		this(campaigns, json, _ ->
+		this(campaigns, json, replacer, _ ->
 		{
 		});
 	}
@@ -84,17 +87,20 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	 *
 	 * @param campaigns the directory that holds the campaigns
 	 * @param json the JSON mapper
+	 * @param replacer replaces the store's files
 	 * @param afterStep receives each step after it completes; an exception that it throws stops the write at that
 	 *   point, as a crash would
 	 * @throws NullPointerException if any argument is null
 	 */
-	public FileCampaignStore(Path campaigns, JsonMapper json, Consumer<WriteStep> afterStep)
+	public FileCampaignStore(Path campaigns, JsonMapper json, FileReplacer replacer, Consumer<WriteStep> afterStep)
 	{
 		requireThat(campaigns, "campaigns").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		requireThat(afterStep, "afterStep").isNotNull();
 		this.campaigns = campaigns;
 		this.json = json;
+		this.replacer = replacer;
 		this.codec = new CampaignJson(json);
 		this.journalCodec = new DeliveryJournalJson(json);
 		this.afterStep = afterStep;
@@ -170,15 +176,16 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	 *
 	 * @param campaigns the directory that holds the campaigns
 	 * @param campaignId the campaign's identifier
+	 * @param replacer writes the record
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the campaign directory does not exist or the record cannot be written
 	 */
-	public static void recordRemoval(Path campaigns, String campaignId) throws IOException
+	public static void recordRemoval(Path campaigns, String campaignId, FileReplacer replacer) throws IOException
 	{
 		Path file = directory(campaigns, campaignId).resolve(REMOVAL);
 		if (Files.exists(file, LinkOption.NOFOLLOW_LINKS))
 			return;
-		AtomicFiles.replace(file, new byte[0], _ ->
+		AtomicFiles.replace(replacer, file, new byte[0], _ ->
 		{
 		});
 	}
@@ -288,7 +295,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		Path heldOut = heldOutDirectory(campaigns, campaign.header().id());
 		// Sessions that start before the first trial record is written must already be denied the records' directory.
 		AtomicFiles.createDirectories(heldOut.resolve(TRIALS));
-		JsonFiles.replace(json, heldOut.resolve(SNAPSHOT), codec.writeCampaign(campaign), afterStep);
+		JsonFiles.replace(json, replacer, heldOut.resolve(SNAPSHOT), codec.writeCampaign(campaign), afterStep);
 	}
 
 	@Override
@@ -312,7 +319,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	{
 		Path file = recordFile(campaignId, record.key());
 		AtomicFiles.createDirectories(file.getParent());
-		JsonFiles.replace(json, file, codec.writeRecord(record), afterStep);
+		JsonFiles.replace(json, replacer, file, codec.writeRecord(record), afterStep);
 	}
 
 	@Override
@@ -350,7 +357,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	{
 		Path directory = directory(campaigns, campaignId);
 		AtomicFiles.createDirectories(directory);
-		JsonFiles.replace(json, directory.resolve(JOURNAL), journalCodec.write(journal), afterStep);
+		JsonFiles.replace(json, replacer, directory.resolve(JOURNAL), journalCodec.write(journal), afterStep);
 	}
 
 	/**

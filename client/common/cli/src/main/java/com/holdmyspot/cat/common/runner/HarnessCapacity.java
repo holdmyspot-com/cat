@@ -5,8 +5,10 @@ import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.WRITE;
 
 import com.holdmyspot.cat.common.ExclusiveFileLock;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.LockFileOpener;
-import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.secrets.HarnessCapacityAccess;
 import com.holdmyspot.cat.common.secrets.HarnessCapacitySecrets;
 import tools.jackson.core.JacksonException;
@@ -96,13 +98,14 @@ public final class HarnessCapacity
 	private final Pause pause;
 	private final Clock clock;
 	private final LockFileOpener opener;
+	private final FileReplacer replacer;
 
 	/**
 	 * Creates a capacity pool backed by lock files.
 	 *
 	 * @param lockDirectory the directory that holds the slot files, or {@code null} for an unlimited pool
 	 * @param maximum the number of slots
-	 * @param pause the wait between attempts to acquire a slot
+	 * @param pause the wait between attempts to acquire a slot or to replace the hold file
 	 * @param clock the clock that decides whether a hold lasts
 	 * @param opener opens the slot and hold lock files
 	 */
@@ -113,6 +116,7 @@ public final class HarnessCapacity
 		this.pause = pause;
 		this.clock = clock;
 		this.opener = opener;
+		this.replacer = new FileReplacer(Platform.current(), pause, clock);
 	}
 
 	/**
@@ -120,7 +124,8 @@ public final class HarnessCapacity
 	 *
 	 * @param lockDirectory the directory that holds the slot files. It is created on first use.
 	 * @param maximum the number of permits that may be held at once, from 1 to {@link #MAXIMUM_CONCURRENCY}
-	 * @param pause the wait that {@link #acquire()} performs between attempts
+	 * @param pause the wait that {@link #acquire()} performs between attempts, and that a replacement of the hold file
+	 *   performs while Windows refuses it
 	 * @param clock the clock that decides whether a hold lasts
 	 * @return the pool
 	 * @throws NullPointerException if {@code lockDirectory}, {@code pause} or {@code clock} are null
@@ -136,7 +141,8 @@ public final class HarnessCapacity
 	 *
 	 * @param lockDirectory the directory that holds the slot files. It is created on first use.
 	 * @param maximum the number of permits that may be held at once, from 1 to {@link #MAXIMUM_CONCURRENCY}
-	 * @param pause the wait that {@link #acquire()} performs between attempts
+	 * @param pause the wait that {@link #acquire()} performs between attempts, and that a replacement of the hold file
+	 *   performs while Windows refuses it
 	 * @param clock the clock that decides whether a hold lasts
 	 * @param opener opens the slot and hold lock files, creating them if needed
 	 * @return the pool
@@ -422,7 +428,7 @@ public final class HarnessCapacity
 		try
 		{
 			Files.write(temporary, JSON.writeValueAsBytes(root));
-			PortableFiles.replace(temporary, file);
+			replacer.replace(temporary, file);
 		}
 		catch (IOException e)
 		{

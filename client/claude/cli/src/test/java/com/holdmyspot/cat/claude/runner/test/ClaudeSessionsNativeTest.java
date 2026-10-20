@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
@@ -121,7 +122,8 @@ public final class ClaudeSessionsNativeTest
 		Files.writeString(source.resolve("README.md"), "fixture\n", UTF_8);
 		Path runRoot = fixture.resolve("runs");
 		ClaudeSessions sessions = new ClaudeSessions(new RunnerSessions.Settings(artifact, runRoot, List::of, "", false,
-			environment(), configurationDirectory(), HarnessCapacity.unlimited(), Clock.systemUTC()));
+			environment(), configurationDirectory(), HarnessCapacity.unlimited(), Clock.systemUTC(),
+			Yielding.fileReplacer()));
 		return new HarnessSubject(cleanup, sessions, source, runRoot);
 	}
 

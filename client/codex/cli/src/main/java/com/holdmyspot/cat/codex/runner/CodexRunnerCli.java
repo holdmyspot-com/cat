@@ -6,6 +6,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
+import com.holdmyspot.cat.common.ExecutableFiles;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
@@ -90,11 +92,13 @@ public final class CodexRunnerCli
 				HarnessTemporaryRoot.from(scope));
 		}
 		CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
-		HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
+		HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(),
+			FileReplacer.sleeping());
 		String prompt = options.prompt();
 		try (HarnessCapacity.Permit _ = capacity.acquire())
 		{
-			HarnessOneShotRunner.run(() -> new CodexRunner().start(options.artifact(), options.project(), manager,
+			HarnessOneShotRunner.run(() -> new CodexRunner(ExecutableFiles.sleeping()).start(options.artifact(),
+				options.project(), manager,
 				options.executable(), environment, options.model(), "", options.installCat(), agent), manager, prompt,
 				options.output(), options.keepRun());
 		}
@@ -163,13 +167,15 @@ public final class CodexRunnerCli
 			else
 				options = HarnessRunnerOptions.parse(runnerArgs, "codex", temporaryRoot);
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
-			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC());
+			FileReplacer replacer = FileReplacer.sleeping();
+			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(), replacer);
 			try (HarnessCapacity.Permit _ = capacityForMaximum.apply(options.maximumConcurrency()).acquire())
 			{
-				HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(), options.project(),
+				HarnessRunnerBridge.serve(() -> new CodexRunner(ExecutableFiles.sleeping()).start(options.artifact(),
+					options.project(),
 					options.workspace(), options.plugins(), manager, options.executable(), environment, options.model(),
 					options.effort(), options.installCat(), agent, List.of(), options.deniedReads(), toolOutputTokenLimit),
-					manager, options, scope.json(), input, output);
+					manager, options, scope.json(), replacer, input, output);
 			}
 		}
 	}

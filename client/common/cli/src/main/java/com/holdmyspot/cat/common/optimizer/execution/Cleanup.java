@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
@@ -55,6 +56,7 @@ public final class Cleanup
 	private final Forks forks;
 	private final List<Path> runRoots;
 	private final JsonMapper json;
+	private final FileReplacer replacer;
 	private final Consumer<Step> beforeStep;
 
 	/**
@@ -65,11 +67,13 @@ public final class Cleanup
 	 * @param forks creates and removes the campaigns' optimization worktrees
 	 * @param runRoots the directories that hold the runs of those campaigns
 	 * @param json the JSON mapper that parses run manifests
+	 * @param replacer writes the record that a campaign's removal started
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Cleanup(Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json)
+	public Cleanup(Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json,
+		FileReplacer replacer)
 	{
-		this(base, campaigns, forks, runRoots, json, _ ->
+		this(base, campaigns, forks, runRoots, json, replacer, _ ->
 		{
 		});
 	}
@@ -82,24 +86,27 @@ public final class Cleanup
 	 * @param forks creates and removes the campaigns' optimization worktrees
 	 * @param runRoots the directories that hold the runs of those campaigns
 	 * @param json the JSON mapper that parses run manifests
+	 * @param replacer writes the record that a campaign's removal started
 	 * @param beforeStep receives each step before it runs; an exception that it throws stops the removal at that
 	 *   point, as a crash would
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Cleanup(Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json,
-		Consumer<Step> beforeStep)
+		FileReplacer replacer, Consumer<Step> beforeStep)
 	{
 		requireThat(base, "base").isNotNull();
 		requireThat(campaigns, "campaigns").isNotNull();
 		requireThat(forks, "forks").isNotNull();
 		requireThat(runRoots, "runRoots").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		requireThat(beforeStep, "beforeStep").isNotNull();
 		this.base = base;
 		this.campaigns = campaigns;
 		this.forks = forks;
 		this.runRoots = List.copyOf(runRoots);
 		this.json = json;
+		this.replacer = replacer;
 		this.beforeStep = beforeStep;
 	}
 
@@ -143,7 +150,7 @@ public final class Cleanup
 		String id = campaign.header().id();
 		try
 		{
-			FileCampaignStore.recordRemoval(campaigns, id);
+			FileCampaignStore.recordRemoval(campaigns, id, replacer);
 		}
 		catch (IOException e)
 		{

@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.cli;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
@@ -129,6 +130,14 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	public abstract Clock clock();
+
+	/**
+	 * Returns the replacer that atomically replaces the files that this command writes.
+	 *
+	 * @return the replacer
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	public abstract FileReplacer fileReplacer();
 
 	/**
 	 * Returns the launcher's working directory, below the project.
@@ -307,7 +316,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 	{
 		ensureOpen();
 		if (store == null)
-			store = new FileCampaignStore(sessionDirectory().campaigns(), json());
+			store = new FileCampaignStore(sessionDirectory().campaigns(), json(), fileReplacer());
 		return store;
 	}
 

@@ -4,6 +4,7 @@ import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 import static java.nio.file.StandardOpenOption.WRITE;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortableFiles;
 
 import java.io.IOException;
@@ -34,13 +35,15 @@ final class AtomicFiles
 	/**
 	 * Atomically replaces a file's content.
 	 *
+	 * @param replacer replaces the file with the temporary file
 	 * @param target the file, whose directory exists
 	 * @param content the new content
 	 * @param afterStep receives each {@link WriteStep} after it completes; an exception that it throws stops the write
 	 *   at that point, as a crash would
 	 * @throws IOException if the file cannot be replaced
 	 */
-	static void replace(Path target, byte[] content, Consumer<WriteStep> afterStep) throws IOException
+	static void replace(FileReplacer replacer, Path target, byte[] content, Consumer<WriteStep> afterStep)
+		throws IOException
 	{
 		Path temporary = target.resolveSibling(target.getFileName() + TEMPORARY_SUFFIX);
 		try
@@ -54,7 +57,7 @@ final class AtomicFiles
 				channel.force(true);
 				afterStep.accept(WriteStep.SYNC_TEMPORARY);
 			}
-			PortableFiles.replace(temporary, target);
+			replacer.replace(temporary, target);
 		}
 		catch (IOException e)
 		{

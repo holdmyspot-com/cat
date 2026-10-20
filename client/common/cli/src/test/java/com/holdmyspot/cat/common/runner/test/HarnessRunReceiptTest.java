@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -38,11 +39,11 @@ public final class HarnessRunReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
-			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC()).create("harness");
+			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path receipt = root.resolve("receipt.json");
 
-			HarnessRunReceipt.write(scope.json(), receipt, run, response);
+			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response);
 			HarnessEvaluationResult result = HarnessRunReceipt.read(scope.json(), receipt);
 
 			requireThat(result.retainedProject(), "retainedProject").isEqualTo(

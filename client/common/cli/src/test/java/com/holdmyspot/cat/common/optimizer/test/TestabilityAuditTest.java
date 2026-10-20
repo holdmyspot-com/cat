@@ -23,7 +23,8 @@ import java.util.stream.Stream;
  * <p>
  * The scan covers the production and test sources of {@code com.holdmyspot.cat.common.optimizer},
  * {@code com.holdmyspot.cat.claude.optimizer} and {@code com.holdmyspot.cat.codex.optimizer}, including their
- * subpackages, and the {@code HarnessCapacity*.java} files of {@code com.holdmyspot.cat.common.runner}. A scope that
+ * subpackages, and the {@code HarnessCapacity*.java} files of {@code com.holdmyspot.cat.common.runner}. The sleep
+ * check covers every source of the {@code common/cli}, {@code claude/cli} and {@code codex/cli} modules. A scope that
  * does not exist yet contributes no files. The build passes the {@code client} directory in the
  * {@code cat.client.directory} system property.
  * <p>
@@ -31,7 +32,7 @@ import java.util.stream.Stream;
  * <ul>
  *   <li>no static field is non-final;</li>
  *   <li>a test class has only final fields;</li>
- *   <li>no code sleeps;</li>
+ *   <li>no code other than {@code Pause.sleeping} sleeps;</li>
  *   <li>only a class that declares {@code main}, or a harness adapter's production scope, reads {@code HOME},
  *   {@code user.home} or the process environment;</li>
  *   <li>the harness-neutral core references no Claude or Codex package;</li>
@@ -102,6 +103,11 @@ public final class TestabilityAuditTest
 	 */
 	private static final String FORK_ADAPTER = "common/cli/src/main/java/" +
 		"com/holdmyspot/cat/common/optimizer/workspace/Fork.java";
+	/**
+	 * The production source, relative to the {@code client} directory, that may sleep: it declares
+	 * {@code Pause.sleeping}, which only an application entry point creates.
+	 */
+	private static final String SLEEPING_PAUSE = "common/cli/src/main/java/com/holdmyspot/cat/common/Pause.java";
 
 	/**
 	 * Creates a test instance.
@@ -152,15 +158,19 @@ public final class TestabilityAuditTest
 	}
 
 	/**
-	 * Verifies that no scanned source sleeps.
+	 * Verifies that no source of the three modules sleeps, except the one that declares {@code Pause.sleeping}.
 	 */
 	@Test
 	public void sourcesDoNotSleep()
 	{
 		// Requirement: R-T1
+		Path sleepingPause = clientDirectory().resolve(SLEEPING_PAUSE);
 		List<String> violations = new ArrayList<>();
-		for (SourceFile file : Scan.FILES)
-			violations.addAll(findSleeps(file));
+		for (SourceFile file : Scan.MODULE_FILES)
+		{
+			if (!file.path().equals(sleepingPause))
+				violations.addAll(findSleeps(file));
+		}
 		requireThat(violations, "violations").isEmpty();
 	}
 
@@ -481,13 +491,13 @@ public final class TestabilityAuditTest
 	}
 
 	/**
-	 * Parses every source file in the audit's scope.
+	 * Parses every source file of the three modules.
 	 *
 	 * @param client the {@code client} directory
 	 * @return the files
 	 * @throws IOException if a source cannot be read
 	 */
-	private static List<SourceFile> scan(Path client) throws IOException
+	private static List<SourceFile> scanModules(Path client) throws IOException
 	{
 		List<SourceFile> files = new ArrayList<>();
 		for (String module : MODULES)
@@ -497,22 +507,57 @@ public final class TestabilityAuditTest
 				Path root = client.resolve(module).resolve("src").resolve(sourceSet).resolve("java");
 				boolean isProduction = sourceSet.equals("main");
 				boolean isCore = module.equals(CORE_MODULE);
-				List<Path> paths = new ArrayList<>();
-				for (String optimizerPackage : OPTIMIZER_PACKAGES)
-					paths.addAll(listJavaFiles(root.resolve(optimizerPackage)));
-				for (Path path : listJavaFiles(root.resolve(RUNNER_PACKAGE)))
-				{
-					if (path.getParent().equals(root.resolve(RUNNER_PACKAGE)) &&
-						path.getFileName().toString().startsWith("HarnessCapacity"))
-					{
-						paths.add(path);
-					}
-				}
-				for (Path path : paths)
+				for (Path path : listJavaFiles(root))
 					files.add(new SourceFile(path, isProduction, isCore, JavaSource.parse(Files.readString(path))));
 			}
 		}
 		return List.copyOf(files);
+	}
+
+	/**
+	 * Returns the source files in the audit's scope: those of the optimizer packages and the harness capacity files.
+	 *
+	 * @param client the {@code client} directory
+	 * @param files  every source file of the three modules
+	 * @return the files in the audit's scope
+	 */
+	private static List<SourceFile> selectAudited(Path client, List<SourceFile> files)
+	{
+		List<Path> roots = new ArrayList<>();
+		for (String module : MODULES)
+		{
+			for (String sourceSet : List.of("main", "test"))
+				roots.add(client.resolve(module).resolve("src").resolve(sourceSet).resolve("java"));
+		}
+		List<SourceFile> audited = new ArrayList<>();
+		for (SourceFile file : files)
+		{
+			for (Path root : roots)
+			{
+				if (isAudited(root, file.path()))
+					audited.add(file);
+			}
+		}
+		return List.copyOf(audited);
+	}
+
+	/**
+	 * Indicates whether a source file is in the audit's scope.
+	 *
+	 * @param root the source root
+	 * @param path the source file
+	 * @return {@code true} if {@code path} is below an optimizer package of {@code root}, or is a harness capacity file
+	 *   directly in its runner package
+	 */
+	private static boolean isAudited(Path root, Path path)
+	{
+		for (String optimizerPackage : OPTIMIZER_PACKAGES)
+		{
+			if (path.startsWith(root.resolve(optimizerPackage)))
+				return true;
+		}
+		return path.getParent().equals(root.resolve(RUNNER_PACKAGE)) &&
+			path.getFileName().toString().startsWith("HarnessCapacity");
 	}
 
 	/**
@@ -725,6 +770,10 @@ public final class TestabilityAuditTest
 	private static final class Scan
 	{
 		/**
+		 * Every source file of the three modules.
+		 */
+		static final List<SourceFile> MODULE_FILES;
+		/**
 		 * Every source file in the audit's scope.
 		 */
 		static final List<SourceFile> FILES;
@@ -738,7 +787,8 @@ public final class TestabilityAuditTest
 			Path client = clientDirectory();
 			try
 			{
-				FILES = scan(client);
+				MODULE_FILES = scanModules(client);
+				FILES = selectAudited(client, MODULE_FILES);
 				TEST_TYPES = Set.copyOf(findTestTypes(client));
 			}
 			catch (IOException e)

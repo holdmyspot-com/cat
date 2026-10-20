@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.store.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -122,13 +123,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 					Builder.INCUMBENT, Map.of("safety", new TrialInputs(2, List.of(70L, 90L))))));
 			Campaign campaign = new Builder().confirmed().working(1).identity(sparse).readyBaseline().
 				development("safety", 2, 0).optimization(evidence).build();
-			new FileCampaignStore(campaigns, JSON).replaceSnapshot(campaign);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).replaceSnapshot(campaign);
 			JsonNode fixture = JSON.readTree(Files.readString(heldOutDirectory(campaigns).resolve("campaign.json"), UTF_8));
 			requireThat(fixture.path("identity").path("cells").size(), "cells").isEqualTo(0);
 			requireThat(fixture.path("identity").path("conditions").has("judge"), "judge").isFalse();
 			requireThat(fixture.path("baseline").path("identity"), "baselineIdentity").isEqualTo(fixture.path("identity"));
 
-			StatusReport report = StatusReport.of(new FileCampaignStore(campaigns, JSON).load(ID).orElseThrow(),
+			StatusReport report = StatusReport.of(new FileCampaignStore(campaigns, JSON,
+				Yielding.fileReplacer()).load(ID).orElseThrow(),
 				ReportEvidence.NONE);
 			CellReport cell = report.cells().stream().filter(item -> item.cell().equals("safety")).
 				findFirst().orElseThrow();
@@ -159,7 +161,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("held-out-paths"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().build());
 			store.writeJournal(ID, journal("candidate-2", 0));
 			Path heldOut = heldOutDirectory(campaigns).toRealPath();
@@ -208,7 +210,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-15-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path heldOut = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(heldOut, UTF_8));
@@ -216,7 +218,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Files.writeString(campaignDirectory(campaigns).resolve("campaign.json"), JSON.writeValueAsString(root), UTF_8);
 			Files.delete(heldOut);
 
-			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			if (listing)
 				restarted.listHeaders();
 			else
@@ -238,14 +240,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-15-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 15);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -263,14 +265,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-16-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 16);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -288,14 +290,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-17-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 17);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -313,7 +315,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-18-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
@@ -321,7 +323,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			root.putArray("authorized_targets").add("/external/shared.md");
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -338,14 +340,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-19-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 19);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -363,7 +365,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-20-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
 			store.writeAssignment(ID, assigned);
@@ -375,7 +377,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				put("reasoning_output", 10);
 			Files.writeString(record, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).readRecord(ID, assigned.key());
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readRecord(ID, assigned.key());
 		}
 	}
 
@@ -393,7 +395,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-21-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
@@ -401,7 +403,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			root.remove("answered_warnings");
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -418,7 +420,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-22-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
@@ -427,7 +429,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			root.put("outcome", "PLATEAU");
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -444,14 +446,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-23-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 23);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -469,14 +471,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-24-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 24);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -493,7 +495,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-23-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
 			store.writeAssignment(ID, assigned);
@@ -502,7 +504,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			root.put("format_version", 23);
 			Files.writeString(record, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).readRecord(ID, assigned.key());
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readRecord(ID, assigned.key());
 		}
 	}
 
@@ -519,11 +521,12 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-external-"));
 			Campaign campaign = populated(ID);
-			new FileCampaignStore(campaigns, JSON).replaceSnapshot(campaign);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).replaceSnapshot(campaign);
 
 			JsonNode snapshot = JSON.readTree(Files.readString(heldOutDirectory(campaigns).resolve("campaign.json"), UTF_8));
 			requireThat(snapshot.has("authorized_targets"), "hasAuthorizedTargets").isFalse();
-			requireThat(new FileCampaignStore(campaigns, JSON).load(ID), "loaded").isEqualTo(Optional.of(campaign));
+			requireThat(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID),
+				"loaded").isEqualTo(Optional.of(campaign));
 		}
 	}
 
@@ -551,8 +554,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("campaign-predecessor"));
 			Campaign promoted = promotedForRevert(false);
-			new FileCampaignStore(campaigns, JSON).replaceSnapshot(promoted);
-			Campaign reloaded = new FileCampaignStore(campaigns, JSON).load(ID).orElseThrow();
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).replaceSnapshot(promoted);
+			Campaign reloaded = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
 			requireThat(reloaded, "reloaded").isEqualTo(promoted);
 
 			Campaign reverted = failDevelopment(reloaded);
@@ -561,8 +564,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			requireThat(reverted.development().round(), "endedRound").isNull();
 			requireThat(reverted.outcome(), "outcome").isNull();
 			requireThat(reverted.lineage().regressionSet().getFirst().settled(), "settledByEndedRound").isTrue();
-			new FileCampaignStore(campaigns, JSON).replaceSnapshot(reverted);
-			requireThat(new FileCampaignStore(campaigns, JSON).load(ID).orElseThrow(), "reloadedRevert").isEqualTo(reverted);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).replaceSnapshot(reverted);
+			requireThat(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow(),
+				"reloadedRevert").isEqualTo(reverted);
 		}
 	}
 
@@ -582,8 +586,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			requireThat(promoted.development().predecessor().regressionSet().getFirst().settled(), "settledPredecessor").
 				isTrue();
 
-			new FileCampaignStore(campaigns, JSON).replaceSnapshot(promoted);
-			requireThat(new FileCampaignStore(campaigns, JSON).load(ID).orElseThrow(), "reloaded").isEqualTo(promoted);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).replaceSnapshot(promoted);
+			requireThat(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow(),
+				"reloaded").isEqualTo(promoted);
 		}
 	}
 
@@ -665,7 +670,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		FileStoreFixture() throws IOException
 		{
 			campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-store-"));
-			store = new FileCampaignStore(campaigns, JSON);
+			store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 		}
 
 		@Override
@@ -677,7 +682,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		@Override
 		public CampaignStore reopen()
 		{
-			return new FileCampaignStore(campaigns, JSON);
+			return new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 		}
 
 		@Override
@@ -698,7 +703,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		// Requirement: R-D11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("campaign")), JSON);
+			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("campaign")), JSON,
+				Yielding.fileReplacer());
 			FileDelta file = new FileDelta(Path.of("CLAUDE.md"), new FileContent("first\nseparator\nlast\n".
 				getBytes(UTF_8)), new FileContent("needed\nseparator\nunneeded\n".getBytes(UTF_8)),
 				PosixFilePermissions.fromString("rw-r--r--"));
@@ -730,7 +736,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		// Requirement: R-D12
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("campaign-batch")), JSON);
+			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("campaign-batch")), JSON,
+				Yielding.fileReplacer());
 			Campaign campaign = new Builder().confirmed().working(1).
 				failure(Builder.targeted("safety", "cache")).
 				round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).build();
@@ -763,7 +770,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		// Requirement: R-E18
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("measurements")), JSON);
+			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("measurements")), JSON,
+				Yielding.fileReplacer());
 			OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(),
 				Map.of(Builder.INCUMBENT, new PromptSize(4L, 1L, null)),
 				Map.of(Builder.confirmedIdentity("model-a"),
@@ -795,7 +803,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("comparison-identities")),
-				JSON);
+				JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(campaign);
 			Campaign loaded = store.load(campaign.header().id()).orElseThrow();
 			requireThat(loaded.baseline().identity(), "baselineIdentity").isEqualTo(earlier);
@@ -817,7 +825,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("input-usage"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			Campaign campaign = start();
 			Campaign assigned = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
 				Purpose.DEVELOPMENT, campaign.development().series(), campaign.development().working().snapshot(),
@@ -829,12 +837,12 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(running);
 			store.writeOutcome(ID, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "", List.of(), null,
 				running.identity(), 0L, List.of(), Builder.FILES));
-			reconcile(new FileCampaignStore(campaigns, JSON));
+			reconcile(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()));
 			Campaign recovered = store.load(ID).orElseThrow();
 			TrialInputs inputs = recovered.optimization().trialInputs().get(recovered.identity()).
 				get(trial.key().snapshot()).get("safety");
 			requireThat(inputs, "inputs").isEqualTo(new TrialInputs(1, List.of(0L)));
-			reconcile(new FileCampaignStore(campaigns, JSON));
+			reconcile(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()));
 			requireThat(store.load(ID).orElseThrow().optimization().trialInputs().get(recovered.identity()).
 				get(trial.key().snapshot()).get("safety"), "inputs").isEqualTo(inputs);
 		}
@@ -856,8 +864,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-journal-"));
 				DeliveryJournal started = journal("candidate-2", 0);
-				new FileCampaignStore(campaigns, JSON).writeJournal(ID, started);
-				FileCampaignStore crashing = new FileCampaignStore(campaigns, JSON, step ->
+				new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).writeJournal(ID, started);
+				FileCampaignStore crashing = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer(), step ->
 				{
 					if (step == crashStep)
 						throw new SimulatedCrash(step);
@@ -878,7 +886,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 					expected = started.withApplied(1);
 				else
 					expected = started;
-				requireThat(new FileCampaignStore(campaigns, JSON).loadJournal(ID), "loaded").
+				requireThat(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).loadJournal(ID), "loaded").
 					withContext(crashStep, "crashStep").isEqualTo(Optional.of(expected));
 				JsonNode document = JSON.readTree(Files.readString(campaignDirectory(campaigns).resolve("delivery.json"),
 					UTF_8));
@@ -924,9 +932,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-fault-"));
 			Campaign start = start();
-			new FileCampaignStore(campaigns, JSON).replaceSnapshot(start);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).replaceSnapshot(start);
 			AtomicInteger performed = new AtomicInteger();
-			FileCampaignStore crashing = new FileCampaignStore(campaigns, JSON, step ->
+			FileCampaignStore crashing = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer(), step ->
 			{
 				if (performed.incrementAndGet() == crashAfter)
 					throw new SimulatedCrash(step);
@@ -942,10 +950,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			}
 			requireThat(crashed, "crashed").withContext(crashAfter, "crashAfter").isTrue();
 
-			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			reconcile(restarted);
 
-			Campaign end = new FileCampaignStore(campaigns, JSON).load(ID).orElseThrow();
+			Campaign end = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
 			CellCounts expected;
 			if (crashAfter >= OUTCOME_RENAME)
 				expected = Builder.counts(0, 1);
@@ -973,7 +981,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-steps-"));
 			List<WriteStep> steps = new ArrayList<>();
 			Consumer<WriteStep> hook = steps::add;
-			new FileCampaignStore(campaigns, JSON, hook).replaceSnapshot(start());
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer(), hook).replaceSnapshot(start());
 
 			requireThat(steps, "steps").isEqualTo(List.of(WriteStep.values()));
 		}
@@ -992,7 +1000,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-unreadable-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			Campaign campaign = populated(ID);
 			store.replaceSnapshot(campaign);
 			for (LogicalTrial trial : campaign.trials())
@@ -1007,7 +1015,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				denyReading(record);
 			}
 
-			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			requireThat(restarted.load(ID), "loaded").isEqualTo(Optional.of(campaign));
 			// Reconciliation does read the records, which shows that they are unreadable
 			boolean unreadable = false;
@@ -1043,7 +1051,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, SessionHarnesses.HARNESS_A,
 				project.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
 			Path campaigns = session.campaigns();
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			LogicalTrial first = trial(1, TrialState.ASSIGNED);
 			LogicalTrial second = trial(2, TrialState.ASSIGNED);
 			store.writeAssignment(ID, first);
@@ -1083,7 +1091,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-conflict-store-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().build());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode document = (ObjectNode) JSON.readTree(Files.readString(snapshot));
@@ -1119,7 +1127,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-conflict-version-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().build());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode document = (ObjectNode) JSON.readTree(Files.readString(snapshot));
@@ -1142,7 +1150,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("campaign-old-format"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
@@ -1165,7 +1173,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("campaign-unidentified-format"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
@@ -1187,7 +1195,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("campaign-uncited-format"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
@@ -1209,7 +1217,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("campaign-reply-evidence"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			Campaign assigned = Transitions.apply(start(), new CampaignEvent.Assign(new Admission.Assign(
 				Purpose.DEVELOPMENT, 1, start().development().working().snapshot(), "safety", null,
 				new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, 0, Instant.parse("2026-10-01T12:00:00Z")))));
@@ -1229,7 +1237,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.writeOutcome(ID, outcome);
 			store.replaceSnapshot(running);
 
-			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			Campaign recovered = restarted.load(ID).orElseThrow();
 			requireThat(restarted.listUnadoptedOutcomes(recovered), "unadoptedOutcomes").isEqualTo(List.of(outcome));
 			Campaign judged = Transitions.apply(recovered, outcome);
@@ -1241,7 +1249,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				Verdict.PASS, "Earlier trial passed", List.of(), null,
 				loadedJudged.identity(), null, List.of(), Builder.FILES));
 			store.replaceSnapshot(adopted);
-			Campaign loadedAdopted = new FileCampaignStore(campaigns, JSON).load(ID).orElseThrow();
+			Campaign loadedAdopted = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
 			requireThat(loadedAdopted.development().failures().getFirst().responses(), "adoptedFailureResponses").
 				isEqualTo(responses);
 		}
@@ -1260,7 +1268,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("campaign-impact"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			Campaign assigned = assignDevelopment(start());
 			LogicalTrial trial = assigned.trials().getLast();
 			store.writeAssignment(ID, trial);
@@ -1271,12 +1279,12 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.writeOutcome(ID, outcome);
 			store.replaceSnapshot(running);
 
-			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			Campaign recovered = restarted.load(ID).orElseThrow();
 			requireThat(restarted.listUnadoptedOutcomes(recovered), "unadoptedOutcomes").isEqualTo(List.of(outcome));
 			Campaign adopted = Transitions.apply(recovered, outcome);
 			store.replaceSnapshot(adopted);
-			Campaign loaded = new FileCampaignStore(campaigns, JSON).load(ID).orElseThrow();
+			Campaign loaded = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
 			requireThat(loaded.development().failures().getFirst().triage(), "failureTriage").isEqualTo(triage);
 			requireThat(loaded, "loaded").isEqualTo(adopted);
 		}
@@ -1310,7 +1318,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("campaign-final-response-format"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
 			store.replaceSnapshot(start());
 			store.writeAssignment(ID, assigned);
@@ -1375,7 +1383,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-rationale-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().working(1).
 				trial(trial(2, TrialState.JUDGED)).
 				failure(new Failure(testCase("safety", 3, true),
@@ -1391,7 +1399,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			String message = null;
 			try
 			{
-				new FileCampaignStore(campaigns, JSON).load(ID);
+				new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 			}
 			catch (IOException e)
 			{
@@ -1415,7 +1423,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-rationale-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
 			store.writeAssignment(ID, assigned);
 			store.writeOutcome(ID, complete(assigned.key(), Verdict.FAIL));
@@ -1427,7 +1435,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			String message = null;
 			try
 			{
-				new FileCampaignStore(campaigns, JSON).readRecord(ID, assigned.key());
+				new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readRecord(ID, assigned.key());
 			}
 			catch (IOException e)
 			{
@@ -1453,7 +1461,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Files.createDirectories(snapshot.getParent());
 			Files.writeString(snapshot, "{ \"format_version\": 1, ", UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -1471,14 +1479,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 44);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -1496,14 +1504,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-1-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 1);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -1522,14 +1530,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-2-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 2);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -1547,14 +1555,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-3-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 3);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -1574,14 +1582,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-13-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 13);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -1600,14 +1608,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-14-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 14);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -1626,14 +1634,14 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-33-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 33);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON).load(ID);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
@@ -1696,9 +1704,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-count-"));
 			Campaign start = start();
-			new FileCampaignStore(campaigns, JSON).replaceSnapshot(start);
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).replaceSnapshot(start);
 			AtomicInteger performed = new AtomicInteger();
-			runTrial(new FileCampaignStore(campaigns, JSON, _ -> performed.incrementAndGet()), start, Verdict.FAIL);
+			runTrial(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer(), _ -> performed.incrementAndGet()), start,
+				Verdict.FAIL);
 			return performed.get();
 		}
 	}

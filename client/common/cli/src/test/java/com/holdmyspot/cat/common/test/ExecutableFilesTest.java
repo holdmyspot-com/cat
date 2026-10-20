@@ -1,11 +1,12 @@
 package com.holdmyspot.cat.common.test;
 
 import com.holdmyspot.cat.common.ExecutableFiles;
+import com.holdmyspot.cat.common.fakes.test.ManualClock;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.testng.annotations.Test;
@@ -32,92 +33,93 @@ public final class ExecutableFilesTest
 	 */
 	@Test public void runsConfiguredExecutable() throws IOException, InterruptedException
 	{
-		try (Process process = ExecutableFiles.run(ProcessFixture.builder(ProcessFixture.Mode.EXIT)))
+		try (Process process = Yielding.executableFiles().run(ProcessFixture.builder(ProcessFixture.Mode.EXIT)))
 		{
 			requireThat(process.waitFor(), "exitCode").isEqualTo(0);
 		}
 	}
 
 	/**
-	 * Verifies a text-file-busy failure requests exponential backoff before a successful fourth start.
+	 * Verifies a text-file-busy failure pauses before each retry, until a start succeeds.
 	 *
 	 * @throws IOException if the simulated process start fails
 	 */
 	@Test public void retriesTextFileBusyStart() throws IOException
 	{
 		AtomicInteger attempts = new AtomicInteger();
-		List<Duration> delays = new ArrayList<>();
+		AtomicInteger pauses = new AtomicInteger();
+		ExecutableFiles executables = new ExecutableFiles(pauses::incrementAndGet, new ManualClock(Instant.EPOCH));
 
-		ExecutableFilesSecrets.access().run(() ->
+		ExecutableFilesSecrets.access().run(executables, () ->
 		{
 			if (attempts.getAndIncrement() < 3)
 				throw new IOException("error=26, Text file busy");
 			return null;
-		}, delays::add);
+		});
 
 		requireThat(attempts.get(), "attempts").isEqualTo(4);
-		requireThat(delays, "delays").isEqualTo(List.of(
-			Duration.ofMillis(125), Duration.ofMillis(250), Duration.ofMillis(500)));
+		requireThat(pauses.get(), "pauses").isEqualTo(3);
 	}
 
 	/**
-	 * Verifies a persistent text-file-busy failure stops after four attempts and three backoff requests.
+	 * Verifies a persistent text-file-busy failure stops once the one-second limit passes.
 	 *
 	 * @throws IOException if the simulated process start fails
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*ETXTBSY.*")
-	public void givesUpAfterTextFileBusyRetries() throws IOException
+	public void givesUpAtRetryLimit() throws IOException
 	{
 		AtomicInteger attempts = new AtomicInteger();
-		List<Duration> delays = new ArrayList<>();
+		AtomicInteger pauses = new AtomicInteger();
+		ManualClock clock = new ManualClock(Instant.EPOCH);
+		ExecutableFiles executables = new ExecutableFiles(() ->
+		{
+			pauses.incrementAndGet();
+			clock.advance(Duration.ofMillis(250));
+		}, clock);
 		try
 		{
-			ExecutableFilesSecrets.access().run(() ->
+			ExecutableFilesSecrets.access().run(executables, () ->
 			{
 				attempts.incrementAndGet();
 				throw new IOException("ETXTBSY");
-			}, delays::add);
+			});
 		}
 		finally
 		{
-			requireThat(attempts.get(), "attempts").isEqualTo(4);
-			requireThat(delays, "delays").isEqualTo(List.of(
-				Duration.ofMillis(125), Duration.ofMillis(250), Duration.ofMillis(500)));
+			requireThat(attempts.get(), "attempts").isEqualTo(5);
+			requireThat(pauses.get(), "pauses").isEqualTo(4);
 		}
 	}
 
 	/**
-	 * Verifies an interrupted retry wait preserves interruption and stops further start attempts.
+	 * Verifies a failed pause stops further start attempts, keeping the start failure as a suppressed exception.
 	 *
-	 * @throws IOException if the simulated retry wait is interrupted
+	 * @throws IOException if the simulated pause fails
 	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "Interrupted while retrying a text-file-busy process start")
-	public void interruptedWaitStopsRetries() throws IOException
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "interrupted")
+	public void pauseFailureStopsRetries() throws IOException
 	{
 		AtomicInteger attempts = new AtomicInteger();
-		InterruptedException interruption = new InterruptedException("retry interrupted");
+		ExecutableFiles executables = new ExecutableFiles(() ->
+		{
+			throw new IOException("interrupted");
+		}, new ManualClock(Instant.EPOCH));
 		try
 		{
-			ExecutableFilesSecrets.access().run(() ->
+			ExecutableFilesSecrets.access().run(executables, () ->
 			{
 				attempts.incrementAndGet();
 				throw new IOException("ETXTBSY");
-			}, delay ->
-			{
-				requireThat(delay, "delay").isEqualTo(Duration.ofMillis(125));
-				throw interruption;
 			});
 		}
 		catch (IOException failure)
 		{
-			requireThat(failure.getCause(), "cause").isEqualTo(interruption);
+			requireThat(failure.getSuppressed()[0].getMessage(), "suppressed").isEqualTo("ETXTBSY");
 			throw failure;
 		}
 		finally
 		{
-			boolean interrupted = Thread.interrupted();
-			requireThat(interrupted, "interrupted").isTrue();
 			requireThat(attempts.get(), "attempts").isEqualTo(1);
 		}
 	}
@@ -132,15 +134,16 @@ public final class ExecutableFilesTest
 	public void doesNotRetryOtherStartFailure() throws IOException
 	{
 		AtomicInteger attempts = new AtomicInteger();
+		ExecutableFiles executables = new ExecutableFiles(() ->
+		{
+			throw new AssertionError("A non-transient failure must not pause");
+		}, new ManualClock(Instant.EPOCH));
 		try
 		{
-			ExecutableFilesSecrets.access().run(() ->
+			ExecutableFilesSecrets.access().run(executables, () ->
 			{
 				attempts.incrementAndGet();
 				throw new IOException("Permission denied");
-			}, delay ->
-			{
-				throw new AssertionError("A non-transient failure must not request a retry wait");
 			});
 		}
 		finally

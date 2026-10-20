@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.Platform;
@@ -54,7 +55,7 @@ public final class MaintenanceTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
 				"maintenance-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harnessa");
 			manager.markCompleted(run);
 
@@ -76,7 +77,7 @@ public final class MaintenanceTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
 				"maintenance-"));
-			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC()).create("harnessa");
+			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harnessa");
 			Path manifest = run.directory().resolve("run.json");
 			Files.writeString(manifest, Files.readString(manifest).replaceFirst(
 				"\\\"owner_started_at\\\": \\\"[^\\\"]+\\\"", "\"owner_started_at\": \"1970-01-01T00:00:00Z\""));
@@ -101,10 +102,10 @@ public final class MaintenanceTest
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
 				"maintenance-"));
 			HarnessRunManager oldManager = new HarnessRunManager(root,
-				Clock.fixed(Instant.parse("2000-01-01T00:00:00Z"), ZoneOffset.UTC));
+				Clock.fixed(Instant.parse("2000-01-01T00:00:00Z"), ZoneOffset.UTC), Yielding.fileReplacer());
 			HarnessRun old = oldManager.create("harnessa");
 			oldManager.markCompleted(old);
-			HarnessRun current = new HarnessRunManager(root, Clock.systemUTC()).create("harnessa");
+			HarnessRun current = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harnessa");
 
 			execute(root, "--delete-stale-runs", "--older-than", "PT1H");
 
@@ -125,7 +126,7 @@ public final class MaintenanceTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
 				"maintenance-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun terminal = manager.create("harnessa");
 			manager.markCompleted(terminal);
 			HarnessRun running = manager.create("harnessa");

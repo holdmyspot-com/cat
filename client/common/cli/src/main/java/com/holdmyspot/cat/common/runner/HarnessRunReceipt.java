@@ -2,7 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.FileReplacer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -21,14 +21,17 @@ public final class HarnessRunReceipt
 	 * Writes one receipt after verifying that both referenced artifacts are retained.
 	 *
 	 * @param json the operation-owned JSON mapper
+	 * @param replacer replaces the receipt destination
 	 * @param destination the receipt destination
 	 * @param run the retained harness run
 	 * @param rawResult the durable harness response
 	 * @throws IOException if retained evidence cannot be verified or written
 	 */
-	public static void write(JsonMapper json, Path destination, HarnessRun run, Path rawResult) throws IOException
+	public static void write(JsonMapper json, FileReplacer replacer, Path destination, HarnessRun run, Path rawResult)
+		throws IOException
 	{
 		requireThat(json, "json").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		requireThat(destination, "destination").isNotNull();
 		requireThat(run, "run").isNotNull();
 		requireThat(rawResult, "rawResult").isNotNull();
@@ -44,7 +47,7 @@ public final class HarnessRunReceipt
 		try
 		{
 			json.writeValue(temporary.toFile(), receipt);
-			PortableFiles.replace(temporary, destination);
+			replacer.replace(temporary, destination);
 		}
 		catch (IOException e)
 		{

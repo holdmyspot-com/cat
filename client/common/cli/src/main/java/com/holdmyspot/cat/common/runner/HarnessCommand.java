@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.runner;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,12 +34,14 @@ public final class HarnessCommand
 	 *
 	 * @param environment the complete scrubbed environment
 	 *
+	 * @param executables runs the command's file
+	 *
 	 * @throws IOException if the command fails or is interrupted
 	 */
-	public static void execute(List<String> command, Path workingDirectory, Map<String, String> environment)
-		throws IOException
+	public static void execute(List<String> command, Path workingDirectory, Map<String, String> environment,
+		ExecutableFiles executables) throws IOException
 	{
-		execute(command, workingDirectory, environment, null, null, null);
+		execute(command, workingDirectory, environment, executables, null, null, null);
 	}
 
 	/**
@@ -49,6 +53,8 @@ public final class HarnessCommand
 	 *
 	 * @param environment the complete scrubbed environment
 	 *
+	 * @param executables runs the command's file
+	 *
 	 * @param manager the owned-run lifecycle manager
 	 *
 	 * @param run the owned run
@@ -58,16 +64,18 @@ public final class HarnessCommand
 	 * @throws IOException if the command fails, is interrupted, or diagnostics cannot be persisted
 	 */
 	public static void execute(List<String> command, Path workingDirectory, Map<String, String> environment,
-		HarnessRunManager manager, HarnessRun run, String commandName) throws IOException
+		ExecutableFiles executables, HarnessRunManager manager, HarnessRun run, String commandName) throws IOException
 	{
 		requireThat(command, "command").isNotEmpty();
+		requireThat(executables, "executables").isNotNull();
 		if (manager != null || run != null || commandName != null)
 		{
 			requireThat(manager, "manager").isNotNull();
 			requireThat(run, "run").isNotNull();
 			requireThat(commandName, "commandName").isNotBlank();
 		}
-		try (Process process = HarnessProcessStarter.start(command, workingDirectory, environment))
+		try (Process process = HarnessProcessStarter.start(command, workingDirectory, environment,
+			executables))
 		{
 			try (ExecutorService readers = Executors.newVirtualThreadPerTaskExecutor())
 			{

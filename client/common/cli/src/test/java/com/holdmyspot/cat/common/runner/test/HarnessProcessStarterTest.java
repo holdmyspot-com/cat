@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -48,7 +49,7 @@ public final class HarnessProcessStarterTest
 			}
 
 			try (Process process = HarnessProcessStarter.start(List.of("greet"), programs,
-				Map.of("PATH", programs.toString())))
+				Map.of("PATH", programs.toString()), Yielding.executableFiles()))
 			{
 				process.getOutputStream().close();
 				String output = new String(process.getInputStream().readAllBytes(), UTF_8).strip();

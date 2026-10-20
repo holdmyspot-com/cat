@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.git.replay.test.OriginReviewFixtures.writeManifest;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayReviewFixtures.originReviews;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayReviewFixtures.predecessors;
@@ -41,7 +42,7 @@ public final class EditorOriginReviewTest
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
 			Path manifest = writeManifest(ReplayJson.newMapper(), repository, false, "feature.txt", "secondary.txt");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer());
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
 			JsonNode scaffold = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
@@ -82,7 +83,7 @@ public final class EditorOriginReviewTest
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
 			Path manifest = writeManifest(ReplayJson.newMapper(), repository, false, "feature.txt");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer());
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
 			Path reviews = manifest.resolveSibling("origin-reviews.json");
@@ -105,7 +106,7 @@ public final class EditorOriginReviewTest
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
 			Path manifest = writeManifest(ReplayJson.newMapper(), repository, false, "shared.txt");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer());
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
 			JsonNode scaffold = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8));
@@ -138,7 +139,7 @@ public final class EditorOriginReviewTest
 		{
 			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
 			Path manifest = writeManifest(ReplayJson.newMapper(), repository, true, "feature.txt");
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository);
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer());
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			editor.writeOriginReviewScaffold(manifest, output);
 			JsonNode candidate = ReplayJson.newMapper().readTree(output.toString(StandardCharsets.UTF_8)).get(0);

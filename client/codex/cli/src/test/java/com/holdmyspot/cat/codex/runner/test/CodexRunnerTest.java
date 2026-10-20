@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.runner.CodexRunner;
@@ -79,7 +80,7 @@ public final class CodexRunnerTest
 			List<List<String>> commands = new ArrayList<>();
 
 			CodexRunner.installPlugins("codex", artifact(root), false, List.of(plugin(root, "release-docs")),
-				root.resolve("host"), home, Map.of(), (command, step) ->
+				root.resolve("host"), home, Map.of(), Yielding.executableFiles(), (command, step) ->
 				{
 					commands.add(command);
 					steps.add(step);
@@ -112,7 +113,8 @@ public final class CodexRunnerTest
 			List<String> steps = new ArrayList<>();
 
 			CodexRunner.installPlugins("codex", artifact(root), false, List.of(plugin(root, "release-docs"),
-				plugin(root, "tools")), root.resolve("host"), home, Map.of(), (_, step) -> steps.add(step));
+				plugin(root, "tools")), root.resolve("host"), home, Map.of(), Yielding.executableFiles(), (_,
+				step) -> steps.add(step));
 
 			requireThat(steps, "steps").isEqualTo(List.of("trial-plugin-release-docs-marketplace-add",
 				"trial-plugin-release-docs-add", "trial-plugin-tools-marketplace-add", "trial-plugin-tools-add"));
@@ -139,13 +141,13 @@ public final class CodexRunnerTest
 
 			Path withoutCat = root.resolve("without");
 			CodexRunner.installPlugins("codex", artifact, false, List.of(), root.resolve("host"), withoutCat, Map.of(),
-				(_, step) -> steps.add(step));
+				Yielding.executableFiles(), (_, step) -> steps.add(step));
 			requireThat(steps, "withoutCatSteps").isEmpty();
 			requireThat(Files.notExists(withoutCat), "withoutCatHome").isTrue();
 
 			Path withCat = root.resolve("with");
 			CodexRunner.installPlugins("codex", artifact, true, List.of(), root.resolve("host"), withCat, Map.of(),
-				(_, step) -> steps.add(step));
+				Yielding.executableFiles(), (_, step) -> steps.add(step));
 			requireThat(steps, "withCatSteps").isEqualTo(List.of("marketplace-add", "plugin-add"));
 			requireThat(withCat.resolve("agents/cat-worker.toml"), "agent").isRegularFile();
 		}
@@ -181,7 +183,7 @@ public final class CodexRunnerTest
 			Path home = root.resolve("isolated");
 
 			CodexRunner.installPlugins("codex", artifact(root), true, List.of(plugin(root, "release-docs"),
-				plugin(root, "tools")), host, home, Map.of(), (_, _) ->
+				plugin(root, "tools")), host, home, Map.of(), Yielding.executableFiles(), (_, _) ->
 				{
 				});
 
@@ -330,7 +332,7 @@ public final class CodexRunnerTest
 		{
 			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
@@ -383,7 +385,7 @@ public final class CodexRunnerTest
 		{
 			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
@@ -416,7 +418,7 @@ public final class CodexRunnerTest
 		{
 			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
@@ -449,7 +451,7 @@ public final class CodexRunnerTest
 		{
 			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
@@ -493,7 +495,7 @@ public final class CodexRunnerTest
 			Path campaigns = Files.createDirectories(session.resolve("campaigns"));
 			Path root = Files.createDirectories(session.resolve("optimizer-runs/codex"));
 			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);

@@ -12,8 +12,8 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PluginInfo;
-import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.secrets.HarnessRunManagerAccess;
 import com.holdmyspot.cat.common.secrets.HarnessRunManagerSecrets;
 
@@ -54,9 +54,10 @@ public final class HarnessRunManager
 			}
 
 			@Override
-			public HarnessRunManager newHarnessRunManager(Path root, Clock clock, HarnessProcessLiveness processLiveness)
+			public HarnessRunManager newHarnessRunManager(Path root, Clock clock, FileReplacer replacer,
+				HarnessProcessLiveness processLiveness)
 			{
-				return new HarnessRunManager(root, clock, processLiveness);
+				return new HarnessRunManager(root, clock, replacer, processLiveness);
 			}
 		});
 	}
@@ -95,6 +96,7 @@ public final class HarnessRunManager
 		}\\n\\z""");
 	private final Path root;
 	private final Clock clock;
+	private final FileReplacer replacer;
 	private final HarnessProcessLiveness processLiveness;
 
 	/**
@@ -102,12 +104,13 @@ public final class HarnessRunManager
 	 *
 	 * @param root the absolute owned-run root
 	 * @param clock the clock used for generated identifiers
-	 * @throws NullPointerException if {@code root} or {@code clock} are null
+	 * @param replacer replaces the runs' manifests and output files
+	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
-	public HarnessRunManager(Path root, Clock clock)
+	public HarnessRunManager(Path root, Clock clock, FileReplacer replacer)
 	{
-		this(root, clock, new ProcessHandleLiveness());
+		this(root, clock, replacer, new ProcessHandleLiveness());
 	}
 
 	/**
@@ -115,19 +118,22 @@ public final class HarnessRunManager
 	 *
 	 * @param root the absolute owned-run root
 	 * @param clock the clock used for generated identifiers
+	 * @param replacer replaces the runs' manifests and output files
 	 * @param processLiveness the exact-process liveness service
-	 * @throws NullPointerException if {@code root}, {@code clock}, or {@code processLiveness} are null
+	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
-	HarnessRunManager(Path root, Clock clock, HarnessProcessLiveness processLiveness)
+	HarnessRunManager(Path root, Clock clock, FileReplacer replacer, HarnessProcessLiveness processLiveness)
 	{
 		requireThat(root, "root").isNotNull();
 		requireThat(clock, "clock").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		requireThat(processLiveness, "processLiveness").isNotNull();
 		if (!root.isAbsolute())
 			throw new IllegalArgumentException("root must be absolute");
 		this.root = root.normalize();
 		this.clock = clock;
+		this.replacer = replacer;
 		this.processLiveness = processLiveness;
 	}
 
@@ -957,7 +963,7 @@ public final class HarnessRunManager
 	 * @param directory the owned run directory
 	 * @throws IOException if the manifest cannot be persisted
 	 */
-	private static void writeManifest(Manifest manifest, Path directory) throws IOException
+	private void writeManifest(Manifest manifest, Path directory) throws IOException
 	{
 		assert manifest != null;
 		assert directory != null;
@@ -1154,7 +1160,7 @@ public final class HarnessRunManager
 	 * @param content the file content
 	 * @throws IOException if the file cannot be written
 	 */
-	private static void writeAtomically(Path output, String content) throws IOException
+	private void writeAtomically(Path output, String content) throws IOException
 	{
 		assert output != null;
 		assert content != null;
@@ -1164,7 +1170,7 @@ public final class HarnessRunManager
 			Files.writeString(temporary, content);
 			try
 			{
-				PortableFiles.replace(temporary, output);
+				replacer.replace(temporary, output);
 			}
 			catch (AtomicMoveNotSupportedException _)
 			{

@@ -320,7 +320,7 @@ public final class OptimizerCore implements Core
 		{
 			if (session.getKey().equals(host.sessionId()))
 				continue;
-			for (Header header : new FileCampaignStore(session.getValue(), scope.json()).listHeaders())
+			for (Header header : new FileCampaignStore(session.getValue(), scope.json(), scope.fileReplacer()).listHeaders())
 				headers.add(new Registry.OwnedHeader(session.getKey(), header));
 		}
 		return headers;
@@ -531,7 +531,7 @@ public final class OptimizerCore implements Core
 		}
 		FileInventory inventory = fork.inventory();
 		Overlay incumbent = Overlay.of(inventory);
-		new FileCandidateOverlays(directory, inventory, scope.json()).save(incumbent);
+		new FileCandidateOverlays(directory, inventory, scope.json(), scope.fileReplacer()).save(incumbent);
 		Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal);
 		Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory::entry));
 		store.replaceSnapshot(campaign);
@@ -952,7 +952,7 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		String id = campaign.header().id();
-		ProposalFile.Stored stored = new ProposalFile(heldOutDirectory(id), scope.json()).read().
+		ProposalFile.Stored stored = new ProposalFile(heldOutDirectory(id), scope.json(), scope.fileReplacer()).read().
 			orElseThrow(() -> new IOException("Campaign " + id + " has no stored confirmed proposal"));
 		ContractAuthorProtocol contractAuthor = contractAuthor(root, campaign);
 		DerivedProposal current;
@@ -968,7 +968,7 @@ public final class OptimizerCore implements Core
 		TestRevisionProtocol protocol = new TestRevisionProtocol(scope.json(), schema, contractAuthor);
 		ForkView fork = openFork(root, campaign);
 		Overlay incumbent = new FileCandidateOverlays(campaignDirectory(id), fork.inventory(), fork::version,
-			scope.json()).require(campaign.incumbent().snapshot());
+			scope.json(), scope.fileReplacer()).require(campaign.incumbent().snapshot());
 		Path staged = fork.workspace().stage(incumbent, Set.of());
 
 		List<TestRevision> revisions = new ArrayList<>();
@@ -1061,7 +1061,7 @@ public final class OptimizerCore implements Core
 			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
 		requireParticipantsHeld(root, fork, revised, trialSelection(root, campaign, revised, plugin));
 		// The stored proposal changes only once nothing blocks confirming it, so it stays the confirmed contract's
-		new ProposalFile(heldOutDirectory(campaign.header().id()), scope.json()).write(revised,
+		new ProposalFile(heldOutDirectory(campaign.header().id()), scope.json(), scope.fileReplacer()).write(revised,
 			stored.profiles());
 
 		List<CampaignEvent> events = new ArrayList<>();
@@ -1217,7 +1217,8 @@ public final class OptimizerCore implements Core
 		{
 			if (session.getKey().equals(host.sessionId()))
 				continue;
-			Optional<Campaign> campaign = new FileCampaignStore(session.getValue(), scope.json()).load(id);
+			Optional<Campaign> campaign = new FileCampaignStore(session.getValue(), scope.json(),
+				scope.fileReplacer()).load(id);
 			if (campaign.isPresent())
 			{
 				otherSessionCampaigns.put(id, session.getValue());
@@ -1447,7 +1448,7 @@ public final class OptimizerCore implements Core
 			return List.of();
 		FileInventory larger = fork.inventory();
 		FileCandidateOverlays overlays = new FileCandidateOverlays(campaignDirectory(campaign.header().id()), larger,
-			fork::version, scope.json());
+			fork::version, scope.json(), scope.fileReplacer());
 		if (overlays.require(campaign.incumbent().snapshot()).fork().equals(larger))
 			return List.of();
 		Overlay working;
@@ -1672,7 +1673,7 @@ public final class OptimizerCore implements Core
 	private Cleanup cleanup() throws CommandRefusedException, IOException
 	{
 		return new Cleanup(scope.projectRoot(), scope.sessionDirectory().campaigns(), scope.forks(),
-			scope.sessions().runRoots(), scope.json());
+			scope.sessions().runRoots(), scope.json(), scope.fileReplacer());
 	}
 
 	/**
@@ -1726,7 +1727,8 @@ public final class OptimizerCore implements Core
 		DerivedProposal previous, String feedback) throws IOException, InterruptedException
 	{
 		Path directory = campaignDirectory(campaign.header().id());
-		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), fork::version, scope.json()).
+		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), fork::version, scope.json(),
+			scope.fileReplacer()).
 			require(campaign.incumbent().snapshot());
 		// The contract author reads the regression scenarios, so nothing is left out
 		Path staged = fork.workspace().stage(incumbent, Set.of());
@@ -1828,7 +1830,7 @@ public final class OptimizerCore implements Core
 		// The draft's values files hold the expected outcomes of both parts, so it moves into the held-out directory
 		Path heldOut = heldOutDirectory(campaign.header().id());
 		derived = derived.withDraft(DraftDirectory.store(derived.draft(), heldOut), derived.changes());
-		new ProposalFile(heldOut, scope.json()).write(derived, profiles);
+		new ProposalFile(heldOut, scope.json(), scope.fileReplacer()).write(derived, profiles);
 		return present(root, store, campaign, fork, derived);
 	}
 
@@ -1852,7 +1854,7 @@ public final class OptimizerCore implements Core
 		List<PluginBase> bases, List<DerivedSource> loaded) throws IOException, InterruptedException
 	{
 		Path directory = campaignDirectory(campaign.header().id());
-		HookReportFile file = new HookReportFile(directory, scope.json());
+		HookReportFile file = new HookReportFile(directory, scope.json(), scope.fileReplacer());
 		// Most projects declare no such hook, and staging and copying their sources is then wasted
 		if (scope.sessions().earlyHooks(staged, bases, Optional.empty(), HookCheck.PROMPT).isEmpty())
 		{
@@ -1982,7 +1984,8 @@ public final class OptimizerCore implements Core
 		throws IOException
 	{
 		Overlay incumbent = Overlay.of(inventory);
-		new FileCandidateOverlays(campaignDirectory(campaign.header().id()), inventory, scope.json()).save(incumbent);
+		new FileCandidateOverlays(campaignDirectory(campaign.header().id()), inventory, scope.json(),
+			scope.fileReplacer()).save(incumbent);
 		Campaign rebound = campaign.withIncumbent(incumbent.identity());
 		store.replaceSnapshot(rebound);
 		return rebound;
@@ -1997,7 +2000,7 @@ public final class OptimizerCore implements Core
 	 */
 	private PilotFile pilotFile(Campaign campaign) throws IOException
 	{
-		return new PilotFile(heldOutDirectory(campaign.header().id()), scope.json());
+		return new PilotFile(heldOutDirectory(campaign.header().id()), scope.json(), scope.fileReplacer());
 	}
 
 	/**
@@ -2035,7 +2038,8 @@ public final class OptimizerCore implements Core
 		}
 		return Proposal.of(derived, campaign, links, relativeTarget(root, campaign), scope.sessions().hostLogin(),
 			scope.calibrator(), schema, incumbent, pilots, plugin, controlRefusals(root, campaign, fork, derived, plugin),
-			trialFiles, new HookReportFile(campaignDirectory(campaign.header().id()), scope.json()).read());
+			trialFiles, new HookReportFile(campaignDirectory(campaign.header().id()), scope.json(),
+			scope.fileReplacer()).read());
 	}
 
 	/**
@@ -2132,7 +2136,7 @@ public final class OptimizerCore implements Core
 	private Optional<DerivedProposal> stored(Path root, Campaign campaign) throws IOException
 	{
 		Optional<ProposalFile.Stored> stored = new ProposalFile(heldOutDirectory(campaign.header().id()),
-			scope.json()).read();
+			scope.json(), scope.fileReplacer()).read();
 		if (stored.isEmpty())
 			return Optional.empty();
 		try
@@ -2288,9 +2292,11 @@ public final class OptimizerCore implements Core
 		ValuesPrompt values = new ValuesPrompt(scope.json(), schema, valuesDirectory,
 			new SplittableRandom(scope.random().nextLong()));
 		return new DriverContext(store, scope.sessions(), fork.workspace(), scope.interrupts(), scope.clock(),
-			new FileCandidateOverlays(directory, inventory, fork::version, scope.json()), judge, triage, promptAuthor,
+			new FileCandidateOverlays(directory, inventory, fork::version, scope.json(), scope.fileReplacer()), judge, triage,
+			promptAuthor,
 			values,
-			new Delivery(store, fork.workspace(), scope.forks(), scope.json())::deliver, scope.calibrator(),
+			new Delivery(store, fork.workspace(), scope.forks(), scope.json(), scope.fileReplacer())::deliver,
+			scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(scope.sessions(), scope.json()), authority,
 			promptSources, environment(inventory::entry), lockFile(campaign.header().id()), scope.random(),
 			scope.sliceSettings(), scope.json());

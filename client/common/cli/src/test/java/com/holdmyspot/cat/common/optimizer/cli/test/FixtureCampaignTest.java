@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.cli.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -58,7 +59,7 @@ public final class FixtureCampaignTest
 			Path written = campaigns.resolve(ID).resolve("held_out/campaign.json");
 			Files.createDirectories(written.getParent());
 			Files.writeString(written, stored, StandardCharsets.UTF_8);
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			Campaign campaign = store.load(ID).orElseThrow();
 			store.replaceSnapshot(campaign);
 			String fresh = Files.readString(written, StandardCharsets.UTF_8);

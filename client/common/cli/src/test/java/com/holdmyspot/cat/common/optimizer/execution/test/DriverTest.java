@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.execution.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -408,7 +409,7 @@ public final class DriverTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("session-usage"));
 			DriverHarness harness = new DriverHarness(directory, authoring().baseline("formatting", 49, 0).build());
-			FileCampaignStore store = new FileCampaignStore(directory, JsonMapper.builder().build());
+			FileCampaignStore store = new FileCampaignStore(directory, JsonMapper.builder().build(), Yielding.fileReplacer());
 			store.replaceSnapshot(harness.campaign());
 			DriverContext original = harness.context();
 			DriverContext context = new DriverContext(store, original.sessions(), original.workspace(),
@@ -430,7 +431,8 @@ public final class DriverTest
 			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				SliceResult result = harness.runSlice(driver);
-				TokenStatistics reported = StatusReport.of(new FileCampaignStore(directory, JsonMapper.builder().build()).
+				TokenStatistics reported = StatusReport.of(new FileCampaignStore(directory, JsonMapper.builder().build(),
+					Yielding.fileReplacer()).
 					load(DriverHarness.CAMPAIGN).orElseThrow(), ReportEvidence.NONE).tokens();
 				requireThat(reported, "durableUsage").isEqualTo(TokenStatistics.of(expected));
 				requireThat(result.status().tokens(), "sliceUsage").isEqualTo(reported);
@@ -4807,7 +4809,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("frozen-judge"));
-			FileCampaignStore store = new FileCampaignStore(directory, JsonMapper.builder().build());
+			FileCampaignStore store = new FileCampaignStore(directory, JsonMapper.builder().build(), Yielding.fileReplacer());
 			store.replaceSnapshot(original);
 			Campaign loaded = store.load(DriverHarness.CAMPAIGN).orElseThrow();
 			requireThat(loaded.contract().judge(), "frozenProfile").isEqualTo(paths);

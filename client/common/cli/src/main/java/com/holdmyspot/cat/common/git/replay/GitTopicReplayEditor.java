@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.git.replay;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.git.Git;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -121,11 +122,13 @@ public final class GitTopicReplayEditor
 	 *
 	 * @param repository the repository working directory
 	 * @param temporaryRoot the root that owns temporary workflow state
+	 * @param replacer replaces the stored batch manifests
 	 */
-	public GitTopicReplayEditor(Path repository, Path temporaryRoot)
+	public GitTopicReplayEditor(Path repository, Path temporaryRoot, FileReplacer replacer)
 	{
 		requireThat(repository, "repository").isNotNull();
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		this.repository = repository.toAbsolutePath().normalize();
 		this.temporaryRoot = temporaryRoot.toAbsolutePath().normalize();
 		this.git = new Git(this.repository);
@@ -152,7 +155,7 @@ public final class GitTopicReplayEditor
 		this.patchArtifactTransfer = new PatchArtifactTransfer(this.patches);
 		this.outputPlanInputExport = new OutputPlanInputExport(json, this.patchArtifactTransfer);
 		this.draftOutputPlanTransfer = new DraftOutputPlanTransfer(json, this.patches);
-		this.manifests = new ManifestStore<>(this.temporaryRoot, json, BatchManifest.class);
+		this.manifests = new ManifestStore<>(this.temporaryRoot, json, replacer, BatchManifest.class);
 		this.patchApplication = new PatchApplication(this.git, this.manifests, this.patches);
 		this.sealedPrefixRecovery = new SealedPrefixRecovery(this.git, this.history, this.patches,
 			this.patchApplication, this.sealedPrefixValidation);
@@ -218,7 +221,7 @@ public final class GitTopicReplayEditor
 		Path repository = repositoryRoot(Path.of("."));
 		Path temporaryRoot = temporaryRoot(repository, Platform.current().environment(System.getenv()),
 			SessionHarness.installed());
-		new GitTopicReplayEditor(repository, temporaryRoot).execute(args);
+		new GitTopicReplayEditor(repository, temporaryRoot, FileReplacer.sleeping()).execute(args);
 	}
 
 	/**

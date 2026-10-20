@@ -3,10 +3,10 @@ package com.holdmyspot.cat.common.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.LockFileOpener;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.Pause;
 import com.holdmyspot.cat.common.secrets.HarnessCapacitySecrets;
 import java.io.IOException;
 import java.nio.channels.FileChannel;

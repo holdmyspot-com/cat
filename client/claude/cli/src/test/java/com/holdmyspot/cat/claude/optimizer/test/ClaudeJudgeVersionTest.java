@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.claude.optimizer.ClaudeProfileInventory;
@@ -73,7 +74,7 @@ public final class ClaudeJudgeVersionTest
 				PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
 
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC());
+				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = new ClaudeSessions(settings);
 			// Run directories differ per run, so the hash covers the section with their root replaced. The paths that
 			// the section names are written with "/" so that every platform hashes the same content.

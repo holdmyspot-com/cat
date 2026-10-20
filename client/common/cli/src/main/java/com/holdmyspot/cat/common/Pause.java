@@ -1,4 +1,4 @@
-package com.holdmyspot.cat.common.runner;
+package com.holdmyspot.cat.common;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 

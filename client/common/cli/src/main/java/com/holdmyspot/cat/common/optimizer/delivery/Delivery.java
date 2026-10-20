@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.delivery;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
@@ -100,6 +101,7 @@ public final class Delivery
 	private final WorkspacePort workspace;
 	private final Forks forks;
 	private final JsonMapper json;
+	private final FileReplacer replacer;
 	private final CertificationHistoryJson historyCodec;
 	private final Consumer<DeliveryChange> afterWrite;
 
@@ -110,11 +112,13 @@ public final class Delivery
 	 * @param workspace the optimization worktree
 	 * @param forks compares the delivered paths with the base worktree's {@code HEAD}
 	 * @param json the JSON mapper that reads and writes the certification history
+	 * @param replacer replaces the delivered files and links
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Delivery(CampaignStore store, WorkspacePort workspace, Forks forks, JsonMapper json)
+	public Delivery(CampaignStore store, WorkspacePort workspace, Forks forks, JsonMapper json,
+		FileReplacer replacer)
 	{
-		this(store, workspace, forks, json, _ ->
+		this(store, workspace, forks, json, replacer, _ ->
 		{
 		});
 	}
@@ -126,22 +130,25 @@ public final class Delivery
 	 * @param workspace the optimization worktree
 	 * @param forks compares the delivered paths with the base worktree's {@code HEAD}
 	 * @param json the JSON mapper that reads and writes the certification history
+	 * @param replacer replaces the delivered files and links
 	 * @param afterWrite receives each change after its target is written and before the journal records it; an
 	 *   exception that it throws stops the delivery at that point, as a crash would
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Delivery(CampaignStore store, WorkspacePort workspace, Forks forks, JsonMapper json,
-		Consumer<DeliveryChange> afterWrite)
+		FileReplacer replacer, Consumer<DeliveryChange> afterWrite)
 	{
 		requireThat(store, "store").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
 		requireThat(forks, "forks").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		requireThat(afterWrite, "afterWrite").isNotNull();
 		this.store = store;
 		this.workspace = workspace;
 		this.forks = forks;
 		this.json = json;
+		this.replacer = replacer;
 		this.historyCodec = new CertificationHistoryJson(json);
 		this.afterWrite = afterWrite;
 	}
@@ -539,7 +546,7 @@ public final class Delivery
 	 * @param file the target
 	 * @throws IOException if the target cannot be written
 	 */
-	private static void apply(DeliveryChange change, Path file) throws IOException
+	private void apply(DeliveryChange change, Path file) throws IOException
 	{
 		switch (change)
 		{
@@ -578,7 +585,7 @@ public final class Delivery
 	 * @param permissions the file's new mode
 	 * @throws IOException if the file cannot be written
 	 */
-	private static void replace(Path file, FileContent content, Set<PosixFilePermission> permissions)
+	private void replace(Path file, FileContent content, Set<PosixFilePermission> permissions)
 		throws IOException
 	{
 		Path temporary = file.resolveSibling("." + file.getFileName() + TEMPORARY_SUFFIX);
@@ -586,7 +593,7 @@ public final class Delivery
 			StandardOpenOption.WRITE);
 		force(temporary);
 		PortableFiles.setMode(temporary, permissions);
-		PortableFiles.replace(temporary, file);
+		replacer.replace(temporary, file);
 		PortableFiles.forceDirectory(file.getParent());
 	}
 
@@ -599,12 +606,12 @@ public final class Delivery
 	 * @param linkTarget the link's target, relative to the link's directory
 	 * @throws IOException if the link cannot be created
 	 */
-	private static void replaceWithLink(Path file, Path linkTarget) throws IOException
+	private void replaceWithLink(Path file, Path linkTarget) throws IOException
 	{
 		Path temporary = file.resolveSibling("." + file.getFileName() + TEMPORARY_SUFFIX);
 		Files.deleteIfExists(temporary);
 		Files.createSymbolicLink(temporary, linkTarget);
-		PortableFiles.replace(temporary, file);
+		replacer.replace(temporary, file);
 		PortableFiles.forceDirectory(file.getParent());
 	}
 

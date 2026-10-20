@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
@@ -68,7 +69,8 @@ public final class CodexSessionEnvironmentVersionTest
 			Path deniedFile = Files.writeString(root.resolve("campaign.json"), "{}");
 			Path hostProject = Files.createDirectories(root.resolve("project"));
 			Files.writeString(hostProject.resolve("AGENTS.md"), "Follow the handbook.", UTF_8);
-			HarnessRunManager manager = new HarnessRunManager(hostProject.resolve("runs"), Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(hostProject.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			manager.snapshotProject(run);
 			Files.writeString(run.directory().resolve("home/auth.json"), "{}");
@@ -111,7 +113,7 @@ public final class CodexSessionEnvironmentVersionTest
 			String configuration = (replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root) +
 				"\ninstructions = " + instructions + "\n").replace(run.id(), "<run>");
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(root, root, List::of, "", false,
-				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			int version = new CodexSessions(sessionSettings).sessionEnvironmentVersion();
 			VersionRegistry.requireRegistered(REGISTRY, "session environment", version,
 				VersionRegistry.hash(configuration + "\nprofile = " + profile + "\n"));

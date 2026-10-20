@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.adapter.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -99,7 +100,7 @@ public final class RunnerSessionsTest
 		List<List<String>> arguments, List<Turn> script)
 	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, List::of, "", false,
-			Map.of(), runRoot, capacity, clock);
+			Map.of(), runRoot, capacity, clock, Yielding.fileReplacer());
 		return new TestSessions(settings, (options, input, output) ->
 		{
 			arguments.add(options);
@@ -278,7 +279,7 @@ public final class RunnerSessionsTest
 			Path otherCopy = manifest(root.resolve("plugins/release-docs"), "release-docs");
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "",
-				true, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+				true, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
@@ -339,7 +340,7 @@ public final class RunnerSessionsTest
 				Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("rules/include"), Path.of("rules/include"))));
 			TestSessions sessions = new TestSessions(new RunnerSessions.Settings(artifact, root.resolve("runs"),
 				List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
-				Optional.of(home.resolve(".cat/rules"))), (_, _, _) ->
+				Yielding.fileReplacer(), Optional.of(home.resolve(".cat/rules"))), (_, _, _) ->
 			{
 			});
 
@@ -384,7 +385,8 @@ public final class RunnerSessionsTest
 			for (boolean installCat : List.of(true, false))
 			{
 				TestSessions sessions = new TestSessions(new RunnerSessions.Settings(artifact, root.resolve("runs"),
-					List::of, "", installCat, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC()),
+					List::of, "", installCat, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
+					Yielding.fileReplacer()),
 					(_, _, _) ->
 				{
 				});
@@ -449,10 +451,11 @@ public final class RunnerSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
-				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
-				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+					Yielding.fileReplacer());
 				HarnessRun run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
 				output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
@@ -490,11 +493,12 @@ public final class RunnerSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
-				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			List<String> sent = new CopyOnWriteArrayList<>();
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
-				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC());
+				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+					Yielding.fileReplacer());
 				HarnessRun run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
 				output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
@@ -544,10 +548,10 @@ public final class RunnerSessionsTest
 			List<String> requests = new CopyOnWriteArrayList<>();
 			CountDownLatch turnReceived = new CountDownLatch(1);
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, runs, List::of, "", false, Map.of(), root,
-				HarnessCapacity.unlimited(), Clock.systemUTC());
+				HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
-				HarnessRunManager manager = new HarnessRunManager(runs, Clock.systemUTC());
+				HarnessRunManager manager = new HarnessRunManager(runs, Clock.systemUTC(), Yielding.fileReplacer());
 				HarnessRun run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
 				output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
@@ -726,7 +730,7 @@ public final class RunnerSessionsTest
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
-				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
 				throw new IOException("artifact is invalid");
@@ -973,7 +977,7 @@ public final class RunnerSessionsTest
 		List<String> requests)
 	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, List::of, "", false,
-			Map.of(), runRoot, capacity, clock);
+			Map.of(), runRoot, capacity, clock, Yielding.fileReplacer());
 		return new TestSessions(settings, (options, input, output) ->
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
 				script, input, output, requests));

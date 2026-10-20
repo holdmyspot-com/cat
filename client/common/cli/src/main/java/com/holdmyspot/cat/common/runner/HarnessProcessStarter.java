@@ -28,16 +28,19 @@ public final class HarnessProcessStarter
 	 *
 	 * @param environment the complete scrubbed process environment
 	 *
+	 * @param executables runs the harness's file
+	 *
 	 * @return the started harness process
 	 *
 	 * @throws IOException if the process cannot be started
 	 */
-	public static Process start(List<String> command, Path workingDirectory, Map<String, String> environment)
-		throws IOException
+	public static Process start(List<String> command, Path workingDirectory, Map<String, String> environment,
+		ExecutableFiles executables) throws IOException
 	{
 		requireThat(command, "command").isNotEmpty();
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(executables, "executables").isNotNull();
 		List<String> resolved = new ArrayList<>(command);
 		resolved.set(0, Platform.current().findProgram(command.getFirst(), environment));
 		ProcessBuilder builder = new ProcessBuilder(resolved);
@@ -45,7 +48,7 @@ public final class HarnessProcessStarter
 		Map<String, String> childEnvironment = builder.environment();
 		childEnvironment.clear();
 		childEnvironment.putAll(environment);
-		return ExecutableFiles.run(builder);
+		return executables.run(builder);
 	}
 
 	/**

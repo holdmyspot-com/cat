@@ -2,7 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
@@ -51,6 +51,7 @@ final class ProposalFile
 	private final Path heldOut;
 	private final Path file;
 	private final JsonMapper json;
+	private final FileReplacer replacer;
 
 	/**
 	 * A stored proposal.
@@ -104,15 +105,18 @@ final class ProposalFile
 	 *
 	 * @param heldOut the campaign's {@code held_out} directory
 	 * @param json the operation-owned JSON mapper
+	 * @param replacer replaces the file
 	 * @throws NullPointerException if any argument is null
 	 */
-	ProposalFile(Path heldOut, JsonMapper json)
+	ProposalFile(Path heldOut, JsonMapper json, FileReplacer replacer)
 	{
 		requireThat(heldOut, "heldOut").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		this.heldOut = heldOut;
 		this.file = heldOut.resolve(NAME);
 		this.json = json;
+		this.replacer = replacer;
 	}
 
 	/**
@@ -143,7 +147,7 @@ final class ProposalFile
 		Path temporary = file.resolveSibling(NAME + ".tmp");
 		Files.writeString(temporary, json.writerWithDefaultPrettyPrinter().writeValueAsString(root),
 			StandardCharsets.UTF_8);
-		PortableFiles.replace(temporary, file);
+		replacer.replace(temporary, file);
 		// The stored proposal names the new draft directory only now, so the previous one stayed whole until then
 		DraftDirectory.keepOnly(heldOut, draft);
 	}

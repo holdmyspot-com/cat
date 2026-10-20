@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.replay.GitTopicReplayEditor;
 import com.holdmyspot.cat.common.git.replay.Batch;
@@ -67,7 +68,7 @@ public final class RecoveryTest
 				"verifiedPatch").isEqualTo(patch);
 			SealedPrefixRecovery.verifyBatchAfter(manifest.batches().getFirst(), FIRST_TREE);
 			SealedPrefixRecovery.verifyOutputAfter(first, witness, FIRST_TREE);
-			GitTopicReplayEditor editor = new GitTopicReplayEditor(directory, directory);
+			GitTopicReplayEditor editor = new GitTopicReplayEditor(directory, directory, Yielding.fileReplacer());
 			requireThat(editor.affectedSuffix(manifestFile, "output_1"), "affectedSuffix").containsExactly(
 				List.of("output_1", "output_2"), "expectedSuffix");
 		}

@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
-import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
@@ -127,11 +127,12 @@ record ParticipantSelection(Set<Path> added, Set<Path> selected)
 	 * Stores this selection for a campaign's fork, replacing the stored one in a single step.
 	 *
 	 * @param campaign the campaign storage directory
+	 * @param replacer replaces the stored selection
 	 * @throws IOException if the selection cannot be written
 	 */
-	void write(Path campaign) throws IOException
+	void write(Path campaign, FileReplacer replacer) throws IOException
 	{
-		writeTo(campaign.resolve(FILE));
+		writeTo(campaign.resolve(FILE), replacer);
 	}
 
 	/**
@@ -140,22 +141,24 @@ record ParticipantSelection(Set<Path> added, Set<Path> selected)
 	 *
 	 * @param campaign the campaign storage directory
 	 * @param fork the identity of the fork that this selection gives
+	 * @param replacer replaces the stored selection
 	 * @throws IOException if the selection cannot be written
 	 */
-	void writeVersion(Path campaign, Sha256 fork) throws IOException
+	void writeVersion(Path campaign, Sha256 fork, FileReplacer replacer) throws IOException
 	{
 		Path directory = campaign.resolve(VERSIONS);
 		Files.createDirectories(directory);
-		writeTo(directory.resolve(fork.hex()));
+		writeTo(directory.resolve(fork.hex()), replacer);
 	}
 
 	/**
 	 * Stores this selection in a file, replacing it in a single step.
 	 *
 	 * @param file the file
+	 * @param replacer replaces the file
 	 * @throws IOException if the selection cannot be written
 	 */
-	private void writeTo(Path file) throws IOException
+	private void writeTo(Path file, FileReplacer replacer) throws IOException
 	{
 		SortedSet<Path> paths = new TreeSet<>(added);
 		StringBuilder text = new StringBuilder(paths.size() * 64);
@@ -169,7 +172,7 @@ record ParticipantSelection(Set<Path> added, Set<Path> selected)
 		}
 		Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
 		Files.writeString(temporary, text, UTF_8);
-		PortableFiles.replace(temporary, file);
+		replacer.replace(temporary, file);
 	}
 
 	/**

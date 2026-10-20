@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
@@ -150,7 +151,7 @@ public final class HarnessRunnerBridgeTest
 			StringReader input = new StringReader("{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
 				false,
@@ -199,7 +200,7 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			Path project = Files.createDirectories(run.directory().resolve("project"));
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
@@ -211,7 +212,7 @@ public final class HarnessRunnerBridgeTest
 			JsonMapper json = JsonMapper.builder().build();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
-				options, json, input, output);
+				options, json, Yielding.fileReplacer(), input, output);
 
 			requireThat(output.toString(), "output").isEmpty();
 			requireThat(Files.readString(transcript), "transcript").contains("\"type\":\"started\"").
@@ -233,7 +234,7 @@ public final class HarnessRunnerBridgeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			try (FakeProcess process = new FakeProcess();
 				StringReader input = new StringReader("{\"type\":\"unknown\"}\n"))
@@ -265,7 +266,7 @@ public final class HarnessRunnerBridgeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			try (FailedProcess process = new FailedProcess();
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n"))
@@ -356,7 +357,7 @@ public final class HarnessRunnerBridgeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			try (CleanExitProcess process = new CleanExitProcess();
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n"))

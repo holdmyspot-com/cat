@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.store.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
@@ -67,7 +68,7 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 		{
 			this.fork = fork;
 			campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-"));
-			overlays = new FileCandidateOverlays(campaign, fork, JSON);
+			overlays = new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer());
 		}
 
 		@Override
@@ -79,7 +80,7 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 		@Override
 		public CandidateOverlays reopen()
 		{
-			return new FileCandidateOverlays(campaign, fork, JSON);
+			return new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer());
 		}
 
 		@Override
@@ -109,10 +110,11 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 			FileInventory recorded = ForkTree.record(base, campaign, Set.of(Path.of("prompt.md"),
 				Path.of("unchanged.md"))).inventory();
 			Overlay overlay = Overlay.of(recorded).write(Path.of("prompt.md"), content("edited"), READ_WRITE);
-			new FileCandidateOverlays(campaign, recorded, JSON).save(overlay);
+			new FileCandidateOverlays(campaign, recorded, JSON, Yielding.fileReplacer()).save(overlay);
 
 			FileInventory reopened = ForkTree.open(base, campaign).inventory();
-			Overlay loaded = new FileCandidateOverlays(campaign, reopened, JSON).require(overlay.identity());
+			Overlay loaded = new FileCandidateOverlays(campaign, reopened, JSON,
+				Yielding.fileReplacer()).require(overlay.identity());
 			requireThat(loaded, "loaded").isEqualTo(overlay);
 
 			Path file = campaign.resolve("overlays/" + overlay.identity().hex() + ".json");
@@ -141,7 +143,8 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-fault-"));
-				FileCandidateOverlays crashing = new FileCandidateOverlays(campaign, fork, JSON, step ->
+				FileCandidateOverlays crashing = new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer(),
+					step ->
 				{
 					if (step == crashStep)
 						throw new SimulatedCrash(step);
@@ -162,12 +165,13 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 					expected = Optional.of(overlay);
 				else
 					expected = Optional.empty();
-				FileCandidateOverlays restarted = new FileCandidateOverlays(campaign, fork, JSON);
+				FileCandidateOverlays restarted = new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer());
 				requireThat(restarted.find(overlay.identity()), "found").withContext(crashStep, "crashStep").
 					isEqualTo(expected);
 
 				restarted.save(overlay);
-				requireThat(new FileCandidateOverlays(campaign, fork, JSON).find(overlay.identity()), "resaved").
+				requireThat(new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer()).find(overlay.identity()),
+					"resaved").
 					withContext(crashStep, "crashStep").isEqualTo(Optional.of(overlay));
 			}
 		}
@@ -187,8 +191,8 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-saved-"));
-			new FileCandidateOverlays(campaign, fork, JSON).save(overlay);
-			new FileCandidateOverlays(campaign, fork, JSON, step ->
+			new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer()).save(overlay);
+			new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer(), step ->
 			{
 				throw new SimulatedCrash(step);
 			}).save(overlay);
@@ -209,11 +213,12 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-corrupt-"));
-			new FileCandidateOverlays(campaign, fork, JSON).save(overlay);
+			new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer()).save(overlay);
 			Path file = overlayFile(campaign, overlay.identity());
 			Files.writeString(file, "{\"format_version\": 1, \"fork\": ", UTF_8);
 
-			requireRejected(new FileCandidateOverlays(campaign, fork, JSON), overlay.identity(), file);
+			requireRejected(new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer()), overlay.identity(),
+				file);
 		}
 	}
 
@@ -233,19 +238,21 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-mismatch-"));
-			FileCandidateOverlays overlays = new FileCandidateOverlays(campaign, fork, JSON);
+			FileCandidateOverlays overlays = new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer());
 			overlays.save(first);
 			overlays.save(second);
 			Path secondFile = overlayFile(campaign, second.identity());
 			Files.copy(overlayFile(campaign, first.identity()), secondFile, REPLACE_EXISTING);
-			requireRejected(new FileCandidateOverlays(campaign, fork, JSON), second.identity(), secondFile);
+			requireRejected(new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer()), second.identity(),
+				secondFile);
 
 			Path firstFile = overlayFile(campaign, first.identity());
 			ObjectNode document = (ObjectNode) JSON.readTree(Files.readString(firstFile, UTF_8));
 			ObjectNode entry = (ObjectNode) ((ArrayNode) document.get("entries")).get(0);
 			entry.put("content", "dGFtcGVyZWQ=");
 			Files.writeString(firstFile, JSON.writeValueAsString(document), UTF_8);
-			requireRejected(new FileCandidateOverlays(campaign, fork, JSON), first.identity(), firstFile);
+			requireRejected(new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer()), first.identity(),
+				firstFile);
 		}
 	}
 
@@ -266,9 +273,9 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-fork-"));
-			new FileCandidateOverlays(campaign, fork, JSON).save(overlay);
+			new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer()).save(overlay);
 
-			String message = requireRejected(new FileCandidateOverlays(campaign, otherFork, JSON),
+			String message = requireRejected(new FileCandidateOverlays(campaign, otherFork, JSON, Yielding.fileReplacer()),
 				overlay.identity(), overlayFile(campaign, overlay.identity()));
 			requireThat(message, "message").contains("does not describe an overlay on this campaign's fork");
 		}
@@ -297,9 +304,10 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-earlier-"));
-			new FileCandidateOverlays(campaign, earlier, JSON).save(overlay);
+			new FileCandidateOverlays(campaign, earlier, JSON, Yielding.fileReplacer()).save(overlay);
 
-			Overlay loaded = new FileCandidateOverlays(campaign, larger, versions, JSON).require(overlay.identity());
+			Overlay loaded = new FileCandidateOverlays(campaign, larger, versions, JSON,
+				Yielding.fileReplacer()).require(overlay.identity());
 
 			requireThat(loaded, "loaded").isEqualTo(overlay);
 		}
@@ -320,7 +328,7 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-other-"));
-			new FileCandidateOverlays(campaign, fork, JSON).save(candidate(otherFork, "other"));
+			new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer()).save(candidate(otherFork, "other"));
 		}
 	}
 

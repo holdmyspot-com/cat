@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.store;
 
+import com.holdmyspot.cat.common.FileReplacer;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -72,18 +74,21 @@ final class JsonFiles
 	}
 
 	/**
-	 * Atomically replaces a file with a document (see {@link AtomicFiles#replace(Path, byte[], Consumer)}).
+	 * Atomically replaces a file with a document (see
+	 * {@link AtomicFiles#replace(FileReplacer, Path, byte[], Consumer)}).
 	 *
 	 * @param json the JSON mapper
+	 * @param replacer replaces the file
 	 * @param file the file
 	 * @param document the document
 	 * @param afterStep receives each step after it completes
 	 * @throws IOException if the file cannot be replaced
 	 */
-	static void replace(JsonMapper json, Path file, JsonNode document, Consumer<WriteStep> afterStep)
+	static void replace(JsonMapper json, FileReplacer replacer, Path file, JsonNode document,
+		Consumer<WriteStep> afterStep)
 		throws IOException
 	{
-		AtomicFiles.replace(file, write(json, document), afterStep);
+		AtomicFiles.replace(replacer, file, write(json, document), afterStep);
 	}
 
 	/**

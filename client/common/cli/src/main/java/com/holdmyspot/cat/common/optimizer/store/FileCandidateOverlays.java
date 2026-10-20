@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.store;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -36,6 +37,7 @@ public final class FileCandidateOverlays implements CandidateOverlays
 	private final FileInventory fork;
 	private final ForkVersions versions;
 	private final JsonMapper json;
+	private final FileReplacer replacer;
 	private final OverlayJson codec;
 	private final Consumer<WriteStep> afterStep;
 
@@ -45,11 +47,12 @@ public final class FileCandidateOverlays implements CandidateOverlays
 	 * @param campaign the campaign storage directory
 	 * @param fork the files recorded at the campaign's fork
 	 * @param json the JSON mapper
+	 * @param replacer replaces the overlay files
 	 * @throws NullPointerException if any argument is null
 	 */
-	public FileCandidateOverlays(Path campaign, FileInventory fork, JsonMapper json)
+	public FileCandidateOverlays(Path campaign, FileInventory fork, JsonMapper json, FileReplacer replacer)
 	{
-		this(campaign, fork, ForkVersions.NONE, json);
+		this(campaign, fork, ForkVersions.NONE, json, replacer);
 	}
 
 	/**
@@ -59,11 +62,13 @@ public final class FileCandidateOverlays implements CandidateOverlays
 	 * @param fork the files recorded at the campaign's current fork
 	 * @param versions the earlier forks that the campaign ran on
 	 * @param json the JSON mapper
+	 * @param replacer replaces the overlay files
 	 * @throws NullPointerException if any argument is null
 	 */
-	public FileCandidateOverlays(Path campaign, FileInventory fork, ForkVersions versions, JsonMapper json)
+	public FileCandidateOverlays(Path campaign, FileInventory fork, ForkVersions versions, JsonMapper json,
+		FileReplacer replacer)
 	{
-		this(campaign, fork, versions, json, _ ->
+		this(campaign, fork, versions, json, replacer, _ ->
 		{
 		});
 	}
@@ -74,13 +79,15 @@ public final class FileCandidateOverlays implements CandidateOverlays
 	 * @param campaign the campaign storage directory
 	 * @param fork the files recorded at the campaign's fork
 	 * @param json the JSON mapper
+	 * @param replacer replaces the overlay files
 	 * @param afterStep receives each step after it completes; an exception that it throws stops the write at that
 	 *   point, as a crash would
 	 * @throws NullPointerException if any argument is null
 	 */
-	public FileCandidateOverlays(Path campaign, FileInventory fork, JsonMapper json, Consumer<WriteStep> afterStep)
+	public FileCandidateOverlays(Path campaign, FileInventory fork, JsonMapper json, FileReplacer replacer,
+		Consumer<WriteStep> afterStep)
 	{
-		this(campaign, fork, ForkVersions.NONE, json, afterStep);
+		this(campaign, fork, ForkVersions.NONE, json, replacer, afterStep);
 	}
 
 	/**
@@ -90,21 +97,24 @@ public final class FileCandidateOverlays implements CandidateOverlays
 	 * @param fork the files recorded at the campaign's current fork
 	 * @param versions the earlier forks that the campaign ran on
 	 * @param json the JSON mapper
+	 * @param replacer replaces the overlay files
 	 * @param afterStep receives each step after it completes; an exception that it throws stops the write at that
 	 *   point, as a crash would
 	 * @throws NullPointerException if any argument is null
 	 */
 	private FileCandidateOverlays(Path campaign, FileInventory fork, ForkVersions versions, JsonMapper json,
-		Consumer<WriteStep> afterStep)
+		FileReplacer replacer, Consumer<WriteStep> afterStep)
 	{
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(fork, "fork").isNotNull();
 		requireThat(versions, "versions").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		requireThat(afterStep, "afterStep").isNotNull();
 		this.directory = campaign.resolve("overlays");
 		this.fork = fork;
 		this.versions = versions;
 		this.json = json;
+		this.replacer = replacer;
 		this.codec = new OverlayJson(json);
 		this.afterStep = afterStep;
 	}
@@ -150,7 +160,7 @@ public final class FileCandidateOverlays implements CandidateOverlays
 		if (Files.exists(file))
 			return;
 		AtomicFiles.createDirectories(directory);
-		JsonFiles.replace(json, file, codec.write(overlay), afterStep);
+		JsonFiles.replace(json, replacer, file, codec.write(overlay), afterStep);
 	}
 
 	/**

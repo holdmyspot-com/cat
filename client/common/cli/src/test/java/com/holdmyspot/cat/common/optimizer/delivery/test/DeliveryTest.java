@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.delivery.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -242,7 +243,7 @@ public final class DeliveryTest
 					boolean crashed = false;
 					try
 					{
-						fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate, crashing).
+						fixture.delivery(new FileCampaignStore(fixture.base(), JSON, Yielding.fileReplacer()), candidate, crashing).
 							deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of());
 					}
 					catch (SimulatedCrash _)
@@ -252,7 +253,8 @@ public final class DeliveryTest
 					requireThat(crashed, "crashed").withContext(crashAfter, "crashAfter").isTrue();
 
 					// The restarted process opens a new store and executor over the same base worktree
-					DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate,
+					DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON, Yielding.fileReplacer()),
+					candidate,
 						change -> written.add(change.sequence())).
 						deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of());
 
@@ -422,7 +424,8 @@ public final class DeliveryTest
 			Overlay working = kept.write(Path.of("rules/main.md"), content("main v3\n"), READ_WRITE);
 			FakeWorkspacePort workspace = new FakeWorkspacePort(fixture.root().resolve("workspace"),
 				working.snapshot());
-			Delivery delivery = new Delivery(new InMemoryCampaignStore(), workspace, new GitForks(), JSON, NO_HOOK);
+			Delivery delivery = new Delivery(new InMemoryCampaignStore(), workspace, new GitForks(Yielding.fileReplacer()),
+				JSON, Yielding.fileReplacer(), NO_HOOK);
 
 			DeliveryResult result = delivery.deliver(CAMPAIGN,
 				new DeliveryRequest(new Candidate(1, kept.identity()), 1, Outcome.IMPROVED_NOT_CERTIFIED),
@@ -488,7 +491,8 @@ public final class DeliveryTest
 				new FileInventory(fixture.base(), files));
 			CampaignStore store = new InMemoryCampaignStore();
 
-			DeliveryResult result = new Delivery(store, workspace, new GitForks(), JSON, NO_HOOK).deliver(CAMPAIGN,
+			DeliveryResult result = new Delivery(store, workspace, new GitForks(Yielding.fileReplacer()), JSON,
+				Yielding.fileReplacer(), NO_HOOK).deliver(CAMPAIGN,
 				request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(), RECORD,
 				List.of());
 
@@ -1199,7 +1203,7 @@ public final class DeliveryTest
 			boolean crashed = false;
 			try
 			{
-				fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate, crashing).
+				fixture.delivery(new FileCampaignStore(fixture.base(), JSON, Yielding.fileReplacer()), candidate, crashing).
 					deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of(created));
 			}
 			catch (SimulatedCrash _)
@@ -1209,7 +1213,8 @@ public final class DeliveryTest
 			requireThat(crashed, "crashed").isTrue();
 
 			// The restarted process opens a new store and executor over the same base worktree
-			DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON), candidate,
+			DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON, Yielding.fileReplacer()),
+			candidate,
 				change -> written.add(change.sequence())).
 				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of(created));
 
@@ -1581,7 +1586,8 @@ public final class DeliveryTest
 			FakeWorkspacePort workspace = new FakeWorkspacePort(root.resolve("workspace"), working.snapshot());
 			for (Map.Entry<Path, FileContent> file : recorded.entrySet())
 				workspace.supplyFile(file.getKey(), file.getValue());
-			return new Delivery(store, workspace, new GitForks(), JSON, afterWrite);
+			return new Delivery(store, workspace, new GitForks(Yielding.fileReplacer()), JSON, Yielding.fileReplacer(),
+				afterWrite);
 		}
 
 		/**

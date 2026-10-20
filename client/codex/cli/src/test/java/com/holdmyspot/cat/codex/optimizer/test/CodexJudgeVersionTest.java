@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.CodexProfileInventory;
@@ -72,7 +73,7 @@ public final class CodexJudgeVersionTest
 				PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
 
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC());
+				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = new CodexSessions(settings);
 			Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1,
 				"error building bubblewrap command: app-server socket directory must be a user-owned directory with " +

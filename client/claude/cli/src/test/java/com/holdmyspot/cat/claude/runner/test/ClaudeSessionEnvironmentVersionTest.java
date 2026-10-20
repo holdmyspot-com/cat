@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.claude.optimizer.ClaudeSessions;
@@ -68,7 +69,8 @@ public final class ClaudeSessionEnvironmentVersionTest
 			Path deniedDirectory = Files.createDirectory(root.resolve("trials"));
 			Path hostProject = Files.createDirectories(root.resolve("project"));
 			Files.writeString(hostProject.resolve("CLAUDE.md"), "Follow the handbook.", UTF_8);
-			HarnessRunManager manager = new HarnessRunManager(hostProject.resolve("runs"), Clock.systemUTC());
+			HarnessRunManager manager = new HarnessRunManager(hostProject.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
 			HarnessRun run = manager.create("claude");
 			manager.snapshotProject(run);
 			Files.writeString(Files.createDirectories(run.directory().resolve("home/.claude")).
@@ -97,7 +99,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 			String settings = replaceRoot(withoutExcludesAboveRoot(scope.json(),
 				Files.readString(destination, UTF_8).replace("\r\n", "\n"), root), root).replace(run.id(), "<run>");
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(root, root, List::of, "", false,
-				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			int version = new ClaudeSessions(sessionSettings).sessionEnvironmentVersion();
 			VersionRegistry.requireRegistered(REGISTRY, "session environment", version,
 				VersionRegistry.hash(settings));

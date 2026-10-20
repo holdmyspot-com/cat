@@ -13,11 +13,11 @@ public interface ExecutableFilesAccess
 	/**
 	 * Runs an executable process through one controlled start operation.
 	 *
-	 * @param start the process-start operation
-	 * @param wait the operation that waits for the requested retry delay
+	 * @param executables the instance whose retry policy applies
+	 * @param start       the process-start operation
 	 * @return the started process
-	 * @throws NullPointerException if {@code start} is {@code null} or {@code wait} is {@code null}
-	 * @throws IOException if the process cannot be started
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the process cannot be started, or the pause between attempts fails
 	 */
-	Process run(ExecutableFiles.ProcessStart start, ExecutableFiles.RetryWait wait) throws IOException;
+	Process run(ExecutableFiles executables, ExecutableFiles.ProcessStart start) throws IOException;
 }

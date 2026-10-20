@@ -3,7 +3,7 @@ package com.holdmyspot.cat.common.git.replay;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
-import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.FileReplacer;
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -25,6 +25,7 @@ public final class ManifestStore<T extends ManifestStore.Manifest>
 	private static final String TEMPORARY_FILE_PREFIX = "git-topic-replay-";
 	private final Path temporaryRoot;
 	private final JsonMapper json;
+	private final FileReplacer replacer;
 	private final Class<T> manifestType;
 
 	/**
@@ -32,15 +33,18 @@ public final class ManifestStore<T extends ManifestStore.Manifest>
 	 *
 	 * @param temporaryRoot the CAT-work root that owns manifests and their temporary artifacts
 	 * @param json the operation-scoped mapper used for manifest input and output
+	 * @param replacer replaces the stored manifests
 	 * @param manifestType the immutable manifest model to parse from stored JSON
 	 */
-	public ManifestStore(Path temporaryRoot, JsonMapper json, Class<T> manifestType)
+	public ManifestStore(Path temporaryRoot, JsonMapper json, FileReplacer replacer, Class<T> manifestType)
 	{
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		requireThat(manifestType, "manifestType").isNotNull();
 		this.temporaryRoot = temporaryRoot.toAbsolutePath().normalize();
 		this.json = json;
+		this.replacer = replacer;
 		this.manifestType = manifestType;
 	}
 
@@ -112,7 +116,7 @@ public final class ManifestStore<T extends ManifestStore.Manifest>
 			json.writerWithDefaultPrettyPrinter().writeValue(temporary.toFile(), manifest);
 			try
 			{
-				PortableFiles.replace(temporary, target);
+				replacer.replace(temporary, target);
 			}
 			catch (AtomicMoveNotSupportedException _)
 			{

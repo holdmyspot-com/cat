@@ -6,6 +6,7 @@ import com.holdmyspot.cat.claude.ClaudeConfiguration;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
@@ -49,6 +50,7 @@ public final class ClaudeRunner
 	 * The path of a Claude plugin's manifest, relative to the plugin directory.
 	 */
 	private static final Path MANIFEST = Path.of(".claude-plugin/plugin.json");
+	private final ExecutableFiles executables;
 
 	/**
 	 * Resolves the launch configuration Bubblewrap inspects beside one run's Claude temporary directory.
@@ -67,9 +69,14 @@ public final class ClaudeRunner
 
 	/**
 	 * Creates a Claude artifact runner.
+	 *
+	 * @param executables runs Claude's and the setup commands' files
+	 * @throws NullPointerException if {@code executables} is null
 	 */
-	public ClaudeRunner()
+	public ClaudeRunner(ExecutableFiles executables)
 	{
+		requireThat(executables, "executables").isNotNull();
+		this.executables = executables;
 	}
 
 	/**
@@ -156,7 +163,8 @@ public final class ClaudeRunner
 			if (workspace != null)
 				manager.copyWorkspace(workspace, run);
 			manager.snapshotProject(run);
-			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment);
+			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment,
+				executables);
 			Path hostConfiguration = claudeConfigDirectory(environment);
 			Path claudeTemporaryDirectory = run.directory().resolve("claude");
 			ClaudeMarketplace.writeEmptyLaunchConfiguration(launchConfigurationPath(claudeTemporaryDirectory));
@@ -196,7 +204,8 @@ public final class ClaudeRunner
 			// would be empty, so Git would reject it before Claude can start.
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
 			List<Path> plugins = installPlugins(executable, artifact, installCat, trialPlugins, isolatedConfiguration,
-				(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, manager, run, step));
+				(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, executables, manager,
+					run, step));
 			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run);
 			String selectedModel = model;
 			String selectedEffort = effort;
@@ -212,7 +221,7 @@ public final class ClaudeRunner
 			manager.initialize(run, artifact, project, "claude_stream_json", command);
 			lock = manager.acquireLock(run);
 			ClaudeProcess process = new ClaudeProcess(scope, HarnessProcessStarter.start(command, worktree,
-				isolatedEnvironment));
+				isolatedEnvironment, executables));
 			try
 			{
 				manager.recordHarnessProcess(run, process.pid(), process.startedAt());
