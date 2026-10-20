@@ -69,6 +69,10 @@ When writing or changing a boolean expression that contains a negation, lazy loa
 When writing or changing an expression that combines two different binary or ternary operators without
 parentheses between them, lazy load `../include/common/operator-precedence.md`.
 
+When writing or changing a condition that combines two or more tests, or that tests a value whose meaning the
+expression does not state, such as a date offset, a threshold, or a business rule, lazy load
+`../include/common/named-conditions.md`.
+
 When defining, changing, reviewing, or auditing type, function, or method names, or the names of variables declared
 outside a function body, or changing a type's responsibility without renaming it, lazy load
 `../include/common/identifier-naming.md`.
