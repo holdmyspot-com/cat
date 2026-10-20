@@ -19,11 +19,12 @@ import java.util.List;
  * starts each triggering test case with two runs and runs each other test case in the regression set once. The working
  * candidate also runs each of those other test cases on which it has no outcome. An edit fixes a triggering test case
  * when every run passes and its passing streak has probability below 10% under the working candidate's smoothed
- * observed pass rate, {@code (passes + 1) / (outcomes + 2)} on the same test case.
- * Passing streaks extend one run at a time, up to four runs. The edit replaces the working candidate when all needed
- * outcomes are known, it fixes at least one triggering test case and it fails no regression test case that the working
- * candidate passes. A minimality reduction must preserve every triggering fix in the last accepted runs. These runs
- * reuse fixed test cases and never count as representative evidence.
+ * observed pass rate, {@code (passes + 1) / (outcomes + 2)} on the same test case. A passing streak extends one run
+ * at a time until it is unlikely, so the more often the working candidate passes a test case, the more runs a fix
+ * needs there; the smoothed rate is below 1, so every streak that keeps passing ends in a fix. The edit replaces the
+ * working candidate when all needed outcomes are known, it fixes at least one triggering test case and it fails no
+ * regression test case that the working candidate passes. A minimality reduction must preserve every triggering fix in
+ * the last accepted runs. These runs reuse fixed test cases and never count as representative evidence.
  */
 public final class Promotion
 {
@@ -43,10 +44,6 @@ public final class Promotion
 	 * The initial number of promotion runs planned for each distinct triggering test case.
 	 */
 	public static final int STARTING_TRIGGERING_RUNS = 2;
-	/**
-	 * The maximum passing streak tested before a test case whose streak is still likely is considered unfixed.
-	 */
-	public static final int MAXIMUM_TRIGGERING_RUNS = 4;
 
 	/**
 	 * The state of a prompt author attempt's promotion.
@@ -142,7 +139,7 @@ public final class Promotion
 	}
 
 	/**
-	 * Plans one extra run for each fully passing triggering streak that is still likely and below the maximum.
+	 * Plans one extra run for each fully passing triggering streak that is still likely.
 	 *
 	 * @param attempt the attempt whose adopted outcomes determine extensions
 	 * @param workingOutcomes the working candidate's adopted outcomes, aggregated by test case
@@ -159,8 +156,7 @@ public final class Promotion
 		{
 			List<PromotionRun> streak = attempt.runs().stream().filter(run ->
 				run.role() == PromotionRun.Role.TRIGGERING && isSameTestCase(testCase, run.testCase())).toList();
-			if (streak.size() >= STARTING_TRIGGERING_RUNS && streak.size() < MAXIMUM_TRIGGERING_RUNS &&
-				streak.stream().allMatch(run -> run.verdict() == Verdict.PASS) &&
+			if (streak.size() >= STARTING_TRIGGERING_RUNS && streak.stream().allMatch(run -> run.verdict() == Verdict.PASS) &&
 				!isUnlikely(testCase, streak.size(), workingOutcomes))
 			{
 				runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
@@ -306,8 +302,8 @@ public final class Promotion
 	 * @param testCase the triggering test case, matched by content
 	 * @param runs the tested attempt's runs
 	 * @param workingOutcomes the working candidate's records by test case
-	 * @return {@code PASS} for an unlikely passing streak, {@code FAIL} for a failed run, fewer than two planned runs,
-	 *   or a still-likely streak at four passes, or {@code null} while a run or extension is needed
+	 * @return {@code PASS} for an unlikely passing streak, {@code FAIL} for a failed run or fewer than two planned runs,
+	 *   or {@code null} while a run or extension is needed
 	 */
 	private static Verdict triggeringVerdict(DrawnTestCase testCase, List<PromotionRun> runs,
 		List<TestCaseOutcomes> workingOutcomes)
@@ -331,9 +327,7 @@ public final class Promotion
 			return Verdict.FAIL;
 		if (isUnlikely(testCase, passes, workingOutcomes))
 			return Verdict.PASS;
-		if (passes < MAXIMUM_TRIGGERING_RUNS)
-			return null;
-		return Verdict.FAIL;
+		return null;
 	}
 
 	/**

@@ -57,12 +57,12 @@ public final class PromotionTest
 	/**
 	 * Returns the working-record examples and their required passing streak lengths.
 	 *
-	 * @return passes in four outcomes, required runs, and whether the test case is fixed
+	 * @return passes in four outcomes and required runs
 	 */
 	@DataProvider
 	public static Object[][] workingRecords()
 	{
-		return new Object[][] {{0, 2, true}, {1, 3, true}, {2, 4, true}, {3, 4, false}};
+		return new Object[][] {{0, 2}, {1, 3}, {2, 4}, {3, 6}};
 	}
 
 	/**
@@ -70,11 +70,10 @@ public final class PromotionTest
 	 *
 	 * @param passes the working candidate's passes in four outcomes
 	 * @param requiredRuns the attempt's required passing runs
-	 * @param fixed whether that streak establishes a fix
 	 */
 	// Requirement: R-D3
 	@Test(dataProvider = "workingRecords")
-	public void workingRecordDeterminesStreak(int passes, int requiredRuns, boolean fixed)
+	public void workingRecordDeterminesStreak(int passes, int requiredRuns)
 	{
 		Campaign campaign = streakRound(passes);
 		campaign = TransitionSteps.submit(campaign, "safety", ATTEMPT, List.of());
@@ -92,14 +91,9 @@ public final class PromotionTest
 					isEqualTo(Promotion.Decision.PENDING);
 			}
 		}
-		if (fixed)
-		{
-			requireThat(Promotion.decide(campaign.development().promptAuthor(), campaign.lineage().regressionSet(),
-				campaign.development().testCaseOutcomes()),
-				"fixed").isEqualTo(Promotion.Decision.PROMOTE);
-		}
-		else
-			requireThat(campaign.development().promptAuthor(), "rejected").isNull();
+		requireThat(Promotion.decide(campaign.development().promptAuthor(), campaign.lineage().regressionSet(),
+			campaign.development().testCaseOutcomes()),
+			"fixed").isEqualTo(Promotion.Decision.PROMOTE);
 	}
 
 	/**
