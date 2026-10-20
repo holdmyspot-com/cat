@@ -1,10 +1,8 @@
 package com.holdmyspot.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.PortablePaths;
-import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
@@ -41,10 +39,6 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	private static final String SCENARIO = PromptTestFiles.SCENARIO;
 	private static final Path TEST_RESOURCES = Path.of("src/test/resources");
 	private static final Path MAIN_RESOURCES = Path.of("src/main/resources");
-	/**
-	 * The mode that a Git index records for a symbolic link.
-	 */
-	private static final String SYMBOLIC_LINK_MODE = "120000";
 
 	/**
 	 * The format of a recorded scenario.
@@ -155,24 +149,28 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 * {@value PromptTestFiles#WORKSPACE} directory where the checkout holds a regular file. Any other scenario is in an
 	 * earlier format, kept with the reason for its conversion.
 	 *
-	 * @param json    the JSON mapper that reads values files
-	 * @param project the project root
-	 * @param home the user home resolved at the environment boundary
+	 * @param json         the JSON mapper that reads values files
+	 * @param project      the project root
+	 * @param home         the user home resolved at the environment boundary
+	 * @param trackedLinks the files, relative to {@code project}, that the project's Git index records as symbolic
+	 *                     links
 	 * @return the available scenarios, sorted by citation
 	 * @throws NullPointerException if any argument is null
-	 * @throws IOException if an existing scenario tree cannot be read or Git fails in a project that it manages
+	 * @throws IOException          if an existing scenario tree cannot be read
 	 */
-	public static RegressionScenarios read(JsonMapper json, Path project, Path home) throws IOException
+	public static RegressionScenarios read(JsonMapper json, Path project, Path home, Set<Path> trackedLinks)
+		throws IOException
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(home, "home").isNotNull();
+		requireThat(trackedLinks, "trackedLinks").isNotNull();
 		Path root = project.toAbsolutePath().normalize();
 		Path user = home.toAbsolutePath().normalize();
 		List<Scenario> scenarios = new ArrayList<>();
 		readRoot(json, root, root, true, scenarios);
 		readModules(json, root, scenarios);
-		refuseLinksCheckedOutAsFiles(root, scenarios);
+		refuseLinksCheckedOutAsFiles(root, trackedLinks, scenarios);
 		if (!user.equals(root))
 			readRoot(json, root, user, false, scenarios);
 		scenarios.sort(Comparator.comparing(Scenario::citation));
@@ -185,24 +183,17 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 * target, when it checks out a link with {@code core.symlinks} false, and the prompt test would read the target's
 	 * path as the file's content.
 	 *
-	 * @param project   the project root
-	 * @param scenarios the scenarios read from the project; each affected one is replaced
-	 * @throws IOException if Git fails in a project that it manages
+	 * @param project      the project root
+	 * @param trackedLinks the files, relative to {@code project}, that the project's Git index records as symbolic
+	 *                     links
+	 * @param scenarios    the scenarios read from the project; each affected one is replaced
 	 */
-	private static void refuseLinksCheckedOutAsFiles(Path project, List<Scenario> scenarios) throws IOException
+	private static void refuseLinksCheckedOutAsFiles(Path project, Set<Path> trackedLinks, List<Scenario> scenarios)
 	{
-		Git git = new Git(project);
-		if (git.status("rev-parse", "--is-inside-work-tree") != 0)
-			return;
-		// Each entry is "<mode> <object> <stage>\t<path>", with the path relative to the project
-		String entries = new String(git.bytes("ls-files", "--stage", "-z", "--", ":(glob)**/" +
-			PromptTestFiles.WORKSPACE + "/**"), UTF_8);
 		List<Path> linksAsFiles = new ArrayList<>();
-		for (String entry : entries.split("\0"))
+		for (Path link : trackedLinks)
 		{
-			if (!entry.startsWith(SYMBOLIC_LINK_MODE + " "))
-				continue;
-			Path file = project.resolve(entry.substring(entry.indexOf('\t') + 1));
+			Path file = project.resolve(link);
 			if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(file))
 				linksAsFiles.add(file);
 		}

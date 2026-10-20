@@ -33,6 +33,12 @@ public final class GitForks implements Forks
 	}
 
 	@Override
+	public Set<Path> trackedLinks(Path base) throws IOException
+	{
+		return Fork.trackedLinks(base);
+	}
+
+	@Override
 	public String diff(Path base, List<Path> paths) throws IOException
 	{
 		return Fork.diff(base, paths);

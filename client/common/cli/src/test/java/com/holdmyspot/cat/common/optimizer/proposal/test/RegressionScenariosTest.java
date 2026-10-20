@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.proposal.RegressionScenarios;
@@ -19,7 +18,9 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -95,7 +96,7 @@ public final class RegressionScenariosTest
 		Path root = project();
 		List<String> refused = new ArrayList<>();
 		for (RegressionScenarios.Scenario scenario : RegressionScenarios.read(JSON, root,
-			root.resolve("client/target/no-home")).scenarios())
+			root.resolve("client/target/no-home"), Set.of()).scenarios())
 		{
 			if (scenario.format() instanceof RegressionScenarios.Earlier(String problem))
 				refused.add(scenario.citation() + ": " + problem);
@@ -114,7 +115,7 @@ public final class RegressionScenariosTest
 		Path root = project();
 		List<String> misspelled = new ArrayList<>();
 		for (RegressionScenarios.Scenario scenario : RegressionScenarios.read(JSON, root,
-			root.resolve("client/target/no-home")).scenarios())
+			root.resolve("client/target/no-home"), Set.of()).scenarios())
 		{
 			Path file = Path.of(scenario.citation());
 			String name = file.getFileName().toString();
@@ -151,8 +152,8 @@ public final class RegressionScenariosTest
 	{
 		// Requirement: R-I3
 		Path root = project();
-		List<String> misplaced = RegressionScenarios.read(JSON, root, root.resolve("client/target/no-home")).scenarios().
-			stream().filter(scenario -> scenario.source().toString().contains("/src/main/resources/") &&
+		List<String> misplaced = RegressionScenarios.read(JSON, root, root.resolve("client/target/no-home"), Set.of()).
+			scenarios().stream().filter(scenario -> scenario.source().toString().contains("/src/main/resources/") &&
 				scenario.citation().startsWith(".cat/tests/")).map(RegressionScenarios.Scenario::citation).toList();
 		requireThat(misplaced, "misplaced").isEmpty();
 	}
@@ -177,7 +178,7 @@ public final class RegressionScenariosTest
 			Path scenario = Files.createDirectories(root.resolve("plugin/src/test/resources/common/wording/reported"));
 			Files.writeString(scenario.resolve("scenario.md"), "Turn: Summarize.\nExpected: Be brief.");
 			Files.writeString(scenario.getParent().resolve("context.md"), "Fixture context");
-			RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"));
+			RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
 			requireThat(found.scenarios().size(), "scenarios.size()").isEqualTo(1);
 			RegressionScenarios.Scenario only = found.scenarios().getFirst();
 			requireThat(only.source(), "source").isEqualTo(guidance.normalize());
@@ -207,7 +208,7 @@ public final class RegressionScenariosTest
 			Files.writeString(doubles, "Prefer real collaborators.");
 			Path scenario = Files.createDirectories(root.resolve(".cat/tests/common/testing/doubles/reported"));
 			Files.writeString(scenario.resolve("scenario.md"), "Turn: Mock the clock.");
-			RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"));
+			RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
 			requireThat(found.scenarios().stream().map(RegressionScenarios.Scenario::source).toList(), "sources").
 				isEqualTo(List.of(doubles.normalize()));
 		}
@@ -231,7 +232,7 @@ public final class RegressionScenariosTest
 			Path scenario = Files.createDirectories(root.resolve(".cat/tests/common/wording/reported"));
 			Files.writeString(scenario.resolve("scenario.md"), "Turn: Summarize.\nExpected: Be brief.");
 			Files.writeString(scenario.resolve("context.md"), "Fixture context");
-			RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"));
+			RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
 			requireThat(found.scenarios().stream().map(RegressionScenarios.Scenario::citation).toList(), "citations").
 				isEqualTo(List.of(".cat/tests/common/wording/reported/scenario.md"));
 			requireThat(found.scenarios().getFirst().content(), "content").
@@ -283,7 +284,7 @@ public final class RegressionScenariosTest
 			Path earlier = Files.createDirectories(tests.resolve("reported"));
 			Files.writeString(earlier.resolve("scenario.md"), "## Scenario\n\n### Request 1\n\nSummarize.\n");
 
-			RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"));
+			RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
 			List<RegressionScenarios.Scenario> found = read.scenarios();
 			requireThat(found.stream().map(RegressionScenarios.Scenario::citation).toList(), "citations").
 				isEqualTo(List.of("plugin/src/test/resources/common/reading/reported/scenario.md",
@@ -355,7 +356,7 @@ public final class RegressionScenariosTest
 			Path briefReply = Files.createDirectories(root.resolve(".cat/tests/wording/brief_reply"));
 			Files.writeString(briefReply.resolve("scenario.md"), scenario);
 
-			RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"));
+			RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
 			List<RegressionScenarios.Scenario> found = read.scenarios();
 			requireThat(found.size(), "found.size()").isEqualTo(2);
 			for (RegressionScenarios.Scenario regression : found)
@@ -380,9 +381,9 @@ public final class RegressionScenariosTest
 	}
 
 	/**
-	 * Verifies that a prompt test whose Git index records a symbolic link in its {@code workspace/}, while the checkout
-	 * holds a regular file there, is kept for conversion with a reason that names the link and how to restore it, and
-	 * that a prompt test whose checkout holds its links is read.
+	 * Verifies that a prompt test whose {@code workspace/} holds a regular file where the project's Git index records a
+	 * symbolic link is kept for conversion with a reason that names the link and how to restore it, and that a prompt
+	 * test whose checkout holds its links is read.
 	 *
 	 * @throws IOException if the scenario tree cannot be created or read
 	 */
@@ -415,23 +416,22 @@ public final class RegressionScenariosTest
 				- **kind**: effect
 				- **description**: The reply summarizes the file.
 				""";
+			Set<Path> trackedLinks = new HashSet<>();
 			for (String name : List.of("broken_checkout", "linked_checkout"))
 			{
 				Path test = Files.createDirectories(reading.resolve(name));
 				Files.writeString(test.resolve("scenario.md"), scenario);
 				Path workspace = Files.createDirectories(test.resolve("workspace"));
 				Files.createSymbolicLink(workspace.resolve("AGENTS.md"), Path.of("../../shared/AGENTS.md"));
+				trackedLinks.add(root.relativize(workspace.resolve("AGENTS.md")));
 			}
-			Git git = new Git(root);
-			git.run("init", "--quiet");
-			git.run("add", "--all");
 			// Git checks out a link as a regular file that holds the target when core.symlinks is false
 			Path broken = reading.resolve("broken_checkout/workspace/AGENTS.md");
 			Files.delete(broken);
 			Files.writeString(broken, "../../shared/AGENTS.md");
 
-			List<RegressionScenarios.Scenario> found = RegressionScenarios.read(JSON, root, root.resolve("home")).
-				scenarios();
+			List<RegressionScenarios.Scenario> found = RegressionScenarios.read(JSON, root, root.resolve("home"),
+				trackedLinks).scenarios();
 			requireThat(found.size(), "found.size()").isEqualTo(2);
 			if (!(found.get(0).format() instanceof RegressionScenarios.Earlier(String problem)))
 				throw new AssertionError("Not an earlier format: " + found.get(0).format());
@@ -454,7 +454,7 @@ public final class RegressionScenariosTest
 	 */
 	private static List<String> citations(Path root) throws IOException
 	{
-		return RegressionScenarios.read(JSON, root, root.resolve("client/target/no-home")).scenarios().stream().
+		return RegressionScenarios.read(JSON, root, root.resolve("client/target/no-home"), Set.of()).scenarios().stream().
 			map(RegressionScenarios.Scenario::citation).toList();
 	}
 

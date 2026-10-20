@@ -1973,7 +1973,7 @@ public final class ProposalTest
 		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
 		author.request(project, PROFILES, List.of(), List.of(), SALT).files().write(effects);
 		write(effects, initialProject, output, Path.of("CLAUDE.md"),
-			DraftDirectory.testDirectories(RegressionScenarios.read(json, project, project)));
+			DraftDirectory.testDirectories(RegressionScenarios.read(json, project, project, Set.of())));
 		return session(effects, initialProject, "The proposal is in " + OutputFile.name(initialProject) + ".");
 	}
 
@@ -2009,7 +2009,7 @@ public final class ProposalTest
 			- **kind**: effect
 			- **description**: The summary keeps the {{tone}} tone.
 			""");
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
 		String citation = ".cat/tests/CLAUDE/formatting/scenario.md";
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(citation));
@@ -2083,7 +2083,7 @@ public final class ProposalTest
 			  ]
 			}
 			""", UTF_8);
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
 		ContractAuthorProtocol author = contractAuthor(scenarios);
 		TestCase committed = new TestCase(Map.of("tone", new TestValue.Text("a terse"), "audience",
 			new TestValue.Text("a manager")), "a terse summary shortened for a manager reader");
@@ -2146,7 +2146,7 @@ public final class ProposalTest
 		String content = "Release 4.296 renamed the exporter.\n";
 		Path notesDirectory = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/notes"));
 		Files.writeString(notesDirectory.resolve("{{tone}}.md"), content, UTF_8);
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
 
@@ -2197,7 +2197,7 @@ public final class ProposalTest
 		Files.writeString(docs.resolve("handbook.md"), content, UTF_8);
 		Path workspace = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/docs"));
 		Files.createSymbolicLink(workspace.resolve("handbook.md"), Path.of("../../../../../../docs/handbook.md"));
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
 		ContractAuthorProtocol author = contractAuthor(scenarios);
@@ -2253,7 +2253,7 @@ public final class ProposalTest
 		Path workspace = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/docs"));
 		Files.writeString(workspace.resolve("handbook.md"), content, UTF_8);
 		Files.createSymbolicLink(workspace.resolveSibling("latest.md"), Path.of("docs/handbook.md"));
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
 		ContractAuthorProtocol author = contractAuthor(scenarios);

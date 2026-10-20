@@ -693,6 +693,26 @@ public final class ForkTest
 	}
 
 	/**
+	 * Verifies that the tracked links are the files that the Git index records as symbolic links, without its
+	 * regular or executable files, and that a directory outside a Git work tree has none.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void listsTrackedLinks() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path unmanaged = project(root);
+
+			requireThat(Fork.trackedLinks(base), "trackedLinks").isEqualTo(Set.of(Path.of("alias.md")));
+			requireThat(Fork.trackedLinks(unmanaged), "unmanagedLinks").isEmpty();
+		}
+	}
+
+	/**
 	 * Creates a project directory that holds {@code prompt.md} and {@code ignored.md}, without Git.
 	 *
 	 * @param root the directory that owns the fixture

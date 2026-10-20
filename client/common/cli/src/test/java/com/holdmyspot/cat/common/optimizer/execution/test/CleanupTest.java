@@ -587,6 +587,12 @@ public final class CleanupTest
 		}
 
 		@Override
+		public Set<Path> trackedLinks(Path base)
+		{
+			throw new UnsupportedOperationException("Cleanup never lists tracked links");
+		}
+
+		@Override
 		public String diff(Path base, List<Path> paths)
 		{
 			throw new UnsupportedOperationException("Cleanup never compares files with HEAD");
@@ -642,6 +648,12 @@ public final class CleanupTest
 		public Set<Path> tracked(Path base)
 		{
 			throw new UnsupportedOperationException("Cleanup never lists tracked files");
+		}
+
+		@Override
+		public Set<Path> trackedLinks(Path base)
+		{
+			throw new UnsupportedOperationException("Cleanup never lists tracked links");
 		}
 
 		@Override

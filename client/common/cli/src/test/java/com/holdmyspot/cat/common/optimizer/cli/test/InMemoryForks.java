@@ -162,6 +162,17 @@ final class InMemoryForks implements Forks
 	/**
 	 * {@inheritDoc}
 	 * <p>
+	 * The tracked files hold no symbolic link.
+	 */
+	@Override
+	public Set<Path> trackedLinks(Path base)
+	{
+		return Set.of();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
 	 * The project has no {@code HEAD}, so no path differs from it.
 	 */
 	@Override

@@ -39,6 +39,10 @@ public final class Fork implements ForkView
 	private static final String[] CHECK_IGNORE = {"check-ignore", "--quiet", "--no-index",
 		SessionDirectory.ROOT + "/probe"};
 	private static final String CLEAN_PATHSPEC_EXCLUDING_SESSIONS = ":(exclude)" + SessionDirectory.ROOT;
+	/**
+	 * The mode that a Git index records for a symbolic link.
+	 */
+	private static final String SYMBOLIC_LINK_MODE = "120000";
 	private final ForkTree recorded;
 	private final ParticipantSelection selection;
 	private final ForkTree tree;
@@ -131,6 +135,30 @@ public final class Fork implements ForkView
 	{
 		requireThat(base, "base").isNotNull();
 		return tracked(new Git(base.toAbsolutePath().normalize()));
+	}
+
+	/**
+	 * Lists the files that a project's Git index records as symbolic links.
+	 *
+	 * @param base the project root
+	 * @return the files, relative to {@code base}, or an empty set if {@code base} is not inside a Git work tree
+	 * @throws NullPointerException if {@code base} is null
+	 * @throws IOException          if Git fails inside a work tree
+	 */
+	public static Set<Path> trackedLinks(Path base) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		Git git = new Git(base.toAbsolutePath().normalize());
+		if (git.status("rev-parse", "--is-inside-work-tree") != 0)
+			return Set.of();
+		Set<Path> links = new HashSet<>();
+		// Each entry is "<mode> <object> <stage>\t<path>", with the path relative to the base
+		for (String entry : new String(git.bytes("ls-files", "--stage", "-z"), UTF_8).split("\0"))
+		{
+			if (entry.startsWith(SYMBOLIC_LINK_MODE + " "))
+				links.add(Path.of(entry.substring(entry.indexOf('\t') + 1)));
+		}
+		return links;
 	}
 
 	/**

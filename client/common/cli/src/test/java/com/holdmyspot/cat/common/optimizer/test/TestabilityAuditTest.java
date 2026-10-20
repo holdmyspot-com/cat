@@ -35,7 +35,8 @@ import java.util.stream.Stream;
  *   <li>only a class that declares {@code main}, or a harness adapter's production scope, reads {@code HOME},
  *   {@code user.home} or the process environment;</li>
  *   <li>the harness-neutral core references no Claude or Codex package;</li>
- *   <li>production sources reference no type from a test source tree.</li>
+ *   <li>production sources reference no type from a test source tree;</li>
+ *   <li>no production source other than the fork adapter constructs {@code Git}.</li>
  * </ul>
  * This class does not check statistical thresholds, caps or probabilities.
  */
@@ -84,6 +85,23 @@ public final class TestabilityAuditTest
 	 * Matches a qualified type name: lowercase package segments followed by a capitalized type name.
 	 */
 	private static final Pattern QUALIFIED_TYPE = Pattern.compile("(?<![\\w$.])((?:[a-z_][\\w$]*\\.)+[A-Z][\\w$]*)");
+	/**
+	 * Matches a call to a constructor of {@code Git}, whose name may be qualified. Like {@link #GETENV}, it starts
+	 * with a literal.
+	 */
+	private static final Pattern NEW_GIT = Pattern.compile(
+		"new(?<![\\w$]new)\\s+(?:[a-z_][\\w$]*\\s*\\.\\s*)*Git\\s*\\(");
+	/**
+	 * Matches a reference to a constructor of {@code Git}.
+	 */
+	private static final Pattern GIT_CONSTRUCTOR_REFERENCE = Pattern.compile(
+		"Git(?<![\\w$]Git)\\s*::\\s*new(?![\\w$])");
+	/**
+	 * The production source, relative to the {@code client} directory, that may construct {@code Git}: the adapter
+	 * behind {@code Forks}, through which the rest of the optimizer reaches Git so that its tests can replace it.
+	 */
+	private static final String FORK_ADAPTER = "common/cli/src/main/java/" +
+		"com/holdmyspot/cat/common/optimizer/workspace/Fork.java";
 
 	/**
 	 * Creates a test instance.
@@ -187,6 +205,23 @@ public final class TestabilityAuditTest
 		List<String> violations = new ArrayList<>();
 		for (SourceFile file : Scan.FILES)
 			violations.addAll(findTestSupportReferences(file, Scan.TEST_TYPES));
+		requireThat(violations, "violations").isEmpty();
+	}
+
+	/**
+	 * Verifies that no production source other than the fork adapter constructs {@code Git}.
+	 */
+	@Test
+	public void onlyForkAdapterConstructsGit()
+	{
+		// Requirement: R-T1
+		Path adapter = clientDirectory().resolve(FORK_ADAPTER);
+		List<String> violations = new ArrayList<>();
+		for (SourceFile file : Scan.FILES)
+		{
+			if (!file.path().equals(adapter))
+				violations.addAll(findGitConstructions(file));
+		}
 		requireThat(violations, "violations").isEmpty();
 	}
 
@@ -381,6 +416,31 @@ public final class TestabilityAuditTest
 				"Sample.java:1: references test support: com.holdmyspot.cat.common.optimizer.FakeStore",
 				"Sample.java:2: references test support: com.holdmyspot.cat.common.optimizer.FakeStore"));
 		requireThat(findTestSupportReferences(sample(false, true, text), testTypes), "testViolations").isEmpty();
+	}
+
+	/**
+	 * Verifies that the Git check reports constructor calls and references in production sources only, and not
+	 * comments, strings or other types whose names end with {@code Git}.
+	 */
+	@Test
+	public void reportsGitConstructions()
+	{
+		// Requirement: R-T1
+		String text = """
+			class Sample
+			{
+				Object first = new Git(project);
+				Object second = new com.holdmyspot.cat.common.git.Git(project);
+				Function<Path, Object> third = Git::new;
+				Object other = new TopicGit(project);
+				// new Git(project)
+				String text = "new Git(project)";
+			}""";
+		requireThat(findGitConstructions(sample(true, true, text)), "productionViolations").isEqualTo(List.of(
+			"Sample.java:3: constructs Git",
+			"Sample.java:4: constructs Git",
+			"Sample.java:5: constructs Git"));
+		requireThat(findGitConstructions(sample(false, true, text)), "testViolations").isEmpty();
 	}
 
 	/**
@@ -629,6 +689,31 @@ public final class TestabilityAuditTest
 			if (testTypes.contains(matcher.group(1)))
 				violations.add(file.describe(matcher.start(), "references test support: " + matcher.group(1)));
 		}
+		return violations;
+	}
+
+	/**
+	 * Returns a production file's constructions of {@code Git}.
+	 *
+	 * @param file the file
+	 * @return a description of each violation in source order, or an empty list if the file is not a production
+	 *   source
+	 */
+	private static List<String> findGitConstructions(SourceFile file)
+	{
+		if (!file.isProduction())
+			return List.of();
+		List<Integer> offsets = new ArrayList<>();
+		for (Pattern pattern : List.of(NEW_GIT, GIT_CONSTRUCTOR_REFERENCE))
+		{
+			Matcher matcher = pattern.matcher(file.source().code());
+			while (matcher.find())
+				offsets.add(matcher.start());
+		}
+		offsets.sort(Comparator.naturalOrder());
+		List<String> violations = new ArrayList<>();
+		for (int offset : offsets)
+			violations.add(file.describe(offset, "constructs Git"));
 		return violations;
 	}
 

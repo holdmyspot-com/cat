@@ -191,13 +191,14 @@ public final class OptimizerCore implements Core
 	 * @param campaign the campaign, whose header holds the target and the user's goal, and whose trial plugins are
 	 *   recorded
 	 * @return the protocol
-	 * @throws IOException if recorded scenarios or the installed role profile cannot be read
+	 * @throws IOException if recorded scenarios or the installed role profile cannot be read, or Git fails
 	 */
 	private ContractAuthorProtocol contractAuthor(Path root, Campaign campaign) throws IOException
 	{
 		Header header = campaign.header();
 		return new ContractAuthorProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
-			scope.profiles().roleProfile()), RegressionScenarios.read(scope.json(), root, scope.home()),
+			scope.profiles().roleProfile()), RegressionScenarios.read(scope.json(), root, scope.home(),
+			scope.forks().trackedLinks(root)),
 			header.target(), header.goal(), scope.sessions().reportsExitStatus(), campaign.plugins().orElseThrow(),
 			scope.launcher(), scope.profiles()::toolOutputBytes);
 	}

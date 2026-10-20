@@ -392,7 +392,7 @@ public final class DraftDirectoryTest
 	 */
 	private static RegressionScenarios scenarios(Path project) throws IOException
 	{
-		return RegressionScenarios.read(JSON, project, project).of(project.resolve(".cat/rules/notes.md"));
+		return RegressionScenarios.read(JSON, project, project, Set.of()).of(project.resolve(".cat/rules/notes.md"));
 	}
 
 	/**

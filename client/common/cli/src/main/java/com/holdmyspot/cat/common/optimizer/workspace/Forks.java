@@ -34,6 +34,15 @@ public interface Forks
 	Set<Path> tracked(Path base) throws IOException;
 
 	/**
+	 * Lists the files that a project's Git index records as symbolic links.
+	 *
+	 * @param base the project root
+	 * @return the files, relative to {@code base}, or an empty set if {@code base} is not inside a Git work tree
+	 * @throws IOException if Git fails inside a work tree
+	 */
+	Set<Path> trackedLinks(Path base) throws IOException;
+
+	/**
 	 * Returns the Git diff of paths in a project against its {@code HEAD}, including files that {@code HEAD} lacks.
 	 * The project's index is left unchanged.
 	 *

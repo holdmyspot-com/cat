@@ -30,7 +30,8 @@ public final class BackupTest
 	}
 
 	/**
-	 * Verifies a replay backup is recorded, verified, and removed only through its manifest-local inventory.
+	 * Verifies that a replay backup is named with its creation time in UTC, whatever the clock's zone, and is recorded,
+	 * verified and removed only through its manifest-local inventory.
 	 *
 	 * @throws IOException if the repository fixture or backup lifecycle fails
 	 */
@@ -43,13 +44,15 @@ public final class BackupTest
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			Path manifest = repository.resolve("manifest.json");
-			Backup backups = new Backup(git, Clock.systemUTC());
+			// 21:13:08 UTC is 17:13:08 in Toronto
+			Clock toronto = Clock.fixed(Instant.parse("2026-10-09T21:13:08Z"), ZoneId.of("America/Toronto"));
+			Backup backups = new Backup(git, toronto);
 			String sourceTip = git.lines("rev-parse", "HEAD").getFirst();
 			git.lines("branch", "backup/unrelated");
 
 			String backup = backups.create(manifest);
 
-			requireThat(backup, "backup").isNotBlank();
+			requireThat(backup, "backup").isEqualTo("backup/topic-replay-20261009T211308Z");
 			requireThat(backups.hasInventory(manifest), "recordedInventory").isTrue();
 			Path inventory = manifest.resolveSibling("manifest.json.backups");
 			requireThat(Files.readString(inventory), "inventory").isEqualTo(backup + " " + sourceTip +
@@ -71,29 +74,6 @@ public final class BackupTest
 			isEmpty();
 			requireThat(git.lines("for-each-ref", "--format=%(refname:short)", "refs/heads/backup/unrelated"),
 				"unrelatedBackup").isEqualTo(List.of("backup/unrelated"));
-		}
-	}
-
-	/**
-	 * Verifies that a backup branch name contains the creation time in UTC, whatever the clock's zone.
-	 *
-	 * @throws IOException if the repository fixture or backup creation fails
-	 */
-	@Test
-	public void namesBackupBranchWithUtcTime() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
-			initializeRepository(repository);
-			Git git = new Git(repository);
-			// 21:13:08 UTC is 17:13:08 in Toronto
-			Clock toronto = Clock.fixed(Instant.parse("2026-10-09T21:13:08Z"), ZoneId.of("America/Toronto"));
-			Backup backups = new Backup(git, toronto);
-
-			String backup = backups.create(repository.resolve("manifest.json"));
-
-			requireThat(backup, "backup").isEqualTo("backup/topic-replay-20261009T211308Z");
 		}
 	}
 }
