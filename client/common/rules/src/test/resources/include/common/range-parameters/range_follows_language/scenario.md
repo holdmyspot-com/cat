@@ -74,8 +74,8 @@ return M
 
 - **kind**: effect
 - **description**: For request 1: the new method takes a start bound that it includes and an end bound that it
-	excludes, both zero-based indexes into `{{sequence_name}}`, as `List.subList` does; its parameter names or Javadoc
-	state which bound is excluded.
+	excludes, both zero-based indexes into `{{sequence_name}}`, as `List.subList` does, and each parameter's name states
+	whether that bound is included, such as `fromInclusive` and `toExclusive`.
 
 ### existing_signature_kept
 
@@ -87,7 +87,8 @@ return M
 
 - **kind**: effect
 - **description**: For request 3: `M.slice` takes a start position and an end position that both count from 1 and are
-	both included, as `string.sub` does, and its comment says so; it does not take a zero-based or end-exclusive range.
+	both included, as `string.sub` does, and each parameter's name states that its bound is included, such as
+	`from_inclusive` and `to_inclusive`; it does not take a zero-based or end-exclusive range.
 
 ### guidance_selection
 

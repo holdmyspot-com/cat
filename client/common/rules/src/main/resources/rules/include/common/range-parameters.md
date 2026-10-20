@@ -12,10 +12,11 @@
 Before defining an operation, such as a function, method, constructor, or command, whose parameters specify a range,
 or changing such parameters, identify the convention that the language's standard library uses for the same kind of
 range. A range is a pair of bounds, or a start and a length, that selects part of a sequence or interval: indexes,
-offsets, positions, line or column numbers, or times. Use that convention's inclusivity, base, parameter order and
-bound names, and state in the operation's documentation whether each bound is included. Return a range in the same form
-that the operation accepts. Conventions differ between languages, so take the convention from the language of the code
-being written, not from another language.
+offsets, positions, line or column numbers, or times. Use that convention's inclusivity, base and parameter order.
+Name each bound for its role and whether it is included, such as `fromInclusive` and `toExclusive`, in the language's
+naming style, so that a caller can tell which bounds are included without reading the documentation. Return a range in
+the same form that the operation accepts. Conventions differ between languages, so take the convention from the
+language of the code being written, not from another language.
 
 For example, Java ranges are half-open and zero-based, as in `List.subList(fromIndex, toIndex)` and
 `String.substring(beginIndex, endIndex)`: the start bound is included and the end bound is excluded. A Java method that
@@ -23,18 +24,18 @@ returns part of a list therefore takes:
 
 ```java
 /**
- * @param fromIndex the index of the first line to return, inclusive
- * @param toIndex   the index after the last line to return, exclusive
+ * @param fromInclusive the index of the first line to return
+ * @param toExclusive   the index after the last line to return
  */
-public List<String> lines(int fromIndex, int toIndex);
+public List<String> lines(int fromInclusive, int toExclusive);
 ```
 
 Lua ranges instead count from 1 and include both bounds, as in `string.sub(s, i, j)` and `table.concat(list, sep, i,
 j)`. A Lua function that returns part of a list therefore takes:
 
 ```lua
---- Returns the lines from position i to position j, both included, counting from 1.
-function Transcript:lines(i, j)
+--- Returns the lines between two positions, counting from 1.
+function Transcript:lines(from_inclusive, to_inclusive)
 ```
 
 When an external contract fixes another convention, such as a file format, protocol, or user-facing display that
