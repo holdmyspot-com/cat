@@ -2221,6 +2221,66 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that a prompt test whose {@code workspace/} links to a project file that is an absolute link to a file
+	 * outside the project is refused when the contract author's session ends, although the session's project copy
+	 * holds that file as a regular file, because the stored proposal reads the link from the project again.
+	 *
+	 * @throws IOException if a file cannot be written
+	 */
+	@Test
+	public void refusesDraftThatStoredProposalRefuses() throws IOException
+	{
+		Path project = recordedProject("""
+			# Formatting
+
+			## Variables
+
+			- **tone**: The tone of the summary.
+
+			## Scenario
+
+			Summarize the handbook in {{tone}} style.
+
+			## Assertions
+
+			### keeps_tone
+
+			- **kind**: effect
+			- **description**: The summary keeps the {{tone}} tone.
+			""");
+		String content = "Ship on Fridays.\n";
+		Path external = directories.add(Files.createTempDirectory("contract-author-external-"));
+		Files.writeString(external.resolve("handbook.md"), content, UTF_8);
+		Path docs = Files.createDirectories(project.resolve("docs"));
+		Files.createSymbolicLink(docs.resolve("handbook.md"), external.resolve("handbook.md"));
+		Path workspace = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/docs"));
+		Files.createSymbolicLink(workspace.resolve("handbook.md"), Path.of("../../../../../../docs/handbook.md"));
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
+			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
+		ContractAuthorProtocol author = contractAuthor(scenarios);
+
+		// The session's project copy holds the external file's content in place of the project's link
+		Path initialProject = directories.add(Files.createTempDirectory("contract-author-initial-"));
+		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
+		author.request(project, PROFILES, List.of(), List.of(), SALT).files().write(effects);
+		Files.createDirectories(effects.resolve("docs"));
+		Files.writeString(effects.resolve("docs/handbook.md"), content, UTF_8);
+		write(effects, initialProject, output, Path.of("CLAUDE.md"), DraftDirectory.testDirectories(scenarios));
+		try
+		{
+			author.proposal(session(effects, initialProject, "The proposal is in " + OutputFile.name(initialProject) +
+				"."), project, PROFILES, SALT);
+			throw new AssertionError("The contract author's draft was accepted");
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(String.join("\n", e.problems()), "problems").
+				contains("formatting/workspace/docs/handbook.md: the link reaches docs/handbook.md");
+		}
+	}
+
+	/**
 	 * Verifies that a recorded prompt test whose {@code workspace/} holds a link to another of its entries receives
 	 * that link as a workspace file that is a link, both when the contract author's session ends and when the stored
 	 * proposal is read again, and that the proposal shows the link's target.

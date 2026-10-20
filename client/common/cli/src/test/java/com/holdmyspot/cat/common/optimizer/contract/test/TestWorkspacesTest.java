@@ -441,6 +441,30 @@ public final class TestWorkspacesTest
 	}
 
 	/**
+	 * Verifies that a link reaching a project file that is itself an absolute link is refused under the prompt test's
+	 * link, naming the project's link, because only the prompt test's link is the contract author's to change.
+	 *
+	 * @throws IOException if a file cannot be written or read
+	 */
+	@Test
+	public void refusesLinkToAbsoluteProjectLink() throws IOException
+	{
+		// Requirement: R-W15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = linkedProject(cleanup);
+			Path outside = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
+				"outside"));
+			Files.writeString(outside.resolve("rules.md"), "Rules");
+			Files.createSymbolicLink(project.resolve("docs/rules.md"), outside.resolve("rules.md"));
+			link(linkedTest(project).resolve(PromptTestFiles.WORKSPACE).resolve("rules.md"),
+				"../../../../../docs/rules.md");
+			requireRefused(project, "workspace/rules.md: ",
+				"the link reaches docs/rules.md, a link of the project whose target");
+		}
+	}
+
+	/**
 	 * Requires that reading the prompt test of {@link #linkedProject(TemporaryDirectories)} is refused.
 	 *
 	 * @param project  the project

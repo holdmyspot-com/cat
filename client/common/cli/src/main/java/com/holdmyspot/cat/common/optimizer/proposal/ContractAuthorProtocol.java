@@ -560,7 +560,8 @@ public final class ContractAuthorProtocol
 	 * @throws InvalidProposalException if the session wrote no proposal file, the file is not exactly one JSON object,
 	 *                                  or the proposal breaks a rule that
 	 *                                  {@link ProposalCheck#check(ObjectNode, Path, Path, String, ProfileEvidence,
-	 *                                  long)} lists. The exception lists every problem found.
+	 *                                  long)} lists, read in the session's project or, as a stored proposal is read
+	 *                                  again, in the user's project. The exception lists every problem found.
 	 * @throws UncheckedIOException     if a file cannot be read or written
 	 */
 	public DerivedProposal proposal(SessionResult.Completed result, Path promptSystem, ProfileEvidence profiles,
@@ -598,9 +599,14 @@ public final class ContractAuthorProtocol
 		requireThat(profiles, "profiles").isNotNull();
 		ObjectNode proposalFile = outputFile.read(result);
 		rewriteProjectPaths(proposalFile, result.effects());
+		ObjectNode storedFile = proposalFile.deepCopy();
 		Path effects = result.effects();
-		return check.check(proposalFile, effects, effects.resolve(DraftDirectory.name(promptSystem)),
-			result.promptSources(), profiles, salt);
+		Path draft = effects.resolve(DraftDirectory.name(promptSystem));
+		DerivedProposal derived = check.check(proposalFile, effects, draft, result.promptSources(), profiles, salt);
+		// Every later command reads the stored proposal against the user's project, whose links the session's copy
+		// replaces by their targets, so a draft that would not read back is refused while its author can still fix it
+		check.restore(storedFile, scenarios.project(), draft, result.promptSources(), profiles, salt);
+		return derived;
 	}
 
 	/**

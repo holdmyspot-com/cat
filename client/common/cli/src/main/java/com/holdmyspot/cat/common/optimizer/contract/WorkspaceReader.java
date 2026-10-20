@@ -286,8 +286,11 @@ final class WorkspaceReader
 		while (true)
 		{
 			Path text = Files.readSymbolicLink(location);
+			boolean projectLink = !isInTestRoot(locationRelative);
 			if (text.isAbsolute() || text.getRoot() != null)
 			{
+				if (projectLink)
+					throw projectLinkProblem(link, locationRelative, "target " + text + " is absolute");
 				throw problem(location, "the link's target " + text + " is absolute; write it relative to the link's " +
 					"directory");
 			}
@@ -298,7 +301,11 @@ final class WorkspaceReader
 			else
 				target = parent.resolve(text).normalize();
 			if (target.startsWith(".."))
+			{
+				if (projectLink)
+					throw projectLinkProblem(link, locationRelative, "target " + text + " lies outside the project");
 				throw problem(location, "the link's target " + text + " lies outside the project");
+			}
 			if (target.toString().isEmpty() || locationRelative.startsWith(target))
 			{
 				throw problem(location, "the link's target directory " + display(target) + " holds the link, so its " +
@@ -337,6 +344,21 @@ final class WorkspaceReader
 				throw problem(location, "the link's target " + display(target) + " is a special file");
 			return;
 		}
+	}
+
+	/**
+	 * Returns a problem with a link of the project, outside every test root, that a prompt test's link reaches. The
+	 * project's link is not the prompt test's to change, so the problem names the prompt test's link.
+	 *
+	 * @param link     the prompt test's link
+	 * @param reached  the project's link, relative to the project
+	 * @param property what is wrong with the project's link, such as its target being absolute
+	 * @return the exception
+	 */
+	private ScenarioFormatException projectLinkProblem(Path link, Path reached, String property)
+	{
+		return problem(link, "the link reaches " + display(reached) + ", a link of the project whose " + property +
+			", so no trial can receive it; link another file or remove the link");
 	}
 
 	/**
