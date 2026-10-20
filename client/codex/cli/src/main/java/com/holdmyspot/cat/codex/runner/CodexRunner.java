@@ -324,10 +324,11 @@ public final class CodexRunner
 	 * method creates the session log directory, because the sandbox skips a denied path that does not exist yet.
 	 * <p>
 	 * The result names the run root and each directory that the caller denies rather than each path under them, which
-	 * also denies the runs that start after the session. Every platform's sandbox still lets the session read and write
-	 * its project and home inside a denied directory, such as the project that holds the run root, but the Linux
-	 * sandbox would also hide read-only evidence there, so a Linux session with evidence under a denied directory is
-	 * denied each other file and directory under it by its own path instead.
+	 * also denies the runs that start after the session. It omits a path inside another directory that it names, except
+	 * the session log directory and the login inside the session's home. Every platform's sandbox still lets the
+	 * session read and write its project and home inside a denied directory, such as the project that holds the run
+	 * root, but the Linux sandbox would also hide read-only evidence there, so a Linux session with evidence under a
+	 * denied directory is denied each other file and directory under it by its own path instead.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
@@ -362,9 +363,13 @@ public final class CodexRunner
 			{
 				// Codex lists every denied path in the model's instructions and omits the rest of a long list, and the
 				// omission led trial agents to refuse reading their own project
-				result.add(denied);
+				result.add(directory);
 			}
 		}
+		// The Linux sandbox fails to start when it must hide a directory inside one that it already hides, and the
+		// outer directory hides it anyway
+		Set<Path> named = Set.copyOf(result);
+		result.removeIf(path -> named.stream().anyMatch(other -> !other.equals(path) && path.startsWith(other)));
 		// The session's events are the same record as the run's artifacts, kept by Codex instead of the runner
 		result.add(Files.createDirectories(home.resolve("sessions")));
 		// The Codex process reads the login itself; the sandbox confines only the commands that the session runs

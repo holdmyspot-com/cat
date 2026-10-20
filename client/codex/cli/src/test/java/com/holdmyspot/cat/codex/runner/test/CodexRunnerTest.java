@@ -476,8 +476,8 @@ public final class CodexRunnerTest
 	/**
 	 * Verifies that on Linux a session that validates evidence inside a project that the caller denies is denied each
 	 * other file and directory of that project by its own path, each path once, because the sandbox would hide
-	 * read-only evidence inside a denied directory. On macOS and Windows the session is denied the whole project and
-	 * the whole run root, because their sandboxes keep the session's project, home and evidence readable inside them.
+	 * read-only evidence inside a denied directory. On macOS and Windows the session is denied the whole project, which
+	 * holds the run root, because their sandboxes keep the session's project, home and evidence readable inside it.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -516,8 +516,39 @@ public final class CodexRunnerTest
 				deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
 					List.of(project), platform);
 
-				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(project, root,
+				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(project,
 					directory.resolve("home/sessions")));
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a session is not denied a path inside another denied directory, such as the held-out run root
+	 * inside the project, because the Linux sandbox fails to start when it must hide a directory inside one that it
+	 * already hides, while a denied path inside the session's home stays denied.
+	 *
+	 * @throws IOException if the run cannot be created
+	 */
+	@Test
+	public void skipsDeniedReadsInsideDeniedDirectory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path project = cleanup.add(Files.createTempDirectory(temporary, "cat-user-project-"));
+			Path session = Files.createDirectories(project.resolve(".cat/sessions/session-1"));
+			Path root = Files.createDirectories(session.resolve("optimizer-runs/codex"));
+			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("codex");
+
+			for (Platform platform : List.of(Platform.LINUX_X64, Platform.MACOS_ARM64, Platform.WINDOWS_X64))
+			{
+				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(),
+					List.of(heldOutRoot, project), platform);
+
+				requireThat(deniedReads, platform + ".deniedReads").containsExactly(List.of(project,
+					run.directory().resolve("home/sessions")));
 			}
 		}
 	}
