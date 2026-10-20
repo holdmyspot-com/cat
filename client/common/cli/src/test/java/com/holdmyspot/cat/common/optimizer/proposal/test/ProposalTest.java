@@ -1656,6 +1656,37 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that a requirement whose trial would need a production credential or a non-disposable fixture is shown
+	 * as an ineligible trial effect, and that confirming records that outcome.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void ineligibleTrialEffectBlocksCertification() throws InvalidProposalException
+	{
+		// Requirement: R-C6
+		String evidence = "CLAUDE.md asks to rotate the production database password, which needs a live credential.";
+		String output = fixture("derivation.json").
+			replace("\"condition\": \"unsupported_output\"", "\"condition\": \"ineligible_trial_effect\"").
+			replace("CLAUDE.md asks for a diagram image with every summary.", evidence);
+		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
+		requireThat(proposal.render(), "render").contains("- " + Outcome.INELIGIBLE_TRIAL_EFFECT.label() +
+			" (requirements r1): " + evidence);
+
+		List<CampaignEvent> events = proposal.confirmation(CertificationScope.LATEST_VERSIONS, 7);
+
+		requireThat(events.getLast(), "last").
+			isEqualTo(new CampaignEvent.ReportUnavailable(Outcome.INELIGIBLE_TRIAL_EFFECT));
+		Campaign campaign = new Builder().build();
+		for (CampaignEvent event : events)
+			campaign = Transitions.apply(campaign, event);
+		requireThat(campaign.lineage().unavailable(), "unavailable").
+			isEqualTo(Set.of(Outcome.INELIGIBLE_TRIAL_EFFECT));
+	}
+
+	/**
 	 * Returns the evidence of an inventory whose families rank in inventory order.
 	 *
 	 * @param inventory the inventory
