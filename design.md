@@ -1457,7 +1457,11 @@ Every result is a point-in-time observation. CAT records the conditions needed t
 - the loader configuration and the prompt sources observed loading at session start, including links, resolved
 	targets and staged identities. A hook that runs on a later event, such as a tool call or a child session's start,
 	runs only when the trial takes that action, so it is not a measurement condition; the loader configuration and the
-	session environment version already identify its source;
+	session environment version already identify its source. The prompt sources include only the skills, agents and
+	plugins that come from files: the project's, the trial plugins' and the user configuration's. They leave out those
+	that come with the harness or the account, which the harness version identifies. Within one harness version a
+	session may list such a source or not, depending on what the harness fetched before it reported its sources (an
+	end-to-end finding, 2026-10-20); that variation falls on control and candidate trials alike;
 - the identities and versions of directly invoked host tools, when CAT can observe them;
 - external or MCP source identities, with captured responses when available.
 

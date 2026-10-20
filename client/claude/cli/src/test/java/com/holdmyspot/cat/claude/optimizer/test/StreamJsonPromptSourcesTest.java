@@ -5,8 +5,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.claude.optimizer.StreamJsonPromptSources;
 import com.holdmyspot.cat.claude.secrets.StreamJsonPromptSourcesSecrets;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +16,7 @@ import java.util.Map;
 
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Tests {@link StreamJsonPromptSources} against harness lines that the Claude runner recorded.
@@ -125,10 +128,68 @@ public final class StreamJsonPromptSourcesTest
 		requireThat(entries.contains("hook:SessionStart SessionStart:startup"), "hook").isTrue();
 		requireThat(entries.contains(
 			"plugin:cat cat@cat <run>/home/.claude/plugins/cat-marketplace/plugins/cat"), "plugin").isTrue();
-		requireThat(entries.contains("plugin:cc-plugin-agents-md cc-plugin-agents-md@builtin builtin"), "builtin").
-			isTrue();
 		requireThat(value.contains("/runs/"), "leaksRunPath").isFalse();
 		requireThat(value.contains("mup8an8w"), "leaksRunId").isFalse();
+	}
+
+	/**
+	 * Verifies that the value leaves out the skills, agents and plugins that come with the harness rather than from a
+	 * file, including the skills that Claude synchronizes from the account.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void omitsBuiltInSources() throws IOException
+	{
+		// Requirement: R-M1
+		List<String> entries = observe(recorded(), RUN).lines().toList();
+		requireThat(entries, "entries").doesNotContainAny(List.of("skill:debug", "skill:anthropic-skills:pdf",
+			"agent:Explore", "plugin:cc-plugin-agents-md cc-plugin-agents-md@builtin builtin"));
+		requireThat(entries, "entries").contains("skill:cat:git-squash");
+	}
+
+	/**
+	 * Verifies that a skill, command or agent without a plugin namespace counts when a file of the session's project
+	 * declares its name.
+	 *
+	 * @throws IOException if the recorded lines cannot be read or the project cannot be written
+	 */
+	@Test
+	public void listsProjectSkillsAndAgents() throws IOException
+	{
+		// Requirement: R-M1
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-prompt-sources-"));
+			Path claude = project.resolve(".claude");
+			Files.writeString(Files.createDirectories(claude.resolve("skills/probe-skill")).resolve("SKILL.md"),
+				"---\ndescription: Probes\n---\nBody\n", UTF_8);
+			Files.writeString(Files.createDirectories(claude.resolve("commands")).resolve("design.md"), "Body\n",
+				UTF_8);
+			Files.writeString(Files.createDirectories(claude.resolve("agents")).resolve("reviewer.md"),
+				"---\nname: \"Explore\"\ndescription: Reviews\n---\nBody\n", UTF_8);
+			List<String> lines = recorded().stream().map(line -> withProject(line, project)).toList();
+
+			List<String> entries = observe(lines, RUN).lines().toList();
+			requireThat(entries, "entries").containsAll(List.of("skill:probe-skill", "skill:design", "agent:Explore"));
+			requireThat(entries, "entries").doesNotContainAny(List.of("skill:debug", "agent:Plan"));
+		}
+	}
+
+	/**
+	 * Sets the project directory of an {@code init} record.
+	 *
+	 * @param line    a harness event line
+	 * @param project the project directory
+	 * @return the line, with the {@code cwd} of an {@code init} record replaced
+	 */
+	private static String withProject(String line, Path project)
+	{
+		if (!line.contains("\"subtype\":\"init\""))
+			return line;
+		ObjectNode init = (ObjectNode) JSON.readTree(line);
+		init.put("cwd", project.toString());
+		return JSON.writeValueAsString(init);
 	}
 
 	/**
