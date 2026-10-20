@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 
 /**
  * A {@link SessionPort} whose sessions end only when the test ends them, in any order.
@@ -45,6 +46,11 @@ public final class FakeSessionPort implements SessionPort
 	private final List<Path> runRoots;
 	private final Map<Path, SessionEvidence> evidence = new HashMap<>();
 	private final Set<Path> readTranscripts = new HashSet<>();
+	/**
+	 * Returns the files that load in a project, which {@link #loadedSources(Path, List)} reports.
+	 */
+	private volatile Function<Path, LoadedSources> loading = _ -> new LoadedSources(List.of(), List.of(), List.of(),
+		List.of());
 
 	/**
 	 * Creates a port that has started no sessions and whose host login is not identified.
@@ -115,7 +121,19 @@ public final class FakeSessionPort implements SessionPort
 	@Override
 	public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
 	{
-		return new LoadedSources(List.of(), List.of(), List.of(), List.of());
+		return loading.apply(project);
+	}
+
+	/**
+	 * Sets the files that load in a project.
+	 *
+	 * @param loading returns the files that load in the project that it receives; by default, none load
+	 * @throws NullPointerException if {@code loading} is null
+	 */
+	public void loading(Function<Path, LoadedSources> loading)
+	{
+		requireThat(loading, "loading").isNotNull();
+		this.loading = loading;
 	}
 
 	@Override

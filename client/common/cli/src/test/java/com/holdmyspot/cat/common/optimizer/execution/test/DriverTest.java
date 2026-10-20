@@ -61,6 +61,7 @@ import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
+import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
@@ -112,6 +113,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
+import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.PluginRemovals;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
@@ -166,6 +168,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -5065,6 +5069,91 @@ public final class DriverTest
 				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
 				requireThat(result.status().outcomeDetail(), "outcomeDetail").contains("forbidden");
 				requireThat(harness.workspace().authoringCopies(), "authoringCopies").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Returns prompt author edits of the target that import another file, with whether trials receive it.
+	 *
+	 * @return the target's edited text, the imported file and whether the attempt contributes a candidate
+	 */
+	@DataProvider
+	public static Object[][] imports()
+	{
+		return new Object[][]
+			{
+				{"Answer briefly. @.cat/rules/style.md", ".cat/rules/style.md", true},
+				{"Answer briefly. @notes/unrelated.md", "notes/unrelated.md", false},
+				{"Answer briefly. @docs/missing.md", "docs/missing.md", false}
+			};
+	}
+
+	/**
+	 * Verifies that a prompt author attempt contributes no candidate when the files that load in its trials include a
+	 * project file that trials do not receive or a reference to a file that trials cannot receive, and that the
+	 * prompt author failure names the file; and that an attempt that imports a file that trials receive contributes a
+	 * candidate.
+	 *
+	 * @param text      the target's edited text
+	 * @param imported  the file that the text imports
+	 * @param permitted whether the attempt contributes a candidate
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test(dataProvider = "imports")
+	public void attemptLoadsOnlyReceivedFiles(String text, String imported, boolean permitted)
+		throws IOException
+	{
+		// Requirement: R-C28
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing().development("safety", 50, 1).failure(Builder.testCase("safety", "logs")).
+					round(new Round(Map.of("safety", 0))).build());
+			// Each import in the target loads, except an import of a missing file, which trials cannot receive
+			harness.sessions().loading(project ->
+			{
+				List<DerivedSource> loaded = new ArrayList<>();
+				List<UnreachableReference> unreachable = new ArrayList<>();
+				Path target = project.resolve(DriverHarness.PROMPT);
+				try
+				{
+					if (Files.isRegularFile(target))
+					{
+						loaded.add(new DerivedSource(DriverHarness.PROMPT.toString(), "The harness reads the target"));
+						Matcher matcher = Pattern.compile("@(\\S+)").matcher(Files.readString(target));
+						while (matcher.find())
+						{
+							String path = matcher.group(1);
+							if (path.contains("missing"))
+							{
+								unreachable.add(new UnreachableReference(DriverHarness.PROMPT.toString(), path,
+									UnreachableReference.Problem.MISSING));
+							}
+							else
+								loaded.add(new DerivedSource(path, "`CLAUDE.md` imports this file"));
+						}
+					}
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+				return new LoadedSources(loaded, loaded, List.of(), unreachable);
+			});
+			harness.promptAuthors(request -> harness.edit(request, DriverHarness.PROMPT, text));
+			try (Driver driver = harness.open())
+			{
+				SliceResult result = harness.runSlice(driver);
+				Campaign campaign = harness.campaign();
+				if (permitted)
+				{
+					requireThat(campaign.promptAuthorAttempts(), "promptAuthorAttempts").isGreaterThan(0);
+					return;
+				}
+				requireThat(campaign.promptAuthorAttempts(), "promptAuthorAttempts").isEqualTo(0);
+				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
+				requireThat(result.status().outcomeDetail(), "outcomeDetail").contains(imported);
 			}
 		}
 	}

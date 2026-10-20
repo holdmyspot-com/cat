@@ -44,6 +44,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
+import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.Generator;
@@ -75,6 +76,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.InventoryDiff;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
@@ -82,6 +84,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
+import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
 import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
 import com.holdmyspot.cat.common.optimizer.report.Status;
@@ -1495,6 +1498,13 @@ public final class Driver implements AutoCloseable
 			promptAuthorFailed("The prompt author attempt made forbidden changes: " + review.forbidden());
 			return;
 		}
+		List<String> unreceived = unreceivedFiles(completed.effects());
+		if (!unreceived.isEmpty())
+		{
+			promptAuthorFailed("The prompt author attempt loads files that its trials do not receive: " +
+				String.join(" ", unreceived));
+			return;
+		}
 		Optional<Overlay> candidate = PromptAuthorDelta.apply(promptAuthor.overlay(), completed.effects(),
 			review.changes());
 		if (candidate.isEmpty())
@@ -1555,6 +1565,30 @@ public final class Driver implements AutoCloseable
 		{
 			record(new CampaignEvent.WarnAuthority(warnings));
 		}
+	}
+
+	/**
+	 * Returns the files that load or run in a prompt author attempt's trials but that its trials do not receive: each
+	 * project file outside the campaign's trial selection, and each reference to a file that trials cannot receive.
+	 *
+	 * @param project the project as the prompt author session left it
+	 * @return one description of each file, empty if trials receive every file that loads
+	 * @throws IOException if the project cannot be read
+	 */
+	private List<String> unreceivedFiles(Path project) throws IOException
+	{
+		LoadedSources loaded = context.sessions().loadedSources(project, List.of());
+		SourceSelection selection = trialSelection();
+		List<String> unreceived = new ArrayList<>();
+		for (DerivedSource source : loaded.trials())
+		{
+			Path path = Path.of(source.path());
+			if (!path.isAbsolute() && !selection.selects(path))
+				unreceived.add(source.path() + " is not among the files that trials receive.");
+		}
+		for (UnreachableReference reference : loaded.unreachable())
+			unreceived.add(reference.describe());
+		return unreceived;
 	}
 
 	/**
