@@ -76,6 +76,7 @@ import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
+import com.holdmyspot.cat.common.optimizer.proposal.HookReport;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.JudgeTemplate;
@@ -1502,8 +1503,20 @@ public final class OptimizerCore implements Core
 	 */
 	private static Set<Path> derivedPaths(Path root, DerivedProposal derived)
 	{
+		return derivedPaths(root, derived.derivedSources());
+	}
+
+	/**
+	 * Returns derived prompt sources as the fork names them.
+	 *
+	 * @param root    the project root
+	 * @param sources the sources
+	 * @return paths relative to the project for sources inside it, and absolute paths for sources outside it
+	 */
+	private static Set<Path> derivedPaths(Path root, List<DerivedSource> sources)
+	{
 		Set<Path> paths = new LinkedHashSet<>();
-		for (DerivedSource source : derived.derivedSources())
+		for (DerivedSource source : sources)
 		{
 			Path absolute;
 			try
@@ -1724,6 +1737,9 @@ public final class OptimizerCore implements Core
 		String invalidRetry;
 		if (previous == null)
 		{
+			Optional<String> failedHooks = checkHooks(root, campaign, fork, incumbent, staged, bases, loaded);
+			if (failedHooks.isPresent())
+				return report(root, campaign, null, failedHooks.get());
 			salt = scope.random().nextLong();
 			request = protocol.request(staged, profiles, hooks, loaded, salt);
 			invalidRetry = "Run `start` again to retry.";
@@ -1808,6 +1824,52 @@ public final class OptimizerCore implements Core
 		derived = derived.withDraft(DraftDirectory.store(derived.draft(), heldOut), derived.changes());
 		new ProposalFile(heldOut, scope.json()).write(derived, profiles);
 		return present(root, store, campaign, fork, derived);
+	}
+
+	/**
+	 * Runs the hooks that run before the model acts, once as a trial runs them and once as the user's sessions run
+	 * them, and stores which hooks print different output.
+	 *
+	 * @param root      the project root
+	 * @param campaign  the campaign
+	 * @param fork      the campaign's fork
+	 * @param incumbent the incumbent's overlay on the fork
+	 * @param staged    a staged source that holds every file of the fork
+	 * @param bases     the campaign's trial plugins with their base copies
+	 * @param loaded    the prompt files that load in trials
+	 * @return the reason to refuse the campaign if a hook succeeds in the user's sessions and fails in trials
+	 * @throws IOException          if a source cannot be staged or copied, a hook cannot be started or the result
+	 *                              cannot be stored
+	 * @throws InterruptedException if the thread is interrupted while it waits for a hook
+	 */
+	private Optional<String> checkHooks(Path root, Campaign campaign, ForkView fork, Overlay incumbent, Path staged,
+		List<PluginBase> bases, List<DerivedSource> loaded) throws IOException, InterruptedException
+	{
+		Path directory = campaignDirectory(campaign.header().id());
+		HookReportFile file = new HookReportFile(directory, scope.json());
+		// Most projects declare no such hook, and staging and copying their sources is then wasted
+		if (scope.sessions().earlyHooks(staged, bases, Optional.empty(), HookCheck.PROMPT).isEmpty())
+		{
+			file.write(HookReport.NONE);
+			return Optional.empty();
+		}
+		Set<Path> sources = new LinkedHashSet<>();
+		sources.add(relativeTarget(root, campaign));
+		for (Path path : derivedPaths(root, loaded))
+		{
+			if (!path.isAbsolute())
+				sources.add(path);
+		}
+		SourceSelection selection = TrialSelection.base(scope.harness(), sources,
+			Set.copyOf(scope.loaderConfiguration()), campaign.plugins().orElseThrow());
+		Path trialSource = fork.workspace().stage(incumbent, Set.of(), selection);
+		HookCheck.Result result = HookCheck.run(scope.sessions(), trialSource, staged, bases, directory);
+		file.write(result.report());
+		if (result.failures().isEmpty())
+			return Optional.empty();
+		return Optional.of("These hooks succeed in your sessions but fail in a trial's workspace, which holds only " +
+			"the files that trials receive: " + String.join("; ", result.failures()) + ". Change each hook so that " +
+			"it reads only files that trials receive, such as the prompt system's files, then run `start` again.");
 	}
 
 	/**
@@ -1967,7 +2029,7 @@ public final class OptimizerCore implements Core
 		}
 		return Proposal.of(derived, campaign, links, relativeTarget(root, campaign), scope.sessions().hostLogin(),
 			scope.calibrator(), schema, incumbent, pilots, plugin, controlRefusals(root, campaign, fork, derived, plugin),
-			trialFiles);
+			trialFiles, new HookReportFile(campaignDirectory(campaign.header().id()), scope.json()).read());
 	}
 
 	/**

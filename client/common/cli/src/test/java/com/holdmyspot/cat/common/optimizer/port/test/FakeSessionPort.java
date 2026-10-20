@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.port.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
@@ -138,6 +139,12 @@ public final class FakeSessionPort implements SessionPort
 
 	@Override
 	public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
+	{
+		return List.of();
+	}
+
+	@Override
+	public List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home, String prompt)
 	{
 		return List.of();
 	}

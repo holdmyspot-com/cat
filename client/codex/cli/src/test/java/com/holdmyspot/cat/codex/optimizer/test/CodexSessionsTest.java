@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.CodexSessionHarness;
+import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
 import com.holdmyspot.cat.common.SessionDirectory;
@@ -18,6 +19,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
+import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
@@ -43,6 +45,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -871,6 +874,47 @@ public final class CodexSessionsTest
 			LoadedSources loaded = sessions.loadedSources(project, List.of());
 			requireThat(loaded.trials(), "trials").isEqualTo(expected);
 			requireThat(loaded.production(), "production").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Verifies that the hooks that run before the model acts are the command hooks of {@code .codex/hooks.json} that
+	 * run when a session starts or when the user submits a prompt; that each runs in Codex's command shell, with
+	 * {@code commandWindows} on Windows; and that each receives the empty harness home in {@code CODEX_HOME}.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void listsEarlyHooks() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-early-hooks-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			write(project.resolve(".codex/hooks.json"), """
+				{"hooks": {"SessionStart": [{"matcher": "^(startup|resume)$", "hooks": [{"type": "command", \
+				"command": "start.sh", "commandWindows": "start.cmd"}]}], \
+				"Stop": [{"hooks": [{"type": "command", "command": "stop.sh"}]}]}}""");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+			Path home = root.resolve("home");
+
+			List<HookInvocation> hooks = sessions.earlyHooks(project, List.of(), Optional.of(home), "Hello");
+
+			requireThat(hooks.size(), "hooks.size()").isEqualTo(1);
+			HookInvocation start = hooks.getFirst();
+			requireThat(start.name(), "name").isEqualTo("the SessionStart hook `start.sh` of `.codex/hooks.json`");
+			List<String> command;
+			if (CommandShell.current() == CommandShell.POWERSHELL)
+				command = CommandShell.POWERSHELL.processArguments("start.cmd", Map.of());
+			else
+				command = List.of("bash", "-c", "start.sh");
+			requireThat(start.command(), "command").isEqualTo(command);
+			requireThat(start.environment().get("CODEX_HOME"), "CODEX_HOME").
+				isEqualTo(home.resolve(".codex").toString());
 		}
 	}
 

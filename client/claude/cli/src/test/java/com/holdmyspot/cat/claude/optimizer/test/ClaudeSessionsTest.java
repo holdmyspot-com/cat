@@ -7,6 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.claude.ClaudeSessionHarness;
 import com.holdmyspot.cat.claude.optimizer.ClaudeSessions;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
@@ -18,6 +19,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
+import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
@@ -1011,6 +1013,74 @@ public final class ClaudeSessionsTest
 			LoadedSources loaded = sessions.loadedSources(project, List.of());
 			requireThat(loaded.trials(), "trials").isEqualTo(expected);
 			requireThat(loaded.production(), "production").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Verifies that the hooks that run before the model acts are the command hooks of the project's settings and of
+	 * each trial plugin that run when a session starts, as a matcher that selects {@code startup} or no matcher
+	 * declares, or when the user submits a prompt; that each runs in Bash with the project directory, the plugin
+	 * directory and the empty harness home; and that its input holds the event, the directory and the prompt.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void listsEarlyHooks() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-early-hooks-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			write(project.resolve(".claude/settings.json"), """
+				{"hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "a.sh"}]}, \
+				{"matcher": "compact", "hooks": [{"type": "command", "command": "b.sh"}]}, \
+				{"hooks": [{"type": "prompt", "prompt": "Check"}]}], \
+				"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "c.sh", "timeout": 5}]}], \
+				"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "d.sh"}]}]}}""");
+			Path tools = root.resolve("tools");
+			write(tools.resolve(".claude-plugin/plugin.json"), "{\"name\": \"tools\"}");
+			write(tools.resolve("hooks/hooks.json"), """
+				{"hooks": {"SessionStart": [{"hooks": [{"type": "command", \
+				"command": "${CLAUDE_PLUGIN_ROOT}/start.sh"}]}]}}""");
+			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
+				new TrialPlugin.Installed(), List.of()), tools));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			ClaudeSessions sessions = ClaudeSessionsSecrets.access().newClaudeSessions(settings, (_, _, _) ->
+			{
+			});
+			Path home = root.resolve("home");
+
+			List<HookInvocation> hooks = sessions.earlyHooks(project, plugins, Optional.of(home), "Hello");
+
+			requireThat(hooks.stream().map(HookInvocation::name).toList(), "names").isEqualTo(List.of(
+				"the SessionStart hook `a.sh` of `.claude/settings.json`",
+				"the UserPromptSubmit hook `c.sh` of `.claude/settings.json`",
+				"the SessionStart hook `${CLAUDE_PLUGIN_ROOT}/start.sh` of `hooks/hooks.json` in the plugin " +
+					"`tools@market`"));
+			HookInvocation start = hooks.getFirst();
+			requireThat(start.command(), "command").isEqualTo(List.of("bash", "-c", "a.sh"));
+			requireThat(start.environment().get("CLAUDE_PROJECT_DIR"), "CLAUDE_PROJECT_DIR").
+				isEqualTo(project.toString());
+			requireThat(start.environment().get("CLAUDE_CONFIG_DIR"), "CLAUDE_CONFIG_DIR").
+				isEqualTo(home.resolve(".claude").toString());
+			String homeVariable = Platform.current().homeVariable();
+			requireThat(start.environment().get(homeVariable), homeVariable).isEqualTo(home.toString());
+			requireThat(start.timeout(), "timeout").isEqualTo(Duration.ofSeconds(60));
+			JsonMapper json = JsonMapper.builder().build();
+			requireThat(json.readTree(start.input()).path("hook_event_name").asString(), "event").
+				isEqualTo("SessionStart");
+			requireThat(json.readTree(start.input()).path("source").asString(), "source").isEqualTo("startup");
+			requireThat(json.readTree(start.input()).path("cwd").asString(), "cwd").isEqualTo(project.toString());
+			HookInvocation prompt = hooks.get(1);
+			requireThat(json.readTree(prompt.input()).path("prompt").asString(), "prompt").isEqualTo("Hello");
+			requireThat(prompt.timeout(), "timeout").isEqualTo(Duration.ofSeconds(5));
+			requireThat(hooks.get(2).environment().get("CLAUDE_PLUGIN_ROOT"), "CLAUDE_PLUGIN_ROOT").
+				isEqualTo(tools.toString());
+
+			HookInvocation user = sessions.earlyHooks(project, plugins, Optional.empty(), "Hello").getFirst();
+			requireThat(user.environment().containsKey("CLAUDE_CONFIG_DIR"), "hasConfiguration").isFalse();
+			requireThat(user.environment().containsKey(homeVariable), "hasHome").isFalse();
 		}
 	}
 

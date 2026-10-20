@@ -111,6 +111,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.OverlayEntry.Write;
 import com.holdmyspot.cat.common.optimizer.inventory.PathChange;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
@@ -5325,6 +5326,13 @@ public final class DriverTest
 				throws IOException
 			{
 				return delegate.hookRegistrations(project, plugins);
+			}
+
+			@Override
+			public List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home,
+				String prompt) throws IOException
+			{
+				return delegate.earlyHooks(project, plugins, home, prompt);
 			}
 
 			@Override

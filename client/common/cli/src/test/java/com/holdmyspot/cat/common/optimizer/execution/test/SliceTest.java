@@ -19,6 +19,7 @@ import com.holdmyspot.cat.common.optimizer.execution.SliceResult;
 import com.holdmyspot.cat.common.optimizer.execution.SliceRunner;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.execution.Step;
+import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
@@ -400,6 +401,13 @@ public final class SliceTest
 			throws IOException
 		{
 			return delegate.hookRegistrations(project, plugins);
+		}
+
+		@Override
+		public List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home,
+			String prompt) throws IOException
+		{
+			return delegate.earlyHooks(project, plugins, home, prompt);
 		}
 
 		@Override

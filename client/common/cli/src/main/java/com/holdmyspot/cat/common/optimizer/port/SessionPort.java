@@ -130,6 +130,23 @@ public interface SessionPort
 	List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins) throws IOException;
 
 	/**
+	 * Lists the command hooks that run before the model acts in a new session, at its start or when the user submits
+	 * a prompt: those that the project's harness settings declare, followed by those of the trial plugins, each with
+	 * the input that the harness documents for its event.
+	 *
+	 * @param project the directory that the session runs in
+	 * @param plugins the campaign's trial plugins with their base copies
+	 * @param home    the process home of the session, which holds an empty harness home, or empty for the user's
+	 *                home
+	 * @param prompt  the prompt that the session submits
+	 * @return the hooks, in declaration order; a file that is missing or is not valid JSON declares none
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a file cannot be read
+	 */
+	List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home, String prompt)
+		throws IOException;
+
+	/**
 	 * Finds the user's installed copies of a plugin that the project does not build, through the harness's install
 	 * records.
 	 *

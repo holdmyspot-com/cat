@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -132,6 +133,24 @@ final class TestSessions extends RunnerSessions
 	protected List<Path> projectHookFiles()
 	{
 		return List.of();
+	}
+
+	@Override
+	protected Optional<List<String>> hookProcess(JsonNode hook)
+	{
+		return Optional.empty();
+	}
+
+	@Override
+	protected String pluginRootVariable()
+	{
+		return "PLUGIN_ROOT";
+	}
+
+	@Override
+	protected Map<String, String> harnessHome(Path home)
+	{
+		return Map.of();
 	}
 
 	@Override

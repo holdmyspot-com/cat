@@ -25,7 +25,7 @@ import java.util.function.Predicate;
 /**
  * File-system helpers that copy and scan trees without following symbolic links.
  */
-final class FileTree
+public final class FileTree
 {
 	/**
 	 * Prevents instantiation.
@@ -43,7 +43,7 @@ final class FileTree
 	 * @param omitted accepts the absolute source paths whose subtrees are not copied
 	 * @throws IOException if a file cannot be copied
 	 */
-	static void copy(Path source, Path destination, Predicate<Path> omitted) throws IOException
+	public static void copy(Path source, Path destination, Predicate<Path> omitted) throws IOException
 	{
 		Files.walkFileTree(source, new SimpleFileVisitor<>()
 		{

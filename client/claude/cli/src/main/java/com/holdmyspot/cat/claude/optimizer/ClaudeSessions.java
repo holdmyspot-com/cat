@@ -516,6 +516,36 @@ public final class ClaudeSessions extends RunnerSessions
 	/**
 	 * {@inheritDoc}
 	 * <p>
+	 * Claude Code runs a hook's command in Bash on every platform.
+	 */
+	@Override
+	protected Optional<List<String>> hookProcess(JsonNode hook)
+	{
+		requireThat(hook, "hook").isNotNull();
+		return Optional.of(List.of("bash", "-c", hook.path("command").asString("")));
+	}
+
+	@Override
+	protected String pluginRootVariable()
+	{
+		return "CLAUDE_PLUGIN_ROOT";
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Claude Code reads its configuration from {@code CLAUDE_CONFIG_DIR}.
+	 */
+	@Override
+	protected Map<String, String> harnessHome(Path home)
+	{
+		requireThat(home, "home").isNotNull();
+		return Map.of("CLAUDE_CONFIG_DIR", home.resolve(".claude").toString());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
 	 * Claude Code reads the project's MCP servers from the {@code mcpServers} object of {@code .mcp.json}.
 	 */
 	@Override

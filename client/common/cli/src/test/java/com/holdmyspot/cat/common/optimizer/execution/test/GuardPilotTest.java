@@ -35,6 +35,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
+import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
@@ -1056,6 +1057,13 @@ public final class GuardPilotTest
 
 		@Override
 		public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
+		{
+			return List.of();
+		}
+
+		@Override
+		public List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home,
+			String prompt)
 		{
 			return List.of();
 		}

@@ -81,6 +81,7 @@ public final class Markdown
 	private final PluginCheck plugin;
 	private final List<String> controlRefusals;
 	private final List<String> trialFiles;
+	private final HookReport hooks;
 	private final String goal;
 	private final StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
 
@@ -102,12 +103,13 @@ public final class Markdown
 	 * @param plugin the check of the trial plugins
 	 * @param controlRefusals the reasons why the control source cannot be built, which block confirmation
 	 * @param trialFiles the files that every trial receives from the incumbent, relative to the project
+	 * @param hooks what running the hooks that run before the model acts showed
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
 	Markdown(DerivedProposal derived, Contract contract, LinkReport links, Path controlFile,
 		HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews, List<String> caps,
 		CertificationStatus incumbent, Map<String, PilotResult> pilots, Map<String, DeliveredTest> delivered,
-		PluginCheck plugin, List<String> controlRefusals, List<String> trialFiles, String goal)
+		PluginCheck plugin, List<String> controlRefusals, List<String> trialFiles, HookReport hooks, String goal)
 	{
 		this.derived = derived;
 		this.contract = contract;
@@ -123,6 +125,7 @@ public final class Markdown
 		this.plugin = plugin;
 		this.controlRefusals = controlRefusals;
 		this.trialFiles = trialFiles;
+		this.hooks = hooks;
 		this.goal = goal;
 	}
 
@@ -207,8 +210,8 @@ public final class Markdown
 	}
 
 	/**
-	 * Lists the prompt loading that the contract author session observed, the loading that was derived and the files
-	 * that every trial receives.
+	 * Lists the prompt loading that the contract author session observed, the loading that was derived, the files
+	 * that every trial receives and the hooks whose output differs in a trial's workspace.
 	 */
 	private void loading()
 	{
@@ -231,7 +234,53 @@ public final class Markdown
 			for (String file : trialFiles)
 				text.append("- `").append(file).append("`\n");
 		}
+		if (!hooks.differences().isEmpty())
+		{
+			text.append("\nThese hooks print different output in a trial's workspace than in your sessions, which a " +
+				"time or Git state can explain:\n\n");
+			for (HookReport.HookDifference difference : hooks.differences())
+			{
+				text.append("- ").append(Character.toUpperCase(difference.hook().charAt(0))).
+					append(difference.hook().substring(1)).append(", from its first line that differs:\n").
+					append("  - In trials: ").append(outputLines(difference.trial())).append('\n').
+					append("  - In your sessions: ").append(outputLines(difference.session())).append('\n');
+			}
+		}
 		text.append('\n').append(Proposal.DERIVED_LOADING_LIMIT).append('\n');
+		if (hooks.checked() > 0)
+			text.append('\n').append(Proposal.HOOK_CHECK_LIMIT).append('\n');
+	}
+
+	/**
+	 * Formats lines of a hook's output as inline code.
+	 *
+	 * @param lines the lines
+	 * @return each line as inline code, separated by spaces, or {@code no output} if there are none
+	 */
+	private static String outputLines(List<String> lines)
+	{
+		if (lines.isEmpty())
+			return "no output";
+		StringJoiner joined = new StringJoiner(" ");
+		for (String line : lines)
+		{
+			// A fence longer than every run of backticks in the line keeps the line's own backticks literal
+			int longest = 0;
+			int run = 0;
+			for (char character : line.toCharArray())
+			{
+				if (character == '`')
+				{
+					++run;
+					longest = Math.max(longest, run);
+				}
+				else
+					run = 0;
+			}
+			String fence = "`".repeat(longest + 1);
+			joined.add(fence + " " + line + " " + fence);
+		}
+		return joined.toString();
 	}
 
 	/**

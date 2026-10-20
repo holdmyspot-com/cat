@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.RuleSource;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
@@ -17,6 +18,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 
 import java.io.BufferedReader;
@@ -27,6 +29,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -38,11 +41,13 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
@@ -81,6 +86,26 @@ public abstract class RunnerSessions implements SessionPort
 	 * Matches a quote in a word of a hook's shell command.
 	 */
 	private static final Pattern QUOTE = Pattern.compile("[\"']");
+	/**
+	 * The event that runs a hook when a session starts.
+	 */
+	private static final String SESSION_START = "SessionStart";
+	/**
+	 * The event that runs a hook when the user submits a prompt.
+	 */
+	private static final String PROMPT_SUBMIT = "UserPromptSubmit";
+	/**
+	 * The source of a session start that a new session reports to its hooks.
+	 */
+	private static final String STARTUP = "startup";
+	/**
+	 * How long the harness lets a hook run when the hook declares no timeout.
+	 */
+	private static final Duration HOOK_TIMEOUT = Duration.ofSeconds(60);
+	/**
+	 * The session identifier in a hook's input, the same in every run so that only the session's directory differs.
+	 */
+	private static final String HOOK_SESSION_ID = "00000000-0000-0000-0000-000000000000";
 	private final String harness;
 	private final Settings settings;
 	private final Bridge bridge;
@@ -723,6 +748,146 @@ public abstract class RunnerSessions implements SessionPort
 	}
 
 	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The hooks are the command hooks of the project's hook files, in the order that {@link #projectHookFiles()} lists
+	 * them, followed by those of each trial plugin in turn, that run when a new session starts or when the user
+	 * submits a prompt. A hook's input holds no transcript, since none exists before the model acts.
+	 */
+	@Override
+	public final List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home,
+		String prompt) throws IOException
+	{
+		requireThat(project, "project").isNotNull();
+		requireThat(plugins, "plugins").isNotNull();
+		requireThat(home, "home").isNotNull();
+		requireThat(prompt, "prompt").isNotNull();
+		JsonMapper json = JsonMapper.builder().build();
+		Map<String, String> environment = new LinkedHashMap<>();
+		for (String variable : projectDirectoryVariables())
+			environment.put(variable, project.toString());
+		if (home.isPresent())
+		{
+			HarnessEnvironment.setHomeDirectory(environment, home.get());
+			environment.putAll(harnessHome(home.get()));
+		}
+		List<HookInvocation> invocations = new ArrayList<>();
+		for (Path file : projectHookFiles())
+		{
+			Optional<JsonNode> content = readHooksFile(project.resolve(file), json);
+			if (content.isPresent())
+			{
+				addEarlyHooks("`" + PortablePaths.text(file.normalize()) + "`", content.get().path("hooks"),
+					environment, project, prompt, json, invocations);
+			}
+		}
+		for (PluginBase base : plugins)
+		{
+			Map<String, String> pluginEnvironment = new LinkedHashMap<>(environment);
+			pluginEnvironment.put(pluginRootVariable(), base.directory().toString());
+			for (HookDeclaration declaration : pluginHooks(new PluginFiles(project, base), json))
+			{
+				addEarlyHooks("`" + PortablePaths.text(declaration.file().normalize()) + "` in the plugin `" +
+					base.plugin().name() + "`", declaration.hooks(), pluginEnvironment, project, prompt, json,
+					invocations);
+			}
+		}
+		return invocations;
+	}
+
+	/**
+	 * Adds the command hooks of one file that run before the model acts.
+	 *
+	 * @param file        names the file that declares the hooks
+	 * @param hooks       the object that maps each event to its matcher groups
+	 * @param environment the variables that the harness sets for the hooks
+	 * @param project     the directory that the session runs in
+	 * @param prompt      the prompt that the session submits
+	 * @param json        the JSON mapper
+	 * @param invocations receives each hook in declaration order
+	 */
+	private void addEarlyHooks(String file, JsonNode hooks, Map<String, String> environment, Path project,
+		String prompt, JsonMapper json, List<HookInvocation> invocations)
+	{
+		for (DeclaredHook hook : declaredHooks(hooks))
+		{
+			if (!hook.type().equals("command") || hook.command().isEmpty() || !runsBeforeModel(hook))
+				continue;
+			Optional<List<String>> process = hookProcess(hook.declaration());
+			if (process.isEmpty())
+				continue;
+			ObjectNode input = json.createObjectNode();
+			input.put("session_id", HOOK_SESSION_ID);
+			input.put("cwd", project.toString());
+			input.put("hook_event_name", hook.event());
+			input.put("permission_mode", "default");
+			if (hook.event().equals(SESSION_START))
+				input.put("source", STARTUP);
+			else
+				input.put("prompt", prompt);
+			Duration timeout = HOOK_TIMEOUT;
+			JsonNode seconds = hook.declaration().path("timeout");
+			if (seconds.isIntegralNumber() && seconds.asLong() > 0)
+				timeout = Duration.ofSeconds(seconds.asLong());
+			invocations.add(new HookInvocation("the " + hook.event() + " hook `" + hook.command().get() + "` of " +
+				file, process.get(), environment, json.writeValueAsString(input), timeout));
+		}
+	}
+
+	/**
+	 * Returns whether a hook runs before the model acts in a new session: at its start, or when the user submits a
+	 * prompt.
+	 *
+	 * @param hook the hook
+	 * @return {@code true} if it runs
+	 */
+	private static boolean runsBeforeModel(DeclaredHook hook)
+	{
+		return switch (hook.event())
+		{
+			case PROMPT_SUBMIT -> true;
+			case SESSION_START ->
+			{
+				String matcher = hook.matcher();
+				if (matcher.isEmpty() || matcher.equals("*"))
+					yield true;
+				try
+				{
+					yield Pattern.compile(matcher).matcher(STARTUP).matches();
+				}
+				catch (PatternSyntaxException _)
+				{
+					yield matcher.equals(STARTUP);
+				}
+			}
+			default -> false;
+		};
+	}
+
+	/**
+	 * Returns how the harness runs a command hook.
+	 *
+	 * @param hook the hook as its file declares it, with its {@code command} and any key of the harness
+	 * @return the program and its arguments, or empty if the harness does not run the hook on this platform
+	 */
+	protected abstract Optional<List<String>> hookProcess(JsonNode hook);
+
+	/**
+	 * Returns the environment variable through which the harness gives a plugin's hook the plugin's directory.
+	 *
+	 * @return the variable's name
+	 */
+	protected abstract String pluginRootVariable();
+
+	/**
+	 * Returns the variables that make the harness use the empty harness home in a process home.
+	 *
+	 * @param home the process home
+	 * @return the variables
+	 */
+	protected abstract Map<String, String> harnessHome(Path home);
+
+	/**
 	 * Lists the hooks that one file declares.
 	 *
 	 * @param hooks the object that maps each event to its matcher groups; any other value declares no hook
@@ -754,7 +919,7 @@ public abstract class RunnerSessions implements SessionPort
 						text = Optional.of(command.asString());
 					else
 						text = Optional.empty();
-					declared.add(new DeclaredHook(event, matcher, hook.path("type").asString(""), text));
+					declared.add(new DeclaredHook(event, matcher, hook.path("type").asString(""), text, hook));
 				}
 			}
 		}
@@ -764,12 +929,14 @@ public abstract class RunnerSessions implements SessionPort
 	/**
 	 * A hook as a hooks file declares it.
 	 *
-	 * @param event   the event that runs the hook
-	 * @param matcher the matcher that selects the event's occurrences, or an empty string if the hook has none
-	 * @param type    the hook's type, or an empty string if it declares none
-	 * @param command the command that the hook runs, or empty if it runs none
+	 * @param event       the event that runs the hook
+	 * @param matcher     the matcher that selects the event's occurrences, or an empty string if the hook has none
+	 * @param type        the hook's type, or an empty string if it declares none
+	 * @param command     the command that the hook runs, or empty if it runs none
+	 * @param declaration the hook's object in the file
 	 */
-	private record DeclaredHook(String event, String matcher, String type, Optional<String> command)
+	private record DeclaredHook(String event, String matcher, String type, Optional<String> command,
+		JsonNode declaration)
 	{
 	}
 

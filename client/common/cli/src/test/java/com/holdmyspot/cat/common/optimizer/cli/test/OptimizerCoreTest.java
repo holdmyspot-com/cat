@@ -66,6 +66,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
+import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
@@ -75,6 +76,7 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractContext;
 import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.OutputFile;
+import com.holdmyspot.cat.common.optimizer.proposal.Proposal;
 import com.holdmyspot.cat.common.optimizer.proposal.test.DraftFixtures;
 import com.holdmyspot.cat.common.optimizer.proposal.test.ProposalTest;
 import com.holdmyspot.cat.common.optimizer.report.TokenStatistics;
@@ -747,6 +749,42 @@ public final class OptimizerCoreTest
 		public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
 		{
 			return List.of();
+		}
+
+		/**
+		 * The commands of the hooks that {@link #earlyHooks(Path, List, Optional, String)} returns.
+		 */
+		private volatile List<String> earlyHookCommands = List.of();
+		/**
+		 * The directory that the hooks receive in {@code PLUGIN_ROOT}.
+		 */
+		private volatile Path pluginRoot = Path.of("");
+
+		@Override
+		public List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home,
+			String prompt)
+		{
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PLUGIN_ROOT", pluginRoot.toString());
+			List<HookInvocation> hooks = new ArrayList<>();
+			for (String command : earlyHookCommands)
+			{
+				hooks.add(new HookInvocation("the SessionStart hook `" + command + "` of `.claude/settings.json`",
+					List.of("sh", "-c", command), environment, "{}", Duration.ofSeconds(30)));
+			}
+			return hooks;
+		}
+
+		/**
+		 * Sets the hooks that run at session start, each run by {@code sh -c} in the session's directory.
+		 *
+		 * @param commands   the hooks' commands
+		 * @param pluginRoot the directory that the hooks receive in {@code PLUGIN_ROOT}
+		 */
+		void earlyHooks(List<String> commands, Path pluginRoot)
+		{
+			this.earlyHookCommands = List.copyOf(commands);
+			this.pluginRoot = pluginRoot;
 		}
 
 		@Override
@@ -2429,6 +2467,87 @@ public final class OptimizerCoreTest
 				contains("\n- `docs/imported.md`\n").
 				contains("\n- `.cat/rules/style.md`\n").
 				doesNotContain("notes/unrelated.md");
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} refuses, before the contract author starts, a hook that runs at session start and
+	 * reads a project file that trials do not receive, naming the hook, its exit status and its error output.
+	 */
+	@Test
+	public void startRefusesHookThatFailsInTrials() throws Exception
+	{
+		// Requirement: R-C28
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), Path.of("docs/conventions.md")));
+			Path conventions = repository.root().resolve("docs/conventions.md");
+			Files.createDirectories(conventions.getParent());
+			Files.writeString(conventions, "Use tabs.\n");
+			repository.sessions().earlyHooks(List.of("cat docs/conventions.md"), repository.root());
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(result.proposal(), "proposal").isNull();
+			requireThat(result.message(), "message").isNotNull().
+				contains("the SessionStart hook `cat docs/conventions.md` of `.claude/settings.json`").
+				contains("exits with status 1").
+				contains("docs/conventions.md: No such file or directory");
+			requireThat(repository.sessions().roles(), "roles").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that the proposal lists a hook whose output differs between a trial's workspace and the user's
+	 * sessions, with the first lines that differ.
+	 */
+	@Test
+	public void proposalListsHookWhoseOutputDiffers() throws Exception
+	{
+		// Requirement: R-C28
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.sessions().earlyHooks(List.of("echo same; pwd"), repository.root());
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(result.proposal(), "proposal").isNotNull().
+				contains("These hooks print different output in a trial's workspace than in your sessions").
+				contains("- The SessionStart hook `echo same; pwd` of `.claude/settings.json`, from its first line " +
+					"that differs:\n  - In trials: ` ").
+				contains("/trial/project `\n  - In your sessions: ` ").
+				contains("/session/project `\n").
+				doesNotContain("` same `").
+				contains(Proposal.HOOK_CHECK_LIMIT);
+		}
+	}
+
+	/**
+	 * Verifies that a hook that reads only its plugin's files passes the hook check and is not listed.
+	 */
+	@Test
+	public void hookThatReadsItsPluginPasses() throws Exception
+	{
+		// Requirement: R-C28
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path plugin = scope.add(Files.createTempDirectory("optimizer-plugin"));
+			Files.writeString(plugin.resolve("context.md"), "Plugin context.\n");
+			repository.sessions().earlyHooks(List.of("cat \"$PLUGIN_ROOT/context.md\""), plugin);
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(result.proposal(), "proposal").isNotNull().
+				doesNotContain("These hooks print different output").
+				contains(Proposal.HOOK_CHECK_LIMIT);
 		}
 	}
 

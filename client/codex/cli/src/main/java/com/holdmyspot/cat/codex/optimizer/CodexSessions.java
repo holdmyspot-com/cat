@@ -4,6 +4,7 @@ import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
@@ -25,6 +26,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -193,6 +195,42 @@ public final class CodexSessions extends RunnerSessions
 	protected List<Path> projectHookFiles()
 	{
 		return List.of(Path.of(".codex/hooks.json"));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Codex runs a hook's command in its command shell: {@code commandWindows}, if the hook declares it, in PowerShell
+	 * on Windows, and {@code command} otherwise.
+	 */
+	@Override
+	protected Optional<List<String>> hookProcess(JsonNode hook)
+	{
+		requireThat(hook, "hook").isNotNull();
+		CommandShell shell = CommandShell.current();
+		String command = hook.path("command").asString("");
+		JsonNode windows = hook.path("commandWindows");
+		if (shell == CommandShell.POWERSHELL && windows.isString())
+			command = windows.asString();
+		return Optional.of(shell.processArguments(command, settings().environment()));
+	}
+
+	@Override
+	protected String pluginRootVariable()
+	{
+		return "PLUGIN_ROOT";
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Codex reads its configuration from {@code CODEX_HOME}.
+	 */
+	@Override
+	protected Map<String, String> harnessHome(Path home)
+	{
+		requireThat(home, "home").isNotNull();
+		return Map.of("CODEX_HOME", home.resolve(".codex").toString());
 	}
 
 	/**
