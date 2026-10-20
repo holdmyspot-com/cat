@@ -70,7 +70,8 @@ When writing or changing an expression that combines two different binary or ter
 parentheses between them, lazy load `../include/common/operator-precedence.md`.
 
 When writing or changing a condition that combines two or more tests, or that tests a value whose meaning the
-expression does not state, such as a date offset, a threshold, or a business rule, lazy load
+expression does not state, such as a date offset, a threshold, or a business rule, or writing or changing a log,
+exception, or user-facing error message that a branch emits about its condition, lazy load
 `../include/common/named-conditions.md`.
 
 When defining, changing, reviewing, or auditing type, function, or method names, or the names of variables declared

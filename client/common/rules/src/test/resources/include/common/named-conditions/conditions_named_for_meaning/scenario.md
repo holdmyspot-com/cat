@@ -3,8 +3,8 @@
 ## Design Goals
 
 - Prove that a condition whose meaning its operands do not state is tested through a local boolean named for that
-	meaning, even when the name is used once; that a condition which already reads as its meaning stays inline; and that
-	naming a condition keeps the guard that protects a later operand.
+	meaning, even when the name is used once; that a condition which already reads as its meaning, or that a message
+	beside it explains, stays inline; and that naming a condition keeps the guard that protects a later operand.
 
 ## Variables
 
@@ -55,6 +55,35 @@ follow-up. `ticket` is `None` when the lookup found no ticket; otherwise it has 
 `customer_replied_at`, a `datetime`. A ticket needs a follow-up when it exists, its status is `"waiting"`, and the
 customer replied more than two days before `now`.
 
+**Request 4.** Write the body of `deleteAccount`. When any session in `sessions` belongs to `account` and is still open,
+it must not delete the account: it throws an `IllegalStateException` whose message tells the caller that `who
+--account <name>` lists who is logged in. Otherwise it calls `store.delete(account)`.
+
+```java
+public final class Accounts
+{
+	private final List<Session> sessions;
+	private final AccountStore store;
+
+	public Accounts(List<Session> sessions, AccountStore store)
+	{
+		this.sessions = sessions;
+		this.store = store;
+	}
+
+	public void deleteAccount(String account)
+	{
+	}
+}
+
+public interface Session
+{
+	String account();
+
+	boolean isOpen();
+}
+```
+
 ## Assertions
 
 ### unclear_condition_named
@@ -76,6 +105,13 @@ customer replied more than two days before `now`.
 - **kind**: guard
 - **description**: For request 3: no input makes the function read `ticket.status` or `ticket.customer_replied_at` when
 	`ticket` is `None`, and the function returns the same result as the stated rule for every input.
+
+### message_explains_condition
+
+- **kind**: effect
+- **description**: For request 4: the exception's message begins with a brief statement of what the condition means,
+	such as "Account in use.", before it mentions `who --account`, and the answer does not assign that condition to a
+	local boolean that is used only to decide whether to throw.
 
 ### guidance_selection
 
