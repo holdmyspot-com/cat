@@ -2999,8 +2999,13 @@ The riskiest pure code, built first.
 - **Unit evidence instead of live runs (user ruling, 2026-10-20, D91):** these §14 claims are proven by Java tests,
 	not by an E scenario: the dirty-base refusal (`ForkTest`, on a real repository); removing a campaign's files after
 	the incumbent is kept and finishing an interrupted removal (driver and delivery tests); a prompt test's fixtures with
-	a generated value; a failed built-in tool, with and without `on_tool_failure: judge`; paired control trials; and
-	the eligible read-only-credential and disposable-fixture trials.
+	a generated value (`TestWorkspaceTest`, `DriverTest.trialsReceiveTheirFixtures`,
+	`RunnerSessionsTest.passesGeneratedFixtureToRunner`, `HarnessRunManagerTest.workspaceKeepsProjectFiles`); a failed
+	built-in tool, with and without `on_tool_failure: judge` (`DriverTest.failedCheckRunsNoJudge`,
+	`DriverTest.failedToolLeftToJudge`); paired control trials (`SchedulerTest.controlTrialsPairInAssignmentOrder`,
+	`GuardPilotTest.runsControlTrialsInWeakestCell`, `DriverTest.certify`); resuming a certification attempt after a host
+	interrupt (`DriverTest.hostInterruptResumesAttempt`, with the contract tests replaying each harness's recorded
+	interrupted turn); and the eligible read-only-credential and disposable-fixture trials.
 - **Recordings:** each run saves its harness event streams, untrimmed, with the harness version. They replace the
 	contract tests' recordings, and the contract tests then pass on them (`design.md` §10 T3). Save at least one
 	completed multi-turn session per role and an interrupted turn (from E2) per harness.

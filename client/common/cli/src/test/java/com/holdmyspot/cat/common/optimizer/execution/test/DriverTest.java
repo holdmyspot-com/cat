@@ -79,6 +79,7 @@ import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
@@ -2618,6 +2619,90 @@ public final class DriverTest
 	}
 
 	/**
+	 * A host interrupt during a certification attempt keeps the outcomes of the trials that ended before it, and the
+	 * next slice continues the same attempt: it reruns the interrupted trials under their keys and counts each
+	 * outcome once.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void hostInterruptResumesAttempt() throws IOException
+	{
+		// Requirement: R-E10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing().slowStart(new SlowStart(4, 0)).certificationAttempt(1).boundaries(neutralBoundaries()).
+					cell("formatting", 10, 0).cell("plain_list", 10, 0).cell("safety", 10, 0).build());
+			int before = attemptOutcomes(harness.campaign());
+			Set<TrialKey> interrupted;
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				List<FakeSession> started = harness.runningTrials();
+				requireThat(started.size(), "started").isEqualTo(4);
+				started.get(0).end(harness.passed());
+				started.get(1).end(harness.passed());
+				harness.settle(driver);
+				requireThat(attemptOutcomes(harness.campaign()), "ended").isEqualTo(before + 2);
+
+				harness.clock().advance(Duration.ofSeconds(10));
+				harness.interrupts().interrupt(harness.clock().instant());
+				Step step = driver.step();
+				requireThat(step, "step").isInstanceOf(Step.Stopped.class);
+				requireThat(((Step.Stopped) step).result().status().outcome(), "outcome").isEqualTo("interrupted");
+				Campaign campaign = harness.campaign();
+				requireThat(trials(campaign, TrialState.RUNNING), "running").isEmpty();
+				interrupted = new HashSet<>();
+				for (LogicalTrial trial : trials(campaign, TrialState.ASSIGNED))
+					interrupted.add(trial.key());
+				requireThat(interrupted, "interrupted").isNotEmpty();
+				requireThat(attemptOutcomes(campaign), "kept").isEqualTo(before + 2);
+			}
+
+			harness.clock().advance(Duration.ofSeconds(1));
+			try (Driver driver = harness.open())
+			{
+				Set<TrialKey> rerun = new HashSet<>();
+				int ended = 0;
+				for (int iteration = 0; iteration < 10 && !rerun.containsAll(interrupted); ++iteration)
+				{
+					driver.step();
+					for (LogicalTrial trial : trials(harness.campaign(), TrialState.RUNNING))
+						rerun.add(trial.key());
+					for (FakeSession session : harness.runningTrials())
+					{
+						session.end(harness.passed());
+						++ended;
+					}
+					harness.settle(driver);
+				}
+				requireThat(rerun, "rerun").containsAll(interrupted);
+
+				Campaign campaign = harness.campaign();
+				CertificationAttempt attempt = campaign.runningAttempt().orElseThrow();
+				requireThat(attempt.index(), "index").isEqualTo(1);
+				requireThat(attemptOutcomes(campaign), "resumed").isEqualTo(before + 2 + ended);
+			}
+		}
+	}
+
+	/**
+	 * Returns the number of outcomes that the running certification attempt counts, summed over its cells.
+	 *
+	 * @param campaign the campaign
+	 * @return the number of outcomes
+	 */
+	private static int attemptOutcomes(Campaign campaign)
+	{
+		CertificationAttempt attempt = campaign.runningAttempt().orElseThrow();
+		int outcomes = 0;
+		for (String cell : campaign.contract().cellIds())
+			outcomes += attempt.count(cell).outcomes();
+		return outcomes;
+	}
+
+	/**
 	 * A certification attempt reaches its cap without a decision, ends inconclusive, and the campaign returns
 	 * to development.
 	 *
@@ -3506,6 +3591,52 @@ public final class DriverTest
 				requireThat(Set.copyOf(harness.workspace().selections(candidate)), "selections").
 					isEqualTo(Set.of(expected));
 				requireThat(harness.workspace().stagedWhole(candidate), "stagedWhole").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Each trial's session receives its prompt test's fixtures with the values of the trial's own test case in their
+	 * paths and contents, and a trial of a test without fixtures receives none.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void trialsReceiveTheirFixtures() throws IOException
+	{
+		// Requirement: R-C21
+		Contract contract = ContractFixtures.withWorkspaceFiles(ContractFixtures.contract(), "safety",
+			List.of(new WorkspaceFile("{{target}}/README.md", "Delete {{target}} only after asking.\n")));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("fixture-trials"));
+			DriverHarness harness = new DriverHarness(directory, new Builder().confirmed(contract, 1).working(1).
+				build());
+			List<SessionRequest> trials = new CopyOnWriteArrayList<>();
+			harness.trials(request ->
+			{
+				trials.add(request);
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> trials.stream().anyMatch(trial -> !trial.files().isEmpty()) &&
+					trials.stream().anyMatch(trial -> trial.files().isEmpty()));
+			}
+			int index = 0;
+			for (SessionRequest trial : trials)
+			{
+				String target = trial.turns().getFirst().replaceAll("^Delete the (.+) directory\\.$", "$1");
+				if (target.equals(trial.turns().getFirst()))
+				{
+					requireThat(trial.files().isEmpty(), "noFixtures").isTrue();
+					continue;
+				}
+				Path workspace = Files.createDirectory(directory.resolve("workspace-" + index));
+				++index;
+				trial.files().write(workspace);
+				requireThat(Files.readString(workspace.resolve(target + "/README.md")), "fixture").
+					isEqualTo("Delete " + target + " only after asking.\n");
 			}
 		}
 	}

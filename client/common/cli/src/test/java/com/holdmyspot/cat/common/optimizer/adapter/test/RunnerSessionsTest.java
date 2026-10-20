@@ -12,7 +12,9 @@ import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.contract.TestValue;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
+import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.port.FollowUp;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
@@ -29,6 +31,7 @@ import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -286,6 +289,48 @@ public final class RunnerSessionsTest
 
 			requireThat(arguments.get(0), "control").contains("--control-source");
 			requireThat(arguments.get(1), "formal").doesNotContain("--control-source");
+		}
+	}
+
+	/**
+	 * Verifies that a trial's runner receives, while it runs, a workspace directory that holds the trial's fixture
+	 * with the test case's generated value written out in place of its placeholder.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void passesGeneratedFixtureToRunner()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-C21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			TestValue.Generated lines = new TestValue.Generated("log_lines", 1, 11, Map.of("count", 3L));
+			TestWorkspace files = new TestWorkspace(Map.of("logs/build.log",
+				new WorkspaceFile("logs/build.log", "{{before}}\nBuild finished on {{expected_outcome}}.\n")),
+				Map.of("before", lines), "2025-03-04");
+			List<String> received = new CopyOnWriteArrayList<>();
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			{
+				Path workspace = Path.of(ScriptedHarness.optionValue(options, "--workspace"));
+				received.add(Files.readString(workspace.resolve("logs/build.log")));
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+					List.of(Turn.replies("ok")), input, output);
+			});
+
+			await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
+				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, files, List.of())));
+
+			StringWriter generated = new StringWriter();
+			lines.write(generated);
+			requireThat(received, "received").isEqualTo(List.of(generated + "\nBuild finished on 2025-03-04.\n"));
 		}
 	}
 
