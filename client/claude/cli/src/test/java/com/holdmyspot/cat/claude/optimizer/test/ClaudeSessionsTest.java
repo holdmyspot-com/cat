@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
@@ -965,6 +966,51 @@ public final class ClaudeSessionsTest
 				new UnreachableReference("CLAUDE.md", "docs/missing.md", UnreachableReference.Problem.MISSING),
 				new UnreachableReference("CLAUDE.md", "../outside.md", UnreachableReference.Problem.OUTSIDE_PROJECT),
 				new UnreachableReference("CLAUDE.md", "~/notes.md", UnreachableReference.Problem.OUTSIDE_PROJECT)));
+		}
+	}
+
+	/**
+	 * Verifies that a project file that a hook of the project's settings or a server of the project's {@code .mcp.json}
+	 * runs is listed with the hook's event or the server's name, whether the command names it through
+	 * {@code CLAUDE_PROJECT_DIR} or relative to the project; and that a program name, a missing file and a file that is
+	 * already listed are left out.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void derivesFilesThatHooksAndServersRun() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-commands-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			write(project.resolve(".claude/settings.json"), """
+				{"hooks": {"SessionStart": [{"hooks": [{"type": "command", \
+				"command": "\\"$CLAUDE_PROJECT_DIR\\"/scripts/inject.sh"}]}], \
+				"UserPromptSubmit": [{"hooks": [{"type": "command", \
+				"command": "python3 tools/prompt.py --quiet && node missing.js"}]}]}}""");
+			write(project.resolve(".claude/settings.local.json"), """
+				{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "${CLAUDE_PROJECT_DIR}/scripts/inject.sh"}, \
+				{"type": "command", "command": "$HOME/stop.sh"}]}]}}""");
+			write(project.resolve(".mcp.json"), """
+				{"mcpServers": {"docs": {"command": "node", "args": ["servers/docs.js"]}, \
+				"web": {"type": "http", "url": "https://example.com/mcp"}}}""");
+			for (String file : List.of("scripts/inject.sh", "tools/prompt.py", "servers/docs.js"))
+				write(project.resolve(file), "script");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			ClaudeSessions sessions = ClaudeSessionsSecrets.access().newClaudeSessions(settings, (_, _, _) ->
+			{
+			});
+
+			List<DerivedSource> expected = List.of(
+				new DerivedSource("scripts/inject.sh", "The SessionStart hook of `.claude/settings.json` runs this file"),
+				new DerivedSource("tools/prompt.py",
+					"The UserPromptSubmit hook of `.claude/settings.json` runs this file"),
+				new DerivedSource("servers/docs.js", "The MCP server `docs` of `.mcp.json` runs this file"));
+			LoadedSources loaded = sessions.loadedSources(project, List.of());
+			requireThat(loaded.trials(), "trials").isEqualTo(expected);
+			requireThat(loaded.production(), "production").isEqualTo(expected);
 		}
 	}
 

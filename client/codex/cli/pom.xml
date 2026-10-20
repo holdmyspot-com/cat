@@ -27,6 +27,10 @@
 		</dependency>
 		<dependency>
 			<groupId>tools.jackson.dataformat</groupId>
+			<artifactId>jackson-dataformat-toml</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>tools.jackson.dataformat</groupId>
 			<artifactId>jackson-dataformat-yaml</artifactId>
 		</dependency>
 		<dependency>

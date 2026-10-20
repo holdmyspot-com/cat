@@ -156,6 +156,8 @@ public final class DistributionMain
 		DependencyJar jacksonYaml = findThirdParty(moduleDirectory, "tools.jackson.dataformat",
 			"jackson-dataformat-yaml");
 		DependencyJar snakeyaml = findThirdParty(moduleDirectory, "org.snakeyaml", "snakeyaml-engine");
+		DependencyJar jacksonToml = findThirdParty(moduleDirectory, "tools.jackson.dataformat",
+			"jackson-dataformat-toml");
 
 		List<Path> sharedRuntimeModules = List.of(copyModule(commonCli, jlinkModules),
 			copyModule(requirements.path(), jlinkModules), copyModule(requirementsAnnotation.path(), jlinkModules),
@@ -166,7 +168,8 @@ public final class DistributionMain
 		Path packagedCodexCli = copyModule(codexCli, jlinkModules);
 		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore.path(), jlinkModules),
 			copyModule(jacksonAnnotations.path(), jlinkModules), copyModule(jacksonDatabind.path(), jlinkModules),
-			copyModule(jacksonYaml.path(), jlinkModules), copyModule(snakeyaml.path(), jlinkModules));
+			copyModule(jacksonYaml.path(), jlinkModules), copyModule(snakeyaml.path(), jlinkModules),
+			copyModule(jacksonToml.path(), jlinkModules));
 
 		JlinkImageBuilder imageBuilder = new JlinkImageBuilder();
 		Path claudeImage = imageBuilder.build(append(append(sharedRuntimeModules, packagedClaudeCli), jsonRuntimeModules),
@@ -215,7 +218,9 @@ public final class DistributionMain
 			new ThirdPartyComponent("Jackson Dataformat YAML", jacksonYaml.coordinates(), "Apache-2.0.txt",
 				jacksonYaml.path(), List.of("META-INF/NOTICE")),
 			new ThirdPartyComponent("SnakeYAML Engine", snakeyaml.coordinates(), "Apache-2.0.txt",
-				snakeyaml.path(), List.of()));
+				snakeyaml.path(), List.of()),
+			new ThirdPartyComponent("Jackson Dataformat TOML", jacksonToml.coordinates(), "Apache-2.0.txt",
+				jacksonToml.path(), List.of("META-INF/NOTICE")));
 		Path legalMaterials = legalMaterialsBuilder.build(catLicense, legalComponents, canonicalLicenses,
 			runtimeDirectory.resolve("legal"));
 		Path claudeRoot = artifactBuilder.build(List.of(new ArtifactLayer("common-agents", commonAgents),

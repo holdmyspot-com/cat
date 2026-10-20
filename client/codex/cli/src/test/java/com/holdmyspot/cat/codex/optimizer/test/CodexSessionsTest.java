@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
@@ -830,6 +831,47 @@ public final class CodexSessionsTest
 	private static List<String> paths(List<DerivedSource> sources)
 	{
 		return sources.stream().map(DerivedSource::path).toList();
+	}
+
+	/**
+	 * Verifies that a project file that a hook of the project's {@code .codex/hooks.json} or a server of the project's
+	 * {@code .codex/config.toml} runs is listed with the hook's event or the server's name, and that a program name and
+	 * a missing file are left out.
+	 *
+	 * @throws IOException if the files cannot be written
+	 */
+	@Test
+	public void derivesFilesThatHooksAndServersRun() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-commands-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			write(project.resolve(".codex/hooks.json"), """
+				{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "bash scripts/start.sh"}]}], \
+				"Stop": [{"hooks": [{"type": "command", "command": "./missing.sh"}]}]}}""");
+			write(project.resolve(".codex/config.toml"), """
+				model = "gpt-5.5"
+
+				[mcp_servers.docs]
+				command = "python3"
+				args = ["servers/docs.py", "--verbose"]
+				""");
+			for (String file : List.of("scripts/start.sh", "servers/docs.py"))
+				write(project.resolve(file), "script");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
+			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+
+			List<DerivedSource> expected = List.of(
+				new DerivedSource("scripts/start.sh", "The SessionStart hook of `.codex/hooks.json` runs this file"),
+				new DerivedSource("servers/docs.py", "The MCP server `docs` of `.codex/config.toml` runs this file"));
+			LoadedSources loaded = sessions.loadedSources(project, List.of());
+			requireThat(loaded.trials(), "trials").isEqualTo(expected);
+			requireThat(loaded.production(), "production").isEqualTo(expected);
+		}
 	}
 
 	/**

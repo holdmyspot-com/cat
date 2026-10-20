@@ -22,11 +22,13 @@ import com.holdmyspot.cat.common.runner.PluginManifest;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -34,6 +36,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import tools.jackson.core.JacksonException;
@@ -69,6 +73,14 @@ public abstract class RunnerSessions implements SessionPort
 	 * The directory of a CAT installation that holds its rules.
 	 */
 	private static final String RULES = "rules";
+	/**
+	 * Separates the words of a hook's shell command.
+	 */
+	private static final Pattern COMMAND_SEPARATOR = Pattern.compile("[\\s;&|()<>]+");
+	/**
+	 * Matches a quote in a word of a hook's shell command.
+	 */
+	private static final Pattern QUOTE = Pattern.compile("[\"']");
 	private final String harness;
 	private final Settings settings;
 	private final Bridge bridge;
@@ -153,7 +165,8 @@ public abstract class RunnerSessions implements SessionPort
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * Each list holds the harness's instruction files at the project root followed, when CAT is installed, by every
+	 * Each list holds the harness's instruction files at the project root and the project files that the project's
+	 * hooks and MCP servers run, followed, when CAT is installed, by every
 	 * file that CAT's rules give the primary agent from CAT's installation, the user's rules that the settings name and
 	 * the project's rules. In production, CAT is installed when the settings say so, from the CAT artifact; in trials,
 	 * CAT is the first trial plugin whose manifest name is CAT's, and its rules are read from its base with each mapped
@@ -166,12 +179,13 @@ public abstract class RunnerSessions implements SessionPort
 		requireThat(project, "project").isNotNull();
 		requireThat(plugins, "plugins").isNotNull();
 		Path root = project.toAbsolutePath().normalize();
-		List<DerivedSource> instructions = instructionFiles(root);
+		List<DerivedSource> projectFiles = new ArrayList<>(instructionFiles(root));
+		projectFiles.addAll(commandFiles(root, projectFiles));
 
-		List<DerivedSource> production = new ArrayList<>(instructions);
+		List<DerivedSource> production = new ArrayList<>(projectFiles);
 		// The name of each production file, by the key that matches it in trials
 		Map<String, String> productionNames = new LinkedHashMap<>();
-		for (DerivedSource source : instructions)
+		for (DerivedSource source : projectFiles)
 			productionNames.putIfAbsent(source.path(), source.path());
 		if (settings.installCat())
 		{
@@ -183,9 +197,9 @@ public abstract class RunnerSessions implements SessionPort
 			}
 		}
 
-		List<DerivedSource> trials = new ArrayList<>(instructions);
+		List<DerivedSource> trials = new ArrayList<>(projectFiles);
 		Set<String> trialKeys = new LinkedHashSet<>();
-		for (DerivedSource source : instructions)
+		for (DerivedSource source : projectFiles)
 			trialKeys.add(source.path());
 		// The harness loads one copy of CAT's rules
 		PluginBase cat = null;
@@ -220,6 +234,89 @@ public abstract class RunnerSessions implements SessionPort
 				productionOnly.add(entry.getValue());
 		}
 		return new LoadedSources(production, trials, productionOnly, unreachableReferences(root));
+	}
+
+	/**
+	 * Lists the project files that the project's hooks and MCP servers run.
+	 * <p>
+	 * A hook's command is split into words at whitespace and shell operators, and an MCP server's program and
+	 * arguments are its words. Quotes are removed from each word, and each variable that
+	 * {@link #projectDirectoryVariables()} names is replaced by the project directory. A word that then names a
+	 * regular file inside the project, relative to the project directory, names a file that the command runs. A word
+	 * that holds another variable or starts with {@code ~} names no file, because its value is not known.
+	 *
+	 * @param project the absolute, normalized project directory
+	 * @param listed  the files that are already listed, which are left out
+	 * @return the files, in the order that the project's hook files and MCP servers name them, each with the hook's
+	 *   event or the server's name
+	 * @throws IOException if a hooks file or the MCP configuration exists but cannot be read
+	 */
+	private List<DerivedSource> commandFiles(Path project, List<DerivedSource> listed) throws IOException
+	{
+		Set<String> paths = new HashSet<>();
+		for (DerivedSource source : listed)
+			paths.add(source.path());
+		JsonMapper json = JsonMapper.builder().build();
+		List<DerivedSource> files = new ArrayList<>();
+		for (Path file : projectHookFiles())
+		{
+			Optional<JsonNode> content = readHooksFile(project.resolve(file), json);
+			if (content.isEmpty())
+				continue;
+			String fileText = PortablePaths.text(file.normalize());
+			for (DeclaredHook hook : declaredHooks(content.get().path("hooks")))
+			{
+				if (hook.command().isEmpty())
+					continue;
+				String rule = "The " + hook.event() + " hook of `" + fileText + "` runs this file";
+				for (String word : COMMAND_SEPARATOR.split(hook.command().get()))
+					addCommandFile(project, word, rule, paths, files);
+			}
+		}
+		for (McpServer server : projectMcpServers(project))
+		{
+			String rule = "The MCP server `" + server.name() + "` of `" + PortablePaths.text(server.file()) +
+				"` runs this file";
+			for (String word : server.words())
+				addCommandFile(project, word, rule, paths, files);
+		}
+		return files;
+	}
+
+	/**
+	 * Lists the file that one word of a command names, if it names a project file that is not yet listed.
+	 *
+	 * @param project the absolute, normalized project directory
+	 * @param word    the word, as the command writes it
+	 * @param rule    the rule that the derived source records
+	 * @param paths   the paths that are already listed, which receives the file's path
+	 * @param files   receives the file
+	 */
+	private void addCommandFile(Path project, String word, String rule, Set<String> paths, List<DerivedSource> files)
+	{
+		String text = QUOTE.matcher(word).replaceAll("");
+		for (String variable : projectDirectoryVariables())
+		{
+			text = Pattern.compile("\\$(?:\\{" + Pattern.quote(variable) + "\\}|" + Pattern.quote(variable) +
+				"(?![A-Za-z0-9_]))").matcher(text).replaceAll(Matcher.quoteReplacement(project.toString()));
+		}
+		if (text.isEmpty() || text.contains("$") || text.startsWith("~"))
+			return;
+		Path file;
+		try
+		{
+			file = project.resolve(text).normalize();
+		}
+		catch (InvalidPathException _)
+		{
+			// A word that is not a valid path names no file
+			return;
+		}
+		if (!file.startsWith(project) || !Files.isRegularFile(file))
+			return;
+		String path = PortablePaths.text(project.relativize(file));
+		if (paths.add(path))
+			files.add(new DerivedSource(path, rule));
 	}
 
 	/**
@@ -507,6 +604,61 @@ public abstract class RunnerSessions implements SessionPort
 	}
 
 	/**
+	 * Returns the environment variables through which the harness gives a hook or an MCP server the project
+	 * directory.
+	 *
+	 * @return the variables' names; this implementation returns none
+	 */
+	protected List<String> projectDirectoryVariables()
+	{
+		return List.of();
+	}
+
+	/**
+	 * Lists the MCP servers that the project's configuration declares.
+	 *
+	 * @param project the absolute, normalized project directory
+	 * @return the servers that run a program, in declaration order; none if the configuration does not exist or
+	 *   cannot be parsed
+	 * @throws IOException if the configuration exists but cannot be read
+	 */
+	protected abstract List<McpServer> projectMcpServers(Path project) throws IOException;
+
+	/**
+	 * Lists the MCP servers that one configuration object declares.
+	 *
+	 * @param file    the configuration file, relative to the project
+	 * @param servers the object that maps each server's name to its {@code command} and {@code args}; any other value
+	 *                declares no server
+	 * @return the servers that name a program, in declaration order, each with the arguments that are strings
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	protected static List<McpServer> mcpServers(Path file, JsonNode servers)
+	{
+		requireThat(file, "file").isNotNull();
+		requireThat(servers, "servers").isNotNull();
+		List<McpServer> declared = new ArrayList<>();
+		if (!servers.isObject())
+			return declared;
+		for (String name : servers.propertyNames())
+		{
+			JsonNode server = servers.get(name);
+			JsonNode command = server.path("command");
+			if (name.isBlank() || !command.isString())
+				continue;
+			List<String> words = new ArrayList<>();
+			words.add(command.asString());
+			for (JsonNode argument : server.path("args"))
+			{
+				if (argument.isString())
+					words.add(argument.asString());
+			}
+			declared.add(new McpServer(file, name, words));
+		}
+		return declared;
+	}
+
+	/**
 	 * Returns the runner options that pass a request's read-only evidence.
 	 *
 	 * @param evidence the paths that the session may read but not change
@@ -562,9 +714,25 @@ public abstract class RunnerSessions implements SessionPort
 	private static void addRegistrations(String plugin, Path file, JsonNode hooks,
 		List<HookRegistration> registrations)
 	{
-		if (!hooks.isObject())
-			return;
 		String fileText = PortablePaths.text(file.normalize());
+		for (DeclaredHook hook : declaredHooks(hooks))
+		{
+			registrations.add(new HookRegistration(plugin, fileText, hook.event(), hook.matcher(),
+				hook.command().orElse(hook.type())));
+		}
+	}
+
+	/**
+	 * Lists the hooks that one file declares.
+	 *
+	 * @param hooks the object that maps each event to its matcher groups; any other value declares no hook
+	 * @return the hooks, in declaration order
+	 */
+	private static List<DeclaredHook> declaredHooks(JsonNode hooks)
+	{
+		List<DeclaredHook> declared = new ArrayList<>();
+		if (!hooks.isObject())
+			return declared;
 		for (String event : hooks.propertyNames())
 		{
 			JsonNode groups = hooks.get(event);
@@ -581,15 +749,28 @@ public abstract class RunnerSessions implements SessionPort
 				for (JsonNode hook : group.path("hooks"))
 				{
 					JsonNode command = hook.path("command");
-					String text;
+					Optional<String> text;
 					if (command.isString())
-						text = command.asString();
+						text = Optional.of(command.asString());
 					else
-						text = hook.path("type").asString("");
-					registrations.add(new HookRegistration(plugin, fileText, event, matcher, text));
+						text = Optional.empty();
+					declared.add(new DeclaredHook(event, matcher, hook.path("type").asString(""), text));
 				}
 			}
 		}
+		return declared;
+	}
+
+	/**
+	 * A hook as a hooks file declares it.
+	 *
+	 * @param event   the event that runs the hook
+	 * @param matcher the matcher that selects the event's occurrences, or an empty string if the hook has none
+	 * @param type    the hook's type, or an empty string if it declares none
+	 * @param command the command that the hook runs, or empty if it runs none
+	 */
+	private record DeclaredHook(String event, String matcher, String type, Optional<String> command)
+	{
 	}
 
 	/**
@@ -656,6 +837,33 @@ public abstract class RunnerSessions implements SessionPort
 		{
 			requireThat(file, "file").isNotNull();
 			requireThat(hooks, "hooks").isNotNull();
+		}
+	}
+
+	/**
+	 * An MCP server that the project's configuration declares.
+	 *
+	 * @param file  the configuration file, relative to the project
+	 * @param name  the server's name
+	 * @param words the program that the server runs, followed by its arguments
+	 */
+	public record McpServer(Path file, String name, List<String> words)
+	{
+		/**
+		 * Creates an MCP server.
+		 *
+		 * @param file  the configuration file, relative to the project
+		 * @param name  the server's name
+		 * @param words the program that the server runs, followed by its arguments
+		 * @throws NullPointerException     if any of the arguments are null
+		 * @throws IllegalArgumentException if {@code name} is blank
+		 */
+		public McpServer
+		{
+			requireThat(file, "file").isNotNull();
+			requireThat(name, "name").isNotBlank();
+			requireThat(words, "words").isNotNull();
+			words = List.copyOf(words);
 		}
 	}
 

@@ -135,6 +135,12 @@ final class TestSessions extends RunnerSessions
 	}
 
 	@Override
+	protected List<McpServer> projectMcpServers(Path project)
+	{
+		return List.of();
+	}
+
+	@Override
 	protected List<HookDeclaration> pluginHooks(PluginFiles plugin, JsonMapper json)
 	{
 		return List.of();

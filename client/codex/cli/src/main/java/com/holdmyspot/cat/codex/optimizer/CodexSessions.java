@@ -26,7 +26,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
  * Runs nested sessions through the Codex runner.
@@ -190,6 +193,32 @@ public final class CodexSessions extends RunnerSessions
 	protected List<Path> projectHookFiles()
 	{
 		return List.of(Path.of(".codex/hooks.json"));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Codex reads the project's MCP servers from the {@code mcp_servers} table of {@code .codex/config.toml}.
+	 */
+	@Override
+	protected List<McpServer> projectMcpServers(Path project) throws IOException
+	{
+		requireThat(project, "project").isNotNull();
+		Path file = Path.of(".codex/config.toml");
+		Path configuration = project.resolve(file);
+		if (!Files.isRegularFile(configuration))
+			return List.of();
+		JsonNode root;
+		try
+		{
+			root = TomlMapper.builder().build().readTree(Files.readString(configuration));
+		}
+		catch (JacksonException _)
+		{
+			// Codex starts no server from a configuration that it cannot parse
+			return List.of();
+		}
+		return mcpServers(file, root.path("mcp_servers"));
 	}
 
 	/**

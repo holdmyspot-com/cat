@@ -505,6 +505,43 @@ public final class ClaudeSessions extends RunnerSessions
 	/**
 	 * {@inheritDoc}
 	 * <p>
+	 * Claude Code gives hooks and MCP servers the project directory in {@code CLAUDE_PROJECT_DIR}.
+	 */
+	@Override
+	protected List<String> projectDirectoryVariables()
+	{
+		return List.of("CLAUDE_PROJECT_DIR");
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Claude Code reads the project's MCP servers from the {@code mcpServers} object of {@code .mcp.json}.
+	 */
+	@Override
+	protected List<McpServer> projectMcpServers(Path project) throws IOException
+	{
+		requireThat(project, "project").isNotNull();
+		Path file = Path.of(".mcp.json");
+		Path configuration = project.resolve(file);
+		if (!Files.isRegularFile(configuration))
+			return List.of();
+		JsonNode root;
+		try
+		{
+			root = JsonMapper.builder().build().readTree(Files.readString(configuration));
+		}
+		catch (JacksonException _)
+		{
+			// Claude Code starts no server from a configuration that it cannot parse
+			return List.of();
+		}
+		return mcpServers(file, root.path("mcpServers"));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
 	 * Claude Code registers the hooks of the plugin's {@code hooks/hooks.json}, of each hooks file that the manifest's
 	 * {@code hooks} property names and of each declaration that the property holds inline.
 	 */
