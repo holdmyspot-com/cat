@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.StringJoiner;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -45,46 +48,49 @@ public final class CodexConnectionConfiguration
 	 */
 	public static void copy(Path source, Path destination) throws IOException
 	{
-		copy(source, destination, null, destination.getParent().resolve("tmp"));
+		copy(source, destination, HarnessDependencyCaches.NONE, destination.getParent().resolve("tmp"));
 	}
 
 	/**
-	 * Copies supported connection settings and makes one verified npm cache available to nested shell commands.
+	 * Copies supported connection settings and makes the verified dependency caches available to nested shell
+	 * commands.
 	 *
 	 * <p>
 	 * Codex starts its own sandboxed shell processes. Passing a cache variable to the app server alone does not make
 	 * it available to those shells, so a plain {@code npm install} can instead select the read-only default cache and
-	 * fail before it reaches the registry. This configuration gives every shell the verified cache path and grants that
-	 * path the matching workspace-write authority.
+	 * fail before it reaches the registry. This configuration gives every shell the variables that name the caches and
+	 * grants the caches the matching workspace-write authority.
 	 *
 	 * @param source the host configuration file
 	 * @param destination the isolated configuration file
-	 * @param npmCache the verified writable npm cache, or {@code null} when no nested package acquisition is needed
+	 * @param caches the verified writable dependency caches
 	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
 	 * @throws IOException if configuration I/O fails
 	 */
-	public static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory) throws IOException
+	public static void copy(Path source, Path destination, HarnessDependencyCaches caches, Path temporaryDirectory)
+		throws IOException
 	{
-		copy(source, destination, npmCache, temporaryDirectory, 0, Platform.current());
+		copy(source, destination, caches, temporaryDirectory, 0, Platform.current());
 	}
 
 	/**
-	 * Copies supported connection settings, makes one verified npm cache available to nested shell commands and
-	 * limits the tokens that the session keeps of each tool output. On Windows, the configuration prefers Codex's MXC
+	 * Copies supported connection settings, makes the verified dependency caches available to nested shell commands
+	 * and limits the tokens that the session keeps of each tool output. On Windows, the configuration prefers Codex's MXC
 	 * sandbox where the system offers it.
 	 *
 	 * @param source the host configuration file
 	 * @param destination the isolated configuration file
-	 * @param npmCache the verified writable npm cache, or {@code null} when no nested package acquisition is needed
+	 * @param caches the verified writable dependency caches
 	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
 	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
 	 *   Codex's default
 	 * @param platform the platform that the session runs on
 	 * @throws IOException if configuration I/O fails
 	 */
-	public static void copy(Path source, Path destination, Path npmCache, Path temporaryDirectory,
+	public static void copy(Path source, Path destination, HarnessDependencyCaches caches, Path temporaryDirectory,
 		int toolOutputTokenLimit, Platform platform) throws IOException
 	{
+		requireThat(caches, "caches").isNotNull();
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
@@ -113,21 +119,25 @@ public final class CodexConnectionConfiguration
 
 			networkAccess = workspaceWriteNetworkAccess(configuration);
 		}
-		if (networkAccess != null || npmCache != null)
+		if (networkAccess != null || !caches.directories().isEmpty())
 		{
 			copied.append(System.lineSeparator()).append("[sandbox_workspace_write]").append(System.lineSeparator());
 			if (networkAccess != null)
 				copied.append("network_access = ").append(networkAccess).append(System.lineSeparator());
-			if (npmCache != null)
-				copied.append("writable_roots = [\"").append(toml(npmCache)).append("\"]").append(System.lineSeparator());
+			if (!caches.directories().isEmpty())
+			{
+				StringJoiner roots = new StringJoiner(", ", "[", "]");
+				for (Path cache : caches.directories())
+					roots.add('"' + toml(cache) + '"');
+				copied.append("writable_roots = ").append(roots).append(System.lineSeparator());
+			}
 		}
-		if (npmCache != null)
+		copied.append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
+		for (Entry<String, String> variable : new TreeMap<>(caches.environment()).entrySet())
 		{
-			copied.append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator()).
-				append("NPM_CONFIG_CACHE = \"").append(toml(npmCache)).append('"').append(System.lineSeparator());
+			copied.append(variable.getKey()).append(" = \"").append(toml(variable.getValue())).append('"').
+				append(System.lineSeparator());
 		}
-		else
-			copied.append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
 		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator());
 		if (platform.isWindows())
 		{
@@ -136,7 +146,7 @@ public final class CodexConnectionConfiguration
 			copied.append(System.lineSeparator()).append("[features]").append(System.lineSeparator()).
 				append("prefer_mxc = true").append(System.lineSeparator());
 		}
-		appendRunnerProfile(copied, destination.getParent(), npmCache, temporaryDirectory, networkAccess);
+		appendRunnerProfile(copied, destination.getParent(), caches.directories(), temporaryDirectory, networkAccess);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
 	}
@@ -149,7 +159,7 @@ public final class CodexConnectionConfiguration
 	 * state, plugins, and configuration in a sibling isolated home. A workspace-only profile cannot initialize that
 	 * shell because its required home lies outside the workspace. The child profile extends the built-in workspace
 	 * profile and adds only the newly created isolated home, the harness temporary directory, and the shared
-	 * dependency cache. It never extends the host's own permission profiles: they grant the host's Codex home, CAT user
+	 * dependency caches. It never extends the host's own permission profiles: they grant the host's Codex home, CAT user
 	 * directory and other workspaces, which a nested session must neither change nor see. Codex's Linux sandbox creates
 	 * its process lock and scratch state under the harness temporary directory before a shell command can run, so it
 	 * needs the same temporary-directory authority as the parent workspace-write sandbox. Its temporary directory is
@@ -161,12 +171,12 @@ public final class CodexConnectionConfiguration
 	 *
 	 * @param configuration the isolated configuration being assembled
 	 * @param isolatedHome the fresh runtime home that the runner owns
-	 * @param npmCache the verified shared dependency cache, or {@code null} when no cache was supplied
+	 * @param caches the verified shared dependency caches
 	 * @param temporaryDirectory the fresh harness temporary directory owned by the runner
 	 * @param networkAccess {@code true} or {@code false} when the parent declares a workspace-write network policy, or
 	 *   {@code null} when it does not
 	 */
-	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, Path npmCache,
+	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, List<Path> caches,
 		Path temporaryDirectory, String networkAccess)
 	{
 		assert configuration != null;
@@ -179,8 +189,8 @@ public final class CodexConnectionConfiguration
 			append("\" = \"write\"").append(System.lineSeparator()).append('"').append(TEMPORARY_DIRECTORY).
 			append("\" = \"write\"").
 			append(System.lineSeparator());
-		if (npmCache != null)
-			configuration.append('"').append(toml(npmCache)).append("\" = \"write\"").append(System.lineSeparator());
+		for (Path cache : caches)
+			configuration.append('"').append(toml(cache)).append("\" = \"write\"").append(System.lineSeparator());
 		if (networkAccess != null)
 		{
 			configuration.append("[permissions.").append(RUNNER_PERMISSION_PROFILE).append(".network]").
@@ -197,7 +207,19 @@ public final class CodexConnectionConfiguration
 	private static String toml(Path path)
 	{
 		assert path != null;
-		return path.toAbsolutePath().normalize().toString().replace("\\", "\\\\").replace("\"", "\\\"");
+		return toml(path.toAbsolutePath().normalize().toString());
+	}
+
+	/**
+	 * Escapes one value for a TOML basic string.
+	 *
+	 * @param value the value to render
+	 * @return the TOML-safe value
+	 */
+	private static String toml(String value)
+	{
+		assert value != null;
+		return value.replace("\\", "\\\\").replace("\"", "\\\"");
 	}
 
 	/**

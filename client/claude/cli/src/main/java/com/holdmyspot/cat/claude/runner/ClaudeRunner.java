@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
 import com.holdmyspot.cat.common.runner.HarnessCredentials;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCache;
+import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
 import com.holdmyspot.cat.common.runner.HarnessRun;
@@ -168,9 +169,10 @@ public final class ClaudeRunner
 			Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 			ClaudeProcessEnvironment.removeUnavailablePathEntries(isolatedEnvironment);
 			ClaudeConnectionSettings.copyProcessEnvironment(environment, isolatedEnvironment);
-			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared npm cache so
+			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
 			// independent trials do not redownload the same immutable registry artifacts.
-			HarnessDependencyCache.configureNpm(environment, isolatedEnvironment);
+			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
+			isolatedEnvironment.putAll(caches.environment());
 			// The Claude CLI's subprocess scrubbing can make Bubblewrap bind absent host paths after it makes its root
 			// read-only, preventing Bash commands from starting.
 			//WORKAROUND: https://github.com/anthropics/claude-code/issues/84563
@@ -182,7 +184,8 @@ public final class ClaudeRunner
 			}
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
 				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome,
-				run.directory(), sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads), Platform.current());
+				caches.directories(), run.directory(), sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads),
+				Platform.current());
 			HarnessEnvironment.setHomeDirectory(isolatedEnvironment, isolatedProcessHome);
 			isolatedEnvironment.put("CLAUDE_CONFIG_DIR", isolatedConfiguration.toString());
 			// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after

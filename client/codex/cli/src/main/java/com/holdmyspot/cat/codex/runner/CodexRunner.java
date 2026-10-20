@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
 import com.holdmyspot.cat.common.runner.HarnessCredentials;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCache;
+import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
 import com.holdmyspot.cat.common.runner.HarnessRun;
@@ -210,16 +211,16 @@ public final class CodexRunner
 			Path hostHome = codexHome(environment);
 			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of("auth.json"));
 			Path isolatedConfiguration = isolatedHome.resolve("config.toml");
-			Path npmCache = HarnessDependencyCache.verifyNpm(environment);
-			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, npmCache,
+			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
+			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, caches,
 				temporaryDirectory, toolOutputTokenLimit, Platform.current());
 			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
 				readOnlyEvidence, sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, Platform.current()));
 			Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 			HarnessEnvironment.copyAllowed(environment, isolatedEnvironment, AUTHENTICATION_VARIABLES);
-			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared npm cache so
+			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
 			// independent trials do not redownload the same immutable registry artifacts.
-			isolatedEnvironment.put("NPM_CONFIG_CACHE", npmCache.toString());
+			isolatedEnvironment.putAll(caches.environment());
 			isolatedEnvironment.put("CODEX_HOME", isolatedHome.toString());
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
 			Path worktree = run.directory().resolve("project");

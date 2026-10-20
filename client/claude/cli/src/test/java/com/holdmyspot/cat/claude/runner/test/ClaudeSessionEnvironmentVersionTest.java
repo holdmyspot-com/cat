@@ -87,7 +87,8 @@ public final class ClaudeSessionEnvironmentVersionTest
 				""", UTF_8);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), run.directory(),
+				claudeTemporaryDirectory.resolve("home"),
+				List.of(root.resolve("host-home/.npm"), root.resolve("host-home/.m2")), run.directory(),
 				ClaudeRunner.sessionDeniedReads(manager, run, List.of(), List.of(deniedFile, deniedDirectory, hostProject)),
 				Platform.LINUX_X64);
 

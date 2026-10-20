@@ -5,10 +5,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
@@ -90,8 +92,8 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-mxc-"));
 			Path destination = root.resolve("isolated/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, null, root.resolve("tmp"), 0,
-				Platform.WINDOWS_X64);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, HarnessDependencyCaches.NONE,
+				root.resolve("tmp"), 0, Platform.WINDOWS_X64);
 
 			List<String> lines = Files.readAllLines(destination);
 			int features = lines.indexOf("[features]");
@@ -114,8 +116,8 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-mxc-"));
 			Path destination = root.resolve("isolated/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, null, root.resolve("tmp"), 0,
-				Platform.LINUX_X64);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, HarnessDependencyCaches.NONE,
+				root.resolve("tmp"), 0, Platform.LINUX_X64);
 
 			requireThat(Files.readString(destination), "configuration").doesNotContain("prefer_mxc");
 		}
@@ -171,27 +173,36 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies a nested Codex shell uses the verified npm cache instead of a default cache that its sandbox may expose
-	 * read-only.
+	 * Verifies a nested Codex shell uses the verified dependency caches instead of default caches that its sandbox may
+	 * expose read-only, and may write to them.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void configuresNestedNpmCache() throws IOException
+	public void configuresNestedDependencyCaches() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-npm-cache-"));
-			Path cache = Files.createDirectories(root.resolve("npm-cache"));
+			Path npmCache = Files.createDirectories(root.resolve("npm-cache"));
+			Path mavenCache = Files.createDirectories(root.resolve("maven-cache"));
+			String mavenOptions = "-Dmaven.repo.local=" + mavenCache.resolve("repository");
+			HarnessDependencyCaches caches = new HarnessDependencyCaches(List.of(npmCache, mavenCache),
+				Map.of("NPM_CONFIG_CACHE", npmCache.toString(), "MAVEN_OPTS", mavenOptions));
 			Path destination = root.resolve("isolated/config.toml");
 			Path temporaryDirectory = root.resolve("isolated/tmp");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, cache, temporaryDirectory);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, caches, temporaryDirectory);
 
 			String configuration = Files.readString(destination);
-			requireThat(configuration, "configuration").contains("[sandbox_workspace_write]").contains(
-				"writable_roots = [\"" + toml(cache) + "\"]").contains("[shell_environment_policy.set]").contains(
-				"NPM_CONFIG_CACHE = \"" + toml(cache) + "\"").contains("TMPDIR = \"" + toml(temporaryDirectory) + "\"");
+			requireThat(configuration, "configuration").contains("[sandbox_workspace_write]").
+				contains("writable_roots = [\"" + toml(npmCache) + "\", \"" + toml(mavenCache) + "\"]").
+				contains("[shell_environment_policy.set]").
+				contains("NPM_CONFIG_CACHE = \"" + toml(npmCache) + "\"").
+				contains("MAVEN_OPTS = \"" + mavenOptions.replace("\\", "\\\\") + "\"").
+				contains("TMPDIR = \"" + toml(temporaryDirectory) + "\"").
+				contains("\"" + toml(npmCache) + "\" = \"write\"").
+				contains("\"" + toml(mavenCache) + "\" = \"write\"");
 		}
 	}
 
@@ -218,10 +229,10 @@ public final class CodexConnectionConfigurationTest
 			Path limited = root.resolve("limited/config.toml");
 			Path unlimited = root.resolve("unlimited/config.toml");
 
-			CodexConnectionConfiguration.copy(source, limited, null, root.resolve("limited/tmp"), 5000,
-				Platform.current());
-			CodexConnectionConfiguration.copy(source, unlimited, null, root.resolve("unlimited/tmp"), 0,
-				Platform.current());
+			CodexConnectionConfiguration.copy(source, limited, HarnessDependencyCaches.NONE,
+				root.resolve("limited/tmp"), 5000, Platform.current());
+			CodexConnectionConfiguration.copy(source, unlimited, HarnessDependencyCaches.NONE,
+				root.resolve("unlimited/tmp"), 0, Platform.current());
 
 			List<String> lines = Files.readAllLines(limited);
 			int setting = lines.indexOf("tool_output_token_limit = 5000");

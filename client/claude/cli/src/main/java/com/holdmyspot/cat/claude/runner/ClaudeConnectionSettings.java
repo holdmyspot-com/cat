@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -89,13 +90,15 @@ public final class ClaudeConnectionSettings
 	 * Writes settings for an isolated Claude instance.
 	 *
 	 * <p>
-	 * The resulting file retains the parent sandbox network and filesystem policies, the parent's permission rules
-	 * that deny a tool or ask before using it, and CAT-owned environment values. It does not retain the parent's
-	 * permission grants, such as its allow rules, added directories and default permission mode, so the isolated
-	 * instance cannot use them to reach the parent's directories. It allows the {@code Skill} tool instead, which the
-	 * isolated instance has no user to approve.
+	 * The resulting file retains the parent sandbox network and filesystem policies, except the paths that the parent
+	 * allows writing, the parent's permission rules that deny a tool or ask before using it, and CAT-owned environment
+	 * values. The instance may write only to {@code claudeHome} and {@code dependencyCaches}, not to the parent's
+	 * writable paths, such as its Claude and CAT directories. It does not retain the parent's permission grants, such
+	 * as its allow rules, added directories and default permission mode, so the isolated instance cannot use them to
+	 * reach the parent's directories. It allows the {@code Skill} tool instead, which the isolated instance has no
+	 * user to approve.
 	 * Outside Windows, it requires a sandbox and forbids commands outside it, whatever the parent's settings say. On
-	 * Windows, it retains all of the parent's sandbox settings instead and requires no sandbox. Host settings must not
+	 * Windows, it retains the parent's other sandbox settings instead and requires no sandbox. Host settings must not
 	 * control other isolated-instance behavior. It also denies the instance reading each of
 	 * {@code deniedReads}: the sandbox denies its commands through {@code sandbox.filesystem.denyRead}, and a
 	 * {@code Read} rule in {@code permissions.deny} denies its file tools, which the sandbox does not confine. When
@@ -111,13 +114,15 @@ public final class ClaudeConnectionSettings
 	 * @param destination the isolated Claude settings file
 	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
 	 * @param claudeHome the CAT-owned home directory for the isolated Claude process
+	 * @param dependencyCaches the parent's shared dependency caches that the isolated instance may write
 	 * @param isolationRoot the directory above which the isolated instance loads no instruction file
 	 * @param deniedReads the existing files and directories that the isolated instance must not read
 	 * @param platform the platform that the isolated instance runs on
 	 * @throws IOException if settings I/O fails
 	 */
 	public static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
-		Path claudeTemporaryDirectory, Path claudeHome, Path isolationRoot, List<Path> deniedReads, Platform platform)
+		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
+		List<Path> deniedReads, Platform platform)
 		throws IOException
 	{
 		JsonMapper mapper = scope.json();
@@ -167,7 +172,11 @@ public final class ClaudeConnectionSettings
 		}
 		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
 		permissions(settings).set("allow", mapper.valueToTree(PERMISSION_GRANTS));
-		allowWritesToInvocationHome(filesystem, claudeHome);
+		List<String> writablePaths = new ArrayList<>();
+		writablePaths.add(claudeHome.toString());
+		for (Path cache : dependencyCaches)
+			writablePaths.add(cache.toString());
+		filesystem.set("allowWrite", mapper.valueToTree(writablePaths));
 		denyReads(settings, filesystem, deniedReads);
 		excludeInstructionsAbove(settings, isolationRoot, platform);
 
@@ -209,31 +218,6 @@ public final class ClaudeConnectionSettings
 		if (settings.path("permissions").isObject())
 			return (ObjectNode) settings.get("permissions");
 		return settings.putObject("permissions");
-	}
-
-	/**
-	 * Adds the invocation-local home to Claude's sandbox write policy.
-	 *
-	 * @param filesystem the isolated filesystem settings
-	 * @param claudeHome the writable invocation-local home
-	 */
-	private static void allowWritesToInvocationHome(ObjectNode filesystem, Path claudeHome)
-	{
-		assert filesystem != null;
-		assert claudeHome != null;
-		JsonNode configuredPaths = filesystem.path("allowWrite");
-		ArrayNode allowedPaths;
-		if (configuredPaths.isArray())
-			allowedPaths = (ArrayNode) configuredPaths;
-		else
-			allowedPaths = filesystem.putArray("allowWrite");
-		String home = claudeHome.toString();
-		for (JsonNode allowedPath : allowedPaths)
-		{
-			if (allowedPath.isString() && allowedPath.stringValue().equals(home))
-				return;
-		}
-		allowedPaths.add(home);
 	}
 
 	/**

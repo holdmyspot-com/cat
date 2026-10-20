@@ -4,31 +4,41 @@ import com.holdmyspot.cat.common.Platform;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 
 /**
- * Exposes the parent's explicitly writable dependency cache to isolated harness processes.
+ * Exposes the parent's explicitly writable dependency caches to isolated harness processes.
  */
 public final class HarnessDependencyCache
 {
 	/**
-	 * Configures npm to reuse the parent process' writable cache instead of a disposable isolated home cache.
+	 * Verifies the parent's npm and Maven caches, so that isolated harness processes reuse them instead of disposable
+	 * caches in their isolated homes.
+	 * <p>
+	 * npm finds its cache through {@code NPM_CONFIG_CACHE}. Maven finds its repository below the Java {@code user.home}
+	 * property, which comes from the user's account rather than from {@code HOME}, or below the location that the
+	 * parent's {@code MAVEN_OPTS} names, so the parent's {@code MAVEN_OPTS} is kept.
 	 *
 	 * @param parentEnvironment the parent process environment before its home is isolated
-	 *
-	 * @param isolatedEnvironment the mutable environment passed to the nested harness
-	 *
-	 * @throws IOException if the parent cache cannot be used
+	 * @return the verified caches
+	 * @throws NullPointerException if {@code parentEnvironment} is null
+	 * @throws IOException          if a cache cannot be used
 	 */
-	public static void configureNpm(Map<String, String> parentEnvironment, Map<String, String> isolatedEnvironment)
-		throws IOException
+	public static HarnessDependencyCaches verify(Map<String, String> parentEnvironment) throws IOException
 	{
-		requireThat(parentEnvironment, "parentEnvironment").isNotNull();
-		requireThat(isolatedEnvironment, "isolatedEnvironment").isNotNull();
-		isolatedEnvironment.put("NPM_CONFIG_CACHE", verifyNpm(parentEnvironment).toString());
+		Path npm = verifyNpm(parentEnvironment);
+		Path maven = verifyWritable(Platform.current().homeDirectory(parentEnvironment).resolve(".m2"), "Maven");
+		Map<String, String> environment = new HashMap<>();
+		environment.put("NPM_CONFIG_CACHE", npm.toString());
+		String mavenOptions = parentEnvironment.get("MAVEN_OPTS");
+		if (mavenOptions != null)
+			environment.put("MAVEN_OPTS", mavenOptions);
+		return new HarnessDependencyCaches(List.of(npm, maven), environment);
 	}
 
 	/**
@@ -43,10 +53,23 @@ public final class HarnessDependencyCache
 	public static Path verifyNpm(Map<String, String> parentEnvironment) throws IOException
 	{
 		requireThat(parentEnvironment, "parentEnvironment").isNotNull();
-		Path cache = Platform.current().homeDirectory(parentEnvironment).resolve(".npm").toAbsolutePath().normalize();
+		return verifyWritable(Platform.current().homeDirectory(parentEnvironment).resolve(".npm"), "npm");
+	}
+
+	/**
+	 * Creates a shared cache directory if it is absent and verifies that it is writable.
+	 *
+	 * @param directory the cache directory
+	 * @param tool      the tool that uses the cache
+	 * @return the absolute, normalized cache directory
+	 * @throws IOException if the cache cannot be used
+	 */
+	private static Path verifyWritable(Path directory, String tool) throws IOException
+	{
+		Path cache = directory.toAbsolutePath().normalize();
 		Files.createDirectories(cache);
 		if (!Files.isDirectory(cache) || !Files.isWritable(cache))
-			throw new IOException("Shared npm cache is not writable: " + cache);
+			throw new IOException("Shared " + tool + " cache is not writable: " + cache);
 		return cache;
 	}
 

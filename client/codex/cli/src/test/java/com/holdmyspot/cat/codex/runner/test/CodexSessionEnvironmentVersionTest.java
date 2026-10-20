@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.port.contract.test.VersionRegistry;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 
@@ -59,6 +60,10 @@ public final class CodexSessionEnvironmentVersionTest
 			Path destination = root.resolve("home/config.toml");
 			Path temporaryDirectory = Files.createDirectories(root.resolve("home/tmp"));
 			Path npmCache = Files.createDirectories(root.resolve("npm-cache"));
+			Path mavenCache = Files.createDirectories(root.resolve("maven-cache"));
+			HarnessDependencyCaches caches = new HarnessDependencyCaches(List.of(npmCache, mavenCache),
+				Map.of("NPM_CONFIG_CACHE", npmCache.toString(), "MAVEN_OPTS",
+					"-Dmaven.repo.local=" + mavenCache.resolve("repository")));
 			Path evidence = Files.createDirectories(root.resolve("evidence"));
 			Path deniedFile = Files.writeString(root.resolve("campaign.json"), "{}");
 			Path hostProject = Files.createDirectories(root.resolve("project"));
@@ -89,7 +94,7 @@ public final class CodexSessionEnvironmentVersionTest
 
 			// Windows adds only the choice of sandbox backend that enforces the same profile, so the hash covers the
 			// configuration that other platforms receive
-			CodexConnectionConfiguration.copy(source, destination, npmCache, temporaryDirectory, 0,
+			CodexConnectionConfiguration.copy(source, destination, caches, temporaryDirectory, 0,
 				Platform.LINUX_X64);
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
 				CodexRunner.sessionDeniedReads(manager, run, List.of(evidence), List.of(deniedFile, hostProject),
