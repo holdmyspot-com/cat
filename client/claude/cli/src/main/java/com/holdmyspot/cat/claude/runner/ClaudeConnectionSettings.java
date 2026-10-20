@@ -25,6 +25,16 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ClaudeConnectionSettings
 {
 	private static final int MAXIMUM_SETTINGS_BYTES = 1_048_576;
+	/**
+	 * The instruction files that Claude Code loads from each directory above its working directory, relative to that
+	 * directory, as glob patterns.
+	 */
+	private static final List<String> ANCESTOR_INSTRUCTIONS = List.of("CLAUDE.md", "CLAUDE.local.md",
+		".claude/CLAUDE.md", ".claude/rules/**");
+	/**
+	 * The characters that a glob pattern treats as syntax.
+	 */
+	private static final String GLOB_SYNTAX = "\\*?[]{}()!+@";
 	private static final Set<String> CONNECTION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN");
 
@@ -76,18 +86,24 @@ public final class ClaudeConnectionSettings
 	 * {@code Read} rule in {@code permissions.deny} denies its file tools, which the sandbox does not confine. When
 	 * {@code deniedReads} is not empty, the host's {@code sandbox.filesystem.allowRead} is not retained, because it
 	 * would re-allow the reads that the sandbox denies.
+	 * <p>
+	 * Claude Code loads the instruction files of every directory above its working directory. A run directory can lie
+	 * inside another project, such as the project whose prompts CAT measures, so the settings exclude every
+	 * instruction file above {@code isolationRoot} through {@code claudeMdExcludes}.
 	 *
 	 * @param scope services shared for the runner process lifetime
 	 * @param source the host Claude settings file
 	 * @param destination the isolated Claude settings file
 	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
 	 * @param claudeHome the CAT-owned home directory for the isolated Claude process
+	 * @param isolationRoot the directory above which the isolated instance loads no instruction file
 	 * @param deniedReads the existing files and directories that the isolated instance must not read
 	 * @param platform the platform that the isolated instance runs on
 	 * @throws IOException if settings I/O fails
 	 */
 	public static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
-		Path claudeTemporaryDirectory, Path claudeHome, List<Path> deniedReads, Platform platform) throws IOException
+		Path claudeTemporaryDirectory, Path claudeHome, Path isolationRoot, List<Path> deniedReads, Platform platform)
+		throws IOException
 	{
 		JsonMapper mapper = scope.json();
 		ObjectNode settings = mapper.createObjectNode();
@@ -139,6 +155,7 @@ public final class ClaudeConnectionSettings
 			settings.set("permissions", parentPermissions.deepCopy());
 		allowWritesToInvocationHome(filesystem, claudeHome);
 		denyReads(settings, filesystem, deniedReads);
+		excludeInstructionsAbove(settings, isolationRoot, platform);
 
 		Files.createDirectories(claudeTemporaryDirectory);
 		Files.createDirectories(claudeHome);
@@ -206,6 +223,60 @@ public final class ClaudeConnectionSettings
 				descendants = "";
 			permissionDenials.add("Read(/" + rulePath(deniedRead) + descendants + ")");
 		}
+	}
+
+	/**
+	 * Excludes every instruction file that Claude Code would load from a directory above {@code isolationRoot}.
+	 *
+	 * @param settings      the isolated settings
+	 * @param isolationRoot the directory above which no instruction file loads
+	 * @param platform      the platform that the isolated instance runs on
+	 */
+	private static void excludeInstructionsAbove(ObjectNode settings, Path isolationRoot, Platform platform)
+	{
+		assert settings != null;
+		assert isolationRoot != null;
+		assert platform != null;
+		ArrayNode excludes = settings.putArray("claudeMdExcludes");
+		for (Path directory = isolationRoot.toAbsolutePath().getParent(); directory != null;
+			directory = directory.getParent())
+		{
+			String prefix = globPrefix(directory, platform);
+			for (String instruction : ANCESTOR_INSTRUCTIONS)
+				excludes.add(prefix + instruction);
+		}
+	}
+
+	/**
+	 * Returns a directory as the start of a glob pattern that matches the files below it.
+	 *
+	 * @param directory an absolute directory
+	 * @param platform  the platform that the isolated instance runs on
+	 * @return the directory with its glob syntax escaped, ending with {@code /}
+	 */
+	private static String globPrefix(Path directory, Platform platform)
+	{
+		assert directory != null;
+		assert platform != null;
+		String text = directory.toString();
+		StringBuilder prefix = new StringBuilder(text.length() + 1);
+		if (platform.isWindows())
+		{
+			// A backslash escapes glob syntax, so a Windows path names its directories with forward slashes instead
+			prefix.append(text.replace('\\', '/'));
+		}
+		else
+		{
+			for (char character : text.toCharArray())
+			{
+				if (GLOB_SYNTAX.indexOf(character) >= 0)
+					prefix.append('\\');
+				prefix.append(character);
+			}
+		}
+		if (prefix.isEmpty() || prefix.charAt(prefix.length() - 1) != '/')
+			prefix.append('/');
+		return prefix.toString();
 	}
 
 	/**

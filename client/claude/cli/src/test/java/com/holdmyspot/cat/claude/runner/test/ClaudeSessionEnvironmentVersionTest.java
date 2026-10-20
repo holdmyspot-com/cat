@@ -24,6 +24,10 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Guards the session environment version that {@link ClaudeSessions} declares.
@@ -81,19 +85,46 @@ public final class ClaudeSessionEnvironmentVersionTest
 				""", UTF_8);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), ClaudeRunner.sessionDeniedReads(manager, run, List.of(),
-					List.of(deniedFile, deniedDirectory)), Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), run.directory(),
+				ClaudeRunner.sessionDeniedReads(manager, run, List.of(), List.of(deniedFile, deniedDirectory)),
+				Platform.LINUX_X64);
 
 			// Run directories differ per run, so the hash covers the settings with their root and the run's identifier
 			// replaced
-			String settings = replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root).
-				replace(run.id(), "<run>");
+			String settings = replaceRoot(withoutExcludesAboveRoot(scope.json(),
+				Files.readString(destination, UTF_8).replace("\r\n", "\n"), root), root).replace(run.id(), "<run>");
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(root, root, List::of, "", false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC());
 			int version = new ClaudeSessions(sessionSettings).sessionEnvironmentVersion();
 			VersionRegistry.requireRegistered(REGISTRY, "session environment", version,
 				VersionRegistry.hash(settings));
 		}
+	}
+
+	/**
+	 * Keeps only the instruction files that the settings exclude at or below a root, each with the root replaced by
+	 * {@code <root>} and its names separated by {@code /}. The settings exclude the files of every directory above the
+	 * run directory, and the directories above the root differ between machines.
+	 *
+	 * @param json     the JSON mapper that wrote the settings
+	 * @param settings the settings
+	 * @param root     the root
+	 * @return the settings with the other excluded files removed
+	 */
+	private static String withoutExcludesAboveRoot(JsonMapper json, String settings, Path root)
+	{
+		ObjectNode tree = (ObjectNode) json.readTree(settings);
+		String name = root.getFileName().toString();
+		ArrayNode kept = json.createArrayNode();
+		for (JsonNode exclude : tree.path("claudeMdExcludes"))
+		{
+			String text = exclude.asString();
+			int start = text.indexOf(name);
+			if (start >= 0)
+				kept.add("<root>" + text.substring(start + name.length()).replaceAll("\\\\+", "/"));
+		}
+		tree.set("claudeMdExcludes", kept);
+		return json.writeValueAsString(tree);
 	}
 
 	/**

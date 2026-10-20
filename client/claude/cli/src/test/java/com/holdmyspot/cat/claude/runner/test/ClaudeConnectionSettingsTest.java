@@ -124,7 +124,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), claudeTemporaryDirectory, List.of(), Platform.LINUX_X64);
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(result.path("sandbox").path("network").path("allowedDomains").path(0).asString(),
@@ -173,7 +173,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), claudeTemporaryDirectory, List.of(), Platform.LINUX_X64);
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(result.path("env").path("DISABLE_AUTOUPDATER").asString(), "autoUpdater").isEqualTo("1");
@@ -217,7 +217,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeHome, List.of(snapshot), Platform.WINDOWS_X64);
+				claudeHome, claudeTemporaryDirectory, List.of(snapshot), Platform.WINDOWS_X64);
 
 			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
 			requireThat(sandbox.path("enabled").asBoolean(), "sandboxEnabled").isFalse();
@@ -247,7 +247,8 @@ public final class ClaudeConnectionSettingsTest
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(), Platform.WINDOWS_X64);
+				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), claudeTemporaryDirectory, List.of(),
+				Platform.WINDOWS_X64);
 
 			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
 			requireThat(sandbox.has("enabled"), "sandboxEnabled").isFalse();
@@ -273,7 +274,7 @@ public final class ClaudeConnectionSettingsTest
 			Path claudeHome = claudeTemporaryDirectory.resolve("home");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeHome, List.of(), Platform.LINUX_X64);
+				claudeTemporaryDirectory, claudeHome, claudeTemporaryDirectory, List.of(), Platform.LINUX_X64);
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			JsonNode writablePaths = result.path("sandbox").path("filesystem").path("allowWrite");
@@ -310,7 +311,8 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(snapshot, trials), Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), claudeTemporaryDirectory, List.of(snapshot, trials),
+				Platform.LINUX_X64);
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
@@ -367,7 +369,8 @@ public final class ClaudeConnectionSettingsTest
 			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(snapshot), Platform.LINUX_X64);
+				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), claudeTemporaryDirectory,
+				List.of(snapshot), Platform.LINUX_X64);
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
@@ -401,9 +404,9 @@ public final class ClaudeConnectionSettingsTest
 			Path allowing = root.resolve("allowing/settings.json");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, denying, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(snapshot), Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), claudeTemporaryDirectory, List.of(snapshot), Platform.LINUX_X64);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, allowing, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), claudeTemporaryDirectory, List.of(), Platform.LINUX_X64);
 
 			JsonNode denied = scope.json().readTree(Files.readString(denying)).path("sandbox").path("filesystem");
 			requireThat(denied.has("allowRead"), "deniedHasAllowRead").isFalse();
@@ -411,6 +414,43 @@ public final class ClaudeConnectionSettingsTest
 				isEqualTo(List.of("/secrets", snapshot.toString()));
 			JsonNode kept = scope.json().readTree(Files.readString(allowing)).path("sandbox").path("filesystem");
 			requireThat(strings(kept.path("allowRead")), "keptAllowRead").isEqualTo(List.of("/shared"));
+		}
+	}
+
+	/**
+	 * Verifies that isolated settings exclude every instruction file that Claude Code loads from a directory above
+	 * the isolation root, so that a session whose run directory lies inside another project does not receive that
+	 * project's instructions, while the files at or below the isolation root still load.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void excludesInstructionsAboveIsolationRoot() throws IOException
+	{
+		// Requirement: R-C28
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-instruction-excludes-"));
+			Path project = root.resolve("project[1]");
+			Path run = project.resolve(".cat/runs/run");
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = run.resolve("claude");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				claudeTemporaryDirectory, run.resolve("home"), run, List.of(), Platform.LINUX_X64);
+
+			List<String> excludes = strings(scope.json().readTree(Files.readString(destination)).
+				path("claudeMdExcludes"));
+			String escapedProject = root + "/project\\[1\\]";
+			requireThat(excludes, "excludes").containsAll(List.of(escapedProject + "/CLAUDE.md",
+				escapedProject + "/CLAUDE.local.md", escapedProject + "/.claude/CLAUDE.md",
+				escapedProject + "/.claude/rules/**", escapedProject + "/.cat/runs/CLAUDE.md", "/CLAUDE.md",
+				"/.claude/rules/**"));
+			for (String exclude : excludes)
+			{
+				requireThat(exclude, "exclude").doesNotStartWith(escapedProject + "/.cat/runs/run/");
+			}
 		}
 	}
 

@@ -1244,6 +1244,11 @@ The proposal lists every file of the incumbent's base source. CAT refuses, namin
 	that `start` would refuse, contributes no candidate, and the prompt author's failure names the file. A file that the
 	prompt author writes lies inside the prompt sources, so trials receive it.
 
+Run directories lie inside the user's project, and a harness can load instruction files from the directories above its
+working directory, as Claude Code does. A nested session therefore loads no instruction file from above its run
+directory, the boundary above which Git discovery already stops; otherwise every trial would also receive the
+project's incumbent instructions (end-to-end finding, 2026-10-20).
+
 **Prompt test configuration (user rulings, 2026-10-15).** Which plugins a trial installs is the user's decision, so CAT
 reads it from the prompt test configuration instead of inferring it from file contents. The configuration belongs to the
 target prompt file rather than to one campaign, since every campaign of the target reads it. It is the file

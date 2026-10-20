@@ -182,7 +182,7 @@ public final class ClaudeRunner
 			}
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
 				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome,
-				sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads), Platform.current());
+				run.directory(), sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads), Platform.current());
 			HarnessEnvironment.setHomeDirectory(isolatedEnvironment, isolatedProcessHome);
 			isolatedEnvironment.put("CLAUDE_CONFIG_DIR", isolatedConfiguration.toString());
 			// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
