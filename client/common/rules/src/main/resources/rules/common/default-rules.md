@@ -66,6 +66,9 @@ lazy load `../include/common/numeric-precision.md`.
 When writing or changing a boolean expression that contains a negation, lazy load
 `../include/common/boolean-negation.md`.
 
+When writing or changing an expression that combines two different binary or conditional operators without
+parentheses between them, lazy load `../include/common/operator-precedence.md`.
+
 When defining, changing, reviewing, or auditing type, function, or method names, or the names of variables declared
 outside a function body, or changing a type's responsibility without renaming it, lazy load
 `../include/common/identifier-naming.md`.
