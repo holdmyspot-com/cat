@@ -455,16 +455,32 @@ public final class ClaudeConnectionSettingsTest
 
 			List<String> excludes = strings(scope.json().readTree(Files.readString(destination)).
 				path("claudeMdExcludes"));
-			String escapedProject = root + "/project\\[1\\]";
-			requireThat(excludes, "excludes").containsAll(List.of(escapedProject + "/CLAUDE.md",
-				escapedProject + "/CLAUDE.local.md", escapedProject + "/.claude/CLAUDE.md",
-				escapedProject + "/.claude/rules/**", escapedProject + "/AGENTS.md", escapedProject + "/.claude/AGENTS.md",
-				escapedProject + "/.cat/runs/CLAUDE.md", "/CLAUDE.md", "/.claude/rules/**", "/AGENTS.md"));
+			String projectGlob = glob(project);
+			String fileSystemGlob = glob(root.getRoot());
+			requireThat(excludes, "excludes").containsAll(List.of(projectGlob + "CLAUDE.md",
+				projectGlob + "CLAUDE.local.md", projectGlob + ".claude/CLAUDE.md", projectGlob + ".claude/rules/**",
+				projectGlob + "AGENTS.md", projectGlob + ".claude/AGENTS.md",
+				glob(project.resolve(".cat/runs")) + "CLAUDE.md", fileSystemGlob + "CLAUDE.md",
+				fileSystemGlob + ".claude/rules/**", fileSystemGlob + "AGENTS.md"));
 			for (String exclude : excludes)
 			{
-				requireThat(exclude, "exclude").doesNotStartWith(escapedProject + "/.cat/runs/run/");
+				requireThat(exclude, "exclude").doesNotStartWith(glob(run));
 			}
 		}
+	}
+
+	/**
+	 * Returns a directory as Linux settings start a glob pattern for the files below it.
+	 *
+	 * @param directory an absolute directory
+	 * @return the directory with each backslash and bracket escaped, ending with {@code /}
+	 */
+	private static String glob(Path directory)
+	{
+		String text = directory.toString().replaceAll("([\\\\\\[\\]])", "\\\\$1");
+		if (text.endsWith("/"))
+			return text;
+		return text + "/";
 	}
 
 	/**

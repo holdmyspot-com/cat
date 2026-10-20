@@ -122,8 +122,9 @@ public final class ClaudeSessionEnvironmentVersionTest
 	 */
 	private static String normalize(JsonMapper json, Path file, Path root, HarnessRun run) throws IOException
 	{
-		return replaceRoot(withoutExcludesAboveRoot(json, Files.readString(file, UTF_8).replace("\r\n", "\n"), root),
-			root).replace(run.id(), "<run>");
+		// The mapper ends its lines with the platform's line separator
+		return replaceRoot(withoutExcludesAboveRoot(json, Files.readString(file, UTF_8), root), root).
+			replace(run.id(), "<run>").replace("\r\n", "\n");
 	}
 
 	/**
