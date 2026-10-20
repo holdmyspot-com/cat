@@ -188,6 +188,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-101 | `optimize-medium` | Changes when `start` refuses a campaign; an error starts a campaign whose trials lose a hook's context, or refuses a hook that works in trials. |
 | WI-102 | `optimize-low` | Changes what the proposal lists as running only in the user's sessions; an error hides a hook, plugin or MCP server that trials do not run. |
 | WI-103 | `optimize-low` | Changes which instruction files a nested Claude session loads; an error lets a trial load the user's project instructions or drops the trial's own. |
+| WI-104 | `optimize-low` | Changes the `PROMPT_SOURCES` measurement value of Claude trials; an error drops a file-sourced skill, agent or plugin from the measurement or keeps a built-in one whose presence varies between sessions. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
 
 **When to delegate:**
@@ -383,6 +384,7 @@ requirement names.
 | WI-101 | Done: before the first contract author session, `start` runs each command hook of the prompt system and of the trial plugins that runs at session start (a matcher that selects `startup`) or prompt submission, without a model: once in a copy of the trial source with an empty harness home, and once in a copy of the fork with the user's home. Each adapter supplies the shell, the project, plugin and harness-home variables, and the event's input. A hook that succeeds only in the fork refuses the campaign with its exit status and the end of its error output; a hook whose output differs is listed in the prompt loading section with its first differing lines, and the proposal states the one-input limit. The result is stored in the campaign directory as `hooks.json`, so every presentation lists the same differences; a project without such hooks stages and copies nothing. Adapter coverage: `ClaudeSessionsTest.listsEarlyHooks`, `CodexSessionsTest.listsEarlyHooks`. Commit `72c915eeaa`; full build passed (2958 tests, 0 failures, 10 skipped; 85 s; no test took 1 s). |
 | WI-102 | Done: both adapters list, with the files that load only in the user's sessions, each hook of the user's harness hooks file (Claude `settings.json` in the configuration directory, Codex `hooks.json` in its home), each plugin that the user's configuration enables and no trial plugin holds (Claude `enabledPlugins`, Codex `[plugins]` tables not disabled; a project-built trial plugin holds the plugin of its name without the marketplace), and each MCP server of the user's configuration (Claude `.claude.json` `mcpServers`, user scope only; Codex `[mcp_servers]` tables not disabled). The proposal shows them under the trial plugins. Coverage: `ClaudeSessionsTest.listsUserConfigurationThatTrialsLack`, `CodexSessionsTest.listsUserConfigurationThatTrialsLack`, `ProposalTest.listsTrialPlugins`; all three failed before the change. Commit `2e3e9dfa85`; full build passed (2960 tests, 0 failures, 10 skipped; 84 s; no test took 1 s). |
 | WI-103 | Done: the Claude runner's isolated settings exclude, through `claudeMdExcludes`, the `CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md` and `.claude/rules/**` of every directory above the run directory, so a trial no longer loads the user's project instructions; the session environment version is 4. Coverage: `ClaudeConnectionSettingsTest.excludesInstructionsAboveIsolationRoot`, which failed before the change; `ClaudeSessionEnvironmentVersionTest` hashes only the excludes at or below its root, since the directories above it differ between machines. Commit `416005eeaa`; full build passed (2961 tests, 0 failures, 10 skipped; 103 s; at or over 1 s: `TestabilityAuditTest.onlyMainReadsEnvironment` 1.20 s, untouched). Live (Claude Code 2.1.304, Haiku, the Claude plugin reinstalled from that build): a directory held all four files, and a session that the installed `claude-runner` started in a run root below it loaded only its own project's `CLAUDE.md`; a bare `claude` session there loaded all five. The Windows form of the patterns, with forward slashes, is untested. |
+| WI-104 | Done (user decision, 2026-10-20): the Claude `PROMPT_SOURCES` value lists only plugins whose `init` path is not `builtin`, skills and agents in those plugins' namespaces, and skills, commands and agents that the session project's `.claude/skills`, `.claude/commands` or `.claude/agents` files declare by path or frontmatter `name`; built-in and account skills, agents and plugins are left out, and the harness version still identifies them. Coverage: `StreamJsonPromptSourcesTest.omitsBuiltInSources` and `StreamJsonPromptSourcesTest.listsProjectSkillsAndAgents`, which both failed before the change. Commit `74f6b41f7b`; full build passed (2963 tests, 0 failures, 10 skipped; 56 s while Codex campaigns ran; at or over 1 s, all untouched: four `RunnerSessionsTest` time-limit tests at 2.47–2.48 s, `DriverTest.attemptLoadsOnlyReceivedFiles` 2.13 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.18 s). |
 
 Changes made to `design.md` and this plan during implementation, apart from this section:
 
@@ -701,7 +703,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 
 | ID | Requirement | Design | Owner | Proof |
 |---|---|---|---|---|
-| R-M1 | Measurement identity is recorded for every trial and result. | §5 | WI-3, WI-8 | U: `MeasurementIdentityTest` |
+| R-M1 | Measurement identity is recorded for every trial and result. | §5 | WI-3, WI-8, WI-104 | U: `MeasurementIdentityTest`, `StreamJsonPromptSourcesTest` |
 | R-M2 | Each listed material change makes a certification historical without deleting it; a runner or CAT version change with an unchanged session environment version does not; a parameter change makes it historical only when its claim does not imply the new one; a new judge version makes it historical. | §5 | WI-3, WI-41, WI-42 | U: `ApplicabilityTest` (one case per change kind), the session environment tests of WI-41 |
 | R-M3 | A `MEASUREMENT_CHANGED` pause before the next call, with three ways to continue. A loader-configuration change offers only restoring it or starting a new campaign. | §5 | WI-9 | U: `DriverTest` |
 | R-M4 | Comparability by exact equality, campaign-wide and per cell; a condition only one side records gives `INDETERMINATE` and an unavailable comparison; a condition neither records is unobserved, does not prevent comparison and is a limitation; each differing or missing condition is named in words. | §5 | WI-3 | U: `ComparabilityTest`, `DecisionTableTest`, `KeepImprovementTest`, `OptimizationEvidenceTest`, `StatusReportTest` |
@@ -2805,6 +2807,20 @@ The riskiest pure code, built first.
 - **Exit:** the full build passes, the test failed before the change, and a nested session below a directory with
 	each of the four files loads none of them.
 
+### WI-104 — Prompt sources from files only (WI-15 E1 finding, 2026-10-20)
+
+- **Problem:** with Claude Code 2.1.304 unchanged, nested sessions of one campaign listed different built-in skills:
+	of 262, 130 listed 17, 63 also listed `deep-research` and `workflow-authoring`, and 69 also listed 13
+	`anthropic-skills:*` skills. The account's synced skills and its dynamic workflows load in the background at
+	startup, and a trial home starts with neither cached, so the `PROMPT_SOURCES` value differed between trials of one
+	candidate and paused the campaign.
+- **Change (user decision, 2026-10-20):** the Claude prompt sources list only the skills, agents and plugins that come
+	from files: a plugin whose `init` path is not `builtin`, a skill or agent in such a plugin's namespace, and a skill,
+	command or agent that a file below the session project's `.claude/skills`, `.claude/commands` or `.claude/agents`
+	declares by path or frontmatter `name`. The harness version still identifies the built-in ones.
+- **Tests:** `StreamJsonPromptSourcesTest.omitsBuiltInSources`, `StreamJsonPromptSourcesTest.listsProjectSkillsAndAgents`.
+- **Exit:** the full build passes and both tests failed before the change.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -2952,7 +2968,8 @@ blocks only the part of a work item that it names.
 | WI-101 | WI-81, WI-89 |
 | WI-102 | WI-81 |
 | WI-103 | WI-5 |
-| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102 and WI-103. |
+| WI-104 | WI-5 |
+| WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102 and WI-103, WI-104. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
 
