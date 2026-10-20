@@ -3013,7 +3013,8 @@ The riskiest pure code, built first.
 	the fixture directory of tests that start no harness.
 - **Order:** run every step in Claude first; start Codex only after Claude passes all of E1–E8 (user ruling,
 	2026-10-19, which reverses the Codex-first order of 2026-10-01). The Codex E1 and E7 campaigns that were in
-	progress then continue to their end.
+	progress, `20261019T185225Z-6ba4c4` and `20261019T185226Z-c05d87`, paused when a runner change altered their session
+	environment and were stopped at the user's ruling (2026-10-20); Codex E1 and E7 run again from the start.
 - **Fixtures:** small prompt systems under `client/common/cli/src/test/resources/optimizer/e2e/`, with a deliberately
 	deficient rule, a rule that is easy to satisfy, a link fixture and an unsupported-case fixture. Lower the cost
 	through the contract's category count, not by weakening the statistics: use 1–2 categories.
