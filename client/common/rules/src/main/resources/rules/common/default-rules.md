@@ -85,6 +85,9 @@ When defining a function, method, constructor, or command, or changing its param
 operation of the same API takes some of the same inputs, even in another type or representation, lazy load
 `../include/common/consistent-parameters.md`.
 
+When defining a function, method, constructor, or command whose parameters specify a range, such as a pair of indexes,
+offsets, positions, or times, or changing such parameters, lazy load `../include/common/range-parameters.md`.
+
 When writing or editing a product, legal, or user-facing workflow document, an overview, release notes, or a
 changelog, lazy load `../include/documentation/standalone-documents.md`.
 
