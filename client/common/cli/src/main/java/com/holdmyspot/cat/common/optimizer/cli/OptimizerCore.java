@@ -1958,8 +1958,16 @@ public final class OptimizerCore implements Core
 			incumbent = certificationStatus(history, inventory::entry, campaign.identity(),
 				record -> derived.contract().minimumPassRate());
 		}
+		SourceSelection selection = trialSelection(root, campaign, derived, plugin);
+		List<String> trialFiles = new ArrayList<>();
+		for (Path file : inventory.entries().keySet())
+		{
+			if (!file.isAbsolute() && selection.selects(file))
+				trialFiles.add(PortablePaths.text(file));
+		}
 		return Proposal.of(derived, campaign, links, relativeTarget(root, campaign), scope.sessions().hostLogin(),
-			scope.calibrator(), schema, incumbent, pilots, plugin, controlRefusals(root, campaign, fork, derived, plugin));
+			scope.calibrator(), schema, incumbent, pilots, plugin, controlRefusals(root, campaign, fork, derived, plugin),
+			trialFiles);
 	}
 
 	/**

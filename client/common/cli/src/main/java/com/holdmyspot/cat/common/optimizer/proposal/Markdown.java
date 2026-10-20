@@ -80,6 +80,7 @@ public final class Markdown
 	private final Map<String, DeliveredTest> delivered;
 	private final PluginCheck plugin;
 	private final List<String> controlRefusals;
+	private final List<String> trialFiles;
 	private final String goal;
 	private final StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
 
@@ -100,12 +101,13 @@ public final class Markdown
 	 * @param delivered each prompt test as delivery would write it, by prompt test
 	 * @param plugin the check of the trial plugins
 	 * @param controlRefusals the reasons why the control source cannot be built, which block confirmation
+	 * @param trialFiles the files that every trial receives from the incumbent, relative to the project
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
 	Markdown(DerivedProposal derived, Contract contract, LinkReport links, Path controlFile,
 		HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews, List<String> caps,
 		CertificationStatus incumbent, Map<String, PilotResult> pilots, Map<String, DeliveredTest> delivered,
-		PluginCheck plugin, List<String> controlRefusals, String goal)
+		PluginCheck plugin, List<String> controlRefusals, List<String> trialFiles, String goal)
 	{
 		this.derived = derived;
 		this.contract = contract;
@@ -120,6 +122,7 @@ public final class Markdown
 		this.delivered = delivered;
 		this.plugin = plugin;
 		this.controlRefusals = controlRefusals;
+		this.trialFiles = trialFiles;
 		this.goal = goal;
 	}
 
@@ -204,7 +207,8 @@ public final class Markdown
 	}
 
 	/**
-	 * Lists the prompt loading that the contract author session observed and the loading that was derived.
+	 * Lists the prompt loading that the contract author session observed, the loading that was derived and the files
+	 * that every trial receives.
 	 */
 	private void loading()
 	{
@@ -219,6 +223,13 @@ public final class Markdown
 		{
 			text.append("- ").append(pluginFile(source.path()).orElse(source.path())).append(": ").
 				append(withPluginFiles(source.rule())).append('\n');
+		}
+		if (!trialFiles.isEmpty())
+		{
+			text.append("\nEvery trial receives these files from the incumbent, besides its prompt test's workspace " +
+				"files:\n\n");
+			for (String file : trialFiles)
+				text.append("- `").append(file).append("`\n");
 		}
 		text.append('\n').append(Proposal.DERIVED_LOADING_LIMIT).append('\n');
 	}

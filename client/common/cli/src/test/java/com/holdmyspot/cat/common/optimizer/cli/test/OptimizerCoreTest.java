@@ -2397,6 +2397,42 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that the proposal that {@code start} presents lists every file that trials receive from the incumbent:
+	 * the instruction file, a file that it imports and the project rules, but no other project file.
+	 */
+	@Test
+	public void proposalListsTheFilesThatTrialsReceive() throws Exception
+	{
+		// Requirement: R-C28
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), Path.of("docs/imported.md"), Path.of(".cat/rules/style.md"),
+				Path.of("notes/unrelated.md")));
+			for (String file : List.of("docs/imported.md", ".cat/rules/style.md", "notes/unrelated.md"))
+			{
+				Path path = repository.root().resolve(file);
+				Files.createDirectories(path.getParent());
+				Files.writeString(path, "Text\n");
+			}
+			List<DerivedSource> derived = new ArrayList<>(repository.sessions().derivedSources());
+			derived.add(new DerivedSource("docs/imported.md", "`CLAUDE.md` imports this file"));
+			repository.sessions().derivedSources(derived);
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(result.proposal(), "proposal").isNotNull().
+				contains("Every trial receives these files from the incumbent, besides its prompt test's workspace " +
+					"files:\n\n").
+				contains("\n- `CLAUDE.md`\n").
+				contains("\n- `docs/imported.md`\n").
+				contains("\n- `.cat/rules/style.md`\n").
+				doesNotContain("notes/unrelated.md");
+		}
+	}
+
+	/**
 	 * Verifies that {@code start} refuses a plugin listed without a build whose name a manifest that Git tracks in the
 	 * project holds, because trials would install the user's copy instead of the project's plugin.
 	 */
