@@ -1,9 +1,10 @@
-# Lines use a half-open range
+# Range follows the language
 
 ## Design Goals
 
-- Prove that a new Java method whose parameters select part of a sequence takes a zero-based, half-open range, and that
-	an edit which leaves an existing method's signature unchanged keeps that method's inclusive bounds.
+- Prove that a new operation whose parameters select part of a sequence takes its range in the convention of its own
+	language: a zero-based, half-open range in Java and a range that counts from 1 and includes both bounds in Lua. Also
+	prove that an edit which leaves an existing method's signature unchanged keeps that method's bounds.
 
 ## Variables
 
@@ -51,6 +52,22 @@ public final class Report
 }
 ```
 
+**Request 3.** Add a function `M.slice` to this Lua module that returns a new table holding a contiguous part of
+`{{sequence_name}}`, selected by the positions where it starts and ends. Show the module with the function and its
+comment.
+
+```lua
+local M = {}
+
+M.{{sequence_name}} = {}
+
+function M.add(line)
+  table.insert(M.{{sequence_name}}, line)
+end
+
+return M
+```
+
 ## Assertions
 
 ### half_open_bounds
@@ -65,6 +82,12 @@ public final class Report
 - **kind**: guard
 - **description**: For request 2: the answer's `count` method keeps the parameters `(List<Row> rows, int first, int
 	last)` and keeps `last` inclusive. It may mention that the method differs from Java's half-open convention.
+
+### language_convention_bounds
+
+- **kind**: effect
+- **description**: For request 3: `M.slice` takes a start position and an end position that both count from 1 and are
+	both included, as `string.sub` does, and its comment says so; it does not take a zero-based or end-exclusive range.
 
 ### guidance_selection
 

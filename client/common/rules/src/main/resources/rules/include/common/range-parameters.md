@@ -13,26 +13,33 @@ Before defining an operation, such as a function, method, constructor, or comman
 or changing such parameters, identify the convention that the language's standard library uses for the same kind of
 range. A range is a pair of bounds, or a start and a length, that selects part of a sequence or interval: indexes,
 offsets, positions, line or column numbers, or times. Use that convention's inclusivity, base, parameter order and
-naming. In Java, a range is half-open, `[fromInclusive, toExclusive)`, with zero-based indexes, as in
-`List.subList(fromIndex, toIndex)`, `String.substring(beginIndex, endIndex)` and `Arrays.copyOfRange(original, from,
-to)`. Name each bound so that its inclusivity is visible where the language's convention does not already make it
-obvious, such as `fromInclusive` and `toExclusive`. Return a range in the same form that the operation accepts.
+bound names, and state in the operation's documentation whether each bound is included. Return a range in the same form
+that the operation accepts. Conventions differ between languages, so take the convention from the language of the code
+being written, not from another language.
 
-For example, this Java method takes an inclusive end, which a caller used to `subList` would pass one too high:
+For example, Java ranges are half-open and zero-based, as in `List.subList(fromIndex, toIndex)` and
+`String.substring(beginIndex, endIndex)`: the start bound is included and the end bound is excluded. A Java method that
+returns part of a list therefore takes:
 
 ```java
-public List<String> lines(int first, int last);
+/**
+ * @param fromIndex the index of the first line to return, inclusive
+ * @param toIndex   the index after the last line to return, exclusive
+ */
+public List<String> lines(int fromIndex, int toIndex);
 ```
 
-Following the standard library's convention, it takes a half-open range:
+Lua ranges instead count from 1 and include both bounds, as in `string.sub(s, i, j)` and `table.concat(list, sep, i,
+j)`. A Lua function that returns part of a list therefore takes:
 
-```java
-public List<String> lines(int fromInclusive, int toExclusive);
+```lua
+--- Returns the lines from position i to position j, both included, counting from 1.
+function Transcript:lines(i, j)
 ```
 
 When an external contract fixes another convention, such as a file format, protocol, or user-facing display that
-numbers lines from 1 or gives an inclusive end, keep that convention only in the code that reads or writes that
-contract, convert it to the language's convention there, and document the conversion.
+numbers lines from 1 in a language whose indexes start at 0, keep that convention only in the code that reads or writes
+that contract, convert it to the language's convention there, and document the conversion.
 
 When an existing operation uses another convention, change it only when the task already changes that operation's
 signature or the user asks for it, and update every caller in the same change. Otherwise keep it and report the
