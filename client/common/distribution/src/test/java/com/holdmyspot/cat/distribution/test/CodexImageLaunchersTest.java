@@ -106,9 +106,9 @@ public final class CodexImageLaunchersTest
 	}
 
 	/**
-	 * Runs each launcher from a POSIX shell, as Codex runs a command on Linux and macOS. The launchers run Java in
-	 * Bubblewrap when it is installed; a stand-in runs the command without it, so the test does not depend on the
-	 * host's Bubblewrap.
+	 * Runs each launcher from a POSIX shell, as Codex runs a command on Linux and macOS. A stand-in Bubblewrap fails as
+	 * it does inside a sandbox that cannot create another namespace, so a launcher that ran Java through it would
+	 * fail.
 	 *
 	 * @param launchers the launchers' paths
 	 * @param directory a directory that the test owns
@@ -122,9 +122,8 @@ public final class CodexImageLaunchersTest
 		Path stubs = Files.createDirectories(directory.resolve("stubs"));
 		writeExecutable(stubs.resolve("bwrap"), """
 			#!/bin/sh
-			while [ "$1" != "--" ]; do shift; done
-			shift
-			exec "$@"
+			echo 'bwrap: No permissions to create new namespace' >&2
+			exit 1
 			""");
 		List<String> command = new ArrayList<>(List.of("sh", "-c", "for launcher in \"$@\"; do \"$launcher\"; done",
 			"sh"));

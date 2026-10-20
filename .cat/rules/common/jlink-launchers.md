@@ -22,10 +22,12 @@ already UTF-8, the launcher keeps the caller's locale. Otherwise it saves the ca
 command on the caller's behalf, such as `run-part`, restores the caller's `LC_ALL` and `LC_CTYPE` from those variables
 in the command's environment and removes them.
 
-Every jlink launcher shares the caller's `/tmp`. When Bubblewrap is available, the template mounts an empty temporary
-filesystem over only the JVM's performance-data directory, `/tmp/hsperfdata_<user>`, because JVMs in separate PID
-namespaces can have the same PID and would otherwise write the same file there. Do not hide more of the file system
-from a launcher, give one launcher a different template, or disable the JVM's performance data instead.
+Every jlink launcher runs Java directly, sharing the caller's file system, including `/tmp`. Do not start Java through
+Bubblewrap or another sandbox: inside a sandboxed agent session, such as Claude Code's, Bubblewrap cannot create another
+namespace, so the launcher would fail. HotSpot shares a JVM's performance data through the file
+`/tmp/hsperfdata_<user>/<pid>`, and JVMs in separate PID namespaces that share `/tmp` can have the same PID and would
+write the same file, so the launchers' JVM options include `-XX:+PerfDisableSharedMem`, which keeps that data inside the
+process. Do not hide part of the file system from a launcher or give one launcher a different template.
 
 One Bats test, `jlink-launchers.bats`, verifies the launcher template for all launchers against a built image. Do not
 add a Bats test for a launcher or a harness merely to show that its launcher starts its program, runs from a path with

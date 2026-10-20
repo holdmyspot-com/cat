@@ -26,13 +26,17 @@ public final class JlinkImageBuilder
 	private static final int MAXIMUM_LAUNCHER_BYTES = 1_048_576;
 	/**
 	 * The options of every launcher's JVM. The CLI's standard output carries structured responses, so JVM warnings go to
-	 * standard error instead of corrupting that channel. Java writes its standard streams in the console's or the
-	 * system's character set, which on Windows is not UTF-8, while the harnesses read UTF-8. On Windows, the common
-	 * module reads the program's arguments from the process's command line through native code, because the Java
-	 * launcher loses the characters that the system's code page lacks.
+	 * standard error instead of corrupting that channel. HotSpot shares its performance data through the file
+	 * {@code /tmp/hsperfdata_<user>/<pid>}, and JVMs in separate PID namespaces, such as two sandboxed sessions that
+	 * share {@code /tmp}, can have the same PID and contend for that file; keeping the data in the process avoids that
+	 * contention, at the cost of tools such as {@code jps} and {@code jstat} not seeing the JVM. Java writes its
+	 * standard streams in the console's or the system's character set, which on Windows is not UTF-8, while the
+	 * harnesses read UTF-8. On Windows, the common module reads the program's arguments from the process's command line
+	 * through native code, because the Java launcher loses the characters that the system's code page lacks.
 	 */
 	private static final String VM_OPTIONS = "-Xlog:all=off:stdout -Xlog:all=warning:stderr " +
-		"-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 --enable-native-access=com.holdmyspot.cat.common.cli";
+		"-XX:+PerfDisableSharedMem -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 " +
+		"--enable-native-access=com.holdmyspot.cat.common.cli";
 
 	static
 	{
@@ -266,14 +270,12 @@ public final class JlinkImageBuilder
 
 	/**
 	 * Makes jlink launchers work from installation paths containing whitespace and in every locale, and gives each
-	 * launcher's JVM a private performance-data directory when Bubblewrap is available.
+	 * launcher's JVM its options.
 	 * <p>
 	 * jlink emits {@code $DIR/java -m ...}. With {@code DIR=/opt/CAT Plugin/bin}, the shell splits that command at
 	 * the space. This method replaces it with {@code exec "$DIR/java" -m ...}, after deriving {@code DIR} from a
-	 * quoted launcher path. HotSpot names its shared performance-data file {@code /tmp/hsperfdata_<user>/<pid>}, and
-	 * JVMs in separate PID namespaces can have the same PID and therefore contend for the same file. Mounting an empty
-	 * temporary filesystem over only that directory keeps the feature enabled without that contention, while the
-	 * program shares the rest of the caller's {@code /tmp}. Without Bubblewrap, the launcher runs Java directly.
+	 * quoted launcher path. The launcher runs Java directly, so it also runs inside a sandbox that cannot create
+	 * another namespace.
 	 * <p>
 	 * Java names files and decodes its arguments in the character set of {@code LC_CTYPE}, which in the C locale cannot
 	 * name a file whose name is not ASCII. When the caller's {@code LC_CTYPE} is not UTF-8, every launcher therefore runs
@@ -318,12 +320,10 @@ public final class JlinkImageBuilder
 			if (invocationEnd < 0)
 				throw new IOException("Jlink launcher invocation has no line ending: " + script);
 			String arguments = content.substring(invocationStart + unquotedInvocation.length(), invocationEnd);
-			String isolatedInvocation = "if command -v bwrap >/dev/null 2>&1; then\n" +
-				"  exec bwrap --bind / / --tmpfs \"/tmp/hsperfdata_$(id -un)\" --proc /proc --dev /dev -- \"$DIR/java\" " +
-				arguments + "\nfi\nexec \"$DIR/java\" " + arguments;
+			String invocation = "exec \"$DIR/java\" " + arguments;
 			String rewritten = content.replace(unconfiguredVmOptions, configuredVmOptions).
 				replace(unquotedDirectory, quotedDirectory);
-			rewritten = rewritten.substring(0, rewritten.indexOf(unquotedInvocation)) + localeSetup + isolatedInvocation +
+			rewritten = rewritten.substring(0, rewritten.indexOf(unquotedInvocation)) + localeSetup + invocation +
 				rewritten.substring(rewritten.indexOf('\n', rewritten.indexOf(unquotedInvocation)));
 			Files.writeString(script, rewritten, UTF_8);
 		}

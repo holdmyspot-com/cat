@@ -41,11 +41,12 @@ public final class JlinkImageBuilderTest
 		""";
 
 	/**
-	 * The options of every launcher's JVM: warnings on standard error only, UTF-8 output on every platform, and native
-	 * access for the common module.
+	 * The options of every launcher's JVM: warnings on standard error only, performance data kept in the process, UTF-8
+	 * output on every platform, and native access for the common module.
 	 */
 	private static final String VM_OPTIONS = "-Xlog:all=off:stdout -Xlog:all=warning:stderr " +
-		"-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 --enable-native-access=com.holdmyspot.cat.common.cli";
+		"-XX:+PerfDisableSharedMem -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 " +
+		"--enable-native-access=com.holdmyspot.cat.common.cli";
 
 	/** Creates a test instance. */
 	public JlinkImageBuilderTest()
@@ -75,11 +76,11 @@ public final class JlinkImageBuilderTest
 	}
 
 	/**
-	 * Verifies that launcher rewriting gives Java a private performance-data directory but the caller's {@code /tmp},
-	 * falls back to Java without bwrap, and runs Java in a UTF-8 {@code LC_CTYPE}.
+	 * Verifies that launcher rewriting runs Java directly, without Bubblewrap, keeps the JVM's performance data in the
+	 * process, and runs Java in a UTF-8 {@code LC_CTYPE}.
 	 */
 	@Test
-	public void rewritesLauncherWithPerfDataIsolation() throws IOException
+	public void rewritesLauncherWithPrivatePerfData() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -92,13 +93,9 @@ public final class JlinkImageBuilderTest
 
 			String launcher = Files.readString(output.resolve("bin/read-part"));
 			requireThat(launcher, "launcher").
-				contains("bwrap --bind / / --tmpfs \"/tmp/hsperfdata_$(id -un)\" --proc /proc --dev /dev --").
-				doesNotContain("--tmpfs /tmp ").
 				contains("JLINK_VM_OPTIONS='" + VM_OPTIONS + "'").
-				contains("if command -v bwrap >/dev/null 2>&1; then").
-				contains("\nfi\nexec \"$DIR/java\" ").
-				contains(LOCALE_SETUP + "if command -v bwrap").
-				doesNotContain("PerfDisableSharedMem");
+				contains(LOCALE_SETUP + "exec \"$DIR/java\" -m jdk.compiler/com.sun.tools.javac.Main \"$@\"\n").
+				doesNotContain("bwrap");
 		}
 	}
 

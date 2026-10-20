@@ -47,16 +47,13 @@ SCRIPT
 	chmod +x "${FAKE_BIN}/uname"
 }
 
-# Creates a bubblewrap replacement that executes the packaged launcher without sandboxing test-owned temporary paths.
-create_fake_bwrap()
+# Creates a bubblewrap replacement that fails as bubblewrap does inside a sandbox that cannot create another namespace.
+create_failing_bwrap()
 {
 	cat > "${FAKE_BIN}/bwrap" <<'SCRIPT'
 #!/usr/bin/env sh
-while [ "$1" != "--" ]; do
-		shift
-done
-shift
-exec "$@"
+printf '%s\n' 'bwrap: No permissions to create new namespace' >&2
+exit 1
 SCRIPT
 	chmod +x "${FAKE_BIN}/bwrap"
 }

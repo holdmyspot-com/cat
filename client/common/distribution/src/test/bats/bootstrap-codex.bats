@@ -211,7 +211,6 @@ platform=${expected_platform}" ]
 	mkdir -p "${project}/.cat/rules/common"
 	printf 'project session rule\n' > "${project}/.cat/rules/common/session.md"
 	runtime="${GENERATED_RUNTIME_DIRECTORY}/codex"
-	create_fake_bwrap
 
 	run env PATH="${FAKE_BIN}:${PATH}" PLUGIN_ROOT="${runtime}" sh -c 'printf "%s\\n" "$1" | "$2"' sh \
 		"{\"cwd\":\"${project}\",\"session_id\":\"123e4567-e89b-12d3-a456-426614174000\"}" \
@@ -232,7 +231,6 @@ platform=${expected_platform}" ]
 	printf '%s\n' '---' 'agents: ["main"]' '---' 'main rule' > "${project}/.cat/rules/codex/main.md"
 	printf '%s\n' '---' 'agents: ["cat:reviewer"]' '---' 'reviewer rule' > "${project}/.cat/rules/codex/reviewer.md"
 	runtime="${GENERATED_RUNTIME_DIRECTORY}/codex"
-	create_fake_bwrap
 
 	run env PATH="${FAKE_BIN}:${PATH}" PLUGIN_ROOT="${runtime}" sh -c 'printf "%s\\n" "$1" | "$2"' sh \
 		"{\"cwd\":\"${project}\",\"agent_type\":\"cat:reviewer\",\"session_id\":\"123e4567-e89b-12d3-a456-426614174000\"}" \
