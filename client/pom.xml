@@ -22,14 +22,6 @@
 		<build-helper-maven-plugin.version>3.6.2</build-helper-maven-plugin.version>
 		<cat.config.directory>${project.basedir}/config</cat.config.directory>
 		<!--
-			The TestNG group that tests run (all groups when empty) and the group they skip. By default, tests skip group
-			"native", whose tests start real nested harness sessions.
-		-->
-		<cat.test.groups/>
-		<cat.test.excludedGroups>native</cat.test.excludedGroups>
-		<!-- The harness that native tests start: claude or codex. Native tests skip when it is empty. -->
-		<cat.native.harness/>
-		<!--
 			The directory that holds test fixtures, including those that a harness runner consumes. A build inside a harness
 			session uses the session's temporary directory (see the profiles "claude-session" and "codex-session"). Any other
 			build, such as CI, uses the system's temporary directory. A directory inside the project would expose each test's
@@ -297,7 +289,6 @@
 						<parallel>methods</parallel>
 						<threadCount>${test.thread.count}</threadCount>
 						<systemPropertyVariables>
-							<cat.native.harness>${cat.native.harness}</cat.native.harness>
 							<cat.session.temp>${cat.session.temp}</cat.session.temp>
 						</systemPropertyVariables>
 						<!-- Git's detached background maintenance would keep changing a test repository's .git directory
@@ -316,15 +307,6 @@
 							<property>
 								<name>usedefaultlisteners</name>
 								<value>false</value>
-							</property>
-							<!-- TestNG properties rather than surefire groups, which fail in modules without TestNG -->
-							<property>
-								<name>groups</name>
-								<value>${cat.test.groups}</value>
-							</property>
-							<property>
-								<name>excludegroups</name>
-								<value>${cat.test.excludedGroups}</value>
 							</property>
 						</properties>
 					</configuration>
@@ -434,17 +416,6 @@
 			</activation>
 			<properties>
 				<cat.session.temp>${project.rootDirectory}/../.cat/sessions/${env.CLAUDE_CODE_SESSION_ID}/temp</cat.session.temp>
-			</properties>
-		</profile>
-		<profile>
-			<!--
-				Runs only the tests in TestNG group "native", which start real nested harness sessions.
-				Usage: mvnw -Pnative -Dcat.native.harness=claude|codex verify
-			-->
-			<id>native</id>
-			<properties>
-				<cat.test.groups>native</cat.test.groups>
-				<cat.test.excludedGroups></cat.test.excludedGroups>
 			</properties>
 		</profile>
 	</profiles>
