@@ -66,6 +66,10 @@ public final class HarnessRunManager
 	 */
 	public static final Duration DEFAULT_RETENTION = Duration.ofDays(7);
 	static final int MAXIMUM_MANIFEST_BYTES = 1_048_576;
+	/**
+	 * The name of a run directory, which is a generated run identifier.
+	 */
+	private static final Pattern RUN_ID = Pattern.compile("[a-z0-9]+-[a-z0-9]+");
 	private static final Pattern MANIFEST = Pattern.compile("""
 		\\A\\{
 		  "schema_version": 3,
@@ -671,7 +675,9 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Removes disposable runtime state from every terminal run owned by one harness root.
+	 * Removes disposable runtime state from every terminal run owned by one harness root. Entries whose names are not
+	 * generated run identifiers are not runs and stay as they are, such as the {@code .claude} directories that a
+	 * harness sandbox creates in the directories above its working directory.
 	 *
 	 * @param harness the owning harness name
 	 * @throws IOException if a manifest is malformed or disposable state cannot be removed
@@ -688,6 +694,8 @@ public final class HarnessRunManager
 		{
 			for (Path entry : entries.toList())
 			{
+				if (!RUN_ID.matcher(entry.getFileName().toString()).matches())
+					continue;
 				if (Files.isSymbolicLink(entry) || !Files.isDirectory(entry, NOFOLLOW_LINKS))
 					throw new IOException("Harness run is not an owned directory: " + entry);
 				HarnessRun run = new HarnessRun(harness, entry.getFileName().toString(), entry);

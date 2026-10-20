@@ -145,6 +145,35 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
+	 * Verifies bulk pruning leaves alone the entries of a harness root that are not runs, such as the empty
+	 * {@code .claude} directories that a harness sandbox creates in the directories above its working directory.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void pruneSkipsEntriesThatAreNotRuns() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(
+				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				"cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC());
+			HarnessRun terminal = manager.create("harness");
+			Files.writeString(terminal.directory().resolve("home/cache.txt"), "cache");
+			manager.markCompleted(terminal);
+			Path directory = Files.createDirectory(root.resolve("harness/.claude"));
+			Path file = Files.writeString(root.resolve("harness/.mcp.json"), "{}");
+
+			manager.pruneTerminalRuntimes("harness");
+
+			requireThat(Files.notExists(terminal.directory().resolve("home")), "terminalHome").isTrue();
+			requireThat(Files.isDirectory(directory), "directory").isTrue();
+			requireThat(Files.isRegularFile(file), "file").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies failed runs retain non-secret diagnostics for later investigation.
 	 *
 	 * @throws IOException if the filesystem operation fails
