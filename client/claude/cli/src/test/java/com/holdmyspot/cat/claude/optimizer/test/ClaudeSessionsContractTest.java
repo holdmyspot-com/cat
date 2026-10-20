@@ -41,6 +41,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Tests {@link ClaudeSessions}' production decisions over recorded Claude {@code stream-json} streams, without
@@ -152,6 +153,31 @@ public final class ClaudeSessionsContractTest
 	{
 		// Requirement: R-E13
 		contract(List.of(recorded("judge-turn-1.jsonl"))).judgeLeavesReadOnlyEvidenceUnchanged();
+	}
+
+	/**
+	 * Verifies the shared contract check that an interrupt ends a running turn as interrupted, over a turn that Claude
+	 * ended in answer to CAT's interrupt request, and that the adapter wrote exactly one interrupt request to Claude.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test(timeOut = 60_000)
+	public void interruptEndsARunningTurnAsInterrupted() throws Exception
+	{
+		// Requirement: R-E15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "claude-contract-"));
+			RecordedClaude claude = new RecordedClaude(List.of(recorded("interrupted-judge-turn-1.jsonl")));
+
+			new SessionPortContract(() -> new RecordedSubject(new TemporaryDirectories(), port(root, claude), root,
+				claude)).interruptEndsARunningTurnAsInterrupted();
+
+			List<JsonNode> requests = claude.controlRequests();
+			requireThat(requests.size(), "controlRequests.size").isEqualTo(1);
+			requireThat(requests.getFirst().path("request").path("subtype").asString(""), "subtype").
+				isEqualTo("interrupt");
+		}
 	}
 
 	/**
@@ -372,9 +398,10 @@ public final class ClaudeSessionsContractTest
 		}
 
 		@Override
-		public void awaitTurnInProgress(SessionHandle session)
+		public void awaitTurnInProgress(SessionHandle session) throws InterruptedException
 		{
-			throw new AssertionError("No interrupted Claude turn has been recorded");
+			claude.awaitTurnStarted();
+			requireThat(session.completion().toCompletableFuture().isDone(), "endedEarly").isFalse();
 		}
 
 		@Override

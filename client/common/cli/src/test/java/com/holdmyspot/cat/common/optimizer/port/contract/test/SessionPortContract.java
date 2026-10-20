@@ -26,12 +26,12 @@ import java.util.concurrent.TimeoutException;
  * The behaviour that every {@link SessionPort} implementation must show, one check per operation.
  * <p>
  * A test class gives the contract an {@link Opener} for the implementation under test, and runs each check from a
- * test method of its own that carries the requirement tags. The fake-backed test always runs. The native test of each
- * harness runs only in the {@code native} tier, against the real adapter. The checks are plain methods rather than
- * inherited test methods because the package that holds them is not opened to the test framework.
+ * test method of its own that carries the requirement tags. One test runs the checks against the shared fake; each
+ * harness's contract test runs them against the real adapter, replaying output recorded from that harness. The checks
+ * are plain methods rather than inherited test methods because the package that holds them is not opened to the test
+ * framework.
  * <p>
- * The checks add no timing assumptions beyond a generous bound on each wait, so that a real harness can satisfy
- * them.
+ * The checks add no timing assumptions beyond a generous bound on each wait.
  */
 public final class SessionPortContract
 {
@@ -111,8 +111,8 @@ public final class SessionPortContract
 
 		/**
 		 * Returns once the harness is demonstrably in the middle of the turn that {@link #longPrompt()} gave it, so that
-		 * an interrupt that follows cannot arrive before the turn. A fake has no turn to wait for, so its subject does
-		 * nothing.
+		 * an interrupt that follows cannot arrive before the turn. A subject that replays a recording returns once the
+		 * replay has supplied the start of that turn; a fake with no turn to wait for returns at once.
 		 *
 		 * @param session a session that the test started with {@link #longPrompt()}
 		 * @throws IOException          if the evidence cannot be read
