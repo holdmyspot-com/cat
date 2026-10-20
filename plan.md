@@ -193,6 +193,8 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-106 | `optimize-low` | Adds a bundled rule and its route; an error makes agents add parentheses that change an expression's grouping, or omit them where the user expects them. |
 | WI-109 | `optimize-medium` | Changes which paths every nested session may write; an error lets trials write the user's Claude or CAT directories, or denies trials the dependency caches that their package installs and builds use. |
 | WI-110 | `optimize-low` | Changes when promotion stops extending a passing streak; an error promotes an attempt on a streak that is still likely for the working candidate, or never stops adding runs. |
+| WI-112 | `optimize-medium` | Changes how prompt-test discovery learns which links the project's Git index records; an error converts a working prompt test as a link checked out as a file, or misses one whose workspace link Git checked out as a file. |
+| WI-113 | `optimize-medium` | Changes how every atomic file replacement waits on Windows; an error makes a write fail while another process reads the file, or never stops waiting. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -393,6 +395,8 @@ requirement names.
 | WI-104 | Done (user decision, 2026-10-20): the Claude `PROMPT_SOURCES` value lists only plugins whose `init` path is not `builtin`, skills and agents in those plugins' namespaces, and skills, commands and agents that the session project's `.claude/skills`, `.claude/commands` or `.claude/agents` files declare by path or frontmatter `name`; built-in and account skills, agents and plugins are left out, and the harness version still identifies them. Coverage: `StreamJsonPromptSourcesTest.omitsBuiltInSources` and `StreamJsonPromptSourcesTest.listsProjectSkillsAndAgents`, which both failed before the change. Commit `74f6b41f7b`; full build passed (2963 tests, 0 failures, 10 skipped; 56 s while Codex campaigns ran; at or over 1 s, all untouched: four `RunnerSessionsTest` time-limit tests at 2.47–2.48 s, `DriverTest.attemptLoadsOnlyReceivedFiles` 2.13 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.18 s). |
 | WI-105 | Done: `HarnessRunManager.pruneTerminalRuntimes` skips entries of the harness root whose names are not generated run identifiers. Every guard-pilot trial of the fresh Claude E1 campaign `20261020T023203Z-628bcb` failed with `harness and id must be generated runner identifiers`, because an empty `.claude` directory had appeared in the harness root `optimizer-runs/claude/claude`. Empty `.claude` directories also appeared in every directory above the trial runs up to `/home/gili/cat/worktrees`, which the previous E1 run (before WI-103) did not show. Cause: when a sandboxed Bash command changes directory from the working directory up to an ancestor, `bwrap` creates `.claude` in each directory on the way, reproduced under `strace` on a mirror of a live judge's settings; before WI-103 trials had no reason to leave their workspace. WI-107 keeps trials out of the project, which removes the reason. Coverage: `HarnessRunManagerTest.pruneSkipsEntriesThatAreNotRuns`, which failed with the campaign's error before the change. Commit `016cecf66f`; full build passed (2964 tests, 0 failures, 10 skipped; 58 s; none at or over 1 s). |
 | WI-109 | Done (user request, 2026-10-20): a nested Claude session no longer receives the host's sandbox `allowWrite`, which granted the user's `~/.claude`, `~/.cat` and other host paths; it may write its own home and the user's `~/.npm` and `~/.m2`. A Codex session's writable roots and permission profile gain `~/.m2` beside `~/.npm`. Both harnesses keep the user's `MAVEN_OPTS`, which here names the Maven repository because Java takes `user.home` from the account (`/home/gili`) rather than from `HOME`. Claude session environment version 7, Codex 8. Live (Claude plugin reinstalled from that build): in the rerun Claude E1 guard pilot of campaign `20261020T023203Z-628bcb` (60 control trials, 2026-10-20T05:41Z onward), every file written under `~/.claude` and `~/.cat` belonged to a host session (its session records, environment, backups, shell snapshots and history) or to CAT's capacity slot locks, and each trial's reads and writes stayed in its run directory. No pilot trial used `~/.npm` or `~/.m2`, so the cache grants are shown only by the tests. |
+| WI-112 | Planned (testability audit finding, 2026-10-20). |
+| WI-113 | Planned (testability audit finding, 2026-10-20). |
 | WI-111 | Planned (end-to-end finding, 2026-10-20), waiting for the user's ruling on what a Claude control trial loads. In the rerun Claude E1 guard pilot, 59 of 60 control trials closed with the motto although their `CLAUDE.md` was empty: Claude Code 2.1.304 ships the built-in plugin `cc-plugin-agents-md`, whose default `instructionFiles` mode, `claude-md-or-agents-md`, gives a project with no `CLAUDE.md` of its own its `AGENTS.md` files instead, and it treats an empty `CLAUDE.md` as none. A probe with every ancestor instruction file excluded, an empty `CLAUDE.md` and an `AGENTS.md` asking for a closing word gave that word in 2 of 2 replies, and in 0 of 2 with `pluginConfigs["cc-plugin-agents-md@builtin"].options.instructionFiles` set to `claude-md`. So a control trial of a `CLAUDE.md` that only imports `AGENTS.md` measures the incumbent's prompt, and every Claude guard pilot so far (E1, E4) ran that way. The trial settings also do not carry the user's own `instructionFiles` mode, and the ancestor excludes do not name `AGENTS.md`. Done regardless of the ruling (`4f16e07a5f`, full build 2978 tests, 0 failures, none at or over 1 s): trials exclude `AGENTS.md` and `.claude/AGENTS.md` above the run directory, keep the user's `instructionFiles` setting, and the loader configuration identity includes that setting when the user sets one; the Claude session environment version is 8. The Claude plugin was reinstalled from that build (2026-10-20, `install-claude.sh` exit 0, runtime modules identical to the build's). Follow-up: Codex trials likewise do not carry the user's `project_doc_*` settings of `config.toml`, which decide which `AGENTS.md` files Codex loads. |
 | WI-110 | Done (user ruling, 2026-10-20): a triggering test case's passing streak extends one run at a time until it is unlikely for the working candidate, with no 4-run limit, so an attempt can fix a test case that the working candidate passes most of the time. In the Codex E7 campaign, attempts 10 to 19 passed every promotion run and were all rejected, because the working candidate passed the triggering test cases 33 of 35 to 40 of 41 times and 4 passes could not be unlikely; those test cases now need 28 to 49 runs. Coverage: `PromotionTest.workingRecordDeterminesStreak`, whose 3-of-4 case failed before the change (rejected after 4 passes) and now promotes after 6. Commit `edd3c888ef`; full build passed (2973 tests, 0 failures, 10 skipped; 77 s; at or over 1 s, untouched: `OptimizerCoreTest.choosesConflictsBeforeRevision` 1.27 s). The Codex E7 campaign uses it only after a Codex reinstall. |
 | WI-108 | Done (user ruling, 2026-10-20): every CAT launcher runs Java directly, without `bwrap`, on both harnesses, and its JVM options include `-XX:+PerfDisableSharedMem`, so a launcher runs inside a sandboxed session and two JVMs with the same PID write no shared perf-data file. Before the change, in a nested Claude session with the sandbox on, `bin/plugin-info` failed with `bwrap: No permissions to create new namespace`. Coverage: `JlinkImageBuilderTest.rewritesLauncherWithPrivatePerfData` and `rewritesBatchLauncher`, which failed before the change, `CodexImageLaunchersTest` and `jlink-launchers.bats`, whose `bwrap` now fails to create a namespace (Bats 34 of 34). Commit `bebba77b8e`; full build passed (2973 tests, 0 failures, 10 skipped; 88 s; at or over 1 s, untouched: `DriverTest.attemptLoadsOnlyReceivedFiles` 1.70 s, `TestabilityAuditTest.onlyMainReadsEnvironment` 1.10 s). Both plugins reinstalled; a nested Claude session with the sandbox on ran the installed `plugin-info`, which printed its three lines and exited 0. |
@@ -2902,6 +2906,34 @@ The riskiest pure code, built first.
 - **Tests:** `PromotionTest.workingRecordDeterminesStreak` with a working candidate that passed 3 of 4 outcomes.
 - **Exit:** the full build passes and the test failed before the change.
 
+### WI-112 — Prompt-test discovery reads the Git index through `Forks` (testability audit finding, 2026-10-20)
+
+- **Problem:** `RegressionScenarios.read` runs Git itself to find workspace links checked out as files, so every unit
+	test that reads recorded prompt tests runs real Git: `OptimizerCoreTest` (594 calls in one build), `ProposalTest`,
+	`DraftDirectoryTest` and `RegressionScenariosTest`, which also runs Git in the developer's own checkout. §8 allows
+	real Git only in the tests it names. `BackupTest.namesBackupBranchWithUtcTime` also creates a repository, a second
+	real-Git test of the backup operation.
+- **Change:** `Forks` gains a lookup of the symbolic links that a project's Git index records, empty outside a work
+	tree, and `RegressionScenarios.read` receives its result instead of running Git. `ForkTest` covers the lookup with
+	real Git; every other test supplies the links. `BackupTest.recordsAndDeletesBackupBranch` takes over the UTC name
+	check. `TestabilityAuditTest` fails when an optimizer source other than the fork adapter constructs `Git`.
+- **Tests:** `ForkTest` (the index lookup), `RegressionScenariosTest` (a recorded link checked out as a file),
+	`BackupTest.recordsAndDeletesBackupBranch`, `TestabilityAuditTest`.
+- **Exit:** the full build passes, and a logging `git` first on the `PATH` records calls only from the tests that §8
+	names.
+
+### WI-113 — Atomic replacement waits through a pause (testability audit finding, 2026-10-20)
+
+- **Problem:** `PortableFiles.replace` calls `Thread.sleep` between attempts on Windows, where unit tests such as
+	`RunnerSessionsTest` reach it (`design.md` §10 T5), and `PortableFilesTest` holds the file open with
+	`Thread.sleep`.
+- **Change:** `PortableFiles.replace` waits through a `Pause` and measures its limit with a `Clock`, both supplied by
+	its caller, so production entry points pass `Pause.sleeping` and unit tests their own. `TestabilityAuditTest`'s
+	sleep check covers every production source of the three modules except `Pause.sleeping`.
+- **Tests:** `PortableFilesTest` with a pause that closes the reader and one that advances the clock past the limit,
+	`TestabilityAuditTest`.
+- **Exit:** the full build passes, the tests failed before the change, and no test source sleeps.
+
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
@@ -3055,6 +3087,8 @@ blocks only the part of a work item that it names.
 | WI-108 | WI-5 |
 | WI-109 | WI-5 |
 | WI-110 | WI-26 |
+| WI-112 | WI-1, WI-7 |
+| WI-113 | WI-1 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109 and WI-110. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
