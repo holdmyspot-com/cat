@@ -2306,8 +2306,9 @@ public final class ProposalTest
 		}
 		catch (InvalidProposalException e)
 		{
+			// The problem names the link in the session's copy, outside the project, with the platform's separators
 			requireThat(String.join("\n", e.problems()), "problems").
-				contains("formatting/workspace/docs/handbook.md: the link reaches docs/handbook.md");
+				contains(Path.of("formatting/workspace/docs/handbook.md") + ": the link reaches docs/handbook.md");
 		}
 	}
 
