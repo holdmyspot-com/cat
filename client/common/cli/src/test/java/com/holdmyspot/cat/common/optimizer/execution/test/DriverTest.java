@@ -5147,14 +5147,14 @@ public final class DriverTest
 			harness.promptAuthors(request -> harness.edit(request, DriverHarness.PROMPT, text));
 			try (Driver driver = harness.open())
 			{
-				SliceResult result = harness.runSlice(driver);
-				Campaign campaign = harness.campaign();
 				if (permitted)
 				{
-					requireThat(campaign.promptAuthorAttempts(), "promptAuthorAttempts").isGreaterThan(0);
+					// The count rises once the attempt is validated; the slice stops first if it is not
+					harness.runUntil(driver, campaign -> campaign.promptAuthorAttempts() > 0);
 					return;
 				}
-				requireThat(campaign.promptAuthorAttempts(), "promptAuthorAttempts").isEqualTo(0);
+				SliceResult result = harness.runSlice(driver);
+				requireThat(harness.campaign().promptAuthorAttempts(), "promptAuthorAttempts").isEqualTo(0);
 				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
 				requireThat(result.status().outcomeDetail(), "outcomeDetail").contains(imported);
 			}
