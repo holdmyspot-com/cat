@@ -1324,11 +1324,7 @@ public final class OptimizerCore implements Core
 	public CommandResult confirm(String campaign, CertificationScope certificationScope)
 		throws CommandRefusedException, IOException
 	{
-		if (certificationScope == null)
-		{
-			throw new CommandRefusedException("Confirmation needs the certification scope that you choose: " +
-				CertificationScope.choices() + ".");
-		}
+		requireThat(certificationScope, "certificationScope").isNotNull();
 		return withCleanup(_ ->
 		{
 			Path root = scope.projectRoot();

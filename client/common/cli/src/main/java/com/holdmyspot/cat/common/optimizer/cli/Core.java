@@ -99,14 +99,14 @@ public interface Core
 	CommandResult status(String subject) throws CommandRefusedException, IOException;
 
 	/**
-	 * Confirms the campaign's current proposal with the certification scope that the user chose.
+	 * Confirms the campaign's current proposal with a certification scope.
 	 *
 	 * @param campaign the campaign's identifier
-	 * @param scope the certification scope, which confirmation requires
+	 * @param scope the certification scope
 	 * @return the result
-	 * @throws CommandRefusedException if {@code scope} is null, which the refusal answers by naming every choice, or
-	 *   the campaign does not exist, the other harness started it, it has no proposal to confirm, or the proposal
-	 *   cannot be confirmed with {@code scope}
+	 * @throws NullPointerException if {@code scope} is null
+	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, it has no
+	 *   proposal to confirm, or the proposal cannot be confirmed with {@code scope}
 	 * @throws IOException if the store or the workspace fails
 	 */
 	CommandResult confirm(String campaign, CertificationScope scope) throws CommandRefusedException, IOException;

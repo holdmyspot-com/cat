@@ -52,7 +52,7 @@ public final class Commands
 		  start <target> [%s <text>] [%s <1..%d>]
 		  run <campaign>
 		  status <campaign | target>
-		  confirm <campaign> <%s>
+		  confirm <campaign> [<%s>]
 		  revise <campaign> <feedback>
 		  choose <campaign> <choice> [--attempt N | --review-point N]
 		  cancel <campaign>
@@ -192,21 +192,17 @@ public final class Commands
 	}
 
 	/**
-	 * Parses {@code confirm}, which requires the certification scope that the user chose.
+	 * Parses {@code confirm}, whose certification scope is the weakest cell only unless the user chose another.
 	 *
 	 * @param rest the arguments after the command's name
 	 * @return the command
-	 * @throws InvalidCommandException if the arguments are not well-formed or do not name a certification scope
+	 * @throws InvalidCommandException if the arguments are not well-formed or name an unknown certification scope
 	 */
 	private static Command confirm(List<String> rest)
 	{
 		if (rest.size() == 1)
-		{
-			campaign(rest.getFirst());
-			throw new InvalidCommandException("confirm: choose the certification scope: " +
-				CertificationScope.choices() + ".");
-		}
-		expect("confirm", rest, 2, "<campaign> <scope>");
+			return new Command.Confirm(campaign(rest.getFirst()), CertificationScope.WEAKEST_CELL);
+		expect("confirm", rest, 2, "<campaign> [<scope>]");
 		String campaign = campaign(rest.getFirst());
 		CertificationScope scope = CertificationScope.fromId(rest.get(1)).orElseThrow(() ->
 			new InvalidCommandException("confirm: unknown certification scope '" + rest.get(1) + "'; choose " +

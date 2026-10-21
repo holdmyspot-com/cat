@@ -103,7 +103,7 @@ public final class GuardPilot
 
 	/**
 	 * Returns the cell that a prompt test's pilot runs in: the test's weakest cell when every model is allowed, since
-	 * the user chooses the certification scope only when confirming.
+	 * the certification scope is known only at confirmation.
 	 *
 	 * @param contract the proposed contract
 	 * @param testId the prompt test

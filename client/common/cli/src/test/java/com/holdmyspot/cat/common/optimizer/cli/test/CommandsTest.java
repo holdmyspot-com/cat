@@ -182,6 +182,7 @@ public final class CommandsTest
 			List.of("run", "c1"),
 			List.of("status", "c1"),
 			List.of("status", "prompts/a.md"),
+			List.of("confirm", "c1"),
 			List.of("confirm", "c1", "weakest_cell"),
 			List.of("confirm", "c1", "latest_versions"),
 			List.of("confirm", "c1", "described"),
@@ -198,6 +199,7 @@ public final class CommandsTest
 			"status c1",
 			"status prompts/a.md",
 			"confirm c1 weakest_cell",
+			"confirm c1 weakest_cell",
 			"confirm c1 latest_versions",
 			"confirm c1 described",
 			"revise c1 tighten the contract",
@@ -208,23 +210,18 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies that {@code confirm} without a certification scope, or with an unknown one, is refused with every
-	 * choice named.
+	 * Verifies that {@code confirm} with an unknown certification scope is refused with every choice named.
 	 */
 	@Test
 	public void confirmNamesEveryScopeChoice()
 	{
 		// Requirement: R-C15
-		for (List<String> args : List.of(List.of("confirm", "c1"), List.of("confirm", "c1", "all_models")))
-		{
-			FakeCore core = new FakeCore();
-			StringBuilder output = new StringBuilder();
-			requireThat(run(core, args, output), "exit").isEqualTo(2);
-			requireThat(core.calls, "calls").isEmpty();
-			String message = JSON.readTree(output.toString()).get("message").asString();
-			requireThat(message, "message").contains("weakest_cell").contains("latest_versions").
-				contains("described");
-		}
+		FakeCore core = new FakeCore();
+		StringBuilder output = new StringBuilder();
+		requireThat(run(core, List.of("confirm", "c1", "all_models"), output), "exit").isEqualTo(2);
+		requireThat(core.calls, "calls").isEmpty();
+		String message = JSON.readTree(output.toString()).get("message").asString();
+		requireThat(message, "message").contains("weakest_cell").contains("latest_versions").contains("described");
 	}
 
 	/**
@@ -629,7 +626,6 @@ public final class CommandsTest
 				{List.of("status", " ")},
 				{List.of("status", "c1", "extra")},
 				{List.of("confirm", "")},
-				{List.of("confirm", "c1")},
 				{List.of("confirm", "c1", "all_models")},
 				{List.of("confirm", "c1", "latest_versions", "extra")},
 				{List.of("cancel", "-rf")},

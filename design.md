@@ -16,9 +16,9 @@ later sections use.
 	prompt system. The proposal covers requirements, prompt tests and their test cases, trial profiles, the judge rubric
 	and the minimum pass rate. Each requirement states an outcome that the goal asks for, or an obligation of the prompt
 	system that the user keeps when no goal requirement covers it, and each prompt test proves requirements with the least
-	work that can still fail them, without telling the agent that it is tested. Run no trial until the user confirms it
-	and chooses the certification scope: the weakest cell only, every cell of each model family's latest version, or a
-	scope the user describes, after seeing what each choice costs and claims. The one exception is the guard pilot, which
+	work that can still fail them, without telling the agent that it is tested. Run no trial until the user confirms it.
+	Certify the weakest cell only unless the user, after seeing what each choice costs and claims, chooses every cell
+	of each model family's latest version or a scope the user describes. The one exception is the guard pilot, which
 	runs control trials of development test cases before confirmation so that the proposal can show how often each guard
 	assertion passes without the prompt.
 - **G3 — Certify a joint claim:** Report a candidate `certified` only when both claims hold, with at most a 5%
@@ -64,8 +64,8 @@ The user names a prompt file or prompt system in a Git worktree. CAT:
 1. refuses to start unless that worktree has no staged, unstaged or untracked changes;
 2. records the prompt system and forks the worktree into an optimization worktree;
 3. proposes a compliance contract, plus warnings about symbolic links and expected session volume, runs the guard pilot
-	([§6.1](#61-derivation-and-confirmation)), and waits for the user to choose the certification scope and to confirm or
-	revise the contract;
+	([§6.1](#61-derivation-and-confirmation)), and waits for the user to confirm or revise the contract, certifying the
+	weakest cell only unless the user chooses another certification scope;
 4. measures the incumbent and develops candidates in each prompt test's weakest cell, testing the riskiest prompt tests
 	first;
 5. commits a candidate to formal certification once it passes the commit gate;
@@ -136,7 +136,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Cell | One prompt test under one trial profile. Every certified cell needs its own claim, because averaging profiles could hide a weak one. |
 | Weakest cell | The cell of a prompt test, within the certification scope, of the least capable model by advertised capability at its lowest effort. No trial runs to find it ([§6.6](#66-trial-profiles)). |
 | Development cell | A cell where development samples and edits candidates: the prompt test's weakest cell, plus every cell where a certification attempt adopted a failure ([§6.6](#66-trial-profiles)). |
-| Certification scope | The cells that certification tests and the claim covers. The user chooses it at confirmation: the weakest cell only, every cell of each model family's latest version, or a scope the user describes ([§6.6](#66-trial-profiles)). |
+| Certification scope | The cells that certification tests and the claim covers: the weakest cell only, unless the user chooses at confirmation every cell of each model family's latest version or a scope the user describes ([§6.6](#66-trial-profiles)). |
 | Prompt test | A test in the contract, written as a `scenario.md` file in its own directory: its variables, its turns and its assertions. Its test cases supply the variables' values ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Assertion | One statement about a trial that a prompt test checks, under its own heading in the scenario's `## Assertions` section. It is a guard or an effect assertion, and a built-in tool or the judge decides it ([§6.3](#63-prompt-tests-and-test-cases), [§6.4](#64-judge)). |
 | Guard assertion | An assertion that an agent passes almost always even without the target prompt, such as answering a question from the one line that a search finds. It protects an operation that the prompt must not harm. |
@@ -1682,9 +1682,10 @@ conflict (D31). The contract author does not decide which requirement prevails; 
 exempting one requirement from another or dropping one, and recommends one. The agent asks the user to choose a
 resolution for each conflict, or to describe another, and passes the answers to `revise`.
 
-CAT also refuses to confirm a proposal until the user has chosen its certification scope. CAT has no default scope:
-the agent presents every choice with the tradeoffs of [§6.6](#66-trial-profiles) and passes the user's choice to
-`confirm` (user rulings, 2026-10-04). The scope is part of the confirmed contract, so changing it later is a revision
+The certification scope is the weakest cell only unless the user chooses another (user ruling, 2026-10-21, which
+replaces the rule of 2026-10-04 that CAT had no default scope). `confirm` without a scope confirms the weakest cell
+only. The agent presents every choice with the tradeoffs of [§6.6](#66-trial-profiles), says that the weakest cell
+only applies unless the user chooses another, and passes a choice to `confirm` only when the user made one. The scope is part of the confirmed contract, so changing it later is a revision
 ([§7](#7-campaign-lifecycle)).
 
 **Guard pilot (user ruling, 2026-10-10).** A guard assertion states that the agent passes it almost always even without
@@ -2140,8 +2141,8 @@ where they failed. The baseline and certification cover the certification scope.
 	candidate that passed the commit gate in the weakest cell can still fail there. That cell becomes a development cell
 	for the rest of the lineage, so later commits need the commit gate there too.
 
-**Certification scope (user rulings, 2026-10-04).** Before confirming, the user chooses which cells certification
-tests. A model family is a model's name without its version (Codex `luna`, `sol`, `astra`; each Claude alias), and its
+**Certification scope (user rulings, 2026-10-04 and 2026-10-21).** Certification tests the weakest cell only unless
+the user, before confirming, chooses other cells. A model family is a model's name without its version (Codex `luna`, `sol`, `astra`; each Claude alias), and its
 latest version is the highest version the inventory lists. The inventory already leaves out Codex's `ultra` effort. The
 agent presents these three choices, each with the proposal's minimum session count, and these tradeoffs (user ruling,
 2026-10-04: no choice certifies every model, older versions included):
@@ -2228,9 +2229,9 @@ wants a prompt file improved until it is certified. The host agent:
 1. starts or resumes the campaign for the named target prompt file, passing to `start` the user's goal for the prompt
 	in the user's own words when the user stated one;
 2. presents the proposal, warnings and minimum session count, asks the user to keep or drop each extra requirement,
-	asks the user to resolve each conflict with its resolutions and the recommended one, asks the user to choose the
-	certification scope from its three choices after explaining their tradeoffs ([§6.6](#66-trial-profiles)), and
-	relays feedback until the user confirms;
+	asks the user to resolve each conflict with its resolutions and the recommended one, explains the three
+	certification scope choices and their tradeoffs ([§6.6](#66-trial-profiles)), saying that the weakest cell only
+	applies unless the user chooses another, and relays feedback until the user confirms;
 3. calls `run` while the status is `running`, showing the progress summary after each slice;
 4. presents each `awaiting-user` decision's concrete choices and passes the selected choice back;
 5. reports the terminal outcome with its four outputs, applicability and limitations.
@@ -2471,7 +2472,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D39 | Classify each failed development trial as blocking or self-recovering in a triage session, and fail fast on a blocking failure: discard the working candidate's unadopted development trials and edit without diagnostic reruns (user ruling, 2026-10-03). | Diagnostic reruns and in-flight trials delayed every round, although a failure that leaves the user without the result needs an edit whether or not it reproduces. A failure the agent corrected within the turn is cheaper and is still worth sampling around. The frozen judge decides only the pass label and does not run after a failed check, so it cannot classify every failure. | One triage session per failed development trial. Development outcomes never support a claim, so the triage changes no claim. A wrongly blocking label edits early; a wrongly self-recovering one costs up to 3 reruns. |
 | D40 | Give every requirement that applies only under a trigger a test where the trigger is absent, and make each authored hunk's dissimilar case one of the contract's tests (user ruling, 2026-10-03). | A prompt-tuning run accepted "start every turn with an `exec` call" to stop agents asking before reading, because all of its tasks needed files; the over-broad wording made a needless call in 9 of 10 runs of a question that needs none. A dissimilar case that is only named is never measured. | One more test per conditional requirement, and the contract author must state each requirement's trigger. A prompt author cannot cite a dissimilar case the contract lacks; the user adds it through `revise`. |
 | D41 | In Codex, the optimizer supports only models of version 6 or later: the inventory leaves out earlier models, and CAT refuses a proposal whose prompt files bind one (user ruling, 2026-10-04). | The user limited support to these models. Earlier models also differ in their tools: `gpt-5.5` gets a direct `exec_command` tool, while `gpt-6` models run commands inside an `exec` script, so a prompt that names one form need not hold on the other. | No contract certifies a `gpt-5.x` profile. A user whose Codex prompt files bind an earlier model changes that binding before CAT accepts the proposal. |
-| D42 | Let the user choose, at confirmation, the certification scope: the weakest cell only, every cell of each model family's latest version, or a scope the user describes, with no default (user rulings, 2026-10-04). | Always certifying every cell multiplies formal and baseline trials by the number of cells. Always certifying the weakest cell only would claim nothing about the profiles the user may actually run. Certifying older model versions was dropped as a choice; a user who needs one describes it as their own scope. Which matters more depends on how the prompt is used. | The proposal must compute and explain every choice, and confirmation waits for the user's answer. A described scope is mapped to inventory cells and shown for confirmation. A weakest-only claim names one profile per prompt test. |
+| D42 | Certify the weakest cell only unless the user chooses, at confirmation, every cell of each model family's latest version or a scope the user describes (user rulings, 2026-10-04; the default, user ruling 2026-10-21). | Always certifying every cell multiplies formal and baseline trials by the number of cells. Always certifying the weakest cell only would claim nothing about the profiles the user may actually run. Certifying older model versions was dropped as a choice; a user who needs one describes it as their own scope. The weakest cell is the default because it costs the fewest trials, and a user who runs other profiles can still choose them. | The proposal must compute and explain every choice, and confirmation without a choice certifies the weakest cell only. A described scope is mapped to inventory cells and shown for confirmation. A weakest-only claim names one profile per prompt test. |
 | D43 | Revised by D61: require every prompt test to vary, split its test cases into a development part and a held-out part by a salted hash of their outcome-changing values at confirmation, and certify only on held-out test cases (user rulings, 2026-10-04 and 2026-10-09). | P15 tuned and certified on the same four fixed tasks, so its certification measured the rule on its own training data. Its first split hashed all values together and put the same general-knowledge question in both parts, so the split uses only the variables that change the expected outcome, which each prompt test marks; a default that treated every variable as outcome-changing when none was marked put one expected outcome in both parts. Excluding test cases after development has seen them would make the formal distribution depend on which test cases development happened to draw, and on outcomes when only failures are excluded. A fixed split depends on neither. | Each prompt test needs at least one outcome-changing variable. The claim covers the held-out half of the distribution, baseline trials can no longer reuse the incumbent's development trials, and prompt authors never see the evidence of a formal failure. |
 | D44 | Revised by D61: after an attempt ends with formal failures, have a contract author session add development-only outcome-changing values that exercise each failed test's failed requirements (user ruling, 2026-10-04). | Showing development the failing held-out test case would tune the candidate on the content that certifies it. Moving shown test cases out of the held-out part would bias later certifications toward content the candidate passes. Rerunning existing development test cases of the failed test finds nothing when no development value triggers the failure, and then an unchanged candidate that still meets the commit gate is committed again. A description of the failure written from the held-out test case could leak its content. | A contract author session and new development trials after each failed attempt. The development distribution no longer matches the held-out distribution, so development counts restart and the commit gate measures the harder distribution. |
 | D45 | Within an attempt, certify a prompt test's development cells first and open each other scope cell only after every development cell and every cell below it are certified (user ruling, 2026-10-04). | Running every scope cell at once spent about 500 formal runs of P15 in stronger cells, twice, on a candidate that then failed in the weakest cell. Certifying cells one at a time in a total order would waste nothing but serialize up to 15 cells; models and efforts are only partially ordered, so cells that cannot be compared run together. | A certification takes longer in wall time: with 15 cells it runs in 7 waves. A failure in a stronger cell is found later. |

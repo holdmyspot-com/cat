@@ -33,9 +33,9 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
 	- If the proposal marks extra requirements, which the user's goal does not ask for, ask the user to keep or drop
 		each one. Run `revise <campaign> <feedback>` with the requirements that the user drops, if any, and repeat this
 		step with its result.
-	- Otherwise, ask the user to give feedback or to confirm by choosing the cells that certification covers. Present
-		these choices with their tradeoffs, naming each choice's cells, weakest cells and minimum session count from the
-		proposal's "Certification scope" section:
+	- Otherwise, ask the user to give feedback or to confirm. Tell the user that certification covers `weakest_cell`
+		unless the user chooses other cells, and present these choices with their tradeoffs, naming each choice's cells,
+		weakest cells and minimum session count from the proposal's "Certification scope" section:
 		- `weakest_cell`: certification covers only each category's weakest cell, the lowest effort of the least capable
 			model among the latest versions. It costs the fewest trials. The claim covers only that profile, and says that
 			no other profile was certified; a stronger model or a higher effort can fail in ways that the weakest profile
@@ -50,9 +50,10 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
 		run `revise <campaign> <feedback>` with feedback that describes the certification scope as those profiles, and
 		repeat this step with its result. Show the user the `described` choice's cells, weakest cells and minimum session
 		count, and ask the user to confirm them.
-	- On confirmation, run `confirm <campaign> <choice>` with `weakest_cell`, `latest_versions` or, for cells that the
-		user described and confirmed, `described`.
-	- Never confirm or choose the cells on the user's behalf.
+	- On confirmation, run `confirm <campaign> <choice>` with the choice that the user made: `weakest_cell`,
+		`latest_versions` or, for cells that the user described and confirmed, `described`. When the user confirms
+		without choosing, run `confirm <campaign>`, which certifies `weakest_cell`.
+	- Never confirm on the user's behalf, and never choose cells other than `weakest_cell` on the user's behalf.
 3. **Run.** While `status` is `running`, run `run <campaign>` again. After each run, show the user its `summary`.
 4. **Decide.** When `status` is `awaiting_user` and no `proposal` is present, show the `summary` and each choice's
 	`label`, then ask the user to choose. Never choose on the user's behalf.

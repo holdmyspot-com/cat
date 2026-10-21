@@ -6,7 +6,8 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * The cells that certification tests and that a claim covers, which the user chooses at confirmation.
+ * The cells that certification tests and that a claim covers: the weakest cell only unless the user chooses another
+ * at confirmation.
  * <p>
  * A test with one cell is certified in that cell under every choice.
  */

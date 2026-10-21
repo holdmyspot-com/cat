@@ -920,7 +920,8 @@ public final class Markdown
 	private void certificationScope()
 	{
 		heading("Certification scope");
-		text.append("Confirm with `confirm <campaign> <choice>`, choosing the cells that certification covers. " +
+		text.append("Certification covers the weakest cell only unless you choose another scope: " +
+			"`confirm <campaign>` confirms the weakest cell only, and `confirm <campaign> <choice>` confirms a choice. " +
 			"Development always runs in each test's weakest cell, the lowest effort of the least capable model " +
 			"that the choice covers, and in every cell where a certification attempt fails. The choice sets the " +
 			"cells that the incumbent baseline and every certification attempt run in, and the cells that the " +

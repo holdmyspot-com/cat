@@ -2313,12 +2313,11 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code confirm} without a certification scope is refused with every choice named and confirms
-	 * nothing, that a described scope without described cells is refused, and that the chosen scope is frozen with
-	 * the contract.
+	 * Verifies that a described scope without described cells is refused and confirms nothing, and that
+	 * {@code confirm} without a certification scope freezes the weakest cell only with the contract.
 	 */
 	@Test
-	public void confirmRequiresCertificationScope() throws Exception
+	public void confirmDefaultsToWeakestCell() throws Exception
 	{
 		// Requirement: R-C15
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -2327,15 +2326,11 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			String missing = refusal(() -> repository.core().confirm(id, null));
-			requireThat(missing, "missing").contains("weakest_cell").contains("latest_versions").contains("described");
-			requireThat(repository.load(id).isConfirmed(), "confirmedWithoutScope").isFalse();
-
 			String described = refusal(() -> repository.core().confirm(id, CertificationScope.DESCRIBED));
 			requireThat(described, "described").contains("revision feedback");
 			requireThat(repository.load(id).isConfirmed(), "confirmedWithoutDescribedCells").isFalse();
 
-			repository.core().confirm(id, CertificationScope.WEAKEST_CELL);
+			output(repository, List.of("confirm", id));
 			requireThat(repository.load(id).contract().profiles().scope(), "scope").
 				isEqualTo(CertificationScope.WEAKEST_CELL);
 		}
