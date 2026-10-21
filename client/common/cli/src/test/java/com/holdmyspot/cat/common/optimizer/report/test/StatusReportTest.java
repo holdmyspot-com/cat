@@ -173,6 +173,38 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * A hold on the harness's shared capacity, which another campaign's rate-limited trial can set, stops this
+	 * campaign's admissions too, so the report shows when it ends even though the campaign's own throttle holds nothing.
+	 */
+	@Test
+	public void summaryShowsSharedHarnessHold()
+	{
+		Instant sharedHoldUntil = Instant.parse("2026-10-20T20:20:00Z");
+		ReportEvidence evidence = ReportEvidence.NONE.withSharedHoldUntil(sharedHoldUntil);
+		StatusReport report = StatusReport.of(new Builder().build(), evidence);
+		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
+
+		requireThat(concurrency.path("hold_until").isNull(), "holdUntil.isNull").isTrue();
+		requireThat(concurrency.path("shared_hold_until").asString(), "sharedHoldUntil").
+			isEqualTo("2026-10-20T20:20:00Z");
+		requireThat(report.summary(ZoneId.of("America/Toronto")), "summary").
+			contains("throttle no hold, shared harness hold until 2026-10-20T16:20:00-04:00 (window cap 0");
+	}
+
+	/**
+	 * A report without a shared harness hold says nothing about one.
+	 */
+	@Test
+	public void summaryOmitsAbsentSharedHold()
+	{
+		StatusReport report = StatusReport.of(new Builder().build(), ReportEvidence.NONE);
+		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
+
+		requireThat(concurrency.path("shared_hold_until").isNull(), "sharedHoldUntil.isNull").isTrue();
+		requireThat(report.summary(ZoneOffset.UTC), "summary").doesNotContain("shared harness hold");
+	}
+
+	/**
 	 * The human summary shows a throttle hold that falls on a whole minute with its seconds.
 	 */
 	@Test

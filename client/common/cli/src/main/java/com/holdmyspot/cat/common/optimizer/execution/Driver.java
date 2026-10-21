@@ -255,7 +255,9 @@ public final class Driver implements AutoCloseable
 	{
 		requireThat(context, "context").isNotNull();
 		requireThat(campaignId, "campaignId").isNotBlank();
-		StatusReport report = StatusReport.of(load(context, campaignId), ReportEvidence.NONE);
+		Instant sharedHoldUntil = context.sessions().sharedHoldUntil(context.clock().instant()).orElse(null);
+		StatusReport report = StatusReport.of(load(context, campaignId),
+			ReportEvidence.NONE.withSharedHoldUntil(sharedHoldUntil));
 		return new SliceResult(SliceReports.awaiting(report, new ReportStatus.Active(Status.BUSY), report.pending()),
 			null);
 	}
@@ -2086,8 +2088,10 @@ public final class Driver implements AutoCloseable
 		measurePrompt(campaign.incumbent().snapshot());
 		Overlay working = context.overlays().require(campaign.development().working().snapshot());
 		boolean symbolicLinks = !LinkReport.of(working.fork(), context.authority()).entries().isEmpty();
+		Instant sharedHoldUntil = context.sessions().sharedHoldUntil(context.clock().instant()).orElse(null);
 		StatusReport report = StatusReport.of(campaign,
-			evidence.toReportEvidence(symbolicLinks, interrupted, infrastructureFailure));
+			evidence.toReportEvidence(symbolicLinks, interrupted, infrastructureFailure).
+				withSharedHoldUntil(sharedHoldUntil));
 		ReportStatus awaiting = new ReportStatus.Active(Status.AWAITING_USER);
 		if (delivery != null && !(delivery.result() instanceof DeliveryResult.Delivered))
 			report = SliceReports.awaiting(report, awaiting, SliceReports.describe(delivery.result()));

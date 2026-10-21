@@ -79,6 +79,10 @@ final class ReportJson
 			concurrencyNode.putNull("hold_until");
 		else
 			concurrencyNode.put("hold_until", concurrency.holdUntil().toString());
+		if (concurrency.sharedHoldUntil() == null)
+			concurrencyNode.putNull("shared_hold_until");
+		else
+			concurrencyNode.put("shared_hold_until", concurrency.sharedHoldUntil().toString());
 		concurrencyNode.put("window_cap", concurrency.windowCap());
 		concurrencyNode.put("backoffs", concurrency.backoffs());
 		assumptions(root.putObject("assumptions"), report.assumptions());

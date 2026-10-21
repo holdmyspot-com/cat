@@ -151,6 +151,9 @@ final class ReportSummary
 		String throttle = "no hold";
 		if (concurrency.holdUntil() != null)
 			throttle = "hold until " + localTime(concurrency.holdUntil(), zone);
+		// A hold that another campaign of the harness set stops this campaign's trials too
+		if (concurrency.sharedHoldUntil() != null)
+			throttle += ", shared harness hold until " + localTime(concurrency.sharedHoldUntil(), zone);
 		lines.add("Concurrency: window " + concurrency.window() + " of ceiling " + concurrency.ceiling() +
 			", slow start " + concurrency.slowStartSize() + ", throttle " + throttle + " (window cap " +
 			concurrency.windowCap() + ", backoffs " + concurrency.backoffs() + ")");

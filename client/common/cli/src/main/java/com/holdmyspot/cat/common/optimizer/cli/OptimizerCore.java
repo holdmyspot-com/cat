@@ -2228,7 +2228,7 @@ public final class OptimizerCore implements Core
 	 * @param proposal the rendered proposal, or {@code null}
 	 * @param message a notice, or {@code null}
 	 * @return the result
-	 * @throws IOException if the fork cannot be read
+	 * @throws IOException if the fork or the shared capacity hold cannot be read
 	 */
 	private CommandResult report(Path root, Campaign campaign, String proposal, String message) throws IOException
 	{
@@ -2240,7 +2240,9 @@ public final class OptimizerCore implements Core
 			FileInventory inventory = fork.inventory();
 			links = !LinkReport.of(inventory, authority(root, campaign, inventory)).entries().isEmpty();
 		}
-		ReportEvidence evidence = new ReportEvidence(List.of(), List.of(), List.of(), links, false, null);
+		Instant sharedHoldUntil = scope.sessions().sharedHoldUntil(scope.clock().instant()).orElse(null);
+		ReportEvidence evidence = new ReportEvidence(List.of(), List.of(), List.of(), links, false, null).
+			withSharedHoldUntil(sharedHoldUntil);
 		return new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(), proposal, null,
 			message);
 	}

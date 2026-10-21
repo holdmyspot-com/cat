@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -137,6 +138,16 @@ public abstract class RunnerSessions implements SessionPort
 		Session session = new Session(this, request);
 		session.begin();
 		return session;
+	}
+
+	@Override
+	public final Optional<Instant> sharedHoldUntil(Instant now) throws IOException
+	{
+		requireThat(now, "now").isNotNull();
+		Instant endsAt = settings.capacity().hold().endsAt();
+		if (endsAt.isAfter(now))
+			return Optional.of(endsAt);
+		return Optional.empty();
 	}
 
 	@Override

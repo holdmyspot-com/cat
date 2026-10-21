@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,6 +25,20 @@ public interface SessionPort
 	 * @throws IOException if the session cannot be started
 	 */
 	SessionHandle start(SessionRequest request) throws IOException;
+
+	/**
+	 * Returns the end of the hold on the harness's shared capacity, which a rate-limited session of any campaign of the
+	 * harness sets and which stops every campaign's sessions until it ends.
+	 *
+	 * @param now the current instant
+	 * @return the end of the hold, or empty if no hold lasts beyond {@code now}
+	 * @throws NullPointerException if {@code now} is null
+	 * @throws IOException if the hold cannot be read
+	 */
+	default Optional<Instant> sharedHoldUntil(Instant now) throws IOException
+	{
+		return Optional.empty();
+	}
 
 	/**
 	 * Returns the version of the environment in which this port's sessions run: the injected content, the hooks, the

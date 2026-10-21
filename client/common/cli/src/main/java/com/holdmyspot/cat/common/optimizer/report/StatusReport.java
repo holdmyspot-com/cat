@@ -143,9 +143,11 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param holdUntil the instant before which no trial is admitted, or {@code null} if none
 	 * @param windowCap the window that the last rate-limit response set, or 0 if none
 	 * @param backoffs the consecutive rate-limit backoffs
+	 * @param sharedHoldUntil the end of the hold on the harness's shared capacity, which stops the trials of every
+	 *   campaign of the harness, or {@code null} if none lasts
 	 */
 	public record Concurrency(int window, int ceiling, int slowStartSize, Instant holdUntil, int windowCap,
-		int backoffs)
+		int backoffs, Instant sharedHoldUntil)
 	{
 		/**
 		 * Creates the state.
@@ -156,6 +158,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		 * @param holdUntil the instant before which no trial is admitted, or {@code null} if none
 		 * @param windowCap the window that the last rate-limit response set, or 0 if none
 		 * @param backoffs the consecutive rate-limit backoffs
+		 * @param sharedHoldUntil the end of the hold on the harness's shared capacity, or {@code null} if none lasts
 		 * @throws IllegalArgumentException if {@code window}, {@code ceiling} or {@code slowStartSize} are not
 		 *   positive, or {@code windowCap} or {@code backoffs} are negative
 		 */
@@ -339,7 +342,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			describe(campaign), choices(campaign), authorityWarnings(campaign), cells, allocation,
 			benchmark, trialProfiles, CellTierReport.of(campaign), RemainingWork.of(campaign),
 			TokenStatistics.of(campaign.optimization().tokenUsage()),
-			concurrency(campaign), assumptions, attempts, keepOffers, claim, limitations, conditions,
+			concurrency(campaign, evidence.sharedHoldUntil()), assumptions, attempts, keepOffers, claim, limitations,
+			conditions,
 			OptimizationReport.of(campaign), campaign.development().reverts(), AddedTestCaseReport.of(campaign));
 	}
 
@@ -606,16 +610,17 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * Returns the concurrency state.
 	 *
 	 * @param campaign the campaign
+	 * @param sharedHoldUntil the end of the hold on the harness's shared capacity, or {@code null} if none lasts
 	 * @return the state
 	 */
-	private static Concurrency concurrency(Campaign campaign)
+	private static Concurrency concurrency(Campaign campaign, Instant sharedHoldUntil)
 	{
 		Throttle throttle = campaign.throttle();
 		Instant holdUntil = null;
 		if (!throttle.holdUntil().equals(Instant.EPOCH))
 			holdUntil = throttle.holdUntil();
 		return new Concurrency(ConcurrencyPolicy.window(campaign), campaign.ceiling(), campaign.slowStart().size(),
-			holdUntil, throttle.windowCap(), throttle.backoffs());
+			holdUntil, throttle.windowCap(), throttle.backoffs(), sharedHoldUntil);
 	}
 
 	/**

@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
 
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -19,10 +20,12 @@ import java.util.List;
  * @param interrupted {@code true} if work stopped and can resume
  * @param infrastructureFailure the precise failure that stopped work and is not a pass or fail outcome, or
  *   {@code null} if none did
+ * @param sharedHoldUntil the end of the hold on the harness's shared capacity, which stops the trials of every
+ *   campaign of the harness, or {@code null} if none lasts
  */
 public record ReportEvidence(List<AssumptionCheck.Observation> observations,
 	List<Path> accessedPaths, List<Path> protectedRoots,
-	boolean symbolicLinks, boolean interrupted, String infrastructureFailure)
+	boolean symbolicLinks, boolean interrupted, String infrastructureFailure, Instant sharedHoldUntil)
 {
 	/**
 	 * No observations beyond the campaign state.
@@ -39,7 +42,8 @@ public record ReportEvidence(List<AssumptionCheck.Observation> observations,
 	 * @param symbolicLinks {@code true} if staging replaced symbolic links with copies of their targets
 	 * @param interrupted {@code true} if work stopped and can resume
 	 * @param infrastructureFailure the precise failure that stopped work, or {@code null} if none did
-	 * @throws NullPointerException if a component other than {@code infrastructureFailure} is null
+	 * @param sharedHoldUntil the end of the hold on the harness's shared capacity, or {@code null} if none lasts
+	 * @throws NullPointerException if {@code observations}, {@code accessedPaths} or {@code protectedRoots} are null
 	 * @throws IllegalArgumentException if {@code infrastructureFailure} is blank
 	 */
 	public ReportEvidence
@@ -52,5 +56,35 @@ public record ReportEvidence(List<AssumptionCheck.Observation> observations,
 		observations = List.copyOf(observations);
 		accessedPaths = List.copyOf(accessedPaths);
 		protectedRoots = List.copyOf(protectedRoots);
+	}
+
+	/**
+	 * Creates evidence without a hold on the harness's shared capacity.
+	 *
+	 * @param observations the adopted outcomes of the reported phase, each with the concurrency level it ran at
+	 * @param accessedPaths the absolute paths that trials accessed
+	 * @param protectedRoots the absolute roots of state that no trial may access
+	 * @param symbolicLinks {@code true} if staging replaced symbolic links with copies of their targets
+	 * @param interrupted {@code true} if work stopped and can resume
+	 * @param infrastructureFailure the precise failure that stopped work, or {@code null} if none did
+	 * @throws NullPointerException if a component other than {@code infrastructureFailure} is null
+	 * @throws IllegalArgumentException if {@code infrastructureFailure} is blank
+	 */
+	public ReportEvidence(List<AssumptionCheck.Observation> observations, List<Path> accessedPaths,
+		List<Path> protectedRoots, boolean symbolicLinks, boolean interrupted, String infrastructureFailure)
+	{
+		this(observations, accessedPaths, protectedRoots, symbolicLinks, interrupted, infrastructureFailure, null);
+	}
+
+	/**
+	 * Returns this evidence with a hold on the harness's shared capacity.
+	 *
+	 * @param sharedHoldUntil the end of the hold, or {@code null} if none lasts
+	 * @return the evidence
+	 */
+	public ReportEvidence withSharedHoldUntil(Instant sharedHoldUntil)
+	{
+		return new ReportEvidence(observations, accessedPaths, protectedRoots, symbolicLinks, interrupted,
+			infrastructureFailure, sharedHoldUntil);
 	}
 }
