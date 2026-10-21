@@ -277,6 +277,10 @@ load `../include/common/rules-own-tool-requirements.md` to verify its reachable 
 When a recommendation, procedure, or workflow relies on an input, authority, handoff, or deferred action, lazy load
 `../include/common/check-assumptions.md` to make every prerequisite available and verifiable.
 
+Before running a search across a directory tree, or a command that prints files or records whose size you have not
+established, such as generated, minified, or dependency data, lazy load `../include/common/check-assumptions.md` to
+request only the output that the next decision needs.
+
 When claiming that a tool, skill, subagent, command, test, or investigation has run or is unavailable outside the
 reader-facing status-update route above, lazy load `../include/common/check-assumptions.md` to establish the claim from
 its invocation evidence.
