@@ -50,7 +50,8 @@ public final class CodexPostToolUseHook
 	 * The line that ends a part that more parts follow: the command that prints the next part, then its position.
 	 */
 	private static final Pattern NEXT_PART = Pattern.compile("\n\\[(?:The last line continues at the start of " +
-		"the next part\\. )?More output follows\\. Before any other command or answer, run: (?<command>.+) \\S+]\\s*\\z");
+		"the next part\\. )?More output follows: [0-9]+ of the output's [0-9]+ bytes remain, in at least [0-9]+ more " +
+		"parts?\\. To read the next part, run: (?<command>.+) \\S+]\\s*\\z");
 	/**
 	 * The line that ends the last part, which is the only line of an empty output: the saved file's path.
 	 */

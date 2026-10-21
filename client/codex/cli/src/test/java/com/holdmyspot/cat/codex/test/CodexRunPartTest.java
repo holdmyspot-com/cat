@@ -193,7 +193,8 @@ public final class CodexRunPartTest
 			Call call = runPart(script("seq 1 200; exit 4", "1..200; exit 4"), false, OUTSIDE_PROJECT, environment);
 
 			requireThat(call.output(), "output").startsWith("1" + EOL + "2" + EOL + "3" + EOL).
-				matches("(?s).*\\[More output follows\\. Before any other command or answer, run: " +
+				matches("(?s).*\\[More output follows: [0-9]+ of the output's [0-9]+ bytes remain, in at least [0-9]+ " +
+					"more parts?\\. To read the next part, run: " +
 					Pattern.quote(SHELL.command(READ_PART.toString())) + " .+[/\\\\]output\\.txt[\"']* [1-9][0-9]*]\n");
 			requireThat(call.status(), "status").isEqualTo(0);
 		}

@@ -39,7 +39,8 @@ public final class CodexReadPartTest
 	 * The line that ends a part that more parts follow.
 	 */
 	private static final Pattern NEXT_PART = Pattern.compile("\\[(?<inside>The last line continues at the start of " +
-		"the next part\\. )?More output follows\\. Before any other command or answer, run: " +
+		"the next part\\. )?More output follows: (?<remaining>[0-9]+) of the output's (?<size>[0-9]+) bytes " +
+		"remain, in at least (?<parts>[0-9]+) more parts?\\. To read the next part, run: " +
 		Pattern.quote(SHELL.command(READ_PART.toString())) + " (?<path>.+) (?<position>\\S+)]\n\\z");
 
 	/**
@@ -202,6 +203,40 @@ public final class CodexReadPartTest
 			byte[] printed = readAll(environment, file, 300 * 4 - 512);
 
 			requireThat(Arrays.equals(printed, content.toByteArray()), "reassembled").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that the line that ends a part of output too long to read in a few parts, such as generated JSON on a
+	 * few long lines, says how many of the output's bytes remain and how many parts they take at least, so that the
+	 * agent can tell from the first part how much reading the rest takes.
+	 *
+	 * @throws IOException if the file cannot be written
+	 */
+	@Test
+	public void footerGivesRemainingSize() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path codexHome = Files.createDirectory(directory.resolve("codex"));
+			Files.writeString(codexHome.resolve("config.toml"), "tool_output_token_limit = 300\n");
+			String record = "{\"packages\":[" + "{\"name\":\"crate\",\"version\":\"1.0.0\"},".repeat(200) + "{}]}\n";
+			Path file = savedOutput(directory, record.repeat(3));
+			Map<String, String> environment = Map.of("CODEX_THREAD_ID", "thread", "CODEX_HOME", codexHome.toString(),
+				"TMPDIR", directory.toString());
+
+			Call call = readPart(environment, file.toString());
+			Matcher footer = NEXT_PART.matcher(call.output());
+
+			requireThat(footer.find(), "footer").isTrue();
+			long size = Files.size(file);
+			long shown = call.output().substring(0, footer.start() - 1).getBytes(UTF_8).length;
+			long remaining = size - shown;
+			requireThat(footer.group("size"), "size").isEqualTo(String.valueOf(size));
+			requireThat(footer.group("remaining"), "remaining").isEqualTo(String.valueOf(remaining));
+			requireThat(footer.group("parts"), "parts").
+				isEqualTo(String.valueOf(Math.ceilDiv(remaining, 300 * 4 - 512)));
 		}
 	}
 
@@ -429,8 +464,9 @@ public final class CodexReadPartTest
 	 * @param file the file
 	 * @param limit the number of bytes that each part may take after JSON escaping
 	 * @return the file's bytes as the parts printed them
+	 * @throws IOException if the file's size cannot be read
 	 */
-	private static byte[] readAll(Map<String, String> environment, Path file, int limit)
+	private static byte[] readAll(Map<String, String> environment, Path file, int limit) throws IOException
 	{
 		ByteArrayOutputStream printed = new ByteArrayOutputStream();
 		String position = "1";
@@ -454,6 +490,11 @@ public final class CodexReadPartTest
 			if (footer.group("inside") != null)
 				--end;
 			printed.write(call.bytes(), 0, end);
+			long size = Files.size(file);
+			long remaining = size - printed.size();
+			requireThat(footer.group("size"), "size").isEqualTo(String.valueOf(size));
+			requireThat(footer.group("remaining"), "remaining").isEqualTo(String.valueOf(remaining));
+			requireThat(footer.group("parts"), "parts").isEqualTo(String.valueOf(Math.ceilDiv(remaining, limit)));
 			position = footer.group("position");
 		}
 		throw new AssertionError("The parts did not end");

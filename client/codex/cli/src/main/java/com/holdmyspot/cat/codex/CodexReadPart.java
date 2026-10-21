@@ -31,7 +31,9 @@ import java.util.stream.Stream;
  * Prints output that {@code run-part} saved, from a given position through its end, in parts that Codex shows whole.
  * <p>
  * Each call looks up how many bytes Codex keeps of this call's output and prints as many lines as fit together with
- * the line that ends the part; that line names the command that prints the next part, and the last part ends with
+ * the line that ends the part; that line says how many of the output's bytes remain and the fewest parts that they
+ * take, so that the agent can weigh reading the rest against a narrower command, and names the command that prints
+ * the next part. The last part ends with
  * {@code [End of <path>. The file was deleted]}. That line tells the agent not to print the output again: the Codex
  * PostToolUse hook deletes the output's folder once it sees the last part uncut. A part that more parts follow exits
  * with status 0. The last part exits with the exit status that {@code <path>.exit-status} holds, which
@@ -201,7 +203,8 @@ public final class CodexReadPart
 					"with a tool for its format instead");
 				return 1;
 			}
-			Part part = new Part(path, shell.command(readPart.toString(), path), limit(environment), count);
+			Part part = new Part(path, shell.command(readPart.toString(), path), limit(environment), count,
+				Files.size(file));
 			long line = parse(position.group("line"), Long.MAX_VALUE);
 			int column = 1;
 			if (position.group("byte") != null)
@@ -592,8 +595,9 @@ public final class CodexReadPart
 	 * @param command the command that prints a part of the file, without its position
 	 * @param limit the number of bytes that a part may take after JSON escaping
 	 * @param count the number of lines of the file
+	 * @param size the number of bytes of the file
 	 */
-	private record Part(String path, String command, long limit, long count)
+	private record Part(String path, String command, long limit, long count, long size)
 	{
 		/**
 		 * The result of printing parts when the last part was printed.
@@ -631,6 +635,7 @@ public final class CodexReadPart
 				for (long number = line; number <= count; ++number)
 				{
 					record.reset();
+					long lineStart = lines.offset();
 					lines.next(record);
 					byte[] text = record.toByteArray();
 					int start = 0;
@@ -648,7 +653,7 @@ public final class CodexReadPart
 					if (number == count)
 						ending = closing();
 					else
-						ending = footer(position(number + 1, 1), false);
+						ending = footer(position(number + 1, 1), lines.offset(), false);
 					if (size + whole + shownLength(ending, 0, ending.length) <= limit)
 					{
 						out.write(text, start, length);
@@ -657,9 +662,10 @@ public final class CodexReadPart
 						shown = true;
 						continue;
 					}
+					long pieceStart = lineStart + start;
 					if (shown)
 					{
-						out.write(footer(position(number, byteNumber), false));
+						out.write(footer(position(number, byteNumber), pieceStart, false));
 						return 0;
 					}
 					if (length <= 1)
@@ -671,10 +677,11 @@ public final class CodexReadPart
 						shown = true;
 						continue;
 					}
-					int piece = piece(text, start, length, footer(position(number, byteNumber + length), true));
+					int piece = piece(text, start, length, footer(position(number, byteNumber + length), pieceStart,
+						true));
 					out.write(text, start, piece);
 					out.write('\n');
-					out.write(footer(position(number, byteNumber + piece), true));
+					out.write(footer(position(number, byteNumber + piece), pieceStart + piece, true));
 					return 0;
 				}
 				if (!shown && line > Math.max(count, 1))
@@ -737,19 +744,28 @@ public final class CodexReadPart
 		}
 
 		/**
-		 * Returns the line that ends a part that more parts follow: it names the command that prints the next part,
-		 * after saying when the part ends inside a line.
+		 * Returns the line that ends a part that more parts follow: after saying when the part ends inside a line, it
+		 * says how many of the file's bytes remain and the fewest parts that they take, then names the command that
+		 * prints the next part.
 		 *
 		 * @param next the position of the next part
+		 * @param offset the number of the file's bytes before the next part
 		 * @param inside {@code true} if the part ends inside a line
 		 * @return the line
 		 */
-		private byte[] footer(String next, boolean inside)
+		private byte[] footer(String next, long offset, boolean inside)
 		{
 			String continues = "";
 			if (inside)
 				continues = "The last line continues at the start of the next part. ";
-			return ("[" + continues + "More output follows. Before any other command or answer, run: " + command + " " +
+			long remaining = size - offset;
+			// A part shows at most limit bytes of the file, since escaping never makes a byte shorter
+			long parts = Math.ceilDiv(remaining, limit);
+			String noun = "parts";
+			if (parts == 1)
+				noun = "part";
+			return ("[" + continues + "More output follows: " + remaining + " of the output's " + size + " bytes " +
+				"remain, in at least " + parts + " more " + noun + ". To read the next part, run: " + command + " " +
 				next + "]\n").getBytes(UTF_8);
 		}
 
@@ -872,6 +888,7 @@ public final class CodexReadPart
 		private final byte[] buffer = new byte[BUFFER_SIZE];
 		private int position;
 		private int end;
+		private long offset;
 
 		/**
 		 * Creates a reader.
@@ -881,6 +898,16 @@ public final class CodexReadPart
 		Lines(InputStream in)
 		{
 			this.in = in;
+		}
+
+		/**
+		 * Returns the number of bytes that the lines read so far take, with their newlines.
+		 *
+		 * @return the number of bytes
+		 */
+		long offset()
+		{
+			return offset;
 		}
 
 		/**
@@ -902,9 +929,11 @@ public final class CodexReadPart
 					line.write(buffer, position, newline - position);
 				if (newline < end)
 				{
+					offset += newline + 1 - position;
 					position = newline + 1;
 					return;
 				}
+				offset += end - position;
 				position = end;
 				if (!fill())
 					return;

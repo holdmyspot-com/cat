@@ -56,7 +56,8 @@ public final class CodexPostToolUseHookTest
 			line 40
 			…120 tokens truncated…
 			line 90
-			[More output follows. Before any other command or answer, run: %sread-part /tmp/out\\ 1.txt 91]
+			[More output follows: 900 of the output's 1500 bytes remain, in at least 1 more part. To read the next \
+			part, run: %sread-part /tmp/out\\ 1.txt 91]
 			""".formatted(BIN);
 		HookResult hook = invoke(CommandShell.POSIX, BIN + "read-part /tmp/out\\ 1.txt 40", result);
 
@@ -74,8 +75,8 @@ public final class CodexPostToolUseHookTest
 		String result = """
 			…3 tokens truncated…
 			end of a long line
-			[The last line continues at the start of the next part. More output follows. Before any other command \
-			or answer, run: %sread-part /tmp/out.txt 7:80001]
+			[The last line continues at the start of the next part. More output follows: 900 of the output's 1500 bytes \
+			remain, in at least 1 more part. To read the next part, run: %sread-part /tmp/out.txt 7:80001]
 			""".formatted(BIN);
 		HookResult hook = invoke(CommandShell.POSIX, BIN + "read-part /tmp/out.txt 7:40001; echo done", result);
 
@@ -118,7 +119,8 @@ public final class CodexPostToolUseHookTest
 			line 40
 			…120 tokens truncated…
 			line 90
-			[More output follows. Before any other command or answer, run: %s 91]
+			[More output follows: 900 of the output's 1500 bytes remain, in at least 1 more part. To read the next \
+			part, run: %s 91]
 			""".formatted(readPart);
 		HookResult hook = invoke(CommandShell.POWERSHELL, readPart + " 40", result);
 
@@ -353,7 +355,8 @@ public final class CodexPostToolUseHookTest
 			Path saved = savedOutput(temporary, true);
 
 			HookResult hook = invoke(CommandShell.POSIX, BIN + "run-part <<'EOF'\nls\nEOF",
-				"a\n[More output follows. Before any other command or answer, run: " + readPart(saved, "2") + "]\n",
+				"a\n[More output follows: 900 of the output's 1500 bytes remain, in at least 1 more part. To read the " +
+					"next part, run: " + readPart(saved, "2") + "]\n",
 				Map.of("TMPDIR", temporary.toString()));
 
 			requireThat(hook.output(), "output").isEmpty();

@@ -27,8 +27,11 @@ EOF
 	[ "${lines[0]}" = "1" ]
 	last="${lines[${#lines[@]}-2]}"
 	closing="${lines[${#lines[@]}-1]}"
-	prefix="[More output follows. Before any other command or answer, run: '${runtime}/bin/read-part' "
-	[[ "${closing}" == "${prefix}'${project}/.cat/sessions/${thread}/temp/run-part-"*"/output.txt' "* ]]
+	size=$(seq 1 20000 | wc -c)
+	remaining=$((size - $(seq 1 "${last}" | wc -c)))
+	prefix="[More output follows: ${remaining} of the output's ${size} bytes remain, in at least "
+	[[ "${closing}" == "${prefix}"*" more parts. To read the next part, run: '${runtime}/bin/read-part' "* ]]
+	[[ "${closing}" == *" '${project}/.cat/sessions/${thread}/temp/run-part-"*"/output.txt' "* ]]
 	command="${closing#*run: }"
 	command="${command%]}"
 
