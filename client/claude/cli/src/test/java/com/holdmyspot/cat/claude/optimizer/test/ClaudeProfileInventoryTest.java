@@ -106,8 +106,8 @@ public final class ClaudeProfileInventoryTest
 	}
 
 	/**
-	 * Verifies that the shipped inventory lists {@code opus}, {@code fable} and {@code sonnet} with every documented
-	 * effort, and {@code haiku} with no effort dimension, and names the documentation of each alias.
+	 * Verifies that the shipped inventory lists {@code opus}, {@code fable}, {@code sonnet} and {@code haiku} with
+	 * every documented effort, and names the documentation of each alias.
 	 *
 	 * @throws IOException if the inventory cannot be read
 	 */
@@ -121,16 +121,15 @@ public final class ClaudeProfileInventoryTest
 			ProfileCatalog inventory = new ClaudeProfileInventory(artifact).inventory();
 
 			List<TrialProfile> expected = new ArrayList<>();
-			for (String model : List.of("opus", "fable", "sonnet"))
+			for (String model : List.of("opus", "fable", "sonnet", "haiku"))
 			{
 				for (String effort : EFFORTS)
 					expected.add(new TrialProfile(model, effort));
 			}
-			expected.add(new TrialProfile("haiku", ""));
 			requireThat(inventory.profiles(), "profiles").isEqualTo(expected);
 			requireThat(inventory.source(), "source").contains("claude --help").
 				contains("fable: `claude --help` names the alias").contains("claude-fable-5-1").
-				contains("haiku: the changelog names the haiku alias");
+				contains("haiku: the changelog names the haiku alias").contains("claude-haiku-5-5");
 		}
 	}
 

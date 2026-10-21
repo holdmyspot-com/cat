@@ -1,6 +1,6 @@
 {
 	"format_version": 1,
-	"source": "CAT's Claude inventory resource, from Claude Code 2.1.287: `claude --help` and the CLI's model catalog",
+	"source": "CAT's Claude inventory resource, from Claude Code 2.1.305: `claude --help` and the CLI's model catalog",
 	"models": [
 		{
 			"model": "opus",
@@ -19,8 +19,8 @@
 		},
 		{
 			"model": "haiku",
-			"efforts": [],
-			"documentation": "the changelog names the haiku alias (ANTHROPIC_DEFAULT_HAIKU_MODEL); the model catalog lists claude-haiku-4-5-20251001 without effort options, so it has no effort dimension"
+			"efforts": ["low", "medium", "high", "xhigh", "max"],
+			"documentation": "the changelog names the haiku alias (ANTHROPIC_DEFAULT_HAIKU_MODEL); the model catalog lists claude-haiku-5-5 with these efforts"
 		}
 	]
 }
