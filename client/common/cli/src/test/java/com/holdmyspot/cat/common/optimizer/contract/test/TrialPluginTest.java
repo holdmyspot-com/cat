@@ -32,6 +32,7 @@ public final class TrialPluginTest
 		requireThat(installed("cat@x", "https://github.com/someone/cat").isCat(), "otherRepository").isFalse();
 		requireThat(installed("cat@cat", null).isCat(), "noRepository").isFalse();
 		requireThat(built("cat", null).isCat(), "builtWithoutRepository").isFalse();
+		requireThat(installed("cat@cat", "https://github.com/cowwoc/cat").isCat(), "formerRepository").isFalse();
 	}
 
 	/**

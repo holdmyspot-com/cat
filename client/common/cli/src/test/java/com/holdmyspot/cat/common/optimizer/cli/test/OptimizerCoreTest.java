@@ -13,11 +13,13 @@ import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
+import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureKind;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
@@ -4123,6 +4125,48 @@ public final class OptimizerCoreTest
 			requireThat(status.get("campaign").isNull(), "campaignIsNull").isTrue();
 			requireThat(output(repository, List.of("status", id)).get("campaign").asString(), "byId").
 				isEqualTo(id);
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} of a finished campaign whose certified candidate was delivered shows the
+	 * environment of the delivered certification's record while cleanup has not removed the campaign, and shows none
+	 * when the target's history holds no record of the delivered attempt.
+	 */
+	@Test
+	public void finishedCampaignShowsEnvironment() throws Exception
+	{
+		// Requirement: R-M7
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Builder builder = new Builder().header(repository.load(id).header().withLifecycle(Lifecycle.FINISHED)).
+				confirmed();
+			builder.certificationAttempt(1);
+			Campaign finished = builder.outcome(Outcome.CERTIFIED).
+				delivery(new DeliveryRequest(new Candidate(1, Builder.snapshot("candidate-1")), 1, Outcome.CERTIFIED)).
+				build();
+			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(finished);
+
+			String withoutRecord = repository.core().status(id).summary(ZoneOffset.UTC);
+			requireThat(withoutRecord, "withoutRecord").doesNotContain("Certified for the following environment:");
+
+			CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
+				CertificationScope.LATEST_VERSIONS,
+				CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE), List.of(),
+				Map.of(Path.of("CLAUDE.md"), Sha256.of("Be brief.\n".getBytes(StandardCharsets.UTF_8))),
+				finished.attempt(1).identity());
+			Path file = repository.root().resolve(PromptTestLocations.certificationHistory(record.target()));
+			Files.createDirectories(file.getParent());
+			Files.write(file, new CertificationHistoryJson(JSON).write(CertificationHistory.EMPTY.appended(record)));
+
+			String summary = repository.core().status(id).summary(ZoneOffset.UTC);
+
+			requireThat(summary, "summary").contains("\nCertified for the following environment:\n\n").
+				contains("\nPrompt files loaded: CLAUDE.md");
 		}
 	}
 

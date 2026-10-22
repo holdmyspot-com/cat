@@ -1348,7 +1348,8 @@ CAT, and CAT installed under another name or from another marketplace is. URLs c
 the scheme and host, a trailing `/` and a trailing `.git`; the path keeps its case, and a value that is not an absolute
 URL with a host never matches. `start` reads the repository from the manifest of the build output or the installed copy
 and records it with the trial plugin in the campaign; a plugin recorded without one, because its manifest states none or
-the campaign started before CAT recorded it, is not CAT (D93).
+the campaign started before CAT recorded it, is not CAT (D93). Only `https://github.com/holdmyspot-com/cat` is CAT's
+repository (user ruling, 2026-10-22): a manifest that states the former `https://github.com/cowwoc/cat` is not CAT.
 
 **Mappings.** A trial must load a candidate's version of a prompt file that a project-built plugin ships, as the
 plugin's users do, not the copy in the base that no candidate changes. Where the build puts each file follows from
@@ -1553,11 +1554,11 @@ identity above and worded for a user who knows none of CAT's terms:
 Certified for the following environment:
 
 Codex 0.160.0+41
-Plugins: cat 1.0.0 (built from the project), formatter@acme-tools 2.3.1
+Plugins: cat 1.0 (built from the project), formatter@acme-tools 2.3.1
 Model: gpt-6-luna, reasoning low, from openai
 Prompt files loaded: AGENTS.md, .cat/rules/common/support.md
 Harness settings: the project's .codex/config.toml, with your connection settings and tool restrictions carried over
-Trial setup: as introduced in CAT 1.0.0
+Trial setup: as introduced in CAT 1.0
 Tools run directly: git 2.51.0
 Outside sources: none
 ```
@@ -1581,6 +1582,15 @@ environment version as the CAT release that introduced it, so a later CAT releas
 as a different environment. `Tools run directly` lists the host tools and `Outside sources` the external and MCP
 sources, each with `none` when empty. A condition that the reporting session could not check says so, as for
 applicability (D51).
+
+**Versions (user ruling, 2026-10-22).** CAT's own version, in `Plugins` and in `Trial setup`, has two parts, such as
+`1.0`; CAT's releases are numbered that way, and CAT records the trial setup's release the same way. A third-party
+plugin's version is whatever its manifest states, such as `2.3.1`.
+
+**A finished campaign not yet removed (user ruling, 2026-10-22).** `status` of a finished campaign whose certified
+candidate was delivered shows the same block while cleanup has not removed the campaign, drawn from the delivered
+attempt's record in the target's certification history and compared with the conditions CAT knows now, as for a
+target without a campaign. A campaign whose history holds no record of the delivered attempt shows no block.
 
 A certified delivery appends a **certification record** to the target's certification history, `certifications.json`
 beside `prompt.json` in the target's test directory, which the user commits with the prompt. Staging leaves the history
@@ -2590,8 +2600,8 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D89 | Extend a triggering test case's passing streak until it is unlikely for the working candidate, with no upper limit, rather than stopping at 4 runs (user ruling, 2026-10-20). | With 4 runs, a fix can be shown only where the working candidate passes less than about 56% of the time, since `p^4 < 0.10` needs `p < 0.56`. In the Codex E7 campaign under `gpt-6-luna`/low, the working candidate passed its failing `concise_explanations` test cases 33 of 35 to 40 of 41 times, so attempts 10 to 19 each passed every promotion run and were all rejected (end-to-end finding, 2026-10-20). | A fix on a test case that the working candidate passes most of the time costs many targeted runs, about `2.3 / (1 − p)`, run one at a time: 32 at 39 of 41. A test case that the working candidate passes 3 of 4 times can now count as fixed. |
 | D90 | Treat `CLAUDE.md` as Claude Code's prompt file and `AGENTS.md` as Codex's, so that a Claude control trial loads only `CLAUDE.md` files (user ruling, 2026-10-20). | Claude Code 2.1.304 loads `AGENTS.md` in place of a `CLAUDE.md` that is missing or empty. A control trial of a `CLAUDE.md` that only imports `AGENTS.md` therefore still followed the target: 59 of 60 Claude guard-pilot control trials closed with the motto that the emptied file required (end-to-end finding, 2026-10-20). | A Claude control trial loads different instruction files from the user's sessions when those load `AGENTS.md` beside or in place of `CLAUDE.md`. |
 | D91 | End-to-end checks prove only what a real harness must show: each harness's runners work and prompt tests run through them, a trial uses a host tool, and a real ESC is recorded. Behavior that depends only on harness events is proven by unit tests that replay events recorded once from a real run, and behavior that depends on Git by tests on a real repository (user ruling, 2026-10-20). | A live campaign costs hundreds of nested sessions per claim, while a recording replays in milliseconds and still fails when a new harness version changes its events. | A recording proves the behavior of the harness version that produced it; a harness change that alters the events needs a new recording. |
-| D92 | Show a certification's environment as one block, `Certified for the following environment:` followed by the harness and its version, the trial plugins with their versions, and every other recorded condition in words that need none of CAT's terms, and have the skill write a missing prompt test configuration from the user's choice among the installed plugins (user rulings, 2026-10-21). | A certification holds only for the environment it measured, and the plugins that trials install are the user's choice; a claim that does not name them reads as covering users with other plugins, CAT included. Asking from the list of installed plugins keeps the user from writing `prompt.json` by hand. | Plugin versions join the measurement identity, so updating a trial plugin makes a certification historical, as a change of its base copy already did. |
-| D93 | Identify CAT among the trial plugins by its manifest's `repository` URL, compared after ignoring the letter case of the scheme and host, a trailing `/` and a trailing `.git`, never by the plugin's name or marketplace, and record each trial plugin's repository in the campaign, a plugin recorded without one counting as not CAT (user ruling, 2026-10-21). | A name is chosen by whoever publishes the plugin: another plugin may be named `cat`, and CAT may be installed under another name or from another marketplace, so a name match both admits a stranger and misses CAT. Exact URL comparison would miss CAT over spellings that name the same repository. Deriving the repository of an older campaign's plugin from its base copy would make loading a campaign read campaign storage. | A CAT release whose manifest states another repository URL, such as the 1.0 releases' `https://github.com/cowwoc/cat`, is not CAT in trials, so its rules and `.cat/rules/` load in no trial. A campaign started before CAT recorded repositories treats every trial plugin as not CAT until it is started again. |
+| D92 | Show a certification's environment as one block, `Certified for the following environment:` followed by the harness and its version, the trial plugins with their versions, and every other recorded condition in words that need none of CAT's terms, and have the skill write a missing prompt test configuration from the user's choice among the installed plugins (user rulings, 2026-10-21); CAT's own version has two parts, such as `1.0`, and `status` of a finished campaign that cleanup has not removed shows the block too (user rulings, 2026-10-22). | A certification holds only for the environment it measured, and the plugins that trials install are the user's choice; a claim that does not name them reads as covering users with other plugins, CAT included. Asking from the list of installed plugins keeps the user from writing `prompt.json` by hand. | Plugin versions join the measurement identity, so updating a trial plugin makes a certification historical, as a change of its base copy already did. |
+| D93 | Identify CAT among the trial plugins by its manifest's `repository` URL, compared after ignoring the letter case of the scheme and host, a trailing `/` and a trailing `.git`, never by the plugin's name or marketplace, and record each trial plugin's repository in the campaign, a plugin recorded without one counting as not CAT (user ruling, 2026-10-21); only `https://github.com/holdmyspot-com/cat` is CAT's repository, and the former `https://github.com/cowwoc/cat` is not (user ruling, 2026-10-22). | A name is chosen by whoever publishes the plugin: another plugin may be named `cat`, and CAT may be installed under another name or from another marketplace, so a name match both admits a stranger and misses CAT. Exact URL comparison would miss CAT over spellings that name the same repository. Deriving the repository of an older campaign's plugin from its base copy would make loading a campaign read campaign storage. | A CAT release whose manifest states another repository URL, such as the former `https://github.com/cowwoc/cat` that CAT 1.0.x and 1.1 manifests state, is not CAT in trials, so its rules and `.cat/rules/` load in no trial. A campaign started before CAT recorded repositories treats every trial plugin as not CAT until it is started again. |
 
 ## 14. Acceptance evidence
 

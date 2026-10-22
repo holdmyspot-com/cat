@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.Registry;
@@ -20,6 +21,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
+import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
@@ -88,6 +90,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.PluginMapping;
 import com.holdmyspot.cat.common.optimizer.proposal.Proposal;
 import com.holdmyspot.cat.common.optimizer.proposal.TestRevisionProtocol;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
+import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
 import com.holdmyspot.cat.common.optimizer.report.StatusReport;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
@@ -2380,9 +2383,37 @@ public final class OptimizerCore implements Core
 		}
 		Instant sharedHoldUntil = scope.sessions().sharedHoldUntil(scope.clock().instant()).orElse(null);
 		ReportEvidence evidence = new ReportEvidence(List.of(), List.of(), List.of(), links, false, null).
-			withSharedHoldUntil(sharedHoldUntil);
+			withSharedHoldUntil(sharedHoldUntil).withCertifiedEnvironment(deliveredEnvironment(root, campaign));
 		return new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(), proposal, null,
 			message);
+	}
+
+	/**
+	 * Returns the environment that a campaign's delivered certification was measured in, read from the record that
+	 * the delivery wrote to the target's certification history.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @return the environment, or {@code null} if the campaign delivered no certified candidate or the history holds
+	 *   no record of the delivered attempt
+	 * @throws IOException if the history or a prompt file cannot be read
+	 */
+	private CertifiedEnvironment deliveredEnvironment(Path root, Campaign campaign) throws IOException
+	{
+		DeliveryRequest delivery = campaign.delivery();
+		if (delivery == null || delivery.label() != Outcome.CERTIFIED)
+			return null;
+		MeasurementIdentity measured = campaign.attempt(delivery.attempt()).identity();
+		for (CertificationRecord record : history(root, relativeTarget(root, campaign)).records())
+		{
+			if (record.certificationIndex() != delivery.attempt() || !record.identity().equals(measured))
+				continue;
+			Entries files = path -> InventoryScanner.entry(root, path);
+			CertificationStatus status = certificationStatus(new CertificationHistory(List.of(record)), files,
+				environment(files), certified -> certified.parameters().minimumPassRate());
+			return CertifiedEnvironment.of(record, status.latest().getFirst().applicability().unchecked());
+		}
+		return null;
 	}
 
 	/**

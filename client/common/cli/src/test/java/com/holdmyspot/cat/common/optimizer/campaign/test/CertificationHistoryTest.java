@@ -175,12 +175,12 @@ public final class CertificationHistoryTest
 	public void pluginVersionChangeMakesRecordHistorical()
 	{
 		// Requirement: R-M7
-		CertificationRecord recorded = recordOf(1, MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0.0")));
+		CertificationRecord recorded = recordOf(1, MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0")));
 
 		Applicability same = recorded.applicability(recorded.promptFiles(),
-			MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0.0")), Contract.DEFAULT_MINIMUM_PASS_RATE);
+			MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0")), Contract.DEFAULT_MINIMUM_PASS_RATE);
 		Applicability updated = recorded.applicability(recorded.promptFiles(),
-			MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.1.0")), Contract.DEFAULT_MINIMUM_PASS_RATE);
+			MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.1")), Contract.DEFAULT_MINIMUM_PASS_RATE);
 
 		requireThat(same.status(), "same").isEqualTo(Applicability.Status.CURRENT);
 		requireThat(updated.status(), "updated").isEqualTo(Applicability.Status.HISTORICAL);
@@ -196,12 +196,12 @@ public final class CertificationHistoryTest
 	{
 		// Requirement: R-M7
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
-		values.putAll(MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0.0")).values());
+		values.putAll(MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0")).values());
 		values.remove(MeasurementCondition.PLUGIN_VERSIONS);
 		CertificationRecord recorded = recordOf(1, new MeasurementIdentity(values));
 
 		Applicability known = recorded.applicability(recorded.promptFiles(),
-			MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.1.0")), Contract.DEFAULT_MINIMUM_PASS_RATE);
+			MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.1")), Contract.DEFAULT_MINIMUM_PASS_RATE);
 
 		requireThat(known.status(), "status").isEqualTo(Applicability.Status.CURRENT);
 		requireThat(known.unchecked(), "unchecked").isEmpty();
@@ -220,14 +220,14 @@ public final class CertificationHistoryTest
 		List<TrialPlugin> plugins = List.of(PLUGINS.getFirst(),
 			new TrialPlugin("formatter@acme-tools", "b".repeat(64), new TrialPlugin.Installed(), List.of(), null));
 		CertificationRecord recorded = recordOf(1, MeasurementIdentity.ofPlugins(plugins,
-			Map.of("cat", "1.0.0", "formatter@acme-tools", "2.3.1")));
+			Map.of("cat", "1.0", "formatter@acme-tools", "2.3.1")));
 		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
 		byte[] document = codec.write(CertificationHistory.EMPTY.appended(recorded));
 		ObjectNode root = (ObjectNode) JSON.readTree(document);
 		ObjectNode conditions = (ObjectNode) root.get("records").get(0).get("identity").get("conditions");
 
 		requireThat(conditions.path("plugin_versions").asString(""), "plugin_versions").
-			isEqualTo("cat 1.0.0\nformatter@acme-tools 2.3.1");
+			isEqualTo("cat 1.0\nformatter@acme-tools 2.3.1");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path file = cleanup.add(Files.createTempDirectory("cat-history-")).resolve("certifications.json");

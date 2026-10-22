@@ -40,12 +40,12 @@ public final class CertifiedEnvironmentTest
 			new TrialPlugin("formatter@acme-tools", "b".repeat(64), new TrialPlugin.Installed(), List.of(),
 				null));
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
-		values.putAll(MeasurementIdentity.ofPlugins(plugins, Map.of("cat", "1.0.0", "formatter@acme-tools", "2.3.1")).
+		values.putAll(MeasurementIdentity.ofPlugins(plugins, Map.of("cat", "1.0", "formatter@acme-tools", "2.3.1")).
 			values());
 		values.put(MeasurementCondition.PROVIDER, "codex");
 		values.put(MeasurementCondition.HARNESS_VERSION, "codex-cli 0.160.0+41");
 		values.put(MeasurementCondition.LOADER_FILES, ".codex/config.toml");
-		values.put(MeasurementCondition.SESSION_ENVIRONMENT_RELEASE, "1.0.0");
+		values.put(MeasurementCondition.SESSION_ENVIRONMENT_RELEASE, "1.0");
 		values.put(MeasurementCondition.HOST_TOOLS, "git 2.51.0");
 		values.put(MeasurementCondition.EXTERNAL_SOURCES, "none");
 		MeasurementIdentity identity = new MeasurementIdentity(values, Map.of("read-file/luna-low", Map.of(
@@ -59,12 +59,12 @@ public final class CertifiedEnvironmentTest
 			Certified for the following environment:
 
 			Codex 0.160.0+41
-			Plugins: cat 1.0.0 (built from the project), formatter@acme-tools 2.3.1
+			Plugins: cat 1.0 (built from the project), formatter@acme-tools 2.3.1
 			Model: gpt-6-luna, reasoning low, from openai
 			Prompt files loaded: AGENTS.md, .cat/rules/common/support.md
 			Harness settings: the project's .codex/config.toml, with your connection settings and tool restrictions \
 			carried over
-			Trial setup: as introduced in CAT 1.0.0
+			Trial setup: as introduced in CAT 1.0
 			Tools run directly: git 2.51.0
 			Outside sources: none""");
 	}
