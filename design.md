@@ -1545,7 +1545,7 @@ Codex 0.160.0+41
 Plugins: cat 1.0.0 (built from the project), formatter@acme-tools 2.3.1
 Model: gpt-6-luna, reasoning low, from openai
 Prompt files loaded: AGENTS.md, .cat/rules/common/support.md
-Prompt loading settings: Codex defaults
+Project settings files: .codex/config.toml
 Trial setup: as introduced in CAT 1.0.0
 Tools run directly: git 2.51.0
 Outside sources: none
@@ -1554,8 +1554,11 @@ Outside sources: none
 The first line names the harness and its version. `Plugins` lists each trial plugin with the version in its manifest,
 marking one that the project builds, or says `none`. `Model` repeats for each cell of the certification scope and gives
 the observed model and reasoning. `Prompt files loaded` lists the prompt sources that trials observed loading, by
-project path. `Prompt loading settings` reports the loader configuration as the files that hold it, or as the harness's
-defaults when nothing overrides them. `Trial setup` reports the session environment version as the CAT release that
+project path. `Project settings files` reports the loader configuration as the project's
+settings files that existed in trials, from the harness's fixed list: `.claude/settings.json`,
+`.claude/settings.local.json` and `.mcp.json` for Claude Code, `.codex/config.toml` for Codex. It says `none` when the
+project has none of them, so the harness ran on its defaults and the user's own settings. A change to the content of a
+listed file, or a file added or removed, makes the certification historical. `Trial setup` reports the session environment version as the CAT release that
 introduced it, so a later CAT release that left it unchanged does not read as a different environment. `Tools run
 directly` lists the host tools and `Outside sources` the external and MCP sources, each with `none` when empty. A
 condition that the reporting session could not check says so, as for applicability (D51).
