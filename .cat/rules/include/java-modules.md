@@ -96,14 +96,14 @@ public static void setAccountAccess(AccountAccess access)
 }
 ```
 
-Name the getter `get<Interface>`. It reads the field once into a local variable. Only when that value is null does it
+Name the getter `get<Interface>`. It reads the field once into a local variable of the interface's type. Only when that value is null does it
 initialize the class that registers the accessor, read the field again, and throw an `AssertionError` naming that class
 if the field is still null:
 
 ```java
 public static AccountAccess getAccountAccess()
 {
-	var access = accountAccess;
+	AccountAccess access = accountAccess;
 	if (access == null)
 	{
 		ensureClassInitialized(Account.class);
@@ -119,15 +119,15 @@ Every getter initializes its owner through the façade's one private `ensureClas
 repeats the initialization code:
 
 ```java
-private static void ensureClassInitialized(Class<?> c)
+private static void ensureClassInitialized(Class<?> owner)
 {
 	try
 	{
-		MethodHandles.lookup().ensureInitialized(c);
+		MethodHandles.lookup().ensureInitialized(owner);
 	}
 	catch (IllegalAccessException e)
 	{
-		throw new AssertionError("Cannot initialize " + c.getName(), e);
+		throw new AssertionError("Cannot initialize " + owner.getName(), e);
 	}
 }
 ```
