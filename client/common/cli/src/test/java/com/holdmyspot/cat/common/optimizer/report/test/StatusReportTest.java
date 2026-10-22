@@ -643,6 +643,8 @@ public final class StatusReportTest
 			harness.workspace().changeWorktree(harness.overlays().require(working).snapshot());
 			try (Driver driver = harness.open())
 			{
+				harness.runUntil(driver, state -> true);
+				harness.clock().set(harness.clock().instant().plus(Duration.ofHours(1)));
 				ObjectNode output = harness.runSlice(driver).status().toJson(JsonMapper.builder().build());
 				JsonNode size = output.get("prompt_size");
 				requireThat(size.get("working").get("bytes").asLong(), "workingBytes").isEqualTo(13);
