@@ -1534,28 +1534,31 @@ new one: its minimum pass rate is at least the new one, its margin is at most th
 new level for that attempt. Certifying a pass probability above 95% implies one above 94%, but not one
 above 96%, so raising the minimum pass rate to 0.96 makes it historical and lowering it to 0.94 does not (D49).
 
-**Certified environment (user ruling, 2026-10-21).** Every report of a certification, whether the terminal outcome, the
-delivery report or `status`, shows the environment it was measured in as one block, drawn from the measurement identity
-above:
+**Certified environment (user rulings, 2026-10-21).** Every report of a certification, whether the terminal outcome,
+the delivery report or `status`, shows the environment it was measured in as one block, drawn from the measurement
+identity above and worded for a user who knows none of CAT's terms:
 
 ```text
 Certified for the following environment:
 
 Codex 0.160.0+41
 Plugins: cat 1.0.0 (built from the project), formatter@acme-tools 2.3.1
-Provider: openai
-Trial profiles: gpt-6-luna, reasoning low (observed)
-Session environment: 4
-Loader configuration: <identity>
-Host tools: git 2.51.0
-External sources: none
+Model: gpt-6-luna, reasoning low, from openai
+Prompt files loaded: AGENTS.md, .cat/rules/common/support.md
+Prompt loading settings: Codex defaults
+Trial setup: as introduced in CAT 1.0.0
+Tools run directly: git 2.51.0
+Outside sources: none
 ```
 
 The first line names the harness and its version. `Plugins` lists each trial plugin with the version in its manifest,
-marking one that the project builds, or says `none`. The lines after it list every other recorded condition of the
-measurement identity, one per line, with `none` for an empty one and the trial profile line repeated for each cell of
-the certification scope. A condition that the reporting session could not check says so, as for applicability
-(D51).
+marking one that the project builds, or says `none`. `Model` repeats for each cell of the certification scope and gives
+the observed model and reasoning. `Prompt files loaded` lists the prompt sources that trials observed loading, by
+project path. `Prompt loading settings` reports the loader configuration as the files that hold it, or as the harness's
+defaults when nothing overrides them. `Trial setup` reports the session environment version as the CAT release that
+introduced it, so a later CAT release that left it unchanged does not read as a different environment. `Tools run
+directly` lists the host tools and `Outside sources` the external and MCP sources, each with `none` when empty. A
+condition that the reporting session could not check says so, as for applicability (D51).
 
 A certified delivery appends a **certification record** to the target's certification history, `certifications.json`
 beside `prompt.json` in the target's test directory, which the user commits with the prompt. Staging leaves the history
@@ -2565,7 +2568,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D89 | Extend a triggering test case's passing streak until it is unlikely for the working candidate, with no upper limit, rather than stopping at 4 runs (user ruling, 2026-10-20). | With 4 runs, a fix can be shown only where the working candidate passes less than about 56% of the time, since `p^4 < 0.10` needs `p < 0.56`. In the Codex E7 campaign under `gpt-6-luna`/low, the working candidate passed its failing `concise_explanations` test cases 33 of 35 to 40 of 41 times, so attempts 10 to 19 each passed every promotion run and were all rejected (end-to-end finding, 2026-10-20). | A fix on a test case that the working candidate passes most of the time costs many targeted runs, about `2.3 / (1 − p)`, run one at a time: 32 at 39 of 41. A test case that the working candidate passes 3 of 4 times can now count as fixed. |
 | D90 | Treat `CLAUDE.md` as Claude Code's prompt file and `AGENTS.md` as Codex's, so that a Claude control trial loads only `CLAUDE.md` files (user ruling, 2026-10-20). | Claude Code 2.1.304 loads `AGENTS.md` in place of a `CLAUDE.md` that is missing or empty. A control trial of a `CLAUDE.md` that only imports `AGENTS.md` therefore still followed the target: 59 of 60 Claude guard-pilot control trials closed with the motto that the emptied file required (end-to-end finding, 2026-10-20). | A Claude control trial loads different instruction files from the user's sessions when those load `AGENTS.md` beside or in place of `CLAUDE.md`. |
 | D91 | End-to-end checks prove only what a real harness must show: each harness's runners work and prompt tests run through them, a trial uses a host tool, and a real ESC is recorded. Behavior that depends only on harness events is proven by unit tests that replay events recorded once from a real run, and behavior that depends on Git by tests on a real repository (user ruling, 2026-10-20). | A live campaign costs hundreds of nested sessions per claim, while a recording replays in milliseconds and still fails when a new harness version changes its events. | A recording proves the behavior of the harness version that produced it; a harness change that alters the events needs a new recording. |
-| D92 | Show a certification's environment as one block, `Certified for the following environment:` followed by the harness and its version, the trial plugins with their versions, and every other recorded condition, and have the skill write a missing prompt test configuration from the user's choice among the installed plugins (user rulings, 2026-10-21). | A certification holds only for the environment it measured, and the plugins that trials install are the user's choice; a claim that does not name them reads as covering users with other plugins, CAT included. Asking from the list of installed plugins keeps the user from writing `prompt.json` by hand. | Plugin versions join the measurement identity, so updating a trial plugin makes a certification historical, as a change of its base copy already did. |
+| D92 | Show a certification's environment as one block, `Certified for the following environment:` followed by the harness and its version, the trial plugins with their versions, and every other recorded condition in words that need none of CAT's terms, and have the skill write a missing prompt test configuration from the user's choice among the installed plugins (user rulings, 2026-10-21). | A certification holds only for the environment it measured, and the plugins that trials install are the user's choice; a claim that does not name them reads as covering users with other plugins, CAT included. Asking from the list of installed plugins keeps the user from writing `prompt.json` by hand. | Plugin versions join the measurement identity, so updating a trial plugin makes a certification historical, as a change of its base copy already did. |
 
 ## 14. Acceptance evidence
 
