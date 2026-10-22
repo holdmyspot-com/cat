@@ -1487,7 +1487,7 @@ public final class StatusReportTest
 	/**
 	 * Verifies that the summary of a campaign whose certified attempt was delivered shows the environment that the
 	 * attempt was measured in before the limitations, and that a campaign without a delivered certification shows
-	 * none.
+	 * none, and states the host machine limitation once, in the block rather than also among the limitations.
 	 */
 	@Test
 	public void certifiedOutcomeShowsEnvironment()
@@ -1507,6 +1507,10 @@ public final class StatusReportTest
 		requireThat(certified, "certified").contains("\nClaim: ").
 			contains("\n\n" + String.join("\n", environment.lines()) + "\n\nLimitations:");
 		requireThat(uncertified, "uncertified").doesNotContain("Certified for the following environment:");
+		int first = certified.indexOf(CertifiedEnvironment.MACHINE_LIMITATION);
+		requireThat(certified.indexOf(CertifiedEnvironment.MACHINE_LIMITATION, first + 1), "secondLimitation").
+			isEqualTo(-1);
+		requireThat(uncertified, "uncertified").contains("  - " + CertifiedEnvironment.MACHINE_LIMITATION);
 	}
 
 	/**

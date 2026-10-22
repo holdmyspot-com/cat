@@ -182,7 +182,11 @@ final class ReportSummary
 		}
 		lines.add("Limitations:");
 		for (String limitation : report.limitations())
-			lines.add("  - " + limitation);
+		{
+			// The certified environment block already ends with the host machine limitation
+			if (report.certifiedEnvironment() == null || !limitation.equals(CertifiedEnvironment.MACHINE_LIMITATION))
+				lines.add("  - " + limitation);
+		}
 		return String.join("\n", lines);
 	}
 

@@ -1520,7 +1520,8 @@ that an agent runs, and with outside sources, such as MCP servers, websites and 
 records nor controls them: they are not measurement conditions, so a change to them is never material, and neither the
 measurement identity nor a certification's environment names them. Every certification's environment block and every
 `status` report state this as a limitation and recommend running the campaign, and the sessions that later use the
-prompt, in the same container image to limit changes to them (D95).
+prompt, in the same container image to limit changes to them (D95). A `status` report that shows the certified
+environment block states the limitation only there, not again among its limitations (user ruling, 2026-10-22).
 
 A certification shows that the prompt makes the model behave as the contract requires. It needs to be repeated only
 when the model's behavior has changed, for example because the model changed, or when the desired behavior has changed.
