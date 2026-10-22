@@ -188,7 +188,7 @@ public final class CodexRunPartTest
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "CODEX_THREAD_ID", "thread",
 				"CODEX_HOME", temporary.toString());
-			Files.writeString(temporary.resolve("config.toml"), "tool_output_token_limit = 200\n");
+			Files.writeString(temporary.resolve("config.toml"), "tool_output_token_limit = 250\n");
 
 			Call call = runPart(script("seq 1 200; exit 4", "1..200; exit 4"), false, OUTSIDE_PROJECT, environment);
 
