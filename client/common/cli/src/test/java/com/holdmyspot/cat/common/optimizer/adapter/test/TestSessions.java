@@ -6,12 +6,10 @@ import com.holdmyspot.cat.common.optimizer.adapter.PluginFiles;
 import com.holdmyspot.cat.common.optimizer.adapter.PromptSources;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
-import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,8 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Runs sessions of the generic harness {@value #HARNESS}, whose events report only whether the model produced output,
- * whether a hook is running, whether the provider rejected or refused a request, the root agent's shell commands and
- * the MCP servers whose tools it called.
+ * whether a hook is running, and whether the provider rejected or refused a request.
  */
 final class TestSessions extends RunnerSessions
 {
@@ -50,14 +47,6 @@ final class TestSessions extends RunnerSessions
 	 * An event that reports that the provider refused a request and the harness gave up on it.
 	 */
 	static final String REFUSED_EVENT = "{\"type\":\"refused\"}";
-	/**
-	 * An event that reports that the root agent ran the shell command {@code java -version}.
-	 */
-	static final String COMMAND_EVENT = "{\"type\":\"command\",\"command\":\"java -version\"}";
-	/**
-	 * An event that reports that the root agent called a tool of the MCP server {@code github}.
-	 */
-	static final String MCP_EVENT = "{\"type\":\"mcp\",\"server\":\"github\"}";
 	/**
 	 * The instruction file that the harness reads at the project root.
 	 */
@@ -203,13 +192,10 @@ final class TestSessions extends RunnerSessions
 	}
 
 	/**
-	 * Harness events that report model output, hooks, rejections, refusals, the root agent's shell commands and the MCP
-	 * servers whose tools it called, and nothing else.
+	 * Harness events that report model output, hooks, rejections and refusals, and nothing else.
 	 */
 	static final class Events extends HarnessEvents
 	{
-		private final List<SessionEvidence.Entry> entries = new ArrayList<>();
-
 		/**
 		 * Creates a parser.
 		 *
@@ -231,13 +217,6 @@ final class TestSessions extends RunnerSessions
 				case "hook_completed" -> setHookCompleted(id);
 				case "rejected" -> setRejection(new Rejection(null));
 				case "refused" -> setRefused();
-				case "command" ->
-				{
-					entries.add(new SessionEvidence.Tool(1, "root", "Bash", event.path("command").asString(), true, 0,
-						""));
-					setEvidence(new SessionEvidence(entries));
-				}
-				case "mcp" -> addMcpServer(event.path("server").asString());
 				default ->
 				{
 				}

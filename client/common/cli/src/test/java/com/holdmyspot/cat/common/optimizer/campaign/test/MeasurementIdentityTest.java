@@ -71,52 +71,6 @@ public final class MeasurementIdentityTest
 	}
 
 	/**
-	 * Verifies that the host tools and outside sources that trials used are recorded for information only: trials
-	 * that ran other tools or used other sources are neither different nor missing conditions.
-	 */
-	@Test
-	public void toolsAndSourcesAreNotMaterial()
-	{
-		// Requirement: R-M8
-		requireThat(MeasurementCondition.HOST_TOOLS.isMaterial(), "hostTools").isFalse();
-		requireThat(MeasurementCondition.EXTERNAL_SOURCES.isMaterial(), "externalSources").isFalse();
-		MeasurementIdentity first = identity(MeasurementCondition.MODEL, "model-a", MeasurementCondition.HOST_TOOLS,
-			"git 2.51.0", MeasurementCondition.EXTERNAL_SOURCES, "none");
-		MeasurementIdentity second = identity(MeasurementCondition.MODEL, "model-a", MeasurementCondition.HOST_TOOLS,
-			"git 2.52.0\nrg 14.1.0");
-
-		requireThat(first.changes(second), "changes").isEmpty();
-	}
-
-	/**
-	 * Verifies that the union of the host tools and outside sources that trials used lists each entry once, in
-	 * order, drops {@code none} once another trial used one, keeps every other recorded value, and that removing them
-	 * leaves the identity that the trials share.
-	 */
-	@Test
-	public void unionListsEachToolAndSourceOnce()
-	{
-		// Requirement: R-M8
-		MeasurementIdentity recorded = identity(MeasurementCondition.MODEL, "model-a", MeasurementCondition.HOST_TOOLS,
-			"none", MeasurementCondition.EXTERNAL_SOURCES, "github (MCP server)");
-		MeasurementIdentity observed = identity(MeasurementCondition.MODEL, "model-b", MeasurementCondition.JUDGE, "j1",
-			MeasurementCondition.HOST_TOOLS, "rg 14.1.0\ngit 2.51.0", MeasurementCondition.EXTERNAL_SOURCES,
-			"github (MCP server)\nweb search");
-
-		MeasurementIdentity union = recorded.unionWith(observed).unionWith(identity(MeasurementCondition.HOST_TOOLS,
-			"git 2.51.0", MeasurementCondition.EXTERNAL_SOURCES, "none"));
-
-		requireThat(union, "union").isEqualTo(identity(MeasurementCondition.MODEL, "model-a",
-			MeasurementCondition.JUDGE, "j1", MeasurementCondition.HOST_TOOLS, "git 2.51.0\nrg 14.1.0",
-			MeasurementCondition.EXTERNAL_SOURCES, "github (MCP server)\nweb search"));
-		requireThat(identity(MeasurementCondition.MODEL, "model-a").unionWith(identity(MeasurementCondition.HOST_TOOLS,
-			"none")), "none").isEqualTo(identity(MeasurementCondition.MODEL, "model-a", MeasurementCondition.HOST_TOOLS,
-			"none"));
-		requireThat(union.withoutUse(), "withoutUse").isEqualTo(identity(MeasurementCondition.MODEL, "model-a",
-			MeasurementCondition.JUDGE, "j1"));
-	}
-
-	/**
 	 * Verifies that extending an identity records newly observed conditions and keeps recorded ones.
 	 */
 	@Test
@@ -202,8 +156,7 @@ public final class MeasurementIdentityTest
 	}
 
 	/**
-	 * Verifies that a certification attempt records the measurement identity it was committed under, without host
-	 * tools or outside sources, which only its trials add.
+	 * Verifies that a certification attempt records the measurement identity it was committed under.
 	 */
 	@Test
 	public void attemptRecordsIdentity()
@@ -213,7 +166,7 @@ public final class MeasurementIdentityTest
 		campaign = Transitions.apply(campaign, new CampaignEvent.Commit(
 			new CapCalibration(ErrorBudget.certificationLevel(1), Contract.DEFAULT_MINIMUM_PASS_RATE, 262), 11,
 			Builder.CONTROL));
-		requireThat(campaign.attempt(1).identity(), "attempt.identity()").isEqualTo(campaign.identity().withoutUse());
+		requireThat(campaign.attempt(1).identity(), "attempt.identity()").isEqualTo(campaign.identity());
 	}
 
 	/**

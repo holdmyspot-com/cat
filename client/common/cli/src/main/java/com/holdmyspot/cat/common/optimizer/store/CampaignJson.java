@@ -157,7 +157,7 @@ final class CampaignJson
 	 * The names of measurement conditions that CAT no longer records. A document written while CAT recorded one still
 	 * loads: reading drops the condition.
 	 */
-	private static final Set<String> RETIRED_CONDITIONS = Set.of("model_provider");
+	private static final Set<String> RETIRED_CONDITIONS = Set.of("model_provider", "host_tools", "external_sources");
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_ASSERTIONS = "failed_assertions";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).

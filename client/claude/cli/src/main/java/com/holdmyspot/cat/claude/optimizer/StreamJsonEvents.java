@@ -69,10 +69,6 @@ public final class StreamJsonEvents extends HarnessEvents
 	private static final String RATE_LIMITED_STATUS = "rejected";
 	private static final int RATE_LIMITED_ERROR = 429;
 	private static final int REFUSED_ERROR = 403;
-	/**
-	 * The name that Claude Code gives to a tool of an MCP server: {@code mcp__<server>__<tool>}.
-	 */
-	private static final Pattern MCP_TOOL = Pattern.compile("mcp__(.+?)__.+");
 	private static final Pattern EXIT_CODE = Pattern.compile("Error: Exit code (\\d{1,9})(?:\n|$)");
 	private final Map<String, RateLimitWindow> windows = new LinkedHashMap<>();
 	private final Map<String, ToolCall> calls = new LinkedHashMap<>();
@@ -195,38 +191,11 @@ public final class StreamJsonEvents extends HarnessEvents
 			command = commandNode.stringValue();
 		if (agent.equals(ROOT_AGENT))
 			calls.put(id, new ToolCall(tool, command, null));
-		readOutsideSource(tool, input);
 		String arguments = command;
 		if (arguments == null)
 			arguments = contentText(input);
 		toolEntries.put(id, entries.size());
 		entries.add(new SessionEvidence.Tool(eventTurn, agent, tool, arguments, command != null, null, ""));
-	}
-
-	/**
-	 * Records the outside source that a tool call uses: the MCP server of a tool named
-	 * {@code mcp__<server>__<tool>}, the web host of a {@code WebFetch} call, or the web search of a
-	 * {@code WebSearch} call.
-	 *
-	 * @param tool  the tool's name
-	 * @param input the call's input
-	 */
-	private void readOutsideSource(String tool, JsonNode input)
-	{
-		Matcher mcp = MCP_TOOL.matcher(tool);
-		if (mcp.matches())
-		{
-			addMcpServer(mcp.group(1));
-			return;
-		}
-		switch (tool)
-		{
-			case "WebFetch" -> addWebPage(input.path("url").asString(""));
-			case "WebSearch" -> addWebSearch();
-			default ->
-			{
-			}
-		}
 	}
 
 	/**

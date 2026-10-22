@@ -1075,9 +1075,9 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Returns the measurement conditions under which a trial was observed: the driver's environment, the trial
-	 * session's loaded prompt sources, the host tools and outside sources that its agents used, and the trial
-	 * session's model and reasoning configuration and, in a cell that limits tool output, the tool-output token limit
-	 * that the session started under, which are recorded for the trial's cell.
+	 * session's loaded prompt sources, and the trial session's model and reasoning configuration and, in a cell that
+	 * limits tool output, the tool-output token limit that the session started under, which are recorded for the
+	 * trial's cell.
 	 *
 	 * @param testCase the trial's test case
 	 * @param trial the trial session's result
@@ -1088,11 +1088,6 @@ public final class Driver implements AutoCloseable
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.putAll(context.environment().values());
 		values.put(MeasurementCondition.PROMPT_SOURCES, trial.promptSources());
-		if (trial.hostTools() != null)
-		{
-			values.put(MeasurementCondition.HOST_TOOLS, MeasurementIdentity.entries(trial.hostTools()));
-			values.put(MeasurementCondition.EXTERNAL_SOURCES, MeasurementIdentity.entries(trial.outsideSources()));
-		}
 		Map<MeasurementCondition, String> cell = new EnumMap<>(MeasurementCondition.class);
 		if (trial.model() != null)
 			cell.put(MeasurementCondition.MODEL, trial.model());

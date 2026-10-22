@@ -319,9 +319,7 @@
 			"runner_version" : "runner_version-1",
 			"cat_version" : "cat_version-1",
 			"loader_configuration" : "loader_configuration-1",
-			"prompt_sources" : "prompt_sources-1",
-			"host_tools" : "host_tools-1",
-			"external_sources" : "external_sources-1"
+			"prompt_sources" : "prompt_sources-1"
 		},
 		"cells" : { }
 	},
@@ -370,9 +368,7 @@
 				"runner_version" : "runner_version-1",
 				"cat_version" : "cat_version-1",
 				"loader_configuration" : "loader_configuration-1",
-				"prompt_sources" : "prompt_sources-1",
-				"host_tools" : "host_tools-1",
-				"external_sources" : "external_sources-1"
+				"prompt_sources" : "prompt_sources-1"
 			},
 			"cells" : { }
 		},

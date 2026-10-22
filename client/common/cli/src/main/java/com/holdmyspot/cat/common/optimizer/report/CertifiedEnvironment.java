@@ -21,7 +21,7 @@ import java.util.StringJoiner;
  * <p>
  * Each line of the block shows conditions that the measurement identity records. A line whose condition the identity
  * does not record says {@code not recorded}, and a line whose condition the reporting session could not check ends
- * with {@code (not checked)}.
+ * with {@code (not checked)}. The block ends with {@link #MACHINE_LIMITATION}.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -42,6 +42,14 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 	 * settings from the user's own configuration.
 	 */
 	private static final String USER_SETTINGS = ", with your connection settings and tool restrictions carried over";
+	/**
+	 * The limitation that ends the block and that every status report states: trials ran with the machine's programs
+	 * and outside sources, which CAT neither records nor controls, so a user who wants to limit changes to them runs
+	 * the campaign and the sessions that later use the prompt in the same container image.
+	 */
+	public static final String MACHINE_LIMITATION = "Trials ran with this machine's programs and outside sources, " +
+		"such as MCP servers and websites, which CAT neither records nor controls. To limit changes to them, run the " +
+		"campaign, and the sessions that later use the prompt, in the same container image.";
 
 	/**
 	 * Creates an environment.
@@ -103,7 +111,8 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 	/**
 	 * Returns the block's lines.
 	 *
-	 * @return the lines, beginning with {@code Certified for the following environment:} and an empty line
+	 * @return the lines, beginning with {@code Certified for the following environment:} and an empty line, and ending
+	 *   with an empty line and {@link #MACHINE_LIMITATION}
 	 */
 	public List<String> lines()
 	{
@@ -128,10 +137,8 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 			MeasurementCondition.LOADER_FILES));
 		lines.add(checked("Trial setup: " + trialSetup(), MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
 			MeasurementCondition.SESSION_ENVIRONMENT_RELEASE));
-		lines.add(checked("Tools run directly: " + listed(MeasurementCondition.HOST_TOOLS),
-			MeasurementCondition.HOST_TOOLS));
-		lines.add(checked("Outside sources: " + listed(MeasurementCondition.EXTERNAL_SOURCES),
-			MeasurementCondition.EXTERNAL_SOURCES));
+		lines.add("");
+		lines.add(MACHINE_LIMITATION);
 		return lines;
 	}
 
@@ -327,19 +334,5 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 		if (version == null)
 			return NOT_RECORDED;
 		return "version " + version + ", CAT release " + NOT_RECORDED;
-	}
-
-	/**
-	 * Lists the entries of a condition whose value holds one entry per line.
-	 *
-	 * @param condition the condition
-	 * @return the entries, {@code none} if there are none, or {@code not recorded}
-	 */
-	private String listed(MeasurementCondition condition)
-	{
-		String value = identity.values().get(condition);
-		if (value == null)
-			return NOT_RECORDED;
-		return String.join(", ", value.split("\n"));
 	}
 }

@@ -171,22 +171,6 @@ public final class ComparabilityTest
 	}
 
 	/**
-	 * Verifies that host tools and outside sources that only one side records, or that differ, do not prevent
-	 * comparison, because trials record them for information only.
-	 */
-	@Test
-	public void toolsAndSourcesDoNotPreventComparison()
-	{
-		// Requirement: R-M4, R-M8
-		MeasurementIdentity first = Builder.confirmedIdentity("model-a");
-		Map<MeasurementCondition, String> values = new EnumMap<>(first.values());
-		values.remove(MeasurementCondition.HOST_TOOLS);
-		values.put(MeasurementCondition.EXTERNAL_SOURCES, "web search");
-		Comparability comparability = Comparability.of(first, new MeasurementIdentity(values));
-		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.COMPARABLE);
-		requireThat(comparability.missing(), "missing").isEmpty();
-	}
-	/**
 	 * Verifies that comparison of a cell uses that cell's observations independently of other cells.
 	 */
 	@Test

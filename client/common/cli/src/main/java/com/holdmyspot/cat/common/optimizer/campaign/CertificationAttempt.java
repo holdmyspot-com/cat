@@ -278,19 +278,6 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	}
 
 	/**
-	 * Returns this running attempt with the host tools and outside sources of a trial that it counts added to those
-	 * that it records.
-	 *
-	 * @param trial the conditions that the trial was measured under
-	 * @return the updated attempt
-	 */
-	CertificationAttempt withTrial(MeasurementIdentity trial)
-	{
-		return withEvidence(identity.unionWith(trial), counts, controlPairings, incumbentPairings, failures,
-			formalStream);
-	}
-
-	/**
 	 * Returns this running attempt with one cell's pairing with one kind of reference trial replaced.
 	 *
 	 * @param reference the kind of reference trial

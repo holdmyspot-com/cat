@@ -92,7 +92,7 @@ final class UserChoices
 	 */
 	private static void newIdentity(Draft draft, PendingDecision.MeasurementChanged changed)
 	{
-		draft.identity = draft.identity.replaceWith(changed.observed().withoutUse());
+		draft.identity = draft.identity.replaceWith(changed.observed());
 		draft.endRunningAttempt(Outcome.TESTING_ENVIRONMENT_CHANGED);
 		draft.startDevelopment(draft.working);
 		draft.startBaseline();

@@ -1510,19 +1510,17 @@ Every result is a point-in-time observation. CAT records the conditions needed t
 	plugins that come from files: the project's, the trial plugins' and the user configuration's. They leave out those
 	that come with the harness or the account, which the harness version identifies. Within one harness version a
 	session may list such a source or not, depending on what the harness fetched before it reported its sources (an
-	end-to-end finding, 2026-10-20); that variation falls on control and candidate trials alike;
-- the host tools that trials ran: each program that an agent of a trial ran by name through the harness's shell tool,
-	as the harness events record the command, with the version that `<program> --version` reports in the trial's
-	environment or, when that gives none, the reason. A shell builtin, a program named by its path, such as a command
-	that the prompt ships or one that the trial built, and the commands that CAT and the runner run are not host tools.
-	A program that another program starts, such as the one that `xargs` or `timeout` runs, is not observed. Recorded for
-	information (D95);
-- the outside sources that trials used: each MCP server whose tool an agent called, by name, each web host whose page
-	it fetched, and the harness's web search. Only the name or host is recorded, never a response. Recorded for
-	information (D95).
+	end-to-end finding, 2026-10-20); that variation falls on control and candidate trials alike.
 
 CAT does not claim deterministic replay and does not build closures of binary dependencies. Unobservable conditions are
 reported as limitations.
+
+**Host machine (user ruling, 2026-10-22).** Trials run with the host machine's programs, such as the `git` or compiler
+that an agent runs, and with outside sources, such as MCP servers, websites and the harness's web search. CAT neither
+records nor controls them: they are not measurement conditions, so a change to them is never material, and neither the
+measurement identity nor a certification's environment names them. Every certification's environment block and every
+`status` report state this as a limitation and recommend running the campaign, and the sessions that later use the
+prompt, in the same container image to limit changes to them (D95).
 
 A certification shows that the prompt makes the model behave as the contract requires. It needs to be repeated only
 when the model's behavior has changed, for example because the model changed, or when the desired behavior has changed.
@@ -1543,13 +1541,7 @@ a release that changes what a session's model receives changes the session envir
 command that the prompt tells the model to run, such as a script that ships with the prompt, is not material either
 while the prompt stays unchanged: it fixes the command, and the model still invokes it and acts on its output as
 before. A command change that needs the model to act differently comes with a prompt change, which is material (D48).
-Trials run such a command by its path, so it is not among the host tools that CAT records.
-
-The host tools and outside sources that trials used are not material either. They record what the model chose to use,
-which differs from trial to trial, rather than an environment that the certification holds for, and a pause on each
-new tool or host would stop every campaign whose trials explore. A certification records those of the trials that its
-attempt counted, each once, and shows them in its environment block; a later difference neither pauses a campaign nor
-makes a certification historical (D95).
+The host machine's programs and outside sources are not material, since CAT does not record them (D95).
 
 The certification parameters also define the desired behavior: the campaign's minimum pass rate `p_min` and the control
 comparison's 5-point margin in claim (a), and the error level `α_i` of the attempt ([§2.1](#21-claims),
@@ -1572,8 +1564,10 @@ Model: gpt-6-luna, reasoning low
 Prompt files loaded: AGENTS.md, .cat/rules/common/support.md
 Harness settings: the project's .codex/config.toml, with your connection settings and tool restrictions carried over
 Trial setup: as introduced in CAT 1.0
-Tools run directly: git 2.51.0
-Outside sources: none
+
+Trials ran with this machine's programs and outside sources, such as MCP servers and websites, which CAT neither
+records nor controls. To limit changes to them, run the campaign, and the sessions that later use the prompt, in the
+same container image.
 ```
 
 The first line names the harness and its version. `Plugins` lists each trial plugin with the version in its manifest,
@@ -1592,10 +1586,9 @@ Code, the connection variables and the `deny` and `ask` permission rules of the 
 `with your connection settings and tool restrictions carried over`, so a project without settings files reads `Harness
 settings: defaults, with your connection settings and tool restrictions carried over`. `Trial setup` reports the session
 environment version as the CAT release that introduced it, so a later CAT release that left it unchanged does not read
-as a different environment. `Tools run directly` lists each host tool that the counted trials ran, with its version or
-`(no version: <reason>)`, and `Outside sources` each MCP server, web host and web search that they used, each with
-`none` when empty and `not recorded` for a record written before CAT recorded them. A condition that the reporting session could not check says so, as for
-applicability (D51).
+as a different environment. A condition that the reporting session could not check says so, as for
+applicability (D51). After the lines, the block states the host machine limitation and its container
+recommendation (D95).
 
 **Versions (user ruling, 2026-10-22).** CAT's own version, in `Plugins` and in `Trial setup`, has two parts, such as
 `1.0`; CAT's releases are numbered that way, and CAT records the trial setup's release the same way. A third-party
@@ -1642,7 +1635,8 @@ attempt test the same claim twice. Restoring the condition instead lets the atte
 Candidate and incumbent observations are **comparable** only when every material condition that either records is
 exactly equal, campaign-wide and in each cell. A condition that only one of them records
 is missing data: it makes comparability `INDETERMINATE` and the comparison unavailable. A condition that neither records
-was not observed: it does not prevent comparison and is reported as a limitation (D38). CAT names each differing or
+was not observed: it does not prevent comparison and is reported as a limitation (D38). The host machine's programs
+and outside sources are not conditions, so they never take part in comparison (D95). CAT names each differing or
 missing condition in words, with its cell, instead of reducing the check to one opaque hash. The median trial input
 tokens per cell is a size measurement, shown whenever both have outcomes in that cell, whatever their comparability.
 
@@ -2560,7 +2554,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D35 | Revised by D75 and D89: count a test case as fixed only when the attempt's streak of passes there would be unlikely (below 10%) for the working candidate, extending to up to 4 runs, and revert a promoted candidate whose development upper bound in an addressed cell falls below its predecessor's observed pass rate (user ruling, 2026-10-02). | Two passes prove little on a test case the working candidate already passes half the time: they occur by chance 25% of the time. A fixed run count high enough for such test cases wastes runs on test cases that fail reliably. The working candidate's representative failure and diagnostic reruns already estimate how often it passes each test case. | Up to 2 extra targeted runs per intermittent test case. A test case that the working candidate passes 3 of 4 times can never count as fixed. A revert discards the withdrawn candidate's representative trials and ends the round without a promotion. A revert goes back only one promotion, so the stored state holds one predecessor rather than a chain. |
 | D36 | Give the judge a rendered evidence section in place of the trial's log and transcript path (user ruling, 2026-10-02). | The log was mostly injected rules, streaming duplicates and telemetry, and its reads cost about a third of judge input tokens while Codex truncated them (H32). | CAT owns one renderer per harness's events. A frozen judge prompt from an earlier contract keeps its placeholders and still receives what they name. |
 | D37 | Run the contract author, judge and prompt author without CAT's plugin and deliver each role's rules in its brief (user ruling, 2026-10-02). | The runner already knows each session's role, so no hook has to detect it; the session-start rules and path triggers served trials, and the prompt author's lazy reads were truncated and repeated (H33). | The user's and the project's rules do not reach these roles. A rule a role needs must be added to its list. |
-| D38 | Treat a measurement condition that neither the working candidate nor the incumbent records as unobserved, not missing (status finding, 2026-10-02). | No runner observed host tools or external sources then, and campaigns stored before the judge, model and reasoning were recorded lack them on both sides, so every comparison was `INDETERMINATE` although both sides ran under the same driver. | Two unrecorded values are not proven equal. Since D95 the host tools and outside sources are recorded for information and never take part in comparison; the status names what CAT still cannot observe of them as a limitation. |
+| D38 | Treat a measurement condition that neither the working candidate nor the incumbent records as unobserved, not missing (status finding, 2026-10-02). | No runner observed host tools or external sources then, and campaigns stored before the judge, model and reasoning were recorded lack them on both sides, so every comparison was `INDETERMINATE` although both sides ran under the same driver. | Two unrecorded values are not proven equal. Since D95 the host tools and external sources are no longer conditions at all, so a campaign stored with them reads without them; the status and the certified environment state the host machine as a limitation. |
 | D39 | Classify each failed development trial as blocking or self-recovering in a triage session, and fail fast on a blocking failure: discard the working candidate's unadopted development trials and edit without diagnostic reruns (user ruling, 2026-10-03). | Diagnostic reruns and in-flight trials delayed every round, although a failure that leaves the user without the result needs an edit whether or not it reproduces. A failure the agent corrected within the turn is cheaper and is still worth sampling around. The frozen judge decides only the pass label and does not run after a failed check, so it cannot classify every failure. | One triage session per failed development trial. Development outcomes never support a claim, so the triage changes no claim. A wrongly blocking label edits early; a wrongly self-recovering one costs up to 3 reruns. |
 | D40 | Give every requirement that applies only under a trigger a test where the trigger is absent, and make each authored hunk's dissimilar case one of the contract's tests (user ruling, 2026-10-03). | A prompt-tuning run accepted "start every turn with an `exec` call" to stop agents asking before reading, because all of its tasks needed files; the over-broad wording made a needless call in 9 of 10 runs of a question that needs none. A dissimilar case that is only named is never measured. | One more test per conditional requirement, and the contract author must state each requirement's trigger. A prompt author cannot cite a dissimilar case the contract lacks; the user adds it through `revise`. |
 | D41 | In Codex, the optimizer supports only models of version 6 or later: the inventory leaves out earlier models, and CAT refuses a proposal whose prompt files bind one (user ruling, 2026-10-04). | The user limited support to these models. Earlier models also differ in their tools: `gpt-5.5` gets a direct `exec_command` tool, while `gpt-6` models run commands inside an `exec` script, so a prompt that names one form need not hold on the other. | No contract certifies a `gpt-5.x` profile. A user whose Codex prompt files bind an earlier model changes that binding before CAT accepts the proposal. |
@@ -2617,7 +2611,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D92 | Show a certification's environment as one block, `Certified for the following environment:` followed by the harness and its version, the trial plugins with their versions, and every other recorded condition in words that need none of CAT's terms, and have the skill write a missing prompt test configuration from the user's choice among the installed plugins (user rulings, 2026-10-21); CAT's own version has two parts, such as `1.0`, and `status` of a finished campaign that cleanup has not removed shows the block too (user rulings, 2026-10-22). | A certification holds only for the environment it measured, and the plugins that trials install are the user's choice; a claim that does not name them reads as covering users with other plugins, CAT included. Asking from the list of installed plugins keeps the user from writing `prompt.json` by hand. | Plugin versions join the measurement identity, so updating a trial plugin makes a certification historical, as a change of its base copy already did. |
 | D93 | Identify CAT among the trial plugins by its manifest's `repository` URL, compared after ignoring the letter case of the scheme and host, a trailing `/` and a trailing `.git`, never by the plugin's name or marketplace, and record each trial plugin's repository in the campaign, a plugin recorded without one counting as not CAT (user ruling, 2026-10-21); only `https://github.com/holdmyspot-com/cat` is CAT's repository, and the former `https://github.com/cowwoc/cat` is not (user ruling, 2026-10-22). | A name is chosen by whoever publishes the plugin: another plugin may be named `cat`, and CAT may be installed under another name or from another marketplace, so a name match both admits a stranger and misses CAT. Exact URL comparison would miss CAT over spellings that name the same repository. Deriving the repository of an older campaign's plugin from its base copy would make loading a campaign read campaign storage. | A CAT release whose manifest states another repository URL, such as the former `https://github.com/cowwoc/cat` that CAT 1.0.x and 1.1 manifests state, is not CAT in trials, so its rules and `.cat/rules/` load in no trial. A campaign started before CAT recorded repositories treats every trial plugin as not CAT until it is started again. |
 | D94 | Name no model provider in a certification's environment or measurement identity (user ruling, 2026-10-22). | The provider name that Codex reports is only the name configured in its `config.toml`; behind a proxy such as codex-lb it does not say who serves the model, and Claude Code reports no provider at all. A fact that one harness can state wrongly and the other cannot state is not a condition to certify against. | The `Model` line reads `Model: <model>, reasoning <level>`. Stored campaigns and certification histories that carry the retired condition load without it. |
-| D95 | Record the host tools and outside sources that trials used, for information: each program that a trial's agents ran by name through the shell tool with its `--version` version, and each MCP server, fetched web host and web search, by name or host only. A certification records those of the trials that its attempt counted; a change to them is not material (user ruling, 2026-10-22). | The certified environment block always read `not recorded` for both lines, so a user could not see which tools and services the certification relied on. Making them material would pause a campaign whenever a trial tried a new tool or host, and trials of one prompt differ in what they use. | A certification stays current when its host tools change version or its trials' MCP servers or hosts answer differently; the block shows what was used, not a guarantee. A program that another program starts, a program named by its path and the responses of outside sources are not recorded. Reading a version runs `<program> --version` once per program file in an empty directory with a 5-second limit. |
+| D95 | Neither record nor control the host machine's programs and outside sources, such as MCP servers, websites and web search: they are not measurement conditions, never material and never compared. Every certification's environment block and every `status` report state this as a limitation and recommend running the campaign, and the sessions that later use the prompt, in the same container image to limit changes to them. A stored campaign or certification history that records the retired host tools or external sources conditions loads with them dropped, and a pending measurement change that names only them is dropped (user ruling, 2026-10-22, superseding the earlier ruling of the same day to record them). | CAT cannot snapshot the host environment; short of a container, nothing it records would let a user reproduce it. Which tools a trial runs varies from trial to trial, so recording them gives noise and making them material gives false alarms that pause campaigns. The candidate, control and incumbent trials paired within one attempt run on the same machine at the same time, so they already share the environment that the comparison depends on. A container is the user's means to limit changes to it. | The tools that trials invoke usually do not affect prompt optimization, but sometimes do; a certification stays current when they change, and only the limitation and the container recommendation warn the user. |
 
 ## 14. Acceptance evidence
 

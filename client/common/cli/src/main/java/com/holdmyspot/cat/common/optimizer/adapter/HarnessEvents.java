@@ -7,22 +7,18 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TreeSet;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads what a session's harness events say about the model, token usage, rate limits, errors, root tool calls, the
- * outside sources that its agents used, and whether the model has answered the turn in progress.
+ * Reads what a session's harness events say about the model, token usage, rate limits, errors, root tool calls,
+ * and whether the model has answered the turn in progress.
  * <p>
  * A subclass reads one harness's event format and records each observation through the protected setters.
  * Unrecognized lines are ignored.
@@ -31,14 +27,6 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public abstract class HarnessEvents
 {
-	/**
-	 * The outside source of a fetched page whose address names no host.
-	 */
-	private static final String WEB_PAGE = "web page";
-	/**
-	 * The outside source of the harness's web search.
-	 */
-	private static final String WEB_SEARCH = "web search";
 	private final JsonMapper json;
 	private final Object lock = new Object();
 	private String model;
@@ -52,7 +40,6 @@ public abstract class HarnessEvents
 	private SessionEvidence evidence = new SessionEvidence(List.of());
 	private boolean outputProduced;
 	private final Set<String> runningHooks = new HashSet<>();
-	private final Set<String> outsideSources = new TreeSet<>();
 
 	/**
 	 * Creates a parser that has seen no events.
@@ -233,75 +220,6 @@ public abstract class HarnessEvents
 	{
 		requireThat(evidence, "evidence").isNotNull();
 		this.evidence = evidence;
-	}
-
-	/**
-	 * Returns the outside sources that the session's agents used: each MCP server by its name, each web host whose
-	 * pages they fetched, and the harness's web search.
-	 *
-	 * @return the sources, each once, in name order
-	 */
-	public final List<String> outsideSources()
-	{
-		synchronized (lock)
-		{
-			return List.copyOf(outsideSources);
-		}
-	}
-
-	/**
-	 * Records an outside source that one of the session's agents used.
-	 *
-	 * @param source the source
-	 */
-	private void addOutsideSource(String source)
-	{
-		outsideSources.add(source);
-	}
-
-	/**
-	 * Records the MCP server whose tool one of the session's agents called.
-	 *
-	 * @param server the server's name
-	 * @throws NullPointerException     if {@code server} is null
-	 * @throws IllegalArgumentException if {@code server} is blank
-	 */
-	protected final void addMcpServer(String server)
-	{
-		requireThat(server, "server").isNotBlank();
-		addOutsideSource(server + " (MCP server)");
-	}
-
-	/**
-	 * Records the web host of a page that one of the session's agents fetched.
-	 *
-	 * @param address the page's address
-	 * @throws NullPointerException if {@code address} is null
-	 */
-	protected final void addWebPage(String address)
-	{
-		requireThat(address, "address").isNotNull();
-		String host = null;
-		try
-		{
-			host = new URI(address.strip()).getHost();
-		}
-		catch (URISyntaxException _)
-		{
-			// An address that is not a URI names no host
-		}
-		if (host == null || host.isBlank())
-			addOutsideSource(WEB_PAGE);
-		else
-			addOutsideSource(host.toLowerCase(Locale.ROOT));
-	}
-
-	/**
-	 * Records that one of the session's agents used the harness's web search.
-	 */
-	protected final void addWebSearch()
-	{
-		addOutsideSource(WEB_SEARCH);
 	}
 
 	/**

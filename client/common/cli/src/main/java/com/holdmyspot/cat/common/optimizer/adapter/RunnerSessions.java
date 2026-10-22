@@ -66,9 +66,8 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  * <p>
  * The completed result's transcript is {@code <run>/artifacts/transcript.jsonl}, its effects directory is the run's
  * {@code project} copy of the request's source, and its prompt sources are the ones that the session was observed
- * loading. A trial's completed result also names the host tools that its agents ran, with the versions that the host
- * environment's programs report, and the outside sources that they used. When a session ends, the run's isolated
- * home, which holds a copy of the login, is deleted.
+ * loading. When a session ends, the run's isolated home, which holds a copy of the login, is
+ * deleted.
  * <p>
  * A subclass supplies its harness's event parsers, its read-only evidence options and its login classification. A
  * harness that can shorten a tool's output before its model receives it also supplies the results that its agents
@@ -113,7 +112,6 @@ public abstract class RunnerSessions implements SessionPort
 	private final String harness;
 	private final Settings settings;
 	private final Bridge bridge;
-	private final HostTools hostTools;
 
 	/**
 	 * Creates a port.
@@ -132,8 +130,6 @@ public abstract class RunnerSessions implements SessionPort
 		this.harness = harness;
 		this.settings = settings;
 		this.bridge = bridge;
-		this.hostTools = new HostTools(settings.environment(), HostTools.processes(settings.environment(),
-			settings.runRoot().resolve("host-tools")));
 	}
 
 	@Override
@@ -705,16 +701,6 @@ public abstract class RunnerSessions implements SessionPort
 	final Bridge bridge()
 	{
 		return bridge;
-	}
-
-	/**
-	 * Returns the host tools that the port's trials ran, whose versions every trial shares.
-	 *
-	 * @return the host tools
-	 */
-	final HostTools hostTools()
-	{
-		return hostTools;
 	}
 
 	/**

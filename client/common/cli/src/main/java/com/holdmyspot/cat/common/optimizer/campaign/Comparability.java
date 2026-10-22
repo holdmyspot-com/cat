@@ -206,7 +206,7 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 	{
 		return switch (condition)
 		{
-			case PROMPT_SOURCES, HOST_TOOLS, EXTERNAL_SOURCES -> " differ";
+			case PROMPT_SOURCES -> " differ";
 			default -> " differs";
 		};
 	}

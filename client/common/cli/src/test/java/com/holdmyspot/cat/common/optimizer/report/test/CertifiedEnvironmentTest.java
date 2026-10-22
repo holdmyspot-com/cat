@@ -28,12 +28,13 @@ public final class CertifiedEnvironmentTest
 
 	/**
 	 * A Codex certification with a project-built and an installed trial plugin, one cell and a settings file of the
-	 * project reads as the block that names each of them.
+	 * project reads as the block that names each of them, followed by the limitation that trials ran with the
+	 * machine's programs and outside sources, which CAT neither records nor controls.
 	 */
 	@Test
 	public void namesTheProjectSettingsFiles()
 	{
-		// Requirement: R-M7
+		// Requirement: R-M7, R-M8
 		List<TrialPlugin> plugins = List.of(
 			new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("./build"), Path.of("out")),
 				List.of(), null),
@@ -46,8 +47,6 @@ public final class CertifiedEnvironmentTest
 		values.put(MeasurementCondition.HARNESS_VERSION, "codex-cli 0.160.0+41");
 		values.put(MeasurementCondition.LOADER_FILES, ".codex/config.toml");
 		values.put(MeasurementCondition.SESSION_ENVIRONMENT_RELEASE, "1.0");
-		values.put(MeasurementCondition.HOST_TOOLS, "git 2.51.0");
-		values.put(MeasurementCondition.EXTERNAL_SOURCES, "none");
 		MeasurementIdentity identity = new MeasurementIdentity(values, Map.of("read-file/luna-low", Map.of(
 			MeasurementCondition.MODEL, "gpt-6-luna", MeasurementCondition.REASONING, "low")));
 
@@ -64,8 +63,10 @@ public final class CertifiedEnvironmentTest
 			Harness settings: the project's .codex/config.toml, with your connection settings and tool restrictions \
 			carried over
 			Trial setup: as introduced in CAT 1.0
-			Tools run directly: git 2.51.0
-			Outside sources: none""");
+
+			Trials ran with this machine's programs and outside sources, such as MCP servers and websites, which CAT \
+			neither records nor controls. To limit changes to them, run the campaign, and the sessions that later use \
+			the prompt, in the same container image.""");
 	}
 
 	/**
@@ -76,14 +77,13 @@ public final class CertifiedEnvironmentTest
 	@Test
 	public void readsDefaultsWithoutSettingsFiles()
 	{
-		// Requirement: R-M7
+		// Requirement: R-M7, R-M8
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.putAll(MeasurementIdentity.ofPlugins(List.of(), Map.of()).values());
 		values.put(MeasurementCondition.PROVIDER, "claude");
 		values.put(MeasurementCondition.HARNESS_VERSION, "2.1.286 (Claude Code)");
 		values.put(MeasurementCondition.LOADER_FILES, "none");
 		values.put(MeasurementCondition.SESSION_ENVIRONMENT_RELEASE, "1.0");
-		values.put(MeasurementCondition.EXTERNAL_SOURCES, "none");
 		MeasurementIdentity identity = new MeasurementIdentity(values, Map.of(
 			"read-file/haiku-low", Map.of(MeasurementCondition.MODEL, "claude-haiku-4-5",
 				MeasurementCondition.REASONING, "low"),
@@ -104,7 +104,9 @@ public final class CertifiedEnvironmentTest
 			"Prompt files loaded: CLAUDE.md",
 			"Harness settings: defaults, with your connection settings and tool restrictions carried over",
 			"Trial setup: as introduced in CAT 1.0",
-			"Tools run directly: not recorded",
-			"Outside sources: none"));
+			"",
+			"Trials ran with this machine's programs and outside sources, such as MCP servers and websites, which " +
+				"CAT neither records nor controls. To limit changes to them, run the campaign, and the sessions that " +
+				"later use the prompt, in the same container image."));
 	}
 }

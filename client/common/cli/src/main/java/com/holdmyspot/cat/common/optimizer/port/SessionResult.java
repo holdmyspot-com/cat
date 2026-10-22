@@ -45,63 +45,13 @@ public sealed interface SessionResult
 	 *   normalized so that staged paths do not appear in it, or {@code none} if the events showed nothing
 	 *   loading
 	 * @param toolCalls the root agent's calls in invocation order, with absent commands and exit statuses left null
-	 * @param hostTools the programs that a trial's agents ran by name, each its name followed by its version or by
-	 *   why its version is unknown, in name order; {@code null} for a session that is not a trial
-	 * @param outsideSources the MCP servers, web hosts and web search that a trial's agents used, in name order;
-	 *   {@code null} for a session that is not a trial
 	 */
 	record Completed(Path transcript, List<List<String>> responses, Path effects, Path initialProject, String model,
-		String reasoning, TokenUsage usage, List<RateLimitWindow> windows, String promptSources, List<ToolCall> toolCalls,
-		List<String> hostTools, List<String> outsideSources)
+		String reasoning, TokenUsage usage, List<RateLimitWindow> windows, String promptSources, List<ToolCall> toolCalls)
 		implements SessionResult
 	{
 		/**
 		 * Creates a completed result.
-		 *
-		 * @param transcript the retained harness event archive
-		 * @param responses each turn's assistant messages in order, ending with its final response
-		 * @param effects the directory that holds the session's project effects
-		 * @param initialProject a copy of the session's project as it was before the first turn, with the files that
-		 *   the request added to the source
-		 * @param model the model observed in harness events, or {@code null} if the events did not name one
-		 * @param reasoning the reasoning configuration observed in harness events, or {@code null} if the events did
-		 *   not name one
-		 * @param usage the reported token usage, or {@code null} if the harness did not report it
-		 * @param windows the rate-limit windows that the harness reported during the session
-		 * @param promptSources the {@code PROMPT_SOURCES} measurement value that the harness was observed loading
-		 * @param toolCalls the root agent's calls in invocation order, with absent commands and exit statuses left null
-		 * @param hostTools the programs that a trial's agents ran by name, each its name followed by its version or
-		 *   by why its version is unknown, in name order; {@code null} for a session that is not a trial
-		 * @param outsideSources the MCP servers, web hosts and web search that a trial's agents used, in name order;
-		 *   {@code null} for a session that is not a trial
-		 * @throws NullPointerException if {@code transcript}, {@code responses}, {@code effects},
-		 *   {@code initialProject}, {@code windows}, {@code promptSources} or {@code toolCalls} are null, or a response
-		 *   list, message or element of {@code toolCalls}, {@code hostTools} or {@code outsideSources} is null
-		 * @throws IllegalArgumentException if {@code promptSources} or an element of {@code hostTools} or
-		 *   {@code outsideSources} is blank or spans lines, or {@code hostTools} or {@code outsideSources} is null
-		 *   while the other is not
-		 */
-		public Completed
-		{
-			requireThat(transcript, "transcript").isNotNull();
-			requireThat(responses, "responses").isNotNull();
-			requireThat(effects, "effects").isNotNull();
-			requireThat(initialProject, "initialProject").isNotNull();
-			requireThat(windows, "windows").isNotNull();
-			requireThat(promptSources, "promptSources").isNotBlank();
-			requireThat(outsideSources == null, "outsideSourcesIsNull").isEqualTo(hostTools == null, "hostToolsIsNull");
-			responses = responses.stream().map(List::copyOf).toList();
-			windows = List.copyOf(windows);
-			toolCalls = List.copyOf(toolCalls);
-			if (hostTools != null)
-			{
-				hostTools = entries(hostTools, "hostTools");
-				outsideSources = entries(outsideSources, "outsideSources");
-			}
-		}
-
-		/**
-		 * Creates a completed result of a session that is not a trial.
 		 *
 		 * @param transcript the retained harness event archive
 		 * @param responses each turn's assistant messages in order, ending with its final response
@@ -120,32 +70,17 @@ public sealed interface SessionResult
 		 *   list, message or {@code toolCalls} element is null
 		 * @throws IllegalArgumentException if {@code promptSources} is blank
 		 */
-		public Completed(Path transcript, List<List<String>> responses, Path effects, Path initialProject,
-			String model, String reasoning, TokenUsage usage, List<RateLimitWindow> windows, String promptSources,
-			List<ToolCall> toolCalls)
+		public Completed
 		{
-			this(transcript, responses, effects, initialProject, model, reasoning, usage, windows, promptSources,
-				toolCalls, null, null);
-		}
-
-		/**
-		 * Returns a copy of a list of entries, each a line of a measurement value.
-		 *
-		 * @param entries the entries
-		 * @param name    the list's name
-		 * @return the copy
-		 * @throws NullPointerException     if an entry is null
-		 * @throws IllegalArgumentException if an entry is blank or spans lines
-		 */
-		private static List<String> entries(List<String> entries, String name)
-		{
-			List<String> copy = List.copyOf(entries);
-			for (String entry : copy)
-			{
-				requireThat(entry, name).isNotBlank();
-				requireThat(entry.lines().count(), name + ".lines().count()").isEqualTo(1L);
-			}
-			return copy;
+			requireThat(transcript, "transcript").isNotNull();
+			requireThat(responses, "responses").isNotNull();
+			requireThat(effects, "effects").isNotNull();
+			requireThat(initialProject, "initialProject").isNotNull();
+			requireThat(windows, "windows").isNotNull();
+			requireThat(promptSources, "promptSources").isNotBlank();
+			responses = responses.stream().map(List::copyOf).toList();
+			windows = List.copyOf(windows);
+			toolCalls = List.copyOf(toolCalls);
 		}
 	}
 

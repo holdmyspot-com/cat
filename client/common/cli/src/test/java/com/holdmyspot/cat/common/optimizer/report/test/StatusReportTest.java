@@ -685,24 +685,24 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Tools and sources that CAT cannot observe limit the claim without hiding the improvement.
+	 * Every report states that trials ran with the machine's programs and outside sources, which CAT neither records
+	 * nor controls, and recommends a container to limit changes to them, in its limitations, its summary and its JSON.
 	 */
-	// Requirement: R-M4, R-P1
+	// Requirement: R-M8, R-P1
 	@Test
-	public void unobservedToolsAndSourcesAreLimitations()
+	public void statesMachineProgramsLimitation()
 	{
-		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
-		values.remove(MeasurementCondition.HOST_TOOLS);
-		values.remove(MeasurementCondition.EXTERNAL_SOURCES);
-		Campaign campaign = confirmed().identity(new MeasurementIdentity(values)).
-			development("formatting", 90, 10).build();
+		String limitation = "Trials ran with this machine's programs and outside sources, such as MCP servers and " +
+			"websites, which CAT neither records nor controls. To limit changes to them, run the campaign, and the " +
+			"sessions that later use the prompt, in the same container image.";
+		Campaign campaign = confirmed().development("formatting", 90, 10).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
-		requireThat(cell(report, "formatting").improvement().unavailable(), "improvement").isNull();
-		requireThat(String.join(" ", report.limitations()), "limitations").contains("host tools").
-			contains("outside sources");
-		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("host tools").contains("outside sources");
+		requireThat(report.limitations(), "limitations").contains(limitation);
+		requireThat(String.join(" ", report.limitations()), "joined").doesNotContain("host tools").
+			doesNotContain("cannot observe the identities");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains(limitation);
 		requireThat(report.toJson(JsonMapper.builder().build()).path("limitations").toString(), "jsonLimitations").
-			contains("host tools").contains("outside sources");
+			contains("which CAT neither records nor controls");
 	}
 
 	/**

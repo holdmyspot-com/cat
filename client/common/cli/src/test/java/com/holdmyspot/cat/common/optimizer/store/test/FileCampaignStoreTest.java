@@ -119,7 +119,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path campaigns = cleanup.add(Files.createTempDirectory("sparse-status"));
 			Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
 			for (MeasurementCondition condition : List.of(MeasurementCondition.JUDGE, MeasurementCondition.MODEL,
-				MeasurementCondition.REASONING, MeasurementCondition.HOST_TOOLS, MeasurementCondition.EXTERNAL_SOURCES))
+				MeasurementCondition.REASONING))
 				values.remove(condition);
 			MeasurementIdentity sparse = new MeasurementIdentity(values);
 			OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(
@@ -191,6 +191,51 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			requireThat(loaded.pendingDecisions(), "pendingDecisions").isEqualTo(List.of(
 				new PendingDecision.MeasurementChanged(observed,
 					List.of(MeasurementCondition.MODEL, MeasurementCondition.PROVIDER)),
+				new PendingDecision.UnownedChange("CLAUDE.md changed outside CAT")));
+		}
+	}
+
+	/**
+	 * Verifies that a campaign written while CAT recorded the host tools and outside sources that trials used loads
+	 * without them: reading drops them from every identity and from a pending measurement change, and drops a pending
+	 * measurement change that names nothing else.
+	 *
+	 * @throws IOException if the fixture cannot be stored or loaded
+	 */
+	@Test
+	public void loadsCampaignWithRetiredToolsAndSources() throws IOException
+	{
+		// Requirement: R-M8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("retired-tools"));
+			MeasurementIdentity observed = new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "codex"),
+				Map.of("safety", Map.of(MeasurementCondition.MODEL, "model-b")));
+			Campaign campaign = new Builder().confirmed().working(1).readyBaseline().
+				pending(new PendingDecision.MeasurementChanged(observed, List.of(MeasurementCondition.MODEL))).
+				pending(new PendingDecision.MeasurementChanged(observed, List.of(MeasurementCondition.PROVIDER))).
+				pending(new PendingDecision.UnownedChange("CLAUDE.md changed outside CAT")).build();
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			store.replaceSnapshot(campaign);
+			Path file = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(file, UTF_8));
+			for (String retired : List.of("host_tools", "external_sources"))
+			{
+				((ObjectNode) root.get("identity").get("conditions")).put(retired, "none");
+				((ObjectNode) root.get("baseline").get("identity").get("conditions")).put(retired, "none");
+			}
+			JsonNode decisions = root.get("pending_decisions");
+			((ObjectNode) decisions.get(0).get("observed").get("conditions")).put("host_tools", "git 2.51.0");
+			((ArrayNode) decisions.get(0).get("changed")).add("host_tools");
+			((ArrayNode) decisions.get(1).get("changed")).removeAll().add("host_tools").add("external_sources");
+			Files.writeString(file, JSON.writeValueAsString(root), UTF_8);
+
+			Campaign loaded = store.load(ID).orElseThrow();
+
+			requireThat(loaded.identity(), "identity").isEqualTo(campaign.identity());
+			requireThat(loaded.baseline().identity(), "baselineIdentity").isEqualTo(campaign.baseline().identity());
+			requireThat(loaded.pendingDecisions(), "pendingDecisions").isEqualTo(List.of(
+				new PendingDecision.MeasurementChanged(observed, List.of(MeasurementCondition.MODEL)),
 				new PendingDecision.UnownedChange("CLAUDE.md changed outside CAT")));
 		}
 	}
@@ -924,12 +969,11 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				running.identity(), 0L, List.of(), Builder.FILES));
 			reconcile(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()));
 			Campaign recovered = store.load(ID).orElseThrow();
-			MeasurementIdentity measured = recovered.identity().withoutUse();
-			TrialInputs inputs = recovered.optimization().trialInputs().get(measured).get(trial.key().snapshot()).
-				get("safety");
+			TrialInputs inputs = recovered.optimization().trialInputs().get(recovered.identity()).
+				get(trial.key().snapshot()).get("safety");
 			requireThat(inputs, "inputs").isEqualTo(new TrialInputs(1, List.of(0L)));
 			reconcile(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()));
-			requireThat(store.load(ID).orElseThrow().optimization().trialInputs().get(measured).
+			requireThat(store.load(ID).orElseThrow().optimization().trialInputs().get(recovered.identity()).
 				get(trial.key().snapshot()).get("safety"), "inputs").isEqualTo(inputs);
 		}
 	}

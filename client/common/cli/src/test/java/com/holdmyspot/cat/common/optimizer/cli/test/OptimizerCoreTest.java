@@ -3931,8 +3931,10 @@ public final class OptimizerCoreTest
 				Prompt files loaded: CLAUDE.md
 				Harness settings: not recorded
 				Trial setup: version 7, CAT release not recorded
-				Tools run directly: not recorded
-				Outside sources: not recorded""");
+
+				Trials ran with this machine's programs and outside sources, such as MCP servers and websites, which \
+				CAT neither records nor controls. To limit changes to them, run the campaign, and the sessions that \
+				later use the prompt, in the same container image.""");
 			requireThat(repository.sessions().roles(), "roles").isEmpty();
 		}
 	}

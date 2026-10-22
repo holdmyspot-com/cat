@@ -476,7 +476,7 @@ public final class CommandsTest
 		// Requirement: R-I2
 		DeliveryResult.Delivered delivered = new DeliveryResult.Delivered(Outcome.CERTIFIED,
 			new Applicability(Applicability.Status.HISTORICAL, true, List.of(MeasurementCondition.MODEL), List.of(),
-				List.of(MeasurementCondition.HOST_TOOLS)),
+				List.of(MeasurementCondition.PROMPT_SOURCES)),
 			List.of(Path.of("prompts/a.md")), List.of(Path.of("notes.md")),
 			List.of(new DeliveryChange.Create(4, Path.of("prompts/a.md"),
 				new FileContent("x".getBytes(StandardCharsets.UTF_8)), Set.of())),
@@ -497,7 +497,7 @@ public final class CommandsTest
 		requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
 		requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();
 		requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("model");
-		requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("host_tools");
+		requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("prompt_sources");
 		requireThat(new HashSet<>(delivery.propertyNames()), "fields").isEqualTo(Set.of("result", "label",
 			"applicability", "changed_prompt_sources", "base_only_changes", "diff"));
 	}
@@ -582,8 +582,10 @@ public final class CommandsTest
 			Harness settings: the project's loader_files-1, with your connection settings and tool restrictions \
 			carried over
 			Trial setup: as introduced in CAT session_environment_release-1
-			Tools run directly: host_tools-1
-			Outside sources: external_sources-1
+
+			Trials ran with this machine's programs and outside sources, such as MCP servers and websites, which CAT \
+			neither records nor controls. To limit changes to them, run the campaign, and the sessions that later use \
+			the prompt, in the same container image.
 
 			Earlier certifications:
 			  Attempt 1 in provider-1: certified, scope latest_versions""");

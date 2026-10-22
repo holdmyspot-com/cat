@@ -648,7 +648,7 @@ public final class Transitions
 			return;
 		}
 		MeasurementIdentity measured = trial.identity().extendWith(observed);
-		draft.optimization = draft.optimization.addTrial(measured.withoutUse(),
+		draft.optimization = draft.optimization.addTrial(measured,
 			complete.key().snapshot(), complete.key().cell(), complete.inputTokens());
 		boolean measuresIncumbent = switch (trial.key().purpose())
 		{
@@ -657,7 +657,7 @@ public final class Transitions
 			default -> false;
 		};
 		if (measuresIncumbent)
-			draft.baselineIdentity = draft.baselineIdentity.extendWith(measured.withoutUse());
+			draft.baselineIdentity = draft.baselineIdentity.extendWith(measured);
 		extendIdentity(draft, observed);
 		draft.throttle = draft.throttle.afterCompletion();
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.testCase(), measured,
@@ -667,22 +667,19 @@ public final class Transitions
 	}
 
 	/**
-	 * Adds newly observed conditions to the campaign's and the running attempt's identities. Neither records the
-	 * host tools or outside sources of the observation: a certification attempt records those of the trials that it
-	 * counts as it counts them.
+	 * Adds newly observed conditions to the campaign's and the running attempt's identities.
 	 *
 	 * @param draft the state
 	 * @param observed the observed conditions, which do not differ from the recorded ones
 	 */
 	private static void extendIdentity(Draft draft, MeasurementIdentity observed)
 	{
-		MeasurementIdentity environment = observed.withoutUse();
-		draft.identity = draft.identity.extendWith(environment);
+		draft.identity = draft.identity.extendWith(observed);
 		Optional<CertificationAttempt> running = draft.runningAttempt();
 		if (running.isPresent())
 		{
 			CertificationAttempt attempt = running.get();
-			draft.replaceAttempt(attempt.withEvidence(attempt.identity().extendWith(environment), attempt.counts(),
+			draft.replaceAttempt(attempt.withEvidence(attempt.identity().extendWith(observed), attempt.counts(),
 				attempt.controlPairings(), attempt.incumbentPairings(), attempt.failures(), attempt.formalStream()));
 		}
 	}
@@ -912,9 +909,8 @@ public final class Transitions
 			CertificationProcedure.ALLOCATION_POLICY);
 		DrawStream formal = DrawStream.create(DrawStream.Kind.FORMAL, commit.formalSeed());
 		formal.open();
-		draft.attempts.add(new CertificationAttempt(index, draft.lineageNumber(), draft.working,
-			draft.identity.withoutUse(), procedure, commit.control(), Map.of(), Map.of(), Map.of(), List.of(),
-			formal.state(), null, List.of()));
+		draft.attempts.add(new CertificationAttempt(index, draft.lineageNumber(), draft.working, draft.identity,
+			procedure, commit.control(), Map.of(), Map.of(), Map.of(), List.of(), formal.state(), null, List.of()));
 		draft.outcome = null;
 	}
 

@@ -102,8 +102,7 @@ public final class BaselineTest
 	}
 
 	/**
-	 * Verifies that an incumbent baseline trial supplies its observed measurement identity, without the host tools and
-	 * outside sources that it used, to the baseline evidence.
+	 * Verifies that an incumbent baseline trial supplies its observed measurement identity to the baseline evidence.
 	 */
 	@Test
 	public void baselineTrialRecordsIdentity()
@@ -114,7 +113,7 @@ public final class BaselineTest
 		MeasurementIdentity observed = campaign.identity();
 		campaign = TransitionSteps.adopt(campaign, Purpose.BASELINE, "formatting", Verdict.PASS);
 
-		requireThat(campaign.baseline().identity(), "baselineIdentity").isEqualTo(observed.withoutUse());
+		requireThat(campaign.baseline().identity(), "baselineIdentity").isEqualTo(observed);
 	}
 
 	/**
@@ -132,7 +131,7 @@ public final class BaselineTest
 			baselineIdentity(MeasurementIdentity.EMPTY).build();
 		candidate = TransitionSteps.adopt(candidate, Purpose.DEVELOPMENT, "formatting", Verdict.PASS);
 
-		requireThat(incumbent.baseline().identity(), "incumbentBaseline").isEqualTo(observed.withoutUse());
+		requireThat(incumbent.baseline().identity(), "incumbentBaseline").isEqualTo(observed);
 		requireThat(candidate.baseline().identity(), "candidateBaseline").isEqualTo(MeasurementIdentity.EMPTY);
 	}
 
