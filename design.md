@@ -548,10 +548,19 @@ targeted (D58). The prompt author works as follows:
 	An interim message belongs to the reply (D29). Whether a prompt can stop a harness from posting one is not yet
 	known, but the prompt can shape its wording, so a failure in an interim message is *routing* or *guidance*, and the
 	prompt author corrects the prompt so that every message of the reply complies.
-2. **Make the smallest correction** that the evidence supports, in the prompt file that owns the decision. The prompt
-	author prefers editing or creating a prompt file other than `AGENTS.md` or `CLAUDE.md`, which load into every
-	session, and edits one of them only when the correction cannot otherwise reach the sessions that need it, such as
-	adding the reference that loads a new file (D30). Removing a contradiction or an ambiguity comes before adding
+2. **Make the smallest correction** that the evidence supports, in the prompt file that owns the decision (D30):
+	- an instruction that a prompt file already states is corrected in that file, `AGENTS.md` and `CLAUDE.md` included;
+	- a target that ships with CAT, such as CAT's own rules, skills and optimizer prompts, is corrected at its source
+		location in its module, which mappings carry into trials ([§4.4](#44-trial-staging));
+	- new guidance for any other target goes into a project rule when CAT is a trial plugin of the campaign's harness:
+		an existing rule under `.cat/rules/` on the same topic first, otherwise a new rule in `.cat/rules/common/`, or in
+		`.cat/rules/claude/` or `.cat/rules/codex/` when it depends on that harness. A rule whose guidance applies only
+		while the agent works on some files has `paths` frontmatter that matches them, so it loads only for that work;
+	- without CAT as a trial plugin, no project rule loads in trials or for the prompt's users, so new guidance goes into
+		a prompt file other than `AGENTS.md` or `CLAUDE.md`, which load into every session, and into one of those only
+		when it cannot otherwise reach the sessions that need it, such as the reference that loads a new file.
+
+	Removing a contradiction or an ambiguity comes before adding
 	emphasis. An edit must not contradict another instruction of the prompt system; the prompt author resolves any
 	contradiction that its own edit or an earlier candidate's edit introduced. Capitals, "important" markers and repeated
 	instructions are not corrections.
@@ -1166,7 +1175,9 @@ confirmed contract:
 
 - In-project prompt files, which are the target prompt file and every in-project file that the prompt system loads:
 	content edits and ordinary-file create, rename and delete. An in-project file that a link at or below a prompt
-	source resolves to is a prompt file too, editable through the link or at its own path.
+	source resolves to is a prompt file too, editable through the link or at its own path. When CAT is a trial plugin
+	of the campaign's harness, the project rules directory `.cat/rules/` is an in-project prompt source, since CAT's
+	rule loader loads it in trials as for the prompt's users, so a candidate may create a rule in it (D30).
 - Existing symbolic-link entries, their destinations and existing file modes stay fixed.
 - Loader configuration, meaning whatever decides which prompt files load, is fixed for the campaign. A needed loader
 	change is prepared by the user before a new campaign.
@@ -1297,7 +1308,14 @@ campaign started in that harness installs. For example:
 	`output` and gives no `command`.
 
 `start` refuses, before creating anything, a target whose test directory holds no prompt test configuration or whose
-configuration has no key for the harness that runs `start`, and names the file to write. Every trial installs every
+configuration has no key for the harness that runs `start`, and names the file to write. The refusal lists every
+plugin installed in the user's harness home, by name and version, and every plugin manifest tracked in the project, so
+that the skill can write the configuration from the user's answer (user ruling, 2026-10-21). The skill asks the user
+which of them the prompt's users have installed, saying that a certification holds only for users with the chosen
+plugins: a plugin that trials leave out, CAT included, can change what the model receives, and one that trials add can
+supply guidance that the users lack. For a plugin that the project builds, the skill asks the user for the build command
+and output directory. It writes `prompt.json` from the answers, shows it to the user and runs `start` again; the user
+commits it with the prompt tests. Every trial installs every
 plugin that the configuration lists for the campaign's harness, and no other plugin, including CAT and the plugins
 installed in the user's harness home. Without CAT, neither the project's nor the user's CAT rules load in trials, as for
 the users of a prompt system who do not install CAT.
@@ -1471,8 +1489,8 @@ Every result is a point-in-time observation. CAT records the conditions needed t
 	model receives or how its actions take effect: injected content, hooks, the settings and limits the runner applies,
 	and the sandbox. A test keeps the runner's generated session settings tied to it;
 - the runner and CAT versions, recorded for information;
-- the trial plugins: each one's name and the identity of its base copy, with the build command and mappings of each
-	one that the project builds;
+- the trial plugins: each one's name, the version in its manifest and the identity of its base copy, with the build
+	command and mappings of each one that the project builds;
 - the loader configuration and the prompt sources observed loading at session start, including links, resolved
 	targets and staged identities. A hook that runs on a later event, such as a tool call or a child session's start,
 	runs only when the trial takes that action, so it is not a measurement condition; the loader configuration and the
@@ -1515,6 +1533,29 @@ weaker claim, so when a CAT release or a later contract changes them it stays cu
 new one: its minimum pass rate is at least the new one, its margin is at most the new one, and its `α_i` is at most the
 new level for that attempt. Certifying a pass probability above 95% implies one above 94%, but not one
 above 96%, so raising the minimum pass rate to 0.96 makes it historical and lowering it to 0.94 does not (D49).
+
+**Certified environment (user ruling, 2026-10-21).** Every report of a certification, whether the terminal outcome, the
+delivery report or `status`, shows the environment it was measured in as one block, drawn from the measurement identity
+above:
+
+```text
+Certified for the following environment:
+
+Codex 0.160.0+41
+Plugins: cat 1.0.0 (built from the project), formatter@acme-tools 2.3.1
+Provider: openai
+Trial profiles: gpt-6-luna, reasoning low (observed)
+Session environment: 4
+Loader configuration: <identity>
+Host tools: git 2.51.0
+External sources: none
+```
+
+The first line names the harness and its version. `Plugins` lists each trial plugin with the version in its manifest,
+marking one that the project builds, or says `none`. The lines after it list every other recorded condition of the
+measurement identity, one per line, with `none` for an empty one and the trial profile line repeated for each cell of
+the certification scope. A condition that the reporting session could not check says so, as for applicability
+(D51).
 
 A certified delivery appends a **certification record** to the target's certification history, `certifications.json`
 beside `prompt.json` in the target's test directory, which the user commits with the prompt. Staging leaves the history
@@ -2227,14 +2268,16 @@ The `prompt-optimizer` skill exists in both harnesses as thin wrappers around on
 wants a prompt file improved until it is certified. The host agent:
 
 1. starts or resumes the campaign for the named target prompt file, passing to `start` the user's goal for the prompt
-	in the user's own words when the user stated one;
+	in the user's own words when the user stated one, and, when `start` reports no prompt test configuration, asks the
+	user which plugins the prompt's users have installed and writes it ([§4.4](#44-trial-staging));
 2. presents the proposal, warnings and minimum session count, asks the user to keep or drop each extra requirement,
 	asks the user to resolve each conflict with its resolutions and the recommended one, explains the three
 	certification scope choices and their tradeoffs ([§6.6](#66-trial-profiles)), saying that the weakest cell only
 	applies unless the user chooses another, and relays feedback until the user confirms;
 3. calls `run` while the status is `running`, showing the progress summary after each slice;
 4. presents each `awaiting-user` decision's concrete choices and passes the selected choice back;
-5. reports the terminal outcome with its four outputs, applicability and limitations.
+5. reports the terminal outcome with its four outputs, the certified environment
+	([§5](#5-measurement-identity-and-applicability)), applicability and limitations.
 
 The harness-specific `prompt-optimizer` launcher provides `start`, `run`, `status`, `confirm`, `revise`, `choose` and
 `cancel`. `start` takes the target prompt file and, optionally, the user's goal; it refuses a directory, naming it.
@@ -2460,7 +2503,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D27 | Develop each prompt test only in its weakest cell, plus any cell where certification found a failure (user ruling, 2026-10-04). | Developing in each model's lowest and highest effort, then widening to every cell, multiplied development trials by the number of active cells. P15's candidate, which passed the commit gate only under gpt-6-luna at low effort, passed every other Codex cell. Ranking models by advertised capability finds the weakest cell without the baseline trials that measuring each model's lowest effort would cost. | A failure that only a stronger profile makes is found only by certifying that profile, at the cost of that attempt's allowance; weakest-only certification makes no claim about it. An advertised ranking can be wrong for a given prompt; the user can correct it in the proposal, and a certification failure in another cell adds that cell to development. |
 | D28 | Make 3 concurrent prompt author attempts while the working candidate is weak, and promote the best (user ruling, 2026-10-01). | One attempt at a time is cheaper per round, but early rounds then spend representative trials discovering that a weak edit is weak, and a failed promotion costs a whole round. Three attempts in every round roughly break even: late rounds rarely gain from a second attempt. | Two extra prompt author sessions and their promotion runs per weak round; all are targeted and consume no allowance. The benefit is estimated, not measured; the recorded per-attempt promotion results measure it. |
 | D29 | A turn's reply is every assistant message of the turn, including interim messages, not only its final response (user ruling, 2026-10-02). | The user sees the interim messages. Judging only the final response would certify a prompt whose agent says prohibited things before it answers, and the checks and the judge would disagree about what a reply is (E1, H31). | Narration that a harness adds by itself, such as Codex's note before a tool call, counts against requirements on reply content. Whether a prompt can suppress it is not yet known, but a prompt can shape its wording, so a failure there is a prompt defect (user ruling, 2026-10-02). |
-| D30 | Prompt authors correct an instruction in the file that states it, `AGENTS.md` and `CLAUDE.md` included. They put new guidance in a prompt file other than `AGENTS.md` and `CLAUDE.md`, and add it to those only when it cannot otherwise reach the sessions that need it (user rulings, 2026-10-02). | Both files load into every session, so guidance added there costs context in every task and applies to uses it was not written for. A file that loads only where it applies keeps the always-loaded files small. But guidance added elsewhere leaves a faulty always-loaded instruction in force: in E1 under `gpt-6-luna`/low, every attempt of a round added handbook text while the `AGENTS.md` sentence limit that the motto closing overran stayed unchanged, and the campaign reached a plateau. | A correction in a separate file may need a reference from `AGENTS.md` or `CLAUDE.md` to load. Reading a referenced file can cost a tool call, and with it an interim message whose wording the prompt must keep compliant (D29). |
+| D30 | Prompt authors correct an instruction in the file that states it, `AGENTS.md` and `CLAUDE.md` included. A target that ships with CAT is corrected at its source location. Other new guidance goes into a project rule under `.cat/rules/` when CAT is a trial plugin, scoped with `paths` frontmatter when it applies only to some files; without CAT, it goes into a prompt file other than `AGENTS.md` and `CLAUDE.md`, and into those only when it cannot otherwise reach the sessions that need it (user rulings, 2026-10-02 and 2026-10-21). | Both files load into every session, so guidance added there costs context in every task and applies to uses it was not written for. A file that loads only where it applies keeps the always-loaded files small. But guidance added elsewhere leaves a faulty always-loaded instruction in force: in E1 under `gpt-6-luna`/low, every attempt of a round added handbook text while the `AGENTS.md` sentence limit that the motto closing overran stayed unchanged, and the campaign reached a plateau. A project rule loads through CAT's rule loader without a reference from another file, and `paths` frontmatter keeps it out of sessions that do not touch its files; in E5 under `gpt-6-luna`/low, with no trial plugin, candidate 7 had grown `AGENTS.md` from 452 bytes to about 7,300, which every model call of every trial resent. | A correction in a separate file may need a reference from `AGENTS.md` or `CLAUDE.md` to load. Reading a referenced file can cost a tool call, and with it an interim message whose wording the prompt must keep compliant (D29). A project rule reaches only users who install CAT, which is why the preference applies only when CAT is a trial plugin: the certification then holds only for users with the certified plugins, as the certified environment says. |
 | D31 | Refuse to confirm a proposal that lists a conflict between requirements (user ruling, 2026-10-02). | No reply can satisfy a contract with a conflict, so its campaign spends its trials until its review checkpoint. Which requirement prevails is the user's decision, not the contract author's. | The contract author reports each conflict with resolutions and a recommended one instead of settling it; the agent asks the user to choose; `confirm` fails and names the conflicts until feedback resolves them. |
 | D32 | A conflict found during a campaign is the prompt author's to resolve if a campaign edit introduced it, and pauses the campaign for the user's resolution, with options and a recommendation, if the confirmed prompt system already held it (user ruling, 2026-10-02). | The user decides which of their own requirements prevails; a conflict that the campaign created is a candidate defect. Checking the quoted text against the confirmed snapshot tells the two apart without trusting the prompt author's account. | A *conflict* classification in the prompt author's manifest, a pause whose choices are the resolutions, and a revision built from the chosen one. |
 | D33 | Promote an attempt that fixes at least one triggering test case without a regression, rather than only one that fixes them all (user ruling, 2026-10-02). | Requiring every triggering run to pass rejected improvements whose remaining failures were left for later: in E1 under `gpt-6-luna`/low, the best attempt passed 12 of 14 promotion runs, failed one test case twice, and the campaign reached a plateau after one round. Promotion only sets the next working candidate; the commit gate still decides certification. | Minimality must keep every fix, so a reduction must fix every test case that its attempt fixed. A lucky streak on an intermittent test case could promote an attempt that is no better; D35 limits that. |
@@ -2522,6 +2565,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D89 | Extend a triggering test case's passing streak until it is unlikely for the working candidate, with no upper limit, rather than stopping at 4 runs (user ruling, 2026-10-20). | With 4 runs, a fix can be shown only where the working candidate passes less than about 56% of the time, since `p^4 < 0.10` needs `p < 0.56`. In the Codex E7 campaign under `gpt-6-luna`/low, the working candidate passed its failing `concise_explanations` test cases 33 of 35 to 40 of 41 times, so attempts 10 to 19 each passed every promotion run and were all rejected (end-to-end finding, 2026-10-20). | A fix on a test case that the working candidate passes most of the time costs many targeted runs, about `2.3 / (1 − p)`, run one at a time: 32 at 39 of 41. A test case that the working candidate passes 3 of 4 times can now count as fixed. |
 | D90 | Treat `CLAUDE.md` as Claude Code's prompt file and `AGENTS.md` as Codex's, so that a Claude control trial loads only `CLAUDE.md` files (user ruling, 2026-10-20). | Claude Code 2.1.304 loads `AGENTS.md` in place of a `CLAUDE.md` that is missing or empty. A control trial of a `CLAUDE.md` that only imports `AGENTS.md` therefore still followed the target: 59 of 60 Claude guard-pilot control trials closed with the motto that the emptied file required (end-to-end finding, 2026-10-20). | A Claude control trial loads different instruction files from the user's sessions when those load `AGENTS.md` beside or in place of `CLAUDE.md`. |
 | D91 | End-to-end checks prove only what a real harness must show: each harness's runners work and prompt tests run through them, a trial uses a host tool, and a real ESC is recorded. Behavior that depends only on harness events is proven by unit tests that replay events recorded once from a real run, and behavior that depends on Git by tests on a real repository (user ruling, 2026-10-20). | A live campaign costs hundreds of nested sessions per claim, while a recording replays in milliseconds and still fails when a new harness version changes its events. | A recording proves the behavior of the harness version that produced it; a harness change that alters the events needs a new recording. |
+| D92 | Show a certification's environment as one block, `Certified for the following environment:` followed by the harness and its version, the trial plugins with their versions, and every other recorded condition, and have the skill write a missing prompt test configuration from the user's choice among the installed plugins (user rulings, 2026-10-21). | A certification holds only for the environment it measured, and the plugins that trials install are the user's choice; a claim that does not name them reads as covering users with other plugins, CAT included. Asking from the list of installed plugins keeps the user from writing `prompt.json` by hand. | Plugin versions join the measurement identity, so updating a trial plugin makes a certification historical, as a change of its base copy already did. |
 
 ## 14. Acceptance evidence
 
