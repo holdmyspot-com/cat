@@ -242,6 +242,34 @@ public final class CertificationHistoryTest
 	}
 
 	/**
+	 * A record written while CAT still recorded the trial model's provider reads back without it: the provider is
+	 * dropped from the record's conditions and from the conditions of each of its cells.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test
+	public void readsRecordWithRetiredModelProvider() throws IOException
+	{
+		// Requirement: R-M7
+		CertificationRecord recorded = recordOf(1, new MeasurementIdentity(
+			Map.of(MeasurementCondition.PROVIDER, "codex"),
+			Map.of("read-file/luna-low", Map.of(MeasurementCondition.MODEL, "gpt-6-luna",
+				MeasurementCondition.REASONING, "low"))));
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		ObjectNode root = (ObjectNode) JSON.readTree(codec.write(CertificationHistory.EMPTY.appended(recorded)));
+		ObjectNode identity = (ObjectNode) root.get("records").get(0).get("identity");
+		((ObjectNode) identity.get("conditions")).put("model_provider", "openai");
+		((ObjectNode) identity.get("cells").get("read-file/luna-low")).put("model_provider", "openai");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(Files.createTempDirectory("cat-history-")).resolve("certifications.json");
+			Files.write(file, JSON.writeValueAsBytes(root));
+
+			requireThat(codec.read(file).records(), "read").isEqualTo(List.of(recorded));
+		}
+	}
+
+	/**
 	 * Returns one malformed edit of a history document per row: the edit and the path that the refusal names.
 	 *
 	 * @return the rows

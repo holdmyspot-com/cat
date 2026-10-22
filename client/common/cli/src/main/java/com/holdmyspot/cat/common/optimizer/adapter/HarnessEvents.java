@@ -31,7 +31,6 @@ public abstract class HarnessEvents
 	private final Object lock = new Object();
 	private String model;
 	private String reasoning;
-	private String modelProvider;
 	private TokenUsage usage;
 	private List<RateLimitWindow> windows = List.of();
 	private Rejection rejection;
@@ -122,29 +121,6 @@ public abstract class HarnessEvents
 	protected final void setReasoning(String reasoning)
 	{
 		this.reasoning = reasoning;
-	}
-
-	/**
-	 * Returns the provider of the model that the session started with.
-	 *
-	 * @return the provider, such as {@code openai}, or {@code null} if no event named one
-	 */
-	public final String modelProvider()
-	{
-		synchronized (lock)
-		{
-			return modelProvider;
-		}
-	}
-
-	/**
-	 * Records the provider of the model that the session started with.
-	 *
-	 * @param modelProvider the provider, or {@code null} if the events did not name one
-	 */
-	protected final void setModelProvider(String modelProvider)
-	{
-		this.modelProvider = modelProvider;
 	}
 
 	/**

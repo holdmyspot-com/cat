@@ -1526,7 +1526,7 @@ to any of these:
 - behavioural prompt content;
 - the contract, including its prompt tests and test cases, or the judge version, which define the desired behavior;
 - a certification parameter whose new value the certification's claim does not imply (see below);
-- the trial model, reasoning profile or provider;
+- the trial model or reasoning profile;
 - the trial plugins, their bases, build commands or mappings, which change what the model receives;
 - the harness version, the session environment version, the loader configuration, the prompt sources, or an external
 	or MCP source, each of which changes what the model receives.
@@ -1555,7 +1555,7 @@ Certified for the following environment:
 
 Codex 0.160.0+41
 Plugins: cat 1.0 (built from the project), formatter@acme-tools 2.3.1
-Model: gpt-6-luna, reasoning low, from openai
+Model: gpt-6-luna, reasoning low
 Prompt files loaded: AGENTS.md, .cat/rules/common/support.md
 Harness settings: the project's .codex/config.toml, with your connection settings and tool restrictions carried over
 Trial setup: as introduced in CAT 1.0
@@ -1565,9 +1565,9 @@ Outside sources: none
 
 The first line names the harness and its version. `Plugins` lists each trial plugin with the version in its manifest,
 marking one that the project builds, or says `none`. `Model` repeats for each cell of the certification scope and gives
-the observed model and reasoning. `Prompt files loaded` lists the prompt sources that trials observed loading, by
-project path. `Harness settings` describes the harness configuration that trials ran with, at both of its levels. The
-project level is the loader configuration: the project's settings files that existed in trials, from the harness's fixed
+the observed model and reasoning, and names no provider (user ruling, 2026-10-22, D94). `Prompt files loaded` lists
+the prompt sources that trials observed loading, by project path. `Harness settings` describes the harness
+configuration that trials ran with, at both of its levels. The project level is the loader configuration: the project's settings files that existed in trials, from the harness's fixed
 list (`.claude/settings.json`, `.claude/settings.local.json` and `.mcp.json` for Claude Code, `.codex/config.toml` for
 Codex), named after `the project's`. A settings file implies the harness's defaults for whatever it leaves unset, so the
 line names the defaults only when the project has none of the files, reading `defaults` in its place. A change to the
@@ -2602,6 +2602,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D91 | End-to-end checks prove only what a real harness must show: each harness's runners work and prompt tests run through them, a trial uses a host tool, and a real ESC is recorded. Behavior that depends only on harness events is proven by unit tests that replay events recorded once from a real run, and behavior that depends on Git by tests on a real repository (user ruling, 2026-10-20). | A live campaign costs hundreds of nested sessions per claim, while a recording replays in milliseconds and still fails when a new harness version changes its events. | A recording proves the behavior of the harness version that produced it; a harness change that alters the events needs a new recording. |
 | D92 | Show a certification's environment as one block, `Certified for the following environment:` followed by the harness and its version, the trial plugins with their versions, and every other recorded condition in words that need none of CAT's terms, and have the skill write a missing prompt test configuration from the user's choice among the installed plugins (user rulings, 2026-10-21); CAT's own version has two parts, such as `1.0`, and `status` of a finished campaign that cleanup has not removed shows the block too (user rulings, 2026-10-22). | A certification holds only for the environment it measured, and the plugins that trials install are the user's choice; a claim that does not name them reads as covering users with other plugins, CAT included. Asking from the list of installed plugins keeps the user from writing `prompt.json` by hand. | Plugin versions join the measurement identity, so updating a trial plugin makes a certification historical, as a change of its base copy already did. |
 | D93 | Identify CAT among the trial plugins by its manifest's `repository` URL, compared after ignoring the letter case of the scheme and host, a trailing `/` and a trailing `.git`, never by the plugin's name or marketplace, and record each trial plugin's repository in the campaign, a plugin recorded without one counting as not CAT (user ruling, 2026-10-21); only `https://github.com/holdmyspot-com/cat` is CAT's repository, and the former `https://github.com/cowwoc/cat` is not (user ruling, 2026-10-22). | A name is chosen by whoever publishes the plugin: another plugin may be named `cat`, and CAT may be installed under another name or from another marketplace, so a name match both admits a stranger and misses CAT. Exact URL comparison would miss CAT over spellings that name the same repository. Deriving the repository of an older campaign's plugin from its base copy would make loading a campaign read campaign storage. | A CAT release whose manifest states another repository URL, such as the former `https://github.com/cowwoc/cat` that CAT 1.0.x and 1.1 manifests state, is not CAT in trials, so its rules and `.cat/rules/` load in no trial. A campaign started before CAT recorded repositories treats every trial plugin as not CAT until it is started again. |
+| D94 | Name no model provider in a certification's environment or measurement identity (user ruling, 2026-10-22). | The provider name that Codex reports is only the name configured in its `config.toml`; behind a proxy such as codex-lb it does not say who serves the model, and Claude Code reports no provider at all. A fact that one harness can state wrongly and the other cannot state is not a condition to certify against. | The `Model` line reads `Model: <model>, reasoning <level>`. Stored campaigns and certification histories that carry the retired condition load without it. |
 
 ## 14. Acceptance evidence
 

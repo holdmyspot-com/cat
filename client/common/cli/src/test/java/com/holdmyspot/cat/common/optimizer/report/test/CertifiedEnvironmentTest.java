@@ -49,8 +49,7 @@ public final class CertifiedEnvironmentTest
 		values.put(MeasurementCondition.HOST_TOOLS, "git 2.51.0");
 		values.put(MeasurementCondition.EXTERNAL_SOURCES, "none");
 		MeasurementIdentity identity = new MeasurementIdentity(values, Map.of("read-file/luna-low", Map.of(
-			MeasurementCondition.MODEL, "gpt-6-luna", MeasurementCondition.REASONING, "low",
-			MeasurementCondition.MODEL_PROVIDER, "openai")));
+			MeasurementCondition.MODEL, "gpt-6-luna", MeasurementCondition.REASONING, "low")));
 
 		CertifiedEnvironment environment = new CertifiedEnvironment(identity, List.of("read-file/luna-low"),
 			List.of(Path.of("AGENTS.md"), Path.of(".cat/rules/common/support.md")), List.of());
@@ -60,7 +59,7 @@ public final class CertifiedEnvironmentTest
 
 			Codex 0.160.0+41
 			Plugins: cat 1.0 (built from the project), formatter@acme-tools 2.3.1
-			Model: gpt-6-luna, reasoning low, from openai
+			Model: gpt-6-luna, reasoning low
 			Prompt files loaded: AGENTS.md, .cat/rules/common/support.md
 			Harness settings: the project's .codex/config.toml, with your connection settings and tool restrictions \
 			carried over
@@ -100,8 +99,8 @@ public final class CertifiedEnvironmentTest
 			"",
 			"Claude Code 2.1.286 (not checked)",
 			"Plugins: none",
-			"Model: claude-haiku-4-5, reasoning low, provider not recorded (not checked)",
-			"Model: claude-sonnet-5, reasoning high, provider not recorded (not checked)",
+			"Model: claude-haiku-4-5, reasoning low (not checked)",
+			"Model: claude-sonnet-5, reasoning high (not checked)",
 			"Prompt files loaded: CLAUDE.md",
 			"Harness settings: defaults, with your connection settings and tool restrictions carried over",
 			"Trial setup: as introduced in CAT 1.0",

@@ -1075,9 +1075,9 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Returns the measurement conditions under which a trial was observed: the driver's environment, the trial
-	 * session's loaded prompt sources, and the trial session's model, reasoning configuration and model provider and,
-	 * in a cell that limits tool output, the tool-output token limit that the session started under, which are
-	 * recorded for the trial's cell.
+	 * session's loaded prompt sources, and the trial session's model and reasoning configuration and, in a cell that
+	 * limits tool output, the tool-output token limit that the session started under, which are recorded for the
+	 * trial's cell.
 	 *
 	 * @param testCase the trial's test case
 	 * @param trial the trial session's result
@@ -1093,8 +1093,6 @@ public final class Driver implements AutoCloseable
 			cell.put(MeasurementCondition.MODEL, trial.model());
 		if (trial.reasoning() != null)
 			cell.put(MeasurementCondition.REASONING, trial.reasoning());
-		if (trial.modelProvider() != null)
-			cell.put(MeasurementCondition.MODEL_PROVIDER, trial.modelProvider());
 		int toolOutputTokenLimit = campaign.contract().findCell(testCase.cellId()).orElseThrow().profile().
 			toolOutputTokenLimit();
 		if (toolOutputTokenLimit > 0)

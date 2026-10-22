@@ -3927,7 +3927,7 @@ public final class OptimizerCoreTest
 
 				Claude Code 1.0
 				Plugins: not recorded
-				Model: model-a, reasoning not recorded, provider not recorded (not checked)
+				Model: model-a, reasoning not recorded (not checked)
 				Prompt files loaded: CLAUDE.md
 				Harness settings: not recorded
 				Trial setup: version 7, CAT release not recorded

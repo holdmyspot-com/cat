@@ -577,7 +577,7 @@ public final class CommandsTest
 
 			provider-1 harness_version-1
 			Plugins: trial_plugins-1 (version not recorded)
-			Model: model-a, reasoning reasoning-1, from model_provider-1 (not checked)
+			Model: model-a, reasoning reasoning-1 (not checked)
 			Prompt files loaded: none
 			Harness settings: the project's loader_files-1, with your connection settings and tool restrictions \
 			carried over

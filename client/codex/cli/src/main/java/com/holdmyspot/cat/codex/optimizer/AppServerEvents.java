@@ -217,12 +217,11 @@ public final class AppServerEvents extends HarnessEvents
 		rootThread = id;
 		setModel(text(thread.path("model")));
 		setReasoning(text(thread.path("reasoningEffort")));
-		setModelProvider(text(thread.path("modelProvider")));
 	}
 
 	/**
-	 * Reads a {@code thread/settings/updated} notification. The root thread's settings replace the model, reasoning
-	 * effort and model provider that {@code thread/started} reported, because they are the values that the turn runs at.
+	 * Reads a {@code thread/settings/updated} notification. The root thread's settings replace the model and
+	 * reasoning effort that {@code thread/started} reported, because they are the values that the turn runs at.
 	 *
 	 * @param params the notification's parameters
 	 */
@@ -242,9 +241,6 @@ public final class AppServerEvents extends HarnessEvents
 		String effort = text(settings.path("effort"));
 		if (effort != null)
 			setReasoning(effort);
-		String provider = text(settings.path("modelProvider"));
-		if (provider != null)
-			setModelProvider(provider);
 	}
 
 	/**

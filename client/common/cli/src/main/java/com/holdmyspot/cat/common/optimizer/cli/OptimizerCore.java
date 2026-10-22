@@ -2603,7 +2603,7 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Returns the measurement conditions that the launcher observes before any session runs. The sessions observe
-	 * the model, the reasoning configuration, the model provider and the prompt sources.
+	 * the model, the reasoning configuration and the prompt sources.
 	 *
 	 * @param files reads the loader configuration files
 	 * @return the conditions

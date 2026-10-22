@@ -38,12 +38,7 @@ public enum MeasurementCondition
 	 */
 	TOOL_OUTPUT_LIMIT,
 	/**
-	 * The trial model's provider as observed in harness events, such as {@code openai}.
-	 */
-	MODEL_PROVIDER,
-	/**
-	 * The harness that ran the sessions, by its command name. Records written before the trial model's provider was
-	 * observed call it the model provider.
+	 * The harness that ran the sessions, by its command name.
 	 */
 	PROVIDER,
 	/**
@@ -127,7 +122,6 @@ public enum MeasurementCondition
 			case MODEL -> "trial model";
 			case REASONING -> "trial reasoning";
 			case TOOL_OUTPUT_LIMIT -> "trial tool-output token limit";
-			case MODEL_PROVIDER -> "trial model provider";
 			case PROVIDER -> "harness";
 			case HARNESS_VERSION -> "harness version";
 			case SESSION_ENVIRONMENT_VERSION -> "session environment version";
@@ -167,15 +161,15 @@ public enum MeasurementCondition
 	 * harness cannot observe the value that a result records.
 	 *
 	 * @return {@code true} for the harness, its version, the session environment version and release, the judge
-	 *   version, the trial model, its reasoning, provider and tool-output token limit, and the trial plugins, which
-	 *   the prompt test configuration lists for each harness
+	 *   version, the trial model, its reasoning and tool-output token limit, and the trial plugins, which the prompt
+	 *   test configuration lists for each harness
 	 */
 	public boolean isHarnessSpecific()
 	{
 		return switch (this)
 		{
 			case PROVIDER, HARNESS_VERSION, SESSION_ENVIRONMENT_VERSION, SESSION_ENVIRONMENT_RELEASE, JUDGE, MODEL,
-				REASONING, MODEL_PROVIDER, TOOL_OUTPUT_LIMIT, TRIAL_PLUGINS, PLUGIN_BASES, PLUGIN_VERSIONS, PLUGIN_BUILDS,
+				REASONING, TOOL_OUTPUT_LIMIT, TRIAL_PLUGINS, PLUGIN_BASES, PLUGIN_VERSIONS, PLUGIN_BUILDS,
 				PLUGIN_MAPPINGS -> true;
 			default -> false;
 		};

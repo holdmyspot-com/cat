@@ -142,7 +142,8 @@ import tools.jackson.databind.node.ObjectNode;
  * message that asks the user to start a new campaign.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
- * {@link NullPointerException}.
+ * {@link NullPointerException}. Reading ignores a measurement condition that CAT recorded in the current format but no
+ * longer does, and a pending decision that reported only such conditions as changed.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -152,6 +153,11 @@ final class CampaignJson
 	 * The version of the layout that this class writes.
 	 */
 	private static final int FORMAT_VERSION = 43;
+	/**
+	 * The names of measurement conditions that CAT no longer records. A document written while CAT recorded one still
+	 * loads: reading drops the condition.
+	 */
+	private static final Set<String> RETIRED_CONDITIONS = Set.of("model_provider");
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String FAILED_ASSERTIONS = "failed_assertions";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
@@ -294,7 +300,10 @@ final class CampaignJson
 		JsonNode slowStart = field(root, "slow_start");
 		List<PendingDecision> pending = new ArrayList<>();
 		for (JsonNode node : elements(root, "pending_decisions"))
-			pending.add(readDecision(node));
+		{
+			if (!changesOnlyRetiredConditions(node))
+				pending.add(readDecision(node));
+		}
 		List<AuthorityWarning> answered = new ArrayList<>();
 		for (JsonNode node : elements(root, "answered_warnings"))
 			answered.add(readWarning(node));
@@ -1969,6 +1978,25 @@ final class CampaignJson
 	}
 
 	/**
+	 * Indicates whether a pending decision reports a measurement change that consists only of conditions that CAT no
+	 * longer records, so that nothing remains for the user to decide.
+	 *
+	 * @param node the pending decision's document
+	 * @return {@code true} if the decision is a measurement change whose changed conditions are all retired
+	 */
+	private static boolean changesOnlyRetiredConditions(JsonNode node)
+	{
+		if (!text(node, "type").equals("measurement_changed"))
+			return false;
+		for (JsonNode element : elements(node, "changed"))
+		{
+			if (!RETIRED_CONDITIONS.contains(stringValue(element, "changed")))
+				return false;
+		}
+		return true;
+	}
+
+	/**
 	 * Converts a document to a pending decision.
 	 *
 	 * @param node the document
@@ -1983,7 +2011,10 @@ final class CampaignJson
 			{
 				List<MeasurementCondition> changed = new ArrayList<>();
 				for (JsonNode element : elements(node, "changed"))
-					changed.add(constantValue(element, "changed", MeasurementCondition.class));
+				{
+					if (!RETIRED_CONDITIONS.contains(stringValue(element, "changed")))
+						changed.add(constantValue(element, "changed", MeasurementCondition.class));
+				}
 				yield new PendingDecision.MeasurementChanged(readIdentity(field(node, "observed")), changed);
 			}
 			case "conflict_found" ->
@@ -2378,8 +2409,11 @@ final class CampaignJson
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		for (Entry<String, JsonNode> entry : node.properties())
 		{
-			values.put(EnumNames.parse(entry.getKey(), MeasurementCondition.class),
-				stringValue(entry.getValue(), name + "." + entry.getKey()));
+			if (!RETIRED_CONDITIONS.contains(entry.getKey()))
+			{
+				values.put(EnumNames.parse(entry.getKey(), MeasurementCondition.class),
+					stringValue(entry.getValue(), name + "." + entry.getKey()));
+			}
 		}
 		return values;
 	}

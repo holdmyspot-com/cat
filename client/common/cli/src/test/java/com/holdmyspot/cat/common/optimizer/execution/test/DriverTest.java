@@ -199,7 +199,7 @@ public final class DriverTest
 		Map<MeasurementCondition, String> conditions = new EnumMap<>(MeasurementCondition.class);
 		conditions.putAll(Builder.confirmedIdentity(DriverHarness.MODEL).values());
 		for (MeasurementCondition condition : List.of(MeasurementCondition.JUDGE, MeasurementCondition.MODEL,
-			MeasurementCondition.REASONING, MeasurementCondition.MODEL_PROVIDER, MeasurementCondition.HOST_TOOLS,
+			MeasurementCondition.REASONING, MeasurementCondition.HOST_TOOLS,
 			MeasurementCondition.EXTERNAL_SOURCES))
 		{
 			conditions.remove(condition);
@@ -214,7 +214,7 @@ public final class DriverTest
 				SessionResult.Completed completed = harness.passed();
 				return new SessionResult.Completed(completed.transcript(), completed.responses(), completed.effects(),
 					completed.initialProject(),
-					completed.model(), completed.reasoning(), "openai", new TokenUsage(80, 0, 0, 0), completed.windows(),
+					completed.model(), completed.reasoning(), new TokenUsage(80, 0, 0, 0), completed.windows(),
 					completed.promptSources(), completed.toolCalls());
 			});
 			try (Driver driver = harness.open())
@@ -243,8 +243,6 @@ public final class DriverTest
 						isEqualTo(DriverHarness.MODEL);
 					requireThat(campaign.baseline().identity().cells().get(cell).get(MeasurementCondition.REASONING),
 						"baselineReasoning").isEqualTo("reasoning-1");
-					requireThat(campaign.identity().cells().get(cell).get(MeasurementCondition.MODEL_PROVIDER),
-						"modelProvider").isEqualTo("openai");
 				}
 			}
 		}

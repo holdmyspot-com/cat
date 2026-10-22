@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.campaign.OptimizationEvidence;
+import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
 import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
@@ -76,6 +77,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
@@ -146,6 +148,50 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			requireThat(report.summary(ZoneOffset.UTC).contains("INDETERMINATE"), "enumReason").isFalse();
 			requireThat(report.toJson(JSON).path("trial_input_tokens").get(2).path("unavailable").isNull(),
 				"jsonReason").isTrue();
+		}
+	}
+
+	/**
+	 * A campaign file written while CAT still recorded the trial model's provider loads without it: the provider is
+	 * dropped from the identities and from the changed conditions of a pending decision, and a pending decision whose
+	 * only change was the provider is dropped.
+	 *
+	 * @throws IOException if the fixture cannot be stored or loaded
+	 */
+	@Test
+	public void loadsCampaignWithRetiredModelProvider() throws IOException
+	{
+		// Requirement: R-M7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("retired-provider"));
+			MeasurementIdentity observed = new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "codex"),
+				Map.of("safety", Map.of(MeasurementCondition.MODEL, "model-b")));
+			Campaign campaign = new Builder().confirmed().working(1).readyBaseline().
+				pending(new PendingDecision.MeasurementChanged(observed,
+					List.of(MeasurementCondition.MODEL, MeasurementCondition.PROVIDER))).
+				pending(new PendingDecision.MeasurementChanged(observed, List.of(MeasurementCondition.PROVIDER))).
+				pending(new PendingDecision.UnownedChange("CLAUDE.md changed outside CAT")).build();
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			store.replaceSnapshot(campaign);
+			Path file = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(file, UTF_8));
+			((ObjectNode) root.get("identity").get("conditions")).put("model_provider", "openai");
+			((ObjectNode) root.get("baseline").get("identity").get("conditions")).put("model_provider", "openai");
+			JsonNode decisions = root.get("pending_decisions");
+			((ObjectNode) decisions.get(0).get("observed").get("cells").get("safety")).put("model_provider", "openai");
+			((ArrayNode) decisions.get(0).get("changed")).add("model_provider");
+			((ArrayNode) decisions.get(1).get("changed")).removeAll().add("model_provider");
+			Files.writeString(file, JSON.writeValueAsString(root), UTF_8);
+
+			Campaign loaded = store.load(ID).orElseThrow();
+
+			requireThat(loaded.identity(), "identity").isEqualTo(campaign.identity());
+			requireThat(loaded.baseline().identity(), "baselineIdentity").isEqualTo(campaign.baseline().identity());
+			requireThat(loaded.pendingDecisions(), "pendingDecisions").isEqualTo(List.of(
+				new PendingDecision.MeasurementChanged(observed,
+					List.of(MeasurementCondition.MODEL, MeasurementCondition.PROVIDER)),
+				new PendingDecision.UnownedChange("CLAUDE.md changed outside CAT")));
 		}
 	}
 

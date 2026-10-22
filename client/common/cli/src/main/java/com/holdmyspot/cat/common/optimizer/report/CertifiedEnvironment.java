@@ -117,13 +117,11 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 		if (cells.isEmpty())
 		{
 			// A record without cell results reports the campaign-wide model conditions once
-			lines.add(checked("Model: " + model(null), MeasurementCondition.MODEL, MeasurementCondition.REASONING,
-				MeasurementCondition.MODEL_PROVIDER));
+			lines.add(checked("Model: " + model(null), MeasurementCondition.MODEL, MeasurementCondition.REASONING));
 		}
 		for (String cell : cells)
 		{
-			lines.add(checked("Model: " + model(cell), MeasurementCondition.MODEL, MeasurementCondition.REASONING,
-				MeasurementCondition.MODEL_PROVIDER));
+			lines.add(checked("Model: " + model(cell), MeasurementCondition.MODEL, MeasurementCondition.REASONING));
 		}
 		lines.add(checked("Prompt files loaded: " + promptFileList(), MeasurementCondition.PROMPT_SOURCES));
 		lines.add(checked("Harness settings: " + settings(), MeasurementCondition.LOADER_CONFIGURATION,
@@ -252,13 +250,12 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 	 * Describes the model of a cell.
 	 *
 	 * @param cell the cell's identifier, or {@code null} for the campaign-wide conditions
-	 * @return the observed model, reasoning and provider
+	 * @return the observed model and reasoning
 	 */
 	private String model(String cell)
 	{
 		String model = valueOf(cell, MeasurementCondition.MODEL);
 		String reasoning = valueOf(cell, MeasurementCondition.REASONING);
-		String provider = valueOf(cell, MeasurementCondition.MODEL_PROVIDER);
 		StringJoiner text = new StringJoiner(", ");
 		if (model == null)
 			text.add("model " + NOT_RECORDED);
@@ -268,10 +265,6 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 			text.add("reasoning " + NOT_RECORDED);
 		else
 			text.add("reasoning " + reasoning);
-		if (provider == null)
-			text.add("provider " + NOT_RECORDED);
-		else
-			text.add("from " + provider);
 		return text.toString();
 	}
 

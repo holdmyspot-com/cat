@@ -44,8 +44,8 @@ import tools.jackson.databind.json.JsonMapper;
  * @param promptSources the in-project prompt sources, relative to the project
  * @param environment the measurement conditions that the driver observes outside trials; it records no
  *   {@link MeasurementCondition#MODEL}, {@link MeasurementCondition#REASONING},
- *   {@link MeasurementCondition#MODEL_PROVIDER}, {@link MeasurementCondition#TOOL_OUTPUT_LIMIT} or
- *   {@link MeasurementCondition#PROMPT_SOURCES}, which only sessions observe
+ *   {@link MeasurementCondition#TOOL_OUTPUT_LIMIT} or {@link MeasurementCondition#PROMPT_SOURCES}, which only
+ *   sessions observe
  * @param lockFile the campaign's write-lock file
  * @param random the source of the certification trial stream's seed when a candidate is committed
  * @param settings the time limits of one bounded driver run (a slice)
@@ -109,8 +109,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 		requireThat(environment, "environment").isNotNull();
 		requireThat(environment.values().keySet(), "environment.values().keySet()").
 			doesNotContainAny(Set.of(MeasurementCondition.MODEL, MeasurementCondition.REASONING,
-				MeasurementCondition.MODEL_PROVIDER, MeasurementCondition.TOOL_OUTPUT_LIMIT,
-				MeasurementCondition.PROMPT_SOURCES));
+				MeasurementCondition.TOOL_OUTPUT_LIMIT, MeasurementCondition.PROMPT_SOURCES));
 		requireThat(lockFile, "lockFile").isNotNull();
 		requireThat(random, "random").isNotNull();
 		requireThat(settings, "settings").isNotNull();
