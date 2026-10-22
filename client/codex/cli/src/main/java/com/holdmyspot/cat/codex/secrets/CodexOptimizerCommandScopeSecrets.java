@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.codex.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.codex.optimizer.CodexOptimizerCommandScope;
 
@@ -9,50 +9,54 @@ import com.holdmyspot.cat.codex.optimizer.CodexOptimizerCommandScope;
  */
 public final class CodexOptimizerCommandScopeSecrets
 {
-	private static CodexOptimizerCommandScopeAccess access;
+	private static CodexOptimizerCommandScopeAccess codexOptimizerCommandScopeAccess;
 
 	/**
-	 * Returns the CodexOptimizerCommandScope access point.
+	 * Returns the {@link CodexOptimizerCommandScope} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code CodexOptimizerCommandScope} cannot initialize or fails to register access
 	 */
-	public static CodexOptimizerCommandScopeAccess access()
+	public static CodexOptimizerCommandScopeAccess getCodexOptimizerCommandScopeAccess()
 	{
+		CodexOptimizerCommandScopeAccess access = codexOptimizerCommandScopeAccess;
 		if (access == null)
-			initialize(CodexOptimizerCommandScope.class);
-		if (access == null)
-			throw new AssertionError("CodexOptimizerCommandScope did not register its access point");
+		{
+			ensureClassInitialized(CodexOptimizerCommandScope.class);
+			access = codexOptimizerCommandScopeAccess;
+			if (access == null)
+				throw new AssertionError(CodexOptimizerCommandScope.class.getName() + " did not register " +
+					"CodexOptimizerCommandScopeAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link CodexOptimizerCommandScope}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setCodexOptimizerCommandScopeAccess(CodexOptimizerCommandScopeAccess access)
+	{
+		codexOptimizerCommandScopeAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the CodexOptimizerCommandScope access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(CodexOptimizerCommandScopeAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("CodexOptimizerCommandScope access point is already registered");
-		access = newAccess;
 	}
 
 	/**

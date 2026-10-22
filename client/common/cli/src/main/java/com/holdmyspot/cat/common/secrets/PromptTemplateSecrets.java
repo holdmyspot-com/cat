@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.optimizer.proposal.PromptTemplate;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.common.optimizer.proposal.PromptTemplate;
  */
 public final class PromptTemplateSecrets
 {
-	private static PromptTemplateAccess access;
+	private static PromptTemplateAccess promptTemplateAccess;
 
 	/**
-	 * Returns the PromptTemplate access point.
+	 * Returns the {@link PromptTemplate} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code PromptTemplate} cannot initialize or fails to register access
 	 */
-	public static PromptTemplateAccess access()
+	public static PromptTemplateAccess getPromptTemplateAccess()
 	{
+		PromptTemplateAccess access = promptTemplateAccess;
 		if (access == null)
-			initialize(PromptTemplate.class);
-		if (access == null)
-			throw new AssertionError("PromptTemplate did not register its access point");
+		{
+			ensureClassInitialized(PromptTemplate.class);
+			access = promptTemplateAccess;
+			if (access == null)
+				throw new AssertionError(PromptTemplate.class.getName() + " did not register PromptTemplateAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link PromptTemplate}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setPromptTemplateAccess(PromptTemplateAccess access)
+	{
+		promptTemplateAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the PromptTemplate access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(PromptTemplateAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("PromptTemplate access point is already registered");
-		access = newAccess;
 	}
 
 	/**

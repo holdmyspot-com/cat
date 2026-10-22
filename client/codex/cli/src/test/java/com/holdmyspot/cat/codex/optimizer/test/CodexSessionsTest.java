@@ -126,7 +126,7 @@ public final class CodexSessionsTest
 	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, List::of, "", false, Map.of(),
 			runRoot, capacity, clock, Yielding.fileReplacer());
-		return CodexSessionsSecrets.access().newCodexSessions(settings, (options, input, output) ->
+		return CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (options, input, output) ->
 		{
 			arguments.add(options);
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex", script, input,
@@ -170,7 +170,8 @@ public final class CodexSessionsTest
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "", true,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (options, input, output) ->
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().
+				newCodexSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
 				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
@@ -270,7 +271,8 @@ public final class CodexSessionsTest
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			List<Boolean> heldOutRunRootExisted = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (options, input, output) ->
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().
+				newCodexSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
 				heldOutRunRootExisted.add(Files.isDirectory(heldOutRunRoot));
@@ -339,7 +341,8 @@ public final class CodexSessionsTest
 				Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			List<List<String>> received = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (options, input, output) ->
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().
+				newCodexSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
 				received.add(ContractAuthorFixtures.regularFiles(Path.of(ScriptedHarness.optionValue(options,
@@ -400,7 +403,8 @@ public final class CodexSessionsTest
 				() -> List.of(heldOut, otherHeldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (options, input, output) ->
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().
+				newCodexSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
 				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
@@ -562,7 +566,7 @@ public final class CodexSessionsTest
 	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
 			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-		return CodexSessionsSecrets.access().newCodexSessions(settings, (options, input, output) ->
+		return CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (options, input, output) ->
 		{
 			throw new AssertionError("A login classification must not start a session");
 		});
@@ -818,7 +822,7 @@ public final class CodexSessionsTest
 			Path project = Files.createDirectories(root.resolve("project"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{
 			});
 
@@ -871,7 +875,7 @@ public final class CodexSessionsTest
 				write(project.resolve(file), "script");
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{
 			});
 
@@ -928,7 +932,7 @@ public final class CodexSessionsTest
 				new TrialPlugin.Installed(), List.of(), null), root.resolve("tools")));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
 				false, Map.of(), configuration, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{
 			});
 
@@ -962,7 +966,7 @@ public final class CodexSessionsTest
 				"Stop": [{"hooks": [{"type": "command", "command": "stop.sh"}]}]}}""");
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{
 			});
 			Path home = root.resolve("home");
@@ -1026,7 +1030,7 @@ public final class CodexSessionsTest
 					Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("plugin/hooks"), Path.of("hooks"))), null), cat));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{
 			});
 

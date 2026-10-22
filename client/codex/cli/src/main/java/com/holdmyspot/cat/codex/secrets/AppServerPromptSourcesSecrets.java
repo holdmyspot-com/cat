@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.codex.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.codex.optimizer.AppServerPromptSources;
 
@@ -9,50 +9,54 @@ import com.holdmyspot.cat.codex.optimizer.AppServerPromptSources;
  */
 public final class AppServerPromptSourcesSecrets
 {
-	private static AppServerPromptSourcesAccess access;
+	private static AppServerPromptSourcesAccess appServerPromptSourcesAccess;
 
 	/**
-	 * Returns the AppServerPromptSources access point.
+	 * Returns the {@link AppServerPromptSources} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code AppServerPromptSources} cannot initialize or fails to register access
 	 */
-	public static AppServerPromptSourcesAccess access()
+	public static AppServerPromptSourcesAccess getAppServerPromptSourcesAccess()
 	{
+		AppServerPromptSourcesAccess access = appServerPromptSourcesAccess;
 		if (access == null)
-			initialize(AppServerPromptSources.class);
-		if (access == null)
-			throw new AssertionError("AppServerPromptSources did not register its access point");
+		{
+			ensureClassInitialized(AppServerPromptSources.class);
+			access = appServerPromptSourcesAccess;
+			if (access == null)
+				throw new AssertionError(AppServerPromptSources.class.getName() + " did not register " +
+					"AppServerPromptSourcesAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link AppServerPromptSources}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setAppServerPromptSourcesAccess(AppServerPromptSourcesAccess access)
+	{
+		appServerPromptSourcesAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the AppServerPromptSources access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(AppServerPromptSourcesAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("AppServerPromptSources access point is already registered");
-		access = newAccess;
 	}
 
 	/**

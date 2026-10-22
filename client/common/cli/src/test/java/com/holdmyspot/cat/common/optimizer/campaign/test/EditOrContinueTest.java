@@ -315,7 +315,7 @@ public final class EditOrContinueTest
 			DrawnTestCase testCase = campaign.trials().getLast().testCase();
 			for (int earlier = 0; earlier < drawn.size() && second == null; ++earlier)
 			{
-				if (PromotionSecrets.access().isSameTestCase(drawn.get(earlier), testCase))
+				if (PromotionSecrets.getPromotionAccess().isSameTestCase(drawn.get(earlier), testCase))
 				{
 					first = keys.get(earlier);
 					second = key;

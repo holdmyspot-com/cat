@@ -20,7 +20,7 @@ public final class HarnessProjectRepository
 {
 	static
 	{
-		HarnessProjectRepositorySecrets.setAccess(new HarnessProjectRepositoryAccess()
+		HarnessProjectRepositorySecrets.setHarnessProjectRepositoryAccess(new HarnessProjectRepositoryAccess()
 		{
 			@Override
 			public List<List<String>> commands()

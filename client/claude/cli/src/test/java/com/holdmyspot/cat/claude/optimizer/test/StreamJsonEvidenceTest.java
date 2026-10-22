@@ -55,7 +55,7 @@ public final class StreamJsonEvidenceTest
 	 */
 	private static SessionEvidence parse(List<String> lines)
 	{
-		StreamJsonEvents events = StreamJsonEventsSecrets.access().newStreamJsonEvents(JSON);
+		StreamJsonEvents events = StreamJsonEventsSecrets.getStreamJsonEventsAccess().newStreamJsonEvents(JSON);
 		for (String line : lines)
 			events.accept(line);
 		return events.evidence();

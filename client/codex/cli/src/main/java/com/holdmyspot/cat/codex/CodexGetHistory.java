@@ -23,7 +23,7 @@ public final class CodexGetHistory
 {
 	static
 	{
-		CodexGetHistorySecrets.setAccess(new CodexGetHistoryAccess()
+		CodexGetHistorySecrets.setCodexGetHistoryAccess(new CodexGetHistoryAccess()
 		{
 			@Override
 			public String execute(Map<String, String> environment, String[] args) throws IOException

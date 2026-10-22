@@ -106,7 +106,7 @@ public final class AttemptSelectionTest
 	{
 		// Requirement: R-D12
 		Campaign campaign = new Builder().confirmed().working(1).development("safety", 60, 1).
-			development("formatting", 100, 0).round(TrialAdoptionSecrets.access().failingRound(
+			development("formatting", 100, 0).round(TrialAdoptionSecrets.getTrialAdoptionAccess().failingRound(
 				Map.of("safety", Builder.counts(60, 1), "formatting", Builder.counts(100, 0)),
 				ContractFixtures.contract().cells(), null)).build();
 		for (int attempt = 0; attempt < 2; ++attempt)
@@ -128,7 +128,7 @@ public final class AttemptSelectionTest
 		// A certification failure makes the big cell a development cell
 		DrawnTestCase certificationFailure = new Generator(contract).draw(ContractFixtures.BIG_CELL,
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
-		Round round = TrialAdoptionSecrets.access().failingRound(counts, contract.cells(), null);
+		Round round = TrialAdoptionSecrets.getTrialAdoptionAccess().failingRound(counts, contract.cells(), null);
 		requireThat(round.weak(), "weak").isTrue();
 		Campaign campaign = new Builder().confirmed(contract, 1).working(1).
 			development(ContractFixtures.SMALL_CELL, 100, 1).round(round).certificationAttempt(1).
@@ -284,7 +284,7 @@ public final class AttemptSelectionTest
 	public void unaddressedEmptyCellIsNotWeak()
 	{
 		// Requirement: R-D12
-		Round round = TrialAdoptionSecrets.access().failingRound(Map.of("safety", Builder.counts(60, 1)),
+		Round round = TrialAdoptionSecrets.getTrialAdoptionAccess().failingRound(Map.of("safety", Builder.counts(60, 1)),
 			ContractFixtures.contract().cells(), null);
 		requireThat(round.weak(), "weak").isFalse();
 		requireThat(round.maxAttempts(), "attempts").isEqualTo(2);
@@ -297,7 +297,8 @@ public final class AttemptSelectionTest
 	public void failingProfilesShareThreeAttempts()
 	{
 		// Requirement: R-D12
-		Round round = TrialAdoptionSecrets.access().failingRound(Map.of(ContractFixtures.BIG_CELL, Builder.counts(0, 1),
+		Round round = TrialAdoptionSecrets.getTrialAdoptionAccess().
+			failingRound(Map.of(ContractFixtures.BIG_CELL, Builder.counts(0, 1),
 			ContractFixtures.SMALL_CELL, Builder.counts(100, 1)), ContractFixtures.twoCellContract().cells(), null);
 		requireThat(round.attempts().keySet(), "addressedCells").containsExactly(List.of(ContractFixtures.BIG_CELL));
 		requireThat(round.maxAttempts(), "attemptsPerCell").isEqualTo(3);

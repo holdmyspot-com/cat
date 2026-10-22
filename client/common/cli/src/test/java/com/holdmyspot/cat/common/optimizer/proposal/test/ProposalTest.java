@@ -466,7 +466,8 @@ public final class ProposalTest
 		requireThat(derived.contract().judge().prompt(), "judge.prompt").
 			isEqualTo(PromptTemplate.load("/optimizer/judge/judge.md").text());
 		requireThat(json.readTree(derived.contract().judge().resultSchema()), "judge.resultSchema").
-			isEqualTo(json.readTree(PromptTemplateSecrets.access().readResource("/optimizer/judge/verdict.schema.json")));
+			isEqualTo(json.readTree(PromptTemplateSecrets.getPromptTemplateAccess().
+				readResource("/optimizer/judge/verdict.schema.json")));
 		requireThat(derived.derivedSources(), "derivedSources").isEmpty();
 		requireThat(derived.scopeConditions(), "scopeConditions").isEqualTo(List.of(new ScopeCondition(
 			Outcome.UNSUPPORTED_OUTPUT, List.of("r1"), "CLAUDE.md asks for a diagram image with every summary.")));

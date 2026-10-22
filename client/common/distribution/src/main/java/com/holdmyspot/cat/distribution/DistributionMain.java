@@ -34,7 +34,7 @@ public final class DistributionMain
 {
 	static
 	{
-		DistributionMainSecrets.setAccess(new DistributionMainAccess()
+		DistributionMainSecrets.setDistributionMainAccess(new DistributionMainAccess()
 		{
 			@Override
 			public List<JlinkImageBuilder.Launcher> claudeLaunchers()

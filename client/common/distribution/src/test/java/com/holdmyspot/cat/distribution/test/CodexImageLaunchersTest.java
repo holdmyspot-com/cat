@@ -46,14 +46,15 @@ public final class CodexImageLaunchersTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(Path.of("target"), "codex-image-")).toAbsolutePath();
-			JlinkImageBuilder builder = JlinkImageBuilderSecrets.access().create(new FakeJlink(platform));
-			Path image = DistributionMainSecrets.access().codexImage(builder, List.of(Path.of("codex.jar")),
+			JlinkImageBuilder builder = JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().create(new FakeJlink(platform));
+			Path image = DistributionMainSecrets.getDistributionMainAccess().
+				codexImage(builder, List.of(Path.of("codex.jar")),
 				directory.resolve("client"), platform);
-			Set<String> agentLaunchers = DistributionMainSecrets.access().codexAgentLaunchers();
+			Set<String> agentLaunchers = DistributionMainSecrets.getDistributionMainAccess().codexAgentLaunchers();
 			Path agentBin = directory.resolve("bin");
 			JlinkImageBuilder.moveLaunchers(agentLaunchers, image, agentBin);
 
-			List<JlinkImageBuilder.Launcher> launchers = DistributionMainSecrets.access().codexLaunchers();
+			List<JlinkImageBuilder.Launcher> launchers = DistributionMainSecrets.getDistributionMainAccess().codexLaunchers();
 			List<String> paths = new ArrayList<>();
 			for (JlinkImageBuilder.Launcher launcher : launchers)
 			{

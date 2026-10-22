@@ -319,7 +319,7 @@ public final class RoundEndTest
 		{
 			campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 			DrawnTestCase drawn = campaign.trials().getLast().testCase();
-			failed = PromotionSecrets.access().isSameTestCase(drawn, logs);
+			failed = PromotionSecrets.getPromotionAccess().isSameTestCase(drawn, logs);
 			campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), failOnlyContent(drawn, logs));
 		}
 		requireThat(failed, "drewSettledTestCase").isTrue();
@@ -343,7 +343,8 @@ public final class RoundEndTest
 		Campaign campaign = rejectLastAttempt(oneTrialShortOfCommitGate());
 		requireThat(campaign.lineage().regressionSet().getFirst().settled(), "settledBefore").isTrue();
 		campaign = TransitionSteps.fail(campaign, "safety", new Triage(Impact.BLOCKING, "The directory was removed."));
-		requireThat(PromotionSecrets.access().isSameTestCase(campaign.development().failures().getLast().testCase(), logs),
+		requireThat(PromotionSecrets.getPromotionAccess().
+			isSameTestCase(campaign.development().failures().getLast().testCase(), logs),
 			"blockingFailureOnSettledTestCase").isFalse();
 
 		campaign = TransitionSteps.submit(campaign, "safety", ATTEMPT, List.of());
@@ -372,7 +373,7 @@ public final class RoundEndTest
 	 */
 	private static Verdict failOnlyContent(DrawnTestCase ran, DrawnTestCase failing)
 	{
-		if (PromotionSecrets.access().isSameTestCase(ran, failing))
+		if (PromotionSecrets.getPromotionAccess().isSameTestCase(ran, failing))
 			return Verdict.FAIL;
 		return Verdict.PASS;
 	}

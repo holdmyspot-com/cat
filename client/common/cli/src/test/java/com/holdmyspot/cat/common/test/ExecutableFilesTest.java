@@ -50,7 +50,7 @@ public final class ExecutableFilesTest
 		AtomicInteger pauses = new AtomicInteger();
 		ExecutableFiles executables = new ExecutableFiles(pauses::incrementAndGet, new ManualClock(Instant.EPOCH));
 
-		ExecutableFilesSecrets.access().run(executables, () ->
+		ExecutableFilesSecrets.getExecutableFilesAccess().run(executables, () ->
 		{
 			if (attempts.getAndIncrement() < 3)
 				throw new IOException("error=26, Text file busy");
@@ -79,7 +79,7 @@ public final class ExecutableFilesTest
 		}, clock);
 		try
 		{
-			ExecutableFilesSecrets.access().run(executables, () ->
+			ExecutableFilesSecrets.getExecutableFilesAccess().run(executables, () ->
 			{
 				attempts.incrementAndGet();
 				throw new IOException("ETXTBSY");
@@ -107,7 +107,7 @@ public final class ExecutableFilesTest
 		}, new ManualClock(Instant.EPOCH));
 		try
 		{
-			ExecutableFilesSecrets.access().run(executables, () ->
+			ExecutableFilesSecrets.getExecutableFilesAccess().run(executables, () ->
 			{
 				attempts.incrementAndGet();
 				throw new IOException("ETXTBSY");
@@ -140,7 +140,7 @@ public final class ExecutableFilesTest
 		}, new ManualClock(Instant.EPOCH));
 		try
 		{
-			ExecutableFilesSecrets.access().run(executables, () ->
+			ExecutableFilesSecrets.getExecutableFilesAccess().run(executables, () ->
 			{
 				attempts.incrementAndGet();
 				throw new IOException("Permission denied");

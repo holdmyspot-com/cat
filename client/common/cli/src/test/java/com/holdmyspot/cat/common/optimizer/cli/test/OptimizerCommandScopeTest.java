@@ -57,8 +57,9 @@ public final class OptimizerCommandScopeTest
 			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				directory))
 			{
-				requireThat(OptimizerCommandScopeSecrets.access().projectRoot(scope), "projectRoot").isEqualTo(root);
-				OptimizerCommandScopeAccess access = OptimizerCommandScopeSecrets.access();
+				requireThat(OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
+					projectRoot(scope), "projectRoot").isEqualTo(root);
+				OptimizerCommandScopeAccess access = OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess();
 				requireThat(access.store(scope) == access.store(scope), "sameStore").isTrue();
 			}
 		}
@@ -85,19 +86,21 @@ public final class OptimizerCommandScopeTest
 				OTHER_SESSION, root))
 			{
 				Campaign campaign = new Builder().confirmed().build();
-				OptimizerCommandScopeSecrets.access().store(other).replaceSnapshot(campaign);
-				otherHeldOut = OptimizerCommandScopeSecrets.access().sessionDirectory(other).campaigns().
+				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(other).replaceSnapshot(campaign);
+				otherHeldOut = OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
+					sessionDirectory(other).campaigns().
 					resolve(campaign.header().id()).resolve("held_out");
 			}
 			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				directory))
 			{
 				Campaign campaign = new Builder().confirmed().build();
-				OptimizerCommandScopeSecrets.access().store(scope).replaceSnapshot(campaign);
-				Path campaignDirectory = OptimizerCommandScopeSecrets.access().sessionDirectory(scope).campaigns().
+				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(scope).replaceSnapshot(campaign);
+				Path campaignDirectory = OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
+					sessionDirectory(scope).campaigns().
 					resolve(campaign.header().id());
 
-				requireThat(Set.copyOf(OptimizerCommandScopeSecrets.access().heldOutDirectories(scope)),
+				requireThat(Set.copyOf(OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().heldOutDirectories(scope)),
 					"heldOutDirectories").isEqualTo(Set.of(campaignDirectory.resolve("held_out"), otherHeldOut));
 			}
 		}
@@ -122,7 +125,7 @@ public final class OptimizerCommandScopeTest
 				CommandRefusedException refusal = null;
 				try
 				{
-					OptimizerCommandScopeSecrets.access().store(scope);
+					OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(scope);
 				}
 				catch (CommandRefusedException e)
 				{
@@ -152,7 +155,8 @@ public final class OptimizerCommandScopeTest
 			}
 			requireThat(scope.isClosed(), "isClosed").isTrue();
 			for (Runnable access : List.<Runnable>of(scope::profiles,
-				() -> OptimizerCommandScopeSecrets.access().sliceSettings(scope), scope::json, scope::sessions))
+				() -> OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
+					sliceSettings(scope), scope::json, scope::sessions))
 			{
 				IllegalStateException failure = null;
 				try

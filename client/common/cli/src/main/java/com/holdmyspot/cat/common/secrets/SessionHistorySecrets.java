@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.history.SessionHistory;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.common.history.SessionHistory;
  */
 public final class SessionHistorySecrets
 {
-	private static SessionHistoryAccess access;
+	private static SessionHistoryAccess sessionHistoryAccess;
 
 	/**
-	 * Returns the SessionHistory access point.
+	 * Returns the {@link SessionHistory} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code SessionHistory} cannot initialize or fails to register access
 	 */
-	public static SessionHistoryAccess access()
+	public static SessionHistoryAccess getSessionHistoryAccess()
 	{
+		SessionHistoryAccess access = sessionHistoryAccess;
 		if (access == null)
-			initialize(SessionHistory.class);
-		if (access == null)
-			throw new AssertionError("SessionHistory did not register its access point");
+		{
+			ensureClassInitialized(SessionHistory.class);
+			access = sessionHistoryAccess;
+			if (access == null)
+				throw new AssertionError(SessionHistory.class.getName() + " did not register SessionHistoryAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link SessionHistory}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setSessionHistoryAccess(SessionHistoryAccess access)
+	{
+		sessionHistoryAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the SessionHistory access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(SessionHistoryAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("SessionHistory access point is already registered");
-		access = newAccess;
 	}
 
 	/**

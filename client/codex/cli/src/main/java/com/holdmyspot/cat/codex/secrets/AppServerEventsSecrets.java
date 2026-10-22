@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.codex.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.codex.optimizer.AppServerEvents;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.codex.optimizer.AppServerEvents;
  */
 public final class AppServerEventsSecrets
 {
-	private static AppServerEventsAccess access;
+	private static AppServerEventsAccess appServerEventsAccess;
 
 	/**
-	 * Returns the AppServerEvents access point.
+	 * Returns the {@link AppServerEvents} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code AppServerEvents} cannot initialize or fails to register access
 	 */
-	public static AppServerEventsAccess access()
+	public static AppServerEventsAccess getAppServerEventsAccess()
 	{
+		AppServerEventsAccess access = appServerEventsAccess;
 		if (access == null)
-			initialize(AppServerEvents.class);
-		if (access == null)
-			throw new AssertionError("AppServerEvents did not register its access point");
+		{
+			ensureClassInitialized(AppServerEvents.class);
+			access = appServerEventsAccess;
+			if (access == null)
+				throw new AssertionError(AppServerEvents.class.getName() + " did not register AppServerEventsAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link AppServerEvents}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setAppServerEventsAccess(AppServerEventsAccess access)
+	{
+		appServerEventsAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the AppServerEvents access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(AppServerEventsAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("AppServerEvents access point is already registered");
-		access = newAccess;
 	}
 
 	/**

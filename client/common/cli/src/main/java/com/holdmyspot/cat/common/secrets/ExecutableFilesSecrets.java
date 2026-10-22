@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.ExecutableFiles;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.common.ExecutableFiles;
  */
 public final class ExecutableFilesSecrets
 {
-	private static ExecutableFilesAccess access;
+	private static ExecutableFilesAccess executableFilesAccess;
 
 	/**
-	 * Returns the ExecutableFiles access point.
+	 * Returns the {@link ExecutableFiles} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code ExecutableFiles} cannot initialize or fails to register access
 	 */
-	public static ExecutableFilesAccess access()
+	public static ExecutableFilesAccess getExecutableFilesAccess()
 	{
+		ExecutableFilesAccess access = executableFilesAccess;
 		if (access == null)
-			initialize(ExecutableFiles.class);
-		if (access == null)
-			throw new AssertionError("ExecutableFiles did not register its access point");
+		{
+			ensureClassInitialized(ExecutableFiles.class);
+			access = executableFilesAccess;
+			if (access == null)
+				throw new AssertionError(ExecutableFiles.class.getName() + " did not register ExecutableFilesAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link ExecutableFiles}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setExecutableFilesAccess(ExecutableFilesAccess access)
+	{
+		executableFilesAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the ExecutableFiles access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(ExecutableFilesAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("ExecutableFiles access point is already registered");
-		access = newAccess;
 	}
 
 	/**

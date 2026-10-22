@@ -54,13 +54,14 @@ public final class HarnessStandardErrorTest
 	@Test
 	public void boundsLargeDiagnostic() throws IOException
 	{
-		byte[] diagnostic = new byte[HarnessStandardErrorSecrets.access().maximumDiagnosticBytes() + 1];
+		byte[] diagnostic = new byte[HarnessStandardErrorSecrets.getHarnessStandardErrorAccess().
+			maximumDiagnosticBytes() + 1];
 		HarnessStandardError standardError = new HarnessStandardError(new ByteArrayInputStream(diagnostic));
 
 		String result = standardError.await();
 
 		requireThat(result, "standardError").contains("standard error truncated after " +
-			HarnessStandardErrorSecrets.access().maximumDiagnosticBytes() + " bytes");
+			HarnessStandardErrorSecrets.getHarnessStandardErrorAccess().maximumDiagnosticBytes() + " bytes");
 	}
 
 	/**

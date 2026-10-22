@@ -309,7 +309,7 @@ public final class CodexEvidenceTest
 	 */
 	private static SessionEvidence parse(List<String> lines)
 	{
-		AppServerEvents events = AppServerEventsSecrets.access().newAppServerEvents(JSON);
+		AppServerEvents events = AppServerEventsSecrets.getAppServerEventsAccess().newAppServerEvents(JSON);
 		for (String line : lines)
 			events.accept(line);
 		return events.evidence();

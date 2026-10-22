@@ -58,7 +58,8 @@ public final class StreamJsonPromptSourcesTest
 	 */
 	private static String observe(List<String> lines, String run)
 	{
-		StreamJsonPromptSources sources = StreamJsonPromptSourcesSecrets.access().newStreamJsonPromptSources(JSON,
+		StreamJsonPromptSources sources = StreamJsonPromptSourcesSecrets.getStreamJsonPromptSourcesAccess().
+			newStreamJsonPromptSources(JSON,
 			Map.of("<run>", Path.of(run)));
 		for (String line : lines)
 			sources.accept(line);
@@ -244,7 +245,8 @@ public final class StreamJsonPromptSourcesTest
 	public void recordsExplicitValueWhenNothingSeen()
 	{
 		// Requirement: R-M1
-		StreamJsonPromptSources sources = StreamJsonPromptSourcesSecrets.access().newStreamJsonPromptSources(JSON,
+		StreamJsonPromptSources sources = StreamJsonPromptSourcesSecrets.getStreamJsonPromptSourcesAccess().
+			newStreamJsonPromptSources(JSON,
 			Map.of());
 		sources.accept("{\"type\":\"assistant\"}");
 		requireThat(sources.value(), "value").isEqualTo("none");

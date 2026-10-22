@@ -95,7 +95,7 @@ public final class ModuleDescriptorPatcherTest
 	 */
 	private static ModuleDescriptorPatcherAccess access()
 	{
-		return ModuleDescriptorPatcherSecrets.access();
+		return ModuleDescriptorPatcherSecrets.getModuleDescriptorPatcherAccess();
 	}
 
 	/**

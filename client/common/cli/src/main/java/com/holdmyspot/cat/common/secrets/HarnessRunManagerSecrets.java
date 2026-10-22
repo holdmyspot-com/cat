@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
  */
 public final class HarnessRunManagerSecrets
 {
-	private static HarnessRunManagerAccess access;
+	private static HarnessRunManagerAccess harnessRunManagerAccess;
 
 	/**
-	 * Returns the HarnessRunManager access point.
+	 * Returns the {@link HarnessRunManager} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code HarnessRunManager} cannot initialize or fails to register access
 	 */
-	public static HarnessRunManagerAccess access()
+	public static HarnessRunManagerAccess getHarnessRunManagerAccess()
 	{
+		HarnessRunManagerAccess access = harnessRunManagerAccess;
 		if (access == null)
-			initialize(HarnessRunManager.class);
-		if (access == null)
-			throw new AssertionError("HarnessRunManager did not register its access point");
+		{
+			ensureClassInitialized(HarnessRunManager.class);
+			access = harnessRunManagerAccess;
+			if (access == null)
+				throw new AssertionError(HarnessRunManager.class.getName() + " did not register HarnessRunManagerAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link HarnessRunManager}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setHarnessRunManagerAccess(HarnessRunManagerAccess access)
+	{
+		harnessRunManagerAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the HarnessRunManager access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(HarnessRunManagerAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("HarnessRunManager access point is already registered");
-		access = newAccess;
 	}
 
 	/**

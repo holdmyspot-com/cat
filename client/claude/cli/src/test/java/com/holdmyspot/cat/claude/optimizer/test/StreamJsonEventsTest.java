@@ -59,7 +59,7 @@ public final class StreamJsonEventsTest
 	 */
 	private static HarnessEvents parse(List<String> lines)
 	{
-		HarnessEvents events = StreamJsonEventsSecrets.access().newStreamJsonEvents(JSON);
+		HarnessEvents events = StreamJsonEventsSecrets.getStreamJsonEventsAccess().newStreamJsonEvents(JSON);
 		for (String line : lines)
 			events.accept(line);
 		return events;

@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.runner.HarnessOneShotOptions;
 
@@ -9,50 +9,54 @@ import com.holdmyspot.cat.common.runner.HarnessOneShotOptions;
  */
 public final class HarnessOneShotOptionsSecrets
 {
-	private static HarnessOneShotOptionsAccess access;
+	private static HarnessOneShotOptionsAccess harnessOneShotOptionsAccess;
 
 	/**
-	 * Returns the HarnessOneShotOptions access point.
+	 * Returns the {@link HarnessOneShotOptions} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code HarnessOneShotOptions} cannot initialize or fails to register access
 	 */
-	public static HarnessOneShotOptionsAccess access()
+	public static HarnessOneShotOptionsAccess getHarnessOneShotOptionsAccess()
 	{
+		HarnessOneShotOptionsAccess access = harnessOneShotOptionsAccess;
 		if (access == null)
-			initialize(HarnessOneShotOptions.class);
-		if (access == null)
-			throw new AssertionError("HarnessOneShotOptions did not register its access point");
+		{
+			ensureClassInitialized(HarnessOneShotOptions.class);
+			access = harnessOneShotOptionsAccess;
+			if (access == null)
+				throw new AssertionError(HarnessOneShotOptions.class.getName() + " did not register " +
+					"HarnessOneShotOptionsAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link HarnessOneShotOptions}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setHarnessOneShotOptionsAccess(HarnessOneShotOptionsAccess access)
+	{
+		harnessOneShotOptionsAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the HarnessOneShotOptions access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(HarnessOneShotOptionsAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("HarnessOneShotOptions access point is already registered");
-		access = newAccess;
 	}
 
 	/**

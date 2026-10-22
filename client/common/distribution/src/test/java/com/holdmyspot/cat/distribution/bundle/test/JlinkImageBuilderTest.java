@@ -64,7 +64,7 @@ public final class JlinkImageBuilderTest
 			FakeToolProvider tool = new FakeToolProvider(0, "");
 			Path output = cleanup.add(Files.createTempDirectory("jlink-builder-test"));
 			Files.delete(output);
-			JlinkImageBuilder builder = JlinkImageBuilderSecrets.access().create(tool);
+			JlinkImageBuilder builder = JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().create(tool);
 			builder.build(List.of(Path.of("b.jar"), Path.of("a.jar")), Set.of("second", "first"),
 				List.of(new JlinkImageBuilder.Launcher("plugin-info", "first", "example.Main")), output);
 
@@ -87,7 +87,7 @@ public final class JlinkImageBuilderTest
 			FakeToolProvider tool = new FakeToolProvider(0, "");
 			Path output = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
 			Files.delete(output);
-			JlinkImageBuilder builder = JlinkImageBuilderSecrets.access().create(tool);
+			JlinkImageBuilder builder = JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().create(tool);
 			builder.build(List.of(Path.of("app.jar")), Set.of("app"),
 				List.of(new JlinkImageBuilder.Launcher("read-part", "jdk.compiler", "com.sun.tools.javac.Main")), output);
 
@@ -111,7 +111,7 @@ public final class JlinkImageBuilderTest
 			FakeToolProvider tool = new FakeToolProvider(0, "");
 			Path output = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
 			Files.delete(output);
-			JlinkImageBuilder builder = JlinkImageBuilderSecrets.access().create(tool);
+			JlinkImageBuilder builder = JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().create(tool);
 			builder.build(List.of(Path.of("app.jar")), Set.of("app"),
 				List.of(new JlinkImageBuilder.Launcher("read-part", "app", "example.Main")), output);
 
@@ -135,7 +135,8 @@ public final class JlinkImageBuilderTest
 			Path output = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
 			Files.delete(output);
 			JlinkImageBuilder.Launcher launcher = new JlinkImageBuilder.Launcher("read-part", "app", "example.Main");
-			JlinkImageBuilderSecrets.access().create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),
+			JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().
+				create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),
 				Set.of("app"), List.of(launcher), output);
 			Files.delete(output.resolve("bin/read-part.bat"));
 			try
@@ -210,7 +211,8 @@ public final class JlinkImageBuilderTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
 			Path image = plugin.resolve("client");
-			JlinkImageBuilderSecrets.access().create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),
+			JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().
+				create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),
 				Set.of("app"), List.of(new JlinkImageBuilder.Launcher("read-part", "app", "example.Main"),
 					new JlinkImageBuilder.Launcher("session-start", "app", "example.Hook")), image);
 
@@ -236,7 +238,8 @@ public final class JlinkImageBuilderTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
 			Path image = plugin.resolve("client");
-			JlinkImageBuilderSecrets.access().create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),
+			JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().
+				create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),
 				Set.of("app"), List.of(new JlinkImageBuilder.Launcher("read-part", "app", "example.Main")), image);
 			try
 			{
@@ -258,7 +261,8 @@ public final class JlinkImageBuilderTest
 	{
 		try
 		{
-			JlinkImageBuilderSecrets.access().create(new FakeToolProvider(7, "bad module")).build(List.of(Path.of("app.jar")),
+			JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().
+				create(new FakeToolProvider(7, "bad module")).build(List.of(Path.of("app.jar")),
 				Set.of("app"), List.of(), Path.of("target/runtime"));
 			throw new AssertionError("Expected jlink failure");
 		}

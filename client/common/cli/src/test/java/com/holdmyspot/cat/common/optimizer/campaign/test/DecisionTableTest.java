@@ -422,7 +422,7 @@ public final class DecisionTableTest
 	public void endedAttemptCannotEndAgain()
 	{
 		// Requirement: R-F2
-		CertificationAttemptSecrets.access().end(new Builder().confirmed().certificationAttempt(1).
+		CertificationAttemptSecrets.getCertificationAttemptAccess().end(new Builder().confirmed().certificationAttempt(1).
 			outcome(Outcome.INCONCLUSIVE).build().attempt(1), Outcome.CERTIFIED);
 	}
 

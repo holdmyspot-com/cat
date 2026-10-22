@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.optimizer.campaign.TrialAdoption;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialAdoption;
  */
 public final class TrialAdoptionSecrets
 {
-	private static TrialAdoptionAccess access;
+	private static TrialAdoptionAccess trialAdoptionAccess;
 
 	/**
-	 * Returns the TrialAdoption access point.
+	 * Returns the {@link TrialAdoption} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code TrialAdoption} cannot initialize or fails to register access
 	 */
-	public static TrialAdoptionAccess access()
+	public static TrialAdoptionAccess getTrialAdoptionAccess()
 	{
+		TrialAdoptionAccess access = trialAdoptionAccess;
 		if (access == null)
-			initialize(TrialAdoption.class);
-		if (access == null)
-			throw new AssertionError("TrialAdoption did not register its access point");
+		{
+			ensureClassInitialized(TrialAdoption.class);
+			access = trialAdoptionAccess;
+			if (access == null)
+				throw new AssertionError(TrialAdoption.class.getName() + " did not register TrialAdoptionAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link TrialAdoption}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setTrialAdoptionAccess(TrialAdoptionAccess access)
+	{
+		trialAdoptionAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the TrialAdoption access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(TrialAdoptionAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("TrialAdoption access point is already registered");
-		access = newAccess;
 	}
 
 	/**

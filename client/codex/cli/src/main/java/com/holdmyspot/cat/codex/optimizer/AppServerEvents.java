@@ -53,7 +53,7 @@ public final class AppServerEvents extends HarnessEvents
 {
 	static
 	{
-		AppServerEventsSecrets.setAccess(new AppServerEventsAccess()
+		AppServerEventsSecrets.setAppServerEventsAccess(new AppServerEventsAccess()
 		{
 			@Override
 			public AppServerEvents newAppServerEvents(JsonMapper json)

@@ -53,7 +53,7 @@ public final class EventSinkTest
 				"cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
-			try (EventSink sink = EventSinkSecrets.access().newEventSink(JSON, new TestSessions.Events(JSON),
+			try (EventSink sink = EventSinkSecrets.getEventSinkAccess().newEventSink(JSON, new TestSessions.Events(JSON),
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
@@ -67,7 +67,7 @@ public final class EventSinkTest
 			requireThat(received, "received").isEqualTo(List.of(new Message.Started("r"),
 				new TurnCompleted(List.of("done"))));
 			Path transcript = harnessDirectory.resolve("r").resolve("artifacts").
-				resolve(EventSinkSecrets.access().transcript());
+				resolve(EventSinkSecrets.getEventSinkAccess().transcript());
 			requireThat(Files.readString(transcript, UTF_8), "transcript").isEmpty();
 		}
 	}
@@ -87,7 +87,7 @@ public final class EventSinkTest
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))), "cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
-			try (EventSink sink = EventSinkSecrets.access().newEventSink(JSON, new TestSessions.Events(JSON),
+			try (EventSink sink = EventSinkSecrets.getEventSinkAccess().newEventSink(JSON, new TestSessions.Events(JSON),
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
@@ -116,7 +116,7 @@ public final class EventSinkTest
 				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))), "cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
-			try (EventSink sink = EventSinkSecrets.access().newEventSink(JSON, new TestSessions.Events(JSON),
+			try (EventSink sink = EventSinkSecrets.getEventSinkAccess().newEventSink(JSON, new TestSessions.Events(JSON),
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
@@ -152,7 +152,7 @@ public final class EventSinkTest
 		expectedExceptionsMessageRegExp = ".*assistant_messages.*")
 	public void rejectsMalformedMessages(String value) throws IOException
 	{
-		try (EventSink sink = EventSinkSecrets.access().newEventSink(JSON, new TestSessions.Events(JSON),
+		try (EventSink sink = EventSinkSecrets.getEventSinkAccess().newEventSink(JSON, new TestSessions.Events(JSON),
 			directories -> new TestSessions.Sources(JSON, directories), Path.of("runs"), Map.of(),
 			new LinkedBlockingQueue<>()))
 		{
@@ -177,7 +177,7 @@ public final class EventSinkTest
 				"cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
-			try (EventSink sink = EventSinkSecrets.access().newEventSink(JSON, new TestSessions.Events(JSON),
+			try (EventSink sink = EventSinkSecrets.getEventSinkAccess().newEventSink(JSON, new TestSessions.Events(JSON),
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
@@ -187,7 +187,7 @@ public final class EventSinkTest
 			}
 
 			Path transcript = harnessDirectory.resolve("r").resolve("artifacts").
-				resolve(EventSinkSecrets.access().transcript());
+				resolve(EventSinkSecrets.getEventSinkAccess().transcript());
 			requireThat(Files.readString(transcript, UTF_8), "transcript").isEqualTo("{\"type\":\"system\"}\n");
 		}
 	}

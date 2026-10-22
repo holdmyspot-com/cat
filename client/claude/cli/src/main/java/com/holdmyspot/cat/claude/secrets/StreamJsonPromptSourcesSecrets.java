@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.claude.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.claude.optimizer.StreamJsonPromptSources;
 
@@ -9,50 +9,54 @@ import com.holdmyspot.cat.claude.optimizer.StreamJsonPromptSources;
  */
 public final class StreamJsonPromptSourcesSecrets
 {
-	private static StreamJsonPromptSourcesAccess access;
+	private static StreamJsonPromptSourcesAccess streamJsonPromptSourcesAccess;
 
 	/**
-	 * Returns the StreamJsonPromptSources access point.
+	 * Returns the {@link StreamJsonPromptSources} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code StreamJsonPromptSources} cannot initialize or fails to register access
 	 */
-	public static StreamJsonPromptSourcesAccess access()
+	public static StreamJsonPromptSourcesAccess getStreamJsonPromptSourcesAccess()
 	{
+		StreamJsonPromptSourcesAccess access = streamJsonPromptSourcesAccess;
 		if (access == null)
-			initialize(StreamJsonPromptSources.class);
-		if (access == null)
-			throw new AssertionError("StreamJsonPromptSources did not register its access point");
+		{
+			ensureClassInitialized(StreamJsonPromptSources.class);
+			access = streamJsonPromptSourcesAccess;
+			if (access == null)
+				throw new AssertionError(StreamJsonPromptSources.class.getName() + " did not register " +
+					"StreamJsonPromptSourcesAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link StreamJsonPromptSources}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setStreamJsonPromptSourcesAccess(StreamJsonPromptSourcesAccess access)
+	{
+		streamJsonPromptSourcesAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the StreamJsonPromptSources access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(StreamJsonPromptSourcesAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("StreamJsonPromptSources access point is already registered");
-		access = newAccess;
 	}
 
 	/**

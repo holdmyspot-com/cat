@@ -36,7 +36,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 {
 	static
 	{
-		CodexOptimizerCommandScopeSecrets.setAccess(new CodexOptimizerCommandScopeAccess()
+		CodexOptimizerCommandScopeSecrets.setCodexOptimizerCommandScopeAccess(new CodexOptimizerCommandScopeAccess()
 		{
 			@Override
 			public CodexOptimizerCommandScope newCodexOptimizerCommandScope(Map<String, String> environment, Path home,

@@ -54,7 +54,8 @@ public final class AppServerPromptSourcesTest
 	 */
 	private static String observe(List<String> lines, String run)
 	{
-		AppServerPromptSources sources = AppServerPromptSourcesSecrets.access().newAppServerPromptSources(JSON,
+		AppServerPromptSources sources = AppServerPromptSourcesSecrets.getAppServerPromptSourcesAccess().
+			newAppServerPromptSources(JSON,
 			Map.of("<run>", Path.of(run)));
 		for (String line : lines)
 			sources.accept(line);
@@ -166,7 +167,8 @@ public final class AppServerPromptSourcesTest
 	public void recordsExplicitValueWhenNothingSeen()
 	{
 		// Requirement: R-M1
-		AppServerPromptSources sources = AppServerPromptSourcesSecrets.access().newAppServerPromptSources(JSON, Map.of());
+		AppServerPromptSources sources = AppServerPromptSourcesSecrets.getAppServerPromptSourcesAccess().
+			newAppServerPromptSources(JSON, Map.of());
 		sources.accept("{\"method\":\"item/started\"}");
 		requireThat(sources.value(), "value").isEqualTo("none");
 	}

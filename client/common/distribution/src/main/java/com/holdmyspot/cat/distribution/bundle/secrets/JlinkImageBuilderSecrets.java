@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.distribution.bundle.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
  */
 public final class JlinkImageBuilderSecrets
 {
-	private static JlinkImageBuilderAccess access;
+	private static JlinkImageBuilderAccess jlinkImageBuilderAccess;
 
 	/**
-	 * Returns the jlink-image-builder access point.
+	 * Returns the {@link JlinkImageBuilder} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code JlinkImageBuilder} cannot initialize or fails to register access
 	 */
-	public static JlinkImageBuilderAccess access()
+	public static JlinkImageBuilderAccess getJlinkImageBuilderAccess()
 	{
+		JlinkImageBuilderAccess access = jlinkImageBuilderAccess;
 		if (access == null)
-			initialize(JlinkImageBuilder.class);
-		if (access == null)
-			throw new AssertionError("JlinkImageBuilder did not register its access point");
+		{
+			ensureClassInitialized(JlinkImageBuilder.class);
+			access = jlinkImageBuilderAccess;
+			if (access == null)
+				throw new AssertionError(JlinkImageBuilder.class.getName() + " did not register JlinkImageBuilderAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link JlinkImageBuilder}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setJlinkImageBuilderAccess(JlinkImageBuilderAccess access)
+	{
+		jlinkImageBuilderAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the jlink-image-builder access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(JlinkImageBuilderAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("JlinkImageBuilder access point is already registered");
-		access = newAccess;
 	}
 
 	/**

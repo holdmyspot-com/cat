@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.optimizer.adapter.EventSink;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.common.optimizer.adapter.EventSink;
  */
 public final class EventSinkSecrets
 {
-	private static EventSinkAccess access;
+	private static EventSinkAccess eventSinkAccess;
 
 	/**
-	 * Returns the EventSink access point.
+	 * Returns the {@link EventSink} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code EventSink} cannot initialize or fails to register access
 	 */
-	public static EventSinkAccess access()
+	public static EventSinkAccess getEventSinkAccess()
 	{
+		EventSinkAccess access = eventSinkAccess;
 		if (access == null)
-			initialize(EventSink.class);
-		if (access == null)
-			throw new AssertionError("EventSink did not register its access point");
+		{
+			ensureClassInitialized(EventSink.class);
+			access = eventSinkAccess;
+			if (access == null)
+				throw new AssertionError(EventSink.class.getName() + " did not register EventSinkAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link EventSink}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setEventSinkAccess(EventSinkAccess access)
+	{
+		eventSinkAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the EventSink access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(EventSinkAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("EventSink access point is already registered");
-		access = newAccess;
 	}
 
 	/**

@@ -207,7 +207,7 @@ public final class PromotionTest
 		for (PromotionRun run : attempt.runs())
 		{
 			if (run.role() == Role.TRIGGERING && records.stream().noneMatch(record ->
-				PromotionSecrets.access().isSameTestCase(record.testCase(), run.testCase())))
+				PromotionSecrets.getPromotionAccess().isSameTestCase(record.testCase(), run.testCase())))
 			{
 				records.add(new TestCaseOutcomes(run.testCase(), 0, 4));
 			}

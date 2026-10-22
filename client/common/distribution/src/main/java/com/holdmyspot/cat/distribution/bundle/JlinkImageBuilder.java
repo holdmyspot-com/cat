@@ -40,7 +40,7 @@ public final class JlinkImageBuilder
 
 	static
 	{
-		JlinkImageBuilderSecrets.setAccess(JlinkImageBuilder::new);
+		JlinkImageBuilderSecrets.setJlinkImageBuilderAccess(JlinkImageBuilder::new);
 	}
 
 	/**

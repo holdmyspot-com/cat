@@ -30,7 +30,7 @@ public final class PromptOptimizerLauncherTest
 	public void claudeImageHasLauncher() throws ClassNotFoundException, NoSuchMethodException
 	{
 		// Requirement: R-I4
-		verify(DistributionMainSecrets.access().claudeLaunchers(), "com.holdmyspot.cat.claude.cli",
+		verify(DistributionMainSecrets.getDistributionMainAccess().claudeLaunchers(), "com.holdmyspot.cat.claude.cli",
 			"com.holdmyspot.cat.claude.optimizer.ClaudePromptOptimizer");
 	}
 
@@ -44,7 +44,7 @@ public final class PromptOptimizerLauncherTest
 	public void codexImageHasLauncher() throws ClassNotFoundException, NoSuchMethodException
 	{
 		// Requirement: R-I4
-		verify(DistributionMainSecrets.access().codexLaunchers(), "com.holdmyspot.cat.codex.cli",
+		verify(DistributionMainSecrets.getDistributionMainAccess().codexLaunchers(), "com.holdmyspot.cat.codex.cli",
 			"com.holdmyspot.cat.codex.optimizer.CodexPromptOptimizer");
 	}
 

@@ -30,7 +30,7 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 {
 	static
 	{
-		RoundSecrets.setAccess(new RoundAccess()
+		RoundSecrets.setRoundAccess(new RoundAccess()
 		{
 			@Override
 			public Round reserve(Round round, int number, String cell)

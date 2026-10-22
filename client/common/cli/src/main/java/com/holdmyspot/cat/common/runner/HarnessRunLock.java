@@ -24,7 +24,7 @@ public final class HarnessRunLock implements AutoCloseable
 {
 	static
 	{
-		HarnessRunLockSecrets.setAccess(new HarnessRunLockAccess()
+		HarnessRunLockSecrets.setHarnessRunLockAccess(new HarnessRunLockAccess()
 		{
 			@Override
 			public HarnessRunLock acquire(Path file, LockFileOpener opener) throws IOException

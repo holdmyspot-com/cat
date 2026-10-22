@@ -36,7 +36,7 @@ public final class TrialAdoption
 {
 	static
 	{
-		TrialAdoptionSecrets.setAccess(new TrialAdoptionAccess()
+		TrialAdoptionSecrets.setTrialAdoptionAccess(new TrialAdoptionAccess()
 		{
 			@Override
 			public Round failingRound(Map<String, CellCounts> counts, List<Cell> developmentCells, String required)

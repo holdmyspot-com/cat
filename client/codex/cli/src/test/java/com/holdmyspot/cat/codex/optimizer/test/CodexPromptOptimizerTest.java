@@ -85,7 +85,7 @@ public final class CodexPromptOptimizerTest
 		int exit;
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			try (CodexOptimizerCommandScope scope = CodexOptimizerCommandScopeSecrets.access().
+			try (CodexOptimizerCommandScope scope = CodexOptimizerCommandScopeSecrets.getCodexOptimizerCommandScopeAccess().
 				newCodexOptimizerCommandScope(environment, setup.home(), setup.root(), setup.home().resolve("artifact")))
 			{
 				exit = PromptOptimizerCli.run(scope, args, ZoneOffset.UTC, out);
@@ -147,7 +147,7 @@ public final class CodexPromptOptimizerTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Path configuration = scope.add(Files.createTempDirectory("codex-optimizer-config"));
-			HostInterruptSignal signal = CodexOptimizerCommandScopeSecrets.access().interrupts(
+			HostInterruptSignal signal = CodexOptimizerCommandScopeSecrets.getCodexOptimizerCommandScopeAccess().interrupts(
 				Map.of("CODEX_THREAD_ID", "session-1"), configuration, Clock.systemUTC());
 			IOException failure = null;
 			try
@@ -177,7 +177,7 @@ public final class CodexPromptOptimizerTest
 			Path configuration = scope.add(Files.createTempDirectory("codex-optimizer-config"));
 			Path sessions = Files.createDirectories(configuration.resolve("sessions").resolve("2026"));
 			Files.writeString(sessions.resolve("rollout-2026-10-01T00-00-00-session-1.jsonl"), "");
-			HostInterruptSignal signal = CodexOptimizerCommandScopeSecrets.access().interrupts(
+			HostInterruptSignal signal = CodexOptimizerCommandScopeSecrets.getCodexOptimizerCommandScopeAccess().interrupts(
 				Map.of("CODEX_THREAD_ID", "session-1"), configuration, Clock.systemUTC());
 			requireThat(signal.isInterruptedAfter(Instant.EPOCH), "interrupted").isFalse();
 		}

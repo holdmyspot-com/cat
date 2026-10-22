@@ -40,7 +40,8 @@ public final class CodexGetHistoryTest
 				"rollout-2026-08-14T01-00-00-" + threadId + ".jsonl");
 			Files.writeString(transcript, "{\"type\":\"session_meta\"}\n");
 
-			String result = CodexGetHistorySecrets.access().execute(Map.of("CODEX_HOME", codexHome.toString()),
+			String result = CodexGetHistorySecrets.getCodexGetHistoryAccess().
+				execute(Map.of("CODEX_HOME", codexHome.toString()),
 				new String[]{threadId, "analyze"});
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
@@ -64,7 +65,8 @@ public final class CodexGetHistoryTest
 				"rollout-2026-08-14T01-00-00-" + threadId + ".jsonl");
 			Files.writeString(transcript, "{\"type\":\"session_meta\"}\n");
 
-			String result = CodexGetHistorySecrets.access().execute(Map.of(Platform.current().homeVariable(),
+			String result = CodexGetHistorySecrets.getCodexGetHistoryAccess().
+				execute(Map.of(Platform.current().homeVariable(),
 				home.toString()), new String[]{threadId, "analyze"});
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
@@ -80,7 +82,8 @@ public final class CodexGetHistoryTest
 	public void rejectsMissingCodexHomeAndHome() throws IOException
 	{
 		// Requirement: R-I5
-		CodexGetHistorySecrets.access().execute(Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
+		CodexGetHistorySecrets.getCodexGetHistoryAccess().
+			execute(Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
 	}
 
 	/**
@@ -90,6 +93,7 @@ public final class CodexGetHistoryTest
 		expectedExceptionsMessageRegExp = "Thread ID must be a UUID: not-a-uuid")
 	public void rejectsInvalidRequestedThreadId() throws IOException
 	{
-		CodexGetHistorySecrets.access().execute(Map.of("CODEX_HOME", "/unused"), new String[]{"not-a-uuid", "analyze"});
+		CodexGetHistorySecrets.getCodexGetHistoryAccess().
+			execute(Map.of("CODEX_HOME", "/unused"), new String[]{"not-a-uuid", "analyze"});
 	}
 }

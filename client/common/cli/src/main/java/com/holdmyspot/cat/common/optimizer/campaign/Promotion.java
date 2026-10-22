@@ -30,7 +30,7 @@ public final class Promotion
 {
 	static
 	{
-		PromotionSecrets.setAccess(new PromotionAccess()
+		PromotionSecrets.setPromotionAccess(new PromotionAccess()
 		{
 			@Override
 			public boolean isSameTestCase(DrawnTestCase first, DrawnTestCase second)

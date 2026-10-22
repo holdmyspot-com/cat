@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.claude.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.claude.optimizer.ClaudeSessions;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.claude.optimizer.ClaudeSessions;
  */
 public final class ClaudeSessionsSecrets
 {
-	private static ClaudeSessionsAccess access;
+	private static ClaudeSessionsAccess claudeSessionsAccess;
 
 	/**
-	 * Returns the ClaudeSessions access point.
+	 * Returns the {@link ClaudeSessions} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code ClaudeSessions} cannot initialize or fails to register access
 	 */
-	public static ClaudeSessionsAccess access()
+	public static ClaudeSessionsAccess getClaudeSessionsAccess()
 	{
+		ClaudeSessionsAccess access = claudeSessionsAccess;
 		if (access == null)
-			initialize(ClaudeSessions.class);
-		if (access == null)
-			throw new AssertionError("ClaudeSessions did not register its access point");
+		{
+			ensureClassInitialized(ClaudeSessions.class);
+			access = claudeSessionsAccess;
+			if (access == null)
+				throw new AssertionError(ClaudeSessions.class.getName() + " did not register ClaudeSessionsAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link ClaudeSessions}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setClaudeSessionsAccess(ClaudeSessionsAccess access)
+	{
+		claudeSessionsAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the ClaudeSessions access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(ClaudeSessionsAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("ClaudeSessions access point is already registered");
-		access = newAccess;
 	}
 
 	/**

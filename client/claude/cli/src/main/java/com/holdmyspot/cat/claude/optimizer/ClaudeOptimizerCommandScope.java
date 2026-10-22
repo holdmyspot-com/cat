@@ -38,7 +38,7 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 {
 	static
 	{
-		ClaudeOptimizerCommandScopeSecrets.setAccess(new ClaudeOptimizerCommandScopeAccess()
+		ClaudeOptimizerCommandScopeSecrets.setClaudeOptimizerCommandScopeAccess(new ClaudeOptimizerCommandScopeAccess()
 		{
 			@Override
 			public ClaudeOptimizerCommandScope newClaudeOptimizerCommandScope(Map<String, String> environment, Path home,

@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
 
@@ -9,50 +9,54 @@ import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
  */
 public final class HarnessProjectRepositorySecrets
 {
-	private static HarnessProjectRepositoryAccess access;
+	private static HarnessProjectRepositoryAccess harnessProjectRepositoryAccess;
 
 	/**
-	 * Returns the HarnessProjectRepository access point.
+	 * Returns the {@link HarnessProjectRepository} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code HarnessProjectRepository} cannot initialize or fails to register access
 	 */
-	public static HarnessProjectRepositoryAccess access()
+	public static HarnessProjectRepositoryAccess getHarnessProjectRepositoryAccess()
 	{
+		HarnessProjectRepositoryAccess access = harnessProjectRepositoryAccess;
 		if (access == null)
-			initialize(HarnessProjectRepository.class);
-		if (access == null)
-			throw new AssertionError("HarnessProjectRepository did not register its access point");
+		{
+			ensureClassInitialized(HarnessProjectRepository.class);
+			access = harnessProjectRepositoryAccess;
+			if (access == null)
+				throw new AssertionError(HarnessProjectRepository.class.getName() + " did not register " +
+					"HarnessProjectRepositoryAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link HarnessProjectRepository}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setHarnessProjectRepositoryAccess(HarnessProjectRepositoryAccess access)
+	{
+		harnessProjectRepositoryAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the HarnessProjectRepository access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(HarnessProjectRepositoryAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("HarnessProjectRepository access point is already registered");
-		access = newAccess;
 	}
 
 	/**

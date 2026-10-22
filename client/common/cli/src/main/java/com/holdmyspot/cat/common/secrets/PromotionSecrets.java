@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
  */
 public final class PromotionSecrets
 {
-	private static PromotionAccess access;
+	private static PromotionAccess promotionAccess;
 
 	/**
-	 * Returns the Promotion access point.
+	 * Returns the {@link Promotion} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code Promotion} cannot initialize or fails to register access
 	 */
-	public static PromotionAccess access()
+	public static PromotionAccess getPromotionAccess()
 	{
+		PromotionAccess access = promotionAccess;
 		if (access == null)
-			initialize(Promotion.class);
-		if (access == null)
-			throw new AssertionError("Promotion did not register its access point");
+		{
+			ensureClassInitialized(Promotion.class);
+			access = promotionAccess;
+			if (access == null)
+				throw new AssertionError(Promotion.class.getName() + " did not register PromotionAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link Promotion}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setPromotionAccess(PromotionAccess access)
+	{
+		promotionAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the Promotion access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(PromotionAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("Promotion access point is already registered");
-		access = newAccess;
 	}
 
 	/**

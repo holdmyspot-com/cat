@@ -42,7 +42,7 @@ public abstract class OptimizerCommandScope implements AutoCloseable
 {
 	static
 	{
-		OptimizerCommandScopeSecrets.setAccess(new OptimizerCommandScopeAccess()
+		OptimizerCommandScopeSecrets.setOptimizerCommandScopeAccess(new OptimizerCommandScopeAccess()
 		{
 			@Override
 			public SliceSettings sliceSettings(OptimizerCommandScope scope)

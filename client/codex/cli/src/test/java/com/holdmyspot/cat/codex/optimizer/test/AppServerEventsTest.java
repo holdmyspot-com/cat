@@ -90,7 +90,7 @@ public final class AppServerEventsTest
 	 */
 	private static HarnessEvents parse(List<String> lines)
 	{
-		HarnessEvents events = AppServerEventsSecrets.access().newAppServerEvents(JSON);
+		HarnessEvents events = AppServerEventsSecrets.getAppServerEventsAccess().newAppServerEvents(JSON);
 		for (String line : lines)
 			events.accept(line);
 		return events;

@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.claude.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.claude.optimizer.ClaudeOptimizerCommandScope;
 
@@ -9,50 +9,54 @@ import com.holdmyspot.cat.claude.optimizer.ClaudeOptimizerCommandScope;
  */
 public final class ClaudeOptimizerCommandScopeSecrets
 {
-	private static ClaudeOptimizerCommandScopeAccess access;
+	private static ClaudeOptimizerCommandScopeAccess claudeOptimizerCommandScopeAccess;
 
 	/**
-	 * Returns the ClaudeOptimizerCommandScope access point.
+	 * Returns the {@link ClaudeOptimizerCommandScope} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code ClaudeOptimizerCommandScope} cannot initialize or fails to register access
 	 */
-	public static ClaudeOptimizerCommandScopeAccess access()
+	public static ClaudeOptimizerCommandScopeAccess getClaudeOptimizerCommandScopeAccess()
 	{
+		ClaudeOptimizerCommandScopeAccess access = claudeOptimizerCommandScopeAccess;
 		if (access == null)
-			initialize(ClaudeOptimizerCommandScope.class);
-		if (access == null)
-			throw new AssertionError("ClaudeOptimizerCommandScope did not register its access point");
+		{
+			ensureClassInitialized(ClaudeOptimizerCommandScope.class);
+			access = claudeOptimizerCommandScopeAccess;
+			if (access == null)
+				throw new AssertionError(ClaudeOptimizerCommandScope.class.getName() + " did not register " +
+					"ClaudeOptimizerCommandScopeAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link ClaudeOptimizerCommandScope}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setClaudeOptimizerCommandScopeAccess(ClaudeOptimizerCommandScopeAccess access)
+	{
+		claudeOptimizerCommandScopeAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the ClaudeOptimizerCommandScope access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(ClaudeOptimizerCommandScopeAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("ClaudeOptimizerCommandScope access point is already registered");
-		access = newAccess;
 	}
 
 	/**

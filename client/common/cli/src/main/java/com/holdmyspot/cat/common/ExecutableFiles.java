@@ -27,7 +27,7 @@ public final class ExecutableFiles
 {
 	static
 	{
-		ExecutableFilesSecrets.setAccess(new ExecutableFilesAccess()
+		ExecutableFilesSecrets.setExecutableFilesAccess(new ExecutableFilesAccess()
 		{
 			@Override
 			public Process run(ExecutableFiles executables, ExecutableFiles.ProcessStart start) throws IOException

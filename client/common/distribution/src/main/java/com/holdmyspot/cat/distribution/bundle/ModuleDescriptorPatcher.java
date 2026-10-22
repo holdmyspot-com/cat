@@ -23,7 +23,7 @@ public final class ModuleDescriptorPatcher
 {
 	static
 	{
-		ModuleDescriptorPatcherSecrets.setAccess((javac, jar, source, destination, moduleName,
+		ModuleDescriptorPatcherSecrets.setModuleDescriptorPatcherAccess((javac, jar, source, destination, moduleName,
 		exportedPackages) -> new ModuleDescriptorPatcher(javac, jar).patch(source, destination, moduleName,
 			exportedPackages));
 	}

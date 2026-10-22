@@ -29,7 +29,8 @@ public final class HarnessProjectRepositoryTest
 	@Test
 	public void commitsAllAfterDisablingMaintenance()
 	{
-		requireThat(HarnessProjectRepositorySecrets.access().commands(), "commands").isEqualTo(List.of(
+		requireThat(HarnessProjectRepositorySecrets.getHarnessProjectRepositoryAccess().
+			commands(), "commands").isEqualTo(List.of(
 			List.of("git", "init", "--quiet"),
 			List.of("git", "config", "maintenance.auto", "false"),
 			List.of("git", "config", "gc.auto", "0"),
@@ -50,7 +51,8 @@ public final class HarnessProjectRepositoryTest
 		Map<String, String> parent = Map.of("PATH", "/bin", "HOME", "/home/user", "GIT_DIR", "/elsewhere",
 			"GIT_CONFIG_GLOBAL", "/home/user/.gitconfig");
 
-		Map<String, String> environment = HarnessProjectRepositorySecrets.access().environment(parent, gitHome);
+		Map<String, String> environment = HarnessProjectRepositorySecrets.getHarnessProjectRepositoryAccess().
+			environment(parent, gitHome);
 
 		requireThat(environment, "environment").isEqualTo(Map.of("PATH", "/bin", "HOME", gitHome.toString(),
 			"GIT_CONFIG_NOSYSTEM", "1", "GIT_TERMINAL_PROMPT", "0"));

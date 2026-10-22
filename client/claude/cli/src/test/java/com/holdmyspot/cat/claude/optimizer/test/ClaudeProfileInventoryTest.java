@@ -224,7 +224,8 @@ public final class ClaudeProfileInventoryTest
 		// Requirement: R-C10
 		try
 		{
-			ClaudeProfileInventorySecrets.access().parse(new ByteArrayInputStream(resource.getBytes(UTF_8)));
+			ClaudeProfileInventorySecrets.getClaudeProfileInventoryAccess().
+				parse(new ByteArrayInputStream(resource.getBytes(UTF_8)));
 		}
 		catch (IOException e)
 		{

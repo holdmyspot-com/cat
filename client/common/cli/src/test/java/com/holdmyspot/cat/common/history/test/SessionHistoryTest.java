@@ -39,7 +39,7 @@ public final class SessionHistoryTest
 				{"type":"message","text":"after"}
 				""");
 
-			String result = SessionHistorySecrets.access().search(transcript, "needle", 1);
+			String result = SessionHistorySecrets.getSessionHistoryAccess().search(transcript, "needle", 1);
 
 			requireThat(result, "result").contains("before").contains("needle").contains("after");
 		}
@@ -62,7 +62,8 @@ public final class SessionHistoryTest
 				{"type":"tool","timestamp":"2026-08-18T10:02:00Z","text":"after"}
 				""");
 
-			String result = SessionHistorySecrets.access().execute(new String[]{"summary", transcript.toString(), "--since",
+			String result = SessionHistorySecrets.getSessionHistoryAccess().
+				execute(new String[]{"summary", transcript.toString(), "--since",
 				"2026-08-18T10:00:30Z", "--type", "message", "--limit", "1"});
 
 			requireThat(result, "result").contains("records=1").contains("types=message:1").

@@ -96,9 +96,11 @@ public final class ForkTreeTest
 			writeFile(project.external().resolve("shared.md"), "edited", READ_WRITE);
 
 			requireThat(project.tree().inventory(), "inventory").isEqualTo(before);
-			requireThat(Files.readString(ForkTreeSecrets.access().physical(project.tree(), Path.of("prompt.md")), UTF_8),
+			requireThat(Files.readString(ForkTreeSecrets.getForkTreeAccess().
+				physical(project.tree(), Path.of("prompt.md")), UTF_8),
 				"promptCopy").isEqualTo("prompt");
-			Path shared = ForkTreeSecrets.access().physical(project.tree(), project.external().resolve("shared.md"));
+			Path shared = ForkTreeSecrets.getForkTreeAccess().
+				physical(project.tree(), project.external().resolve("shared.md"));
 			requireThat(Files.readString(shared, UTF_8), "externalCopy").isEqualTo("shared");
 		}
 	}

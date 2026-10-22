@@ -25,7 +25,7 @@ public final class DependencyJarTest
 	@Test
 	public void coordinatesNameTheShippedVersion()
 	{
-		String coordinates = DistributionMainSecrets.access().dependencyCoordinates("tools.jackson.core",
+		String coordinates = DistributionMainSecrets.getDistributionMainAccess().dependencyCoordinates("tools.jackson.core",
 			"jackson-core", Path.of("modules/jackson-core-3.2.3.jar"));
 		requireThat(coordinates, "coordinates").isEqualTo("tools.jackson.core:jackson-core:3.2.3");
 	}
@@ -36,7 +36,7 @@ public final class DependencyJarTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsJarOfAnotherArtifact()
 	{
-		DistributionMainSecrets.access().dependencyCoordinates("org.slf4j", "slf4j-api",
+		DistributionMainSecrets.getDistributionMainAccess().dependencyCoordinates("org.slf4j", "slf4j-api",
 			Path.of("slf4j-nop-2.0.20.jar"));
 	}
 }

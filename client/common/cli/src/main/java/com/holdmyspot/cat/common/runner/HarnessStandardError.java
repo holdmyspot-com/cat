@@ -20,7 +20,7 @@ public final class HarnessStandardError
 {
 	static
 	{
-		HarnessStandardErrorSecrets.setAccess(new HarnessStandardErrorAccess()
+		HarnessStandardErrorSecrets.setHarnessStandardErrorAccess(new HarnessStandardErrorAccess()
 		{
 			@Override
 			public int maximumDiagnosticBytes()

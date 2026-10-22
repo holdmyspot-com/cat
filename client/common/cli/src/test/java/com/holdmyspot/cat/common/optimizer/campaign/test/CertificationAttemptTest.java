@@ -27,7 +27,7 @@ public final class CertificationAttemptTest
 	{
 		// Requirement: R-F2
 		CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).build().attempt(1);
-		CertificationAttemptSecrets.access().end(attempt, null);
+		CertificationAttemptSecrets.getCertificationAttemptAccess().end(attempt, null);
 	}
 
 	/**
@@ -38,7 +38,8 @@ public final class CertificationAttemptTest
 	{
 		// Requirement: R-F2
 		CertificationAttempt attempt = new Builder().confirmed().certificationAttempt(1).build().attempt(1);
-		CertificationAttempt ended = CertificationAttemptSecrets.access().end(attempt, Outcome.INCONCLUSIVE);
+		CertificationAttempt ended = CertificationAttemptSecrets.getCertificationAttemptAccess().
+			end(attempt, Outcome.INCONCLUSIVE);
 		requireThat(ended.outcome(), "outcome").isEqualTo(Outcome.INCONCLUSIVE);
 		requireThat(ended.isRunning(), "running").isFalse();
 	}

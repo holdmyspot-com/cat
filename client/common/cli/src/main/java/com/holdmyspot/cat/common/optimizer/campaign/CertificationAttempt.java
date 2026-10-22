@@ -45,7 +45,7 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 {
 	static
 	{
-		CertificationAttemptSecrets.setAccess(new CertificationAttemptAccess()
+		CertificationAttemptSecrets.setCertificationAttemptAccess(new CertificationAttemptAccess()
 		{
 			@Override
 			public CertificationAttempt end(CertificationAttempt attempt, Outcome ending)

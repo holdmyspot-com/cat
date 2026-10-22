@@ -36,7 +36,7 @@ public final class EventSink extends Writer
 {
 	static
 	{
-		EventSinkSecrets.setAccess(new EventSinkAccess()
+		EventSinkSecrets.setEventSinkAccess(new EventSinkAccess()
 		{
 			@Override
 			public String transcript()

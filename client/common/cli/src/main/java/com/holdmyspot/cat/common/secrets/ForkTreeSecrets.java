@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.optimizer.workspace.ForkTree;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.common.optimizer.workspace.ForkTree;
  */
 public final class ForkTreeSecrets
 {
-	private static ForkTreeAccess access;
+	private static ForkTreeAccess forkTreeAccess;
 
 	/**
-	 * Returns the ForkTree access point.
+	 * Returns the {@link ForkTree} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code ForkTree} cannot initialize or fails to register access
 	 */
-	public static ForkTreeAccess access()
+	public static ForkTreeAccess getForkTreeAccess()
 	{
+		ForkTreeAccess access = forkTreeAccess;
 		if (access == null)
-			initialize(ForkTree.class);
-		if (access == null)
-			throw new AssertionError("ForkTree did not register its access point");
+		{
+			ensureClassInitialized(ForkTree.class);
+			access = forkTreeAccess;
+			if (access == null)
+				throw new AssertionError(ForkTree.class.getName() + " did not register ForkTreeAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link ForkTree}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setForkTreeAccess(ForkTreeAccess access)
+	{
+		forkTreeAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the ForkTree access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(ForkTreeAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("ForkTree access point is already registered");
-		access = newAccess;
 	}
 
 	/**

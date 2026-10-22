@@ -60,7 +60,7 @@ public final class StreamJsonPromptSources extends PromptSources
 
 	static
 	{
-		StreamJsonPromptSourcesSecrets.setAccess(new StreamJsonPromptSourcesAccess()
+		StreamJsonPromptSourcesSecrets.setStreamJsonPromptSourcesAccess(new StreamJsonPromptSourcesAccess()
 		{
 			@Override
 			public StreamJsonPromptSources newStreamJsonPromptSources(JsonMapper json, Map<String, Path> directories)

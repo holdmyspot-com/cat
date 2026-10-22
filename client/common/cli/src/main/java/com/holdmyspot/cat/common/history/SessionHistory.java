@@ -27,7 +27,7 @@ public final class SessionHistory
 {
 	static
 	{
-		SessionHistorySecrets.setAccess(new SessionHistoryAccess()
+		SessionHistorySecrets.setSessionHistoryAccess(new SessionHistoryAccess()
 		{
 			@Override
 			public String execute(String[] args) throws IOException

@@ -313,7 +313,7 @@ public final class HarnessRunManagerTest
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
-			int tooLarge = HarnessRunManagerSecrets.access().maximumManifestBytes() + 1;
+			int tooLarge = HarnessRunManagerSecrets.getHarnessRunManagerAccess().maximumManifestBytes() + 1;
 			Files.write(run.directory().resolve("run.json"), new byte[tooLarge]);
 
 			manager.deleteRun("harness", run.id());
@@ -916,7 +916,8 @@ public final class HarnessRunManagerTest
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			FakeProcessLiveness processLiveness = new FakeProcessLiveness(12_345,
 				Instant.parse("2026-07-20T00:00:01Z"));
-			HarnessRunManager oldManager = HarnessRunManagerSecrets.access().newHarnessRunManager(root, oldClock,
+			HarnessRunManager oldManager = HarnessRunManagerSecrets.getHarnessRunManagerAccess().
+				newHarnessRunManager(root, oldClock,
 				Yielding.fileReplacer(), processLiveness);
 			HarnessRun run = oldManager.create("harness");
 			oldManager.recordHarnessProcess(run, 12_345, Instant.parse("2026-07-20T00:00:01Z"));
@@ -925,7 +926,8 @@ public final class HarnessRunManagerTest
 				"\"owner_pid\": 999999");
 			Files.writeString(manifest, orphanedManifest);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = HarnessRunManagerSecrets.access().newHarnessRunManager(root, currentClock,
+			HarnessRunManager manager = HarnessRunManagerSecrets.getHarnessRunManagerAccess().
+				newHarnessRunManager(root, currentClock,
 				Yielding.fileReplacer(), processLiveness);
 
 			manager.deleteStaleRuns(Duration.ofDays(7));

@@ -31,7 +31,7 @@ public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile
 {
 	static
 	{
-		HarnessOneShotOptionsSecrets.setAccess(new HarnessOneShotOptionsAccess()
+		HarnessOneShotOptionsSecrets.setHarnessOneShotOptionsAccess(new HarnessOneShotOptionsAccess()
 		{
 			@Override
 			public int maximumPromptBytes()

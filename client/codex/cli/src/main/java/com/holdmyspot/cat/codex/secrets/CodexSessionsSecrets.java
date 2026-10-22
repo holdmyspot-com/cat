@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.codex.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.codex.optimizer.CodexSessions;
  */
 public final class CodexSessionsSecrets
 {
-	private static CodexSessionsAccess access;
+	private static CodexSessionsAccess codexSessionsAccess;
 
 	/**
-	 * Returns the CodexSessions access point.
+	 * Returns the {@link CodexSessions} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code CodexSessions} cannot initialize or fails to register access
 	 */
-	public static CodexSessionsAccess access()
+	public static CodexSessionsAccess getCodexSessionsAccess()
 	{
+		CodexSessionsAccess access = codexSessionsAccess;
 		if (access == null)
-			initialize(CodexSessions.class);
-		if (access == null)
-			throw new AssertionError("CodexSessions did not register its access point");
+		{
+			ensureClassInitialized(CodexSessions.class);
+			access = codexSessionsAccess;
+			if (access == null)
+				throw new AssertionError(CodexSessions.class.getName() + " did not register CodexSessionsAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link CodexSessions}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setCodexSessionsAccess(CodexSessionsAccess access)
+	{
+		codexSessionsAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the CodexSessions access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(CodexSessionsAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("CodexSessions access point is already registered");
-		access = newAccess;
 	}
 
 	/**

@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.claude.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.claude.optimizer.StreamJsonEvents;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.claude.optimizer.StreamJsonEvents;
  */
 public final class StreamJsonEventsSecrets
 {
-	private static StreamJsonEventsAccess access;
+	private static StreamJsonEventsAccess streamJsonEventsAccess;
 
 	/**
-	 * Returns the StreamJsonEvents access point.
+	 * Returns the {@link StreamJsonEvents} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code StreamJsonEvents} cannot initialize or fails to register access
 	 */
-	public static StreamJsonEventsAccess access()
+	public static StreamJsonEventsAccess getStreamJsonEventsAccess()
 	{
+		StreamJsonEventsAccess access = streamJsonEventsAccess;
 		if (access == null)
-			initialize(StreamJsonEvents.class);
-		if (access == null)
-			throw new AssertionError("StreamJsonEvents did not register its access point");
+		{
+			ensureClassInitialized(StreamJsonEvents.class);
+			access = streamJsonEventsAccess;
+			if (access == null)
+				throw new AssertionError(StreamJsonEvents.class.getName() + " did not register StreamJsonEventsAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link StreamJsonEvents}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setStreamJsonEventsAccess(StreamJsonEventsAccess access)
+	{
+		streamJsonEventsAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the StreamJsonEvents access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(StreamJsonEventsAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("StreamJsonEvents access point is already registered");
-		access = newAccess;
 	}
 
 	/**

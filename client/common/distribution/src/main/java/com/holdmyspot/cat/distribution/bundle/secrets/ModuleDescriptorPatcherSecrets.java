@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.distribution.bundle.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.distribution.bundle.ModuleDescriptorPatcher;
 
@@ -9,52 +9,54 @@ import com.holdmyspot.cat.distribution.bundle.ModuleDescriptorPatcher;
  */
 public final class ModuleDescriptorPatcherSecrets
 {
-	private static ModuleDescriptorPatcherAccess access;
+	private static ModuleDescriptorPatcherAccess moduleDescriptorPatcherAccess;
 
 	/**
-	 * Returns the module-descriptor patching access point.
+	 * Returns the {@link ModuleDescriptorPatcher} access point.
 	 *
 	 * @return the access point
-	 * @throws AssertionError if its owner cannot be initialized
+	 * @throws AssertionError if {@code ModuleDescriptorPatcher} cannot initialize or fails to register access
 	 */
-	public static ModuleDescriptorPatcherAccess access()
+	public static ModuleDescriptorPatcherAccess getModuleDescriptorPatcherAccess()
 	{
+		ModuleDescriptorPatcherAccess access = moduleDescriptorPatcherAccess;
 		if (access == null)
-			initialize(ModuleDescriptorPatcher.class);
-		if (access == null)
-			throw new AssertionError("ModuleDescriptorPatcher did not register its access point");
+		{
+			ensureClassInitialized(ModuleDescriptorPatcher.class);
+			access = moduleDescriptorPatcherAccess;
+			if (access == null)
+				throw new AssertionError(ModuleDescriptorPatcher.class.getName() + " did not register " +
+					"ModuleDescriptorPatcherAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link ModuleDescriptorPatcher}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setModuleDescriptorPatcherAccess(ModuleDescriptorPatcherAccess access)
+	{
+		moduleDescriptorPatcherAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
-	 * @throws AssertionError if {@code owner} cannot be initialized
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the module-descriptor patching access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(ModuleDescriptorPatcherAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("ModuleDescriptorPatcher access point is already registered");
-		access = newAccess;
 	}
 
 	/**

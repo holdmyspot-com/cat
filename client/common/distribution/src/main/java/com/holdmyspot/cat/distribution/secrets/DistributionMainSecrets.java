@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.distribution.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.distribution.DistributionMain;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.distribution.DistributionMain;
  */
 public final class DistributionMainSecrets
 {
-	private static DistributionMainAccess access;
+	private static DistributionMainAccess distributionMainAccess;
 
 	/**
-	 * Returns the distribution-main access point.
+	 * Returns the {@link DistributionMain} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code DistributionMain} cannot initialize or fails to register access
 	 */
-	public static DistributionMainAccess access()
+	public static DistributionMainAccess getDistributionMainAccess()
 	{
+		DistributionMainAccess access = distributionMainAccess;
 		if (access == null)
-			initialize(DistributionMain.class);
-		if (access == null)
-			throw new AssertionError("DistributionMain did not register its access point");
+		{
+			ensureClassInitialized(DistributionMain.class);
+			access = distributionMainAccess;
+			if (access == null)
+				throw new AssertionError(DistributionMain.class.getName() + " did not register DistributionMainAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link DistributionMain}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setDistributionMainAccess(DistributionMainAccess access)
+	{
+		distributionMainAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the distribution-main access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(DistributionMainAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("DistributionMain access point is already registered");
-		access = newAccess;
 	}
 
 	/**

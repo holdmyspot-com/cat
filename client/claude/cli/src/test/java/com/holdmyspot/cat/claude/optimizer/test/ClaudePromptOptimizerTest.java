@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.claude.optimizer.ClaudeOptimizerCommandScope;
 import com.holdmyspot.cat.claude.optimizer.ClaudePromptOptimizer;
+import com.holdmyspot.cat.claude.secrets.ClaudeOptimizerCommandScopeAccess;
 import com.holdmyspot.cat.claude.secrets.ClaudeOptimizerCommandScopeSecrets;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
@@ -85,8 +86,10 @@ public final class ClaudePromptOptimizerTest
 		int exit;
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			try (ClaudeOptimizerCommandScope scope = ClaudeOptimizerCommandScopeSecrets.access().
-				newClaudeOptimizerCommandScope(environment, setup.home(), setup.root(), setup.home().resolve("artifact")))
+			ClaudeOptimizerCommandScopeAccess access =
+				ClaudeOptimizerCommandScopeSecrets.getClaudeOptimizerCommandScopeAccess();
+			try (ClaudeOptimizerCommandScope scope = access.newClaudeOptimizerCommandScope(environment, setup.home(),
+				setup.root(), setup.home().resolve("artifact")))
 			{
 				exit = PromptOptimizerCli.run(scope, args, ZoneOffset.UTC, out);
 			}
@@ -147,7 +150,7 @@ public final class ClaudePromptOptimizerTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Path configuration = scope.add(Files.createTempDirectory("claude-optimizer-config"));
-			HostInterruptSignal signal = ClaudeOptimizerCommandScopeSecrets.access().interrupts(
+			HostInterruptSignal signal = ClaudeOptimizerCommandScopeSecrets.getClaudeOptimizerCommandScopeAccess().interrupts(
 				Map.of("CLAUDE_CODE_SESSION_ID", "session-1"), configuration, Clock.systemUTC());
 			IOException failure = null;
 			try
@@ -177,7 +180,7 @@ public final class ClaudePromptOptimizerTest
 			Path configuration = scope.add(Files.createTempDirectory("claude-optimizer-config"));
 			Path projects = Files.createDirectories(configuration.resolve("projects").resolve("p"));
 			Files.writeString(projects.resolve("session-1.jsonl"), "");
-			HostInterruptSignal signal = ClaudeOptimizerCommandScopeSecrets.access().interrupts(
+			HostInterruptSignal signal = ClaudeOptimizerCommandScopeSecrets.getClaudeOptimizerCommandScopeAccess().interrupts(
 				Map.of("CLAUDE_CODE_SESSION_ID", "session-1"), configuration, Clock.systemUTC());
 			requireThat(signal.isInterruptedAfter(Instant.EPOCH), "interrupted").isFalse();
 		}

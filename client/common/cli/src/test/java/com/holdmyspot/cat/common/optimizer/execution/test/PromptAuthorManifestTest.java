@@ -480,7 +480,8 @@ public final class PromptAuthorManifestTest
 			List.of(List.of(response)), Path.of("/effects").toAbsolutePath(), Path.of("/initial-project").toAbsolutePath(),
 			"model", null, null, List.of(), "none", List.of());
 		requireThat(prompt.report(result).isPresent(), "reader").isEqualTo(accepted);
-		String schema = PromptTemplateSecrets.access().readResource("/optimizer/prompt-author/report.schema.json");
+		String schema = PromptTemplateSecrets.getPromptTemplateAccess().
+			readResource("/optimizer/prompt-author/report.schema.json");
 		String pattern = json.readTree(schema).get("$defs").get("path").get("pattern").asString();
 		requireThat(Pattern.compile(pattern).matcher(path).find(), "schema").isEqualTo(accepted);
 	}

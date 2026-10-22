@@ -47,7 +47,7 @@ public final class ClaudeProfileInventory implements ProfileInventory
 {
 	static
 	{
-		ClaudeProfileInventorySecrets.setAccess(new ClaudeProfileInventoryAccess()
+		ClaudeProfileInventorySecrets.setClaudeProfileInventoryAccess(new ClaudeProfileInventoryAccess()
 		{
 			@Override
 			public ProfileCatalog parse(InputStream in) throws IOException

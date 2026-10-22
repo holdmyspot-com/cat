@@ -52,7 +52,7 @@ public final class CodexSessions extends RunnerSessions
 {
 	static
 	{
-		CodexSessionsSecrets.setAccess(new CodexSessionsAccess()
+		CodexSessionsSecrets.setCodexSessionsAccess(new CodexSessionsAccess()
 		{
 			@Override
 			public CodexSessions newCodexSessions(RunnerSessions.Settings settings, Bridge bridge)

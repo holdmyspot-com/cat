@@ -460,8 +460,8 @@ public final class Builder
 		if (round != null)
 		{
 			if (!round.reservations().containsKey(value.number()))
-				round = RoundSecrets.access().reserve(round, value.number(), value.cell());
-			round = RoundSecrets.access().withAttempt(round, value);
+				round = RoundSecrets.getRoundAccess().reserve(round, value.number(), value.cell());
+			round = RoundSecrets.getRoundAccess().withAttempt(round, value);
 		}
 		this.promptAuthorAttempts = Math.max(promptAuthorAttempts, value.number());
 		return this;

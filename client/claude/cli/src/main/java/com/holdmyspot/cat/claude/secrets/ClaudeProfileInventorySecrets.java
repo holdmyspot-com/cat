@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.claude.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.claude.optimizer.ClaudeProfileInventory;
 
@@ -9,50 +9,54 @@ import com.holdmyspot.cat.claude.optimizer.ClaudeProfileInventory;
  */
 public final class ClaudeProfileInventorySecrets
 {
-	private static ClaudeProfileInventoryAccess access;
+	private static ClaudeProfileInventoryAccess claudeProfileInventoryAccess;
 
 	/**
-	 * Returns the ClaudeProfileInventory access point.
+	 * Returns the {@link ClaudeProfileInventory} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code ClaudeProfileInventory} cannot initialize or fails to register access
 	 */
-	public static ClaudeProfileInventoryAccess access()
+	public static ClaudeProfileInventoryAccess getClaudeProfileInventoryAccess()
 	{
+		ClaudeProfileInventoryAccess access = claudeProfileInventoryAccess;
 		if (access == null)
-			initialize(ClaudeProfileInventory.class);
-		if (access == null)
-			throw new AssertionError("ClaudeProfileInventory did not register its access point");
+		{
+			ensureClassInitialized(ClaudeProfileInventory.class);
+			access = claudeProfileInventoryAccess;
+			if (access == null)
+				throw new AssertionError(ClaudeProfileInventory.class.getName() + " did not register " +
+					"ClaudeProfileInventoryAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link ClaudeProfileInventory}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setClaudeProfileInventoryAccess(ClaudeProfileInventoryAccess access)
+	{
+		claudeProfileInventoryAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the ClaudeProfileInventory access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(ClaudeProfileInventoryAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("ClaudeProfileInventory access point is already registered");
-		access = newAccess;
 	}
 
 	/**

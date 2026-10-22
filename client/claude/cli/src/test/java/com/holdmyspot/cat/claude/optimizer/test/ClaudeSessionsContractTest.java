@@ -76,7 +76,8 @@ public final class ClaudeSessionsContractTest
 	 */
 	private static ClaudeSessions port(Path root, Bridge bridge)
 	{
-		return ClaudeSessionsSecrets.access().newClaudeSessions(new RunnerSessions.Settings(root, root.resolve("runs"),
+		return ClaudeSessionsSecrets.getClaudeSessionsAccess().
+			newClaudeSessions(new RunnerSessions.Settings(root, root.resolve("runs"),
 			List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
 			bridge);
 	}

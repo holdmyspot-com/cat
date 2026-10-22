@@ -56,7 +56,7 @@ public final class StreamJsonEvents extends HarnessEvents
 {
 	static
 	{
-		StreamJsonEventsSecrets.setAccess(new StreamJsonEventsAccess()
+		StreamJsonEventsSecrets.setStreamJsonEventsAccess(new StreamJsonEventsAccess()
 		{
 			@Override
 			public StreamJsonEvents newStreamJsonEvents(JsonMapper json)

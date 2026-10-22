@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import java.lang.invoke.MethodHandles;
 
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 
@@ -9,50 +9,53 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
  */
 public final class CertificationAttemptSecrets
 {
-	private static CertificationAttemptAccess access;
+	private static CertificationAttemptAccess certificationAttemptAccess;
 
 	/**
-	 * Returns the CertificationAttempt access point.
+	 * Returns the {@link CertificationAttempt} access point.
 	 *
 	 * @return the access point
+	 * @throws AssertionError if {@code CertificationAttempt} cannot initialize or fails to register access
 	 */
-	public static CertificationAttemptAccess access()
+	public static CertificationAttemptAccess getCertificationAttemptAccess()
 	{
+		CertificationAttemptAccess access = certificationAttemptAccess;
 		if (access == null)
-			initialize(CertificationAttempt.class);
-		if (access == null)
-			throw new AssertionError("CertificationAttempt did not register its access point");
+		{
+			ensureClassInitialized(CertificationAttempt.class);
+			access = certificationAttemptAccess;
+			if (access == null)
+				throw new AssertionError(CertificationAttempt.class.getName() + " did not register CertificationAttemptAccess");
+		}
 		return access;
+	}
+
+	/**
+	 * Registers the implementation supplied by {@link CertificationAttempt}.
+	 *
+	 * @param access the implementation registered by the owning class
+	 */
+	public static void setCertificationAttemptAccess(CertificationAttemptAccess access)
+	{
+		certificationAttemptAccess = access;
 	}
 
 	/**
 	 * Initializes a class that registers an access point.
 	 *
 	 * @param owner the class to initialize
+	 * @throws AssertionError if the class cannot be initialized
 	 */
-	private static void initialize(Class<?> owner)
+	private static void ensureClassInitialized(Class<?> owner)
 	{
 		try
 		{
-			Class.forName(owner.getName(), true, owner.getClassLoader());
+			MethodHandles.lookup().ensureInitialized(owner);
 		}
-		catch (ClassNotFoundException e)
+		catch (IllegalAccessException e)
 		{
-			throw new AssertionError("Unable to initialize " + owner.getSimpleName(), e);
+			throw new AssertionError("Cannot initialize " + owner.getName(), e);
 		}
-	}
-
-	/**
-	 * Registers the CertificationAttempt access point.
-	 *
-	 * @param newAccess the access point
-	 */
-	public static void setAccess(CertificationAttemptAccess newAccess)
-	{
-		requireThat(newAccess, "newAccess").isNotNull();
-		if (access != null)
-			throw new IllegalStateException("CertificationAttempt access point is already registered");
-		access = newAccess;
 	}
 
 	/**

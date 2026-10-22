@@ -193,7 +193,7 @@ public final class OptimizerCoreTest
 		Campaign campaign = new Builder().header(header).confirmed().build();
 		try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(owner, root))
 		{
-			OptimizerCommandScopeSecrets.access().store(command).replaceSnapshot(campaign);
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(command).replaceSnapshot(campaign);
 		}
 		return new Project(root, target, "campaign-1");
 	}
@@ -316,7 +316,7 @@ public final class OptimizerCoreTest
 			try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				OTHER_SESSION, project.root()))
 			{
-				OptimizerCommandScopeSecrets.access().sessionDirectory(command);
+				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
 				Map<String, String> before = contents(project.root());
 				OptimizerCore core = new OptimizerCore(command);
 				for (String subject : List.of(project.campaign(), "CLAUDE.md"))
@@ -352,7 +352,7 @@ public final class OptimizerCoreTest
 				try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(harness,
 					OTHER_SESSION, project.root()))
 				{
-					OptimizerCommandScopeSecrets.access().sessionDirectory(command);
+					OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
 					Map<String, String> before = contents(project.root());
 					OptimizerCore core = new OptimizerCore(command);
 					String id = project.campaign();
@@ -410,7 +410,7 @@ public final class OptimizerCoreTest
 				replaceSnapshot(new Builder().header(header).confirmed().build());
 			try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(Harness.CLAUDE, root))
 			{
-				OptimizerCommandScopeSecrets.access().sessionDirectory(command);
+				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
 				Map<String, String> before = contents(root);
 				OptimizerCore core = new OptimizerCore(command);
 				List<ThrowingCall> calls = List.of(
@@ -593,7 +593,7 @@ public final class OptimizerCoreTest
 			try (TestOptimizerCommandScope<FakeSessionPort> command = new TestOptimizerCommandScope<>(Harness.CLAUDE,
 				root, Set.of(), _ -> sessions))
 			{
-				OptimizerCommandScopeSecrets.access().sessionDirectory(command);
+				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
 				before = contents(root);
 				try
 				{
@@ -997,7 +997,7 @@ public final class OptimizerCoreTest
 		 */
 		Path campaigns() throws CommandRefusedException, IOException
 		{
-			return OptimizerCommandScopeSecrets.access().sessionDirectory(scope).campaigns();
+			return OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(scope).campaigns();
 		}
 
 		/**
@@ -1023,7 +1023,7 @@ public final class OptimizerCoreTest
 		 */
 		Campaign load(String id) throws IOException, CommandRefusedException
 		{
-			return OptimizerCommandScopeSecrets.access().store(scope).load(id).orElseThrow();
+			return OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(scope).load(id).orElseThrow();
 		}
 	}
 
@@ -1127,7 +1127,7 @@ public final class OptimizerCoreTest
 		// The host session's CAT session directory exists before any command runs in it
 		try
 		{
-			OptimizerCommandScopeSecrets.access().sessionDirectory(command);
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
 		}
 		catch (CommandRefusedException e)
 		{
@@ -1459,7 +1459,8 @@ public final class OptimizerCoreTest
 				try (TestOptimizerCommandScope<FakeSessionPort> next = TestOptimizerCommandScope.of(Harness.CLAUDE,
 					repository.root()))
 				{
-					requireThat(OptimizerCommandScopeSecrets.access().store(next).load(id).orElseThrow().ceiling(),
+					requireThat(OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
+						store(next).load(id).orElseThrow().ceiling(),
 						"reloadedCeiling").isEqualTo(ceiling);
 				}
 			}
@@ -2203,7 +2204,8 @@ public final class OptimizerCoreTest
 			requireThat(refusal, "refusal").isNotNull();
 			requireThat(refusal.getMessage(), "message").contains("changes");
 			requireThat(repository.sessions().roles(), "roles").isEmpty();
-			requireThat(OptimizerCommandScopeSecrets.access().store(repository.scope()).listHeaders(), "headers").isEmpty();
+			requireThat(OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
+				store(repository.scope()).listHeaders(), "headers").isEmpty();
 		}
 	}
 
@@ -2234,7 +2236,8 @@ public final class OptimizerCoreTest
 		throws IOException, CommandRefusedException
 	{
 		Campaign c = repository.load(id);
-		OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(new Campaign(c.header(),
+		OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
+			store(repository.scope()).replaceSnapshot(new Campaign(c.header(),
 			c.ceiling(), c.lineages(), c.identity(), c.incumbent(), c.candidates(), c.promptAuthorAttempts(),
 			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(),
 			c.throttle(), List.of(new PendingDecision.ConflictFound(reportedConflicts(), List.of())),
@@ -3592,7 +3595,8 @@ public final class OptimizerCoreTest
 			List.of(), "The first turn names the tone that the assertion expects.");
 		TestRevisions requested = c.testRevisions().request(new TestRevisionRequest("formatting",
 			TestRevisionRequest.Trigger.TEST_DEFECT, List.of(kind), Map.of()));
-		OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(new Campaign(c.header(),
+		OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
+			store(repository.scope()).replaceSnapshot(new Campaign(c.header(),
 			c.ceiling(), c.lineages(), c.identity(), c.incumbent(), c.candidates(), c.promptAuthorAttempts(),
 			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(),
 			c.throttle(), c.pendingDecisions(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(),
@@ -4116,7 +4120,7 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			Campaign finished = new Builder().header(repository.load(id).header().withLifecycle(Lifecycle.FINISHED)).
 				confirmed().outcome(Outcome.BELOW_MINIMUM).build();
-			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(finished);
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(finished);
 			writeRecord(repository, "Be brief.\n", _ ->
 			{
 			});
@@ -4151,7 +4155,7 @@ public final class OptimizerCoreTest
 			Campaign finished = builder.outcome(Outcome.CERTIFIED).
 				delivery(new DeliveryRequest(new Candidate(1, Builder.snapshot("candidate-1")), 1, Outcome.CERTIFIED)).
 				build();
-			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(finished);
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(finished);
 
 			String withoutRecord = repository.core().status(id).summary(ZoneOffset.UTC);
 			requireThat(withoutRecord, "withoutRecord").doesNotContain("Certified for the following environment:");
@@ -4322,7 +4326,7 @@ public final class OptimizerCoreTest
 				built.throttle(), List.of(new PendingDecision.RegressionTradeOff(1)),
 				built.revisionRequested(), built.outcome(), built.delivery(), built.optimization(),
 				built.answeredWarnings(), built.testRevisions(), built.plugins());
-			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(tradeOff);
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(tradeOff);
 
 			ObjectNode chosen = output(repository, List.of("choose", id, "retain_incumbent"));
 
@@ -4394,7 +4398,7 @@ public final class OptimizerCoreTest
 				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(),
 				c.answeredWarnings(), c.testRevisions(), c.plugins());
 			Campaign warned = Transitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
-			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(warned);
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(warned);
 			requireThat(warned.choices(), "choices").isEqualTo(List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP));
 
 			CommandResult result = repository.core().choose(id, Choice.USE_AUTHORIZED_SOURCE, 0, 0);
@@ -4431,7 +4435,7 @@ public final class OptimizerCoreTest
 				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
 				List.of(new PendingDecision.RegressionTradeOff(1)), c.revisionRequested(), Outcome.CERTIFIED,
 				c.delivery(), c.optimization(), c.answeredWarnings(), c.testRevisions(), c.plugins());
-			OptimizerCommandScopeSecrets.access().store(repository.scope()).replaceSnapshot(waiting);
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(waiting);
 			requireThat(waiting.choices(), "choices").contains(Choice.RETAIN_INCUMBENT);
 
 			CommandResult result = repository.core().choose(id, Choice.RETAIN_INCUMBENT, 0, 0);

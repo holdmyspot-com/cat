@@ -23,7 +23,7 @@ public final class AppServerPromptSources extends PromptSources
 {
 	static
 	{
-		AppServerPromptSourcesSecrets.setAccess(new AppServerPromptSourcesAccess()
+		AppServerPromptSourcesSecrets.setAppServerPromptSourcesAccess(new AppServerPromptSourcesAccess()
 		{
 			@Override
 			public AppServerPromptSources newAppServerPromptSources(JsonMapper json, Map<String, Path> directories)

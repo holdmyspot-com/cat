@@ -743,7 +743,8 @@ public final class HarnessCapacityTest
 			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
 			HarnessCapacity first = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK);
 			List<String> opened = new CopyOnWriteArrayList<>();
-			HarnessCapacity second = HarnessCapacitySecrets.access().of(directory, 2, unexpectedPause(), CLOCK,
+			HarnessCapacity second = HarnessCapacitySecrets.getHarnessCapacityAccess().
+				of(directory, 2, unexpectedPause(), CLOCK,
 				recording(opened));
 
 			try (HarnessCapacity.Permit held = first.tryAcquire().orElseThrow();
@@ -788,7 +789,8 @@ public final class HarnessCapacityTest
 			HarnessCapacity first = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK);
 			HarnessCapacity second = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK);
 			List<String> opened = new CopyOnWriteArrayList<>();
-			HarnessCapacity third = HarnessCapacitySecrets.access().of(directory, 2, unexpectedPause(), CLOCK,
+			HarnessCapacity third = HarnessCapacitySecrets.getHarnessCapacityAccess().
+				of(directory, 2, unexpectedPause(), CLOCK,
 				recording(opened));
 			int kept = 1 - released;
 
@@ -833,9 +835,11 @@ public final class HarnessCapacityTest
 			Path alias = Files.createSymbolicLink(root.resolve("alias"), directory);
 			HarnessCapacity holder = HarnessCapacity.of(directory, 2, unexpectedPause(), CLOCK);
 			List<String> opened = new CopyOnWriteArrayList<>();
-			HarnessCapacity sameDirectory = HarnessCapacitySecrets.access().of(directory, 2, unexpectedPause(), CLOCK,
+			HarnessCapacity sameDirectory = HarnessCapacitySecrets.getHarnessCapacityAccess().
+				of(directory, 2, unexpectedPause(), CLOCK,
 				recording(opened));
-			HarnessCapacity throughAlias = HarnessCapacitySecrets.access().of(alias, 2, unexpectedPause(), CLOCK,
+			HarnessCapacity throughAlias = HarnessCapacitySecrets.getHarnessCapacityAccess().
+				of(alias, 2, unexpectedPause(), CLOCK,
 				recording(opened));
 
 			try (HarnessCapacity.Permit first = holder.tryAcquire().orElseThrow();
@@ -867,7 +871,7 @@ public final class HarnessCapacityTest
 			Path directory = Files.createDirectory(root.resolve("slots"));
 			Path alias = Files.createSymbolicLink(root.resolve("alias"), directory);
 			List<String> opened = new CopyOnWriteArrayList<>();
-			HarnessCapacity second = HarnessCapacitySecrets.access().of(alias, 1, unexpectedPause(),
+			HarnessCapacity second = HarnessCapacitySecrets.getHarnessCapacityAccess().of(alias, 1, unexpectedPause(),
 				new ManualClock(HOLD_START), recording(opened));
 			AtomicReference<Throwable> failure = new AtomicReference<>();
 			Thread rejecting = new Thread(() ->

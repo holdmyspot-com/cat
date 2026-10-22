@@ -52,7 +52,7 @@ public final class HarnessCapacity
 {
 	static
 	{
-		HarnessCapacitySecrets.setAccess(new HarnessCapacityAccess()
+		HarnessCapacitySecrets.setHarnessCapacityAccess(new HarnessCapacityAccess()
 		{
 			@Override
 			public HarnessCapacity of(Path lockDirectory, int maximum, Pause pause, Clock clock, LockFileOpener opener)

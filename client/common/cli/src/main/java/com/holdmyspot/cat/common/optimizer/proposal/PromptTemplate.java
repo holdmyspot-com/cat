@@ -24,7 +24,7 @@ public final class PromptTemplate
 {
 	static
 	{
-		PromptTemplateSecrets.setAccess(new PromptTemplateAccess()
+		PromptTemplateSecrets.setPromptTemplateAccess(new PromptTemplateAccess()
 		{
 			@Override
 			public String readResource(String resource)

@@ -47,7 +47,7 @@ public final class HarnessRunLockTest
 				requireThat(held.isHeld(), "held.isHeld()").isTrue();
 				try
 				{
-					HarnessRunLockSecrets.access().acquire(file, lockFile ->
+					HarnessRunLockSecrets.getHarnessRunLockAccess().acquire(file, lockFile ->
 					{
 						opened.add(lockFile);
 						return FileChannel.open(lockFile, WRITE);

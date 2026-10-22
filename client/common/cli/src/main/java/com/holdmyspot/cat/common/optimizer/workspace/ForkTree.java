@@ -45,7 +45,7 @@ public final class ForkTree
 {
 	static
 	{
-		ForkTreeSecrets.setAccess(new ForkTreeAccess()
+		ForkTreeSecrets.setForkTreeAccess(new ForkTreeAccess()
 		{
 			@Override
 			public Path physical(ForkTree tree, Path key)

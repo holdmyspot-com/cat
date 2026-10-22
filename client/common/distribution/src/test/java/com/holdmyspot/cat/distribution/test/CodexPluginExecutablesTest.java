@@ -59,7 +59,7 @@ public final class CodexPluginExecutablesTest
 	@Test
 	public void codexImageLaunchesParts()
 	{
-		List<JlinkImageBuilder.Launcher> launchers = DistributionMainSecrets.access().codexLaunchers();
+		List<JlinkImageBuilder.Launcher> launchers = DistributionMainSecrets.getDistributionMainAccess().codexLaunchers();
 
 		requireThat(launchers, "launchers").
 			contains(new JlinkImageBuilder.Launcher("run-part", "com.holdmyspot.cat.codex.cli",
@@ -103,7 +103,7 @@ public final class CodexPluginExecutablesTest
 				out.closeEntry();
 			}
 			Path legal = Files.createDirectories(temporary.resolve("legal"));
-			ArtifactLayer layer = DistributionMainSecrets.access().codexPluginLayer(jar);
+			ArtifactLayer layer = DistributionMainSecrets.getDistributionMainAccess().codexPluginLayer(jar);
 			Path artifact = new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(
 				List.of(layer), Files.createDirectories(temporary.resolve("runtime")), Set.of(),
 				legal, List.of(Files.createDirectories(temporary.resolve("installers"))), temporary.resolve("output"));

@@ -45,7 +45,7 @@ public final class HarnessRunManager
 {
 	static
 	{
-		HarnessRunManagerSecrets.setAccess(new HarnessRunManagerAccess()
+		HarnessRunManagerSecrets.setHarnessRunManagerAccess(new HarnessRunManagerAccess()
 		{
 			@Override
 			public int maximumManifestBytes()

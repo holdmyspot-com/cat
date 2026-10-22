@@ -49,7 +49,7 @@ public final class ClaudeSessions extends RunnerSessions
 {
 	static
 	{
-		ClaudeSessionsSecrets.setAccess(new ClaudeSessionsAccess()
+		ClaudeSessionsSecrets.setClaudeSessionsAccess(new ClaudeSessionsAccess()
 		{
 			@Override
 			public ClaudeSessions newClaudeSessions(RunnerSessions.Settings settings, Bridge bridge)

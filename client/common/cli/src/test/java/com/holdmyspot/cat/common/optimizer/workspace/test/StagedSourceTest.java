@@ -229,7 +229,8 @@ public final class StagedSourceTest
 				isEqualTo("shared");
 			requireThat(Files.readString(staged.resolve("prompt.md"), UTF_8), "stagedTarget").isEqualTo("prompt");
 			requireThat(Files.readString(project.base().resolve("prompt.md"), UTF_8), "project").isEqualTo("prompt");
-			requireThat(Files.readString(ForkTreeSecrets.access().physical(project.tree(), Path.of("prompt.md")), UTF_8),
+			requireThat(Files.readString(ForkTreeSecrets.getForkTreeAccess().
+				physical(project.tree(), Path.of("prompt.md")), UTF_8),
 				"forkStorage").isEqualTo("prompt");
 		}
 	}

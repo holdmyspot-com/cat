@@ -67,7 +67,8 @@ public final class HarnessOneShotOptionsTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-prompt-"));
 			Path prompt = directory.resolve("prompt.txt");
-			Files.write(prompt, new byte[HarnessOneShotOptionsSecrets.access().maximumPromptBytes() + 1]);
+			Files.write(prompt, new byte[HarnessOneShotOptionsSecrets.getHarnessOneShotOptionsAccess().
+				maximumPromptBytes() + 1]);
 			HarnessOneShotOptions options = HarnessOneShotOptions.parse(new String[] {"run", "--artifact", "/artifact",
 				"--prompt-file", prompt.toString(), "--output", "/output"}, "harness",
 				SESSION);
