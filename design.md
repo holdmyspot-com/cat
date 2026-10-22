@@ -1546,6 +1546,7 @@ Plugins: cat 1.0.0 (built from the project), formatter@acme-tools 2.3.1
 Model: gpt-6-luna, reasoning low, from openai
 Prompt files loaded: AGENTS.md, .cat/rules/common/support.md
 Project settings files: .codex/config.toml
+Your harness settings: not used, except connection settings and tool restrictions
 Trial setup: as introduced in CAT 1.0.0
 Tools run directly: git 2.51.0
 Outside sources: none
@@ -1557,8 +1558,12 @@ the observed model and reasoning. `Prompt files loaded` lists the prompt sources
 project path. `Project settings files` reports the loader configuration as the project's
 settings files that existed in trials, from the harness's fixed list: `.claude/settings.json`,
 `.claude/settings.local.json` and `.mcp.json` for Claude Code, `.codex/config.toml` for Codex. It says `none` when the
-project has none of them, so the harness ran on its defaults and the user's own settings. A change to the content of a
-listed file, or a file added or removed, makes the certification historical. `Trial setup` reports the session environment version as the CAT release that
+project has none of them. A change to the content of a listed file, or a file added or removed, makes the certification
+historical. `Your harness settings` says what trials took from the user's own harness configuration: each trial runs in
+an isolated harness home, so the user's hooks, MCP servers, enabled plugins and other customizations play no part, and
+only the settings that the runner copies do. For Codex these are the connection settings of the user's `config.toml`,
+such as the login method, model and provider; for Claude Code, the connection variables and the `deny` and `ask`
+permission rules of the user's `settings.json`. The line names the harness's copied settings in the user's words. `Trial setup` reports the session environment version as the CAT release that
 introduced it, so a later CAT release that left it unchanged does not read as a different environment. `Tools run
 directly` lists the host tools and `Outside sources` the external and MCP sources, each with `none` when empty. A
 condition that the reporting session could not check says so, as for applicability (D51).
