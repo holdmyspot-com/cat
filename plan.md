@@ -598,6 +598,8 @@ Changes made to `design.md` and this plan during implementation, apart from this
 	`prompt.json` (user request and rulings, 2026-10-16). WI-83, WI-84 and WI-85 added with §1, §1.1, §2, §6 and H-17;
 	R-W13 added; R-W1, R-L1 and R-M6 reworded. WI-71 needs all three: the session rules that its trials load state
 	`CAT_TEMP`, its campaign must start in the new storage, and its delivery writes the new history.
+- `design.md` §3.9, D11 and G5 and plan R-E18 and WI-18: the status's prompt size is the size of the target prompt file
+	alone, not of derived sources, project rules or the rest of the prompt system (user ruling, 2026-10-21).
 - WI-86: the proposal names a trial plugin's files by plugin, leaves the generated `values.json` out of an edited test's
 	difference, describes generated values without a seed or version, and groups certification scope cells by prompt
 	test and profile (user request, 2026-10-17). WI-71's revised proposal needs it.
@@ -698,7 +700,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E11 | Reconciliation runs first in every `run`: adopts recorded outcomes, reruns started trials that have no outcome, checks the worktree, and terminates the recorded processes of runs that an earlier driver left running, under the run root and the held-out run root, never those of a live driver. | §3.8 | WI-9, WI-39 | U: `ReconciliationTest`, `LeftoverRunsTest` |
 | R-E12 | Minimum remaining trials by the §3.9 formulas for the development and formal phases, the development minimum summing over every development cell, inside the certification scope or not; token statistics; no totals or time estimates. | §3.9 | WI-12, WI-44 | U: `RemainingWorkTest` |
 | R-E19 | Development cells: representative development trials and prompt author rounds only in a prompt test's development cells (its weakest cell, plus every cell where a certification attempt of the lineage adopted a failure); the coverage floor among them. | §3.3, §6.6, D27 | WI-32 | U: `SchedulerTest` (only development cells sampled, the floor among them, a formal failure adding a cell), `DriverTest` trace 19 |
-| R-E18 | The status compares the working candidate with the incumbent on prompt size (bytes and words) and on median input tokens per trial in each cell where both have outcomes. | §3.9, D11 | WI-18 | U: `StatusReportTest` |
+| R-E18 | The status compares the working candidate with the incumbent on the size (bytes and words) of the target prompt file alone, not of derived sources, project rules or the rest of the prompt system, and on median input tokens per trial in each cell where both have outcomes. | §3.9, D11, G5 | WI-18 | U: `StatusReportTest` |
 | R-E13 | Every nested role runs through the runners. Judge and contract author output is schema-validated, and invalid output is an infrastructure failure. The host agent never prompt authors or judges. | §3.1 | WI-8, WI-10, WI-95 | U: `JudgeVerdictTest`, `ProposalTest`, `ClaudeStreamingProtocolTest`; E: E1 runs trial, judge, prompt author and contract author sessions per harness |
 | R-E14 | Child subagents and child worktrees stay within one logical trial; reconciliation before judging; observation limits. | §3.2 | WI-8 | E: E5 child scenarios per harness (premise P7) |
 | R-E15 | The Claude adapter classifies an interrupt it requested as an interruption (H10). | §11 | WI-8 | U: `ClaudeSessionsTest`; E: E2 in Claude |
@@ -1164,8 +1166,10 @@ The riskiest pure code, built first.
 	revert one group, rerun the same promotion runs, keep the reduction if it passes the reduction rule (`design.md` §2.7), otherwise
 	split finer down to single hunks. Its runs are targeted and never counted. The minimal attempt is promoted, and the
 	report names the removed hunks.
-- **Size report:** the status shows the working candidate's and the incumbent's prompt size (bytes and words) and the
-	median input tokens per trial in each cell where both have outcomes.
+- **Size report:** the status shows the size (bytes and words) of the working candidate's and the incumbent's target
+	prompt file alone, with its staged bytes checked against the snapshot (user ruling, 2026-10-21: derived sources,
+	project rules and the rest of the prompt system are not counted), and the median input tokens per trial in each cell
+	where both have outcomes.
 - **Closes:** R-D10, R-D11, R-E18.
 - **Tests:** `PromptAuthorManifestTest`, `MinimalityTest`, `StatusReportTest`, `DriverTest` traces 17 and 18.
 - **Exit:** unit tests pass; the full build passes.

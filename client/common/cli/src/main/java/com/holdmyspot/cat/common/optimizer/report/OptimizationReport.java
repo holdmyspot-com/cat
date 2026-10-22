@@ -22,8 +22,8 @@ import java.util.Map;
  *
  * @param workingSnapshot the working snapshot
  * @param incumbentSnapshot the incumbent snapshot
- * @param working the working prompt sizes
- * @param incumbent the incumbent prompt sizes
+ * @param working the working target prompt file sizes
+ * @param incumbent the incumbent target prompt file sizes
  * @param inputs per-cell trial input comparisons
  * @param promptAuthors retained prompt author diagnoses, including attempts that produced no candidate
  * @param removed original hunk identifiers removed by minimality

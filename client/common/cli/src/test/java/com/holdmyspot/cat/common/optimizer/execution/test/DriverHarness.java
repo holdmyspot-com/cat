@@ -133,6 +133,7 @@ public final class DriverHarness
 	private final Map<MeasurementCondition, String> environmentChanges = new EnumMap<>(MeasurementCondition.class);
 	private CapCalibrator calibrator = new FixedCalibrator(FixedCalibrator.STANDARD_CAP);
 	private SliceSettings settings = SliceSettings.DEFAULT;
+	private Set<Path> promptSources = Set.of(PROMPT);
 	private final List<Integer> openTrials = new ArrayList<>();
 	private int ended;
 	private int edits;
@@ -252,7 +253,7 @@ public final class DriverHarness
 		return new DriverContext(crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
 			judge, triage, promptAuthor, values, deliverer, calibrator, terminator,
 			new LeftoverRuns(sessions, JsonMapper.builder().build()),
-			new Authority(Set.of(PROMPT), Set.of(), fork), Set.of(PROMPT),
+			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json);
 	}
 
@@ -497,6 +498,17 @@ public final class DriverHarness
 		return new SessionResult.Completed(directory.resolve("judge-transcript"), List.of(List.of(response)),
 			directory.resolve("judge-effects"), directory.resolve("judge-initial-project"), JUDGE_MODEL, null, null,
 			List.of(), PROMPT_SOURCES, List.of());
+	}
+
+	/**
+	 * Replaces the prompt sources that drivers opened later treat as participating. The target {@link #PROMPT}
+	 * stays the campaign's target whatever the sources are.
+	 *
+	 * @param value the in-project prompt sources, relative to the project
+	 */
+	public void promptSources(Set<Path> value)
+	{
+		this.promptSources = Set.copyOf(value);
 	}
 
 	/**

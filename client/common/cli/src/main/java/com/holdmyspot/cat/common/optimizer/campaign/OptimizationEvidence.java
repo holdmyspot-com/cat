@@ -21,7 +21,7 @@ import java.util.Set;
  *
  * @param promptAuthors the retained prompt author diagnoses
  * @param removed the hunks removed from promoted attempts
- * @param promptSizes measured prompt sizes by snapshot
+ * @param promptSizes measured target prompt file sizes by snapshot
  * @param trialInputs completed trial input observations by measurement identity, snapshot and cell
  * @param attempts retained original promotion results in launch order
  * @param tokenUsage reported usage of every finished nested session, by role
@@ -41,7 +41,7 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 	 *
 	 * @param promptAuthors the retained prompt author diagnoses
 	 * @param removed the removed hunks
-	 * @param promptSizes measured prompt sizes by snapshot
+	 * @param promptSizes measured target prompt file sizes by snapshot
 	 * @param trialInputs completed trial input observations by measurement identity, snapshot and cell
 	 * @param attempts retained original promotion results in launch order
 	 * @param tokenUsage reported usage of every finished nested session, by role
@@ -73,7 +73,7 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 	 *
 	 * @param promptAuthors the prompt author diagnoses
 	 * @param removed the removed hunks
-	 * @param promptSizes the prompt measurements
+	 * @param promptSizes the target prompt file measurements
 	 * @param trialInputs the trial observations
 	 */
 	public OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,

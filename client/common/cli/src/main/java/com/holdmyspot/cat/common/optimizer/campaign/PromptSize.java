@@ -3,9 +3,10 @@ package com.holdmyspot.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Observed bytes and whitespace-separated words in a snapshot's participating prompt files.
+ * Observed bytes and whitespace-separated words in a snapshot's target prompt file, the file that the campaign
+ * optimizes. Derived sources, project rules and the rest of the prompt system are not counted.
  *
- * @param bytes the total bytes, or {@code null} when files could not be measured
+ * @param bytes the total bytes, or {@code null} when the file could not be measured
  * @param words the total words, or {@code null} when text could not be measured
  * @param unavailable the reason a measurement is missing, or {@code null} when both are available
  */
@@ -14,7 +15,7 @@ public record PromptSize(Long bytes, Long words, String unavailable)
 	/**
 	 * The description before a snapshot has been measured.
 	 */
-	public static final PromptSize UNKNOWN = unavailable("Snapshot prompt files have not been measured.");
+	public static final PromptSize UNKNOWN = unavailable("The target prompt file has not been measured.");
 
 	/**
 	 * Creates measurements.

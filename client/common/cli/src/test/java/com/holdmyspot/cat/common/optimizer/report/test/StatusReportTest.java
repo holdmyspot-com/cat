@@ -52,6 +52,7 @@ import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.test.DriverHarness;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
+import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Limit;
@@ -82,6 +83,7 @@ import java.time.Instant;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import java.time.ZoneId;
@@ -91,6 +93,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -597,6 +600,52 @@ public final class StatusReportTest
 				}
 				requireThat(output.get("trial_input_tokens").size(), "cells").isEqualTo(3);
 				requireThat(report.summary(ZoneOffset.UTC), "summary").contains("13 bytes").contains("30").contains("70");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the measured prompt size counts only the target prompt file, not a derived source or a project
+	 * rule that the prompt system also loads.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void sizeCountsOnlyTargetFile() throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("prompt-sizes"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path derived = Path.of("derived.md");
+			Path rule = Path.of(".cat/rules/rule.md");
+			Files.writeString(project.resolve(DriverHarness.PROMPT), "fork", UTF_8);
+			Files.writeString(project.resolve(derived), "derived source of the fork", UTF_8);
+			Files.createDirectories(project.resolve(rule).getParent());
+			Files.writeString(project.resolve(rule), "project rule of the fork", UTF_8);
+			Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
+			FileInventory fork = new FileInventory(project, Map.of(
+				DriverHarness.PROMPT, new RegularFile(Sha256.of("fork".getBytes(UTF_8)), permissions),
+				derived, new RegularFile(Sha256.of("derived source of the fork".getBytes(UTF_8)), permissions),
+				rule, new RegularFile(Sha256.of("project rule of the fork".getBytes(UTF_8)), permissions)));
+			DriverHarness harness = new DriverHarness(root.resolve("driver"),
+				new Builder().confirmed().working(1).build(), fork, project);
+			harness.promptSources(Set.of(DriverHarness.PROMPT, derived, rule.getParent()));
+			Sha256 working = Builder.snapshot("candidate-1");
+			harness.overlays().put(working, harness.candidate("short prompt\n").
+				write(derived, new FileContent("a much longer derived source than before\n".getBytes(UTF_8)),
+					permissions).
+				write(rule, new FileContent("a much longer project rule than before\n".getBytes(UTF_8)), permissions));
+			harness.workspace().changeWorktree(harness.overlays().require(working).snapshot());
+			try (Driver driver = harness.open())
+			{
+				ObjectNode output = harness.runSlice(driver).status().toJson(JsonMapper.builder().build());
+				JsonNode size = output.get("prompt_size");
+				requireThat(size.get("working").get("bytes").asLong(), "workingBytes").isEqualTo(13);
+				requireThat(size.get("working").get("words").asLong(), "workingWords").isEqualTo(2);
+				requireThat(size.get("incumbent").get("bytes").asLong(), "incumbentBytes").isEqualTo(4);
+				requireThat(size.get("incumbent").get("words").asLong(), "incumbentWords").isEqualTo(1);
 			}
 		}
 	}

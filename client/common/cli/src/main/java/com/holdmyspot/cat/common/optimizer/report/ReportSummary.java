@@ -411,8 +411,8 @@ final class ReportSummary
 	 */
 	private static void optimization(List<String> lines, OptimizationReport report)
 	{
-		lines.add("Prompt size, working: " + promptSize(report.working()));
-		lines.add("Prompt size, incumbent: " + promptSize(report.incumbent()));
+		lines.add("Target prompt file size, working: " + promptSize(report.working()));
+		lines.add("Target prompt file size, incumbent: " + promptSize(report.incumbent()));
 		for (OptimizationReport.InputComparison input : report.inputs())
 		{
 			if (input.unavailable() != null)
@@ -483,7 +483,7 @@ final class ReportSummary
 	}
 
 	/**
-	 * Describes available prompt sizes and missing measurements.
+	 * Describes the available sizes of the target prompt file and missing measurements.
 	 *
 	 * @param size the measurements
 	 * @return the description

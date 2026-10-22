@@ -2038,7 +2038,7 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Records the working and incumbent snapshots' observed prompt-file sizes.
+	 * Records the working and incumbent snapshots' observed sizes of the target prompt file.
 	 *
 	 * @param snapshot the snapshot
 	 * @throws IOException if the descriptive evidence cannot be persisted
@@ -2054,11 +2054,13 @@ public final class Driver implements AutoCloseable
 			Overlay overlay = context.overlays().require(snapshot);
 			Path source = context.workspace().stage(overlay, excludedTests(), trialSelection());
 			staged.put(snapshot, overlay.identity());
-			size = PromptMeasurements.measure(source, overlay.snapshot(), context.promptSources());
+			Path target = campaign.header().root().relativize(campaign.header().target());
+			size = PromptMeasurements.measure(source, overlay.snapshot(), target);
 		}
 		catch (IOException e)
 		{
-			size = PromptSize.unavailable("Prompt files could not be staged for measurement: " + e.getMessage());
+			size = PromptSize.unavailable("The target prompt file could not be staged for measurement: " +
+				e.getMessage());
 		}
 		record(new CampaignEvent.MeasurePrompt(snapshot, size));
 	}
