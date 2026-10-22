@@ -156,6 +156,12 @@ public final class FakeSessionPort implements SessionPort
 	}
 
 	@Override
+	public List<String> installedPluginNames()
+	{
+		return List.of();
+	}
+
+	@Override
 	public HostLogin hostLogin()
 	{
 		return login;

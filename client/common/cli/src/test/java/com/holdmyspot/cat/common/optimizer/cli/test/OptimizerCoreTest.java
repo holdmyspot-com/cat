@@ -109,6 +109,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -677,7 +678,7 @@ public final class OptimizerCoreTest
 		/**
 		 * The installed copies that {@link #installedPlugins(String)} returns for each plugin name.
 		 */
-		private final Map<String, List<Path>> installed = new HashMap<>();
+		private final Map<String, List<Path>> installed = new LinkedHashMap<>();
 
 		/**
 		 * The files, relative to each trial plugin's base copy, that {@link #loadedSources(Path, List)} also returns as
@@ -794,6 +795,15 @@ public final class OptimizerCoreTest
 			synchronized (installed)
 			{
 				return installed.getOrDefault(name, List.of());
+			}
+		}
+
+		@Override
+		public List<String> installedPluginNames()
+		{
+			synchronized (installed)
+			{
+				return List.copyOf(installed.keySet());
 			}
 		}
 
@@ -2428,6 +2438,49 @@ public final class OptimizerCoreTest
 				contains(PortablePaths.text(PromptConfiguration.location(Path.of("CLAUDE.md")))).
 				contains("no \"claude\" key");
 			requireThat(contents(repository.root()), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that both refusals for a missing prompt test configuration list every plugin installed in the harness,
+	 * by its {@code <plugin>@<marketplace>} name and the version that its manifest states, and every plugin manifest of
+	 * the harness that Git tracks in the project, by its name, path and version.
+	 */
+	@Test
+	public void refusalListsPluginChoices() throws Exception
+	{
+		// Requirement: R-W16
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path tracked = Path.of("plugins/fmt/.claude-plugin/plugin.json");
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), tracked));
+			Files.createDirectories(repository.root().resolve(tracked).getParent());
+			Files.writeString(repository.root().resolve(tracked), "{\"name\": \"fmt\", \"version\": \"2.1\"}\n");
+			Path tools = scope.add(Files.createTempDirectory("installed-tools")).toRealPath();
+			Files.createDirectories(tools.resolve(".claude-plugin"));
+			Files.writeString(tools.resolve(".claude-plugin/plugin.json"),
+				"{\"name\": \"tools\", \"version\": \"1.4.0\"}\n");
+			repository.sessions().install("tools@market", List.of(tools));
+			Path bare = scope.add(Files.createTempDirectory("installed-bare")).toRealPath();
+			Files.createDirectories(bare.resolve(".claude-plugin"));
+			Files.writeString(bare.resolve(".claude-plugin/plugin.json"), "{\"name\": \"bare\"}\n");
+			repository.sessions().install("bare@market", List.of(bare));
+
+			Files.delete(repository.root().resolve(PromptConfiguration.location(Path.of("CLAUDE.md"))));
+			String missingFile = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+			configure(repository.root(), "{\"codex\": {\"plugins\": []}}");
+			String missingKey = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+
+			for (String message : List.of(missingFile, missingKey))
+			{
+				requireThat(message, "message").
+					contains(PortablePaths.text(PromptConfiguration.location(Path.of("CLAUDE.md")))).
+					contains("- tools@market, version 1.4.0").
+					contains("- bare@market, whose manifest states no version").
+					contains("- fmt, version 2.1, from " + PortablePaths.text(tracked));
+			}
 		}
 	}
 

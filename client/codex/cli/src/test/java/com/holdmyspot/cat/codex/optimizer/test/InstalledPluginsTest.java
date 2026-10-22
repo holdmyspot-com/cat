@@ -90,6 +90,29 @@ public final class InstalledPluginsTest
 	}
 
 	/**
+	 * Verifies that the names of the installed plugins are every plugin table of the configuration, in file order,
+	 * ignoring other tables, and none when no configuration exists.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void listsRecordedNames() throws IOException
+	{
+		// Requirement: R-W16
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-codex-home-")).toRealPath();
+			requireThat(InstalledPlugins.names(home), "withoutConfiguration").isEmpty();
+
+			Files.writeString(home.resolve("config.toml"), "[plugins]\n\n[plugins.\"zeta@market\"]\nenabled = true\n\n" +
+				"[hooks.state.\"tools@market:hooks/hooks.json:stop:0:0\"]\ntrusted_hash = \"x\"\n\n" +
+				"[plugins.\"" + NAME + "\"] # formatter\nenabled = true\n", UTF_8);
+
+			requireThat(InstalledPlugins.names(home), "names").isEqualTo(List.of("zeta@market", NAME));
+		}
+	}
+
+	/**
 	 * Writes a configuration that records one plugin as enabled.
 	 *
 	 * @param home the Codex home directory

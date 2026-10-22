@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.runner.PluginManifest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 import org.testng.annotations.Test;
 
@@ -43,6 +44,28 @@ public final class PluginManifestTest
 			write(plugin, "{\"name\": \"release-docs\", \"version\": \"1.0\"}");
 
 			requireThat(PluginManifest.name(plugin, MANIFEST), "name").isEqualTo("release-docs");
+		}
+	}
+
+	/**
+	 * Verifies that a plugin's version comes from its manifest, and that a manifest without a string version states
+	 * none.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void readsVersion() throws IOException
+	{
+		// Requirement: R-W16
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path versioned = cleanup.add(Files.createTempDirectory("cat-plugin-manifest-"));
+			write(versioned, "{\"name\": \"release-docs\", \"version\": \"1.0\"}");
+			Path unversioned = cleanup.add(Files.createTempDirectory("cat-plugin-manifest-"));
+			write(unversioned, "{\"name\": \"release-docs\", \"version\": 1}");
+
+			requireThat(PluginManifest.version(versioned, MANIFEST), "versioned").isEqualTo(Optional.of("1.0"));
+			requireThat(PluginManifest.version(unversioned, MANIFEST), "unversioned").isEmpty();
 		}
 	}
 

@@ -96,6 +96,35 @@ public final class InstalledPluginsTest
 	}
 
 	/**
+	 * Verifies that the names of the installed plugins are every plugin that the records name, in record order, and
+	 * none when no records exist.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void listsRecordedNames() throws IOException
+	{
+		// Requirement: R-W16
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path configuration = cleanup.add(Files.createTempDirectory("cat-claude-config-")).toRealPath();
+			requireThat(InstalledPlugins.names(configuration, JSON), "withoutRecords").isEmpty();
+
+			ObjectNode root = JSON.createObjectNode();
+			root.put("version", 2);
+			ObjectNode plugins = root.putObject("plugins");
+			plugins.putArray("zeta@market");
+			plugins.putArray(NAME);
+			Path records = configuration.resolve("plugins/installed_plugins.json");
+			Files.createDirectories(records.getParent());
+			Files.writeString(records, JSON.writeValueAsString(root), UTF_8);
+
+			requireThat(InstalledPlugins.names(configuration, JSON), "names").
+				isEqualTo(List.of("zeta@market", NAME));
+		}
+	}
+
+	/**
 	 * Creates an installed copy of the plugin, holding its manifest, in the plugin cache.
 	 *
 	 * @param configuration the Claude Code configuration directory

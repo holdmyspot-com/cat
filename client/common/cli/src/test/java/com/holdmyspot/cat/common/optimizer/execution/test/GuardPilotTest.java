@@ -1074,6 +1074,12 @@ public final class GuardPilotTest
 		{
 			return List.of();
 		}
+
+		@Override
+		public List<String> installedPluginNames()
+		{
+			return List.of();
+		}
 	}
 
 	/**

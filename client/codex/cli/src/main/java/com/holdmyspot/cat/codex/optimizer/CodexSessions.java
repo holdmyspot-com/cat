@@ -142,6 +142,12 @@ public final class CodexSessions extends RunnerSessions
 	}
 
 	@Override
+	public List<String> installedPluginNames() throws IOException
+	{
+		return InstalledPlugins.names(settings().configurationDirectory());
+	}
+
+	@Override
 	protected HarnessEvents newEvents(JsonMapper json)
 	{
 		return new AppServerEvents(json);

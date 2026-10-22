@@ -174,6 +174,15 @@ public interface SessionPort
 	List<Path> installedPlugins(String name) throws IOException;
 
 	/**
+	 * Returns the name of every plugin that the harness's install records name in the user's harness home, so that the
+	 * user can choose the trial plugins among them.
+	 *
+	 * @return each name, {@code <plugin>@<marketplace>}, once, in record order; empty if the records do not exist
+	 * @throws IOException if the install records exist but cannot be read
+	 */
+	List<String> installedPluginNames() throws IOException;
+
+	/**
 	 * Lists the directories that hold the runs of every session that this port starts, for the run of every campaign
 	 * of the project. The run root holds the sessions of the development part and the held-out run root holds the
 	 * sessions of the held-out part. Each run is recorded as {@code <directory>/<harness>/<run>/run.json}.

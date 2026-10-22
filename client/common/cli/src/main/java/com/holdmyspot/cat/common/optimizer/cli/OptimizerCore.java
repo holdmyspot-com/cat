@@ -635,12 +635,12 @@ public final class OptimizerCore implements Core
 		Path file = PromptConfiguration.location(target);
 		Path absolute = root.resolve(file);
 		String harness = scope.harness().commandName();
-		String retry = " Run `start` again once it does.";
+		String retry = "Run `start` again once the configuration names the plugins that trials install.";
 		if (!Files.isRegularFile(absolute))
 		{
 			throw new CommandRefusedException("The prompt test configuration " + PortablePaths.text(file) + " does " +
 				"not exist. It lists the plugins that trials install, such as {\"" + harness + "\": {\"plugins\": " +
-				"[]}} for trials that install none." + retry);
+				"[]}} for trials that install none.\n" + pluginChoices(root) + retry);
 		}
 		PromptConfiguration configuration;
 		try
@@ -658,10 +658,143 @@ public final class OptimizerCore implements Core
 		{
 			throw new CommandRefusedException("The prompt test configuration " + PortablePaths.text(file) + " has " +
 				"no \"" + harness + "\" key, so it does not say which plugins trials in " + harness + " install. Add " +
-				"the key, with an empty plugin list if trials install none." + retry);
+				"the key, with an empty plugin list if trials install none.\n" + pluginChoices(root) + retry);
 		}
 		requireBuiltWhenTracked(root, file, plugins.get());
 		return plugins.get();
+	}
+
+	/**
+	 * Lists the plugins that a prompt test configuration can name for the harness: every plugin that the harness's
+	 * install records name in the user's harness home, by the name that the configuration uses for it, and every
+	 * plugin manifest of the harness that Git tracks in the project, which the configuration lists with a build.
+	 *
+	 * @param root the project root
+	 * @return the lines of both lists, each list headed by a line that says what it holds, ending with a line break
+	 */
+	private String pluginChoices(Path root)
+	{
+		String harness = scope.harness().commandName();
+		Path manifest = scope.harness().pluginManifest();
+		StringBuilder choices = new StringBuilder(1024);
+		choices.append("Plugins installed in ").append(harness).append(", by the name that the configuration uses:\n");
+		try
+		{
+			List<String> names = scope.sessions().installedPluginNames();
+			if (names.isEmpty())
+				choices.append("- none\n");
+			for (String name : names)
+			{
+				choices.append("- ").append(name).append(", ").
+					append(installedVersions(scope.sessions().installedPlugins(name), manifest)).append('\n');
+			}
+		}
+		catch (IOException e)
+		{
+			choices.append("- they cannot be listed: ").append(e.getMessage()).append('\n');
+		}
+
+		choices.append("Plugins that the project builds, whose manifest ").append(PortablePaths.text(manifest)).
+			append(" Git tracks; the configuration lists such a plugin by its name, with a build:\n");
+		try
+		{
+			List<Path> tracked = trackedManifests(root);
+			if (tracked.isEmpty())
+				choices.append("- none\n");
+			for (Path path : tracked)
+			{
+				Path directory = pluginDirectory(root, path, manifest);
+				String name;
+				try
+				{
+					name = PluginManifest.name(directory, manifest);
+				}
+				catch (IOException _)
+				{
+					// The configuration cannot name a plugin whose manifest holds no valid name
+					name = "a plugin whose manifest holds no valid name";
+				}
+				choices.append("- ").append(name).append(", ").append(manifestVersion(directory, manifest)).
+					append(", from ").append(PortablePaths.text(path)).append('\n');
+			}
+		}
+		catch (IOException e)
+		{
+			choices.append("- they cannot be listed: ").append(e.getMessage()).append('\n');
+		}
+		return choices.toString();
+	}
+
+	/**
+	 * Describes the versions of a plugin's installed copies.
+	 *
+	 * @param copies   the installed copies
+	 * @param manifest the harness's plugin manifest path, relative to a copy
+	 * @return the version of each copy, such as {@code version 1.0}, joined by commas
+	 */
+	private static String installedVersions(List<Path> copies, Path manifest)
+	{
+		if (copies.isEmpty())
+			return "but no installed copy holds its manifest";
+		StringJoiner versions = new StringJoiner(", ");
+		for (Path copy : copies)
+			versions.add(manifestVersion(copy, manifest));
+		return versions.toString();
+	}
+
+	/**
+	 * Describes the version that a plugin's manifest states.
+	 *
+	 * @param directory the plugin directory
+	 * @param manifest  the harness's plugin manifest path, relative to {@code directory}
+	 * @return {@code version <version>}, or a phrase that says why no version can be shown
+	 */
+	private static String manifestVersion(Path directory, Path manifest)
+	{
+		try
+		{
+			return PluginManifest.version(directory, manifest).map(version -> "version " + version).
+				orElse("whose manifest states no version");
+		}
+		catch (IOException _)
+		{
+			// The listing only informs the user's choice, so an unreadable manifest is described instead of refused
+			return "whose manifest cannot be read";
+		}
+	}
+
+	/**
+	 * Returns the harness's plugin manifests that Git tracks in the project.
+	 *
+	 * @param root the project root
+	 * @return each manifest's path, relative to the project, in path order
+	 * @throws IOException if Git cannot list the tracked files
+	 */
+	private List<Path> trackedManifests(Path root) throws IOException
+	{
+		Path manifest = scope.harness().pluginManifest();
+		List<Path> manifests = new ArrayList<>();
+		for (Path tracked : new TreeSet<>(scope.forks().tracked(root)))
+		{
+			if (tracked.endsWith(manifest))
+				manifests.add(tracked);
+		}
+		return manifests;
+	}
+
+	/**
+	 * Returns the plugin directory that holds a tracked manifest.
+	 *
+	 * @param root     the project root
+	 * @param tracked  the manifest, relative to the project
+	 * @param manifest the harness's plugin manifest path, relative to a plugin directory
+	 * @return the absolute plugin directory
+	 */
+	private static Path pluginDirectory(Path root, Path tracked, Path manifest)
+	{
+		if (tracked.getNameCount() > manifest.getNameCount())
+			return root.resolve(tracked.subpath(0, tracked.getNameCount() - manifest.getNameCount()));
+		return root;
 	}
 
 	/**
@@ -686,13 +819,9 @@ public final class OptimizerCore implements Core
 		if (unbuilt.isEmpty())
 			return;
 		Path manifest = scope.harness().pluginManifest();
-		for (Path tracked : new TreeSet<>(scope.forks().tracked(root)))
+		for (Path tracked : trackedManifests(root))
 		{
-			if (!tracked.endsWith(manifest))
-				continue;
-			Path directory = root;
-			if (tracked.getNameCount() > manifest.getNameCount())
-				directory = root.resolve(tracked.subpath(0, tracked.getNameCount() - manifest.getNameCount()));
+			Path directory = pluginDirectory(root, tracked, manifest);
 			String name;
 			try
 			{

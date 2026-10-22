@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 import tools.jackson.core.JacksonException;
@@ -50,20 +51,7 @@ public final class PluginManifest
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(manifestPath, "manifestPath").isNotNull();
 		Path manifest = plugin.resolve(manifestPath);
-		if (!Files.isRegularFile(manifest))
-		{
-			throw new IOException("The plugin directory " + plugin + " has no manifest " + manifestPath + ". Name a " +
-				"directory that holds the harness's plugin manifest.");
-		}
-		JsonNode root;
-		try
-		{
-			root = JSON.readTree(BoundedInput.readUtf8(manifest, MAXIMUM_MANIFEST_BYTES, "Plugin manifest"));
-		}
-		catch (JacksonException e)
-		{
-			throw new IOException("The plugin manifest " + manifest + " is not valid JSON: " + e.getOriginalMessage(), e);
-		}
+		JsonNode root = read(plugin, manifestPath);
 		JsonNode name = root.get("name");
 		if (!root.isObject() || name == null || !name.isString() || !NAME.matcher(name.asString()).matches())
 		{
@@ -71,6 +59,52 @@ public final class PluginManifest
 				"name must be lowercase letters, digits and hyphens that start with a letter or digit.");
 		}
 		return name.asString();
+	}
+
+	/**
+	 * Returns the version that a plugin's manifest states.
+	 *
+	 * @param plugin       the plugin directory
+	 * @param manifestPath the harness's plugin manifest path relative to {@code plugin}, such as
+	 *                     {@code .codex-plugin/plugin.json}
+	 * @return the manifest's {@code version}, or empty if the manifest has no non-blank string {@code version}
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the manifest cannot be read or is not valid JSON
+	 */
+	public static Optional<String> version(Path plugin, Path manifestPath) throws IOException
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(manifestPath, "manifestPath").isNotNull();
+		JsonNode version = read(plugin, manifestPath).get("version");
+		if (version == null || !version.isString() || version.asString().isBlank())
+			return Optional.empty();
+		return Optional.of(version.asString());
+	}
+
+	/**
+	 * Reads a plugin's manifest.
+	 *
+	 * @param plugin       the plugin directory
+	 * @param manifestPath the manifest path relative to {@code plugin}
+	 * @return the manifest's JSON
+	 * @throws IOException if the manifest does not exist, cannot be read or is not valid JSON
+	 */
+	private static JsonNode read(Path plugin, Path manifestPath) throws IOException
+	{
+		Path manifest = plugin.resolve(manifestPath);
+		if (!Files.isRegularFile(manifest))
+		{
+			throw new IOException("The plugin directory " + plugin + " has no manifest " + manifestPath + ". Name a " +
+				"directory that holds the harness's plugin manifest.");
+		}
+		try
+		{
+			return JSON.readTree(BoundedInput.readUtf8(manifest, MAXIMUM_MANIFEST_BYTES, "Plugin manifest"));
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("The plugin manifest " + manifest + " is not valid JSON: " + e.getOriginalMessage(), e);
+		}
 	}
 
 	/**

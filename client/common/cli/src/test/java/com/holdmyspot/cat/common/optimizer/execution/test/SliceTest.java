@@ -417,6 +417,12 @@ public final class SliceTest
 		}
 
 		@Override
+		public List<String> installedPluginNames() throws IOException
+		{
+			return delegate.installedPluginNames();
+		}
+
+		@Override
 		public HostLogin hostLogin()
 		{
 			return delegate.hostLogin();

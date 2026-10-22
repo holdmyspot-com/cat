@@ -5476,6 +5476,12 @@ public final class DriverTest
 			{
 				return delegate.installedPlugins(name);
 			}
+
+			@Override
+			public List<String> installedPluginNames() throws IOException
+			{
+				return delegate.installedPluginNames();
+			}
 		};
 	}
 

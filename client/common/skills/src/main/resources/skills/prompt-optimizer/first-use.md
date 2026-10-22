@@ -11,7 +11,7 @@
 
 Run the launcher that this skill's `SKILL.md` names. Each command prints one JSON object. Exit code 0 means its `status`
 is the campaign's state. Exit code 1 or 2 means a refusal, an error or invalid input; show its `message` to the user
-and stop.
+and stop, unless step 1 says how to continue.
 
 To show the user a launcher field means to put its text in your reply verbatim, however long it is. A summary, an
 excerpt, a saved file or a link does not show it: the user confirms and chooses only from what your reply shows.
@@ -21,6 +21,40 @@ excerpt, a saved file or a link does not show it: the user confirms and chooses 
 	achieve, add `--goal <text>` with the user's own words, quoted as one argument; otherwise leave it out. It creates
 	a campaign or resumes the one that already exists for that target. Use its `campaign` value in every later
 	command.
+	- When `start` is refused because the target's prompt test configuration does not exist or has no key for this
+		harness, its `message` names the configuration file and lists the plugins installed in this harness and the
+		plugins that the project builds. The configuration says which plugins every trial installs. Show the `message`,
+		then ask the user which of the listed plugins the prompt's users have installed. Tell the user that a
+		certification holds only for users who have the chosen plugins: a plugin that trials leave out, CAT included,
+		can change what the model receives, and a plugin that trials add can supply guidance that the prompt's users
+		lack. For each chosen plugin that the project builds, ask the user for the command that builds it, run from the
+		project root, and the directory, relative to the project root, where the build writes the plugin; a plugin whose
+		directory in the project is the plugin itself has no command. Never choose plugins on the user's behalf.
+	- Write the configuration file that the `message` names. Give it the key that the `message` names for this harness
+		and keep every other key that the file already holds. List each chosen installed plugin by the name that the
+		`message` shows, and each chosen plugin that the project builds by its name with a `build` that holds the
+		command as a list of arguments and the output directory; leave out `command` when there is none. Indent with
+		tabs. For example:
+
+		```json
+		{
+			"claude": {
+				"plugins": [
+					{
+						"name": "cat",
+						"build": {
+							"command": ["client/mvnw", "-f", "client/pom.xml", "-B", "package", "-DskipTests"],
+							"output": "client/common/distribution/target/runtime/claude"
+						}
+					},
+					{"name": "formatter@acme-tools"}
+				]
+			}
+		}
+		```
+
+		With no chosen plugin, the list is empty. Show the user the file and tell the user to commit it with the
+		target's prompt tests, then run `start` again with the same arguments.
 2. **Confirm the contract.** While the result holds a `proposal`, show the user the `proposal` text in full; it holds
 	the contract, the warnings and each certification scope choice. When the result also holds a `message`, show the
 	`message` after the proposal. If the result holds a `message` but no `proposal`, show the `message`.

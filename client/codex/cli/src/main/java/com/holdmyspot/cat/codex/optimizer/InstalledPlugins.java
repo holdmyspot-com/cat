@@ -8,7 +8,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -30,6 +33,12 @@ public final class InstalledPlugins
 	 * The largest configuration file that is read.
 	 */
 	private static final int MAXIMUM_CONFIGURATION_BYTES = 1_048_576;
+	/**
+	 * The header of a configuration table that records one installed plugin, capturing its
+	 * {@code <plugin>@<marketplace>} name.
+	 */
+	private static final Pattern PLUGIN_TABLE = Pattern.compile(
+		"(?m)^\\s*\\[plugins\\.\"(?<name>[^@/\\\\\"]+@[^@/\\\\\"]+)\"]\\s*(?:#.*)?$");
 
 	/**
 	 * Prevents construction of utility class instances.
@@ -76,5 +85,28 @@ public final class InstalledPlugins
 			}
 		}
 		return copies;
+	}
+
+	/**
+	 * Returns the name of every plugin that the configuration records.
+	 *
+	 * @param home the user's Codex home directory
+	 * @return each name of a {@code [plugins."<plugin>@<marketplace>"]} table, once, in file order; empty if the
+	 *   configuration does not exist
+	 * @throws NullPointerException if {@code home} is null
+	 * @throws IOException          if the configuration exists but cannot be read
+	 */
+	public static List<String> names(Path home) throws IOException
+	{
+		requireThat(home, "home").isNotNull();
+		Path configuration = home.resolve("config.toml");
+		if (!Files.isRegularFile(configuration))
+			return List.of();
+		String text = BoundedInput.readUtf8(configuration, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		Set<String> names = new LinkedHashSet<>();
+		Matcher table = PLUGIN_TABLE.matcher(text);
+		while (table.find())
+			names.add(table.group("name"));
+		return List.copyOf(names);
 	}
 }

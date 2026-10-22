@@ -10,6 +10,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import tools.jackson.core.JacksonException;
@@ -67,27 +68,12 @@ public final class InstalledPlugins
 		requireThat(configuration, "configuration").isNotNull();
 		requireThat(name, "name").isNotBlank();
 		requireThat(json, "json").isNotNull();
-		Path records = configuration.resolve(RECORDS);
-		if (!Files.isRegularFile(records))
+		Optional<JsonNode> root = readRecords(configuration, json);
+		if (root.isEmpty())
 			return List.of();
-		JsonNode root;
-		try
-		{
-			root = json.readTree(BoundedInput.readUtf8(records, MAXIMUM_RECORDS_BYTES, "Claude Code install records"));
-		}
-		catch (JacksonException e)
-		{
-			throw new IOException("The install records " + records + " are not valid JSON", e);
-		}
-		int version = root.path("version").asInt(-1);
-		if (version != RECORDS_VERSION)
-		{
-			throw new IOException("The install records " + records + " have the format version " +
-				root.path("version") + "; this release reads version " + RECORDS_VERSION);
-		}
 
 		Set<Path> copies = new LinkedHashSet<>();
-		for (JsonNode entry : root.path("plugins").path(name))
+		for (JsonNode entry : root.get().path("plugins").path(name))
 		{
 			String installPath = entry.path("installPath").asString("");
 			if (installPath.isBlank())
@@ -106,5 +92,56 @@ public final class InstalledPlugins
 				copies.add(copy.normalize());
 		}
 		return List.copyOf(copies);
+	}
+
+	/**
+	 * Returns the name of every plugin that the install records name.
+	 *
+	 * @param configuration the user's Claude Code configuration directory
+	 * @param json          the JSON mapper
+	 * @return each name, {@code <plugin>@<marketplace>}, in record order; empty if the records do not exist
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the records exist but cannot be read, are not valid JSON or have another format
+	 *                              version
+	 */
+	public static List<String> names(Path configuration, JsonMapper json) throws IOException
+	{
+		requireThat(configuration, "configuration").isNotNull();
+		requireThat(json, "json").isNotNull();
+		Optional<JsonNode> root = readRecords(configuration, json);
+		if (root.isEmpty())
+			return List.of();
+		return List.copyOf(root.get().path("plugins").propertyNames());
+	}
+
+	/**
+	 * Reads the install records.
+	 *
+	 * @param configuration the user's Claude Code configuration directory
+	 * @param json          the JSON mapper
+	 * @return the records, or empty if they do not exist
+	 * @throws IOException if the records exist but cannot be read, are not valid JSON or have another format version
+	 */
+	private static Optional<JsonNode> readRecords(Path configuration, JsonMapper json) throws IOException
+	{
+		Path records = configuration.resolve(RECORDS);
+		if (!Files.isRegularFile(records))
+			return Optional.empty();
+		JsonNode root;
+		try
+		{
+			root = json.readTree(BoundedInput.readUtf8(records, MAXIMUM_RECORDS_BYTES, "Claude Code install records"));
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("The install records " + records + " are not valid JSON", e);
+		}
+		int version = root.path("version").asInt(-1);
+		if (version != RECORDS_VERSION)
+		{
+			throw new IOException("The install records " + records + " have the format version " +
+				root.path("version") + "; this release reads version " + RECORDS_VERSION);
+		}
+		return Optional.of(root);
 	}
 }
