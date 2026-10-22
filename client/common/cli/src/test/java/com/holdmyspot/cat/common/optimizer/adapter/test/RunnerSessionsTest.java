@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
@@ -353,9 +354,11 @@ public final class RunnerSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
-			Path artifact = manifest(root.resolve("artifact"), "cat");
-			Path catCopy = manifest(root.resolve("plugins/cat"), "cat");
-			Path otherCopy = manifest(root.resolve("plugins/release-docs"), "release-docs");
+			Path artifact = manifest(root.resolve("artifact"), "cat", PluginInfo.CAT_REPOSITORY);
+			// CAT is recognized by its manifest's repository, whatever the user named it, and a plugin that takes
+			// CAT's name without its repository is not CAT
+			Path catCopy = manifest(root.resolve("plugins/workflow"), "workflow", PluginInfo.CAT_REPOSITORY);
+			Path otherCopy = manifest(root.resolve("plugins/cat"), "cat", "https://example.com/cat");
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "",
 				true, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
@@ -405,8 +408,8 @@ public final class RunnerSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-")).
 				toRealPath();
-			Path artifact = manifest(root.resolve("artifact"), "cat");
-			Path base = manifest(root.resolve("base"), "cat");
+			Path artifact = manifest(root.resolve("artifact"), "cat", PluginInfo.CAT_REPOSITORY);
+			Path base = manifest(root.resolve("base"), "cat", PluginInfo.CAT_REPOSITORY);
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path home = Files.createDirectories(root.resolve("home"));
 			write(base.resolve("rules/common/default.md"), "Load `../include/common/lazy.md`.");
@@ -416,7 +419,7 @@ public final class RunnerSessionsTest
 			write(project.resolve(".cat/rules/common/project.md"), "Project rule");
 			write(home.resolve(".cat/rules/common/personal.md"), "Personal rule");
 			TrialPlugin plugin = new TrialPlugin("cat", "0".repeat(64), new TrialPlugin.Build(List.of("build"),
-				Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("rules/include"), Path.of("rules/include"))));
+				Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("rules/include"), Path.of("rules/include"))), null);
 			TestSessions sessions = new TestSessions(new RunnerSessions.Settings(artifact, root.resolve("runs"),
 				List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 				Yielding.fileReplacer(), Optional.of(home.resolve(".cat/rules"))), (_, _, _) ->
@@ -452,14 +455,14 @@ public final class RunnerSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-")).
 				toRealPath();
-			Path artifact = manifest(root.resolve("artifact"), "cat");
+			Path artifact = manifest(root.resolve("artifact"), "cat", PluginInfo.CAT_REPOSITORY);
 			Path project = Files.createDirectories(root.resolve("project"));
-			Path docs = manifest(root.resolve("docs"), "docs");
+			Path docs = manifest(root.resolve("docs"), "docs", "https://example.com/docs");
 			Path rule = artifact.resolve("rules/common/default.md");
 			write(rule, "Artifact rule");
 			DerivedSource artifactRule = new DerivedSource(rule.toString(), "CAT injects this rule into every session");
 			TrialPlugin plugin = new TrialPlugin("docs@market", "0".repeat(64), new TrialPlugin.Installed(),
-				List.of());
+				List.of(), null);
 
 			for (boolean installCat : List.of(true, false))
 			{
@@ -499,17 +502,18 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Creates a plugin directory whose Codex manifest has a name.
+	 * Creates a plugin directory whose Codex manifest has a name and a repository.
 	 *
-	 * @param directory the plugin directory
-	 * @param name the manifest's name
+	 * @param directory  the plugin directory
+	 * @param name       the manifest's name
+	 * @param repository the manifest's repository
 	 * @return {@code directory}
 	 * @throws IOException if the manifest cannot be written
 	 */
-	private static Path manifest(Path directory, String name) throws IOException
+	private static Path manifest(Path directory, String name, String repository) throws IOException
 	{
 		Path manifest = Files.createDirectories(directory.resolve(".codex-plugin")).resolve("plugin.json");
-		Files.writeString(manifest, "{\"name\": \"" + name + "\"}");
+		Files.writeString(manifest, "{\"name\": \"" + name + "\", \"repository\": \"" + repository + "\"}");
 		return directory;
 	}
 

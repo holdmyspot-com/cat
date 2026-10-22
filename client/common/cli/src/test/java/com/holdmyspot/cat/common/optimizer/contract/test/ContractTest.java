@@ -603,11 +603,11 @@ public final class ContractTest
 	{
 		// Requirement: R-W10
 		TrialPlugin cat = new TrialPlugin("cat", "0".repeat(64), new TrialPlugin.Build(List.of("build"),
-			Path.of("out")), List.of());
+			Path.of("out")), List.of(), null);
 		TrialPlugin other = new TrialPlugin("other", "1".repeat(64), new TrialPlugin.Build(List.of("build"),
-			Path.of("out")), List.of());
+			Path.of("out")), List.of(), null);
 		TrialPlugin installed = new TrialPlugin("tools@market", "2".repeat(64), new TrialPlugin.Installed(),
-			List.of());
+			List.of(), null);
 		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract(), List.of(
 			new Dependent(Path.of("AGENTS.md"), new Dependent.Span("Read it.\n"), "Routes the agent to the prompt."),
 			new Dependent(Dependent.Location.PLUGIN, "cat", Path.of("bin/read-part"), new Dependent.WholeFile(),
@@ -630,7 +630,7 @@ public final class ContractTest
 	{
 		// Requirement: R-W10
 		TrialPlugin plugin = new TrialPlugin("cat", "0".repeat(64), new TrialPlugin.Build(List.of("build"),
-			Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))));
+			Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))), null);
 		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract(),
 			List.of(
 				new Dependent(Path.of("rules/repair.md"), new Dependent.WholeFile(),

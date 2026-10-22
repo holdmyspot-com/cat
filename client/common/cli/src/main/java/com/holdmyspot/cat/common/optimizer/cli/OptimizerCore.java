@@ -902,7 +902,7 @@ public final class OptimizerCore implements Core
 			FileInventory base = InventoryScanner.scan(workspace.pluginBase(plugin.baseDigest()), Set.of());
 			baseFiles.put(plugin.name(), base);
 			mapped.add(new TrialPlugin(plugin.name(), plugin.baseDigest(), plugin.source(),
-				PluginMapping.map(inventory, promptFiles, fromProject, base)));
+				PluginMapping.map(inventory, promptFiles, fromProject, base), plugin.repository()));
 		}
 		PluginMapping.Coverage coverage = PluginMapping.check(inventory, promptFiles, fromProject, mapped, baseFiles);
 		Optional<String> refusal = coverage.targetRefusal(target);
@@ -926,10 +926,10 @@ public final class OptimizerCore implements Core
 	 * @param workspace the campaign's workspace, whose optimization worktree the build runs in
 	 * @param name the plugin's name
 	 * @param build the plugin's build
-	 * @return the plugin, without mappings
+	 * @return the plugin, without mappings, with the repository that the output's manifest states
 	 * @throws CommandRefusedException if the build cannot start, exits with a status other than zero, or its output
 	 *   holds no harness manifest or one of another name
-	 * @throws IOException if the base cannot be copied
+	 * @throws IOException if the base cannot be copied or its manifest cannot be read
 	 * @throws InterruptedException if the thread is interrupted while it waits for the build
 	 */
 	private TrialPlugin builtPlugin(WorkspacePort workspace, String name, TrialPlugin.Build build)
@@ -981,7 +981,8 @@ public final class OptimizerCore implements Core
 				"the plugin " + built + " in " + PortablePaths.text(build.output()) + ". Name the plugin as its " +
 				"manifest does in the prompt test configuration." + outcome);
 		}
-		return new TrialPlugin(name, workspace.copyPluginBase(output), build, List.of());
+		return new TrialPlugin(name, workspace.copyPluginBase(output), build, List.of(),
+			PluginManifest.repository(output, manifest).orElse(null));
 	}
 
 	/**
@@ -989,9 +990,9 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param workspace the campaign's workspace
 	 * @param name the plugin's name, {@code <plugin>@<marketplace>}
-	 * @return the plugin
+	 * @return the plugin, with the repository that the installed copy's manifest states
 	 * @throws CommandRefusedException if the harness's install records do not name exactly one installed copy
-	 * @throws IOException if the install records cannot be read or the copy cannot be copied
+	 * @throws IOException if the install records cannot be read, or the copy cannot be copied or its manifest read
 	 */
 	private TrialPlugin installedPlugin(WorkspacePort workspace, String name)
 		throws CommandRefusedException, IOException
@@ -1011,8 +1012,9 @@ public final class OptimizerCore implements Core
 				collect(Collectors.joining(", ")) + ". Trials install one, so keep one installed copy and run " +
 				"`start` again.");
 		}
-		return new TrialPlugin(name, workspace.copyPluginBase(copies.getFirst()), new TrialPlugin.Installed(),
-			List.of());
+		Path copy = copies.getFirst();
+		return new TrialPlugin(name, workspace.copyPluginBase(copy), new TrialPlugin.Installed(), List.of(),
+			PluginManifest.repository(copy, scope.harness().pluginManifest()).orElse(null));
 	}
 
 	/**
@@ -1049,8 +1051,8 @@ public final class OptimizerCore implements Core
 		for (PluginBase base : bases)
 		{
 			TrialPlugin plugin = base.plugin();
-			unmapped.add(new PluginBase(new TrialPlugin(plugin.name(), plugin.baseDigest(), plugin.source(), List.of()),
-				base.directory()));
+			unmapped.add(new PluginBase(new TrialPlugin(plugin.name(), plugin.baseDigest(), plugin.source(), List.of(),
+				plugin.repository()), base.directory()));
 		}
 		Set<Path> paths = new HashSet<>();
 		for (DerivedSource source : scope.sessions().loadedSources(root, unmapped).trials())

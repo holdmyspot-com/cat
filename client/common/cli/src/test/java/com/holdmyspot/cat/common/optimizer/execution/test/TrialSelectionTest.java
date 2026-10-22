@@ -45,7 +45,7 @@ public final class TrialSelectionTest
 				new Dependent.WholeFile(), "Repairs a file.")));
 		TrialPlugin plugin = new TrialPlugin("cat", "a".repeat(64),
 			new TrialPlugin.Build(List.of("build"), Path.of("out")),
-			List.of(new TrialPlugin.Mapping(Path.of("plugin/rules"), Path.of("rules"))));
+			List.of(new TrialPlugin.Mapping(Path.of("plugin/rules"), Path.of("rules"))), null);
 
 		SourceSelection selection = TrialSelection.base(Harness.CODEX, Set.of(Path.of("docs/prompt.md")),
 			Set.of(Path.of(".codex/config.toml"), Path.of("/home/user/.codex/config.toml")), contract,
@@ -74,7 +74,7 @@ public final class TrialSelectionTest
 		// Requirement: R-W15
 		TrialPlugin plugin = new TrialPlugin("cat", "a".repeat(64),
 			new TrialPlugin.Build(List.of("build"), Path.of("out")),
-			List.of(new TrialPlugin.Mapping(Path.of("plugin/rules"), Path.of("rules"))));
+			List.of(new TrialPlugin.Mapping(Path.of("plugin/rules"), Path.of("rules"))), null);
 
 		SourceSelection selection = TrialSelection.base(Harness.CLAUDE, Set.of(Path.of("docs/prompt.md")),
 			Set.of(Path.of(".claude/settings.json")), List.of(plugin));

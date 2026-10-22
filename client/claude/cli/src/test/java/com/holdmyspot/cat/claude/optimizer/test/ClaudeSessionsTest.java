@@ -9,6 +9,7 @@ import com.holdmyspot.cat.claude.ClaudeSessionHarness;
 import com.holdmyspot.cat.claude.optimizer.ClaudeSessions;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -177,7 +178,10 @@ public final class ClaudeSessionsTest
 				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
 					List.of(Turn.replies("ok")), input, output);
 			});
-			Path cat = plugin(root.resolve("plugins/cat"), "cat");
+			// CAT is recognized by its manifest's repository, whatever the user named it
+			Path cat = plugin(root.resolve("plugins/workflow"), "workflow");
+			Files.writeString(cat.resolve(".claude-plugin/plugin.json"), "{\"name\": \"workflow\", \"repository\": \"" +
+				PluginInfo.CAT_REPOSITORY + "\"}\n");
 			Path tools = plugin(root.resolve("plugins/tools"), "tools");
 			List<Path> plugins = List.of();
 			if (role == SessionRole.TRIAL)
@@ -1124,7 +1128,7 @@ public final class ClaudeSessionsTest
 				{"mcpServers": {"docs": {"command": "node", "args": ["docs.js"]}, \
 				"web": {"type": "http", "url": "https://example.com/mcp"}}}""");
 			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
-				new TrialPlugin.Installed(), List.of()), root.resolve("tools")));
+				new TrialPlugin.Installed(), List.of(), null), root.resolve("tools")));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
 				false, Map.of(), configuration, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.access().newClaudeSessions(settings, (_, _, _) ->
@@ -1169,7 +1173,7 @@ public final class ClaudeSessionsTest
 				{"hooks": {"SessionStart": [{"hooks": [{"type": "command", \
 				"command": "${CLAUDE_PLUGIN_ROOT}/start.sh"}]}]}}""");
 			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
-				new TrialPlugin.Installed(), List.of()), tools));
+				new TrialPlugin.Installed(), List.of(), null), tools));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.access().newClaudeSessions(settings, (_, _, _) ->
@@ -1245,10 +1249,10 @@ public final class ClaudeSessionsTest
 				{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "base.sh"}]}]}}""");
 
 			List<PluginBase> plugins = List.of(
-				new PluginBase(new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of()),
+				new PluginBase(new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of(), null),
 					tools),
 				new PluginBase(new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"),
-					Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("plugin/hooks"), Path.of("hooks")))), cat));
+					Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("plugin/hooks"), Path.of("hooks"))), null), cat));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.access().newClaudeSessions(settings, (_, _, _) ->

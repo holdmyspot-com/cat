@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -2871,6 +2872,42 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that {@code start} records the repository that each trial plugin's manifest states, from the build
+	 * output of a plugin that the project builds and from the installed copy of one that it does not, so that a
+	 * plugin is CAT by its repository whatever its name.
+	 */
+	@Test
+	public void startRecordsPluginRepository() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path manifest = Path.of("workflow/.claude-plugin/plugin.json");
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), manifest));
+			Path root = repository.root();
+			Files.createDirectories(root.resolve(manifest).getParent());
+			Files.writeString(root.resolve(manifest), "{\"name\": \"workflow\", \"repository\": \"" +
+				PluginInfo.CAT_REPOSITORY + ".git\"}\n");
+			configure(root, """
+				{"claude": {"plugins": [{"name": "workflow", "build": {"output": "workflow"}}, \
+				{"name": "tools@market"}]}}""");
+			Path installed = scope.add(Files.createTempDirectory("installed-plugin")).toRealPath();
+			Files.createDirectories(installed.resolve(".claude-plugin"));
+			Files.writeString(installed.resolve(".claude-plugin/plugin.json"),
+				"{\"name\": \"tools\", \"repository\": \"https://example.com/tools\"}\n");
+			repository.sessions().install("tools@market", List.of(installed));
+
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			List<TrialPlugin> plugins = repository.load(id).plugins().orElseThrow();
+			requireThat(plugins.stream().map(TrialPlugin::repository).toList(), "repositories").
+				isEqualTo(List.of(PluginInfo.CAT_REPOSITORY + ".git", "https://example.com/tools"));
+			requireThat(plugins.stream().map(TrialPlugin::isCat).toList(), "isCat").isEqualTo(List.of(true, false));
+		}
+	}
+
+	/**
 	 * Verifies that the proposal names the hooks of a trial plugin that the harness reports the user has not
 	 * approved, by the plugin's name.
 	 */
@@ -2962,8 +2999,8 @@ public final class OptimizerCoreTest
 	/**
 	 * Writes the build program {@link #buildProgram()} into a project. The program takes a plugin name and an exit
 	 * status as its arguments: it prints {@code building <name>}, appends a line to {@code builds.log} in the parent
-	 * of the directory that it runs in, writes a plugin directory {@code out} whose manifest holds the name, and exits
-	 * with the status.
+	 * of the directory that it runs in, writes a plugin directory {@code out} whose manifest holds the name and CAT's
+	 * repository, and exits with the status.
 	 *
 	 * @param root the project root
 	 * @throws IOException if the program cannot be written
@@ -2977,9 +3014,9 @@ public final class OptimizerCoreTest
 				echo building %1\r
 				echo build>> ..\\builds.log\r
 				if not exist out\\.claude-plugin mkdir out\\.claude-plugin\r
-				echo {"name": "%1"}> out\\.claude-plugin\\plugin.json\r
+				echo {"name": "%1", "repository": "REPOSITORY"}> out\\.claude-plugin\\plugin.json\r
 				exit /b %2\r
-				""");
+				""".replace("REPOSITORY", PluginInfo.CAT_REPOSITORY));
 			return;
 		}
 		Path script = Files.writeString(root.resolve(buildProgram()), """
@@ -2987,9 +3024,9 @@ public final class OptimizerCoreTest
 			echo "building $1"
 			echo build >> ../builds.log
 			mkdir -p out/.claude-plugin
-			printf '{"name": "%s"}\\n' "$1" > out/.claude-plugin/plugin.json
+			printf '{"name": "%s", "repository": "%s"}\\n' "$1" "REPOSITORY" > out/.claude-plugin/plugin.json
 			exit "$2"
-			""");
+			""".replace("REPOSITORY", PluginInfo.CAT_REPOSITORY));
 		requireThat(script.toFile().setExecutable(true, false), "executable").isTrue();
 	}
 

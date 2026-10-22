@@ -45,7 +45,7 @@ public final class CertificationHistoryTest
 	 * A trial plugin that the user installed.
 	 */
 	private static final List<TrialPlugin> PLUGINS = List.of(new TrialPlugin("cat", "a".repeat(64),
-		new TrialPlugin.Installed(), List.of()));
+		new TrialPlugin.Installed(), List.of(), null));
 
 	/**
 	 * Creates the test.
@@ -218,7 +218,7 @@ public final class CertificationHistoryTest
 	{
 		// Requirement: R-M7
 		List<TrialPlugin> plugins = List.of(PLUGINS.getFirst(),
-			new TrialPlugin("formatter@acme-tools", "b".repeat(64), new TrialPlugin.Installed(), List.of()));
+			new TrialPlugin("formatter@acme-tools", "b".repeat(64), new TrialPlugin.Installed(), List.of(), null));
 		CertificationRecord recorded = recordOf(1, MeasurementIdentity.ofPlugins(plugins,
 			Map.of("cat", "1.0.0", "formatter@acme-tools", "2.3.1")));
 		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);

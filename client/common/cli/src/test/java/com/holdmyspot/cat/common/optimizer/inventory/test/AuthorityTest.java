@@ -5,6 +5,7 @@ import static com.holdmyspot.cat.common.optimizer.inventory.test.Inventories.inv
 import static com.holdmyspot.cat.common.optimizer.inventory.test.Inventories.link;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.execution.TrialSelection;
 import com.holdmyspot.cat.common.optimizer.inventory.AttemptReview;
@@ -401,9 +402,10 @@ public final class AuthorityTest
 	{
 		String digest = "a".repeat(64);
 		TrialPlugin built = new TrialPlugin("cat", digest, new TrialPlugin.Build(List.of("build"), Path.of("out")),
-			List.of());
-		TrialPlugin installed = new TrialPlugin("cat@cat", digest, new TrialPlugin.Installed(), List.of());
-		TrialPlugin other = new TrialPlugin("tools@market", digest, new TrialPlugin.Installed(), List.of());
+			List.of(), PluginInfo.CAT_REPOSITORY);
+		TrialPlugin installed = new TrialPlugin("cat@cat", digest, new TrialPlugin.Installed(), List.of(),
+			PluginInfo.CAT_REPOSITORY);
+		TrialPlugin other = new TrialPlugin("tools@market", digest, new TrialPlugin.Installed(), List.of(), null);
 		Path loaded = Path.of(".cat/rules/common/loaded.md");
 		Set<Path> derived = Set.of(Path.of("CLAUDE.md"), loaded);
 		Path rule = Path.of(".cat/rules/claude/tone.md");

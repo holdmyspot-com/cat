@@ -3664,7 +3664,7 @@ public final class DriverTest
 		// Requirement: R-W12
 		TrialPlugin plugin = builtPlugin();
 		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(),
-			List.of());
+			List.of(), null);
 		Contract contract = ContractFixtures.contract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -3754,7 +3754,7 @@ public final class DriverTest
 	private static TrialPlugin builtPlugin()
 	{
 		return new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"), Path.of("out")),
-			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))));
+			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))), null);
 	}
 
 	/**

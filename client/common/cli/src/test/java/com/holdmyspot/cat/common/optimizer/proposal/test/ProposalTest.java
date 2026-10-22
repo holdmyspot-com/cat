@@ -1554,7 +1554,7 @@ public final class ProposalTest
 	private static TrialPlugin builtPlugin()
 	{
 		return new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("./build-plugin", "--release"),
-			Path.of("out/plugin")), List.of(new TrialPlugin.Mapping(Path.of("source/rules"), Path.of("rules/codex"))));
+			Path.of("out/plugin")), List.of(new TrialPlugin.Mapping(Path.of("source/rules"), Path.of("rules/codex"))), null);
 	}
 
 	/**
@@ -1564,7 +1564,7 @@ public final class ProposalTest
 	 */
 	private static TrialPlugin installedPlugin()
 	{
-		return new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of());
+		return new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of(), null);
 	}
 
 	/**

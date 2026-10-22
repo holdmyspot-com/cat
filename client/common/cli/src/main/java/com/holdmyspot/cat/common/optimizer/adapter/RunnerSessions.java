@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.adapter;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.RuleSource;
@@ -206,9 +207,9 @@ public abstract class RunnerSessions implements SessionPort
 	 * hooks and MCP servers run, followed, when CAT is installed, by every
 	 * file that CAT's rules give the primary agent from CAT's installation, the user's rules that the settings name and
 	 * the project's rules. In production, CAT is installed when the settings say so, from the CAT artifact; in trials,
-	 * CAT is the first trial plugin whose manifest name is CAT's, and its rules are read from its base with each mapped
-	 * project file written over its mapped path, as trials install them. A file of CAT's installation is compared
-	 * across the two lists by its path relative to the installation.
+	 * CAT is the first trial plugin whose manifest states CAT's repository, and its rules are read from its base with
+	 * each mapped project file written over its mapped path, as trials install them. A file of CAT's installation is
+	 * compared across the two lists by its path relative to the installation.
 	 * <p>
 	 * Trials run with a new, empty harness home, so every hook of the user's harness configuration, every plugin that
 	 * it enables and no trial plugin holds, and every MCP server that it declares runs in production only. An enabled
@@ -632,18 +633,20 @@ public abstract class RunnerSessions implements SessionPort
 	}
 
 	/**
-	 * Indicates whether a plugin copy is CAT: whether its manifest name is the name in the CAT artifact's manifest.
+	 * Indicates whether a plugin copy is CAT: whether its manifest states CAT's repository, whatever name the plugin
+	 * has.
 	 *
 	 * @param copy the plugin copy
 	 * @return {@code true} if the copy is CAT
 	 * @throws IOException if a manifest cannot be read
+	 * @see PluginInfo#isCatRepository(String)
 	 */
 	final boolean isCat(Path copy) throws IOException
 	{
 		for (Path manifest : PluginManifest.MANIFESTS)
 		{
-			if (Files.isRegularFile(settings.artifact().resolve(manifest)) && Files.isRegularFile(copy.resolve(manifest)))
-				return PluginManifest.name(copy, manifest).equals(PluginManifest.name(settings.artifact(), manifest));
+			if (Files.isRegularFile(copy.resolve(manifest)))
+				return PluginInfo.isCatRepository(PluginManifest.repository(copy, manifest).orElse(null));
 		}
 		return false;
 	}

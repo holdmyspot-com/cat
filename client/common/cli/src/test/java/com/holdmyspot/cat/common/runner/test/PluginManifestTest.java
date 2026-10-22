@@ -70,6 +70,34 @@ public final class PluginManifestTest
 	}
 
 	/**
+	 * Verifies that a plugin's repository comes from its manifest, and that a manifest without a non-blank string
+	 * repository states none.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void readsRepository() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path stated = cleanup.add(Files.createTempDirectory("cat-plugin-manifest-"));
+			write(stated, "{\"name\": \"release-docs\", \"repository\": \"https://example.com/docs\"}");
+			Path missing = cleanup.add(Files.createTempDirectory("cat-plugin-manifest-"));
+			write(missing, "{\"name\": \"release-docs\"}");
+			Path blank = cleanup.add(Files.createTempDirectory("cat-plugin-manifest-"));
+			write(blank, "{\"name\": \"release-docs\", \"repository\": \" \"}");
+			Path object = cleanup.add(Files.createTempDirectory("cat-plugin-manifest-"));
+			write(object, "{\"name\": \"release-docs\", \"repository\": {\"url\": \"https://example.com/docs\"}}");
+
+			requireThat(PluginManifest.repository(stated, MANIFEST), "stated").
+				isEqualTo(Optional.of("https://example.com/docs"));
+			requireThat(PluginManifest.repository(missing, MANIFEST), "missing").isEmpty();
+			requireThat(PluginManifest.repository(blank, MANIFEST), "blank").isEmpty();
+			requireThat(PluginManifest.repository(object, MANIFEST), "object").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that a name that could leave the marketplace directory is refused.
 	 *
 	 * @throws IOException if fixture I/O fails

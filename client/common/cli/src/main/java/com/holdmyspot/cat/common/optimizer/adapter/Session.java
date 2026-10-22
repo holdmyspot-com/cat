@@ -534,8 +534,8 @@ final class Session implements SessionHandle
 
 	/**
 	 * Builds the runner's command-line options. A trial installs exactly the request's plugins: the first one whose
-	 * manifest name is CAT's is installed as CAT, and each other one as a plugin. Other sessions install no plugin. A
-	 * trial on the control source adds the harness's control-source options.
+	 * manifest states CAT's repository is installed as CAT, and each other one as a plugin. Other sessions install no
+	 * plugin. A trial on the control source adds the harness's control-source options.
 	 * Every session is denied reading the host session's project, except its own run and the evidence that it reads,
 	 * and a session of the development part is also denied reading the held-out locations.
 	 *

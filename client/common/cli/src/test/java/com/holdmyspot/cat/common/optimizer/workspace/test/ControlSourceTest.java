@@ -178,7 +178,7 @@ public final class ControlSourceTest
 			writeFile(base.resolve("bin/read-part"), "#!/bin/sh\n", EXECUTABLE);
 			TrialPlugin plugin = new TrialPlugin("cat", InventoryScanner.scan(base, Set.of()).identity().hex(),
 				new TrialPlugin.Build(List.of("build"), Path.of("out")),
-				List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))));
+				List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))), null);
 			List<Dependent> removals = List.of(
 				new Dependent(Dependent.Location.PLUGIN, "cat", Path.of("rules/codex/a.md"), new Dependent.WholeFile(),
 					"Is the prompt's copy."),

@@ -82,6 +82,26 @@ public final class PluginManifest
 	}
 
 	/**
+	 * Returns the repository that a plugin's manifest states.
+	 *
+	 * @param plugin       the plugin directory
+	 * @param manifestPath the harness's plugin manifest path relative to {@code plugin}, such as
+	 *                     {@code .codex-plugin/plugin.json}
+	 * @return the manifest's {@code repository}, or empty if the manifest has no non-blank string {@code repository}
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the manifest cannot be read or is not valid JSON
+	 */
+	public static Optional<String> repository(Path plugin, Path manifestPath) throws IOException
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(manifestPath, "manifestPath").isNotNull();
+		JsonNode repository = read(plugin, manifestPath).get("repository");
+		if (repository == null || !repository.isString() || repository.asString().isBlank())
+			return Optional.empty();
+		return Optional.of(repository.asString());
+	}
+
+	/**
 	 * Reads a plugin's manifest.
 	 *
 	 * @param plugin       the plugin directory

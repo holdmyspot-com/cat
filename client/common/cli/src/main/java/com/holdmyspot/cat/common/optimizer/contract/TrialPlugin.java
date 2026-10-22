@@ -2,6 +2,8 @@ package com.holdmyspot.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PluginInfo;
+
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
@@ -21,17 +23,15 @@ import java.util.regex.Pattern;
  * @param source where the base came from
  * @param mappings the project prompt files and directories whose staged versions trials write over the base, in
  *   project path order; empty unless the project builds the plugin
+ * @param repository the {@code repository} URL in the base's manifest, or {@code null} if the manifest states none
  */
-public record TrialPlugin(String name, String baseDigest, BaseSource source, List<Mapping> mappings)
+public record TrialPlugin(String name, String baseDigest, BaseSource source, List<Mapping> mappings,
+	String repository)
 {
 	/**
 	 * The form of a base digest.
 	 */
 	private static final Pattern DIGEST = Pattern.compile("[0-9a-f]{64}");
-	/**
-	 * The name in CAT's plugin manifest.
-	 */
-	private static final String CAT = "cat";
 
 	/**
 	 * Creates a trial plugin.
@@ -42,7 +42,8 @@ public record TrialPlugin(String name, String baseDigest, BaseSource source, Lis
 	 * @param source where the base came from
 	 * @param mappings the project prompt files and directories whose staged versions trials write over the base, in
 	 *   project path order; empty unless the project builds the plugin
-	 * @throws NullPointerException if any argument is null
+	 * @param repository the {@code repository} URL in the base's manifest, or {@code null} if the manifest states none
+	 * @throws NullPointerException if any argument other than {@code repository} is null
 	 * @throws IllegalArgumentException if {@code name} is blank, {@code baseDigest} is not 64 lowercase hexadecimal
 	 *   digits, an installed plugin has mappings, or two mappings share a source
 	 */
@@ -76,17 +77,15 @@ public record TrialPlugin(String name, String baseDigest, BaseSource source, Lis
 	}
 
 	/**
-	 * Indicates whether the plugin is CAT, whose rule loader loads the project rules in trials.
+	 * Indicates whether the plugin is CAT, whose rule loader loads the project rules in trials. The plugin's name and
+	 * marketplace take no part, because they vary with how the user installed CAT.
 	 *
-	 * @return {@code true} if the plugin's name, without the marketplace of a plugin that the project does not build,
-	 *   is {@code cat}, the name in CAT's manifest
+	 * @return {@code true} if the base's manifest states CAT's repository
+	 * @see PluginInfo#isCatRepository(String)
 	 */
 	public boolean isCat()
 	{
-		int separator = name.indexOf('@');
-		if (separator < 0)
-			return name.equals(CAT);
-		return name.substring(0, separator).equals(CAT);
+		return PluginInfo.isCatRepository(repository);
 	}
 
 	/**

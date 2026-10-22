@@ -151,7 +151,7 @@ public final class PluginMappingTest
 		TrialPlugin plugin = built("cat", List.of(new TrialPlugin.Mapping(Path.of("source/rules"),
 			Path.of("rules/codex"))));
 		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(),
-			List.of());
+			List.of(), null);
 
 		PluginMapping.Coverage coverage = PluginMapping.check(project(), Set.of(READ, SEARCH), Set.of(),
 			List.of(plugin, installed), Map.of("cat", base));
@@ -198,7 +198,7 @@ public final class PluginMappingTest
 	private static TrialPlugin built(String name, List<TrialPlugin.Mapping> mappings)
 	{
 		return new TrialPlugin(name, "a".repeat(64), new TrialPlugin.Build(List.of("build"), Path.of("out")),
-			mappings);
+			mappings, null);
 	}
 
 	/**

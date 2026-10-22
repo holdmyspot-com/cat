@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
@@ -20,6 +21,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialInputs;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -505,6 +507,43 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Files.writeString(record, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readRecord(ID, assigned.key());
+		}
+	}
+
+	/**
+	 * Verifies that a trial plugin's manifest repository survives a reload, and that a plugin recorded before campaigns
+	 * kept the repository, or with none in its manifest, loads with none and so is not CAT.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void storesPluginRepository() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-repository-"));
+			TrialPlugin cat = new TrialPlugin("workflow@local", "a".repeat(64), new TrialPlugin.Installed(), List.of(),
+				PluginInfo.CAT_REPOSITORY);
+			TrialPlugin other = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of(),
+				null);
+			Campaign campaign = new Builder().header(header(ID)).confirmed().working(1).plugins(List.of(cat, other)).
+				build();
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).replaceSnapshot(campaign);
+
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			requireThat(root.get("plugins").get(0).get("repository").asString(), "repository").
+				isEqualTo(PluginInfo.CAT_REPOSITORY);
+			List<TrialPlugin> loaded = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).
+				orElseThrow().plugins().orElseThrow();
+			requireThat(loaded, "loaded").isEqualTo(List.of(cat, other));
+
+			((ObjectNode) root.get("plugins").get(0)).remove("repository");
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+			TrialPlugin older = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).
+				orElseThrow().plugins().orElseThrow().getFirst();
+			requireThat(older.repository(), "olderRepository").isNull();
+			requireThat(older.isCat(), "olderIsCat").isFalse();
 		}
 	}
 

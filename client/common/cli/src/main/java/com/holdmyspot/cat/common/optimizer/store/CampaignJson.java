@@ -328,7 +328,7 @@ final class CampaignJson
 
 	/**
 	 * Writes a trial plugin. Paths are written relative to the project root, or to the plugin directory for a mapping's
-	 * target, with {@code /} between names.
+	 * target, with {@code /} between names. The {@code repository} key is left out when the manifest states none.
 	 *
 	 * @param node the object to write to
 	 * @param plugin the trial plugin
@@ -337,6 +337,8 @@ final class CampaignJson
 	{
 		node.put("name", plugin.name());
 		node.put("base_digest", plugin.baseDigest());
+		if (plugin.repository() != null)
+			node.put("repository", plugin.repository());
 		ObjectNode source = node.putObject("source");
 		switch (plugin.source())
 		{
@@ -380,7 +382,12 @@ final class CampaignJson
 		List<TrialPlugin.Mapping> mappings = new ArrayList<>();
 		for (JsonNode element : elements(node, "mappings"))
 			mappings.add(new TrialPlugin.Mapping(Path.of(text(element, "source")), Path.of(text(element, "target"))));
-		return new TrialPlugin(text(node, "name"), text(node, "base_digest"), source, mappings);
+		// A plugin recorded without a repository is not CAT. Its manifest stated none, or the campaign started before
+		// CAT recorded it; reading the base copy instead would make loading a campaign depend on campaign storage
+		String repository = null;
+		if (node.has("repository"))
+			repository = text(node, "repository");
+		return new TrialPlugin(text(node, "name"), text(node, "base_digest"), source, mappings, repository);
 	}
 
 	/**

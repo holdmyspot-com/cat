@@ -552,7 +552,8 @@ targeted (D58). The prompt author works as follows:
 	- an instruction that a prompt file already states is corrected in that file, `AGENTS.md` and `CLAUDE.md` included;
 	- a target that ships with CAT, such as CAT's own rules, skills and optimizer prompts, is corrected at its source
 		location in its module, which mappings carry into trials ([§4.4](#44-trial-staging));
-	- new guidance for any other target goes into a project rule when CAT is a trial plugin of the campaign's harness:
+	- new guidance for any other target goes into a project rule when CAT is a trial plugin of the campaign's harness,
+		meaning a trial plugin whose manifest states CAT's repository ([§4.4](#44-trial-staging)):
 		an existing rule under `.cat/rules/` on the same topic first, otherwise a new rule in `.cat/rules/common/`, or in
 		`.cat/rules/claude/` or `.cat/rules/codex/` when it depends on that harness. A rule whose guidance applies only
 		while the agent works on some files has `paths` frontmatter that matches them, so it loads only for that work;
@@ -1178,7 +1179,7 @@ confirmed contract:
 - In-project prompt files, which are the target prompt file and every in-project file that the prompt system loads:
 	content edits and ordinary-file create, rename and delete. An in-project file that a link at or below a prompt
 	source resolves to is a prompt file too, editable through the link or at its own path. When CAT is a trial plugin
-	of the campaign's harness, the project rules directory `.cat/rules/` is an in-project prompt source, since CAT's
+	of the campaign's harness ([§4.4](#44-trial-staging), D93), the project rules directory `.cat/rules/` is an in-project prompt source, since CAT's
 	rule loader loads it in trials as for the prompt's users, so a candidate may create a rule in it (D30).
 - Existing symbolic-link entries, their destinations and existing file modes stay fixed.
 - Loader configuration, meaning whatever decides which prompt files load, is fixed for the campaign. A needed loader
@@ -1340,6 +1341,14 @@ A plugin that the project does not build comes from the user's harness home, whe
 locate it: Claude Code's `installed_plugins.json`, or Codex's `config.toml` and plugin cache. `start` refuses when the
 records do not identify exactly one installed copy, and copies that copy into campaign storage as the plugin's base, so
 that a later update of the user's installation does not change the campaign's trials.
+
+**Which trial plugin is CAT (user ruling, 2026-10-21).** A trial plugin is CAT when its manifest's `repository` is
+CAT's repository URL, whatever the plugin's name or marketplace: a plugin named `cat` from another repository is not
+CAT, and CAT installed under another name or from another marketplace is. URLs compare after ignoring the letter case of
+the scheme and host, a trailing `/` and a trailing `.git`; the path keeps its case, and a value that is not an absolute
+URL with a host never matches. `start` reads the repository from the manifest of the build output or the installed copy
+and records it with the trial plugin in the campaign; a plugin recorded without one, because its manifest states none or
+the campaign started before CAT recorded it, is not CAT (D93).
 
 **Mappings.** A trial must load a candidate's version of a prompt file that a project-built plugin ships, as the
 plugin's users do, not the copy in the base that no candidate changes. Where the build puts each file follows from
@@ -1621,7 +1630,7 @@ A contract author session receives the target prompt file and, when the user sta
 inspects the prompt system and proposes the complete contract. Loading follows trial behaviour: the prompt system is
 what a trial loads, the project's files and the trial plugins that the prompt test configuration lists
 ([§4.4](#44-trial-staging)). CAT observes loading where the harness exposes it (premise P9), and otherwise derives it
-from the harness's documented loading rules and, when a trial plugin is CAT, CAT's rule loader, recording that limit.
+from the harness's documented loading rules and, when a trial plugin is CAT (D93), CAT's rule loader, recording that limit.
 Both harnesses expose hook runs, and Claude exposes its skill and command inventory; no harness names the instruction
 files it loaded, or the files that a hook or MCP server runs, so those are derived (H21, [§4.4](#44-trial-staging)). CAT lists the derived files itself when the contract author finishes, from
 the trial plugins; the contract author does not list them. The contract author's request already lists the files that
@@ -2582,6 +2591,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D90 | Treat `CLAUDE.md` as Claude Code's prompt file and `AGENTS.md` as Codex's, so that a Claude control trial loads only `CLAUDE.md` files (user ruling, 2026-10-20). | Claude Code 2.1.304 loads `AGENTS.md` in place of a `CLAUDE.md` that is missing or empty. A control trial of a `CLAUDE.md` that only imports `AGENTS.md` therefore still followed the target: 59 of 60 Claude guard-pilot control trials closed with the motto that the emptied file required (end-to-end finding, 2026-10-20). | A Claude control trial loads different instruction files from the user's sessions when those load `AGENTS.md` beside or in place of `CLAUDE.md`. |
 | D91 | End-to-end checks prove only what a real harness must show: each harness's runners work and prompt tests run through them, a trial uses a host tool, and a real ESC is recorded. Behavior that depends only on harness events is proven by unit tests that replay events recorded once from a real run, and behavior that depends on Git by tests on a real repository (user ruling, 2026-10-20). | A live campaign costs hundreds of nested sessions per claim, while a recording replays in milliseconds and still fails when a new harness version changes its events. | A recording proves the behavior of the harness version that produced it; a harness change that alters the events needs a new recording. |
 | D92 | Show a certification's environment as one block, `Certified for the following environment:` followed by the harness and its version, the trial plugins with their versions, and every other recorded condition in words that need none of CAT's terms, and have the skill write a missing prompt test configuration from the user's choice among the installed plugins (user rulings, 2026-10-21). | A certification holds only for the environment it measured, and the plugins that trials install are the user's choice; a claim that does not name them reads as covering users with other plugins, CAT included. Asking from the list of installed plugins keeps the user from writing `prompt.json` by hand. | Plugin versions join the measurement identity, so updating a trial plugin makes a certification historical, as a change of its base copy already did. |
+| D93 | Identify CAT among the trial plugins by its manifest's `repository` URL, compared after ignoring the letter case of the scheme and host, a trailing `/` and a trailing `.git`, never by the plugin's name or marketplace, and record each trial plugin's repository in the campaign, a plugin recorded without one counting as not CAT (user ruling, 2026-10-21). | A name is chosen by whoever publishes the plugin: another plugin may be named `cat`, and CAT may be installed under another name or from another marketplace, so a name match both admits a stranger and misses CAT. Exact URL comparison would miss CAT over spellings that name the same repository. Deriving the repository of an older campaign's plugin from its base copy would make loading a campaign read campaign storage. | A CAT release whose manifest states another repository URL, such as the 1.0 releases' `https://github.com/cowwoc/cat`, is not CAT in trials, so its rules and `.cat/rules/` load in no trial. A campaign started before CAT recorded repositories treats every trial plugin as not CAT until it is started again. |
 
 ## 14. Acceptance evidence
 

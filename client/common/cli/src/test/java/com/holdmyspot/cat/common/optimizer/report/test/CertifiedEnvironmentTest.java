@@ -36,8 +36,9 @@ public final class CertifiedEnvironmentTest
 		// Requirement: R-M7
 		List<TrialPlugin> plugins = List.of(
 			new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("./build"), Path.of("out")),
-				List.of()),
-			new TrialPlugin("formatter@acme-tools", "b".repeat(64), new TrialPlugin.Installed(), List.of()));
+				List.of(), null),
+			new TrialPlugin("formatter@acme-tools", "b".repeat(64), new TrialPlugin.Installed(), List.of(),
+				null));
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.putAll(MeasurementIdentity.ofPlugins(plugins, Map.of("cat", "1.0.0", "formatter@acme-tools", "2.3.1")).
 			values());

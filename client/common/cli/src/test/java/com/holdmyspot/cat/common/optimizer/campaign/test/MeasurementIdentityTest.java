@@ -245,17 +245,18 @@ public final class MeasurementIdentityTest
 		// Requirement: R-M2
 		TrialPlugin.Mapping rules = new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"));
 		TrialPlugin.Build build = new TrialPlugin.Build(List.of("./build"), Path.of("out"));
-		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of());
+		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of(),
+			null);
 		MeasurementIdentity recorded = MeasurementIdentity.ofPlugins(List.of(
-			new TrialPlugin("cat", "a".repeat(64), build, List.of(rules)), installed), Map.of());
+			new TrialPlugin("cat", "a".repeat(64), build, List.of(rules), null), installed), Map.of());
 
 		Map<MeasurementCondition, List<TrialPlugin>> changed = new EnumMap<>(MeasurementCondition.class);
 		changed.put(MeasurementCondition.PLUGIN_BASES, List.of(
-			new TrialPlugin("cat", "c".repeat(64), build, List.of(rules)), installed));
+			new TrialPlugin("cat", "c".repeat(64), build, List.of(rules), null), installed));
 		changed.put(MeasurementCondition.PLUGIN_BUILDS, List.of(new TrialPlugin("cat", "a".repeat(64),
-			new TrialPlugin.Build(List.of("./build", "--release"), Path.of("out")), List.of(rules)), installed));
+			new TrialPlugin.Build(List.of("./build", "--release"), Path.of("out")), List.of(rules), null), installed));
 		changed.put(MeasurementCondition.PLUGIN_MAPPINGS, List.of(new TrialPlugin("cat", "a".repeat(64), build,
-			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/claude")))), installed));
+			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/claude"))), null), installed));
 		for (Map.Entry<MeasurementCondition, List<TrialPlugin>> entry : changed.entrySet())
 		{
 			requireThat(entry.getKey().isMaterial(), "isMaterial").withContext(entry.getKey(), "condition").isTrue();

@@ -725,11 +725,11 @@ public final class StagedSourceTest
 			writeFile(docsBase.resolve("prompt.md"), "installed prompt", READ_WRITE);
 			TrialPlugin docs = new TrialPlugin("docs", port.copyPluginBase(docsBase),
 				new TrialPlugin.Build(List.of("build"), Path.of("out")),
-				List.of(new TrialPlugin.Mapping(Path.of("prompt.md"), Path.of("prompt.md"))));
+				List.of(new TrialPlugin.Mapping(Path.of("prompt.md"), Path.of("prompt.md"))), null);
 			Path toolsBase = root.resolve("tools-base");
 			writeFile(toolsBase.resolve(".codex-plugin/plugin.json"), "{\"name\": \"tools\"}", READ_WRITE);
 			TrialPlugin tools = new TrialPlugin("tools@market", port.copyPluginBase(toolsBase),
-				new TrialPlugin.Installed(), List.of());
+				new TrialPlugin.Installed(), List.of(), null);
 			Overlay candidate = Overlay.of(project.tree().inventory()).
 				write(Path.of("rules/a.md"), content("candidate rule a"), READ_WRITE).
 				write(Path.of("prompt.md"), content("candidate prompt"), READ_WRITE);
@@ -834,7 +834,7 @@ public final class StagedSourceTest
 	private static TrialPlugin builtPlugin(String name, String digest)
 	{
 		return new TrialPlugin(name, digest, new TrialPlugin.Build(List.of("build"), Path.of("out")),
-			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))));
+			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))), null);
 	}
 
 	/**

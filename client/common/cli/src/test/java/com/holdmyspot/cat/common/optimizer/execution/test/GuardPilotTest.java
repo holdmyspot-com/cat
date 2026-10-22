@@ -585,7 +585,7 @@ public final class GuardPilotTest
 		// Requirement: R-W12
 		TrialPlugin built = builtPlugin();
 		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(),
-			List.of());
+			List.of(), null);
 		List<TrialPlugin> plugins = List.of(built, installed);
 		Contract contract = TierFixtures.tieredContract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -652,7 +652,7 @@ public final class GuardPilotTest
 	private static TrialPlugin builtPlugin()
 	{
 		return new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"), Path.of("out")),
-			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))));
+			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))), null);
 	}
 
 	/**

@@ -9,6 +9,7 @@ import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
+import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -175,7 +176,10 @@ public final class CodexSessionsTest
 				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
 					List.of(Turn.replies("ok")), input, output);
 			});
-			Path cat = plugin(root.resolve("plugins/cat"), "cat");
+			// CAT is recognized by its manifest's repository, whatever the user named it
+			Path cat = plugin(root.resolve("plugins/workflow"), "workflow");
+			Files.writeString(cat.resolve(".codex-plugin/plugin.json"), "{\"name\": \"workflow\", \"repository\": \"" +
+				PluginInfo.CAT_REPOSITORY + "\"}\n");
 			Path tools = plugin(root.resolve("plugins/tools"), "tools");
 			List<Path> plugins = List.of();
 			if (role == SessionRole.TRIAL)
@@ -921,7 +925,7 @@ public final class CodexSessionsTest
 				enabled = false
 				""");
 			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
-				new TrialPlugin.Installed(), List.of()), root.resolve("tools")));
+				new TrialPlugin.Installed(), List.of(), null), root.resolve("tools")));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
 				false, Map.of(), configuration, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
@@ -1016,10 +1020,10 @@ public final class CodexSessionsTest
 				{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "base.sh"}]}]}}""");
 
 			List<PluginBase> plugins = List.of(
-				new PluginBase(new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of()),
+				new PluginBase(new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of(), null),
 					tools),
 				new PluginBase(new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"),
-					Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("plugin/hooks"), Path.of("hooks")))), cat));
+					Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("plugin/hooks"), Path.of("hooks"))), null), cat));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = CodexSessionsSecrets.access().newCodexSessions(settings, (_, _, _) ->
