@@ -5,6 +5,8 @@ import static com.holdmyspot.cat.common.optimizer.inventory.test.Inventories.inv
 import static com.holdmyspot.cat.common.optimizer.inventory.test.Inventories.link;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.execution.TrialSelection;
 import com.holdmyspot.cat.common.optimizer.inventory.AttemptReview;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning.Choice;
@@ -386,5 +388,42 @@ public final class AuthorityTest
 
 		requireThat(authority.diagnose("R-3", Path.of("prompts/a.md"), Operation.EDIT_CONTENT, fork).
 			map(AuthorityWarning::limit), "limit").isEqualTo(Optional.of(Limit.LINK_CYCLE));
+	}
+
+	/**
+	 * Verifies that a candidate may create, edit and delete a rule under the project rules directory when CAT is a
+	 * trial plugin, whether the project builds it or the user installed it, and that without CAT a new rule there lies
+	 * outside the prompt sources while a rule that is already a prompt source stays editable.
+	 */
+	// Requirement: R-D14
+	@Test
+	public void projectRulesNeedCatTrialPlugin()
+	{
+		String digest = "a".repeat(64);
+		TrialPlugin built = new TrialPlugin("cat", digest, new TrialPlugin.Build(List.of("build"), Path.of("out")),
+			List.of());
+		TrialPlugin installed = new TrialPlugin("cat@cat", digest, new TrialPlugin.Installed(), List.of());
+		TrialPlugin other = new TrialPlugin("tools@market", digest, new TrialPlugin.Installed(), List.of());
+		Path loaded = Path.of(".cat/rules/common/loaded.md");
+		Set<Path> derived = Set.of(Path.of("CLAUDE.md"), loaded);
+		Path rule = Path.of(".cat/rules/claude/tone.md");
+
+		for (List<TrialPlugin> plugins : List.of(List.of(built), List.of(other, installed)))
+		{
+			Authority authority = new Authority(TrialSelection.promptSources(derived, plugins), Set.of(), NO_LINKS);
+			for (Operation operation : List.of(Operation.CREATE, Operation.EDIT_CONTENT, Operation.DELETE))
+			{
+				requireThat(authority.limitOf(operation, rule), "limit").withContext(operation, "operation").
+					withContext(plugins, "plugins").isEmpty();
+			}
+		}
+		for (List<TrialPlugin> plugins : List.of(List.<TrialPlugin>of(), List.of(other)))
+		{
+			Authority authority = new Authority(TrialSelection.promptSources(derived, plugins), Set.of(), NO_LINKS);
+			requireThat(authority.limitOf(Operation.CREATE, rule), "create").withContext(plugins, "plugins").
+				isEqualTo(Optional.of(Limit.OUTSIDE_PROMPT_SOURCES));
+			requireThat(authority.limitOf(Operation.EDIT_CONTENT, loaded), "loaded").withContext(plugins, "plugins").
+				isEmpty();
+		}
 	}
 }

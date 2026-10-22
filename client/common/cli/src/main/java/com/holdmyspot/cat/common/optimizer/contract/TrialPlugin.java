@@ -28,6 +28,10 @@ public record TrialPlugin(String name, String baseDigest, BaseSource source, Lis
 	 * The form of a base digest.
 	 */
 	private static final Pattern DIGEST = Pattern.compile("[0-9a-f]{64}");
+	/**
+	 * The name in CAT's plugin manifest.
+	 */
+	private static final String CAT = "cat";
 
 	/**
 	 * Creates a trial plugin.
@@ -69,6 +73,20 @@ public record TrialPlugin(String name, String baseDigest, BaseSource source, Lis
 	public boolean isProjectBuilt()
 	{
 		return source instanceof Build;
+	}
+
+	/**
+	 * Indicates whether the plugin is CAT, whose rule loader loads the project rules in trials.
+	 *
+	 * @return {@code true} if the plugin's name, without the marketplace of a plugin that the project does not build,
+	 *   is {@code cat}, the name in CAT's manifest
+	 */
+	public boolean isCat()
+	{
+		int separator = name.indexOf('@');
+		if (separator < 0)
+			return name.equals(CAT);
+		return name.substring(0, separator).equals(CAT);
 	}
 
 	/**

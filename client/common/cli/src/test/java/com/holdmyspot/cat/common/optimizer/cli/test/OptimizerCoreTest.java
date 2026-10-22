@@ -2992,6 +2992,38 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that when CAT is a trial plugin, the project rules count as files that trials load from the project, so
+	 * the proposal never warns that a rule is a prompt file that no trial plugin holds a copy of.
+	 *
+	 * @throws CommandRefusedException if a command is refused
+	 * @throws IOException if a file cannot be read or written
+	 * @throws InterruptedException if the thread is interrupted while a command waits for a session
+	 */
+	// Requirement: R-D14
+	@Test
+	public void projectRulesLoadFromProject()
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path rule = Path.of(".cat/rules/codex/tone.md");
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), buildProgram(), rule));
+			Path root = repository.root();
+			writeBuildProgram(root);
+			configure(root, buildConfiguration("cat", 0, "out"));
+			Files.createDirectories(root.resolve(rule).getParent());
+			Files.writeString(root.resolve(rule), "Answer in a formal tone.\n");
+
+			String proposal = repository.core().start(Path.of("CLAUDE.md")).proposal();
+
+			requireThat(proposal, "proposal").contains("## Trial plugins").
+				doesNotContain("no trial plugin that the project builds holds a copy of them");
+		}
+	}
+
+	/**
 	 * Verifies that a resumed campaign presents the derived sources that the session port listed when the contract
 	 * author finished, as the stored proposal keeps them, instead of listing them again.
 	 */

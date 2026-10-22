@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 
 import java.nio.file.Path;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -26,6 +27,32 @@ public final class TrialSelection
 	 */
 	private TrialSelection()
 	{
+	}
+
+	/**
+	 * Returns a campaign's in-project prompt sources. When CAT is one of the trial plugins, its rule loader loads the
+	 * project rules from the staged project in trials, as it does for the prompt's users, so the project rules
+	 * directory is a prompt source too; without CAT, no project rule loads.
+	 *
+	 * @param sources the target and the in-project derived sources, relative to the project
+	 * @param plugins the campaign's trial plugins
+	 * @return {@code sources}, with the project rules directory when CAT is a trial plugin
+	 * @throws NullPointerException if any of the arguments are null or contain null
+	 */
+	public static Set<Path> promptSources(Set<Path> sources, List<TrialPlugin> plugins)
+	{
+		requireThat(sources, "sources").isNotNull();
+		requireThat(plugins, "plugins").isNotNull();
+		Set<Path> promptSources = new LinkedHashSet<>(sources);
+		for (TrialPlugin plugin : plugins)
+		{
+			if (plugin.isCat())
+			{
+				promptSources.add(ProjectRuleLoader.rulesDirectory(Path.of("")));
+				break;
+			}
+		}
+		return promptSources;
 	}
 
 	/**

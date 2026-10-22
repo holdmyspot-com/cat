@@ -169,6 +169,57 @@ public final class PromptAuthorTest
 	}
 
 	/**
+	 * Verifies that when the project rules are a prompt source, the editing instructions place new guidance in a
+	 * project rule, scoped with {@code paths} frontmatter when it applies only to some files, and never tell the
+	 * prompt author to prefer another prompt file over {@code AGENTS.md} or {@code CLAUDE.md}.
+	 */
+	// Requirement: R-D14
+	@Test
+	public void newGuidanceGoesToProjectRule()
+	{
+		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md"),
+			Path.of(".cat/rules")), Set.of());
+		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.ADD_GUIDANCE,
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(),
+			List.of());
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		requireThat(turn, "turn").contains("ships with CAT").
+			contains("Otherwise, put new guidance in a project rule").
+			contains("`.cat/rules/common/`").
+			contains("`.cat/rules/claude/` or `.cat/rules/codex/`").
+			contains("\t---\n\tpaths:\n\t  - \"**/*.java\"\n\t---\n").
+			contains("only the keys `agents`, `depends-on` and `paths`").
+			doesNotContain("put new guidance in a prompt file other than").
+			doesNotContain("{{new_guidance}}");
+	}
+
+	/**
+	 * Verifies that when the project rules are not a prompt source, the editing instructions place new guidance in a
+	 * prompt file other than {@code AGENTS.md} or {@code CLAUDE.md}, and never mention the project rules.
+	 */
+	// Requirement: R-D14
+	@Test
+	public void newGuidanceAvoidsAlwaysLoadedFiles()
+	{
+		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.ADD_GUIDANCE,
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(),
+			List.of());
+
+		String turn = prompt.request(brief, COPY).turns().getFirst();
+
+		requireThat(turn, "turn").contains("ships with CAT").
+			contains("Otherwise, put new guidance in a prompt file other than `AGENTS.md` or `CLAUDE.md`").
+			contains("add it to one of them only when it cannot otherwise reach the sessions").
+			doesNotContain("project rule").
+			doesNotContain(".cat/rules").
+			doesNotContain("paths:").
+			doesNotContain("{{new_guidance}}");
+	}
+
+	/**
 	 * Returns a development failure of the {@code safety} test.
 	 *
 	 * @return the failure

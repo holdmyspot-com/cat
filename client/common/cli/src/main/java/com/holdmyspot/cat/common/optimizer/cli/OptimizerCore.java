@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
@@ -1027,8 +1028,9 @@ public final class OptimizerCore implements Core
 	 * @param root the project root
 	 * @param bases the trial plugins with their base copies
 	 * @param promptFiles the in-project prompt files, relative to the project
-	 * @return the prompt files that the harness reads from the project, and the project files that the trial plugins'
-	 *   rules give the agent from the project, relative to the project
+	 * @return the prompt files that the harness reads from the project, the prompt files below the project rules
+	 *   directory, which CAT's rule loader reads from the staged project, and the project files that the trial
+	 *   plugins' rules give the agent from the project, relative to the project
 	 * @throws IOException if a file that loads cannot be read
 	 */
 	private Set<Path> loadsFromProject(Path root, List<PluginBase> bases, Set<Path> promptFiles) throws IOException
@@ -1049,9 +1051,10 @@ public final class OptimizerCore implements Core
 			if (!path.isAbsolute())
 				paths.add(path);
 		}
+		Path projectRules = ProjectRuleLoader.rulesDirectory(Path.of(""));
 		for (Path promptFile : promptFiles)
 		{
-			if (scope.harness().readsFromProject(promptFile))
+			if (scope.harness().readsFromProject(promptFile) || promptFile.startsWith(projectRules))
 				paths.add(promptFile);
 		}
 		return paths;
@@ -2488,8 +2491,9 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns the in-project prompt sources of a campaign: the target and every in-project derived source of the
-	 * stored proposal. External derived sources are participants but never prompt sources, so they stay read-only.
+	 * Returns the in-project prompt sources of a campaign: the target, every in-project derived source of the stored
+	 * proposal and, once CAT is a recorded trial plugin, the project rules directory. External derived sources are
+	 * participants but never prompt sources, so they stay read-only.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
@@ -2503,11 +2507,12 @@ public final class OptimizerCore implements Core
 		Optional<ProposalFile.Stored> stored = storedProposal(campaign);
 		if (stored.isPresent())
 			return promptSources(root, campaign, stored.get().derivedSources());
-		return Set.of(relativeTarget(root, campaign));
+		return promptSources(root, campaign, List.of());
 	}
 
 	/**
-	 * Returns the in-project prompt sources of a proposal: the campaign's target and every in-project derived source.
+	 * Returns the in-project prompt sources of a proposal: the campaign's target, every in-project derived source and,
+	 * once CAT is a recorded trial plugin, the project rules directory.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
@@ -2520,7 +2525,8 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns a campaign's in-project prompt sources: its target and every in-project derived source.
+	 * Returns a campaign's in-project prompt sources: its target, every in-project derived source and, once CAT is a
+	 * recorded trial plugin, the project rules directory.
 	 *
 	 * @param root     the project root
 	 * @param campaign the campaign
@@ -2536,7 +2542,7 @@ public final class OptimizerCore implements Core
 			if (!path.isAbsolute())
 				sources.add(path);
 		}
-		return sources;
+		return TrialSelection.promptSources(sources, campaign.plugins().orElse(List.of()));
 	}
 
 	/**

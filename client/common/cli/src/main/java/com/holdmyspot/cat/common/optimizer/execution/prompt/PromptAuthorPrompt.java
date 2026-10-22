@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.execution.prompt;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
@@ -65,6 +66,14 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 	private static final Duration TIME_LIMIT = Duration.ofMinutes(30);
 	private static final String PROMPT_RESOURCE = "/optimizer/prompt-author/prompt-author.md";
 	private static final String REPORT_SCHEMA_RESOURCE = "/optimizer/prompt-author/report.schema.json";
+	/**
+	 * Where new guidance goes when the project rules are a prompt source.
+	 */
+	private static final String PROJECT_RULE_RESOURCE = "/optimizer/prompt-author/new-guidance-project-rule.md";
+	/**
+	 * Where new guidance goes when no project rule loads.
+	 */
+	private static final String PROMPT_FILE_RESOURCE = "/optimizer/prompt-author/new-guidance-prompt-file.md";
 	private static final String NEEDED_EDITS = "needed_edits";
 	private static final String KINDS = "kinds";
 	private static final Set<String> REQUIRED_EDIT_PROPERTIES = Set.of("requirement", "path", "operation");
@@ -76,6 +85,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 	private final String reportSchema;
 	private final Set<Path> promptSources;
 	private final String loaderConfiguration;
+	private final String newGuidance;
 
 	/**
 	 * Creates the prompt author's prompt for the confirmed edit authority.
@@ -84,7 +94,9 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 	 * @param schema writes the confirmed requirements, tests and evaluation settings as JSON for the prompt author
 	 * @param promptSources the in-project prompt files and directories, relative to the project directory, at or below
 	 *   which the prompt author may edit, create, rename and delete ordinary files; a request leaves out each one whose
-	 *   path is a symbolic link to a file outside the project, because that file is read-only
+	 *   path is a symbolic link to a file outside the project, because that file is read-only. When they hold the
+	 *   project rules directory, a request tells the prompt author to put new guidance in a project rule; otherwise,
+	 *   in a prompt file other than the instruction files that load into every session
 	 * @param loaderConfiguration the files and directories that decide which prompt files load, at or below which
 	 *   nothing may change
 	 * @throws NullPointerException if any of the arguments are null or contain null
@@ -102,6 +114,12 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 		this.reportSchema = pretty(json.readTree(PromptTemplate.load(REPORT_SCHEMA_RESOURCE).text()));
 		this.promptSources = Set.copyOf(promptSources);
 		this.loaderConfiguration = list(loaderConfiguration);
+		String placement;
+		if (this.promptSources.contains(ProjectRuleLoader.rulesDirectory(Path.of(""))))
+			placement = PROJECT_RULE_RESOURCE;
+		else
+			placement = PROMPT_FILE_RESOURCE;
+		this.newGuidance = PromptTemplate.load(placement).text().stripTrailing();
 	}
 
 	/**
@@ -248,6 +266,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 			Map.entry("hunk_definition", Hunk.DEFINITION),
 			Map.entry("prompt_sources", editableSources(brief.links())),
 			Map.entry("loader_configuration", loaderConfiguration),
+			Map.entry("new_guidance", newGuidance),
 			Map.entry("links", links(brief.links())),
 			Map.entry("declined_edits", declinedEdits(brief.answeredWarnings())),
 			Map.entry("cell", brief.cell()),

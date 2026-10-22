@@ -160,12 +160,12 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
 	what goes wrong for the user when the instruction is violated.
 2. Make the smallest correction supported by the evidence in the file that owns the decision. When the failing replies
 	violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or `CLAUDE.md` included:
-	guidance added elsewhere leaves that instruction in force. Put new guidance in a prompt file other than
-	`AGENTS.md` or `CLAUDE.md`, which load into every session, and add it to one of them only when it cannot
-	otherwise reach the sessions that need it, such as adding the reference that loads a new file. Remove a
-	contradiction or ambiguity before adding emphasis.
-	Check that your edit contradicts no other instruction of the prompt system. Capitals, "important" markers and
-	repeated instructions are not corrections.
+	guidance added elsewhere leaves that instruction in force. When the file that owns the decision ships with CAT,
+	such as one of CAT's own rules, skills or optimizer prompts, correct it at its source location in its module, from
+	which trials receive it.
+{{new_guidance}}
+	Remove a contradiction or ambiguity before adding emphasis. Check that your edit contradicts no other instruction
+	of the prompt system. Capitals, "important" markers and repeated instructions are not corrections.
 3. For each change, name an analogous case that needs the same path and, as the dissimilar case,
 	the `id` of a test in the confirmed contract whose turns must not receive the new guidance. Word the correction for
 	the invariant shared by the failing and analogous cases.
