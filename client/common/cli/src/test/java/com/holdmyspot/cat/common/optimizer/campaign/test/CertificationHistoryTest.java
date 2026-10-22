@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
@@ -13,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
+import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
 
@@ -39,6 +41,11 @@ public final class CertificationHistoryTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	private static final Path TARGET = Path.of("CLAUDE.md");
+	/**
+	 * A trial plugin that the user installed.
+	 */
+	private static final List<TrialPlugin> PLUGINS = List.of(new TrialPlugin("cat", "a".repeat(64),
+		new TrialPlugin.Installed(), List.of()));
 
 	/**
 	 * Creates the test.
@@ -161,6 +168,80 @@ public final class CertificationHistoryTest
 	}
 
 	/**
+	 * A record stays current while each trial plugin's manifest declares the version that the record holds, and becomes
+	 * historical, naming the trial plugin versions, once a plugin declares another version in an unchanged base.
+	 */
+	@Test
+	public void pluginVersionChangeMakesRecordHistorical()
+	{
+		// Requirement: R-M7
+		CertificationRecord recorded = recordOf(1, MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0.0")));
+
+		Applicability same = recorded.applicability(recorded.promptFiles(),
+			MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0.0")), Contract.DEFAULT_MINIMUM_PASS_RATE);
+		Applicability updated = recorded.applicability(recorded.promptFiles(),
+			MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.1.0")), Contract.DEFAULT_MINIMUM_PASS_RATE);
+
+		requireThat(same.status(), "same").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(updated.status(), "updated").isEqualTo(Applicability.Status.HISTORICAL);
+		requireThat(updated.changed(), "changed").containsExactly(List.of(MeasurementCondition.PLUGIN_VERSIONS));
+	}
+
+	/**
+	 * A record that CAT wrote before it recorded plugin versions stays current when CAT now knows the versions,
+	 * because it holds no version that could differ.
+	 */
+	@Test
+	public void recordWithoutPluginVersionsStaysCurrent()
+	{
+		// Requirement: R-M7
+		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
+		values.putAll(MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0.0")).values());
+		values.remove(MeasurementCondition.PLUGIN_VERSIONS);
+		CertificationRecord recorded = recordOf(1, new MeasurementIdentity(values));
+
+		Applicability known = recorded.applicability(recorded.promptFiles(),
+			MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.1.0")), Contract.DEFAULT_MINIMUM_PASS_RATE);
+
+		requireThat(known.status(), "status").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(known.unchecked(), "unchecked").isEmpty();
+	}
+
+	/**
+	 * Each trial plugin's version is written to the history file as one line of {@code plugin_versions} and reads back
+	 * as the same record; a record written without the field reads back without plugin versions.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test
+	public void pluginVersionsRoundTrip() throws IOException
+	{
+		// Requirement: R-M7
+		List<TrialPlugin> plugins = List.of(PLUGINS.getFirst(),
+			new TrialPlugin("formatter@acme-tools", "b".repeat(64), new TrialPlugin.Installed(), List.of()));
+		CertificationRecord recorded = recordOf(1, MeasurementIdentity.ofPlugins(plugins,
+			Map.of("cat", "1.0.0", "formatter@acme-tools", "2.3.1")));
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		byte[] document = codec.write(CertificationHistory.EMPTY.appended(recorded));
+		ObjectNode root = (ObjectNode) JSON.readTree(document);
+		ObjectNode conditions = (ObjectNode) root.get("records").get(0).get("identity").get("conditions");
+
+		requireThat(conditions.path("plugin_versions").asString(""), "plugin_versions").
+			isEqualTo("cat 1.0.0\nformatter@acme-tools 2.3.1");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(Files.createTempDirectory("cat-history-")).resolve("certifications.json");
+			Files.write(file, document);
+			requireThat(codec.read(file).records(), "read").isEqualTo(List.of(recorded));
+
+			conditions.remove("plugin_versions");
+			Files.write(file, JSON.writeValueAsBytes(root));
+			requireThat(codec.read(file).records().getFirst().identity().values().keySet(), "withoutVersions").
+				doesNotContain(MeasurementCondition.PLUGIN_VERSIONS);
+		}
+	}
+
+	/**
 	 * Returns one malformed edit of a history document per row: the edit and the path that the refusal names.
 	 *
 	 * @return the rows
@@ -262,6 +343,20 @@ public final class CertificationHistoryTest
 		return new CertificationRecord(TARGET, index, CertificationScope.LATEST_VERSIONS,
 			CertificationParameters.current(index, Contract.DEFAULT_MINIMUM_PASS_RATE), List.of(),
 			Map.of(TARGET, Sha256.of(("prompt " + index).getBytes(UTF_8))), new MeasurementIdentity(values));
+	}
+
+	/**
+	 * Returns a record of an empty scope with the given measurement conditions.
+	 *
+	 * @param index    the certification index
+	 * @param identity the measurement conditions
+	 * @return the record
+	 */
+	private static CertificationRecord recordOf(int index, MeasurementIdentity identity)
+	{
+		return new CertificationRecord(TARGET, index, CertificationScope.LATEST_VERSIONS,
+			CertificationParameters.current(index, Contract.DEFAULT_MINIMUM_PASS_RATE), List.of(),
+			Map.of(TARGET, Sha256.of(("prompt " + index).getBytes(UTF_8))), identity);
 	}
 
 	/**

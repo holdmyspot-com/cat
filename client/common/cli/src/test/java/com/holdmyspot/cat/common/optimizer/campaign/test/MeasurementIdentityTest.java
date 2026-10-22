@@ -247,7 +247,7 @@ public final class MeasurementIdentityTest
 		TrialPlugin.Build build = new TrialPlugin.Build(List.of("./build"), Path.of("out"));
 		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(), List.of());
 		MeasurementIdentity recorded = MeasurementIdentity.ofPlugins(List.of(
-			new TrialPlugin("cat", "a".repeat(64), build, List.of(rules)), installed));
+			new TrialPlugin("cat", "a".repeat(64), build, List.of(rules)), installed), Map.of());
 
 		Map<MeasurementCondition, List<TrialPlugin>> changed = new EnumMap<>(MeasurementCondition.class);
 		changed.put(MeasurementCondition.PLUGIN_BASES, List.of(
@@ -259,14 +259,15 @@ public final class MeasurementIdentityTest
 		for (Map.Entry<MeasurementCondition, List<TrialPlugin>> entry : changed.entrySet())
 		{
 			requireThat(entry.getKey().isMaterial(), "isMaterial").withContext(entry.getKey(), "condition").isTrue();
-			requireThat(recorded.differences(MeasurementIdentity.ofPlugins(entry.getValue())), "differences").
-				containsExactly(List.of(entry.getKey()));
+			requireThat(recorded.differences(MeasurementIdentity.ofPlugins(entry.getValue(), Map.of())),
+				"differences").containsExactly(List.of(entry.getKey()));
 		}
 		requireThat(MeasurementCondition.TRIAL_PLUGINS.isMaterial(), "trialPlugins").isTrue();
-		requireThat(recorded.differences(MeasurementIdentity.ofPlugins(List.of(installed))), "withoutCat").
+		requireThat(recorded.differences(MeasurementIdentity.ofPlugins(List.of(installed), Map.of())), "withoutCat").
 			containsExactly(List.of(MeasurementCondition.TRIAL_PLUGINS, MeasurementCondition.PLUGIN_BASES,
-				MeasurementCondition.PLUGIN_BUILDS, MeasurementCondition.PLUGIN_MAPPINGS));
-		requireThat(MeasurementIdentity.ofPlugins(List.of()).values().get(MeasurementCondition.TRIAL_PLUGINS),
-			"none").isEqualTo("none");
+				MeasurementCondition.PLUGIN_VERSIONS, MeasurementCondition.PLUGIN_BUILDS,
+				MeasurementCondition.PLUGIN_MAPPINGS));
+		requireThat(MeasurementIdentity.ofPlugins(List.of(), Map.of()).values().
+			get(MeasurementCondition.TRIAL_PLUGINS), "none").isEqualTo("none");
 	}
 }

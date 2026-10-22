@@ -88,7 +88,7 @@ public record CertificationStatus(List<Latest> latest, List<CertificationRecord>
 	}
 
 	/**
-	 * Returns the human summary.
+	 * Returns the human summary. Each latest certification is followed by the environment that it was measured in.
 	 *
 	 * @return the summary text
 	 */
@@ -100,13 +100,18 @@ public record CertificationStatus(List<Latest> latest, List<CertificationRecord>
 		{
 			CertificationRecord record = entry.record();
 			CertificationScope scope = record.scope();
+			if (lines.size() > 1)
+				lines.add("");
 			lines.add("Latest certification in " + record.harness().orElse("an unrecorded harness") + ": scope " +
 				scope.id() + " (" + scope.summary() + ")");
 			ReportSummary.attempt(lines, AttemptSummary.of(record.certificationIndex(), Outcome.CERTIFIED.label(),
 				entry.applicability()));
+			lines.add("");
+			lines.addAll(CertifiedEnvironment.of(record, entry.applicability().unchecked()).lines());
 		}
 		if (!earlier.isEmpty())
 		{
+			lines.add("");
 			lines.add("Earlier certifications:");
 			for (CertificationRecord record : earlier)
 			{

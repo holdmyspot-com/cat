@@ -196,6 +196,23 @@ public final class AppServerEventsTest
 	}
 
 	/**
+	 * Verifies that the model provider comes from the root thread's {@code thread/started} notification, and that the
+	 * root thread's settings update replaces it.
+	 */
+	@Test
+	public void readsModelProvider()
+	{
+		// Requirement: R-M7
+		HarnessEvents events = parse(List.of(threadStarted("T1", "gpt-6-luna", "medium")));
+		requireThat(events.modelProvider(), "started").isEqualTo("openai");
+
+		events = parse(List.of(threadStarted("T1", "gpt-6-luna", "medium"),
+			"{\"method\":\"thread/settings/updated\",\"params\":{\"threadId\":\"T1\",\"threadSettings\":" +
+				"{\"model\":\"gpt-6-luna\",\"modelProvider\":\"azure\",\"effort\":\"low\"}}}"));
+		requireThat(events.modelProvider(), "updated").isEqualTo("azure");
+	}
+
+	/**
 	 * Verifies that the model and reasoning effort of the root thread's settings update replace the defaults that
 	 * {@code thread/started} reported, and that a later update replaces an earlier one.
 	 */

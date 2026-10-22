@@ -47,6 +47,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
+import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import org.testng.annotations.Test;
@@ -1006,6 +1007,12 @@ public final class GuardPilotTest
 		public int sessionEnvironmentVersion()
 		{
 			return sessionEnvironmentVersion;
+		}
+
+		@Override
+		public String sessionEnvironmentRelease()
+		{
+			return FakeSessionPort.SESSION_ENVIRONMENT_RELEASE;
 		}
 
 		@Override

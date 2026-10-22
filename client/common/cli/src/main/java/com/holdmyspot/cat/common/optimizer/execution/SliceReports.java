@@ -45,7 +45,8 @@ public final class SliceReports
 			report.allocation(), report.benchmark(), report.trialProfiles(), report.cellTier(), report.remaining(),
 			report.tokens(),
 			report.concurrency(), report.assumptions(), report.attempts(), report.keepOffers(), report.claim(),
-			report.limitations(), report.conditions(), report.optimization(), report.reverts(), report.addedTestCases());
+			report.limitations(), report.conditions(), report.optimization(), report.reverts(), report.addedTestCases(),
+			report.certifiedEnvironment());
 	}
 
 	/**

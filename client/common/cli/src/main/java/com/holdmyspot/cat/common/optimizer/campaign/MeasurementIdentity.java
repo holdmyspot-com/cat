@@ -42,6 +42,15 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	 * An identity with no recorded conditions.
 	 */
 	public static final MeasurementIdentity EMPTY = new MeasurementIdentity(Map.of());
+	/**
+	 * The {@link MeasurementCondition#PLUGIN_VERSIONS} entry of a trial plugin whose manifest declares no version.
+	 */
+	public static final String NO_PLUGIN_VERSION = "unversioned";
+	/**
+	 * The {@link MeasurementCondition#PLUGIN_BUILDS} entry of a trial plugin that trials install from the user's
+	 * installed copy.
+	 */
+	public static final String INSTALLED_PLUGIN = "installed copy";
 
 	/**
 	 * Creates an identity.
@@ -90,27 +99,33 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	/**
 	 * Returns the conditions that a campaign's trial plugins set.
 	 *
-	 * @param plugins the trial plugins, in configuration order
+	 * @param plugins  the trial plugins, in configuration order
+	 * @param versions the version that the manifest in each plugin's base declares, keyed by the plugin's name; a
+	 *                 plugin whose manifest declares none is absent
 	 * @return an identity that records {@link MeasurementCondition#TRIAL_PLUGINS},
-	 *   {@link MeasurementCondition#PLUGIN_BASES}, {@link MeasurementCondition#PLUGIN_BUILDS} and
-	 *   {@link MeasurementCondition#PLUGIN_MAPPINGS}, each {@code none} when the list is empty
-	 * @throws NullPointerException if {@code plugins} is null
+	 *   {@link MeasurementCondition#PLUGIN_BASES}, {@link MeasurementCondition#PLUGIN_VERSIONS},
+	 *   {@link MeasurementCondition#PLUGIN_BUILDS} and {@link MeasurementCondition#PLUGIN_MAPPINGS}, each {@code none}
+	 *   when the list is empty
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static MeasurementIdentity ofPlugins(List<TrialPlugin> plugins)
+	public static MeasurementIdentity ofPlugins(List<TrialPlugin> plugins, Map<String, String> versions)
 	{
 		requireThat(plugins, "plugins").isNotNull();
+		requireThat(versions, "versions").isNotNull();
 		StringJoiner names = new StringJoiner("\n");
 		StringJoiner bases = new StringJoiner("\n");
+		StringJoiner pluginVersions = new StringJoiner("\n");
 		StringJoiner builds = new StringJoiner("\n");
 		StringJoiner mappings = new StringJoiner("\n");
 		for (TrialPlugin plugin : plugins)
 		{
 			names.add(plugin.name());
 			bases.add(plugin.name() + " " + plugin.baseDigest());
+			pluginVersions.add(plugin.name() + " " + versions.getOrDefault(plugin.name(), NO_PLUGIN_VERSION));
 			String build = switch (plugin.source())
 			{
 				case TrialPlugin.Build b -> "output " + PortablePaths.text(b.output()) + ", command " + b.command();
-				case TrialPlugin.Installed _ -> "installed copy";
+				case TrialPlugin.Installed _ -> INSTALLED_PLUGIN;
 			};
 			builds.add(plugin.name() + ": " + build);
 			for (TrialPlugin.Mapping mapping : plugin.mappings())
@@ -122,6 +137,7 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.put(MeasurementCondition.TRIAL_PLUGINS, orNone(names));
 		values.put(MeasurementCondition.PLUGIN_BASES, orNone(bases));
+		values.put(MeasurementCondition.PLUGIN_VERSIONS, orNone(pluginVersions));
 		values.put(MeasurementCondition.PLUGIN_BUILDS, orNone(builds));
 		values.put(MeasurementCondition.PLUGIN_MAPPINGS, orNone(mappings));
 		return new MeasurementIdentity(values);
@@ -235,7 +251,7 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	 * @return the cell's value, the campaign-wide value if the cell records none, or {@code null} if neither is
 	 *   recorded
 	 */
-	String valueOf(String cell, MeasurementCondition condition)
+	public String valueOf(String cell, MeasurementCondition condition)
 	{
 		return cells.getOrDefault(cell, Map.of()).getOrDefault(condition, values.get(condition));
 	}

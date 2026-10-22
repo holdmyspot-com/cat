@@ -69,6 +69,11 @@ public final class CodexSessions extends RunnerSessions
 	 */
 	private static final int SESSION_ENVIRONMENT_VERSION = 9;
 	/**
+	 * The CAT release that introduced {@link #SESSION_ENVIRONMENT_VERSION}. Set it to the release that ships a new
+	 * version whenever the version changes.
+	 */
+	private static final String SESSION_ENVIRONMENT_RELEASE = "1.0";
+	/**
 	 * The version of the judge that Codex sessions run. Increment it in every release that changes the judge's role
 	 * profile, prompt, rubric, decision rule or result schema, or the evidence section rendered for the same harness
 	 * events, and register the new version with the hash of the judge profile and the rendered evidence section.
@@ -102,6 +107,12 @@ public final class CodexSessions extends RunnerSessions
 	public int sessionEnvironmentVersion()
 	{
 		return SESSION_ENVIRONMENT_VERSION;
+	}
+
+	@Override
+	public String sessionEnvironmentRelease()
+	{
+		return SESSION_ENVIRONMENT_RELEASE;
 	}
 
 	@Override

@@ -94,6 +94,8 @@ import tools.jackson.databind.node.ObjectNode;
  * @param reverts withdrawn working candidates and the estimates that triggered their replacement
  * @param addedTestCases the test cases added to the development part of the tests after certification attempts
  *   ended with formal failures, in the order they were added
+ * @param certifiedEnvironment the environment that the campaign's delivered certification was measured in, or
+ *   {@code null} if the campaign delivered none
  */
 public record StatusReport(ReportStatus status, String campaignId, Lifecycle lifecycle, Phase phase, int attempt,
 	int candidate, String snapshot, String outcome, String outcomeDetail,
@@ -105,7 +107,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	Concurrency concurrency,
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
 	List<String> limitations, Map<String, String> conditions, OptimizationReport optimization, List<Revert> reverts,
-	List<AddedTestCaseReport> addedTestCases)
+	List<AddedTestCaseReport> addedTestCases, CertifiedEnvironment certifiedEnvironment)
 {
 	/**
 	 * The text of an outcome that is not a pass or fail outcome: work stopped and can resume.
@@ -209,9 +211,12 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param reverts withdrawn working candidates and the estimates that triggered their replacement
 	 * @param addedTestCases the test cases added to the development part of the tests after certification attempts
 	 *   ended with formal failures, in the order they were added
+	 * @param certifiedEnvironment the environment that the campaign's delivered certification was measured in, or
+	 *   {@code null} if the campaign delivered none
 	 * @throws NullPointerException if any argument other than {@code outcome}, {@code outcomeDetail},
 	 *   {@code delivery}, {@code pending},
-	 *   {@code benchmark}, {@code trialProfiles}, {@code cellTier} or {@code claim} is null
+	 *   {@code benchmark}, {@code trialProfiles}, {@code cellTier}, {@code claim} or {@code certifiedEnvironment} is
+	 *   null
 	 * @throws IllegalArgumentException if {@code attempt}, {@code candidate} or {@code deliveryAttempt} are negative
 	 */
 	public StatusReport
@@ -344,7 +349,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			TokenStatistics.of(campaign.optimization().tokenUsage()),
 			concurrency(campaign, evidence.sharedHoldUntil()), assumptions, attempts, keepOffers, claim, limitations,
 			conditions,
-			OptimizationReport.of(campaign), campaign.development().reverts(), AddedTestCaseReport.of(campaign));
+			OptimizationReport.of(campaign), campaign.development().reverts(), AddedTestCaseReport.of(campaign),
+			evidence.certifiedEnvironment());
 	}
 
 	/**

@@ -13,6 +13,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
@@ -62,6 +64,7 @@ import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.report.AttemptSummary;
 import com.holdmyspot.cat.common.optimizer.report.Benchmark;
 import com.holdmyspot.cat.common.optimizer.report.CellReport;
+import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 import com.holdmyspot.cat.common.optimizer.report.ChoiceItem;
 import com.holdmyspot.cat.common.optimizer.report.KeepOffer;
 import com.holdmyspot.cat.common.optimizer.report.OptimizationReport;
@@ -1477,6 +1480,31 @@ public final class StatusReportTest
 		requireThat(attempt.path("unchecked").get(0).asString(), "uncheckedJson").isEqualTo("tool_output_limit");
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Attempt 1: certified\n" +
 			"  Not checked: trial tool-output token limit.");
+	}
+
+	/**
+	 * Verifies that the summary of a campaign whose certified attempt was delivered shows the environment that the
+	 * attempt was measured in before the limitations, and that a campaign without a delivered certification shows
+	 * none.
+	 */
+	@Test
+	public void certifiedOutcomeShowsEnvironment()
+	{
+		// Requirement: R-M7
+		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.boundaries()).
+			cell("formatting", 120, 0).cell("safety", 120, 0).outcome(Outcome.CERTIFIED).build();
+		CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
+			CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
+			List.of(), Map.of(Path.of("CLAUDE.md"), Builder.snapshot("CLAUDE.md")), Builder.OBSERVED);
+		CertifiedEnvironment environment = CertifiedEnvironment.of(record, List.of(MeasurementCondition.MODEL));
+
+		String certified = StatusReport.of(campaign, ReportEvidence.NONE.withCertifiedEnvironment(environment)).
+			summary(ZoneOffset.UTC);
+		String uncertified = StatusReport.of(campaign, ReportEvidence.NONE).summary(ZoneOffset.UTC);
+
+		requireThat(certified, "certified").contains("\nClaim: ").
+			contains("\n\n" + String.join("\n", environment.lines()) + "\n\nLimitations:");
+		requireThat(uncertified, "uncertified").doesNotContain("Certified for the following environment:");
 	}
 
 	/**

@@ -847,9 +847,10 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Builds the trial plugins that the project builds in the campaign's optimization worktree, copies the base of
-	 * each trial plugin once, maps the prompt files onto each project-built plugin and records the plugins in the
-	 * campaign. The worktree returns to the fork's files afterwards, so the build output never takes part in trials.
-	 * A failure leaves the plugins unrecorded, so that {@code start} builds them again.
+	 * each trial plugin once, maps the prompt files onto each project-built plugin and records the plugins, with the
+	 * version that each base copy's manifest declares, in the campaign. The worktree returns to the fork's files
+	 * afterwards, so the build output never takes part in trials. A failure leaves the plugins unrecorded, so that
+	 * {@code start} builds them again.
 	 *
 	 * @param root the project root
 	 * @param store the store
@@ -859,8 +860,8 @@ public final class OptimizerCore implements Core
 	 * @return the campaign with its trial plugins recorded
 	 * @throws CommandRefusedException if a build fails or produces no plugin of its name, an installed plugin does not
 	 *   have exactly one installed copy, or the target would not load in trials
-	 * @throws IOException if a plugin cannot be copied, the worktree cannot be restored or the campaign cannot be
-	 *   stored
+	 * @throws IOException if a plugin cannot be copied, a base copy's manifest cannot be read, the worktree cannot be
+	 *   restored or the campaign cannot be stored
 	 * @throws InterruptedException if the thread is interrupted while it waits for a build
 	 */
 	private Campaign withTrialPlugins(Path root, CampaignStore store, Campaign campaign, ForkView fork,
@@ -907,7 +908,14 @@ public final class OptimizerCore implements Core
 		Optional<String> refusal = coverage.targetRefusal(target);
 		if (refusal.isPresent())
 			throw new CommandRefusedException(refusal.get());
-		Campaign built = campaign.withPlugins(mapped);
+		Map<String, String> versions = new HashMap<>();
+		Path manifest = scope.harness().pluginManifest();
+		for (TrialPlugin plugin : mapped)
+		{
+			PluginManifest.version(workspace.pluginBase(plugin.baseDigest()), manifest).
+				ifPresent(version -> versions.put(plugin.name(), version));
+		}
+		Campaign built = campaign.withPlugins(mapped, versions);
 		store.replaceSnapshot(built);
 		return built;
 	}
@@ -2562,7 +2570,7 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Returns the measurement conditions that the launcher observes before any session runs. The sessions observe
-	 * the model, the reasoning configuration and the prompt sources.
+	 * the model, the reasoning configuration, the model provider and the prompt sources.
 	 *
 	 * @param files reads the loader configuration files
 	 * @return the conditions
@@ -2575,11 +2583,32 @@ public final class OptimizerCore implements Core
 		values.put(MeasurementCondition.HARNESS_VERSION, scope.harnessVersion());
 		values.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
 			String.valueOf(scope.sessions().sessionEnvironmentVersion()));
+		values.put(MeasurementCondition.SESSION_ENVIRONMENT_RELEASE, scope.sessions().sessionEnvironmentRelease());
 		values.put(MeasurementCondition.JUDGE, String.valueOf(scope.sessions().judgeVersion()));
 		values.put(MeasurementCondition.RUNNER_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.CAT_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.LOADER_CONFIGURATION, loaderConfiguration(files));
+		values.put(MeasurementCondition.LOADER_FILES, loaderFiles(files));
 		return new MeasurementIdentity(values);
+	}
+
+	/**
+	 * Names the loader configuration files that the project has.
+	 *
+	 * @param files reads the files
+	 * @return the files' paths in path order, one per line, or {@code none} if the project has none of them
+	 * @throws IOException if a file cannot be read
+	 */
+	private String loaderFiles(Entries files) throws IOException
+	{
+		StringJoiner present = new StringJoiner("\n");
+		present.setEmptyValue("none");
+		for (Path path : scope.loaderConfiguration().stream().sorted().toList())
+		{
+			if (files.entry(path).isPresent())
+				present.add(PortablePaths.text(path));
+		}
+		return present.toString();
 	}
 
 	/**

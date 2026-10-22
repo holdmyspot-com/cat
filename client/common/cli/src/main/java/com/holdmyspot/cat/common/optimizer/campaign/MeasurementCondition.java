@@ -3,9 +3,11 @@ package com.holdmyspot.cat.common.optimizer.campaign;
 /**
  * A condition that a measurement identity records, other than the candidate snapshot and time.
  * <p>
- * Every condition other than the runner and CAT versions is material: a known change to any of them makes earlier
- * results historical and pauses the campaign before the next model call. The runner and CAT versions are recorded and
- * reported for information only; the session environment version stands for what they can change in a session.
+ * Every condition other than the runner and CAT versions, the session environment release and the loader configuration
+ * files is material: a known change to any of them makes earlier results historical and pauses the campaign before the
+ * next model call. The others are recorded and reported for information only: the session environment version stands
+ * for what the runner and CAT versions can change in a session and for its release, and the loader configuration for
+ * its files.
  */
 public enum MeasurementCondition
 {
@@ -36,7 +38,12 @@ public enum MeasurementCondition
 	 */
 	TOOL_OUTPUT_LIMIT,
 	/**
-	 * The model provider.
+	 * The trial model's provider as observed in harness events, such as {@code openai}.
+	 */
+	MODEL_PROVIDER,
+	/**
+	 * The harness that ran the sessions, by its command name. Records written before the trial model's provider was
+	 * observed call it the model provider.
 	 */
 	PROVIDER,
 	/**
@@ -49,6 +56,11 @@ public enum MeasurementCondition
 	 */
 	SESSION_ENVIRONMENT_VERSION,
 	/**
+	 * The CAT release that introduced the session environment version, recorded for information only; the session
+	 * environment version stands for it.
+	 */
+	SESSION_ENVIRONMENT_RELEASE,
+	/**
 	 * The runner version, recorded for information only.
 	 */
 	RUNNER_VERSION,
@@ -60,6 +72,11 @@ public enum MeasurementCondition
 	 * The loader configuration, which decides which prompt files load. It cannot change within a campaign.
 	 */
 	LOADER_CONFIGURATION,
+	/**
+	 * The loader configuration files that exist in the project, from the harness's fixed list, or {@code none},
+	 * recorded for information only; the loader configuration stands for them.
+	 */
+	LOADER_FILES,
 	/**
 	 * The prompt sources observed loading, including links, resolved targets and staged identities.
 	 */
@@ -80,6 +97,10 @@ public enum MeasurementCondition
 	 * The base digest of each trial plugin.
 	 */
 	PLUGIN_BASES,
+	/**
+	 * The version that each trial plugin's manifest declares in the plugin's base.
+	 */
+	PLUGIN_VERSIONS,
 	/**
 	 * Where each trial plugin's base came from: the build command and output directory of a plugin that the project
 	 * builds, or the user's installed copy.
@@ -106,17 +127,21 @@ public enum MeasurementCondition
 			case MODEL -> "trial model";
 			case REASONING -> "trial reasoning";
 			case TOOL_OUTPUT_LIMIT -> "trial tool-output token limit";
-			case PROVIDER -> "model provider";
+			case MODEL_PROVIDER -> "trial model provider";
+			case PROVIDER -> "harness";
 			case HARNESS_VERSION -> "harness version";
 			case SESSION_ENVIRONMENT_VERSION -> "session environment version";
+			case SESSION_ENVIRONMENT_RELEASE -> "session environment release";
 			case RUNNER_VERSION -> "runner version";
 			case CAT_VERSION -> "CAT version";
 			case LOADER_CONFIGURATION -> "loader configuration";
+			case LOADER_FILES -> "loader configuration files";
 			case PROMPT_SOURCES -> "prompt sources";
 			case HOST_TOOLS -> "host tools";
 			case EXTERNAL_SOURCES -> "external sources";
 			case TRIAL_PLUGINS -> "trial plugins";
 			case PLUGIN_BASES -> "trial plugin bases";
+			case PLUGIN_VERSIONS -> "trial plugin versions";
 			case PLUGIN_BUILDS -> "trial plugin builds";
 			case PLUGIN_MAPPINGS -> "trial plugin mappings";
 		};
@@ -132,7 +157,7 @@ public enum MeasurementCondition
 	{
 		return switch (this)
 		{
-			case RUNNER_VERSION, CAT_VERSION -> false;
+			case RUNNER_VERSION, CAT_VERSION, SESSION_ENVIRONMENT_RELEASE, LOADER_FILES -> false;
 			default -> true;
 		};
 	}
@@ -141,16 +166,17 @@ public enum MeasurementCondition
 	 * Indicates whether the condition's value depends on the harness that runs the sessions, so that another
 	 * harness cannot observe the value that a result records.
 	 *
-	 * @return {@code true} for the provider, the harness and session environment versions, the judge version, the
-	 *   trial model, reasoning and tool-output token limit, and the trial plugins, which the prompt test configuration
-	 *   lists for each harness
+	 * @return {@code true} for the harness, its version, the session environment version and release, the judge
+	 *   version, the trial model, its reasoning, provider and tool-output token limit, and the trial plugins, which
+	 *   the prompt test configuration lists for each harness
 	 */
 	public boolean isHarnessSpecific()
 	{
 		return switch (this)
 		{
-			case PROVIDER, HARNESS_VERSION, SESSION_ENVIRONMENT_VERSION, JUDGE, MODEL, REASONING,
-				TOOL_OUTPUT_LIMIT, TRIAL_PLUGINS, PLUGIN_BASES, PLUGIN_BUILDS, PLUGIN_MAPPINGS -> true;
+			case PROVIDER, HARNESS_VERSION, SESSION_ENVIRONMENT_VERSION, SESSION_ENVIRONMENT_RELEASE, JUDGE, MODEL,
+				REASONING, MODEL_PROVIDER, TOOL_OUTPUT_LIMIT, TRIAL_PLUGINS, PLUGIN_BASES, PLUGIN_VERSIONS, PLUGIN_BUILDS,
+				PLUGIN_MAPPINGS -> true;
 			default -> false;
 		};
 	}

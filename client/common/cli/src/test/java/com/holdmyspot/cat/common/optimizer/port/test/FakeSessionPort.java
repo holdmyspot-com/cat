@@ -38,6 +38,10 @@ public final class FakeSessionPort implements SessionPort
 	 */
 	public static final int SESSION_ENVIRONMENT_VERSION = 7;
 	/**
+	 * The CAT release that every fake port reports as having introduced its session environment version.
+	 */
+	public static final String SESSION_ENVIRONMENT_RELEASE = "0.7";
+	/**
 	 * The judge version that every fake port reports.
 	 */
 	public static final int JUDGE_VERSION = 5;
@@ -105,6 +109,12 @@ public final class FakeSessionPort implements SessionPort
 	public int sessionEnvironmentVersion()
 	{
 		return SESSION_ENVIRONMENT_VERSION;
+	}
+
+	@Override
+	public String sessionEnvironmentRelease()
+	{
+		return SESSION_ENVIRONMENT_RELEASE;
 	}
 
 	@Override

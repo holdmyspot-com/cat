@@ -174,6 +174,12 @@ final class ReportSummary
 			offer(lines, offer);
 		if (report.claim() != null)
 			lines.add("Claim: " + report.claim());
+		if (report.certifiedEnvironment() != null)
+		{
+			lines.add("");
+			lines.addAll(report.certifiedEnvironment().lines());
+			lines.add("");
+		}
 		lines.add("Limitations:");
 		for (String limitation : report.limitations())
 			lines.add("  - " + limitation);

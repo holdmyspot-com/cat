@@ -45,6 +45,9 @@ final class DeliveryJson
 				if (delivered.label() != null)
 					root.put("label", delivered.label().label());
 				applicability(root.putObject("applicability"), delivered.applicability());
+				// Only a delivered certification has an environment that it was measured in
+				if (report.environment() != null)
+					root.put("environment", String.join("\n", report.environment().lines()));
 				paths(root.putArray("changed_prompt_sources"), delivered.changedPromptSources());
 				paths(root.putArray("base_only_changes"), delivered.baseOnlyChanges());
 				root.put("diff", delivered.diff());

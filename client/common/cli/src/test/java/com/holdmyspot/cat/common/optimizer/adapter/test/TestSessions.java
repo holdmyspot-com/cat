@@ -74,6 +74,12 @@ final class TestSessions extends RunnerSessions
 	}
 
 	@Override
+	public String sessionEnvironmentRelease()
+	{
+		return "0.1";
+	}
+
+	@Override
 	public int judgeVersion()
 	{
 		return 1;

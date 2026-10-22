@@ -27,6 +27,7 @@ import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
+import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
 import com.holdmyspot.cat.common.optimizer.report.StatusReport;
 import org.testng.annotations.DataProvider;
@@ -502,6 +503,31 @@ public final class CommandsTest
 	}
 
 	/**
+	 * Verifies that a certified delivery shows the environment that the certification was measured in.
+	 */
+	@Test
+	public void printsCertifiedEnvironment()
+	{
+		// Requirement: R-M7
+		Applicability applicability = new Applicability(Applicability.Status.CURRENT, false, List.of(), List.of(),
+			List.of(MeasurementCondition.MODEL));
+		DeliveryResult.Delivered delivered = new DeliveryResult.Delivered(Outcome.CERTIFIED, applicability,
+			List.of(Path.of("CLAUDE.md")), List.of(), List.of(), "diff --git a/CLAUDE.md b/CLAUDE.md");
+		CertifiedEnvironment environment = CertifiedEnvironment.of(certificationRecord(1),
+			applicability.unchecked());
+		FakeCore core = new FakeCore();
+		core.result = new CommandResult(core.status, Harness.CLAUDE, null,
+			new DeliveryReport(delivered, applicability, environment), null);
+		StringBuilder output = new StringBuilder();
+
+		run(core, List.of("run", "c1"), output);
+
+		JsonNode delivery = JSON.readTree(output.toString()).get("delivery_result");
+		requireThat(delivery.get("environment").asString(), "environment").
+			isEqualTo(String.join("\n", environment.lines()));
+	}
+
+	/**
 	 * Verifies that the status of a target that only a certification history describes is one object with the
 	 * latest record of each harness, with its index, scope and applicability, the earlier records, and a summary that
 	 * names them, and no campaign, harness, proposal or delivery.
@@ -546,6 +572,19 @@ public final class CommandsTest
 			version)
 			Attempt 2: certified (historical; changed: prompt_content, judge)
 			  Not checked: trial model.
+
+			Certified for the following environment:
+
+			provider-1 harness_version-1
+			Plugins: trial_plugins-1 (version not recorded)
+			Model: model-a, reasoning reasoning-1, from model_provider-1 (not checked)
+			Prompt files loaded: none
+			Harness settings: the project's loader_files-1, with your connection settings and tool restrictions \
+			carried over
+			Trial setup: as introduced in CAT session_environment_release-1
+			Tools run directly: host_tools-1
+			Outside sources: external_sources-1
+
 			Earlier certifications:
 			  Attempt 1 in provider-1: certified, scope latest_versions""");
 		requireThat(json.get("proposal").isNull(), "proposalIsNull").isTrue();

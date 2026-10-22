@@ -129,6 +129,7 @@ import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.report.CellReport;
+import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 import com.holdmyspot.cat.common.optimizer.report.OptimizationReport.InputComparison;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
 import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
@@ -191,13 +192,15 @@ public final class DriverTest
 	// Requirement: R-M1
 	// Requirement: R-M4
 	// Requirement: R-E18
+	// Requirement: R-M7
 	@Test
 	public void statusComparesObservedTrials() throws IOException
 	{
 		Map<MeasurementCondition, String> conditions = new EnumMap<>(MeasurementCondition.class);
 		conditions.putAll(Builder.confirmedIdentity(DriverHarness.MODEL).values());
 		for (MeasurementCondition condition : List.of(MeasurementCondition.JUDGE, MeasurementCondition.MODEL,
-			MeasurementCondition.REASONING, MeasurementCondition.HOST_TOOLS, MeasurementCondition.EXTERNAL_SOURCES))
+			MeasurementCondition.REASONING, MeasurementCondition.MODEL_PROVIDER, MeasurementCondition.HOST_TOOLS,
+			MeasurementCondition.EXTERNAL_SOURCES))
 		{
 			conditions.remove(condition);
 		}
@@ -211,7 +214,7 @@ public final class DriverTest
 				SessionResult.Completed completed = harness.passed();
 				return new SessionResult.Completed(completed.transcript(), completed.responses(), completed.effects(),
 					completed.initialProject(),
-					completed.model(), completed.reasoning(), new TokenUsage(80, 0, 0, 0), completed.windows(),
+					completed.model(), completed.reasoning(), "openai", new TokenUsage(80, 0, 0, 0), completed.windows(),
 					completed.promptSources(), completed.toolCalls());
 			});
 			try (Driver driver = harness.open())
@@ -240,6 +243,8 @@ public final class DriverTest
 						isEqualTo(DriverHarness.MODEL);
 					requireThat(campaign.baseline().identity().cells().get(cell).get(MeasurementCondition.REASONING),
 						"baselineReasoning").isEqualTo("reasoning-1");
+					requireThat(campaign.identity().cells().get(cell).get(MeasurementCondition.MODEL_PROVIDER),
+						"modelProvider").isEqualTo("openai");
 				}
 			}
 		}
@@ -2056,6 +2061,12 @@ public final class DriverTest
 				requireThat(record.identity(), "identity").isEqualTo(certified.identity());
 				requireThat(result.delivery().result(), "delivery").isInstanceOf(DeliveryResult.Delivered.class);
 				requireThat(result.status().status(), "status").isEqualTo(new ReportStatus.Ended(Outcome.CERTIFIED));
+				// Requirement: R-M7
+				CertifiedEnvironment environment = CertifiedEnvironment.of(record,
+					result.delivery().applicability().unchecked());
+				requireThat(result.delivery().environment(), "deliveryEnvironment").isEqualTo(environment);
+				requireThat(result.status().summary(ZoneOffset.UTC), "summary").
+					contains(String.join("\n", environment.lines()));
 			}
 		}
 	}
@@ -5384,6 +5395,12 @@ public final class DriverTest
 			public int sessionEnvironmentVersion()
 			{
 				return delegate.sessionEnvironmentVersion();
+			}
+
+			@Override
+			public String sessionEnvironmentRelease()
+			{
+				return delegate.sessionEnvironmentRelease();
 			}
 
 			@Override

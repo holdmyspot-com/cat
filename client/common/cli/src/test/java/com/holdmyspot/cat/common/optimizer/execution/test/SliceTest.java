@@ -359,6 +359,12 @@ public final class SliceTest
 		}
 
 		@Override
+		public String sessionEnvironmentRelease()
+		{
+			return delegate.sessionEnvironmentRelease();
+		}
+
+		@Override
 		public int judgeVersion()
 		{
 			return delegate.judgeVersion();

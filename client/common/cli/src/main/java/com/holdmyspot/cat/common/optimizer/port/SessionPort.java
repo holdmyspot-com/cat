@@ -50,6 +50,14 @@ public interface SessionPort
 	int sessionEnvironmentVersion();
 
 	/**
+	 * Returns the CAT release that introduced this port's session environment version, which names the version to a
+	 * user.
+	 *
+	 * @return the release, such as {@code 1.0}
+	 */
+	String sessionEnvironmentRelease();
+
+	/**
 	 * Returns the version of the judge that this port's sessions run: the judge's role profile, its prompt, rubric,
 	 * decision rule and result schema, and the evidence section that
 	 * {@link com.holdmyspot.cat.common.optimizer.evidence.EvidenceSection} renders from what

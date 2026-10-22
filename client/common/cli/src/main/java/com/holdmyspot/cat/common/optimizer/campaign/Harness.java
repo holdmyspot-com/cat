@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * The harness that started a campaign and is the only one allowed to advance it, in the session that started it.
@@ -50,6 +51,38 @@ public enum Harness
 	public String commandName()
 	{
 		return name().toLowerCase(Locale.ROOT);
+	}
+
+	/**
+	 * Returns the harness's product name, as its users know it.
+	 *
+	 * @return {@code Claude Code} or {@code Codex}
+	 */
+	public String productName()
+	{
+		return switch (this)
+		{
+			case CLAUDE -> "Claude Code";
+			case CODEX -> "Codex";
+		};
+	}
+
+	/**
+	 * Returns the harness of a command name.
+	 *
+	 * @param commandName the harness's command name, such as {@code codex}
+	 * @return the harness, or empty if no harness has the command name
+	 * @throws NullPointerException if {@code commandName} is null
+	 */
+	public static Optional<Harness> fromCommandName(String commandName)
+	{
+		requireThat(commandName, "commandName").isNotNull();
+		for (Harness harness : values())
+		{
+			if (harness.commandName().equals(commandName))
+				return Optional.of(harness);
+		}
+		return Optional.empty();
 	}
 
 	/**

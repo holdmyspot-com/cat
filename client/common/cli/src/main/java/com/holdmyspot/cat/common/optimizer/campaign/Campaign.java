@@ -209,14 +209,17 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * Returns this campaign with its trial plugins recorded, and the conditions that they set added to its
 	 * measurement identity.
 	 *
-	 * @param value the trial plugins that every trial installs, in configuration order
+	 * @param value    the trial plugins that every trial installs, in configuration order
+	 * @param versions the version that the manifest in each plugin's base declares, keyed by the plugin's name; a
+	 *                 plugin whose manifest declares none is absent
 	 * @return the campaign
-	 * @throws NullPointerException if {@code value} is null
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Campaign withPlugins(List<TrialPlugin> value)
+	public Campaign withPlugins(List<TrialPlugin> value, Map<String, String> versions)
 	{
 		requireThat(value, "value").isNotNull();
-		return new Campaign(header, ceiling, lineages, identity.replaceWith(MeasurementIdentity.ofPlugins(value)),
+		return new Campaign(header, ceiling, lineages, identity.replaceWith(MeasurementIdentity.ofPlugins(value,
+			versions)),
 			incumbent, candidates, promptAuthorAttempts, development, baseline, attempts, trials, sequences,
 			evidenceRevision, slowStart, throttle, pendingDecisions, revisionRequested, outcome, delivery, optimization,
 			answeredWarnings, testRevisions, Optional.of(value));

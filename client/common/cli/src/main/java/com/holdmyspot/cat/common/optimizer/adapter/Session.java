@@ -514,7 +514,8 @@ final class Session implements SessionHandle
 		Path artifacts = runDirectory().resolve("artifacts");
 		return new SessionResult.Completed(artifacts.resolve(EventSink.TRANSCRIPT), responses,
 			runDirectory().resolve("project"), runDirectory().resolve("initial-project"), events.model(),
-			events.reasoning(), events.usage(), events.windows(), sink.promptSources(), events.toolCalls());
+			events.reasoning(), events.modelProvider(), events.usage(), events.windows(), sink.promptSources(),
+			events.toolCalls());
 	}
 
 	/**

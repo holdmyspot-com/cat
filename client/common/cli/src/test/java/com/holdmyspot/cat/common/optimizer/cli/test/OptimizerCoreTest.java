@@ -652,6 +652,12 @@ public final class OptimizerCoreTest
 		}
 
 		@Override
+		public String sessionEnvironmentRelease()
+		{
+			return FakeSessionPort.SESSION_ENVIRONMENT_RELEASE;
+		}
+
+		@Override
 		public int judgeVersion()
 		{
 			return FakeSessionPort.JUDGE_VERSION;
@@ -1474,6 +1480,57 @@ public final class OptimizerCoreTest
 			Map<MeasurementCondition, String> values = repository.load(id).identity().values();
 			requireThat(values.get(MeasurementCondition.SESSION_ENVIRONMENT_VERSION), "sessionEnvironmentVersion").
 				isEqualTo(String.valueOf(FakeSessionPort.SESSION_ENVIRONMENT_VERSION));
+		}
+	}
+
+	/**
+	 * Verifies that a started campaign records the CAT release that introduced the session port's session environment
+	 * version.
+	 */
+	@Test
+	public void startRecordsSessionEnvironmentRelease()
+		throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-M7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Map<MeasurementCondition, String> values = repository.load(id).identity().values();
+			requireThat(values.get(MeasurementCondition.SESSION_ENVIRONMENT_RELEASE), "sessionEnvironmentRelease").
+				isEqualTo(FakeSessionPort.SESSION_ENVIRONMENT_RELEASE);
+		}
+	}
+
+	/**
+	 * Verifies that a started campaign names the loader configuration files that the project has, or {@code none}
+	 * when it has none of them.
+	 */
+	@Test
+	public void startRecordsLoaderFiles() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-M7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path settings = Path.of(".claude/settings.json");
+			Repository without = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			Repository with = repository(cleanup, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), settings));
+			Files.createDirectories(with.root().resolve(".claude"));
+			Files.writeString(with.root().resolve(settings), "{}\n");
+
+			String withoutId = without.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			String withId = with.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			requireThat(without.load(withoutId).identity().values().get(MeasurementCondition.LOADER_FILES),
+				"withoutFiles").isEqualTo("none");
+			requireThat(with.load(withId).identity().values().get(MeasurementCondition.LOADER_FILES), "withFiles").
+				isEqualTo(".claude/settings.json");
 		}
 	}
 
@@ -2788,6 +2845,32 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that {@code start} records the version that each trial plugin's base copy declares in its manifest.
+	 */
+	@Test
+	public void startRecordsPluginVersions() throws Exception
+	{
+		// Requirement: R-M7
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			configure(repository.root(), "{\"claude\": {\"plugins\": [{\"name\": \"tools@market\"}]}}");
+			Path installed = scope.add(Files.createTempDirectory("installed-plugin")).toRealPath();
+			Files.createDirectories(installed.resolve(".claude-plugin"));
+			Files.writeString(installed.resolve(".claude-plugin/plugin.json"),
+				"{\"name\": \"tools\", \"version\": \"2.3.1\"}\n");
+			repository.sessions().install("tools@market", List.of(installed));
+
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			requireThat(repository.load(id).identity().values().get(MeasurementCondition.PLUGIN_VERSIONS),
+				"pluginVersions").isEqualTo("tools@market 2.3.1");
+		}
+	}
+
+	/**
 	 * Verifies that the proposal names the hooks of a trial plugin that the harness reports the user has not
 	 * approved, by the plugin's name.
 	 */
@@ -3799,7 +3882,18 @@ public final class OptimizerCoreTest
 				Latest certification in claude: scope latest_versions (every cell of each model family's latest \
 				version)
 				Attempt 1: certified
-				  Not checked: trial model.""");
+				  Not checked: trial model.
+
+				Certified for the following environment:
+
+				Claude Code 1.0
+				Plugins: not recorded
+				Model: model-a, reasoning not recorded, provider not recorded (not checked)
+				Prompt files loaded: CLAUDE.md
+				Harness settings: not recorded
+				Trial setup: version 7, CAT release not recorded
+				Tools run directly: not recorded
+				Outside sources: not recorded""");
 			requireThat(repository.sessions().roles(), "roles").isEmpty();
 		}
 	}
@@ -4023,10 +4117,12 @@ public final class OptimizerCoreTest
 			requireThat(applicability.unchecked(), "unchecked").isEqualTo(List.of(MeasurementCondition.JUDGE,
 				MeasurementCondition.MODEL, MeasurementCondition.PROVIDER, MeasurementCondition.HARNESS_VERSION,
 				MeasurementCondition.SESSION_ENVIRONMENT_VERSION));
-			requireThat(result.summary(ZoneOffset.UTC), "summary").endsWith("""
+			requireThat(result.summary(ZoneOffset.UTC), "summary").contains("""
 				Attempt 1: certified
-				  Not checked: judge version, trial model, model provider, harness version, session environment \
-				version.""");
+				  Not checked: judge version, trial model, harness, harness version, session environment version.
+
+				Certified for the following environment:
+				""");
 		}
 	}
 

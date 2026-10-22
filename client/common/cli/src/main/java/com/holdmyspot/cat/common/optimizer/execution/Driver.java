@@ -85,6 +85,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
+import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
 import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
 import com.holdmyspot.cat.common.optimizer.report.Status;
@@ -1074,9 +1075,9 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Returns the measurement conditions under which a trial was observed: the driver's environment, the trial
-	 * session's loaded prompt sources, and the trial session's model and reasoning configuration and, in a cell that
-	 * limits tool output, the tool-output token limit that the session started under, which are recorded for the
-	 * trial's cell.
+	 * session's loaded prompt sources, and the trial session's model, reasoning configuration and model provider and,
+	 * in a cell that limits tool output, the tool-output token limit that the session started under, which are
+	 * recorded for the trial's cell.
 	 *
 	 * @param testCase the trial's test case
 	 * @param trial the trial session's result
@@ -1092,6 +1093,8 @@ public final class Driver implements AutoCloseable
 			cell.put(MeasurementCondition.MODEL, trial.model());
 		if (trial.reasoning() != null)
 			cell.put(MeasurementCondition.REASONING, trial.reasoning());
+		if (trial.modelProvider() != null)
+			cell.put(MeasurementCondition.MODEL_PROVIDER, trial.modelProvider());
 		int toolOutputTokenLimit = campaign.contract().findCell(testCase.cellId()).orElseThrow().profile().
 			toolOutputTokenLimit();
 		if (toolOutputTokenLimit > 0)
@@ -1872,7 +1875,10 @@ public final class Driver implements AutoCloseable
 				measurement = Applicability.of(snapshot, campaign.identity(), snapshot, current);
 			applicability = SliceReports.combine(delivered.applicability(), measurement);
 		}
-		delivery = new DeliveryReport(result, applicability);
+		CertifiedEnvironment environment = null;
+		if (record != null && result instanceof DeliveryResult.Delivered)
+			environment = CertifiedEnvironment.of(record, applicability.unchecked());
+		delivery = new DeliveryReport(result, applicability, environment);
 		return true;
 	}
 
@@ -2091,9 +2097,12 @@ public final class Driver implements AutoCloseable
 		Overlay working = context.overlays().require(campaign.development().working().snapshot());
 		boolean symbolicLinks = !LinkReport.of(working.fork(), context.authority()).entries().isEmpty();
 		Instant sharedHoldUntil = context.sessions().sharedHoldUntil(context.clock().instant()).orElse(null);
+		CertifiedEnvironment environment = null;
+		if (delivery != null)
+			environment = delivery.environment();
 		StatusReport report = StatusReport.of(campaign,
 			evidence.toReportEvidence(symbolicLinks, interrupted, infrastructureFailure).
-				withSharedHoldUntil(sharedHoldUntil));
+				withSharedHoldUntil(sharedHoldUntil).withCertifiedEnvironment(environment));
 		ReportStatus awaiting = new ReportStatus.Active(Status.AWAITING_USER);
 		if (delivery != null && !(delivery.result() instanceof DeliveryResult.Delivered))
 			report = SliceReports.awaiting(report, awaiting, SliceReports.describe(delivery.result()));
