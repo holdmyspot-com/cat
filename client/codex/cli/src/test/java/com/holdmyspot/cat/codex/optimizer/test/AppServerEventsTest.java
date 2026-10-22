@@ -6,7 +6,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.codex.optimizer.AppServerEvents;
 import com.holdmyspot.cat.codex.secrets.AppServerEventsSecrets;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
+import com.holdmyspot.cat.common.optimizer.adapter.ShellCommands;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 
@@ -166,6 +168,79 @@ public final class AppServerEventsTest
 		// Requirement: R-C9
 		HarnessEvents events = parse(recorded("codex-web-search.jsonl"));
 		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(new ToolCall("webSearch", null, null)));
+	}
+
+	/**
+	 * Verifies that a recorded command stays a shell command in the session's activity, where it names the programs
+	 * that its shell wrapper runs.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void keepsCommandForHostTools() throws IOException
+	{
+		// Requirement: R-M8
+		HarnessEvents events = parse(recorded("codex-command-success.jsonl"));
+
+		List<String> programs = new ArrayList<>();
+		for (SessionEvidence.Entry entry : events.evidence().entries())
+		{
+			if (entry instanceof SessionEvidence.Tool tool && tool.command())
+				programs.addAll(ShellCommands.programs(tool.input()));
+		}
+		requireThat(programs, "programs").isEqualTo(List.of("ls", "rg", "sed", "find"));
+	}
+
+	/**
+	 * Verifies that the host of a page that a recorded web search opened is an outside source.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void namesOpenedPageHost() throws IOException
+	{
+		// Requirement: R-M8
+		HarnessEvents events = parse(recorded("codex-web-search.jsonl"));
+		requireThat(events.outsideSources(), "outsideSources").isEqualTo(List.of("www.apache.org"));
+	}
+
+	/**
+	 * Returns an {@code item/completed} notification.
+	 *
+	 * @param threadId the owning thread
+	 * @param item     the item as a JSON object
+	 * @return the notification line
+	 */
+	private static String itemCompleted(String threadId, String item)
+	{
+		return "{\"method\":\"item/completed\",\"params\":{\"item\":" + item + ",\"threadId\":\"" + threadId +
+			"\",\"turnId\":\"turn-1\"}}";
+	}
+
+	/**
+	 * Verifies that the MCP server of each MCP tool call, by the root or a child thread, is an outside source once,
+	 * and that a search, unlike an opened page, is named as a web search. The items follow the {@code ThreadItem}
+	 * schema that {@code codex app-server generate-json-schema --experimental} prints on codex-cli
+	 * {@code 0.160.0+41}, because no recording contains them.
+	 */
+	@Test
+	public void namesMcpServersAndSearches()
+	{
+		// Requirement: R-M8
+		HarnessEvents events = parse(List.of(threadStarted("root-thread", "gpt-6-luna", "low"),
+			itemCompleted("root-thread", "{\"type\":\"mcpToolCall\",\"id\":\"call-1\",\"server\":\"github\"," +
+				"\"tool\":\"search_code\",\"status\":\"completed\",\"arguments\":{\"query\":\"needle\"}}"),
+			itemCompleted("child-thread", "{\"type\":\"mcpToolCall\",\"id\":\"call-2\",\"server\":\"context7\"," +
+				"\"tool\":\"get-library-docs\",\"status\":\"failed\",\"arguments\":{}}"),
+			itemCompleted("root-thread", "{\"type\":\"mcpToolCall\",\"id\":\"call-3\",\"server\":\"github\"," +
+				"\"tool\":\"get_file\",\"status\":\"completed\",\"arguments\":{}}"),
+			itemCompleted("root-thread", "{\"type\":\"webSearch\",\"id\":\"call-4\",\"query\":\"boost\"," +
+				"\"action\":{\"type\":\"search\",\"query\":\"boost\"}}"),
+			itemCompleted("root-thread", "{\"type\":\"webSearch\",\"id\":\"call-5\",\"query\":\"\"," +
+				"\"action\":null}")));
+
+		requireThat(events.outsideSources(), "outsideSources").isEqualTo(List.of("context7 (MCP server)",
+			"github (MCP server)", "web search"));
 	}
 
 	/**

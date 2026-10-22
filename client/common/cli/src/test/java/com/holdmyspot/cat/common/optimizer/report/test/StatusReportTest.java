@@ -683,7 +683,7 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Unobserved tools and sources limit the claim without hiding the improvement.
+	 * Tools and sources that CAT cannot observe limit the claim without hiding the improvement.
 	 */
 	// Requirement: R-M4, R-P1
 	@Test
@@ -697,10 +697,10 @@ public final class StatusReportTest
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(cell(report, "formatting").improvement().unavailable(), "improvement").isNull();
 		requireThat(String.join(" ", report.limitations()), "limitations").contains("host tools").
-			contains("external sources");
-		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("host tools").contains("external sources");
+			contains("outside sources");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("host tools").contains("outside sources");
 		requireThat(report.toJson(JsonMapper.builder().build()).path("limitations").toString(), "jsonLimitations").
-			contains("host tools").contains("external sources");
+			contains("host tools").contains("outside sources");
 	}
 
 	/**
@@ -854,13 +854,13 @@ public final class StatusReportTest
 	{
 		// Requirement: R-M4, R-P1
 		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
-		values.remove(MeasurementCondition.HOST_TOOLS);
+		values.remove(MeasurementCondition.PROMPT_SOURCES);
 		Campaign campaign = confirmed().identity(new MeasurementIdentity(values)).
 			baselineIdentity(Builder.confirmedIdentity("model-a")).
 			development("formatting", 90, 10).build();
 		CellReport.Improvement improvement = cell(StatusReport.of(campaign, ReportEvidence.NONE),
 			"formatting").improvement();
-		requireThat(improvement.unavailable(), "unavailable").isNotNull().contains("host tools");
+		requireThat(improvement.unavailable(), "unavailable").isNotNull().contains("prompt sources");
 		requireThat(improvement.points(), "points").isNull();
 		requireThat(improvement.difference(), "difference").isNull();
 	}
@@ -873,13 +873,13 @@ public final class StatusReportTest
 	{
 		// Requirement: R-M4, R-P1
 		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
-		values.remove(MeasurementCondition.HOST_TOOLS);
+		values.remove(MeasurementCondition.PROMPT_SOURCES);
 		Campaign campaign = confirmed().certificationAttempt(1).identity(new MeasurementIdentity(values)).
 			baselineIdentity(Builder.confirmedIdentity("model-a")).boundaries(ReportBoundaries.boundaries()).
 			cell("formatting", 120, 0).
 			cell("safety", 60, 1).build();
 		CellReport formatting = cell(StatusReport.of(campaign, ReportEvidence.NONE), "formatting");
-		requireThat(formatting.improvement().unavailable(), "unavailable").isNotNull().contains("host tools");
+		requireThat(formatting.improvement().unavailable(), "unavailable").isNotNull().contains("prompt sources");
 		requireThat(formatting.improvement().state(), "state").isNull();
 		requireThat(formatting.improvement().difference(), "difference").isNull();
 		requireThat(formatting.comparison().state(), "certification").isEqualTo("certified");
@@ -893,7 +893,7 @@ public final class StatusReportTest
 	{
 		// Requirement: R-M4, R-F6
 		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
-		values.remove(MeasurementCondition.HOST_TOOLS);
+		values.remove(MeasurementCondition.PROMPT_SOURCES);
 		Campaign campaign = confirmed().certificationAttempt(1).identity(new MeasurementIdentity(values)).
 			baselineIdentity(Builder.confirmedIdentity("model-a")).boundaries(ReportBoundaries.boundaries()).
 			cell("formatting", 120, 0).

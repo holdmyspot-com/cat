@@ -16,6 +16,7 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
+import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
 
 import java.io.IOException;
@@ -41,6 +42,7 @@ public final class CertificationHistoryTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	private static final Path TARGET = Path.of("CLAUDE.md");
+	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 	/**
 	 * A trial plugin that the user installed.
 	 */
@@ -266,6 +268,70 @@ public final class CertificationHistoryTest
 			Files.write(file, JSON.writeValueAsBytes(root));
 
 			requireThat(codec.read(file).records(), "read").isEqualTo(List.of(recorded));
+		}
+	}
+
+	/**
+	 * A record names the host tools and outside sources that its trials used, and changes to them leave it current
+	 * and checked: they show what trials chose to use, not the environment that the certification holds for.
+	 */
+	@Test
+	public void otherToolsKeepRecordCurrent()
+	{
+		// Requirement: R-M8
+		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
+		values.putAll(MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0.0")).values());
+		values.put(MeasurementCondition.HOST_TOOLS, "git 2.51.0");
+		values.put(MeasurementCondition.EXTERNAL_SOURCES, "web search");
+		CertificationRecord recorded = recordOf(1, new MeasurementIdentity(values));
+		Map<MeasurementCondition, String> other = new EnumMap<>(values);
+		other.put(MeasurementCondition.HOST_TOOLS, "git 2.52.0");
+		other.remove(MeasurementCondition.EXTERNAL_SOURCES);
+
+		Applicability known = recorded.applicability(recorded.promptFiles(), new MeasurementIdentity(other),
+			Contract.DEFAULT_MINIMUM_PASS_RATE);
+
+		requireThat(known.status(), "status").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(known.changed(), "changed").isEmpty();
+		requireThat(known.unchecked(), "unchecked").isEmpty();
+	}
+
+	/**
+	 * The host tools and outside sources are written to the history file and read back; a record written before CAT
+	 * recorded them reads back without them, so its environment says that they were not recorded.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test
+	public void toolsAndSourcesRoundTrip() throws IOException
+	{
+		// Requirement: R-M8
+		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
+		values.putAll(MeasurementIdentity.ofPlugins(PLUGINS, Map.of("cat", "1.0.0")).values());
+		values.put(MeasurementCondition.HOST_TOOLS, "git 2.51.0\nrg 14.1.0");
+		values.put(MeasurementCondition.EXTERNAL_SOURCES, "github (MCP server)\nwww.boost.org");
+		CertificationRecord recorded = recordOf(1, new MeasurementIdentity(values));
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		ObjectNode root = (ObjectNode) JSON.readTree(codec.write(CertificationHistory.EMPTY.appended(recorded)));
+		ObjectNode conditions = (ObjectNode) root.get("records").get(0).get("identity").get("conditions");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-history-")).
+				resolve("certifications.json");
+			Files.write(file, JSON.writeValueAsBytes(root));
+			CertificationRecord read = codec.read(file).records().getFirst();
+			requireThat(read, "read").isEqualTo(recorded);
+			requireThat(CertifiedEnvironment.of(read, List.of()).lines().subList(8, 10), "lines").isEqualTo(List.of(
+				"Tools run directly: git 2.51.0, rg 14.1.0",
+				"Outside sources: github (MCP server), www.boost.org"));
+
+			conditions.remove("host_tools");
+			conditions.remove("external_sources");
+			Files.write(file, JSON.writeValueAsBytes(root));
+			CertificationRecord old = codec.read(file).records().getFirst();
+			requireThat(CertifiedEnvironment.of(old, List.of()).lines().subList(8, 10), "oldLines").isEqualTo(List.of(
+				"Tools run directly: not recorded",
+				"Outside sources: not recorded"));
 		}
 	}
 

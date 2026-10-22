@@ -61,9 +61,7 @@ public final class ApplicabilityTest
 				{MeasurementCondition.HARNESS_VERSION},
 				{MeasurementCondition.SESSION_ENVIRONMENT_VERSION},
 				{MeasurementCondition.LOADER_CONFIGURATION},
-				{MeasurementCondition.PROMPT_SOURCES},
-				{MeasurementCondition.HOST_TOOLS},
-				{MeasurementCondition.EXTERNAL_SOURCES}
+				{MeasurementCondition.PROMPT_SOURCES}
 			};
 	}
 
@@ -137,13 +135,14 @@ public final class ApplicabilityTest
 		// Requirement: R-M2, R-M6
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.putAll(Builder.OBSERVED.values());
-		values.remove(MeasurementCondition.HOST_TOOLS);
+		values.remove(MeasurementCondition.PROMPT_SOURCES);
 		Sha256 snapshot = Builder.snapshot("candidate");
 		Applicability applicability = Applicability.of(snapshot, Builder.OBSERVED, snapshot,
 			new MeasurementIdentity(values));
 		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.CURRENT);
 		requireThat(applicability.changed(), "changed").isEmpty();
-		requireThat(applicability.unchecked(), "unchecked").containsExactly(List.of(MeasurementCondition.HOST_TOOLS));
+		requireThat(applicability.unchecked(), "unchecked").
+			containsExactly(List.of(MeasurementCondition.PROMPT_SOURCES));
 	}
 
 	/**

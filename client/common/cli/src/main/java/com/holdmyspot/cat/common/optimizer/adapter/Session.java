@@ -505,17 +505,35 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Returns the session's replies and effects so far as a completed result.
+	 * Returns the session's replies and effects so far as a completed result. A trial's result also names the host
+	 * tools and outside sources that its agents used.
 	 *
 	 * @return the result
+	 * @throws IOException if the directory of a host tool's version process cannot be created or deleted, or the
+	 *   thread is interrupted while a host tool's version is read
 	 */
-	private SessionResult.Completed completed()
+	private SessionResult.Completed completed() throws IOException
 	{
+		List<String> hostTools = null;
+		List<String> outsideSources = null;
+		if (request.role() == SessionRole.TRIAL)
+		{
+			try
+			{
+				hostTools = sessions.hostTools().describe(events.evidence());
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new IOException("Interrupted while reading the versions of the trial's host tools", e);
+			}
+			outsideSources = events.outsideSources();
+		}
 		Path artifacts = runDirectory().resolve("artifacts");
 		return new SessionResult.Completed(artifacts.resolve(EventSink.TRANSCRIPT), responses,
 			runDirectory().resolve("project"), runDirectory().resolve("initial-project"), events.model(),
 			events.reasoning(), events.usage(), events.windows(), sink.promptSources(),
-			events.toolCalls());
+			events.toolCalls(), hostTools, outsideSources);
 	}
 
 	/**

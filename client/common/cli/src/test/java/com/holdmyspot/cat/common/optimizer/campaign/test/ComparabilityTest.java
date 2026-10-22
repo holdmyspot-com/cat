@@ -98,8 +98,8 @@ public final class ComparabilityTest
 	{
 		// Requirement: R-M4
 		Map<MeasurementCondition, String> values = new EnumMap<>(Builder.confirmedIdentity("model-a").values());
-		values.remove(MeasurementCondition.HOST_TOOLS);
-		values.remove(MeasurementCondition.EXTERNAL_SOURCES);
+		values.remove(MeasurementCondition.JUDGE);
+		values.remove(MeasurementCondition.PROMPT_SOURCES);
 		MeasurementIdentity partial = new MeasurementIdentity(values);
 		Comparability comparability = Comparability.of(partial, partial);
 		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.COMPARABLE);
@@ -155,19 +155,36 @@ public final class ComparabilityTest
 	}
 
 	/**
-	 * Verifies that observed host tools require an observation from both sides.
+	 * Verifies that observed prompt sources require an observation from both sides.
 	 */
 	@Test
-	public void observedHostToolsRequireBothSides()
+	public void observedSourcesRequireBothSides()
 	{
 		// Requirement: R-M4
 		MeasurementIdentity first = Builder.confirmedIdentity("model-a");
 		Map<MeasurementCondition, String> values = new EnumMap<>(first.values());
-		values.remove(MeasurementCondition.HOST_TOOLS);
+		values.remove(MeasurementCondition.PROMPT_SOURCES);
 		Comparability comparability = Comparability.of(first, new MeasurementIdentity(values));
 		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.INDETERMINATE);
-		requireThat(comparability.missing(), "missing").containsExactly(List.of(MeasurementCondition.HOST_TOOLS));
-		requireThat(comparability.unavailable(), "unavailable").contains("host tools");
+		requireThat(comparability.missing(), "missing").containsExactly(List.of(MeasurementCondition.PROMPT_SOURCES));
+		requireThat(comparability.unavailable(), "unavailable").contains("prompt sources");
+	}
+
+	/**
+	 * Verifies that host tools and outside sources that only one side records, or that differ, do not prevent
+	 * comparison, because trials record them for information only.
+	 */
+	@Test
+	public void toolsAndSourcesDoNotPreventComparison()
+	{
+		// Requirement: R-M4, R-M8
+		MeasurementIdentity first = Builder.confirmedIdentity("model-a");
+		Map<MeasurementCondition, String> values = new EnumMap<>(first.values());
+		values.remove(MeasurementCondition.HOST_TOOLS);
+		values.put(MeasurementCondition.EXTERNAL_SOURCES, "web search");
+		Comparability comparability = Comparability.of(first, new MeasurementIdentity(values));
+		requireThat(comparability.status(), "status").isEqualTo(Comparability.Status.COMPARABLE);
+		requireThat(comparability.missing(), "missing").isEmpty();
 	}
 	/**
 	 * Verifies that comparison of a cell uses that cell's observations independently of other cells.

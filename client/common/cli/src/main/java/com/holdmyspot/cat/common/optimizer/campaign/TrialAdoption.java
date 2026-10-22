@@ -895,7 +895,7 @@ public final class TrialAdoption
 		else
 			draft.slowStart = draft.slowStart.afterPass();
 		CertificationAttempt updated = attempt.withEvidence(attempt.identity(), counts, controlPairings,
-			incumbentPairings, failures, attempt.formalStream());
+			incumbentPairings, failures, attempt.formalStream()).withTrial(trial.identity());
 		draft.replaceAttempt(updated);
 		applyDecision(draft, updated);
 	}
@@ -934,7 +934,7 @@ public final class TrialAdoption
 		String cell = trial.key().cell();
 		Pairing pairing = attempt.pairing(reference, cell).withReference(trial.testCase(),
 			passedAssertions(testOf(draft, cell), trial, false));
-		CertificationAttempt updated = attempt.withPairing(reference, cell, pairing);
+		CertificationAttempt updated = attempt.withPairing(reference, cell, pairing).withTrial(trial.identity());
 		draft.replaceAttempt(updated);
 		applyDecision(draft, updated);
 	}

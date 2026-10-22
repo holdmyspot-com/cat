@@ -6,13 +6,16 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.claude.optimizer.StreamJsonEvents;
 import com.holdmyspot.cat.claude.secrets.StreamJsonEventsSecrets;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
+import com.holdmyspot.cat.common.optimizer.adapter.ShellCommands;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -315,6 +318,67 @@ public final class StreamJsonEventsTest
 		HarnessEvents events = parse(recorded("claude-child-tool-calls.jsonl"));
 
 		requireThat(events.toolCalls(), "toolCalls").isEqualTo(List.of(new ToolCall("Agent", null, null)));
+	}
+
+	/**
+	 * Verifies that the shell commands of a recorded session stay in its activity, where they name the programs that
+	 * they run, and that its web search and the host of the page that it fetched are outside sources.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void readsCommandsAndOutsideSources() throws IOException
+	{
+		// Requirement: R-M8
+		HarnessEvents events = parse(recorded("claude-outside-calls.jsonl"));
+
+		List<String> programs = new ArrayList<>();
+		for (SessionEvidence.Entry entry : events.evidence().entries())
+		{
+			if (entry instanceof SessionEvidence.Tool tool && tool.command())
+				programs.addAll(ShellCommands.programs(tool.input()));
+		}
+		requireThat(programs, "programs").isEqualTo(List.of("git", "pkg-config", "grep"));
+		requireThat(events.outsideSources(), "outsideSources").isEqualTo(List.of("web search", "www.boost.org"));
+	}
+
+	/**
+	 * Returns an {@code assistant} record with one tool call.
+	 *
+	 * @param parent the tool call that started the agent, or {@code null} for the root
+	 * @param id     the call's identifier
+	 * @param name   the tool's name
+	 * @param input  the call's input as a JSON object
+	 * @return the record line
+	 */
+	private static String toolUse(String parent, String id, String name, String input)
+	{
+		String parentValue = "null";
+		if (parent != null)
+			parentValue = "\"" + parent + "\"";
+		return "{\"type\":\"assistant\",\"message\":{\"id\":\"message-" + id + "\",\"content\":[{" +
+			"\"type\":\"tool_use\",\"id\":\"" + id + "\",\"name\":\"" + name + "\",\"input\":" + input +
+			"}]},\"parent_tool_use_id\":" + parentValue + "}";
+	}
+
+	/**
+	 * Verifies that each MCP server whose tools a root or child agent called is an outside source once, named by the
+	 * server, and that a fetched address without a host is a web page.
+	 */
+	@Test
+	public void namesEachMcpServerOnce()
+	{
+		// Requirement: R-M8
+		HarnessEvents events = parse(List.of(
+			toolUse(null, "toolu_1", "mcp__github__search_code", "{\"query\":\"needle\"}"),
+			toolUse(null, "toolu_2", "Agent", "{\"prompt\":\"look it up\"}"),
+			toolUse("toolu_2", "toolu_3", "mcp__context7__get-library-docs", "{\"id\":\"/boost\"}"),
+			toolUse("toolu_2", "toolu_4", "mcp__github__get_file", "{\"path\":\"README.md\"}"),
+			toolUse(null, "toolu_5", "WebFetch", "{\"url\":\"file:///etc/hosts\",\"prompt\":\"read\"}"),
+			toolUse(null, "toolu_6", "Read", "{\"file_path\":\"https://example.com/notes.txt\"}")));
+
+		requireThat(events.outsideSources(), "outsideSources").isEqualTo(List.of("context7 (MCP server)",
+			"github (MCP server)", "web page"));
 	}
 
 	/**

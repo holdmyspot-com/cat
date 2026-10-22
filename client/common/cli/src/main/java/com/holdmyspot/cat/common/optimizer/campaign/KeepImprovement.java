@@ -81,8 +81,9 @@ public final class KeepImprovement
 	/**
 	 * Returns the best qualifying attempt under each set of recorded measurement conditions.
 	 * <p>
-	 * Attempts are ranked only against attempts with equal recorded conditions: the highest 95% Wilson lower bound
-	 * on the weakest cell wins, then more cells proven better, then the more recent attempt.
+	 * Attempts are ranked only against attempts with equal recorded conditions, apart from the host tools and outside
+	 * sources that their trials used: the highest 95% Wilson lower bound on the weakest cell wins, then more cells
+	 * proven better, then the more recent attempt.
 	 *
 	 * @param campaign the campaign
 	 * @return the offers: the current identity's first, then each earlier identity's, most recent first
@@ -99,13 +100,13 @@ public final class KeepImprovement
 		{
 			if (!qualifies(attempt, currentLineage))
 				continue;
-			best.merge(attempt.identity(), attempt, KeepImprovement::better);
+			best.merge(attempt.identity().withoutUse(), attempt, KeepImprovement::better);
 		}
-		MeasurementIdentity current = campaign.identity();
+		MeasurementIdentity current = campaign.identity().withoutUse();
 		List<ImprovementOffer> offers = new ArrayList<>();
 		CertificationAttempt currentBest = best.remove(current);
 		if (currentBest != null)
-			offers.add(new ImprovementOffer(currentBest.index(), current, false, List.of()));
+			offers.add(new ImprovementOffer(currentBest.index(), currentBest.identity(), false, List.of()));
 		List<CertificationAttempt> earlier = new ArrayList<>(best.values());
 		earlier.sort(Comparator.comparingInt(CertificationAttempt::index).reversed());
 		for (CertificationAttempt attempt : earlier)

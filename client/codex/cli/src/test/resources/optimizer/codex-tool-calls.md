@@ -68,3 +68,11 @@ The schema's `ThreadItem` alternatives classify command execution, file changes,
 collaboration calls, web searches, image views, sleep, and image generation as tool items. The schema names MCP and
 dynamic tools with a `tool` field. No repository recording or the additional live recording contains an MCP, image
 view, sleep or image-generation item, so their fields have no recording-backed assertions here.
+
+The host-tool and outside-source tests reuse `codex-command-success.jsonl`, whose wrapped command runs `ls`, `rg`,
+`sed` and `find`, and `codex-web-search.jsonl`, whose completed item opened `https://www.apache.org/licenses/LICENSE-2.0`.
+No recording contains an `mcpToolCall` item or a web search whose action is a search, so those tests use synthetic
+items shaped by the `ThreadItem` schema that `codex app-server generate-json-schema --out <scratch-directory>
+--experimental` printed on codex-cli `0.160.0+41`. That schema requires `server` and `tool` on `mcpToolCall`, and
+gives `webSearch` an optional `action` of type `search`, `openPage`, `findInPage` or `other`; only `openPage` and
+`findInPage` carry a `url`.

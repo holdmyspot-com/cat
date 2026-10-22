@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -16,6 +17,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.BiPredicate;
 
 /**
@@ -51,6 +53,10 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	 * installed copy.
 	 */
 	public static final String INSTALLED_PLUGIN = "installed copy";
+	/**
+	 * The value of a condition whose observation found nothing to record.
+	 */
+	public static final String NONE = "none";
 
 	/**
 	 * Creates an identity.
@@ -152,8 +158,27 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	private static String orNone(StringJoiner lines)
 	{
 		if (lines.length() == 0)
-			return "none";
+			return NONE;
 		return lines.toString();
+	}
+
+	/**
+	 * Returns the value of a condition whose value lists entries, one per line.
+	 *
+	 * @param entries the entries, none of which spans lines
+	 * @return the entries joined in their order, or {@code none} if there are none, because a recorded value is never
+	 *   blank
+	 * @throws NullPointerException if {@code entries} or any of its elements are null
+	 */
+	public static String entries(List<String> entries)
+	{
+		StringJoiner lines = new StringJoiner("\n");
+		for (String entry : entries)
+		{
+			requireThat(entry, "entry").isNotNull();
+			lines.add(entry);
+		}
+		return orNone(lines);
 	}
 
 	/**
@@ -282,6 +307,86 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 			sharedCells.put(cell.getKey(), own);
 		}
 		return new MeasurementIdentity(shared, sharedCells);
+	}
+
+	/**
+	 * Returns this identity without the conditions that record what trials chose to use, campaign-wide and for every
+	 * cell.
+	 *
+	 * @return the identity of the environment that the trials ran in
+	 * @see MeasurementCondition#isUse()
+	 */
+	public MeasurementIdentity withoutUse()
+	{
+		Map<MeasurementCondition, String> environment = new EnumMap<>(MeasurementCondition.class);
+		for (Map.Entry<MeasurementCondition, String> entry : values.entrySet())
+		{
+			if (!entry.getKey().isUse())
+				environment.put(entry.getKey(), entry.getValue());
+		}
+		Map<String, Map<MeasurementCondition, String>> environmentCells = new HashMap<>();
+		for (Map.Entry<String, Map<MeasurementCondition, String>> cell : cells.entrySet())
+		{
+			Map<MeasurementCondition, String> own = new EnumMap<>(MeasurementCondition.class);
+			for (Map.Entry<MeasurementCondition, String> entry : cell.getValue().entrySet())
+			{
+				if (!entry.getKey().isUse())
+					own.put(entry.getKey(), entry.getValue());
+			}
+			environmentCells.put(cell.getKey(), own);
+		}
+		return new MeasurementIdentity(environment, environmentCells);
+	}
+
+	/**
+	 * Returns this identity with the conditions that it does not record taken from a trial's observation, and with
+	 * the trial's host tools and outside sources added to those that this identity records. Other recorded values
+	 * never change.
+	 *
+	 * @param observed the conditions that one trial was observed under
+	 * @return the identity whose host tools and outside sources are those of both, each entry once in order, and
+	 *   {@code none} only if neither records an entry
+	 * @throws NullPointerException if {@code observed} is null
+	 * @see MeasurementCondition#isUse()
+	 */
+	public MeasurementIdentity unionWith(MeasurementIdentity observed)
+	{
+		requireThat(observed, "observed").isNotNull();
+		MeasurementIdentity extended = extendWith(observed.withoutUse());
+		Map<MeasurementCondition, String> union = new EnumMap<>(MeasurementCondition.class);
+		union.putAll(extended.values);
+		for (MeasurementCondition condition : MeasurementCondition.values())
+		{
+			if (!condition.isUse())
+				continue;
+			String value = union(values.get(condition), observed.values.get(condition));
+			if (value != null)
+				union.put(condition, value);
+		}
+		return new MeasurementIdentity(union, extended.cells);
+	}
+
+	/**
+	 * Returns the union of two values whose lines are entries.
+	 *
+	 * @param first  a value, or {@code null} if it is not recorded
+	 * @param second another value, or {@code null} if it is not recorded
+	 * @return the entries of both, each once in order, {@code none} if both record none, or {@code null} if neither
+	 *   is recorded
+	 */
+	private static String union(String first, String second)
+	{
+		if (first == null && second == null)
+			return null;
+		Set<String> entries = new TreeSet<>();
+		for (String value : Arrays.asList(first, second))
+		{
+			if (value != null && !value.equals(NONE))
+				entries.addAll(value.lines().toList());
+		}
+		if (entries.isEmpty())
+			return NONE;
+		return String.join("\n", entries);
 	}
 
 	/**

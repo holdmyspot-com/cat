@@ -2070,6 +2070,62 @@ public final class DriverTest
 	}
 
 	/**
+	 * A certification records each host tool and outside source that any of its attempt's trials used, once, while
+	 * the campaign's identity, which later trials start from, records neither.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void certificationNamesToolsOfTrials() throws IOException
+	{
+		// Requirement: R-M8
+		Contract contract = ContractFixtures.contract();
+		Builder start = new Builder().confirmed().working(1).readyBaseline();
+		start.identity(Builder.confirmedIdentity(DriverHarness.MODEL).withoutUse());
+		for (String cell : contract.cellIds())
+			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
+		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size(),
+			Boundaries.PAIRED_MINIMUM_PASS_RATE);
+		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
+		for (String cell : contract.cellIds())
+			oneControlPairShort(running, boundaries, contract, cell);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = runningAttemptHarness(cleanup, running.build());
+			AtomicInteger trials = new AtomicInteger();
+			harness.trials(_ ->
+			{
+				SessionResult.Completed passed = harness.passed();
+				List<String> tools = List.of("git 2.51.0");
+				List<String> sources = List.of();
+				if (trials.incrementAndGet() % 2 == 0)
+				{
+					tools = List.of("git 2.51.0", "rg 14.1.0");
+					sources = List.of("github (MCP server)");
+				}
+				return new SessionResult.Completed(passed.transcript(), passed.responses(), passed.effects(),
+					passed.initialProject(), passed.model(), passed.reasoning(), passed.usage(),
+					passed.windows(), passed.promptSources(), passed.toolCalls(), tools, sources);
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runSlice(driver);
+				Campaign campaign = harness.campaign();
+				requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
+				requireThat(trials.get(), "trials").isGreaterThanOrEqualTo(2);
+				CertificationRecord record = harness.deliverer().calls().getFirst().record().orElseThrow();
+				Map<MeasurementCondition, String> recorded = record.identity().values();
+				requireThat(recorded.get(MeasurementCondition.HOST_TOOLS), "hostTools").
+					isEqualTo("git 2.51.0\nrg 14.1.0");
+				requireThat(recorded.get(MeasurementCondition.EXTERNAL_SOURCES), "externalSources").
+					isEqualTo("github (MCP server)");
+				requireThat(campaign.identity().values().keySet(), "identity").
+					doesNotContainAny(List.of(MeasurementCondition.HOST_TOOLS, MeasurementCondition.EXTERNAL_SOURCES));
+			}
+		}
+	}
+
+	/**
 	 * Certification waits for the incumbent comparisons: each cell starts with its minimum-pass-rate part certified
 	 * and its control and incumbent comparisons one tied pair short of passing, and the attempt certifies only after
 	 * an incumbent trial of every cell, which stages the incumbent, passes each incumbent comparison.

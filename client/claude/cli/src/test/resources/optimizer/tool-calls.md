@@ -52,3 +52,11 @@ the session's additional directory with `/recorded-additional-directory`. The pa
 	`returnCodeInterpretation` `No matches found`;
 - the background command: no status, because its result carries `backgroundTaskId` and the status is not known yet;
 - `rm -f missing.txt`: no status. Claude denied it without running it, and its error text has no exit code.
+
+`claude-outside-calls.jsonl` contains four unchanged `assistant` records, lines 61, 334, 363 and 525, of the
+repository's recording `docs/changelog/1.0/captures/languages/cpp/code/claude-cat.events.jsonl`, made with Claude Code
+2.1.229 on 2026-08-14. They are, in order, two root Bash calls (`git status --short && git log --oneline -5` and a
+`pkg-config … | grep …` pipeline), a `WebSearch` call and a `WebFetch` call of `https://www.boost.org/…`. The parser
+must keep both commands as shell commands in the session's activity and record the outside sources `web search` and
+`www.boost.org`. No repository recording contains an MCP tool call, so the MCP tests use synthetic `tool_use` blocks
+named `mcp__<server>__<tool>`, the form that Claude Code gives to an MCP server's tools.

@@ -924,11 +924,12 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				running.identity(), 0L, List.of(), Builder.FILES));
 			reconcile(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()));
 			Campaign recovered = store.load(ID).orElseThrow();
-			TrialInputs inputs = recovered.optimization().trialInputs().get(recovered.identity()).
-				get(trial.key().snapshot()).get("safety");
+			MeasurementIdentity measured = recovered.identity().withoutUse();
+			TrialInputs inputs = recovered.optimization().trialInputs().get(measured).get(trial.key().snapshot()).
+				get("safety");
 			requireThat(inputs, "inputs").isEqualTo(new TrialInputs(1, List.of(0L)));
 			reconcile(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()));
-			requireThat(store.load(ID).orElseThrow().optimization().trialInputs().get(recovered.identity()).
+			requireThat(store.load(ID).orElseThrow().optimization().trialInputs().get(measured).
 				get(trial.key().snapshot()).get("safety"), "inputs").isEqualTo(inputs);
 		}
 	}

@@ -48,6 +48,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -1207,6 +1208,46 @@ public final class RunnerSessionsTest
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(capacity.hold(), "hold").isEqualTo(new HarnessCapacity.Hold(ended.endsAt(), 0));
+		}
+	}
+
+	/**
+	 * Verifies that a trial's result names the host tools that its agents ran, each with its version, and the outside
+	 * sources that they used, and that another session's result names neither.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void trialNamesHostToolsAndSources()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-M8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			Map<String, String> environment = Map.of("PATH", Path.of(System.getProperty("java.home"), "bin").
+				toString());
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+				false, environment, root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+					List.of(Turn.replies("done", TestSessions.COMMAND_EVENT, TestSessions.MCP_EVENT)), input, output));
+
+			SessionResult.Completed trial = (SessionResult.Completed) await(sessions.start(request(source, List.of(),
+				"go")));
+			SessionResult.Completed judge = (SessionResult.Completed) await(sessions.start(request(SessionRole.JUDGE,
+				TrialProfile.HARNESS_DEFAULT, source, List.of(), "go")));
+
+			String version = Runtime.version().version().stream().map(String::valueOf).
+				collect(Collectors.joining("."));
+			requireThat(trial.hostTools(), "hostTools").isEqualTo(List.of("java " + version));
+			requireThat(trial.outsideSources(), "outsideSources").isEqualTo(List.of("github (MCP server)"));
+			requireThat(judge.hostTools(), "judge.hostTools").isNull();
+			requireThat(judge.outsideSources(), "judge.outsideSources").isNull();
 		}
 	}
 }

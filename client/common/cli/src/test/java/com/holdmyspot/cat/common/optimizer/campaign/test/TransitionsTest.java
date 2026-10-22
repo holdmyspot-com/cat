@@ -555,6 +555,82 @@ public final class TransitionsTest
 	}
 
 	/**
+	 * Returns the conditions that a trial was observed under: the campaign's environment, the host tools that the
+	 * trial ran and the outside sources that it used.
+	 *
+	 * @param campaign the campaign
+	 * @param tools    the trial's host tools
+	 * @param sources  the trial's outside sources
+	 * @return the conditions
+	 */
+	private static MeasurementIdentity used(Campaign campaign, String tools, String sources)
+	{
+		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
+		values.putAll(campaign.identity().withoutUse().values());
+		values.put(MeasurementCondition.HOST_TOOLS, tools);
+		values.put(MeasurementCondition.EXTERNAL_SOURCES, sources);
+		return new MeasurementIdentity(values);
+	}
+
+	/**
+	 * Verifies that a trial that ran other host tools or used other outside sources than earlier trials counts without
+	 * raising a measurement change, and that neither the campaign's identity, which every later trial starts from, nor
+	 * the identity that groups its token usage records them.
+	 */
+	@Test
+	public void otherToolsAreNotMeasurementChange()
+	{
+		// Requirement: R-M8
+		Campaign campaign = new Builder().confirmed().identity(Builder.confirmedIdentity("model-a").withoutUse()).
+			development("safety", 10, 0).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		TrialKey key = TransitionSteps.last(campaign);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", List.of(), null,
+			used(campaign, "git 2.51.0", "github (MCP server)"), null, List.of(), Builder.FILES));
+
+		requireThat(campaign.pending(), "pending").isNull();
+		requireThat(campaign.development().count("safety"), "counts").isEqualTo(counts(11, 0));
+		requireThat(campaign.identity().values().keySet(), "identity").
+			doesNotContainAny(List.of(MeasurementCondition.HOST_TOOLS, MeasurementCondition.EXTERNAL_SOURCES));
+		for (MeasurementIdentity measured : campaign.optimization().trialInputs().keySet())
+		{
+			requireThat(measured.values().keySet(), "measured").
+				doesNotContainAny(List.of(MeasurementCondition.HOST_TOOLS, MeasurementCondition.EXTERNAL_SOURCES));
+		}
+	}
+
+	/**
+	 * Verifies that a certification attempt records every host tool and outside source that its trials used, each
+	 * once, so that the certification names them.
+	 */
+	@Test
+	public void attemptRecordsToolsOfItsTrials()
+	{
+		// Requirement: R-M8
+		Campaign campaign = new Builder().confirmed().identity(Builder.confirmedIdentity("model-a").withoutUse()).
+			working(1).certificationAttempt(1).cell("safety", 5, 0).build();
+		List<MeasurementIdentity> observations = List.of(used(campaign, "git 2.51.0", "none"),
+			used(campaign, "gcc 15.2.0\ngit 2.51.0", "web search"));
+		for (MeasurementIdentity observed : observations)
+		{
+			campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
+			TrialKey key = TransitionSteps.last(campaign);
+			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+			campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", List.of(), null,
+				observed, null, List.of(), Builder.FILES));
+		}
+
+		requireThat(campaign.pending(), "pending").isNull();
+		requireThat(campaign.attempt(1).count("safety"), "counts").isEqualTo(counts(7, 0));
+		Map<MeasurementCondition, String> recorded = campaign.attempt(1).identity().values();
+		requireThat(recorded.get(MeasurementCondition.HOST_TOOLS), "hostTools").isEqualTo("gcc 15.2.0\ngit 2.51.0");
+		requireThat(recorded.get(MeasurementCondition.EXTERNAL_SOURCES), "externalSources").isEqualTo("web search");
+		requireThat(campaign.identity().values().keySet(), "identity").
+			doesNotContainAny(List.of(MeasurementCondition.HOST_TOOLS, MeasurementCondition.EXTERNAL_SOURCES));
+	}
+
+	/**
 	 * Returns a campaign whose {@code formatting} test reached its review checkpoint while a {@code safety}
 	 * trial still runs.
 	 *

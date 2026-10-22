@@ -139,6 +139,7 @@ public final class AppServerEvents extends HarnessEvents
 			return;
 		String type = item.path("type").asString("");
 		evidence.readActivity(params, rootThread);
+		readOutsideSource(type, item);
 		ToolCall call = switch (type)
 		{
 			case "commandExecution" -> commandCall(item);
@@ -165,6 +166,42 @@ public final class AppServerEvents extends HarnessEvents
 		{
 			calls.put(id, call);
 			setToolCalls(new ArrayList<>(calls.values()));
+		}
+	}
+
+	/**
+	 * Records the outside source that an item of any thread uses: the server of an MCP tool call, the web host of a
+	 * page that a web search opened or searched in, or the web search itself. A web search item that has not reported
+	 * its action yet records nothing.
+	 *
+	 * @param type the item's type
+	 * @param item the item
+	 */
+	private void readOutsideSource(String type, JsonNode item)
+	{
+		switch (type)
+		{
+			case "mcpToolCall" ->
+			{
+				String server = text(item.path("server"));
+				if (server != null)
+					addMcpServer(server);
+			}
+			case "webSearch" ->
+			{
+				JsonNode action = item.path("action");
+				switch (action.path("type").asString(""))
+				{
+					case "openPage", "findInPage" -> addWebPage(action.path("url").asString(""));
+					case "" ->
+					{
+					}
+					default -> addWebSearch();
+				}
+			}
+			default ->
+			{
+			}
 		}
 	}
 

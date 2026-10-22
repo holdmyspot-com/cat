@@ -3,11 +3,13 @@ package com.holdmyspot.cat.common.optimizer.campaign;
 /**
  * A condition that a measurement identity records, other than the candidate snapshot and time.
  * <p>
- * Every condition other than the runner and CAT versions, the session environment release and the loader configuration
- * files is material: a known change to any of them makes earlier results historical and pauses the campaign before the
- * next model call. The others are recorded and reported for information only: the session environment version stands
- * for what the runner and CAT versions can change in a session and for its release, and the loader configuration for
- * its files.
+ * Every condition other than the runner and CAT versions, the session environment release, the loader configuration
+ * files, the host tools and the outside sources is material: a known change to any of them makes earlier results
+ * historical and pauses the campaign before the next model call. The others are recorded and reported for information
+ * only: the session environment version stands for what the runner and CAT versions can change in a session and for
+ * its release, and the loader configuration for its files. The host tools and outside sources are the ones that trials
+ * chose to use, which differ from trial to trial; the harness version, the loader configuration and the trial plugins
+ * stand for the tools and MCP servers that trials could use.
  */
 public enum MeasurementCondition
 {
@@ -77,11 +79,15 @@ public enum MeasurementCondition
 	 */
 	PROMPT_SOURCES,
 	/**
-	 * The identities and versions of directly invoked host tools.
+	 * The host tools that trials ran by name in shell commands, one per line in name order, each with the version
+	 * that its {@code --version} printed or why its version is unknown, or {@code none}; recorded for information only.
+	 * A result records the tools of the trials that it counts.
 	 */
 	HOST_TOOLS,
 	/**
-	 * External or MCP source identities.
+	 * The outside sources that trials used, one per line in name order: each MCP server by its name, each web host
+	 * whose pages they fetched, and the harness's web search, or {@code none}; recorded for information only. A result
+	 * records the sources of the trials that it counts.
 	 */
 	EXTERNAL_SOURCES,
 	/**
@@ -151,9 +157,20 @@ public enum MeasurementCondition
 	{
 		return switch (this)
 		{
-			case RUNNER_VERSION, CAT_VERSION, SESSION_ENVIRONMENT_RELEASE, LOADER_FILES -> false;
+			case RUNNER_VERSION, CAT_VERSION, SESSION_ENVIRONMENT_RELEASE, LOADER_FILES, HOST_TOOLS, EXTERNAL_SOURCES ->
+				false;
 			default -> true;
 		};
+	}
+
+	/**
+	 * Indicates whether the condition records what trials chose to use rather than the environment that they ran in.
+	 *
+	 * @return {@code true} for the host tools and the outside sources
+	 */
+	public boolean isUse()
+	{
+		return this == HOST_TOOLS || this == EXTERNAL_SOURCES;
 	}
 
 	/**
