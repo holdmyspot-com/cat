@@ -2370,13 +2370,16 @@ reach the model provider; a session that needs another session requests one inst
 request up to that many sessions over the run; the default, `0`, allows none, and the optimizer allows none in its
 trials. The session requests one by running the `request-session` launcher that the runner names in its environment,
 with the harness, a project directory, one or more prompt files and, optionally, plugins, a model, an effort and
-`--session-transcripts`. Every input and result passes as a file path, never as content: the launcher writes the
-request into the run's `requests` directory, the one directory outside its project and home that the session may
-write. The runner answers in the run's `responses` directory, which the session may read but not write, so a link
+`--session-transcripts`. Every input and result passes as a file path, never as content: the launcher, which runs as
+one of the session's own commands and therefore inside its sandbox, packs the request and its inputs into one archive
+file in the run's `requests` directory, the one directory outside its project and home that the session may write. The runner answers in the run's `responses` directory, which the session may read but not write, so a link
 that the session plants cannot redirect the runner's writes: a response file that names copies, beside it, of the
-requested run's transcript, receipt and native transcripts, since the requesting session cannot read other runs. Every
-path in a request must lie inside the requesting session's project, and the runner reads none of them through a
-symbolic link. The runner, outside the session's sandbox, validates the request and starts the session through that
+requested run's transcript, receipt and native transcripts, since the requesting session cannot read other runs. The
+runner, which runs outside the session's sandbox with the user's permissions, opens no path that the session chose:
+it opens only the archive, without following a link and refusing a file with more than one hard link, and unpacks it
+into a directory of its own, refusing links, absolute and parent paths and anything beyond its size bounds. An archive
+therefore holds only what the session's sandbox let it read, on every platform. The runner validates the request and
+starts the session through that
 harness's runner launcher, resolved as the runner skills resolve it, with the requesting session's run root and denied
 reads, and without requested sessions of its own. A requested session therefore has at most the permissions of the
 session that requested it, and no credential ever reaches a command. It takes its own slot of its harness's shared
@@ -2678,6 +2681,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D98 | Give a session's commands one set of limits in both harnesses from one harness-neutral definition: the run's home as their home, no harness credential in their environment, and no reads of any harness's login or configuration or of other runs (user ruling, 2026-10-23). | A Codex session's commands kept the user's home, and a Claude session's commands received the provider token, so a harness started from a command reached the provider in one harness and not the other, and an agent could not predict which. | A command that needs the user's harness configuration, such as a harness CLI started directly, no longer works in a session; it requests a session instead (D99). |
 | D99 | Let a caller allow a session to request sessions, which the runner starts outside the session's sandbox through the requested harness's runner with no more than the requesting session's permissions, passing every input and result as a file path (user ruling, 2026-10-23: option C). | Starting a harness inside a session would put credentials in reach of every command and escape the shared capacity, interrupts and evidence; making the caller start every session prevents a session from checking its own work, such as a plugin it just wrote. A broker keeps credentials, capacity and evidence with the runner. | A requested session waits at most 10 minutes for a capacity slot and fails with `capacity` after that; requested sessions request none of their own and are unavailable in optimizer trials. |
 | D100 | Remove each prompt file's design goals and comments before any model reads it (plugin build, role briefs, project rules), and make the guidance alone carry every goal (user rulings, 2026-10-23). | Design goals guide prompt authors and comments remind plugin developers why a goal was added. Agents read lazily loaded rules, skill bodies and agent bodies straight from the installed plugin, so removal at injection alone left that text in front of models; a model that needed it showed a gap in the guidance. |
+| D101 | Pack a requested session's inputs into one archive inside the requesting session's sandbox, and let the runner open only that archive (user ruling, 2026-10-23: option 4). | The runner copies the inputs with the user's permissions while the requesting session keeps running. Walking a directory that the session controls lets it swap a link or junction into a directory on the walk's path at the moment the runner passes through, so the runner would copy a file the session may not read, such as a harness login; Java refuses a link in such a position only through `SecureDirectoryStream`, which Windows lacks, and checking the copy afterwards cannot tell where a regular file came from. Reading the inputs inside the sandbox makes the sandbox refuse such a read, and a single file in `requests` has no session-controlled directory on its path. | A request may name any file the session can read, not only files in its project; a session whose harness has no command sandbox, such as Claude Code on Windows, can pack whatever its user can read, as its commands already can. |
 
 ## 14. Acceptance evidence
 
