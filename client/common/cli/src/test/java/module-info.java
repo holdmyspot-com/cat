@@ -5,6 +5,7 @@ module com.holdmyspot.cat.common.cli.test
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;
+	requires jdk.httpserver;
 	requires org.testng;
 
 	exports com.holdmyspot.cat.common.fakes.test to org.testng, com.holdmyspot.cat.claude.cli.test,
@@ -32,6 +33,9 @@ module com.holdmyspot.cat.common.cli.test
 	exports com.holdmyspot.cat.common.optimizer.store.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.workspace.test to org.testng;
+	exports com.holdmyspot.cat.common.release.fakes.test to com.holdmyspot.cat.claude.cli.test,
+		com.holdmyspot.cat.codex.cli.test;
+	exports com.holdmyspot.cat.common.release.test to org.testng;
 	exports com.holdmyspot.cat.common.runner.fakes.test to com.holdmyspot.cat.claude.cli.test,
 		com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.runner.test to org.testng;

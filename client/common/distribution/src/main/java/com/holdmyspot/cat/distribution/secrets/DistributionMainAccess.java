@@ -23,6 +23,13 @@ public interface DistributionMainAccess
 	List<JlinkImageBuilder.Launcher> claudeLaunchers();
 
 	/**
+	 * Returns the launchers of the Claude image that agents run, which the plugin holds in {@code bin/}.
+	 *
+	 * @return the launchers' names
+	 */
+	Set<String> claudeAgentLaunchers();
+
+	/**
 	 * Returns the launchers of the Codex image.
 	 *
 	 * @return the launchers

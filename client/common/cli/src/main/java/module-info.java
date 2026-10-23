@@ -2,6 +2,7 @@ module com.holdmyspot.cat.common.cli
 {
 	requires io.github.cowwoc.requirements13.java;
 	requires io.github.cowwoc.pouch10.core;
+	requires java.net.http;
 	requires tools.jackson.core;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;
@@ -28,6 +29,8 @@ module com.holdmyspot.cat.common.cli
 	exports com.holdmyspot.cat.common.optimizer.statistics to com.holdmyspot.cat.common.cli.test;
 	exports com.holdmyspot.cat.common.optimizer.store to com.holdmyspot.cat.common.cli.test;
 	exports com.holdmyspot.cat.common.optimizer.workspace;
+	exports com.holdmyspot.cat.common.release to com.holdmyspot.cat.claude.cli, com.holdmyspot.cat.codex.cli,
+		com.holdmyspot.cat.common.cli.test;
 	exports com.holdmyspot.cat.common.runner;
 	exports com.holdmyspot.cat.common.secrets to com.holdmyspot.cat.common.cli.test;
 

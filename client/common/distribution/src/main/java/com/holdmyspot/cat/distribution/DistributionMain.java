@@ -43,6 +43,12 @@ public final class DistributionMain
 			}
 
 			@Override
+			public Set<String> claudeAgentLaunchers()
+			{
+				return DistributionMain.claudeAgentLaunchers();
+			}
+
+			@Override
 			public List<JlinkImageBuilder.Launcher> codexLaunchers()
 			{
 				return DistributionMain.codexLaunchers();
@@ -447,6 +453,8 @@ public final class DistributionMain
 				"com.holdmyspot.cat.claude.ClaudePluginInfo"),
 			new JlinkImageBuilder.Launcher("claude-runner", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.runner.ClaudeRunnerCli"),
+			new JlinkImageBuilder.Launcher("codex-artifact", "com.holdmyspot.cat.claude.cli",
+				"com.holdmyspot.cat.claude.runner.CodexArtifact"),
 			new JlinkImageBuilder.Launcher("get-history", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.ClaudeGetHistory"),
 			new JlinkImageBuilder.Launcher("session-start", "com.holdmyspot.cat.claude.cli",
@@ -463,14 +471,15 @@ public final class DistributionMain
 
 	/**
 	 * Returns the launchers of the Claude image that agents run, which the plugin holds in {@code bin/}. They include
-	 * {@code claude-runner}, which the Codex plugin's {@code claude-runner} skill runs from the Claude plugin.
+	 * {@code codex-artifact}, which the plugin's {@code codex-runner} skill runs to find the Codex CAT artifact, and
+	 * {@code claude-runner}, which the Codex plugin's {@code claude-runner} skill runs from the Claude artifact.
 	 *
 	 * @return the launchers' names
 	 */
 	static Set<String> claudeAgentLaunchers()
 	{
 		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "claude-runner",
-			"wait-until");
+			"codex-artifact", "wait-until");
 	}
 
 	/**
@@ -485,6 +494,8 @@ public final class DistributionMain
 				"com.holdmyspot.cat.codex.CodexPluginInfo"),
 			new JlinkImageBuilder.Launcher("codex-runner", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.runner.CodexRunnerCli"),
+			new JlinkImageBuilder.Launcher("claude-artifact", "com.holdmyspot.cat.codex.cli",
+				"com.holdmyspot.cat.codex.runner.ClaudeArtifact"),
 			new JlinkImageBuilder.Launcher("get-history", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexGetHistory"),
 			new JlinkImageBuilder.Launcher("session-start", "com.holdmyspot.cat.codex.cli",
@@ -504,14 +515,16 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Returns the launchers of the Codex image that agents run, which the plugin holds in {@code bin/}.
+	 * Returns the launchers of the Codex image that agents run, which the plugin holds in {@code bin/}. They include
+	 * {@code claude-artifact}, which the plugin's {@code claude-runner} skill runs to find the Claude CAT artifact, and
+	 * {@code codex-runner}, which the Claude plugin's {@code codex-runner} skill runs from the Codex artifact.
 	 *
 	 * @return the launchers' names
 	 */
 	static Set<String> codexAgentLaunchers()
 	{
 		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "run-part", "read-part",
-			"wait-until");
+			"claude-artifact", "codex-runner", "wait-until");
 	}
 
 	/**

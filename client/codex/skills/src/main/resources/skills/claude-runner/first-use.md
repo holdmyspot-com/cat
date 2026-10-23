@@ -2,28 +2,32 @@
 
 ## Design Goals
 
-- Run an authorized task through the installed Claude Code CAT artifact while preserving the runner's retained evidence.
+- Run an authorized task through the Claude Code CAT artifact of this CAT version while preserving the runner's
+	retained evidence.
 - Prevent a runner invocation from selecting an arbitrary artifact, executable, or model profile.
 
 ## Guidance
 
-Run only an installed, version-compatible Claude CAT artifact. Resolve it from the documented Claude installation root:
+Run only the Claude CAT artifact that `claude-artifact` selects. It is the launcher `bin/claude-artifact` in CAT's
+installed plugin directory, two levels above this skill's directory; run it by its absolute path, without arguments.
+It selects the Claude CAT artifact of this CAT version and platform:
 
-- The Claude configuration directory is the value of the `CLAUDE_CONFIG_DIR` environment variable or, when that is
-	unset or empty, `.claude` in the user's home directory.
-- The marketplace root is the value of `CAT_CLAUDE_MARKETPLACE_ROOT` or, when that is unset or empty,
-	`plugins/cat-marketplace` in the Claude configuration directory.
-- The artifact, `<claude-artifact>`, is `plugins/cat` in the marketplace root.
-- The runner, `<claude-runner>`, is the launcher `bin/claude-runner` in the artifact.
+- the Claude CAT plugin installed for Claude Code, when its version matches;
+- otherwise the copy in `.cat/bundles` in the user's home directory;
+- otherwise it downloads the Claude release archive of this CAT version, verifies it against the release's
+	`SHA256SUMS.txt`, and extracts it to that copy. A failed download, checksum or extraction leaves no copy.
+
+On success it prints three lines: `artifact=<claude-artifact>`, `runner=<claude-runner>` and `source=`, which is
+`installed`, `bundle` or `download`. `<claude-runner>` is the launcher `bin/claude-runner` in the artifact. On failure
+it exits with a non-zero status and prints the reason; report that reason and do not start a run.
 
 Before a run, require all of these exact prerequisites:
 
 - `claude` is available on `PATH` and authenticated.
-- `.claude-plugin/plugin.json` in `<claude-artifact>` is a regular file.
 - `<claude-runner>` exists, and running it with the arguments `--verify-artifact <claude-artifact>` succeeds.
 - The requested profile is supported. CAT's initial Claude profile is `haiku` with `medium` effort.
 
-Do not search cache directories, download Claude or CAT, substitute another artifact version, or accept an arbitrary
+Do not search cache directories, install Claude Code, substitute another artifact version, or accept an arbitrary
 runner or artifact path. Report the missing prerequisite and do not start a run when validation fails.
 
 For an authorized task, run `<claude-runner>` with the validated artifact, a project directory, an owned run root, and

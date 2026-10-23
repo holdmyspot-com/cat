@@ -55,8 +55,8 @@ capture_one()
 	filename="$4"
 	mode="$5"
 	staging_directory="$6"
-	# Agents run claude-runner, so the Claude plugin holds it in bin/; codex-runner stays with the runtime in client/bin/
-	runner="${runtime}/codex/client/bin/codex-runner"
+	# Each plugin holds its runner in bin/, where the other harness's runner skill runs it
+	runner="${runtime}/codex/bin/codex-runner"
 	if [ "${harness}" = claude ]; then
 		runner="${runtime}/claude/bin/claude-runner"
 	fi

@@ -26,11 +26,11 @@ To reproduce a pair, build the distribution and run the selected packaged runner
 ```sh
 client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml verify
 { printf '{"type":"turn","prompt":'; jq -Rs . < code-request.txt; printf '}\n{"type":"complete"}\n'; } |
-  client/distribution/target/runtime/codex/client/bin/codex-runner \
+  client/distribution/target/runtime/codex/bin/codex-runner \
   --artifact client/distribution/target/runtime/codex --project <fixture> \
   --output <events> --model gpt-5.6-sol --keep-run
 { printf '{"type":"turn","prompt":'; jq -Rs . < code-request.txt; printf '}\n{"type":"complete"}\n'; } |
-  client/distribution/target/runtime/codex/client/bin/codex-runner \
+  client/distribution/target/runtime/codex/bin/codex-runner \
   --artifact client/distribution/target/runtime/codex --project <fixture> \
   --output <events> --model gpt-5.6-sol --keep-run --install-cat
 ```
