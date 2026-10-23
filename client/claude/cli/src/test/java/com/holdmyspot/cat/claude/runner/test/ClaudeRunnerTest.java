@@ -7,6 +7,7 @@ import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,6 +75,25 @@ public final class ClaudeRunnerTest
 		requireThat(command, "command").doesNotContain("--no-session-persistence").doesNotContain("--settings");
 		requireThat(ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"), List.of(),
 			false), "withoutTranscripts").contains("--no-session-persistence");
+	}
+
+	/**
+	 * Verifies that a session that may request sessions is told how through its appended system prompt, and that a
+	 * session that may request none is told nothing.
+	 */
+	@Test
+	public void explainsSessionRequests()
+	{
+		// Requirement: R-I9
+		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"),
+			List.of(), false, 2);
+		List<String> without = ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"),
+			List.of(), false, 0);
+
+		int option = command.indexOf("--append-system-prompt");
+		requireThat(option, "option").isNotNegative();
+		requireThat(command.get(option + 1), "systemPrompt").isEqualTo(SessionRequestInstructions.text(2));
+		requireThat(without, "without").doesNotContain("--append-system-prompt");
 	}
 
 	/**

@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -168,6 +169,37 @@ public final class ClaudeConnectionSettings
 		List<Path> deniedReads, String instructionFilesMode, Platform platform)
 		throws IOException
 	{
+		writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
+			isolationRoot, deniedReads, instructionFilesMode, null, platform);
+	}
+
+	/**
+	 * Writes settings for an isolated Claude instance, as
+	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String, Platform)}
+	 * does, except that the sandbox also lets the instance's commands write the run's requests directory when the
+	 * session may request sessions.
+	 *
+	 * @param scope                    services shared for the runner process lifetime
+	 * @param source                   the host Claude settings file
+	 * @param destination              the isolated Claude settings file
+	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
+	 * @param claudeHome               the CAT-owned home directory for the isolated Claude process
+	 * @param dependencyCaches         the parent's shared dependency caches that the isolated instance may write
+	 * @param isolationRoot            the directory above which the isolated instance loads no instruction file
+	 * @param deniedReads              the existing files and directories that the isolated instance must not read
+	 * @param instructionFilesMode     the choice of which instruction files load, such as {@code claude-md}, or an
+	 *                                 empty string to keep the parent's choice
+	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
+	 *                                 none
+	 * @param platform                 the platform that the isolated instance runs on
+	 * @throws NullPointerException if {@code instructionFilesMode} is null
+	 * @throws IOException          if settings I/O fails
+	 */
+	public static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
+		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
+		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Platform platform)
+		throws IOException
+	{
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
 		JsonMapper mapper = scope.json();
 		ObjectNode settings = mapper.createObjectNode();
@@ -224,6 +256,8 @@ public final class ClaudeConnectionSettings
 		writablePaths.add(claudeHome.toString());
 		for (Path cache : dependencyCaches)
 			writablePaths.add(cache.toString());
+		if (requestAccess != null)
+			writablePaths.add(requestAccess.requests().toString());
 		filesystem.set("allowWrite", mapper.valueToTree(writablePaths));
 		denyReads(settings, filesystem, deniedReads);
 		excludeInstructionsAbove(settings, isolationRoot, platform);

@@ -50,9 +50,10 @@ public abstract class SessionCommandLimitsContract
 	 * @param manager         the run manager of the run root
 	 * @param run             the session's run, whose project is snapshotted
 	 * @param otherRun        another run under the same run root
+	 * @param artifact        the harness artifact that the session's runner uses
 	 */
 	public record Fixture(Map<String, String> userEnvironment, Path userHome, HarnessRunManager manager,
-		HarnessRun run, HarnessRun otherRun)
+		HarnessRun run, HarnessRun otherRun, Path artifact)
 	{
 		/**
 		 * Returns the run's isolated home.
@@ -70,19 +71,30 @@ public abstract class SessionCommandLimitsContract
 	 *
 	 * @param commandEnvironment the environment that the session's commands receive
 	 * @param deniedReads        the files and directories that the session's commands may not read
+	 * @param writable           the files and directories outside the session's project that the session's commands
+	 *                           may write
+	 * @param readable           the files and directories that the sandbox lets the session's commands read, without
+	 *                           writing them, even inside a denied directory
 	 */
-	public record Limits(Map<String, String> commandEnvironment, List<Path> deniedReads)
+	public record Limits(Map<String, String> commandEnvironment, List<Path> deniedReads, List<Path> writable,
+		List<Path> readable)
 	{
 		/**
 		 * Creates the limits.
 		 *
 		 * @param commandEnvironment the environment that the session's commands receive
 		 * @param deniedReads        the files and directories that the session's commands may not read
+		 * @param writable           the files and directories outside the session's project that the session's
+		 *                           commands may write
+		 * @param readable           the files and directories that the sandbox lets the session's commands read,
+		 *                           without writing them, even inside a denied directory
 		 */
 		public Limits
 		{
 			commandEnvironment = Map.copyOf(commandEnvironment);
 			deniedReads = List.copyOf(deniedReads);
+			writable = List.copyOf(writable);
+			readable = List.copyOf(readable);
 		}
 	}
 
@@ -90,11 +102,12 @@ public abstract class SessionCommandLimitsContract
 	 * Prepares a session of the fixture's run as the runner under test does, without starting a harness, and returns
 	 * what its commands receive.
 	 *
-	 * @param fixture the user and run
+	 * @param fixture         the user and run
+	 * @param sessionRequests how many sessions the session may request, as {@code --session-requests} sets it
 	 * @return the limits of the session's commands
 	 * @throws IOException if the runner's configuration cannot be written or read
 	 */
-	protected abstract Limits limits(Fixture fixture) throws IOException;
+	protected abstract Limits limits(Fixture fixture, int sessionRequests) throws IOException;
 
 	/**
 	 * Returns the harness files in the run's home that the runner under test leaves readable to the session's
@@ -121,7 +134,7 @@ public abstract class SessionCommandLimitsContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = fixture(cleanup);
-			Limits limits = limits(fixture);
+			Limits limits = limits(fixture, 0);
 			for (Map.Entry<String, String> variable : SessionCommandLimits.homeEnvironment(fixture.runHome(),
 				Platform.current()).entrySet())
 			{
@@ -143,7 +156,7 @@ public abstract class SessionCommandLimitsContract
 		// Requirement: R-I8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Limits limits = limits(fixture(cleanup));
+			Limits limits = limits(fixture(cleanup), 0);
 			Set<String> received = new LinkedHashSet<>(limits.commandEnvironment().keySet());
 			received.retainAll(SessionCommandLimits.CREDENTIAL_VARIABLES);
 			requireThat(received, "received").isEmpty();
@@ -164,7 +177,7 @@ public abstract class SessionCommandLimitsContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = fixture(cleanup);
-			Limits limits = limits(fixture);
+			Limits limits = limits(fixture, 0);
 			Platform platform = Platform.current();
 			// A harness that a command starts finds its files through the command's environment, or else through the
 			// user's environment if the command names the user's directories
@@ -212,11 +225,101 @@ public abstract class SessionCommandLimitsContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = fixture(cleanup);
-			Limits limits = limits(fixture);
+			Limits limits = limits(fixture, 0);
 			Path other = fixture.otherRun().directory().toRealPath();
 			requireThat(realPaths(limits.deniedReads()).stream().anyMatch(other::startsWith), "otherRunDenied").
 				withContext(limits.deniedReads(), "deniedReads").isTrue();
 		}
+	}
+
+	/**
+	 * Verifies that a session that may request sessions can write the run's requests directory, and read but not write
+	 * its responses directory, and that its commands are told where requests go and which launcher makes one.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void commandsCanRequestSessions() throws IOException
+	{
+		// Requirement: R-I9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = fixture(cleanup);
+			Limits limits = limits(fixture, 2);
+			Path requests = fixture.run().directory().resolve("requests");
+			Path responses = fixture.run().directory().resolve("responses");
+			String launcher = "request-session";
+			if (Platform.current().isWindows())
+				launcher += ".cmd";
+
+			requireThat(requests, "requests").isDirectory();
+			requireThat(responses, "responses").isDirectory();
+			requireThat(limits.commandEnvironment().get("CAT_SESSION_REQUESTS"), "CAT_SESSION_REQUESTS").
+				isEqualTo(requests.toString());
+			requireThat(limits.commandEnvironment().get("CAT_REQUEST_SESSION"), "CAT_REQUEST_SESSION").
+				isEqualTo(fixture.artifact().resolve("bin").resolve(launcher).toString());
+			Set<Path> writable = realPaths(limits.writable());
+			requireThat(writable, "writable").contains(requests.toRealPath());
+			for (Path path : writable)
+			{
+				requireThat(responses.toRealPath().startsWith(path), "responsesWritable").withContext(path, "writable").
+					isFalse();
+			}
+			requireThat(readable(limits, requests), "requestsReadable").isTrue();
+			requireThat(readable(limits, responses), "responsesReadable").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a session that may request no session gets neither the requests nor the responses directory, nor
+	 * the variables that name them.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void noRequestsByDefault() throws IOException
+	{
+		// Requirement: R-I9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = fixture(cleanup);
+			Limits limits = limits(fixture, 0);
+
+			requireThat(Files.exists(fixture.run().directory().resolve("requests")), "requestsExist").isFalse();
+			requireThat(Files.exists(fixture.run().directory().resolve("responses")), "responsesExist").isFalse();
+			requireThat(limits.commandEnvironment().keySet(), "commandVariables").doesNotContain("CAT_SESSION_REQUESTS").
+				doesNotContain("CAT_REQUEST_SESSION");
+		}
+	}
+
+	/**
+	 * Indicates whether the session's commands may read a directory: no denied path covers it, or the sandbox grants
+	 * it, as writable or readable, by a path deeper than every denied path that covers it.
+	 *
+	 * @param limits    the limits of the session's commands
+	 * @param directory an existing directory
+	 * @return {@code true} if the commands may read it
+	 * @throws IOException if a real path cannot be read
+	 */
+	private static boolean readable(Limits limits, Path directory) throws IOException
+	{
+		Path real = directory.toRealPath();
+		int deepestDenial = -1;
+		for (Path denied : realPaths(limits.deniedReads()))
+		{
+			if (real.startsWith(denied))
+				deepestDenial = Math.max(deepestDenial, denied.getNameCount());
+		}
+		if (deepestDenial < 0)
+			return true;
+		Set<Path> grants = realPaths(limits.writable());
+		grants.addAll(realPaths(limits.readable()));
+		for (Path grant : grants)
+		{
+			if (real.startsWith(grant) && grant.getNameCount() > deepestDenial)
+				return true;
+		}
+		return false;
 	}
 
 	/**
@@ -264,7 +367,8 @@ public abstract class SessionCommandLimitsContract
 		}
 		HarnessRun otherRun = manager.create("harness");
 		write(otherRun.directory().resolve("project/notes.txt"));
-		return new Fixture(Map.copyOf(userEnvironment), userHome, manager, run, otherRun);
+		Path artifact = Files.createDirectories(root.resolve("artifact"));
+		return new Fixture(Map.copyOf(userEnvironment), userHome, manager, run, otherRun, artifact);
 	}
 
 	/**

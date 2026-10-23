@@ -5,6 +5,7 @@ import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.contract.test.SessionCommandLimitsContract;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 
@@ -20,8 +21,8 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * Runs {@link SessionCommandLimitsContract} against the Claude runner: the environment that it gives its Claude
- * process, less the variables that Claude Code removes from its commands' environment, and the reads that its
- * generated settings deny the sandbox's commands.
+ * process, less the variables that Claude Code removes from its commands' environment, and the reads and writes
+ * that its generated settings deny or allow the sandbox's commands.
  */
 public final class ClaudeSessionCommandLimitsTest extends SessionCommandLimitsContract
 {
@@ -43,14 +44,16 @@ public final class ClaudeSessionCommandLimitsTest extends SessionCommandLimitsCo
 	}
 
 	@Override
-	protected Limits limits(Fixture fixture) throws IOException
+	protected Limits limits(Fixture fixture, int sessionRequests) throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope())
 		{
 			Path runHome = fixture.runHome();
 			Path userSettings = fixture.userHome().resolve(".claude/settings.json");
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.run(), fixture.artifact(),
+				sessionRequests, Platform.current()).orElse(null);
 			Map<String, String> processEnvironment = ClaudeRunner.processEnvironment(scope, fixture.userEnvironment(),
-				HarnessDependencyCaches.NONE, userSettings, runHome);
+				HarnessDependencyCaches.NONE, userSettings, runHome, requestAccess);
 			Map<String, String> commandEnvironment = new HashMap<>(processEnvironment);
 			if ("1".equals(processEnvironment.get(ClaudeRunner.SUBPROCESS_ENVIRONMENT_SCRUB)))
 				commandEnvironment.keySet().removeAll(SCRUBBED);
@@ -59,13 +62,24 @@ public final class ClaudeSessionCommandLimitsTest extends SessionCommandLimitsCo
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, userSettings, settings,
 				fixture.run().directory().resolve("claude"), runHome, List.of(), fixture.run().directory(),
 				ClaudeRunner.sessionDeniedReads(fixture.manager(), fixture.run(), List.of(), List.of(),
-					fixture.userEnvironment()), Platform.current());
-			List<Path> deniedReads = new ArrayList<>();
-			JsonNode denied = scope.json().readTree(Files.readString(settings)).path("sandbox").path("filesystem").
-				path("denyRead");
-			for (JsonNode path : denied)
-				deniedReads.add(Path.of(path.stringValue()));
-			return new Limits(commandEnvironment, deniedReads);
+					fixture.userEnvironment(), requestAccess), "", requestAccess, Platform.current());
+			JsonNode filesystem = scope.json().readTree(Files.readString(settings)).path("sandbox").path("filesystem");
+			return new Limits(commandEnvironment, paths(filesystem.path("denyRead")),
+				paths(filesystem.path("allowWrite")), paths(filesystem.path("allowRead")));
 		}
+	}
+
+	/**
+	 * Returns the paths that a settings array lists.
+	 *
+	 * @param array the array, or a missing node
+	 * @return the paths
+	 */
+	private static List<Path> paths(JsonNode array)
+	{
+		List<Path> result = new ArrayList<>();
+		for (JsonNode path : array)
+			result.add(Path.of(path.stringValue()));
+		return result;
 	}
 }

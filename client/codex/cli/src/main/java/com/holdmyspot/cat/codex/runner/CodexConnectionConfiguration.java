@@ -6,10 +6,12 @@ import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,6 +94,27 @@ public final class CodexConnectionConfiguration
 	public static void copy(Path source, Path destination, HarnessDependencyCaches caches, Path temporaryDirectory,
 		int toolOutputTokenLimit, Platform platform) throws IOException
 	{
+		copy(source, destination, caches, temporaryDirectory, toolOutputTokenLimit, null, platform);
+	}
+
+	/**
+	 * Copies the configuration as {@link #copy(Path, Path, HarnessDependencyCaches, Path, int, Platform)} does, except
+	 * that a session that may request sessions can also write the run's requests directory, and its commands receive
+	 * the variables that name that directory and the {@code request-session} launcher.
+	 *
+	 * @param source the host configuration file
+	 * @param destination the isolated configuration file
+	 * @param caches the verified writable dependency caches
+	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
+	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
+	 *   Codex's default
+	 * @param requestAccess the session's access to requested sessions, or {@code null} if it may request none
+	 * @param platform the platform that the session runs on
+	 * @throws IOException if configuration I/O fails
+	 */
+	public static void copy(Path source, Path destination, HarnessDependencyCaches caches, Path temporaryDirectory,
+		int toolOutputTokenLimit, SessionRequestAccess requestAccess, Platform platform) throws IOException
+	{
 		requireThat(caches, "caches").isNotNull();
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
@@ -144,6 +167,12 @@ public final class CodexConnectionConfiguration
 			append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
 		Map<String, String> commandEnvironment = new TreeMap<>(caches.environment());
 		commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(destination.getParent(), platform));
+		List<Path> writable = new ArrayList<>(caches.directories());
+		if (requestAccess != null)
+		{
+			commandEnvironment.putAll(requestAccess.environment());
+			writable.add(requestAccess.requests());
+		}
 		for (Entry<String, String> variable : commandEnvironment.entrySet())
 		{
 			copied.append(variable.getKey()).append(" = \"").append(toml(variable.getValue())).append('"').
@@ -157,7 +186,7 @@ public final class CodexConnectionConfiguration
 			copied.append(System.lineSeparator()).append("[features]").append(System.lineSeparator()).
 				append("prefer_mxc = true").append(System.lineSeparator());
 		}
-		appendRunnerProfile(copied, destination.getParent(), caches.directories(), temporaryDirectory, networkAccess);
+		appendRunnerProfile(copied, destination.getParent(), writable, temporaryDirectory, networkAccess);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
 	}
@@ -182,16 +211,18 @@ public final class CodexConnectionConfiguration
 	 *
 	 * @param configuration the isolated configuration being assembled
 	 * @param isolatedHome the fresh runtime home that the runner owns
-	 * @param caches the verified shared dependency caches
+	 * @param writable the other directories that the session may write: the verified shared dependency caches, and the
+	 *   run's requests directory when the session may request sessions
 	 * @param temporaryDirectory the fresh harness temporary directory owned by the runner
 	 * @param networkAccess {@code true} or {@code false} when the parent declares a workspace-write network policy, or
 	 *   {@code null} when it does not
 	 */
-	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, List<Path> caches,
+	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, List<Path> writable,
 		Path temporaryDirectory, String networkAccess)
 	{
 		assert configuration != null;
 		assert isolatedHome != null;
+		assert writable != null;
 		assert temporaryDirectory != null;
 		configuration.append(System.lineSeparator()).append("[permissions.").append(RUNNER_PERMISSION_PROFILE).
 			append(']').append(System.lineSeparator()).append("extends = \":workspace\"").
@@ -200,8 +231,8 @@ public final class CodexConnectionConfiguration
 			append("\" = \"write\"").append(System.lineSeparator()).append('"').append(TEMPORARY_DIRECTORY).
 			append("\" = \"write\"").
 			append(System.lineSeparator());
-		for (Path cache : caches)
-			configuration.append('"').append(toml(cache)).append("\" = \"write\"").append(System.lineSeparator());
+		for (Path directory : writable)
+			configuration.append('"').append(toml(directory)).append("\" = \"write\"").append(System.lineSeparator());
 		if (networkAccess != null)
 		{
 			configuration.append("[permissions.").append(RUNNER_PERMISSION_PROFILE).append(".network]").

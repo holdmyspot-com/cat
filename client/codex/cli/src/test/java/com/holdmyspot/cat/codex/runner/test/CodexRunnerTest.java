@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -369,6 +370,24 @@ public final class CodexRunnerTest
 		requireThat(CodexRunner.developerInstructions(root, project, home, ""), "withoutAgent").isEqualTo(note);
 		requireThat(CodexRunner.developerInstructions(root, project, home, "Review the plan."), "withAgent").
 			isEqualTo(note + "\n\nReview the plan.");
+	}
+
+	/**
+	 * Verifies that the developer instructions of a session that may request sessions tell it how, after the note on
+	 * denied reads and before the agent's contract, and that those of a session that may request none do not.
+	 */
+	@Test
+	public void developerNoteExplainsRequests()
+	{
+		// Requirement: R-I9
+		Path root = Path.of("/runs");
+		Path project = Path.of("/runs/codex/run-1/project");
+		Path home = Path.of("/runs/codex/run-1/home");
+		String note = CodexRunner.developerInstructions(root, project, home, "");
+
+		requireThat(CodexRunner.developerInstructions(root, project, home, "Review the plan.", 2), "withRequests").
+			isEqualTo(note + "\n\n" + SessionRequestInstructions.text(2) + "\n\nReview the plan.");
+		requireThat(CodexRunner.developerInstructions(root, project, home, "", 0), "withoutRequests").isEqualTo(note);
 	}
 
 	/**

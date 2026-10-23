@@ -175,7 +175,7 @@ public final class CodexRunnerCli
 					options.project(),
 					options.workspace(), options.plugins(), manager, options.executable(), environment, options.model(),
 					options.effort(), options.installCat(), agent, List.of(), options.deniedReads(), toolOutputTokenLimit,
-					options.sessionTranscripts()),
+					options.sessionTranscripts(), options.sessionRequests()),
 					manager, options, scope.json(), replacer, input, output);
 			}
 		}

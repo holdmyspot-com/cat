@@ -24,6 +24,8 @@ import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 
 import java.io.File;
@@ -37,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.StringJoiner;
 
 /**
  * Creates an isolated Codex configuration and starts one persistent Codex CLI process, optionally with CAT.
@@ -143,7 +146,7 @@ public final class CodexRunner
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
 		return start(artifact, project, null, null, manager, executable, environment, model, "", installCat, null,
-			List.of(), List.of(), 0, false);
+			List.of(), List.of(), 0, false, 0);
 	}
 
 	/**
@@ -167,7 +170,7 @@ public final class CodexRunner
 		throws IOException
 	{
 		return start(artifact, project, null, List.of(), manager, executable, environment, model, effort, installCat,
-			agent, List.of(), List.of(), 0, false);
+			agent, List.of(), List.of(), 0, false, 0);
 	}
 
 	/**
@@ -194,13 +197,15 @@ public final class CodexRunner
 	 * @param sessionTranscripts whether the session's threads are persistent, and the run copies their rollouts into its
 	 *   session transcripts directory when the session closes; otherwise the threads are ephemeral and Codex keeps no
 	 *   rollout
+	 * @param sessionRequests how many sessions the session may request over its run, or {@code 0} if it may request
+	 *   none
 	 * @return the live owned Codex run session
 	 * @throws IOException if validation, copying, or process startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
-		int toolOutputTokenLimit, boolean sessionTranscripts) throws IOException
+		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -211,6 +216,7 @@ public final class CodexRunner
 		requireThat(model, "model").isNotNull();
 		requireThat(effort, "effort").isNotNull();
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
+		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
@@ -230,11 +236,14 @@ public final class CodexRunner
 			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of("auth.json"));
 			Path isolatedConfiguration = isolatedHome.resolve(CONFIGURATION);
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, artifact, sessionRequests,
+				Platform.current()).orElse(null);
 			CodexConnectionConfiguration.copy(hostHome.resolve(CONFIGURATION), isolatedConfiguration, caches,
-				temporaryDirectory, toolOutputTokenLimit, Platform.current());
+				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current());
+			List<Path> sessionReadOnly = sessionReadOnly(readOnlyEvidence, requestAccess);
 			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
-				readOnlyEvidence, sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, Platform.current(),
-					environment));
+				sessionReadOnly, sessionDeniedReads(manager, run, sessionReadOnly, deniedReads, Platform.current(),
+					environment, requestAccess));
 			Map<String, String> isolatedEnvironment = processEnvironment(environment, caches, isolatedHome,
 				run.directory());
 			Path worktree = run.directory().resolve("project");
@@ -266,7 +275,7 @@ public final class CodexRunner
 					selectedEffort = agent.effort();
 				}
 				process.initialize(worktree, selectedModel, developerInstructions(manager.root().toRealPath(), worktree,
-					isolatedHome, agentInstructions), selectedEffort, permissionProfile);
+					isolatedHome, agentInstructions, sessionRequests), selectedEffort, permissionProfile);
 				return new HarnessRunSession(run, process, scope, lock);
 			}
 			catch (IOException e)
@@ -339,6 +348,27 @@ public final class CodexRunner
 	 */
 	public static String developerInstructions(Path root, Path project, Path home, String agentInstructions)
 	{
+		return developerInstructions(root, project, home, agentInstructions, 0);
+	}
+
+	/**
+	 * Returns the developer instructions of a session as
+	 * {@link #developerInstructions(Path, Path, Path, String)} does, except that the instructions of a session that may
+	 * request sessions tell it how, between the note and the agent's contract.
+	 *
+	 * @param root the run root, as the denied reads name it
+	 * @param project the session's project, which is its working directory
+	 * @param home the session's Codex home
+	 * @param agentInstructions the agent's contract, or an empty string for a session without an agent
+	 * @param sessionRequests how many sessions the session may request; {@code 0} adds no instructions
+	 * @return the developer instructions
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code sessionRequests} is negative
+	 */
+	public static String developerInstructions(Path root, Path project, Path home, String agentInstructions,
+		int sessionRequests)
+	{
+		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(root, "root").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(home, "home").isNotNull();
@@ -347,9 +377,31 @@ public final class CodexRunner
 			"project " + project + ", your working directory, or to anything under it, nor to " + home + ": you have " +
 			"full read and write access to both. Your project's files are not in your context; read one with a shell " +
 			"command whenever a task needs it.";
-		if (agentInstructions.isEmpty())
-			return note;
-		return note + "\n\n" + agentInstructions;
+		StringJoiner instructions = new StringJoiner("\n\n").add(note);
+		if (sessionRequests > 0)
+			instructions.add(SessionRequestInstructions.text(sessionRequests));
+		if (!agentInstructions.isEmpty())
+			instructions.add(agentInstructions);
+		return instructions.toString();
+	}
+
+	/**
+	 * Returns the completed files and directories that a session may read but not change: the caller's read-only
+	 * evidence, and the run's responses directory when the session may request sessions, so that a link that the
+	 * session plants there cannot redirect the runner's answers.
+	 *
+	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
+	 * @param requestAccess    the session's access to requested sessions, or {@code null} if it may request none
+	 * @return the files and directories
+	 * @throws NullPointerException if {@code readOnlyEvidence} is null
+	 */
+	public static List<Path> sessionReadOnly(List<Path> readOnlyEvidence, SessionRequestAccess requestAccess)
+	{
+		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
+		List<Path> result = new ArrayList<>(readOnlyEvidence);
+		if (requestAccess != null)
+			result.add(requestAccess.responses());
+		return List.copyOf(result);
 	}
 
 	/**
@@ -384,6 +436,31 @@ public final class CodexRunner
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment)
 		throws IOException
 	{
+		return sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, platform, environment, null);
+	}
+
+	/**
+	 * Returns the files and directories that a session of a run must not read, as
+	 * {@link #sessionDeniedReads(HarnessRunManager, HarnessRun, List, List, Platform, Map)} does, except that a Linux
+	 * session that is denied each path under a directory by its own path also keeps the run's requests directory when
+	 * it may request sessions. The responses directory is among {@code readOnlyEvidence}, as
+	 * {@link #sessionReadOnly(List, SessionRequestAccess)} returns it.
+	 *
+	 * @param manager the run manager
+	 * @param run the session's run
+	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
+	 * @param deniedReads the files and directories that the caller denies the session reading
+	 * @param platform the platform that the session runs on
+	 * @param environment the caller's environment, which names the user's home and harness directories
+	 * @param requestAccess the session's access to requested sessions, or {@code null} if it may request none
+	 * @return the paths to deny, each once
+	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
+	 * @throws IOException if a denied directory cannot be listed or the session log directory cannot be created
+	 */
+	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
+		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
+		SessionRequestAccess requestAccess) throws IOException
+	{
 		requireThat(manager, "manager").isNotNull();
 		requireThat(run, "run").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
@@ -394,6 +471,8 @@ public final class CodexRunner
 		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
 		accessible.add(run.directory().resolve("project"));
 		accessible.add(home);
+		if (requestAccess != null)
+			accessible.add(requestAccess.requests());
 		Set<Path> result = new LinkedHashSet<>();
 		List<Path> directories = new ArrayList<>(deniedReads);
 		directories.add(manager.root());

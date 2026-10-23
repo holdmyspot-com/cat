@@ -26,6 +26,8 @@ import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.UserRuleTree;
 
@@ -120,7 +122,7 @@ public final class ClaudeRunner
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
 		return start(artifact, project, null, List.of(), manager, executable, environment, model, "", null, installCat,
-			true, List.of(), List.of(), "", false);
+			true, List.of(), List.of(), "", false, 0);
 	}
 
 	/**
@@ -145,13 +147,16 @@ public final class ClaudeRunner
 	 *   string to keep the parent's choice
 	 * @param sessionTranscripts whether Claude persists its session and the run copies the session's transcripts, its
 	 *   subagents' included, into the run's session transcripts directory when the session closes
+	 * @param sessionRequests how many sessions the session may request; with any, the run gets its requests and
+	 *   responses directories, and the session is told how to request one
 	 * @return the live run session
 	 * @throws IOException if startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, boolean includeUserRules, List<Path> readOnlyEvidence,
-		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts) throws IOException
+		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests)
+		throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -164,7 +169,7 @@ public final class ClaudeRunner
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
-		HarnessArtifact.validate(artifact, MANIFEST);
+		Path artifactRoot = HarnessArtifact.validate(artifact, MANIFEST);
 		HarnessRun run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
 		HarnessRunnerScope scope = new MainHarnessRunnerScope();
@@ -189,8 +194,10 @@ public final class ClaudeRunner
 			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
 			// independent trials do not redownload the same immutable registry artifacts.
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, artifactRoot, sessionRequests,
+				Platform.current()).orElse(null);
 			Map<String, String> isolatedEnvironment = processEnvironment(scope, environment, caches,
-				hostConfiguration.resolve("settings.json"), isolatedProcessHome);
+				hostConfiguration.resolve("settings.json"), isolatedProcessHome, requestAccess);
 			if (requiresCredentialFiles(isolatedEnvironment))
 			{
 				HarnessCredentials.copyAllowedFiles(hostConfiguration, isolatedConfiguration, Set.of(".credentials.json"));
@@ -198,7 +205,7 @@ public final class ClaudeRunner
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
 				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome,
 				caches.directories(), run.directory(), sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads,
-					environment), instructionFilesMode, Platform.current());
+					environment, requestAccess), instructionFilesMode, requestAccess, Platform.current());
 			Path worktree = run.directory().resolve("project");
 			// The copied project already has its owned baseline. A second initial commit
 			// would be empty, so Git would reject it before Claude can start.
@@ -217,7 +224,7 @@ public final class ClaudeRunner
 				selectedAgent = agent.name();
 			}
 			List<String> command = command(executable, selectedModel, selectedEffort, selectedAgent, plugins, hookResults,
-				readOnlyEvidence, sessionTranscripts);
+				readOnlyEvidence, sessionTranscripts, sessionRequests);
 			manager.initialize(run, artifact, project, "claude_stream_json", command);
 			lock = manager.acquireLock(run);
 			Path projectDirectory = null;
@@ -276,13 +283,16 @@ public final class ClaudeRunner
 	 * @param environment  the caller's environment
 	 * @param caches       the shared dependency caches
 	 * @param hostSettings the caller's Claude settings file
-	 * @param processHome  the run's isolated home
+	 * @param processHome   the run's isolated home
+	 * @param requestAccess the session's access to requested sessions, whose variables the environment adds, or
+	 *                      {@code null} if the session may request none
 	 * @return the environment, which the caller may change
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
 	 * @throws IOException          if the settings file cannot be read
 	 */
 	public static Map<String, String> processEnvironment(HarnessRunnerScope scope, Map<String, String> environment,
-		HarnessDependencyCaches caches, Path hostSettings, Path processHome) throws IOException
+		HarnessDependencyCaches caches, Path hostSettings, Path processHome, SessionRequestAccess requestAccess)
+		throws IOException
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(environment, "environment").isNotNull();
@@ -302,6 +312,9 @@ public final class ClaudeRunner
 		// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 		// copying the caller's settings so that no inherited value turns it off.
 		ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
+		// Claude Code passes these to the commands that it starts
+		if (requestAccess != null)
+			isolatedEnvironment.putAll(requestAccess.environment());
 		return isolatedEnvironment;
 	}
 
@@ -331,6 +344,28 @@ public final class ClaudeRunner
 	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Map<String, String> environment) throws IOException
 	{
+		return sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, environment, null);
+	}
+
+	/**
+	 * Returns the files and directories that a session of a run must not read, as
+	 * {@link #sessionDeniedReads(HarnessRunManager, HarnessRun, List, List, Map)} does, except that the run's requests
+	 * and responses directories stay readable when the session may request sessions.
+	 *
+	 * @param manager          the run manager
+	 * @param run              the session's run
+	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
+	 * @param deniedReads      the files and directories that the caller denies the session reading
+	 * @param environment      the caller's environment, which names the user's home and harness directories
+	 * @param requestAccess    the session's access to requested sessions, or {@code null} if it may request none
+	 * @return the paths to deny, each once
+	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
+	 * @throws IOException          if the run root or a denied directory cannot be listed
+	 */
+	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
+		List<Path> readOnlyEvidence, List<Path> deniedReads, Map<String, String> environment,
+		SessionRequestAccess requestAccess) throws IOException
+	{
 		requireThat(manager, "manager").isNotNull();
 		requireThat(run, "run").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
@@ -341,6 +376,11 @@ public final class ClaudeRunner
 		accessible.add(run.directory().resolve("project"));
 		accessible.add(home);
 		accessible.add(run.directory().resolve("claude"));
+		if (requestAccess != null)
+		{
+			accessible.add(requestAccess.requests());
+			accessible.add(requestAccess.responses());
+		}
 		Set<Path> result = new LinkedHashSet<>();
 		for (Path denied : deniedReads)
 		{
@@ -615,6 +655,32 @@ public final class ClaudeRunner
 	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
 		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts)
 	{
+		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, sessionTranscripts, 0);
+	}
+
+	/**
+	 * Builds a Claude command as
+	 * {@link #command(String, String, String, String, List, Path, List, boolean)} does, except that a session that may
+	 * request sessions is told how in its appended system prompt.
+	 *
+	 * @param executable the Claude executable
+	 * @param model the requested model
+	 * @param effort the requested reasoning effort
+	 * @param agent the optional direct CAT agent name
+	 * @param plugins the directories of the plugins installed in the isolated home
+	 * @param hookResults the hook context directory
+	 * @param readOnlyEvidence executor evidence exposed through added directories
+	 * @param sessionTranscripts whether Claude persists its session, which is what writes the transcripts that the run
+	 *   copies; otherwise Claude keeps no session
+	 * @param sessionRequests how many sessions the session may request; {@code 0} adds no instructions
+	 * @return the complete harness command
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code executable} is blank or {@code sessionRequests} is negative
+	 */
+	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
+		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, int sessionRequests)
+	{
+		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(model, "model").isNotNull();
 		requireThat(effort, "effort").isNotNull();
@@ -659,6 +725,11 @@ public final class ClaudeRunner
 		{
 			command.add("--agent");
 			command.add(agent);
+		}
+		if (sessionRequests > 0)
+		{
+			command.add("--append-system-prompt");
+			command.add(SessionRequestInstructions.text(sessionRequests));
 		}
 		return command;
 	}

@@ -4,6 +4,7 @@ import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.contract.test.SessionCommandLimitsContract;
 
 import java.io.IOException;
@@ -18,8 +19,8 @@ import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
  * Runs {@link SessionCommandLimitsContract} against the Codex runner: the environment that it gives its app-server,
- * changed by the shell environment policy of its generated configuration, and the reads that the permission profile
- * of a session's thread denies.
+ * changed by the shell environment policy of its generated configuration, and the reads and writes that the permission
+ * profile of a session's thread, with the profiles that it extends, denies or allows.
  * <p>
  * The policy is applied as Codex applies its {@code exclude} and {@code set} entries. Codex's default exclusion of
  * names that contain {@code KEY}, {@code SECRET} or {@code TOKEN} is not applied, so that the runner must name each
@@ -35,16 +36,20 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 	}
 
 	@Override
-	protected Limits limits(Fixture fixture) throws IOException
+	protected Limits limits(Fixture fixture, int sessionRequests) throws IOException
 	{
 		Path runHome = fixture.runHome();
 		Path configuration = runHome.resolve("config.toml");
 		Path userCodexHome = Path.of(fixture.userEnvironment().get("CODEX_HOME"));
+		SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.run(), fixture.artifact(),
+			sessionRequests, Platform.current()).orElse(null);
 		CodexConnectionConfiguration.copy(userCodexHome.resolve("config.toml"), configuration,
-			HarnessDependencyCaches.NONE, Files.createDirectories(runHome.resolve("tmp")), 0, Platform.current());
-		String profile = CodexConnectionConfiguration.addSessionProfile(configuration, List.of(),
-			CodexRunner.sessionDeniedReads(fixture.manager(), fixture.run(), List.of(), List.of(), Platform.current(),
-				fixture.userEnvironment()));
+			HarnessDependencyCaches.NONE, Files.createDirectories(runHome.resolve("tmp")), 0, requestAccess,
+			Platform.current());
+		List<Path> readOnly = CodexRunner.sessionReadOnly(List.of(), requestAccess);
+		String profile = CodexConnectionConfiguration.addSessionProfile(configuration, readOnly,
+			CodexRunner.sessionDeniedReads(fixture.manager(), fixture.run(), readOnly, List.of(), Platform.current(),
+				fixture.userEnvironment(), requestAccess));
 		JsonNode root = TomlMapper.builder().build().readTree(Files.readString(configuration));
 
 		Map<String, String> commandEnvironment = new HashMap<>(CodexRunner.processEnvironment(
@@ -57,13 +62,30 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 			commandEnvironment.put(name, set.get(name).stringValue());
 
 		List<Path> deniedReads = new ArrayList<>();
-		JsonNode filesystem = root.path("permissions").path(profile).path("filesystem");
-		for (String path : filesystem.propertyNames())
+		List<Path> writable = new ArrayList<>();
+		List<Path> readable = new ArrayList<>();
+		// A profile has the entries of the profiles that it extends, up to Codex's built-in workspace profile
+		JsonNode permissions = root.path("permissions");
+		String current = profile;
+		while (permissions.has(current))
 		{
-			if (filesystem.get(path).stringValue().equals("deny"))
-				deniedReads.add(Path.of(path));
+			JsonNode filesystem = permissions.path(current).path("filesystem");
+			for (String path : filesystem.propertyNames())
+			{
+				// Codex's own placeholders, such as its temporary directory, are not paths
+				if (path.startsWith(":"))
+					continue;
+				switch (filesystem.get(path).stringValue())
+				{
+					case "deny" -> deniedReads.add(Path.of(path));
+					case "write" -> writable.add(Path.of(path));
+					case "read" -> readable.add(Path.of(path));
+					default -> throw new AssertionError("Unexpected access to " + path + ": " + filesystem.get(path));
+				}
+			}
+			current = permissions.path(current).path("extends").stringValue("");
 		}
-		return new Limits(commandEnvironment, deniedReads);
+		return new Limits(commandEnvironment, deniedReads, writable, readable);
 	}
 
 	@Override
