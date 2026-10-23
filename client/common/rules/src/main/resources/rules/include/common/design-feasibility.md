@@ -34,7 +34,10 @@ distinguish a correct result from a plausible one.
 
 Apply the **information-sufficiency test** to each decision. Construct two permitted contexts with the same inputs the
 feature may inspect. If the correct decision differs between those contexts, the feature cannot make that decision
-reliably under the stated constraints. This is a proof of a missing input, not a request to improve the inference.
+reliably under the stated constraints. This is a proof of a missing input, not a request to improve the inference. A
+design that still infers that decision is best-effort: describe it as such rather than as reliable automation, and do
+not treat its own inferred label, mapping, or result as proof of the business, specification, or other external
+decision.
 
 When required evidence comes from an independently owned host, process, or service, identify the event that proves the
 claimed fact reached its consumer. Before fixing a dependent API, schema, or acceptance gate, inspect an existing

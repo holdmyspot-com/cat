@@ -53,7 +53,7 @@ production behavior while making parallel tests deterministic and self-contained
 
 Apply the temporary-resource ownership convention to every fixture a test creates. A test must clean up its fixture even
 when setup, an assertion, or the behavior under test fails. When the fixture is consumed by a CAT runner, evaluator,
-nested harness, or other CAT workflow, allocate its fresh root under the active harness's `${CAT_WORK}/temp` rather than the
+nested harness, or other CAT workflow, allocate its fresh root as a new child directory of CAT_TEMP rather than the
 system temporary directory. A pure in-process unit-test fixture may use the test framework's temporary directory; the
 fixture's consumer, rather than the test class that creates it, determines which location applies.
 

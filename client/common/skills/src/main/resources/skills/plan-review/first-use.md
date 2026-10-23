@@ -13,6 +13,8 @@
 - After each confirmed choice, ask the next independent scope question without waiting for document edits, while one
 	bounded writer updates the product contract and plan; verify those edits before implementation relies on them.
 
+## Guidance
+
 Use this skill when the user asks to review or reduce a design and implementation plan by confirming which features or
 use cases are needed. The review is a product-scope conversation; do not turn routine APIs, workspace mechanics, or
 other internal design choices into user questions.

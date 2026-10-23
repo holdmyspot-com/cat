@@ -12,11 +12,12 @@
 When the same meaningful value is inlined in multiple semantically coupled places, define it once as a clearly named
 constant at the narrowest common layer that owns its meaning, then reference it everywhere it applies.
 
-Treat a formatted, encoded, or otherwise derived representation as another use of its source value. Construct that
-representation from the authoritative value instead of inlining its current result. For example, derive a release tag as
-`v${VERSION}` from `VERSION`, rather than separately writing `"v1.0"`. Apply this to representations embedded in names,
-paths, URLs, messages, configuration, and generated content whenever changing the source value must update the
-representation.
+Treat a formatted, encoded, or otherwise derived representation as another use of its source value. Define the source
+value in its readable, meaningful form, such as a duration rather than its count of milliseconds, and construct that
+representation from it only where an interface requires it, instead of inlining its current result. For example,
+derive a release tag as `v${VERSION}` from `VERSION`, rather than separately writing `"v1.0"`. Apply this to
+representations embedded in names, paths, URLs, messages, configuration, and generated content whenever changing the
+source value must update the representation.
 
 Before defining or inlining a value, search the applicable owning scope, configuration object, and authoritative
 provider. When one already resolves that value, reuse its accessor rather than defining a sibling constant or

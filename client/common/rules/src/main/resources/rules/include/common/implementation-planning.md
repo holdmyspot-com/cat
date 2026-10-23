@@ -132,9 +132,9 @@ checks nor a final broad check substitutes for missing boundary evidence.
 Keep premise checks, behavioral red checks, and final acceptance distinct in the plan; passing a test based on an
 assumed contract does not establish that contract.
 
-State why the selected combination fits the observed dependencies, uncertainty, and available checks. Treat any
-unmeasured elapsed-time advantage as a reasoned expectation. Do not invent durations, claim a universal optimum, or turn
-that expectation into a forecast-based stopping or scheduling policy.
+State why the selected combination fits the observed dependencies, uncertainty, available checks, coordination cost,
+and exposure to rework. Treat any unmeasured elapsed-time advantage as a reasoned expectation. Do not invent durations,
+claim a universal optimum, or turn that expectation into a forecast-based stopping or scheduling policy.
 
 ## Revise From Evidence
 

@@ -14,7 +14,9 @@ is the campaign's state. Exit code 1 or 2 means a refusal, an error or invalid i
 and stop, unless step 1 says how to continue.
 
 To show the user a launcher field means to put its text in your reply verbatim, however long it is. A summary, an
-excerpt, a saved file or a link does not show it: the user confirms and chooses only from what your reply shows.
+excerpt, a saved file or a link does not show it: the user confirms and chooses only from what your reply shows. Add
+no statistic, estimate or verdict of your own about the campaign; every such claim the user sees must come from a
+launcher field.
 
 1. **Start.** Run `start <target>` with the prompt file the user named. A campaign optimizes one prompt file, so if the
 	user named a directory, ask which prompt file in it to optimize. When the user stated what the prompt should

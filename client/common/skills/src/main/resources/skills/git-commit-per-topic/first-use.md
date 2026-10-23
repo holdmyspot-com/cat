@@ -470,7 +470,8 @@ either reviewer freezes its candidate universe or writes a reconciliation.
 
 Give one source-neutral topic reviewer the complete immutable inventory and raw diffs, but not a proposed output plan,
 source-review dispositions, planner topic names, or an expected number of candidate topics. Do not exclude an artifact
-class from that handoff. The reviewer writes `MANIFEST.topic-candidate-universe.json`, names its reviewer, and records
+class from that handoff, including prior planning, replay, test, generated-input, and workflow-evidence material. The
+reviewer writes `MANIFEST.topic-candidate-universe.json`, names its reviewer, and records
 each candidate topic's snake_case `id`, responsibility, acceptance evidence, discovery evidence, split counterfactual,
 and contributing semantic units. Before accepting it, validate complete inventory-ID coverage and the launcher's exact
 schema.

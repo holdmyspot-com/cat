@@ -11,10 +11,11 @@
 
 ## Applicability
 
-Before the first edit to production behavior, classify the proposed edit. Use this rule when the edit is intended to
-add, correct, remove, or otherwise change observable behavior and a focused automated check is practical. This applies
-whether the work is described as a bug fix, feature, remediation, recommended change, regression repair, or
-implementation correction; the user's label does not change the trigger.
+Before the first edit to production behavior, classify the proposed edit and state the result: whether this rule
+applies and which condition below decides it. Use this rule when the edit is intended to add, correct, remove, or
+otherwise change observable behavior and a focused automated check is practical. This applies whether the work is
+described as a bug fix, feature, remediation, recommended change, regression repair, or implementation correction; the
+user's label does not change the trigger.
 
 Do not use this rule for documentation, comments, formatting, or another edit that preserves production behavior. When
 an edit is a behavior-preserving refactoring or creates a test seam, first verify the existing focused tests, then

@@ -18,7 +18,9 @@ An agent can report on a cadence only while it has control. Use an orchestrator 
 available. Otherwise divide execution into operations that return control no later than the requested cadence and send
 the report between them. If an operation cannot yield that often, say before starting it that no timed report can be
 sent while it runs, then report immediately when control returns. Do not claim that a prompt alone can wake the agent or
-guarantee a wall-clock report.
+guarantee a wall-clock report. Report a meaningful state change, such as a completed or failed component or a revised
+estimate, at the first reporting opportunity after it occurs. Do not send a regular report that repeats the previous
+report's counts, states, and estimate unchanged.
 
 This rule covers work that you perform yourself. When the work also needs a state change that something else
 produces, such as a hosted build finishing, a background process exiting or a subagent returning, lazy load

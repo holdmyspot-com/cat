@@ -252,7 +252,9 @@ proposal file, including every unchanged item; never write only the changes.
 ### Output
 
 Write each prompt test's files in the draft directory as soon as you settle the test, and the proposal file as one JSON
-object that satisfies this schema:
+object that satisfies this schema. The user reviews every requirement, prompt test, assertion, test case, workspace file
+and limitation on its own before confirming the proposal, so write each one as its own item or file, never as a count or
+a summary of several:
 
 {{output_schema}}
 

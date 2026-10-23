@@ -25,7 +25,8 @@ depends-on:
 
 Use backward design and iterative generalization together before recommending or designing a change; neither is complete
 without the other. Start with the observable behavior and acceptance evidence, repeatedly derive the concrete directly
-achievable preconditions, then reverse them into an executable sequence.
+achievable preconditions, then reverse them into an executable sequence. Choose the smallest reliable change that meets
+those conditions and the established invariant while preserving every required constraint.
 
 This applies to code design as well as prompts and workflows. Before choosing a public API, representation, component
 boundary, lifecycle, failure behavior, or concurrency policy, derive the caller-observable result and acceptance
