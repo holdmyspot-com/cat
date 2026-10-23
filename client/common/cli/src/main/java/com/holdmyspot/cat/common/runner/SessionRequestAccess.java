@@ -17,7 +17,9 @@ import java.util.Optional;
  * a link that the session plants cannot redirect the runner's writes. Their environment names the requests directory
  * and the {@code request-session} launcher of the artifact that the run uses. The runs of the requested sessions live
  * in the run's requested-runs directory, which exists before the session starts so that its sandbox denies the
- * session's commands every read below it, the logins of those runs included.
+ * session's commands every read below it, the logins of those runs included. It holds one run root for each session
+ * that the session may request, numbered from 1, so that each of those directories exists before any requested
+ * session starts, and the sandbox of each requested session denies the runs of the others.
  *
  * @param requests  the run's requests directory, where the {@code request-session} launcher writes each request
  * @param responses the run's responses directory, where the runner answers each request
@@ -97,6 +99,19 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
+	 * Returns the run root of one requested session.
+	 *
+	 * @param ordinal the session's place among the sessions that the run's session requested, from 1
+	 * @return the run root
+	 * @throws IllegalArgumentException if {@code ordinal} is not positive
+	 */
+	public Path requestedRunRoot(int ordinal)
+	{
+		requireThat(ordinal, "ordinal").isPositive();
+		return requestedRuns.resolve(String.valueOf(ordinal));
+	}
+
+	/**
 	 * Returns the access of a run's session, creating the run's requests, responses and requested-runs directories if
 	 * the session may request any session. A runner calls this before it decides what the session may read, so that
 	 * its sandbox covers all three directories.
@@ -122,6 +137,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 		Path requests = Files.createDirectories(requestsDirectory(run));
 		Path responses = Files.createDirectories(responsesDirectory(run));
 		Path requestedRuns = Files.createDirectories(requestedRunsDirectory(run));
+		for (int ordinal = 1; ordinal <= sessionRequests; ++ordinal)
+			Files.createDirectories(requestedRuns.resolve(String.valueOf(ordinal)));
 		return Optional.of(new SessionRequestAccess(requests, responses, requestedRuns, launcher(artifact, platform)));
 	}
 

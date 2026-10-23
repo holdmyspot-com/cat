@@ -272,6 +272,8 @@ public abstract class SessionCommandLimitsContract
 			Path requestedRuns = fixture.run().directory().resolve("requested-runs");
 			requireThat(requestedRuns, "requestedRuns").isDirectory();
 			requireThat(readable(limits, requestedRuns), "requestedRunsReadable").isFalse();
+			requireThat(requestedRuns.resolve("1"), "firstRequestedRunRoot").isDirectory();
+			requireThat(requestedRuns.resolve("2"), "secondRequestedRunRoot").isDirectory();
 		}
 	}
 
