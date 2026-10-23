@@ -9,6 +9,7 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -21,6 +22,7 @@ import java.util.Set;
 public final class HarnessRunReceipt
 {
 	private static final String SESSION_TRANSCRIPTS = "session_transcripts";
+	private static final String REQUESTED_SESSIONS = "requested_sessions";
 
 
 	/**
@@ -57,6 +59,23 @@ public final class HarnessRunReceipt
 			ArrayNode copies = receipt.putArray(SESSION_TRANSCRIPTS);
 			for (Path transcript : result.sessionTranscripts())
 				copies.add(transcript.toString());
+		}
+		Path responses = SessionRequestAccess.responsesDirectory(run);
+		if (Files.isDirectory(responses))
+		{
+			ArrayNode sessions = receipt.putArray(REQUESTED_SESSIONS);
+			try (DirectoryStream<Path> directories = Files.newDirectoryStream(responses))
+			{
+				for (Path directory : directories)
+				{
+					Path response = directory.resolve("response.json");
+					JsonNode resultDocument = json.readTree(response.toFile());
+					ObjectNode entry = sessions.addObject();
+					for (String field : List.of("id", "harness", "status", "child_run_id"))
+						entry.put(field, resultDocument.path(field).asString());
+					entry.put("response", response.toString());
+				}
+			}
 		}
 		Path temporary = Files.createTempFile(parent, ".harness-receipt-", ".json");
 		try
@@ -111,13 +130,44 @@ public final class HarnessRunReceipt
 		Set<String> unsupported = new HashSet<>(names);
 		unsupported.removeAll(required);
 		unsupported.remove(SESSION_TRANSCRIPTS);
+		unsupported.remove(REQUESTED_SESSIONS);
 		if (!names.containsAll(required) || !unsupported.isEmpty())
 			throw new IOException("Harness receipt has unsupported fields: " + source);
+		validateRequestedSessions(receipt, source);
 		List<Path> sessionTranscripts = new ArrayList<>();
 		for (JsonNode element : receipt.path(SESSION_TRANSCRIPTS))
 			sessionTranscripts.add(path(element.asString(), SESSION_TRANSCRIPTS, source));
 		return HarnessEvaluationResult.retained(path(receipt, "retained_project", source),
 			path(receipt, "raw_result", source), sessionTranscripts);
+	}
+
+	/**
+	 * Validates the optional requested-session list without changing the evaluator's own evidence scope.
+	 *
+	 * @param receipt the parsed receipt
+	 * @param source the receipt path for diagnostics
+	 * @throws IOException if the list contains malformed or unsupported entries
+	 */
+	private static void validateRequestedSessions(ObjectNode receipt, Path source) throws IOException
+	{
+		if (!receipt.has(REQUESTED_SESSIONS))
+			return;
+		JsonNode sessions = receipt.path(REQUESTED_SESSIONS);
+		if (!sessions.isArray())
+			throw new IOException("Harness receipt requested_sessions must be an array: " + source);
+		Set<String> fields = Set.of("id", "harness", "status", "child_run_id", "response");
+		Set<String> statuses = Set.of("completed", "failed", "refused", "capacity", "stopped");
+		for (JsonNode session : sessions)
+		{
+			if (!session.isObject() || !session.propertyNames().equals(fields))
+				throw new IOException("Harness receipt has unsupported requested-session fields: " + source);
+			for (String field : fields)
+				if (!session.path(field).isString())
+					throw new IOException("Harness receipt requested-session fields must be text: " + source);
+			if (!statuses.contains(session.path("status").asString()))
+				throw new IOException("Harness receipt has an unsupported requested-session status: " + source);
+			path(session.path("response").asString(), "response", source);
+		}
 	}
 
 	/**

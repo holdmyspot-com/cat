@@ -84,6 +84,36 @@ public final class HarnessRunReceiptTest
 	}
 
 	/**
+	 * Verifies the receipt lists requested-session identities and response paths and remains readable by evaluators.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void listsRequestedSessions() throws IOException
+	{
+		// Requirement: R-I9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")), "receipt-"));
+			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
+			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
+			Path child = Files.createDirectories(run.directory().resolve("responses/first")).resolve("response.json");
+			ObjectNode result = scope.json().createObjectNode().put("id", "first").put("harness", "harness").
+				put("status", "completed").put("child_run_id", "child-run");
+			scope.json().writeValue(child.toFile(), result);
+			Path receipt = root.resolve("receipt.json");
+
+			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
+
+			ObjectNode written = (ObjectNode) scope.json().readTree(receipt.toFile());
+			requireThat(written.path("requested_sessions").size(), "requestedSessions").isEqualTo(1);
+			requireThat(written.path("requested_sessions").get(0).path("response").asString(), "response").
+				isEqualTo(child.toString());
+			requireThat(HarnessRunReceipt.read(scope.json(), receipt).rawResult(), "rawResult").isEqualTo(response);
+		}
+	}
+
+	/**
 	 * Verifies an evaluator can validate a receipt it has already parsed without duplicating the receipt schema.
 	 *
 	 * @throws IOException if fixture I/O fails
