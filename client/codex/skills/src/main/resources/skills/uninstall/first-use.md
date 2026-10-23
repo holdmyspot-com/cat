@@ -8,7 +8,8 @@
 ## Guidance
 
 Use CAT's uninstaller. It removes only the files recorded in CAT's ownership manifest, then removes the plugin and its
-marketplace registration. It keeps CAT's data directory unless the user asks to delete CAT's data as well.
+marketplace registration. It also deletes `${HOME}/.cat/bundles`, where the `claude-runner` skill keeps the Claude CAT
+artifacts that it downloaded. It keeps CAT's data directory unless the user asks to delete CAT's data as well.
 
 The uninstaller for each shell is in
 `https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/`:

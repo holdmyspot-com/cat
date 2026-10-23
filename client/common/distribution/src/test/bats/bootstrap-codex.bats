@@ -131,6 +131,20 @@ platform=${expected_platform}" ]
 	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
 }
 
+@test "Codex uninstall deletes the downloaded bundles and keeps the rest of CAT's user directory" {
+	create_fake_engine_command codex
+	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${HOME}/.cat/bundles/cat-claude-v1.0-linux-x64/bin" \
+		"${HOME}/.cat/rules"
+	printf 'rule\n' > "${HOME}/.cat/rules/user.md"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
+		sh "${INSTALL_DIRECTORY}/uninstall-codex.sh"
+
+	[ "${status}" -eq 0 ]
+	[ ! -e "${HOME}/.cat/bundles" ]
+	[ -f "${HOME}/.cat/rules/user.md" ]
+}
+
 @test "Codex uninstall rejects an unknown argument before removing anything" {
 	create_fake_engine_command codex
 	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${CODEX_HOME}/plugins/data/cat-cat"

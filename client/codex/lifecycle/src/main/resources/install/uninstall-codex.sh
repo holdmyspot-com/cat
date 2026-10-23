@@ -38,6 +38,7 @@ if ! rm -rf "${MARKETPLACE_ROOT}" 2>/dev/null; then
 		exit 1
 	fi
 fi
+cat_remove_downloaded_bundles "${HOME}"
 if [ "${DELETE_DATA}" = true ] && ! rm -rf "${CAT_DATA_DIR}" 2>/dev/null; then
 	if [ -e "${CAT_DATA_DIR}/migration-version" ] ||
 		[ -e "${CAT_DATA_DIR}/codex-agent-files" ]; then

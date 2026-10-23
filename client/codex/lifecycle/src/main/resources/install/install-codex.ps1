@@ -7,8 +7,8 @@
 #   & ([scriptblock]::Create((Invoke-RestMethod <url of this script>))) -Uninstall [-DeleteData]
 #
 # -Source names the release tag to download, which is the default, or a folder that holds an extracted artifact.
-# -Uninstall removes the plugin and keeps CAT's data, so that a later installation can use it; -DeleteData deletes it
-# too.
+# -Uninstall removes the plugin and the Claude CAT artifacts that a runner skill downloaded into .cat\bundles, and keeps
+# CAT's data, so that a later installation can use it; -DeleteData deletes it too.
 #
 # The script reports every failure by throwing, rather than calling exit, which would close the window of a user who
 # runs it interactively. It must stay ASCII so that Windows PowerShell reads it the same way in every code page, and
@@ -311,6 +311,13 @@ if ($Uninstall)
 	if (Test-Path -LiteralPath $marketplaceRoot)
 	{
 		Remove-Item -LiteralPath $marketplaceRoot -Recurse -Force
+	}
+	$userProfile = $env:USERPROFILE
+	if (-not $userProfile) { $userProfile = [Environment]::GetFolderPath('UserProfile') }
+	$bundles = Join-Path $userProfile '.cat\bundles'
+	if (Test-Path -LiteralPath $bundles)
+	{
+		Remove-Item -LiteralPath $bundles -Recurse -Force
 	}
 	if ($DeleteData -and (Test-Path -LiteralPath $dataDirectory))
 	{

@@ -23,3 +23,4 @@ cat_validate_marketplace_root "${MARKETPLACE_ROOT}" "CAT_CLAUDE_MARKETPLACE_ROOT
 claude plugin uninstall cat@cat
 claude plugin marketplace remove cat >/dev/null 2>&1 || true
 rm -rf "${MARKETPLACE_ROOT}"
+cat_remove_downloaded_bundles "${HOME}"

@@ -238,6 +238,34 @@ public final class CodexWindowsInstallerTest
 	}
 
 	/**
+	 * Verifies that removing an installed plugin deletes the CAT artifacts that a runner skill downloaded into
+	 * {@code .cat\bundles}, and keeps the rest of CAT's per-user folder.
+	 *
+	 * @throws IOException          if the files cannot be written or the script cannot be run
+	 * @throws InterruptedException if the thread is interrupted while the script runs
+	 */
+	@Test
+	public void uninstallDeletesDownloadedBundles() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			fixture.installed();
+			Path profile = Files.createDirectories(fixture.root.resolve("profile"));
+			Path bundle = Files.createDirectories(profile.resolve(".cat/bundles/cat-claude-v1.0-windows-x64/bin"));
+			Path rules = Files.createDirectories(profile.resolve(".cat/rules"));
+			Files.writeString(rules.resolve("user.md"), "rule\n");
+
+			Result result = fixture.run("$env:USERPROFILE = " + literal(profile) + "\n" + install("-Uninstall"));
+
+			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(0);
+			requireThat(Files.exists(bundle), "bundle").isFalse();
+			requireThat(Files.exists(profile.resolve(".cat/bundles")), "bundles").isFalse();
+			requireThat(Files.isRegularFile(rules.resolve("user.md")), "rule").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies that removing an installed plugin with {@code -DeleteData} also deletes CAT's data.
 	 *
 	 * @throws IOException          if the files cannot be written or the script cannot be run

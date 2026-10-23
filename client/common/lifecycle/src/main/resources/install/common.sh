@@ -374,6 +374,15 @@ cat_validate_marketplace_root()
 	esac
 }
 
+# Removes the CAT artifacts of the other harness that a runner skill downloaded.
+#
+# Arguments:
+#   $1 - The user's home directory, whose .cat/bundles directory holds the downloaded artifacts.
+cat_remove_downloaded_bundles()
+{
+	rm -rf "$1/.cat/bundles"
+}
+
 # Reject a data path that is not explicitly CAT's Codex data directory.
 #
 # Arguments:

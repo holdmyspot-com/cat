@@ -92,6 +92,20 @@ platform=${expected_platform}" ]
 	[ ! -e "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" ]
 }
 
+@test "Claude removal deletes the downloaded bundles and keeps the rest of CAT's user directory" {
+	create_fake_engine_command claude
+	mkdir -p "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" "${HOME}/.cat/bundles/cat-codex-v1.0-linux-x64/bin" \
+		"${HOME}/.cat/rules"
+	printf 'rule\n' > "${HOME}/.cat/rules/user.md"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR}" \
+		sh "${INSTALL_DIRECTORY}/uninstall-claude.sh"
+
+	[ "${status}" -eq 0 ]
+	[ ! -e "${HOME}/.cat/bundles" ]
+	[ -f "${HOME}/.cat/rules/user.md" ]
+}
+
 @test "release bootstrap installs the Claude archive for the current platform after verifying its checksum" {
 	create_fake_engine_command claude
 	archive="$(create_fake_release claude)"
