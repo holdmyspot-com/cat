@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -29,11 +30,14 @@ import java.util.List;
  *   any path that the project holds already
  * @param plugins the trial plugins, plugin directories that are installed into the isolated harness home under their
  *   manifests' names, beside CAT when {@code installCat} is also set
+ * @param sessionRequests how many sessions the session may request over the run; {@code 0} allows none
+ * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String executable, String model,
 	String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat,
-	boolean includeUserRules, int maximumConcurrency, List<Path> deniedReads, Path workspace, List<Path> plugins)
+	boolean includeUserRules, int maximumConcurrency, List<Path> deniedReads, Path workspace, List<Path> plugins,
+	int sessionRequests, Duration capacityWait)
 {
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -124,6 +128,23 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			if (index + 1 >= args.length)
 				throw new IllegalArgumentException("Missing value for " + option);
 			String value = args[index + 1];
+			if (option.equals("--session-requests"))
+			{
+				options.sessionRequests = Integer.parseInt(value);
+				if (options.sessionRequests < 0)
+					throw new IllegalArgumentException("--session-requests must not be negative: " + value);
+				index += 2;
+				continue;
+			}
+			if (option.equals("--capacity-wait"))
+			{
+				long seconds = Long.parseLong(value);
+				if (seconds < 1)
+					throw new IllegalArgumentException("--capacity-wait must be at least 1 second: " + value);
+				options.capacityWait = Duration.ofSeconds(seconds);
+				index += 2;
+				continue;
+			}
 			if (option.equals("--artifact"))
 				options.artifact = Path.of(value);
 			else if (option.equals("--project"))
@@ -161,7 +182,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
 			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.includeUserRules,
-			options.maximumConcurrency, options.deniedReads, options.workspace, options.plugins);
+			options.maximumConcurrency, options.deniedReads, options.workspace, options.plugins, options.sessionRequests,
+			options.capacityWait);
 	}
 
 	/**
@@ -176,7 +198,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		return "Usage: " + launcherName + " --artifact <path> [--project <path>] [--run-root <path>] " +
 			"[--executable <path>] [--model <name>] [--effort <level>] [--output <path>] [--keep-run] [--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] " +
-			"[--deny-read <path>]... [--workspace <path>] [--plugin <path>]...";
+			"[--deny-read <path>]... [--workspace <path>] [--plugin <path>]... [--session-requests <count>] " +
+			"[--capacity-wait <seconds>]";
 	}
 
 	/**
@@ -199,10 +222,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
 	 * @param plugins the trial plugins, plugin directories that are installed into the isolated harness home under
 	 *   their manifests' names
-	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt} and
-	 *   {@code workspace}
-	 * @throws IllegalArgumentException if {@code executable} is blank, or {@code runRoot} or an element of
-	 *   {@code deniedReads} is not absolute
+	 * @param sessionRequests how many sessions the session may request over the run
+	 * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
+	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
+	 *   {@code workspace} and {@code capacityWait}
+	 * @throws IllegalArgumentException if {@code executable} is blank, {@code runRoot} or an element of
+	 *   {@code deniedReads} is not absolute, {@code sessionRequests} is negative, or {@code capacityWait} is not
+	 *   positive
 	 */
 	public HarnessRunnerOptions
 	{
@@ -222,6 +248,9 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		}
 		deniedReads = List.copyOf(deniedReads);
 		plugins = List.copyOf(plugins);
+		requireThat(sessionRequests, "sessionRequests").isNotNegative();
+		if (capacityWait != null)
+			requireThat(capacityWait, "capacityWait").isGreaterThan(Duration.ZERO);
 	}
 
 	/**
@@ -240,5 +269,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private final List<Path> deniedReads = new ArrayList<>();
 		private Path workspace;
 		private final List<Path> plugins = new ArrayList<>();
+		private int sessionRequests;
+		private Duration capacityWait;
 	}
 }

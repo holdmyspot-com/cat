@@ -208,7 +208,7 @@ public final class HarnessRunnerBridgeTest
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, false, false, true, 1, List.of(), null, List.of());
+				"", transcript, true, receipt, false, false, true, 1, List.of(), null, List.of(), 0, null);
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
 
@@ -248,7 +248,7 @@ public final class HarnessRunnerBridgeTest
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, true, false, true, 1, List.of(), null, List.of());
+				"", transcript, true, receipt, true, false, true, 1, List.of(), null, List.of(), 0, null);
 			JsonMapper json = JsonMapper.builder().build();
 
 			try (TranscriptProcess process = new TranscriptProcess(nativeFile, run.sessionTranscripts()))
@@ -290,7 +290,7 @@ public final class HarnessRunnerBridgeTest
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, false, false, true, 1, List.of(), null, List.of());
+				"", transcript, true, receipt, false, false, true, 1, List.of(), null, List.of(), 0, null);
 			JsonMapper json = JsonMapper.builder().build();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,

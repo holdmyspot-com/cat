@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
@@ -50,7 +51,9 @@ public final class HarnessRunnerOptionsTest
 			contains("--deny-read <path>").
 			contains("--workspace <path>").
 			contains("--plugin <path>").
-			contains("[--session-transcripts]");
+			contains("[--session-transcripts]").
+			contains("[--session-requests <count>]").
+			contains("[--capacity-wait <seconds>]");
 	}
 
 	/**
@@ -233,6 +236,78 @@ public final class HarnessRunnerOptionsTest
 		catch (IllegalArgumentException e)
 		{
 			requireThat(e.getMessage(), "message").contains("--session-transcripts").contains("--keep-run");
+		}
+	}
+
+	/**
+	 * Verifies that {@code --session-requests} sets how many sessions the session may request, and that a run allows
+	 * none unless it is given.
+	 */
+	@Test
+	public void parsesSessionRequests()
+	{
+		// Requirement: R-I9
+		HarnessRunnerOptions requested = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--session-requests", "3"}, "harness", SESSION);
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+			"harness", SESSION);
+
+		requireThat(requested.sessionRequests(), "requested").isEqualTo(3);
+		requireThat(without.sessionRequests(), "without").isEqualTo(0);
+	}
+
+	/**
+	 * Verifies that a negative request count is refused.
+	 */
+	@Test
+	public void rejectsNegativeSessionRequests()
+	{
+		// Requirement: R-I9
+		try
+		{
+			HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--session-requests", "-1"},
+				"harness", SESSION);
+			throw new AssertionError("A negative --session-requests was accepted");
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").contains("--session-requests");
+		}
+	}
+
+	/**
+	 * Verifies that {@code --capacity-wait} bounds the wait for a capacity slot, and that a run waits without a bound
+	 * unless it is given.
+	 */
+	@Test
+	public void parsesCapacityWait()
+	{
+		// Requirement: R-I9
+		HarnessRunnerOptions bounded = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--capacity-wait", "600"}, "harness", SESSION);
+		HarnessRunnerOptions unbounded = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+			"harness", SESSION);
+
+		requireThat(bounded.capacityWait(), "bounded").isEqualTo(Duration.ofSeconds(600));
+		requireThat(unbounded.capacityWait(), "unbounded").isNull();
+	}
+
+	/**
+	 * Verifies that a capacity wait below one second is refused.
+	 */
+	@Test
+	public void rejectsZeroCapacityWait()
+	{
+		// Requirement: R-I9
+		try
+		{
+			HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--capacity-wait", "0"},
+				"harness", SESSION);
+			throw new AssertionError("A zero --capacity-wait was accepted");
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").contains("--capacity-wait");
 		}
 	}
 
