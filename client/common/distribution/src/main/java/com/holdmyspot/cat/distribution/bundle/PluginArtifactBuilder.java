@@ -88,8 +88,7 @@ public final class PluginArtifactBuilder
 		Map<String, String> owners = new HashMap<>();
 		for (ArtifactLayer layer : resourceLayers)
 			extractLayer(layer, artifactDirectory, owners);
-		resolveSkillIncludes(artifactDirectory);
-		resolveAgentIncludes(artifactDirectory);
+		resolvePromptIncludes(artifactDirectory);
 		Path client = artifactDirectory.resolve("client");
 		copyTree(runtimeDirectory, client);
 		JlinkImageBuilder.moveLaunchers(agentLaunchers, client, artifactDirectory.resolve("bin"));
@@ -103,20 +102,23 @@ public final class PluginArtifactBuilder
 	}
 
 	/**
-	 * Expands source-only agent and skill includes in a staged prompt bundle.
+	 * Removes source-only content from a staged prompt bundle and expands its agent and skill includes.
 	 *
 	 * <p>
 	 * Prompt-only repackaging copies current model-facing resources into a staging directory without rebuilding the
-	 * Java runtime. It must still apply the same include expansion as a complete artifact build so a harness never
-	 * receives source-only bodies or unresolved directives.
+	 * Java runtime. It must still apply the same steps as a complete artifact build so a harness never receives
+	 * design goals, maintainer comments, source-only bodies or unresolved directives. Source-only content is removed
+	 * before includes expand, while each file's own headings still delimit it.
 	 *
 	 * @param artifactDirectory the staged plugin directory containing agents and skills
 	 * @throws NullPointerException if {@code artifactDirectory} is null
-	 * @throws IOException if an include is ambiguous, unsafe, or unreadable
+	 * @throws IOException if a Markdown file contains a comment that never ends, or an include is ambiguous, unsafe,
+	 *         or unreadable
 	 */
 	public static void resolvePromptIncludes(Path artifactDirectory) throws IOException
 	{
 		requireThat(artifactDirectory, "artifactDirectory").isNotNull();
+		SourceOnlyContent.removeFromTree(artifactDirectory);
 		resolveSkillIncludes(artifactDirectory);
 		resolveAgentIncludes(artifactDirectory);
 	}

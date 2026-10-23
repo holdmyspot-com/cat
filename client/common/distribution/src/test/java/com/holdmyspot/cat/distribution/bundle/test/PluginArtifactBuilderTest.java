@@ -156,6 +156,52 @@ public final class PluginArtifactBuilderTest
 	}
 
 	/**
+	 * Verifies the artifact ships no design goals or maintainer comments in any Markdown file that a model reads,
+	 * whether a rule is injected or loaded lazily, a skill's body or an agent's shared body, while keeping directives,
+	 * code examples and the source-only text's neighbors.
+	 */
+	@Test
+	public void removesSourceOnlyContent() throws IOException
+	{
+		// Requirement: R-I10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("cat-source-only-"));
+			String goals = "## Design Goals\n\n- Maintainer goal.\n<!-- Why the goal exists. -->\n- Second goal.\n\n";
+			Path common = jar(temporary.resolve("common.jar"), List.of(
+				new JarResource("rules/common/direct.md", "# Direct\n\n" + goals + "## Guidance\n\nDirect guidance.\n"),
+				new JarResource("rules/include/common/lazy.md", "# Lazy\n\n" + goals +
+					"## Guidance\n\n<!--\nA multi-line maintainer note.\n-->\nLazy guidance <!-- inline note --> stays.\n" +
+					"Plugin root `<!-- cat:plugin-root -->` stays.\n\n" +
+					"```markdown\n## Design Goals\n\n<!-- example comment -->\n```\n\n" +
+					"Write `<!-- comment -->` to add a note.\n"),
+				new JarResource("skills/example/SKILL.md", "---\ndescription: Example\n---\n\n" +
+					"<!-- cat:include ../shared-route.md -->\n"),
+				new JarResource("skills/shared-route.md", "# Route\n\n" + goals + "## Route\n\nRead it.\n"),
+				new JarResource("skills/example/first-use.md", "# First Use\n\n" + goals + "## Steps\n\nRun it.\n"),
+				new JarResource("agents/common/body.md", "# Body\n\n" + goals + "## Guidance\n\nReview it.\n"),
+				new JarResource("agents/codex/reviewer.toml", "developer_instructions = \'\'\'\n" +
+					"<!-- cat:include ../common/body.md -->\n\'\'\'\n")));
+
+			Path artifact = buildMinimal(temporary, List.of(new ArtifactLayer("common", common)));
+
+			requireThat(Files.readString(artifact.resolve("rules/common/direct.md")), "direct").
+				isEqualTo("# Direct\n\n## Guidance\n\nDirect guidance.\n");
+			requireThat(Files.readString(artifact.resolve("rules/include/common/lazy.md")), "lazy").isEqualTo(
+				"# Lazy\n\n## Guidance\n\nLazy guidance  stays.\nPlugin root `<!-- cat:plugin-root -->` stays.\n\n" +
+					"```markdown\n## Design Goals\n\n<!-- example comment -->\n```\n\n" +
+					"Write `<!-- comment -->` to add a note.\n");
+			requireThat(Files.readString(artifact.resolve("skills/example/first-use.md")), "firstUse").
+				isEqualTo("# First Use\n\n## Steps\n\nRun it.\n");
+			requireThat(Files.readString(artifact.resolve("skills/example/SKILL.md")), "skill").
+				doesNotContain("Design Goals").doesNotContain("Maintainer goal").contains("Read it.");
+			requireThat(Files.readString(artifact.resolve("agents/codex/reviewer.toml")), "agent").
+				doesNotContain("Design Goals").doesNotContain("Maintainer goal").doesNotContain("Why the goal").
+				contains("Review it.");
+		}
+	}
+
+	/**
 	 * Verifies declared executable resources remain executable after layer extraction.
 	 */
 	@Test
