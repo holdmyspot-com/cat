@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.secrets.HarnessCapacitySecrets;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -282,6 +283,48 @@ public final class HarnessCapacityTest
 				{
 					requireThat(e.getMessage(), "message").isEqualTo("interrupted");
 				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a bounded wait gives up with a dedicated failure once the wait has passed without a free slot, and
+	 * that it returns a permit when a slot frees in time.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void boundedAcquireGivesUp() throws IOException
+	{
+		// Requirement: R-I9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			AtomicInteger pauses = new AtomicInteger();
+			Pause minute = () ->
+			{
+				if (pauses.incrementAndGet() > 20)
+					throw new AssertionError("The bounded wait did not end");
+				clock.advance(Duration.ofMinutes(1));
+			};
+			HarnessCapacity capacity = HarnessCapacity.of(directory, 1, minute, clock);
+			try (HarnessCapacity.Permit _ = capacity.acquire())
+			{
+				try
+				{
+					capacity.acquire(Duration.ofMinutes(10));
+					throw new AssertionError("Expected the wait to expire");
+				}
+				catch (HarnessCapacityWaitExpiredException e)
+				{
+					requireThat(pauses.get(), "pauses").isEqualTo(10);
+					requireThat(e.getMessage(), "message").contains("600 seconds");
+				}
+			}
+			try (HarnessCapacity.Permit permit = capacity.acquire(Duration.ofMinutes(10)))
+			{
+				requireThat(permit, "permit").isNotNull();
 			}
 		}
 	}

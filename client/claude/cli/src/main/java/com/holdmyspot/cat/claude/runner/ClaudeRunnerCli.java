@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessRunStarter;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerMaintenance;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
@@ -70,9 +71,17 @@ public final class ClaudeRunnerCli
 		}
 		Map<String, String> environment = Platform.current().environment(System.getenv());
 		Path home = Platform.current().homeDirectory(environment);
-		serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
-			new OutputStreamWriter(System.out, UTF_8), environment,
-			maximum -> HarnessCapacity.forHome(home, HARNESS_ID, maximum));
+		try
+		{
+			serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
+				new OutputStreamWriter(System.out, UTF_8), environment,
+				maximum -> HarnessCapacity.forHome(home, HARNESS_ID, maximum));
+		}
+		catch (HarnessCapacityWaitExpiredException e)
+		{
+			System.err.println(e.getMessage());
+			System.exit(HarnessCapacityWaitExpiredException.EXIT_STATUS);
+		}
 	}
 
 	/**
@@ -158,7 +167,7 @@ public final class ClaudeRunnerCli
 		assert json != null;
 		assert replacer != null;
 		assert capacity != null;
-		try (HarnessCapacity.Permit _ = capacity.acquire())
+		try (HarnessCapacity.Permit _ = acquire(capacity, options))
 		{
 			HarnessRunStarter starter = () -> new ClaudeRunner(ExecutableFiles.sleeping()).start(
 				options.artifact(), options.project(), options.workspace(), options.plugins(), manager, options.executable(),
@@ -168,6 +177,23 @@ public final class ClaudeRunnerCli
 				options.deniedReads(), instructionFilesMode, options.sessionTranscripts(), options.sessionRequests());
 			HarnessRunnerBridge.serve(starter, manager, options, json, replacer, input, output);
 		}
+	}
+
+	/**
+	 * Takes a capacity permit, waiting no longer than the command's {@code --capacity-wait} if it named one.
+	 *
+	 * @param capacity the shared harness capacity
+	 * @param options the parsed bridge options
+	 * @return the permit
+	 * @throws HarnessCapacityWaitExpiredException if the wait passed without a free permit
+	 * @throws IOException if a slot cannot be locked or the wait fails
+	 */
+	private static HarnessCapacity.Permit acquire(HarnessCapacity capacity, HarnessRunnerOptions options)
+		throws IOException
+	{
+		if (options.capacityWait() == null)
+			return capacity.acquire();
+		return capacity.acquire(options.capacityWait());
 	}
 
 	/**

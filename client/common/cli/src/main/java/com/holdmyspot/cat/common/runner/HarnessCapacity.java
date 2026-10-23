@@ -213,6 +213,33 @@ public final class HarnessCapacity
 	}
 
 	/**
+	 * Takes a permit, waiting through the pause until no hold lasts and a slot is free, but no longer than a limit.
+	 *
+	 * @param limit the longest wait
+	 * @return the permit. Close it to release the slot.
+	 * @throws NullPointerException if {@code limit} is null
+	 * @throws HarnessCapacityWaitExpiredException if the clock passed the limit without a free slot
+	 * @throws IOException if a slot file cannot be locked or the pause fails
+	 */
+	public Permit acquire(Duration limit) throws IOException
+	{
+		requireThat(limit, "limit").isNotNull();
+		Instant deadline = clock.instant().plus(limit);
+		while (true)
+		{
+			Optional<Permit> permit = tryAcquire();
+			if (permit.isPresent())
+				return permit.get();
+			if (!clock.instant().isBefore(deadline))
+			{
+				throw new HarnessCapacityWaitExpiredException("No harness capacity became free within " +
+					limit.toSeconds() + " seconds");
+			}
+			pause.pause();
+		}
+	}
+
+	/**
 	 * Takes a permit if one is free and no hold lasts, without waiting.
 	 *
 	 * @return the permit, or empty if a hold lasts or every slot is held. Close the permit to release the slot.

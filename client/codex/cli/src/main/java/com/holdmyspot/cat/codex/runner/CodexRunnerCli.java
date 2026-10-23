@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessOneShotOptions;
 import com.holdmyspot.cat.common.runner.HarnessOneShotRunner;
@@ -65,9 +66,17 @@ public final class CodexRunnerCli
 			run(args, environment, HarnessCapacity.forHome(home, HARNESS_ID, HarnessCapacity.MAXIMUM_CONCURRENCY));
 			return;
 		}
-		serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
-			new OutputStreamWriter(System.out, UTF_8), environment,
-			maximum -> HarnessCapacity.forHome(home, HARNESS_ID, maximum));
+		try
+		{
+			serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
+				new OutputStreamWriter(System.out, UTF_8), environment,
+				maximum -> HarnessCapacity.forHome(home, HARNESS_ID, maximum));
+		}
+		catch (HarnessCapacityWaitExpiredException e)
+		{
+			System.err.println(e.getMessage());
+			System.exit(HarnessCapacityWaitExpiredException.EXIT_STATUS);
+		}
 	}
 
 	/**
@@ -169,7 +178,13 @@ public final class CodexRunnerCli
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			FileReplacer replacer = FileReplacer.sleeping();
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(), replacer);
-			try (HarnessCapacity.Permit _ = capacityForMaximum.apply(options.maximumConcurrency()).acquire())
+			HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
+			HarnessCapacity.Permit permit;
+			if (options.capacityWait() == null)
+				permit = capacity.acquire();
+			else
+				permit = capacity.acquire(options.capacityWait());
+			try (HarnessCapacity.Permit _ = permit)
 			{
 				HarnessRunnerBridge.serve(() -> new CodexRunner(ExecutableFiles.sleeping()).start(options.artifact(),
 					options.project(),
