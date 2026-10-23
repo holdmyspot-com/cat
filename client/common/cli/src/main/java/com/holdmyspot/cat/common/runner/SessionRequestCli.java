@@ -72,7 +72,7 @@ public final class SessionRequestCli
 		requireThat(pause, "pause").isNotNull();
 		requireThat(output, "output").isNotNull();
 		JsonMapper json = JsonMapper.builder().build();
-		ObjectNode request = json.createObjectNode().put("format_version", 1);
+		ObjectNode request = json.createObjectNode().put("format_version", RequestArchive.VERSION);
 		request.putArray("prompts");
 		request.putArray("plugins");
 		String id = "";
@@ -118,7 +118,11 @@ public final class SessionRequestCli
 			if (!request.hasNonNull("project") || !request.hasNonNull("harness") || request.path("prompts").isEmpty())
 				throw new IllegalArgumentException("A request requires --harness, --project and at least one --prompt");
 			id = UUID.randomUUID().toString();
-			write(json, requests.toAbsolutePath().resolve(id + ".json"), request);
+			// The broker has the user's permissions while this sandboxed session keeps running. If it walked our
+			// directories, we could swap a link or junction into its path and make it read a file we may not read.
+			// Packing here makes the sandbox refuse that read; the broker opens only one file in requests, with no
+			// session-controlled directory along its path.
+			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request);
 		}
 		else
 		{

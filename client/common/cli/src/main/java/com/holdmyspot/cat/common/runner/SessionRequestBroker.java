@@ -6,7 +6,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -15,6 +14,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import tools.jackson.core.JacksonException;
@@ -33,11 +33,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class SessionRequestBroker implements Closeable
 {
-	/**
-	 * Request documents are bounded to 64 KiB; each prompt is bounded to 1 MiB before it becomes a bridge record.
-	 */
-	private static final int MAXIMUM_REQUEST_BYTES = 65_536;
-	private static final int MAXIMUM_PROMPT_BYTES = 1_048_576;
 	private final HarnessRun run;
 	private final HarnessRunnerOptions options;
 	private final RequestedSessionStarter starter;
@@ -102,7 +97,7 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Discovers new non-temporary JSON request files once. Invalid requests receive a refusal without starting a child.
+	 * Discovers new non-temporary request archives once. Invalid requests receive a refusal without starting a child.
 	 *
 	 * @throws IOException if discovery or response publication fails
 	 */
@@ -115,9 +110,9 @@ public final class SessionRequestBroker implements Closeable
 				for (Path file : files)
 				{
 					String name = file.getFileName().toString();
-					if (name.startsWith(".") || !name.endsWith(".json"))
+					if (name.startsWith(".") || !name.endsWith(RequestArchive.EXTENSION))
 						continue;
-					String id = name.substring(0, name.length() - 5);
+					String id = name.substring(0, name.length() - RequestArchive.EXTENSION.length());
 					try
 					{
 						SessionRequestCli.validateId(id);
@@ -143,22 +138,12 @@ public final class SessionRequestBroker implements Closeable
 					}
 					try
 					{
-						Request request = read(file);
-						Path inputs = Files.createDirectory(directory.resolve("inputs"));
-						Path project = inputs.resolve("project");
-						RequestInputs.copy(request.project(), project);
-						List<Path> plugins = new ArrayList<>();
-						for (Path plugin : request.plugins())
-						{
-							Path copy = inputs.resolve("plugin-" + plugins.size());
-							RequestInputs.copy(plugin, copy);
-							plugins.add(copy);
-						}
+						Request request = read(file, directory);
 						accepted += 1;
 						harnesses.put(id, request.harness());
 						childRoots.put(id, SessionRequestAccess.requestedRunsDirectory(run).
 							resolve(String.valueOf(accepted)).resolve(request.harness()));
-						List<String> arguments = arguments(request, project, plugins, directory, accepted);
+						List<String> arguments = arguments(request, request.project(), request.plugins(), directory, accepted);
 						children.submit(() -> execute(id, request, arguments, directory));
 					}
 					catch (IOException | IllegalArgumentException | JacksonException e)
@@ -171,28 +156,48 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Parses a bounded request and resolves every source path within the requester's project.
+	 * Copies and extracts a request before parsing its bounded manifest and captured prompts.
 	 *
-	 * @param file the request document
+	 * @param file      the request archive
+	 * @param directory the broker-owned response directory
 	 * @return the validated inputs, with prompt bytes already captured
 	 * @throws IOException if the document or any input is invalid
 	 */
-	private Request read(Path file) throws IOException
+	private Request read(Path file, Path directory) throws IOException
 	{
-		JsonNode value = json.readTree(RequestInputs.read(file.toAbsolutePath(), MAXIMUM_REQUEST_BYTES));
+		Path copy = directory.resolve("request.tar");
+		// The broker has the user's permissions while the requesting session keeps running. Walking its input
+		// directories would let it swap a link or junction into the path and make us read a file it may not read.
+		// The launcher packs inside its sandbox, which refuses that read. We open only this single archive in
+		// requests, whose path has no session-controlled directory, without following links and with one hard link.
+		Path inputs = Files.createDirectory(directory.resolve("inputs"));
+		try
+		{
+			ArchiveSource.copy(file, copy);
+			RequestArchive.unpack(copy, inputs);
+		}
+		finally
+		{
+			Files.deleteIfExists(copy);
+		}
+		JsonNode value = json.readTree(Files.readAllBytes(inputs.resolve(RequestArchive.MANIFEST)));
 		Set<String> allowed = Set.of("format_version", "harness", "project", "prompts", "plugins", "model", "effort",
 			"session_transcripts");
 		if (!value.isObject() || !allowed.containsAll(value.propertyNames()) ||
-			!value.path("format_version").isInt() || value.path("format_version").intValue() != 1)
-			throw new IOException("Request must be a version 1 object with supported fields");
+			!value.path("format_version").isInt() || value.path("format_version").intValue() != RequestArchive.VERSION)
+			throw new IOException("Request must be a version 2 object with supported fields");
 		String harness = text(value, "harness");
 		if (!Set.of("claude", "codex").contains(harness))
 			throw new IOException("Unsupported requested harness: " + harness);
-		Path project = insideProject(text(value, "project"));
-		List<Path> plugins = paths(value, "plugins", false);
+		if (!text(value, "project").equals("project"))
+			throw new IOException("Request project must name the project archive entry");
+		Path project = inputs.resolve("project");
+		if (!Files.isDirectory(project))
+			throw new IOException("Request archive requires a project directory");
+		List<Path> plugins = paths(value, inputs, "plugins", false);
 		List<String> prompts = new ArrayList<>();
-		for (Path prompt : paths(value, "prompts", true))
-			prompts.add(new String(RequestInputs.read(prompt, MAXIMUM_PROMPT_BYTES), StandardCharsets.UTF_8));
+		for (Path prompt : paths(value, inputs, "prompts", true))
+			prompts.add(Files.readString(prompt, StandardCharsets.UTF_8));
 		String model = optionalText(value, "model");
 		String effort = optionalText(value, "effort");
 		if (value.has("session_transcripts") && !value.path("session_transcripts").isBoolean())
@@ -234,15 +239,16 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Reads a bounded list of input paths.
+	 * Resolves an ordered list of canonical archive entries in the private extracted inputs.
 	 *
 	 * @param value the document
+	 * @param inputs the private extraction directory
 	 * @param field the array field
 	 * @param required indicates whether at least one entry is required
 	 * @return validated absolute paths
 	 * @throws IOException if the array or a path is invalid
 	 */
-	private List<Path> paths(JsonNode value, String field, boolean required) throws IOException
+	private List<Path> paths(JsonNode value, Path inputs, String field, boolean required) throws IOException
 	{
 		JsonNode array = value.path(field);
 		if (!array.isArray() || array.size() > 32 || (required && array.isEmpty()))
@@ -252,42 +258,18 @@ public final class SessionRequestBroker implements Closeable
 		{
 			if (!element.isString())
 				throw new IOException("Request paths must be text: " + field);
-			paths.add(insideProject(element.asString()));
+			String expected = field + "/" + paths.size();
+			if (!element.asString().equals(expected))
+				throw new IOException("Request input must name its ordered archive entry: " + expected);
+			Path path = inputs.resolve(expected);
+			boolean correctType = Files.isDirectory(path);
+			if (field.equals("prompts"))
+				correctType = Files.isRegularFile(path);
+			if (!correctType)
+				throw new IOException("Request archive input is missing or has the wrong type: " + expected);
+			paths.add(path);
 		}
 		return paths;
-	}
-
-	/**
-	 * Resolves a path inside the requesting project and rejects every symbolic-link component.
-	 *
-	 * @param text the supplied path
-	 * @return its real absolute path
-	 * @throws IOException if the path is outside the project or contains a link
-	 */
-	private Path insideProject(String text) throws IOException
-	{
-		try
-		{
-			Path path = Path.of(text);
-			Path project = run.directory().resolve("project").toRealPath();
-			if (!path.isAbsolute() || !path.normalize().startsWith(project))
-				throw new IOException("Input path must lie inside the requesting project: " + path);
-			Path component = path.getRoot();
-			for (Path name : path)
-			{
-				component = component.resolve(name);
-				if (Files.isSymbolicLink(component))
-					throw new IOException("Input path contains a symbolic link: " + path);
-			}
-			Path real = path.toRealPath();
-			if (!real.startsWith(project))
-				throw new IOException("Input path resolves outside the requesting project: " + path);
-			return real;
-		}
-		catch (InvalidPathException e)
-		{
-			throw new IOException("Request contains an invalid input path", e);
-		}
 	}
 
 	/**
@@ -440,11 +422,35 @@ public final class SessionRequestBroker implements Closeable
 				Path transcripts = child.resolve("artifacts/session-transcripts");
 				Path copies = directory.resolve("session-transcripts");
 				if (Files.isDirectory(transcripts) && !Files.exists(copies))
-					RequestInputs.copy(transcripts, copies);
+					copyTranscripts(transcripts, copies);
 				return child.getFileName().toString();
 			}
 		}
 		return "";
+	}
+
+	/**
+	 * Copies transcripts from the child-owned run tree, which the requesting session cannot modify.
+	 *
+	 * @param source      the child's retained transcripts
+	 * @param destination the response's transcript copies
+	 * @throws IOException if copying fails or the child tree contains a link or special file
+	 */
+	private static void copyTranscripts(Path source, Path destination) throws IOException
+	{
+		try (Stream<Path> paths = Files.walk(source))
+		{
+			for (Path path : (Iterable<Path>) paths::iterator)
+			{
+				Path target = destination.resolve(source.relativize(path));
+				if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+					Files.createDirectories(target);
+				else if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
+					Files.copy(path, target, LinkOption.NOFOLLOW_LINKS);
+				else
+					throw new IOException("Child transcript is a link or special file: " + path);
+			}
+		}
 	}
 
 	/**

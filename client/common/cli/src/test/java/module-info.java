@@ -7,6 +7,7 @@ module com.holdmyspot.cat.common.cli.test
 	requires tools.jackson.dataformat.yaml;
 	requires jdk.httpserver;
 	requires org.testng;
+	requires org.apache.commons.compress;
 
 	exports com.holdmyspot.cat.common.fakes.test to org.testng, com.holdmyspot.cat.claude.cli.test,
 		com.holdmyspot.cat.codex.cli.test, com.holdmyspot.cat.distribution.test;

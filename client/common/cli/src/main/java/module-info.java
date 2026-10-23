@@ -3,6 +3,7 @@ module com.holdmyspot.cat.common.cli
 	requires io.github.cowwoc.requirements13.java;
 	requires io.github.cowwoc.pouch10.core;
 	requires java.net.http;
+	requires org.apache.commons.compress;
 	requires tools.jackson.core;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;

@@ -145,6 +145,10 @@ public final class DistributionMain
 		DependencyJar pouch = findThirdParty(moduleDirectory, "io.github.cowwoc.pouch", "pouch-core");
 		DependencyJar slf4j = findThirdParty(moduleDirectory, "org.slf4j", "slf4j-api");
 		DependencyJar slf4jNop = findThirdParty(moduleDirectory, "org.slf4j", "slf4j-nop");
+		DependencyJar compress = findThirdParty(moduleDirectory, "org.apache.commons", "commons-compress");
+		DependencyJar commonsIo = findThirdParty(moduleDirectory, "commons-io", "commons-io");
+		DependencyJar commonsCodec = findThirdParty(moduleDirectory, "commons-codec", "commons-codec");
+		DependencyJar commonsLang = findThirdParty(moduleDirectory, "org.apache.commons", "commons-lang3");
 		DependencyJar javaDiff = findThirdParty(moduleDirectory, "io.github.java-diff-utils", "java-diff-utils");
 		Path commonAgents = findDependencyJar(moduleDirectory, "client-common-agents");
 		Path commonPlugin = findDependencyJar(moduleDirectory, "client-common-plugin");
@@ -169,7 +173,9 @@ public final class DistributionMain
 		List<Path> sharedRuntimeModules = List.of(copyModule(commonCli, jlinkModules),
 			copyModule(requirements.path(), jlinkModules), copyModule(requirementsAnnotation.path(), jlinkModules),
 			copyModule(pouch.path(), jlinkModules), copyModule(slf4j.path(), jlinkModules),
-			copyModule(slf4jNop.path(), jlinkModules),
+			copyModule(slf4jNop.path(), jlinkModules), copyModule(compress.path(), jlinkModules),
+			copyModule(commonsIo.path(), jlinkModules), copyModule(commonsCodec.path(), jlinkModules),
+			copyModule(commonsLang.path(), jlinkModules),
 			modularizeJavaDiff(javaDiff.path(), jlinkModules));
 		Path packagedClaudeCli = copyModule(claudeCli, jlinkModules);
 		Path packagedCodexCli = copyModule(codexCli, jlinkModules);
@@ -194,6 +200,14 @@ public final class DistributionMain
 		Path codexInstallers = projectRoot.resolve("client/codex/lifecycle/src/main/resources/install");
 		String jacksonCoreCoordinates = jacksonCore.coordinates();
 		List<ThirdPartyComponent> legalComponents = List.of(
+			new ThirdPartyComponent("Apache Commons Compress", compress.coordinates(), "Apache-2.0.txt",
+				compress.path(), List.of("META-INF/NOTICE.txt")),
+			new ThirdPartyComponent("Apache Commons IO", commonsIo.coordinates(), "Apache-2.0.txt",
+				commonsIo.path(), List.of("META-INF/NOTICE.txt")),
+			new ThirdPartyComponent("Apache Commons Codec", commonsCodec.coordinates(), "Apache-2.0.txt",
+				commonsCodec.path(), List.of("META-INF/NOTICE.txt")),
+			new ThirdPartyComponent("Apache Commons Lang", commonsLang.coordinates(), "Apache-2.0.txt",
+				commonsLang.path(), List.of("META-INF/NOTICE.txt")),
 			new ThirdPartyComponent("java-diff-utils", javaDiff.coordinates(), "Apache-2.0.txt", javaDiff.path(),
 				List.of()),
 			new ThirdPartyComponent("Pouch", pouch.coordinates(), "Apache-2.0.txt", pouch.path(), List.of()),

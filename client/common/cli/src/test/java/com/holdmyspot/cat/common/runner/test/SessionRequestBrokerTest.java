@@ -18,6 +18,13 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.StringReader;
 import java.io.Reader;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.channels.FileChannel;
+import java.nio.ByteBuffer;
+import java.nio.file.StandardOpenOption;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
@@ -83,6 +90,8 @@ public final class SessionRequestBrokerTest
 					requireThat(harness, "harness").isEqualTo("claude");
 					Path project = Path.of(option(options, "--project"));
 					requireThat(Files.readString(project.resolve("marker")), "snapshot").isEqualTo("original");
+					Path plugin = Path.of(option(options, "--plugin"));
+					requireThat(Files.readString(plugin.resolve("plugin.txt")), "plugin").isEqualTo("plugin bytes");
 					Files.writeString(fixture.project.resolve("marker"), "changed");
 					requireThat(Files.readString(project.resolve("marker")), "snapshot").isEqualTo("original");
 					if (exit != 75)
@@ -111,9 +120,11 @@ public final class SessionRequestBrokerTest
 				requireThat(arguments.get(), "arguments").doesNotContain("--session-requests").
 					contains(fixture.options.runRoot().toString());
 				requireThat(option(arguments.get(), "--deny-read"), "deniedRead").isEqualTo(fixture.denied.toString());
-				requireThat(child.get().requests().size(), "records").isEqualTo(2);
+				requireThat(child.get().requests().size(), "records").isEqualTo(3);
 				requireThat(fixture.json.readTree(child.get().requests().getFirst()).path("prompt").asString(), "prompt").
 					isEqualTo("test the plugin");
+				requireThat(fixture.json.readTree(child.get().requests().get(1)).path("prompt").asString(), "secondPrompt").
+					isEqualTo("then verify");
 				if (exit != 75)
 				{
 					requireThat(Files.readString(fixture.responses.resolve("first/session-transcripts/native.jsonl")), "native").
@@ -128,17 +139,20 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Supplies invalid request mutations, including symlinks and paths outside the project.
+	 * Supplies invalid request mutations, including unsafe archives and invalid manifest fields.
 	 *
 	 * @return invalid input categories
 	 */
 	@DataProvider
 	public Object[][] invalidRequests()
 	{
-		return new Object[][]{{"outside"}, {"prompt_link"}, {"directory_link"}, {"request_link"},
-			{"tree_link"}, {"unknown_field"}, {"oversized"}, {"wrong_type"}, {"bad_version"},
-			{"unsupported_harness"}, {"malformed"}, {"empty"}, {"trailing"}, {"harness_path"},
-			{"prompt_outside"}, {"plugin_outside"}};
+		return new Object[][]{{"outside"}, {"absolute"}, {"parent"}, {"drive"}, {"backslash"},
+			{"link"}, {"hardlink_entry"}, {"special"}, {"duplicate"}, {"directory_duplicate"},
+			{"too_many"}, {"large_entry"}, {"pax_chain"}, {"pax_size"}, {"long_chain"}, {"long_size"},
+			{"manifest_size"}, {"prompt_size"}, {"total_size"}, {"checksum"}, {"sparse"},
+			{"request_link"}, {"request_hardlink"}, {"oversized"},
+			{"unknown_field"}, {"wrong_type"}, {"bad_version"}, {"unsupported_harness"}, {"malformed"},
+			{"empty"}, {"trailing"}, {"harness_path"}, {"prompt_outside"}, {"plugin_outside"}};
 	}
 
 	/**
@@ -158,51 +172,28 @@ public final class SessionRequestBrokerTest
 			}))
 		{
 			ObjectNode request = fixture.request("bad");
-			Path outside = Files.writeString(fixture.root.resolve("outside"), "outside");
 			switch (kind)
 			{
 				case "outside" -> request.put("project", fixture.root.toString());
 				case "unsupported_harness" -> request.put("harness", "unknown");
 				case "harness_path" -> request.put("harness", "../../outside");
-				case "prompt_outside" -> request.withArray("prompts").removeAll().add(outside.toString());
-				case "plugin_outside" -> request.withArray("plugins").add(fixture.root.toString());
-				case "prompt_link" ->
-				{
-					Path link = Files.createSymbolicLink(fixture.project.resolve("link"), outside);
-					request.withArray("prompts").removeAll().add(link.toString());
-				}
-				case "directory_link" ->
-				{
-					Path link = Files.createSymbolicLink(fixture.project.resolve("link"), fixture.project);
-					request.put("project", link.toString());
-				}
-				case "tree_link" -> Files.createSymbolicLink(fixture.project.resolve("link"), outside);
+				case "prompt_outside" -> request.withArray("prompts").removeAll().add("../outside");
+				case "plugin_outside" -> request.withArray("plugins").add("../outside");
 				case "unknown_field" -> request.put("unexpected", true);
 				case "wrong_type" -> request.put("session_transcripts", "true");
-				case "bad_version" -> request.put("format_version", 2);
-				case "oversized", "request_link", "malformed", "empty", "trailing" ->
+				case "bad_version" -> request.put("format_version", 1);
+				default ->
 				{
 				}
-				default -> throw new AssertionError(kind);
 			}
-			Path file = fixture.requests.resolve("bad.json");
-			fixture.json.writeValue(file.toFile(), request);
-			if (kind.equals("request_link"))
-			{
-				Files.delete(file);
-				Files.createSymbolicLink(file, outside);
-			}
-			if (kind.equals("malformed"))
-				Files.writeString(file, "{");
-			if (kind.equals("empty"))
-				Files.writeString(file, "");
-			if (kind.equals("trailing"))
-				Files.writeString(file, fixture.json.writeValueAsString(request) + " {}");
-			if (kind.equals("oversized"))
-				Files.writeString(file, " ".repeat(65_537));
-			Files.writeString(fixture.requests.resolve(".temporary.json"), "broken");
+			fixture.writeHostile(request, kind);
+			Files.writeString(fixture.requests.resolve(".temporary.tar"), "broken");
 			broker.scan();
-			requireThat(fixture.await("bad").path("status").asString(), "status").isEqualTo("refused");
+			JsonNode response = fixture.await("bad");
+			requireThat(response.path("status").asString(), "status").isEqualTo("refused");
+			if (List.of("too_many", "large_entry", "long_size", "manifest_size", "prompt_size", "total_size").
+				contains(kind))
+				requireThat(response.path("reason").asString(), "sizeRefusal").contains("bounds");
 			requireThat(Files.exists(fixture.responses.resolve(".temporary")), "temporaryResponse").isFalse();
 		}
 	}
@@ -462,12 +453,193 @@ public final class SessionRequestBrokerTest
 		 */
 		private ObjectNode request(String id) throws IOException
 		{
-			ObjectNode request = json.createObjectNode().put("format_version", 1).put("harness", "claude").
-				put("project", project.toString()).put("session_transcripts", true);
-			request.putArray("prompts").add(project.resolve("prompt").toString());
-			request.putArray("plugins");
-			json.writeValue(requests.resolve(id + ".json").toFile(), request);
+			ObjectNode request = json.createObjectNode().put("format_version", 2).put("harness", "claude").
+				put("project", "project").put("session_transcripts", true);
+			request.putArray("prompts").add("prompts/0").add("prompts/1");
+			request.putArray("plugins").add("plugins/0");
+			writeRequest(id, request);
 			return request;
+		}
+
+		/**
+		 * Writes a hostile archive or manifest for the broker's rejection boundary.
+		 *
+		 * @param request the manifest
+		 * @param kind    the hostile variation
+		 * @throws IOException if fixture writing fails
+		 */
+		private void writeHostile(ObjectNode request, String kind) throws IOException
+		{
+			Path file = requests.resolve("bad.tar");
+			byte[] manifest = json.writeValueAsBytes(request);
+			if (kind.equals("malformed"))
+				manifest = "{".getBytes(StandardCharsets.UTF_8);
+			if (kind.equals("empty"))
+				manifest = new byte[0];
+			if (kind.equals("trailing"))
+				manifest = (json.writeValueAsString(request) + " {}").getBytes(StandardCharsets.UTF_8);
+			try (OutputStream bytes = Files.newOutputStream(file);
+				TarArchiveOutputStream archive = new TarArchiveOutputStream(bytes))
+			{
+				entry(archive, "request.json", manifest);
+				if (kind.equals("pax_chain") || kind.equals("long_chain"))
+				{
+					for (int index = 0; index < 2; ++index)
+					{
+						byte type = 'x';
+						if (kind.equals("long_chain"))
+							type = 'L';
+						archive.putArchiveEntry(new TarArchiveEntry("metadata" + index, type));
+						archive.closeArchiveEntry();
+					}
+				}
+				if (kind.equals("pax_size"))
+				{
+					TarArchiveEntry metadata = new TarArchiveEntry("project/metadata");
+					metadata.addPaxHeader("comment", "x".repeat(65_537));
+					archive.putArchiveEntry(metadata);
+					archive.closeArchiveEntry();
+				}
+				entry(archive, "project/", new byte[0]);
+				entry(archive, "project/marker", "original".getBytes(StandardCharsets.UTF_8));
+				entry(archive, "prompts/0", "test".getBytes(StandardCharsets.UTF_8));
+				entry(archive, "prompts/1", "next".getBytes(StandardCharsets.UTF_8));
+				entry(archive, "plugins/0/", new byte[0]);
+				switch (kind)
+				{
+					case "absolute" -> entry(archive, "/outside", new byte[0]);
+					case "parent" -> entry(archive, "project/../outside", new byte[0]);
+					case "drive" -> entry(archive, "C:/outside", new byte[0]);
+					case "backslash" -> entry(archive, "project\\outside", new byte[0]);
+					case "duplicate" -> entry(archive, "project/marker", new byte[0]);
+					case "directory_duplicate" -> entry(archive, "project/", new byte[0]);
+					case "link", "hardlink_entry", "special", "sparse" ->
+					{
+						byte type = '2';
+						if (kind.equals("hardlink_entry"))
+							type = '1';
+						if (kind.equals("special"))
+							type = '6';
+						if (kind.equals("sparse"))
+							type = 'S';
+						TarArchiveEntry link = new TarArchiveEntry("project/link", type, true);
+						link.setLinkName("marker");
+						archive.putArchiveEntry(link);
+						archive.closeArchiveEntry();
+					}
+					case "too_many" ->
+					{
+						for (int index = 0; index < 10_001; ++index)
+							entry(archive, "project/file" + index, new byte[0]);
+					}
+					default ->
+					{
+					}
+				}
+			}
+			if (kind.equals("large_entry") || kind.equals("manifest_size") || kind.equals("prompt_size") ||
+				kind.equals("long_size"))
+			{
+				TarArchiveEntry entry = new TarArchiveEntry("project/large");
+				entry.setSize(67_108_865);
+				if (kind.equals("manifest_size"))
+				{
+					entry.setName("request.json");
+					entry.setSize(65_537);
+				}
+				if (kind.equals("prompt_size"))
+				{
+					entry.setName("prompts/0");
+					entry.setSize(1_048_577);
+				}
+				if (kind.equals("long_size"))
+				{
+					entry = new TarArchiveEntry("long", (byte) 'L');
+					entry.setSize(65_537);
+				}
+				byte[] header = new byte[512];
+				entry.writeEntryHeader(header);
+				Files.write(file, header);
+			}
+			if (kind.equals("checksum"))
+			{
+				byte[] content = Files.readAllBytes(file);
+				content[0] ^= 1;
+				Files.write(file, content);
+			}
+			if (kind.equals("total_size"))
+			{
+				try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE,
+					StandardOpenOption.TRUNCATE_EXISTING))
+				{
+					for (int index = 0; index < 5; ++index)
+					{
+						TarArchiveEntry entry = new TarArchiveEntry("project/large" + index);
+						entry.setSize(67_108_864);
+						byte[] header = new byte[512];
+						entry.writeEntryHeader(header);
+						channel.write(ByteBuffer.wrap(header));
+						if (index < 4)
+							channel.position(channel.position() + entry.getSize());
+					}
+				}
+			}
+
+			if (kind.equals("request_link") || kind.equals("request_hardlink"))
+			{
+				Path original = Files.move(file, root.resolve("original.tar"));
+				if (kind.equals("request_link"))
+					Files.createSymbolicLink(file, original);
+				else
+					Files.createLink(file, original);
+			}
+			if (kind.equals("oversized"))
+			{
+				try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE))
+				{
+					channel.position(300_000_000);
+					channel.write(ByteBuffer.wrap(new byte[]{0}));
+				}
+			}
+		}
+
+		/**
+		 * Writes a plain archive with a supplied manifest and captured inputs.
+		 *
+		 * @param id      the request identifier
+		 * @param request the manifest
+		 * @throws IOException if the fixture cannot be written
+		 */
+		private void writeRequest(String id, ObjectNode request) throws IOException
+		{
+			try (OutputStream bytes = Files.newOutputStream(requests.resolve(id + ".tar"));
+				TarArchiveOutputStream archive = new TarArchiveOutputStream(bytes))
+			{
+				entry(archive, "request.json", json.writeValueAsBytes(request));
+				entry(archive, "project/", new byte[0]);
+				entry(archive, "project/marker", "original".getBytes(StandardCharsets.UTF_8));
+				entry(archive, "prompts/0", "test the plugin".getBytes(StandardCharsets.UTF_8));
+				entry(archive, "prompts/1", "then verify".getBytes(StandardCharsets.UTF_8));
+				entry(archive, "plugins/0/", new byte[0]);
+				entry(archive, "plugins/0/plugin.txt", "plugin bytes".getBytes(StandardCharsets.UTF_8));
+			}
+		}
+
+		/**
+		 * Adds a file or empty directory to a test archive.
+		 *
+		 * @param archive the fixture archive
+		 * @param name    the entry name
+		 * @param content its bytes
+		 * @throws IOException if writing fails
+		 */
+		private static void entry(TarArchiveOutputStream archive, String name, byte[] content) throws IOException
+		{
+			TarArchiveEntry entry = new TarArchiveEntry(name, true);
+			entry.setSize(content.length);
+			archive.putArchiveEntry(entry);
+			archive.write(content);
+			archive.closeArchiveEntry();
 		}
 
 		/**
