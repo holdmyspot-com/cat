@@ -89,7 +89,8 @@ public final class ClaudeConnectionSettingsTest
 	 * that deny or ask for the parent's permission, and set CAT-owned Claude environment values. They do not retain the
 	 * parent's grants: its allow rules, its added directories and its default permission mode, which would let the
 	 * isolated instance read and write the parent's directories, such as the project whose prompts CAT measures. They
-	 * allow the {@code Skill} tool, which a nested instance has no user to approve. They do not retain the parent's
+	 * allow the {@code Skill} tool, which a nested instance has no user to approve, and edits inside the project, which
+	 * the permission mode no longer grants once Claude removes credentials from commands. They do not retain the parent's
 	 * writable paths, such as its Claude and CAT directories, and allow writes only to the instance's home and the
 	 * shared dependency caches.
 	 *
@@ -150,7 +151,8 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(strings(result.path("permissions").path("deny")), "deny").
 				isEqualTo(List.of("Read(//secrets/**)"));
 			requireThat(strings(result.path("permissions").path("ask")), "ask").isEqualTo(List.of("Bash(rm *)"));
-			requireThat(strings(result.path("permissions").path("allow")), "allow").isEqualTo(List.of("Skill"));
+			requireThat(strings(result.path("permissions").path("allow")), "allow").
+				isEqualTo(List.of("Skill", "Edit(./**)"));
 			requireThat(result.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
 			requireThat(result.path("permissions").has("defaultMode"), "defaultMode").isFalse();
 			requireThat(result.path("env").path("DISABLE_AUTOUPDATER").asString(), "autoUpdater").isEqualTo("1");

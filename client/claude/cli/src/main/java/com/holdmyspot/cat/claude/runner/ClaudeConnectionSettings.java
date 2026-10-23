@@ -55,9 +55,11 @@ public final class ClaudeConnectionSettings
 	/**
 	 * The permission rules that the isolated settings allow, whatever the parent's settings say. Claude Code asks the
 	 * user before using the {@code Skill} tool, and a nested instance has no user to answer, so without this rule a
-	 * trial could use none of the skills of the prompt system it measures.
+	 * trial could use none of the skills of the prompt system it measures. Removing credentials from commands makes
+	 * Claude Code ignore the {@code acceptEdits} permission mode, so the rule for editing tools grants the same edits
+	 * inside the project and nowhere else.
 	 */
-	private static final List<String> PERMISSION_GRANTS = List.of("Skill");
+	private static final List<String> PERMISSION_GRANTS = List.of("Skill", "Edit(./**)");
 	private static final Set<String> CONNECTION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN");
 
