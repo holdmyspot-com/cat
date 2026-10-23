@@ -2372,9 +2372,11 @@ trials. The session requests one by running the `request-session` launcher that 
 with the harness, a project directory, one or more prompt files and, optionally, plugins, a model, an effort and
 `--session-transcripts`. Every input and result passes as a file path, never as content: the launcher writes the
 request into the run's `requests` directory, the one directory outside its project and home that the session may
-write, and the runner answers with a response file in the request's directory that names copies, in the same
-directory, of the requested run's transcript, receipt and native transcripts, since the requesting session cannot
-read other runs. The runner, outside the session's sandbox, validates the request and starts the session through that
+write. The runner answers in the run's `responses` directory, which the session may read but not write, so a link
+that the session plants cannot redirect the runner's writes: a response file that names copies, beside it, of the
+requested run's transcript, receipt and native transcripts, since the requesting session cannot read other runs. Every
+path in a request must lie inside the requesting session's project, and the runner reads none of them through a
+symbolic link. The runner, outside the session's sandbox, validates the request and starts the session through that
 harness's runner launcher, resolved as the runner skills resolve it, with the requesting session's run root and denied
 reads, and without requested sessions of its own. A requested session therefore has at most the permissions of the
 session that requested it, and no credential ever reaches a command. It takes its own slot of its harness's shared

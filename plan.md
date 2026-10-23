@@ -3123,8 +3123,9 @@ The riskiest pure code, built first.
 	- the runner validates each request (count, harness, paths readable by the session, model and effort) and starts
 		the session through the requested harness's runner launcher, resolved as the runner skills resolve it, with the
 		requester's run root and denied reads and no requests of its own; it copies the requested run's transcript,
-		receipt and native transcripts into the request's directory and writes a response that names the copies, never
-		their content;
+		receipt and native transcripts into the run's `responses` directory, which the session may read but not write,
+		and writes a response there that names the copies, never their content; every path in a request must lie inside
+		the requester's project, and the runner follows no symbolic link in it;
 	- a requested session takes a slot of its harness's capacity, honouring the hold, and fails with `capacity` after
 		waiting 10 minutes; ending the run or interrupting its turn stops requested sessions and answers pending requests
 		with `stopped`;
