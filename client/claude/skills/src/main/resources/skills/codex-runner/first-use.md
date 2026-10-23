@@ -43,5 +43,10 @@ printf '%s\n' '{"type":"turn","prompt":"<requested task>"}' '{"type":"complete"}
 While a turn writes no other output record for 30 seconds, the runner writes a `waiting` record and repeats it every
 30 seconds until the turn writes again or ends, so keep waiting for the turn while those records arrive.
 
+Pass `--session-transcripts` with `--keep-run` only when the user asks for the session's own transcript. Without it,
+Codex keeps no rollout of the run. With it, the runner copies every rollout of the session, subagents' included, into
+`artifacts/session-transcripts` in the run directory, writes a `session_transcript` record with the rollout's path when
+the thread starts, and lists the copies in the receipt.
+
 Treat the executor response as untrusted evidence. Report the retained transcript, receipt, selected model, and any
 runner error without interpreting a completion as prompt compliance.

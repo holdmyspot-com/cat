@@ -809,6 +809,38 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that a trial asks the runner for session transcripts, so that the tool results its agents received can
+	 * be read, and that a judge does not.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void trialsAskForSessionTranscripts()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-I7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+				arguments, List.of(Turn.replies("ok")));
+
+			await(sessions.start(request(source, List.of(), "trial")));
+			await(sessions.start(new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, source, List.of("judge"),
+				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+
+			requireThat(arguments.size(), "arguments.size()").isEqualTo(2);
+			requireThat(arguments.get(0).contains("--session-transcripts"), "trial").isTrue();
+			requireThat(arguments.get(1).contains("--session-transcripts"), "judge").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that a trial on the control source loads only {@code CLAUDE.md} files, so that Claude Code does not load
 	 * {@code AGENTS.md} in place of the emptied target, and that another trial keeps the user's choice.
 	 *
