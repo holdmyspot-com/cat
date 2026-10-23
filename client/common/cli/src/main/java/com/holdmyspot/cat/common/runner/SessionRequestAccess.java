@@ -15,13 +15,16 @@ import java.util.Optional;
  * every harness. The session's commands may write the run's requests directory, the one directory outside the
  * session's project and home that they may write, and may read, but not write, the run's responses directory, so that
  * a link that the session plants cannot redirect the runner's writes. Their environment names the requests directory
- * and the {@code request-session} launcher of the artifact that the run uses.
+ * and the {@code request-session} launcher of the artifact that the run uses. The runs of the requested sessions live
+ * in the run's requested-runs directory, which exists before the session starts so that its sandbox denies the
+ * session's commands every read below it, the logins of those runs included.
  *
  * @param requests  the run's requests directory, where the {@code request-session} launcher writes each request
  * @param responses the run's responses directory, where the runner answers each request
+ * @param requestedRuns the run root of the requested sessions' runs
  * @param launcher  the {@code request-session} launcher of the run's artifact
  */
-public record SessionRequestAccess(Path requests, Path responses, Path launcher)
+public record SessionRequestAccess(Path requests, Path responses, Path requestedRuns, Path launcher)
 {
 	/**
 	 * The variable that names the requests directory to a session's commands.
@@ -41,6 +44,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path launcher)
 	 *
 	 * @param requests  the run's requests directory, where the {@code request-session} launcher writes each request
 	 * @param responses the run's responses directory, where the runner answers each request
+	 * @param requestedRuns the run root of the requested sessions' runs
 	 * @param launcher  the {@code request-session} launcher of the run's artifact
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -48,6 +52,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path launcher)
 	{
 		requireThat(requests, "requests").isNotNull();
 		requireThat(responses, "responses").isNotNull();
+		requireThat(requestedRuns, "requestedRuns").isNotNull();
 		requireThat(launcher, "launcher").isNotNull();
 	}
 
@@ -78,9 +83,23 @@ public record SessionRequestAccess(Path requests, Path responses, Path launcher)
 	}
 
 	/**
-	 * Returns the access of a run's session, creating the run's requests and responses directories if the session may
-	 * request any session. A runner calls this before it decides what the session may read, so that its sandbox
-	 * covers both directories.
+	 * Returns the run root of the runs of the sessions that a run's session requests, which exists only if the run's
+	 * session may request sessions.
+	 *
+	 * @param run the run
+	 * @return the directory
+	 * @throws NullPointerException if {@code run} is null
+	 */
+	public static Path requestedRunsDirectory(HarnessRun run)
+	{
+		requireThat(run, "run").isNotNull();
+		return run.directory().resolve("requested-runs");
+	}
+
+	/**
+	 * Returns the access of a run's session, creating the run's requests, responses and requested-runs directories if
+	 * the session may request any session. A runner calls this before it decides what the session may read, so that
+	 * its sandbox covers all three directories.
 	 *
 	 * @param run             the run
 	 * @param artifact        the harness artifact that the run uses, whose {@code bin} directory holds the launcher
@@ -102,7 +121,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path launcher)
 			return Optional.empty();
 		Path requests = Files.createDirectories(requestsDirectory(run));
 		Path responses = Files.createDirectories(responsesDirectory(run));
-		return Optional.of(new SessionRequestAccess(requests, responses, launcher(artifact, platform)));
+		Path requestedRuns = Files.createDirectories(requestedRunsDirectory(run));
+		return Optional.of(new SessionRequestAccess(requests, responses, requestedRuns, launcher(artifact, platform)));
 	}
 
 	/**

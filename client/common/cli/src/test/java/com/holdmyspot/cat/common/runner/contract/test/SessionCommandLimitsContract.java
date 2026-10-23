@@ -234,7 +234,8 @@ public abstract class SessionCommandLimitsContract
 
 	/**
 	 * Verifies that a session that may request sessions can write the run's requests directory, and read but not write
-	 * its responses directory, and that its commands are told where requests go and which launcher makes one.
+	 * its responses directory, that its commands are told where requests go and which launcher makes one, and that they
+	 * cannot read the directory that holds the runs of the sessions it requests.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -267,6 +268,10 @@ public abstract class SessionCommandLimitsContract
 			}
 			requireThat(readable(limits, requests), "requestsReadable").isTrue();
 			requireThat(readable(limits, responses), "responsesReadable").isTrue();
+			// The runs of requested sessions hold their logins while they run
+			Path requestedRuns = fixture.run().directory().resolve("requested-runs");
+			requireThat(requestedRuns, "requestedRuns").isDirectory();
+			requireThat(readable(limits, requestedRuns), "requestedRunsReadable").isFalse();
 		}
 	}
 
