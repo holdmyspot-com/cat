@@ -8,22 +8,20 @@ import com.holdmyspot.cat.common.runner.HarnessEventListener;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.HarnessStandardError;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -44,14 +42,15 @@ public final class CodexProcess implements HarnessProcess
 	private final HarnessStandardError standardError;
 	private final boolean verifyCatHookDelivery;
 	/**
-	 * The Codex home whose {@code sessions} directory holds the rollouts of the app-server's threads.
+	 * Copies the rollouts of the app-server's threads once it exits, or {@code null} if the run keeps no session
+	 * transcripts, in which case its threads are ephemeral and Codex writes no rollout.
 	 */
-	private final Path codexHome;
-	/**
-	 * The directory that keeps the rollouts once the app-server exits.
-	 */
-	private final Path rollouts;
+	private final HarnessSessionTranscripts transcripts;
 	private final StringBuilder startupEvents = new StringBuilder();
+	/**
+	 * The path of the root thread's rollout, or an empty string until Codex answers the {@code thread/start} request.
+	 */
+	private volatile String rollout = "";
 	/**
 	 * The next JSON-RPC request identifier; guarded by {@link #input}.
 	 */
@@ -78,25 +77,37 @@ public final class CodexProcess implements HarnessProcess
 	 * @param process the started Codex app-server process
 	 * @param scope services owned for this app-server lifetime
 	 * @param verifyCatHookDelivery whether CAT hook configuration and delegated-hook delivery must be verified
-	 * @param codexHome the Codex home of the app-server, whose {@code sessions} directory holds its threads' rollouts
-	 * @param rollouts the directory that keeps the rollouts once the app-server exits
-	 * @throws NullPointerException if {@code process}, {@code scope}, {@code codexHome} or {@code rollouts} are null
+	 * @param transcripts copies the rollouts of the app-server's threads once it exits, or {@code null} if the run keeps
+	 *   no session transcripts, in which case the threads are ephemeral
+	 * @throws NullPointerException if {@code process} or {@code scope} are null
 	 */
-	public CodexProcess(Process process, HarnessRunnerScope scope, boolean verifyCatHookDelivery, Path codexHome,
-		Path rollouts)
+	public CodexProcess(Process process, HarnessRunnerScope scope, boolean verifyCatHookDelivery,
+		HarnessSessionTranscripts transcripts)
 	{
 		requireThat(process, "process").isNotNull();
 		requireThat(scope, "scope").isNotNull();
-		requireThat(codexHome, "codexHome").isNotNull();
-		requireThat(rollouts, "rollouts").isNotNull();
 		this.process = process;
 		this.scope = scope;
 		this.verifyCatHookDelivery = verifyCatHookDelivery;
-		this.codexHome = codexHome;
-		this.rollouts = rollouts;
+		this.transcripts = transcripts;
 		input = new OutputStreamWriter(process.getOutputStream(), UTF_8);
 		output = new BufferedReader(new InputStreamReader(process.getInputStream(), UTF_8));
 		standardError = new HarnessStandardError(process.getErrorStream());
+	}
+
+	/**
+	 * Locates the rollouts that Codex writes below a Codex home.
+	 *
+	 * @param codexHome the Codex home, whose {@code sessions} directory holds the rollouts of its threads
+	 * @param destination the directory that receives the copies
+	 * @return the rollouts' location
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static HarnessSessionTranscripts rollouts(Path codexHome, Path destination)
+	{
+		requireThat(codexHome, "codexHome").isNotNull();
+		return new HarnessSessionTranscripts(codexHome.resolve("sessions"), destination,
+			name -> name.startsWith("rollout-") && name.endsWith(".jsonl"));
 	}
 
 	/**
@@ -150,7 +161,7 @@ public final class CodexProcess implements HarnessProcess
 			input.write(CodexAppServerProtocol.initialized());
 			input.flush();
 			threadId = threadId(readResponse(2, CodexAppServerProtocol.threadStart(workingDirectory, model,
-				developerInstructions, permissionProfile)));
+				developerInstructions, permissionProfile, transcripts == null)));
 			if (verifyCatHookDelivery)
 			{
 				long requestId = nextRequestId;
@@ -468,8 +479,23 @@ public final class CodexProcess implements HarnessProcess
 	}
 
 	/**
+	 * Returns the root thread's rollout once Codex has answered the {@code thread/start} request.
+	 *
+	 * @return the rollout, or none if the run keeps no session transcripts or Codex reported no path
+	 */
+	@Override
+	public Optional<Path> sessionTranscript()
+	{
+		String path = rollout;
+		if (transcripts == null || path.isBlank())
+			return Optional.empty();
+		return Optional.of(Path.of(path));
+	}
+
+	/**
 	 * Closes app-server input, waits for the app-server to exit, and then copies the rollouts of its threads into the
-	 * rollouts directory, so that what each thread's model received outlives the Codex home.
+	 * run's session transcripts directory if the run keeps them, so that what each thread's model received outlives the
+	 * Codex home.
 	 *
 	 * @throws IOException if closing input fails or the rollouts cannot be copied
 	 */
@@ -489,32 +515,9 @@ public final class CodexProcess implements HarnessProcess
 				Thread.currentThread().interrupt();
 				throw new IOException("Interrupted while waiting for Codex to exit", e);
 			}
-			keepRollouts();
+			if (transcripts != null)
+				transcripts.copy();
 		}
-	}
-
-	/**
-	 * Copies every rollout file below the Codex home's {@code sessions} directory into the rollouts directory, which
-	 * is created even when the app-server started no thread. Links are not followed.
-	 *
-	 * @throws IOException if the rollouts cannot be listed or copied
-	 */
-	private void keepRollouts() throws IOException
-	{
-		Files.createDirectories(rollouts);
-		Path sessions = codexHome.resolve("sessions");
-		if (!Files.isDirectory(sessions, LinkOption.NOFOLLOW_LINKS))
-			return;
-		List<Path> files;
-		try (Stream<Path> walk = Files.walk(sessions))
-		{
-			files = walk.filter(file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)).
-				filter(file -> file.getFileName().toString().startsWith("rollout-")).
-				filter(file -> file.getFileName().toString().endsWith(".jsonl")).
-				toList();
-		}
-		for (Path file : files)
-			Files.copy(file, rollouts.resolve(file.getFileName()), StandardCopyOption.REPLACE_EXISTING);
 	}
 
 	/**
@@ -612,6 +615,7 @@ public final class CodexProcess implements HarnessProcess
 			JsonNode id = tree.path("result").path("thread").path("id");
 			if (!id.isString() || id.stringValue().isBlank())
 				throw new IOException("Codex app-server returned no thread identifier");
+			rollout = tree.path("result").path("thread").path("path").asString("");
 			return id.stringValue();
 		}
 		catch (JacksonException e)

@@ -41,12 +41,13 @@ public final class CodexAppServerProtocol
 	 * @param model the optional model name
 	 * @param developerInstructions the optional direct developer contract
 	 * @param permissionProfile the optional named Codex permission profile
+	 * @param ephemeral whether Codex keeps no rollout of the thread
 	 * @return the JSON-RPC request line
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code workingDirectory} is not absolute
 	 */
 	public static String threadStart(Path workingDirectory, String model, String developerInstructions,
-		String permissionProfile)
+		String permissionProfile, boolean ephemeral)
 	{
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(model, "model").isNotNull();
@@ -60,6 +61,9 @@ public final class CodexAppServerProtocol
 		String developerInstructionsParameter = "";
 		if (!developerInstructions.isBlank())
 			developerInstructionsParameter = ",\"developerInstructions\":\"" + escape(developerInstructions) + "\"";
+		String ephemeralParameter = "";
+		if (ephemeral)
+			ephemeralParameter = ",\"ephemeral\":true";
 		String permissionParameter = "\"sandbox\":\"workspace-write\"";
 		if (!permissionProfile.isBlank())
 		{
@@ -69,7 +73,8 @@ public final class CodexAppServerProtocol
 		}
 		return "{\"id\":2,\"method\":\"thread/start\",\"params\":{\"cwd\":\"" +
 			escape(workingDirectory.toString()) + "\"," + permissionParameter + ",\"approvalPolicy\":\"never\"," +
-			"\"sessionStartSource\":\"startup\"" + modelParameter + developerInstructionsParameter + "}}\n";
+			"\"sessionStartSource\":\"startup\"" + ephemeralParameter + modelParameter + developerInstructionsParameter +
+			"}}\n";
 	}
 
 	/**

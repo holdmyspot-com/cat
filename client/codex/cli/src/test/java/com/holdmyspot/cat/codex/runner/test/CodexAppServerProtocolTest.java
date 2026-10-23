@@ -42,9 +42,25 @@ public final class CodexAppServerProtocolTest
 	@Test
 	public void framesHeadlessThread()
 	{
-		String request = CodexAppServerProtocol.threadStart(Path.of("/").toAbsolutePath().toAbsolutePath(), "", "", "");
+		String request = CodexAppServerProtocol.threadStart(Path.of("/").toAbsolutePath().toAbsolutePath(), "", "", "",
+			true);
 		requireThat(request, "request").contains("\"sandbox\":\"workspace-write\"").
 			contains("\"approvalPolicy\":\"never\"").contains("\"sessionStartSource\":\"startup\"").
 			contains("\"id\":2");
+	}
+
+	/**
+	 * Verifies that a thread is ephemeral unless the run keeps session transcripts, so that Codex keeps no rollout of it.
+	 */
+	@Test
+	public void framesEphemeralThreadUnlessPersisted()
+	{
+		// Requirement: R-I7
+		Path directory = Path.of("/").toAbsolutePath();
+
+		requireThat(CodexAppServerProtocol.threadStart(directory, "", "", "", true), "ephemeral").
+			contains("\"ephemeral\":true");
+		requireThat(CodexAppServerProtocol.threadStart(directory, "", "", "", false), "persistent").
+			doesNotContain("ephemeral");
 	}
 }

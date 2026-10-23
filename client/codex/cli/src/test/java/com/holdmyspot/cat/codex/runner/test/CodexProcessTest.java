@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.codex.runner.CodexProcess;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
+import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 
@@ -84,14 +85,15 @@ public final class CodexProcessTest
 	}
 
 	/**
-	 * Verifies that closing the process copies every rollout below the Codex home's {@code sessions} directory into
-	 * the rollouts directory, without the other files there.
+	 * Verifies that closing a process that keeps session transcripts copies every rollout below the Codex home's
+	 * {@code sessions} directory into the rollouts directory, without the other files there.
 	 *
 	 * @throws IOException if the files cannot be written or read
 	 */
 	@Test(timeOut = 10_000)
 	public void closeKeepsRollouts() throws IOException
 	{
+		// Requirement: R-I7
 		Path directory = Files.createTempDirectory(temporary, "rollouts-");
 		Path day = Files.createDirectories(directory.resolve("home/sessions/2026/10/15"));
 		Files.writeString(day.resolve("rollout-2026-10-15T10-00-00-root.jsonl"), "{\"root\":true}\n", UTF_8);
@@ -121,6 +123,7 @@ public final class CodexProcessTest
 	@Test(timeOut = 10_000)
 	public void closeWithoutSessionsCreatesRollouts() throws IOException
 	{
+		// Requirement: R-I7
 		Path directory = Files.createTempDirectory(temporary, "rollouts-");
 
 		new AppServer(NO_ANSWER, NO_ANSWER).start(directory).close();
@@ -129,6 +132,42 @@ public final class CodexProcessTest
 		{
 			requireThat(files.toList(), "rollouts").isEmpty();
 		}
+	}
+
+	/**
+	 * Verifies that a process that keeps no session transcripts starts ephemeral threads, copies nothing when it
+	 * closes and names no transcript, while one that keeps them starts persistent threads and names the rollout that
+	 * Codex reports for the thread.
+	 *
+	 * @throws IOException if the process cannot be started or closed
+	 */
+	@Test(timeOut = 10_000)
+	public void keepsNoRolloutUnlessAsked() throws IOException
+	{
+		// Requirement: R-I7
+		Path directory = Files.createTempDirectory(temporary, "ephemeral-");
+		Files.createDirectories(directory.resolve("home/sessions"));
+		Files.writeString(directory.resolve("home/sessions/rollout-root.jsonl"), "{}\n", UTF_8);
+		AppServer ephemeral = new AppServer(NO_ANSWER, NO_ANSWER);
+
+		try (CodexProcess process = ephemeral.start(directory, "", "", false))
+		{
+			requireThat(process.sessionTranscript().isPresent(), "named").isFalse();
+		}
+
+		requireThat(ephemeral.requests("thread/start").getFirst().path("ephemeral").asBoolean(false), "ephemeral").
+			isTrue();
+		requireThat(Files.exists(directory.resolve("rollouts")), "copied").isFalse();
+		AppServer persistent = new AppServer(NO_ANSWER, NO_ANSWER);
+
+		try (CodexProcess process = persistent.start(directory, "", "", true))
+		{
+			requireThat(process.sessionTranscript().orElseThrow(), "rollout").
+				isEqualTo(Path.of("/codex-home/sessions/rollout-root.jsonl"));
+		}
+
+		requireThat(persistent.requests("thread/start").getFirst().has("ephemeral"), "ephemeral").isFalse();
+		requireThat(Files.exists(directory.resolve("rollouts/rollout-root.jsonl")), "copied").isTrue();
 	}
 
 	/**
@@ -667,8 +706,27 @@ public final class CodexProcessTest
 		 */
 		private CodexProcess start(Path directory, String model, String effort) throws IOException
 		{
-			CodexProcess result = new CodexProcess(process, new TestHarnessRunnerScope(), false,
-				directory.resolve("home"), directory.resolve("rollouts"));
+			return start(directory, model, effort, true);
+		}
+
+		/**
+		 * Starts a runner process over this app-server, whose Codex home and rollouts directory are the {@code home}
+		 * and {@code rollouts} directories of a directory, and creates its root thread.
+		 *
+		 * @param directory the directory
+		 * @param model the model to select, or empty for Codex's default
+		 * @param effort the reasoning effort to select, or empty for Codex's default
+		 * @param sessionTranscripts whether the process keeps the rollouts of its threads
+		 * @return the initialized runner process
+		 * @throws IOException if initialization fails
+		 */
+		private CodexProcess start(Path directory, String model, String effort, boolean sessionTranscripts)
+			throws IOException
+		{
+			HarnessSessionTranscripts transcripts = null;
+			if (sessionTranscripts)
+				transcripts = CodexProcess.rollouts(directory.resolve("home"), directory.resolve("rollouts"));
+			CodexProcess result = new CodexProcess(process, new TestHarnessRunnerScope(), false, transcripts);
 			result.initialize(PROJECT, model, "", effort);
 			return result;
 		}
@@ -740,7 +798,8 @@ public final class CodexProcessTest
 					{
 						if (notifiesThreadStarted)
 							process.emit(threadStarted(request.path("params").path("model").asString("")));
-						process.emit("{\"id\":" + id + ",\"result\":{\"thread\":{\"id\":\"" + ROOT_THREAD + "\"}}}");
+						process.emit("{\"id\":" + id + ",\"result\":{\"thread\":{\"id\":\"" + ROOT_THREAD +
+							"\",\"path\":\"/codex-home/sessions/rollout-root.jsonl\"}}}");
 					}
 					else
 					{

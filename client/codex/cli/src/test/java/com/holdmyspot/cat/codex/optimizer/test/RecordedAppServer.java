@@ -6,7 +6,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.codex.runner.CodexProcess;
-import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -154,8 +153,8 @@ final class RecordedAppServer implements Bridge
 			manager.initialize(run, runRoot, Path.of(ScriptedHarness.optionValue(arguments, "--project")),
 				"recorded", List.of("recorded"));
 			TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
-			CodexProcess adapter = new CodexProcess(process, scope, false, run.directory().resolve("home"),
-				run.directory().resolve("artifacts").resolve(CodexRunner.ROLLOUTS));
+			CodexProcess adapter = new CodexProcess(process, scope, false,
+				CodexProcess.rollouts(run.directory().resolve("home"), run.sessionTranscripts()));
 			adapter.initialize(run.directory().resolve("project"), "requested-alias");
 			return new HarnessRunSession(run, adapter, scope);
 		}, input, output);

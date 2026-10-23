@@ -98,7 +98,7 @@ public final class CodexReceivedResultsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-received-"));
 			Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.toolResult("root result")));
-			Path rollouts = transcript.resolveSibling("rollouts");
+			Path rollouts = transcript.resolveSibling("session-transcripts");
 			Files.writeString(rollouts.resolve("rollout-2026-10-15T11-00-00-child.jsonl"),
 				RecordedTrial.toolResult("child result") + "\n", UTF_8);
 			Files.writeString(rollouts.resolve("notes.txt"), RecordedTrial.toolResult("not a rollout") + "\n", UTF_8);

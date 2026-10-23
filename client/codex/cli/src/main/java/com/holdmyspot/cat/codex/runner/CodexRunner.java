@@ -21,6 +21,7 @@ import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 
@@ -41,11 +42,6 @@ import java.util.Set;
  */
 public final class CodexRunner
 {
-	/**
-	 * The directory, beside a run's transcript in its {@code artifacts} directory, that keeps the rollouts of the
-	 * session's threads after the run's Codex home is deleted. A rollout records what a thread's model received.
-	 */
-	public static final String ROLLOUTS = "rollouts";
 	private static final Set<String> AUTHENTICATION_VARIABLES = Set.of("CODEX_API_KEY", "OPENAI_API_KEY");
 	/**
 	 * The path of a Codex plugin's manifest, relative to the plugin directory.
@@ -138,7 +134,7 @@ public final class CodexRunner
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
 		return start(artifact, project, null, null, manager, executable, environment, model, "", installCat, null,
-			List.of(), List.of(), 0);
+			List.of(), List.of(), 0, false);
 	}
 
 	/**
@@ -162,7 +158,7 @@ public final class CodexRunner
 		throws IOException
 	{
 		return start(artifact, project, null, List.of(), manager, executable, environment, model, effort, installCat,
-			agent, List.of(), List.of(), 0);
+			agent, List.of(), List.of(), 0, false);
 	}
 
 	/**
@@ -186,13 +182,16 @@ public final class CodexRunner
 	 *   its own run
 	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
 	 *   Codex's default
+	 * @param sessionTranscripts whether the session's threads are persistent, and the run copies their rollouts into its
+	 *   session transcripts directory when the session closes; otherwise the threads are ephemeral and Codex keeps no
+	 *   rollout
 	 * @return the live owned Codex run session
 	 * @throws IOException if validation, copying, or process startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
-		int toolOutputTokenLimit) throws IOException
+		int toolOutputTokenLimit, boolean sessionTranscripts) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -244,8 +243,11 @@ public final class CodexRunner
 			manager.initialize(run, artifact, project, "codex_app_server", command);
 			HarnessRunnerScope scope = new MainHarnessRunnerScope();
 			lock = manager.acquireLock(run);
+			HarnessSessionTranscripts transcripts = null;
+			if (sessionTranscripts)
+				transcripts = CodexProcess.rollouts(isolatedHome, run.sessionTranscripts());
 			CodexProcess process = new CodexProcess(processes.start(command, worktree, isolatedEnvironment), scope,
-				installCat, isolatedHome, run.directory().resolve("artifacts").resolve(ROLLOUTS));
+				installCat, transcripts);
 			try
 			{
 				manager.recordHarnessProcess(run, process.pid(), process.startedAt());

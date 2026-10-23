@@ -174,7 +174,8 @@ public final class CodexRunnerCli
 				HarnessRunnerBridge.serve(() -> new CodexRunner(ExecutableFiles.sleeping()).start(options.artifact(),
 					options.project(),
 					options.workspace(), options.plugins(), manager, options.executable(), environment, options.model(),
-					options.effort(), options.installCat(), agent, List.of(), options.deniedReads(), toolOutputTokenLimit),
+					options.effort(), options.installCat(), agent, List.of(), options.deniedReads(), toolOutputTokenLimit,
+					options.sessionTranscripts()),
 					manager, options, scope.json(), replacer, input, output);
 			}
 		}

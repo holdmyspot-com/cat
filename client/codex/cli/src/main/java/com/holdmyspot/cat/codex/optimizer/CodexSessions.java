@@ -5,7 +5,7 @@ import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.CommandShell;
-import com.holdmyspot.cat.codex.runner.CodexRunner;
+import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
@@ -42,9 +42,10 @@ import tools.jackson.dataformat.toml.TomlMapper;
  * The Codex runner has no option for read-only evidence, so {@link SessionRequest#readOnly()}
  * is not passed to it. A judge reads the evidence by path, and only file permissions protect it.
  * <p>
- * Codex can shorten a tool's output before its model receives it. The runner keeps each thread's rollout, which
- * records what the thread's model received, in the {@value CodexRunner#ROLLOUTS} directory beside the transcript, and
- * the tool results that the agents received are read from there.
+ * Codex can shorten a tool's output before its model receives it. A trial asks the runner for session transcripts, so
+ * that it keeps each thread's rollout, which records what the thread's model received, in the
+ * {@value HarnessRun#SESSION_TRANSCRIPTS} directory beside the transcript, and the tool results that the agents
+ * received are read from there.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -176,7 +177,8 @@ public final class CodexSessions extends RunnerSessions
 		requireThat(activity, "activity").isNotNull();
 		requireThat(transcript, "transcript").isNotNull();
 		requireThat(json, "json").isNotNull();
-		List<String> received = RolloutToolResults.read(transcript.resolveSibling(CodexRunner.ROLLOUTS), json);
+		List<String> received = RolloutToolResults.read(transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS),
+			json);
 		return new SessionEvidence(activity.entries(), received);
 	}
 
