@@ -42,6 +42,7 @@ public final class CodexImageLaunchersTest
 	@Test
 	public void launchersRunByTheirExtensionlessPaths() throws IOException, InterruptedException
 	{
+		// Requirement: R-I9
 		Platform platform = Platform.current();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -51,6 +52,7 @@ public final class CodexImageLaunchersTest
 				codexImage(builder, List.of(Path.of("codex.jar")),
 				directory.resolve("client"), platform);
 			Set<String> agentLaunchers = DistributionMainSecrets.getDistributionMainAccess().codexAgentLaunchers();
+			requireThat(agentLaunchers, "agentLaunchers").contains("request-session");
 			Path agentBin = directory.resolve("bin");
 			JlinkImageBuilder.moveLaunchers(agentLaunchers, image, agentBin);
 

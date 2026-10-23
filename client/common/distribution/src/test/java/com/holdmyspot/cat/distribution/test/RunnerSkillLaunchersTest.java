@@ -38,14 +38,17 @@ public final class RunnerSkillLaunchersTest
 	@Test
 	public void claudePluginHoldsRunnerLaunchers()
 	{
+		// Requirement: R-I9
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 		requireThat(access.claudeLaunchers(), "claudeLaunchers").
 			contains(new JlinkImageBuilder.Launcher("codex-artifact", CLAUDE_MODULE,
 				"com.holdmyspot.cat.claude.runner.CodexArtifact")).
 			contains(new JlinkImageBuilder.Launcher("claude-runner", CLAUDE_MODULE,
-				"com.holdmyspot.cat.claude.runner.ClaudeRunnerCli"));
+				"com.holdmyspot.cat.claude.runner.ClaudeRunnerCli")).
+			contains(new JlinkImageBuilder.Launcher("request-session", "com.holdmyspot.cat.common.cli",
+				"com.holdmyspot.cat.common.runner.SessionRequestCli"));
 		requireThat(access.claudeAgentLaunchers(), "claudeAgentLaunchers").contains("codex-artifact").
-			contains("claude-runner");
+			contains("claude-runner").contains("request-session");
 	}
 
 	/**
@@ -55,14 +58,17 @@ public final class RunnerSkillLaunchersTest
 	@Test
 	public void codexPluginHoldsRunnerLaunchers()
 	{
+		// Requirement: R-I9
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 		requireThat(access.codexLaunchers(), "codexLaunchers").
 			contains(new JlinkImageBuilder.Launcher("claude-artifact", CODEX_MODULE,
 				"com.holdmyspot.cat.codex.runner.ClaudeArtifact")).
 			contains(new JlinkImageBuilder.Launcher("codex-runner", CODEX_MODULE,
-				"com.holdmyspot.cat.codex.runner.CodexRunnerCli"));
+				"com.holdmyspot.cat.codex.runner.CodexRunnerCli")).
+			contains(new JlinkImageBuilder.Launcher("request-session", "com.holdmyspot.cat.common.cli",
+				"com.holdmyspot.cat.common.runner.SessionRequestCli"));
 		requireThat(access.codexAgentLaunchers(), "codexAgentLaunchers").contains("claude-artifact").
-			contains("codex-runner");
+			contains("codex-runner").contains("request-session");
 	}
 
 	/**

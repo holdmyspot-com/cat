@@ -451,6 +451,8 @@ public final class DistributionMain
 		return append(sharedLaunchers(), List.of(
 			new JlinkImageBuilder.Launcher("plugin-info", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.ClaudePluginInfo"),
+			new JlinkImageBuilder.Launcher("request-session", "com.holdmyspot.cat.common.cli",
+				"com.holdmyspot.cat.common.runner.SessionRequestCli"),
 			new JlinkImageBuilder.Launcher("claude-runner", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.runner.ClaudeRunnerCli"),
 			new JlinkImageBuilder.Launcher("codex-artifact", "com.holdmyspot.cat.claude.cli",
@@ -479,7 +481,7 @@ public final class DistributionMain
 	static Set<String> claudeAgentLaunchers()
 	{
 		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "claude-runner",
-			"codex-artifact", "wait-until");
+			"codex-artifact", "wait-until", "request-session");
 	}
 
 	/**
@@ -492,6 +494,8 @@ public final class DistributionMain
 		return append(sharedLaunchers(), List.of(
 			new JlinkImageBuilder.Launcher("plugin-info", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexPluginInfo"),
+			new JlinkImageBuilder.Launcher("request-session", "com.holdmyspot.cat.common.cli",
+				"com.holdmyspot.cat.common.runner.SessionRequestCli"),
 			new JlinkImageBuilder.Launcher("codex-runner", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.runner.CodexRunnerCli"),
 			new JlinkImageBuilder.Launcher("claude-artifact", "com.holdmyspot.cat.codex.cli",
@@ -524,7 +528,7 @@ public final class DistributionMain
 	static Set<String> codexAgentLaunchers()
 	{
 		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "run-part", "read-part",
-			"claude-artifact", "codex-runner", "wait-until");
+			"claude-artifact", "codex-runner", "wait-until", "request-session");
 	}
 
 	/**
