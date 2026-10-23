@@ -19,6 +19,8 @@ import java.util.List;
  * @param output the optional durable bridge-transcript destination
  * @param keepRun indicates whether successful runs are retained
  * @param receipt the optional retained-evidence receipt destination
+ * @param sessionTranscripts indicates whether the harness writes its native session transcripts, which the run copies
+ *   into its kept artifacts. A run leaves no harness transcript on disk otherwise.
  * @param installCat indicates whether CAT is installed in the isolated harness home
  * @param includeUserRules indicates whether CAT copies the parent's personal rules into the isolated harness home
  * @param maximumConcurrency the shared CAT harness capacity ceiling
@@ -30,8 +32,8 @@ import java.util.List;
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String executable, String model,
 	String effort,
-	Path output, boolean keepRun, Path receipt, boolean installCat, boolean includeUserRules, int maximumConcurrency,
-	List<Path> deniedReads, Path workspace, List<Path> plugins)
+	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat,
+	boolean includeUserRules, int maximumConcurrency, List<Path> deniedReads, Path workspace, List<Path> plugins)
 {
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -86,6 +88,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			if (option.equals("--keep-run"))
 			{
 				options.keepRun = true;
+				index += 1;
+				continue;
+			}
+			if (option.equals("--session-transcripts"))
+			{
+				options.sessionTranscripts = true;
 				index += 1;
 				continue;
 			}
@@ -146,12 +154,14 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new IllegalArgumentException(usage(defaultExecutable + "-runner"));
 		if (options.receipt != null && (!options.keepRun || options.output == null))
 			throw new IllegalArgumentException("--receipt requires --keep-run and --output");
+		if (options.sessionTranscripts && !options.keepRun)
+			throw new IllegalArgumentException("--session-transcripts requires --keep-run");
 		if (!options.installCat && !options.includeUserRules)
 			throw new IllegalArgumentException("--exclude-user-rules requires --install-cat");
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
-			options.keepRun, options.receipt, options.installCat, options.includeUserRules, options.maximumConcurrency,
-			options.deniedReads, options.workspace, options.plugins);
+			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.includeUserRules,
+			options.maximumConcurrency, options.deniedReads, options.workspace, options.plugins);
 	}
 
 	/**
@@ -165,8 +175,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(launcherName, "launcherName").isNotBlank();
 		return "Usage: " + launcherName + " --artifact <path> [--project <path>] [--run-root <path>] " +
 			"[--executable <path>] [--model <name>] [--effort <level>] [--output <path>] [--keep-run] [--receipt <path>] " +
-			"[--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] [--deny-read <path>]... " +
-			"[--workspace <path>] [--plugin <path>]...";
+			"[--session-transcripts] [--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] " +
+			"[--deny-read <path>]... [--workspace <path>] [--plugin <path>]...";
 	}
 
 	/**
@@ -181,6 +191,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param output the optional durable bridge-transcript destination
 	 * @param keepRun whether successful runs are retained
 	 * @param receipt the optional retained-evidence receipt destination
+	 * @param sessionTranscripts whether the harness writes its native session transcripts for the run to copy
 	 * @param installCat whether CAT is installed in the isolated harness home
 	 * @param includeUserRules whether CAT copies the parent's personal rules into the isolated harness home
 	 * @param maximumConcurrency the shared CAT harness capacity ceiling
@@ -223,6 +234,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private Path receipt;
 		private int maximumConcurrency = HarnessCapacity.MAXIMUM_CONCURRENCY;
 		private boolean keepRun;
+		private boolean sessionTranscripts;
 		private boolean installCat;
 		private boolean includeUserRules = true;
 		private final List<Path> deniedReads = new ArrayList<>();

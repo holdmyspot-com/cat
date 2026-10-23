@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
@@ -37,7 +38,7 @@ public final class HarnessEvaluationResultTest
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path response = Files.writeString(root.resolve("response.txt"), "completed response");
 
-			HarnessEvaluationResult result = HarnessEvaluationResult.retained(project, response);
+			HarnessEvaluationResult result = HarnessEvaluationResult.retained(project, response, List.of());
 
 			requireThat(result.retainedProject(), "retainedProject").isEqualTo(project.toAbsolutePath().normalize());
 			requireThat(result.rawResult(), "rawResult").isEqualTo(response.toAbsolutePath().normalize());
@@ -57,7 +58,7 @@ public final class HarnessEvaluationResultTest
 			Path root = cleanup.add(Files.createTempDirectory("harness-evaluation-result-"));
 			Path project = Files.createDirectory(root.resolve("project"));
 
-			HarnessEvaluationResult.retained(project, root.resolve("missing-response.txt"));
+			HarnessEvaluationResult.retained(project, root.resolve("missing-response.txt"), List.of());
 		}
 	}
 }

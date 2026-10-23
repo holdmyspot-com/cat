@@ -49,7 +49,8 @@ public final class HarnessRunnerOptionsTest
 			contains("--max-concurrency <1..16>").
 			contains("--deny-read <path>").
 			contains("--workspace <path>").
-			contains("--plugin <path>");
+			contains("--plugin <path>").
+			contains("[--session-transcripts]");
 	}
 
 	/**
@@ -196,6 +197,43 @@ public final class HarnessRunnerOptionsTest
 	{
 		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--receipt", absolute("receipt")},
 			"harness", SESSION);
+	}
+
+	/**
+	 * Verifies that {@code --session-transcripts} asks for the harness's native transcripts, and that a run asks for
+	 * none unless it is given.
+	 */
+	@Test
+	public void parsesSessionTranscripts()
+	{
+		// Requirement: R-I7
+		HarnessRunnerOptions requested = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--keep-run", "--session-transcripts"}, "harness", SESSION);
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--keep-run"}, "harness", SESSION);
+
+		requireThat(requested.sessionTranscripts(), "requested").isTrue();
+		requireThat(without.sessionTranscripts(), "without").isFalse();
+	}
+
+	/**
+	 * Verifies that the transcripts of a run that is not kept are refused, because the run's copies would be deleted
+	 * with the run.
+	 */
+	@Test
+	public void rejectsSessionTranscriptsWithoutKeepRun()
+	{
+		// Requirement: R-I7
+		try
+		{
+			HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--session-transcripts"},
+				"harness", SESSION);
+			throw new AssertionError("A run that is not kept accepted --session-transcripts");
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").contains("--session-transcripts").contains("--keep-run");
+		}
 	}
 
 	/**

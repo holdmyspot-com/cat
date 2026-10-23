@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.time.Clock;
 import tools.jackson.databind.node.ObjectNode;
 import org.testng.annotations.Test;
@@ -43,12 +44,42 @@ public final class HarnessRunReceiptTest
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path receipt = root.resolve("receipt.json");
 
-			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response);
+			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
 			HarnessEvaluationResult result = HarnessRunReceipt.read(scope.json(), receipt);
 
 			requireThat(result.retainedProject(), "retainedProject").isEqualTo(
 				run.directory().resolve("project").toAbsolutePath().normalize());
 			requireThat(result.rawResult(), "rawResult").isEqualTo(response.toAbsolutePath().normalize());
+		}
+	}
+
+	/**
+	 * Verifies that a receipt lists the session transcript copies and that an evaluator reads the list back, and that
+	 * a receipt without copies lists none.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void listsSessionTranscripts() throws IOException
+	{
+		// Requirement: R-I7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
+			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
+			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
+			Path transcript = Files.createDirectories(run.sessionTranscripts()).resolve("session-1.jsonl");
+			Files.writeString(transcript, "{}\n");
+			Path withCopies = root.resolve("with-copies.json");
+			Path without = root.resolve("without.json");
+
+			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), withCopies, run, response, List.of(transcript));
+			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), without, run, response, List.of());
+
+			requireThat(HarnessRunReceipt.read(scope.json(), withCopies).sessionTranscripts(), "sessionTranscripts").
+				isEqualTo(List.of(transcript.toAbsolutePath().normalize()));
+			requireThat(HarnessRunReceipt.read(scope.json(), without).sessionTranscripts(), "sessionTranscripts").
+				isEmpty();
 		}
 	}
 

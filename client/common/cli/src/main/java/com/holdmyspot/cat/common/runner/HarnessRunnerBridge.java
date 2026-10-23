@@ -13,10 +13,14 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.List;
+import java.util.stream.Stream;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -105,6 +109,7 @@ public final class HarnessRunnerBridge
 		int turnNumber = 0;
 		FutureTask<Void> activeTurn = null;
 		CountDownLatch activeTurnStarted = null;
+		AtomicBoolean transcriptRecorded = new AtomicBoolean();
 		try
 		{
 			try (HarnessRunSession session = starter.start();
@@ -144,7 +149,9 @@ public final class HarnessRunnerBridge
 											if (manager != null)
 												manager.appendTurnEvent(session.run(), currentTurn, harnessEvent);
 											forwardHarnessEvent(session, client, harnessEvent);
+											recordSessionTranscript(session, client, transcriptRecorded);
 										});
+										recordSessionTranscript(session, client, transcriptRecorded);
 										if (manager != null)
 											manager.writeTurnOutput(session.run(), currentTurn, result);
 										if (!result.completed())
@@ -409,7 +416,10 @@ public final class HarnessRunnerBridge
 		HarnessRun run = serve(starter, manager, options.keepRun(), input, options.output());
 		if (options.receipt() != null)
 		{
-			HarnessRunReceipt.write(json, replacer, options.receipt(), run, options.output());
+			List<Path> sessionTranscripts = List.of();
+			if (options.sessionTranscripts())
+				sessionTranscripts = sessionTranscripts(run);
+			HarnessRunReceipt.write(json, replacer, options.receipt(), run, options.output(), sessionTranscripts);
 			manager.pruneRuntime(run);
 		}
 		return run;
@@ -525,6 +535,55 @@ public final class HarnessRunnerBridge
 		response.put("run_id", session.run().id());
 		response.put("event", harnessEvent);
 		client.write(response);
+	}
+
+	/**
+	 * Tells the client, once and as soon as the session's native transcript is known, where the harness writes it.
+	 *
+	 * @param session the live harness session
+	 *
+	 * @param client the JSONL client output
+	 *
+	 * @param recorded whether the record was written already
+	 *
+	 * @throws IOException if client output fails
+	 */
+	private static void recordSessionTranscript(HarnessRunSession session, ClientOutput client, AtomicBoolean recorded)
+		throws IOException
+	{
+		assert session != null;
+		assert client != null;
+		assert recorded != null;
+		if (recorded.get())
+			return;
+		Optional<Path> transcript = session.sessionTranscript();
+		if (transcript.isEmpty() || !recorded.compareAndSet(false, true))
+			return;
+		ObjectNode response = event(session.scope(), "session_transcript");
+		response.put("run_id", session.run().id());
+		response.put("path", transcript.get().toString());
+		client.write(response);
+	}
+
+	/**
+	 * Lists the copies of the session transcripts that a run kept, in name order.
+	 *
+	 * @param run the completed run
+	 *
+	 * @return the copies, none if the run kept no directory of them
+	 *
+	 * @throws IOException if the directory cannot be listed
+	 */
+	private static List<Path> sessionTranscripts(HarnessRun run) throws IOException
+	{
+		assert run != null;
+		Path directory = run.sessionTranscripts();
+		if (!Files.isDirectory(directory))
+			return List.of();
+		try (Stream<Path> files = Files.list(directory))
+		{
+			return files.sorted().toList();
+		}
 	}
 
 	/**

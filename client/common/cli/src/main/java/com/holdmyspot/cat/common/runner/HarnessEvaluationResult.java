@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -18,8 +19,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * @param retainedProject the completed project available for deterministic and semantic checks
  *
  * @param rawResult the final harness response for the completed task
+ *
+ * @param sessionTranscripts the copies of the harness's native session transcripts, which are empty unless the run
+ *   was asked to keep them
  */
-public record HarnessEvaluationResult(Path retainedProject, Path rawResult)
+public record HarnessEvaluationResult(Path retainedProject, Path rawResult, List<Path> sessionTranscripts)
 {
 	/**
 	 * Normalizes one harness result after its producer has validated the evidence.
@@ -27,13 +31,17 @@ public record HarnessEvaluationResult(Path retainedProject, Path rawResult)
 	 * @param retainedProject the completed project available for deterministic and semantic checks
 	 *
 	 * @param rawResult the final harness response for the completed task
+	 *
+	 * @param sessionTranscripts the copies of the harness's native session transcripts
 	 */
 	public HarnessEvaluationResult
 	{
 		requireThat(retainedProject, "retainedProject").isNotNull();
 		requireThat(rawResult, "rawResult").isNotNull();
+		requireThat(sessionTranscripts, "sessionTranscripts").isNotNull();
 		retainedProject = retainedProject.toAbsolutePath().normalize();
 		rawResult = rawResult.toAbsolutePath().normalize();
+		sessionTranscripts = sessionTranscripts.stream().map(path -> path.toAbsolutePath().normalize()).toList();
 	}
 
 	/**
@@ -43,16 +51,24 @@ public record HarnessEvaluationResult(Path retainedProject, Path rawResult)
 	 *
 	 * @param rawResult the final harness response for the completed task
 	 *
+	 * @param sessionTranscripts the copies of the harness's native session transcripts
+	 *
 	 * @return the checked retained result
 	 *
-	 * @throws IOException if either required retained artifact is unavailable
+	 * @throws IOException if either required retained artifact, or a listed transcript copy, is unavailable
 	 */
-	public static HarnessEvaluationResult retained(Path retainedProject, Path rawResult) throws IOException
+	public static HarnessEvaluationResult retained(Path retainedProject, Path rawResult, List<Path> sessionTranscripts)
+		throws IOException
 	{
-		HarnessEvaluationResult result = new HarnessEvaluationResult(retainedProject, rawResult);
+		HarnessEvaluationResult result = new HarnessEvaluationResult(retainedProject, rawResult, sessionTranscripts);
 		if (!Files.isDirectory(result.retainedProject()) || !Files.isRegularFile(result.rawResult()))
 		{
 			throw new IOException("Harness runner did not retain its completed project and final response");
+		}
+		for (Path transcript : result.sessionTranscripts())
+		{
+			if (!Files.isRegularFile(transcript))
+				throw new IOException("Harness runner did not retain its session transcript: " + transcript);
 		}
 		return result;
 	}

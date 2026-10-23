@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -207,7 +208,7 @@ public final class HarnessRunnerBridgeTest
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, false, true, 1, List.of(), null, List.of());
+				"", transcript, true, receipt, false, false, true, 1, List.of(), null, List.of());
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
 
@@ -220,6 +221,84 @@ public final class HarnessRunnerBridgeTest
 			requireThat(HarnessRunReceipt.read(json, receipt).retainedProject(), "retainedProject").
 				isEqualTo(project);
 			requireThat(HarnessRunReceipt.read(json, receipt).rawResult(), "rawResult").isEqualTo(transcript);
+		}
+	}
+
+	/**
+	 * Verifies that a bridge writes one {@code session_transcript} record with the native transcript's path as soon as
+	 * the session's transcript is known, not before and not twice, and that the receipt lists the transcript copies
+	 * that the session left in the run before the run's runtime files were pruned.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void recordsSessionTranscriptOnce() throws IOException
+	{
+		// Requirement: R-I7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Files.createDirectories(run.directory().resolve("project"));
+			Path nativeFile = run.directory().resolve("home/session-7.jsonl");
+			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
+			Path transcript = evidence.resolve("transcript.jsonl");
+			Path receipt = evidence.resolve("receipt.json");
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
+				"", transcript, true, receipt, true, false, true, 1, List.of(), null, List.of());
+			JsonMapper json = JsonMapper.builder().build();
+
+			try (TranscriptProcess process = new TranscriptProcess(nativeFile, run.sessionTranscripts()))
+			{
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+					manager, options, json, Yielding.fileReplacer(), input, new StringWriter());
+			}
+
+			List<String> records = Files.readAllLines(transcript).stream().
+				filter(line -> line.contains("\"type\":\"session_transcript\"")).toList();
+			requireThat(records, "records").size().isEqualTo(1);
+			requireThat(records.getFirst(), "record").contains(nativeFile.toString().replace("\\", "\\\\"));
+			requireThat(Files.exists(run.directory().resolve("home")), "homeExists").isFalse();
+			requireThat(HarnessRunReceipt.read(json, receipt).sessionTranscripts(), "sessionTranscripts").
+				isEqualTo(List.of(run.sessionTranscripts().resolve("session-7.jsonl")));
+		}
+	}
+
+	/**
+	 * Verifies that a bridge whose options did not ask for session transcripts writes no record for them and lists none
+	 * in the receipt, even if the process reports a transcript path.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void leavesSessionTranscriptsOutUnlessAsked() throws IOException
+	{
+		// Requirement: R-I7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FakeProcess process = new FakeProcess();
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Files.createDirectories(run.directory().resolve("project"));
+			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
+			Path transcript = evidence.resolve("transcript.jsonl");
+			Path receipt = evidence.resolve("receipt.json");
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
+				"", transcript, true, receipt, false, false, true, 1, List.of(), null, List.of());
+			JsonMapper json = JsonMapper.builder().build();
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				options, json, Yielding.fileReplacer(), input, new StringWriter());
+
+			requireThat(Files.readString(transcript), "transcript").doesNotContain("session_transcript");
+			requireThat(HarnessRunReceipt.read(json, receipt).sessionTranscripts(), "sessionTranscripts").isEmpty();
+			requireThat(Files.exists(run.sessionTranscripts()), "directoryExists").isFalse();
 		}
 	}
 
@@ -841,6 +920,64 @@ public final class HarnessRunnerBridgeTest
 		public void close()
 		{
 			closed = true;
+		}
+	}
+
+	/**
+	 * A harness process that learns its session's transcript while serving its first turn and, when closed, copies the
+	 * transcript into the run as a process that was asked to keep session transcripts does.
+	 */
+	private static final class TranscriptProcess implements HarnessProcess
+	{
+		private final Path nativeTranscript;
+		private final Path copies;
+		private boolean known;
+		private boolean closed;
+
+		/**
+		 * Creates the process.
+		 *
+		 * @param nativeTranscript where the harness writes the session's transcript
+		 * @param copies the directory that receives the copy when the process closes
+		 */
+		private TranscriptProcess(Path nativeTranscript, Path copies)
+		{
+			this.nativeTranscript = nativeTranscript;
+			this.copies = copies;
+		}
+
+		@Override
+		public HarnessProcessResult sendTurn(String request) throws IOException
+		{
+			assert request != null;
+			Files.createDirectories(nativeTranscript.getParent());
+			Files.writeString(nativeTranscript, "{}\n");
+			known = true;
+			return new HarnessProcessResult(0, request, "", true, "done", List.of("done"));
+		}
+
+		@Override
+		public Optional<Path> sessionTranscript()
+		{
+			if (!known)
+				return Optional.empty();
+			return Optional.of(nativeTranscript);
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return !closed;
+		}
+
+		@Override
+		public void close() throws IOException
+		{
+			if (closed)
+				return;
+			closed = true;
+			Files.createDirectories(copies);
+			Files.copy(nativeTranscript, copies.resolve(nativeTranscript.getFileName()));
 		}
 	}
 

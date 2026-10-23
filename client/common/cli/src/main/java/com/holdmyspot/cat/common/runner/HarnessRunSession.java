@@ -3,6 +3,8 @@ package com.holdmyspot.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -128,6 +130,17 @@ public final class HarnessRunSession implements AutoCloseable
 	public HarnessRunnerScope scope()
 	{
 		return scope;
+	}
+
+	/**
+	 * Returns the path of the native transcript that the harness writes for its session, once the session's identifier
+	 * is known.
+	 *
+	 * @return the path of the session's native transcript
+	 */
+	public Optional<Path> sessionTranscript()
+	{
+		return process.sessionTranscript();
 	}
 
 	/**

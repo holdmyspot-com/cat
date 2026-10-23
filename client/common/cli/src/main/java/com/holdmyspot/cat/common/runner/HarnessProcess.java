@@ -1,6 +1,8 @@
 package com.holdmyspot.cat.common.runner;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Optional;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -63,6 +65,20 @@ public interface HarnessProcess extends AutoCloseable
 	default void interrupt() throws IOException
 	{
 		throw new IOException("This harness does not support mid-turn interruption");
+	}
+
+	/**
+	 * Returns the path of the native transcript that the harness writes for its session, once the session's identifier
+	 * is known. A harness that writes no transcript, or one whose session is not yet known, returns no path.
+	 * <p>
+	 * A process that was asked to keep session transcripts copies every transcript of its session, subagents' included,
+	 * into the run's {@link HarnessRun#sessionTranscripts() session transcripts directory} when it closes.
+	 *
+	 * @return the path of the session's native transcript
+	 */
+	default Optional<Path> sessionTranscript()
+	{
+		return Optional.empty();
 	}
 
 	/**
