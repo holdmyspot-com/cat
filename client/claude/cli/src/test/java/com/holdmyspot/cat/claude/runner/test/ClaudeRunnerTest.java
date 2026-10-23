@@ -281,13 +281,13 @@ public final class ClaudeRunnerTest
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
 			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
-				List.of(heldOut));
+				List.of(heldOut), Map.of());
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
 				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
 				directory.resolve("initial-project"), login, other.directory(), evidence.directory().resolve("project"),
 				evidence.directory().resolve("home"), evidence.directory().resolve("run.json"),
-				evidence.directory().resolve(".lock"), workspaces));
+				evidence.directory().resolve(".lock"), workspaces, directory.resolve("home/.claude/settings.json")));
 		}
 	}
 
@@ -323,14 +323,15 @@ public final class ClaudeRunnerTest
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 
 			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
-				List.of(project));
+				List.of(project), Map.of());
 
 			requireThat(deniedReads.size(), "deniedReads.size()").isEqualTo(Set.copyOf(deniedReads).size());
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(instructions, documents,
 				otherSession, campaigns, heldOutRoot, directory.resolve("artifacts"), directory.resolve("run.json"),
 				directory.resolve(".lock"), directory.resolve("initial-project"),
 				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
-				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock")));
+				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock"),
+				directory.resolve("home/.claude/settings.json")));
 		}
 	}
 }

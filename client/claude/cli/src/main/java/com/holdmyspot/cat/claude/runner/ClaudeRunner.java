@@ -25,6 +25,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
+import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.UserRuleTree;
 
@@ -47,6 +48,11 @@ public final class ClaudeRunner
 {
 	private static final Set<String> AUTHENTICATION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"CLAUDE_CODE_OAUTH_TOKEN");
+	/**
+	 * The variable that has Claude Code remove its credentials from the environment of the commands and hooks that it
+	 * starts.
+	 */
+	public static final String SUBPROCESS_ENVIRONMENT_SCRUB = "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB";
 	/**
 	 * The path of a Claude plugin's manifest, relative to the plugin directory.
 	 */
@@ -180,31 +186,19 @@ public final class ClaudeRunner
 			Path isolatedConfiguration = isolatedProcessHome.resolve(".claude");
 			if (installCat && includeUserRules)
 				UserRuleTree.copy(userRulesRoot(environment), ProjectRuleLoader.rulesDirectory(isolatedProcessHome));
-			Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
-			ClaudeProcessEnvironment.removeUnavailablePathEntries(isolatedEnvironment);
-			ClaudeConnectionSettings.copyProcessEnvironment(environment, isolatedEnvironment);
 			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
 			// independent trials do not redownload the same immutable registry artifacts.
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
-			isolatedEnvironment.putAll(caches.environment());
-			// The Claude CLI's subprocess scrubbing can make Bubblewrap bind absent host paths after it makes its root
-			// read-only, preventing Bash commands from starting.
-			//WORKAROUND: https://github.com/anthropics/claude-code/issues/84563
-			// isolatedEnvironment.put("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1");
-			ClaudeConnectionSettings.copy(scope, hostConfiguration.resolve("settings.json"), isolatedEnvironment);
+			Map<String, String> isolatedEnvironment = processEnvironment(scope, environment, caches,
+				hostConfiguration.resolve("settings.json"), isolatedProcessHome);
 			if (requiresCredentialFiles(isolatedEnvironment))
 			{
 				HarnessCredentials.copyAllowedFiles(hostConfiguration, isolatedConfiguration, Set.of(".credentials.json"));
 			}
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
 				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome,
-				caches.directories(), run.directory(), sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads),
-				instructionFilesMode, Platform.current());
-			HarnessEnvironment.setHomeDirectory(isolatedEnvironment, isolatedProcessHome);
-			isolatedEnvironment.put("CLAUDE_CONFIG_DIR", isolatedConfiguration.toString());
-			// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
-			// copying the caller's settings so that no inherited value turns it off.
-			ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
+				caches.directories(), run.directory(), sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads,
+					environment), instructionFilesMode, Platform.current());
 			Path worktree = run.directory().resolve("project");
 			// The copied project already has its owned baseline. A second initial commit
 			// would be empty, so Git would reject it before Claude can start.
@@ -270,29 +264,78 @@ public final class ClaudeRunner
 	}
 
 	/**
+	 * Returns the environment of a run's Claude process. It holds the caller's generic operating-system variables, its
+	 * Claude connection variables, from its environment or else its Claude settings, and the shared dependency caches;
+	 * the run's home as the home directory and its {@code .claude} as Claude's configuration directory; Claude's
+	 * {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB}, which removes Claude's credentials and its configuration directory's
+	 * variable from the environment of the commands and hooks that it starts; and the request for Claude's session
+	 * state events, which the turn boundary depends on. CAT's hooks then find Claude's configuration directory through
+	 * the home directory, as {@code .claude} in it.
+	 *
+	 * @param scope        services shared for the runner process lifetime
+	 * @param environment  the caller's environment
+	 * @param caches       the shared dependency caches
+	 * @param hostSettings the caller's Claude settings file
+	 * @param processHome  the run's isolated home
+	 * @return the environment, which the caller may change
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the settings file cannot be read
+	 */
+	public static Map<String, String> processEnvironment(HarnessRunnerScope scope, Map<String, String> environment,
+		HarnessDependencyCaches caches, Path hostSettings, Path processHome) throws IOException
+	{
+		requireThat(scope, "scope").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(caches, "caches").isNotNull();
+		requireThat(hostSettings, "hostSettings").isNotNull();
+		requireThat(processHome, "processHome").isNotNull();
+		Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
+		ClaudeProcessEnvironment.removeUnavailablePathEntries(isolatedEnvironment);
+		ClaudeConnectionSettings.copyProcessEnvironment(environment, isolatedEnvironment);
+		isolatedEnvironment.putAll(caches.environment());
+		// Claude Code needs the connection variables itself, but removes its credentials from the environment of every
+		// command and hook that it starts, so that a harness started from a command finds no login
+		isolatedEnvironment.put(SUBPROCESS_ENVIRONMENT_SCRUB, "1");
+		ClaudeConnectionSettings.copy(scope, hostSettings, isolatedEnvironment);
+		HarnessEnvironment.setHomeDirectory(isolatedEnvironment, processHome);
+		isolatedEnvironment.put("CLAUDE_CONFIG_DIR", processHome.resolve(".claude").toString());
+		// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
+		// copying the caller's settings so that no inherited value turns it off.
+		ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
+		return isolatedEnvironment;
+	}
+
+	/**
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
 	 * file and directory under the run root except the session's project, home, Claude temporary directory and
-	 * evidence, and the login that the runner copied into the session's home. The session therefore cannot read the
-	 * runner's records of its own run or of any other run, the workspace files of any run, or the login. A denied
-	 * directory that holds the session's project, home, Claude temporary directory or evidence, such as the project
-	 * that holds the run root, is replaced by every file and directory under it except those and the directories that
-	 * lead to them.
+	 * evidence, and every harness's login and configuration files in the session's home and in the user's home, as
+	 * {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them. The session therefore cannot read the
+	 * runner's records of its own run or of any other run, the workspace files of any run, or a login or configuration
+	 * that would let a harness started from a command reach the model provider. A denied directory that holds the
+	 * session's project, home, Claude temporary directory or evidence, such as the project that holds the run root, is
+	 * replaced by every file and directory under it except those and the directories that lead to them.
+	 * <p>
+	 * A login or configuration file that does not exist when the session starts is left out, because Claude's sandbox
+	 * creates an empty file at a missing denied path, which would change the user's harness configuration; the
+	 * session's own settings file, which the runner writes before the session starts, is always included.
 	 *
-	 * @param manager the run manager
-	 * @param run the session's run
+	 * @param manager          the run manager
+	 * @param run              the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
-	 * @param deniedReads the files and directories that the caller denies the session reading
+	 * @param deniedReads      the files and directories that the caller denies the session reading
+	 * @param environment      the caller's environment, which names the user's home and harness directories
 	 * @return the paths to deny, each once
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the run root or a denied directory cannot be listed
+	 * @throws IOException          if the run root or a denied directory cannot be listed
 	 */
 	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
-		List<Path> readOnlyEvidence, List<Path> deniedReads) throws IOException
+		List<Path> readOnlyEvidence, List<Path> deniedReads, Map<String, String> environment) throws IOException
 	{
 		requireThat(manager, "manager").isNotNull();
 		requireThat(run, "run").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
+		requireThat(environment, "environment").isNotNull();
 		Path home = run.directory().resolve("home");
 		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
 		accessible.add(run.directory().resolve("project"));
@@ -309,10 +352,18 @@ public final class ClaudeRunner
 				result.add(denied);
 		}
 		result.addAll(manager.deniedReads(accessible));
-		// The Claude process reads the login itself; the denial confines only the session's tools and commands
-		Path login = home.resolve(".claude").resolve(".credentials.json");
-		if (Files.exists(login, NOFOLLOW_LINKS))
-			result.add(login);
+		// The Claude process reads the logins and settings itself; the denial confines only the session's tools and
+		// commands
+		Platform platform = Platform.current();
+		List<Path> harnessFiles = new ArrayList<>(SessionCommandLimits.harnessFiles(environment, platform));
+		harnessFiles.addAll(SessionCommandLimits.harnessFiles(SessionCommandLimits.homeEnvironment(home, platform),
+			platform));
+		for (Path file : harnessFiles)
+		{
+			if (Files.exists(file, NOFOLLOW_LINKS))
+				result.add(file);
+		}
+		result.add(home.resolve(".claude").resolve("settings.json"));
 		return List.copyOf(result);
 	}
 

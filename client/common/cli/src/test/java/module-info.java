@@ -36,6 +36,8 @@ module com.holdmyspot.cat.common.cli.test
 	exports com.holdmyspot.cat.common.release.fakes.test to com.holdmyspot.cat.claude.cli.test,
 		com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.release.test to org.testng;
+	exports com.holdmyspot.cat.common.runner.contract.test to org.testng, com.holdmyspot.cat.claude.cli.test,
+		com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.runner.fakes.test to com.holdmyspot.cat.claude.cli.test,
 		com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.runner.test to org.testng;

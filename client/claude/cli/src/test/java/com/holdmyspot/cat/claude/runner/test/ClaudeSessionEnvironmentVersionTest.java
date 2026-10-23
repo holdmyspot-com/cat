@@ -89,7 +89,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 				""", UTF_8);
 
 			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(),
-				List.of(deniedFile, deniedDirectory, hostProject));
+				List.of(deniedFile, deniedDirectory, hostProject), Map.of());
 			List<Path> dependencyCaches = List.of(root.resolve("host-home/.npm"), root.resolve("host-home/.m2"));
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
 				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads,

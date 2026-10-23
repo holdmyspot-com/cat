@@ -5,6 +5,7 @@ module com.holdmyspot.cat.codex.cli.test
 	requires com.holdmyspot.cat.common.cli.test;
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.databind;
+	requires tools.jackson.dataformat.toml;
 	requires org.testng;
 
 	exports com.holdmyspot.cat.codex.optimizer.test to org.testng;

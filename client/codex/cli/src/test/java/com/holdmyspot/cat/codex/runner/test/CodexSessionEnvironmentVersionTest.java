@@ -100,7 +100,7 @@ public final class CodexSessionEnvironmentVersionTest
 				Platform.LINUX_X64);
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
 				CodexRunner.sessionDeniedReads(manager, run, List.of(evidence), List.of(deniedFile, hostProject),
-					Platform.LINUX_X64));
+					Platform.LINUX_X64, Map.of()));
 			CodexConnectionConfiguration.copyTrustedCatHooks(source, destination);
 
 			// The instructions name paths in plain text, which each platform separates in its own way

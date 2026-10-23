@@ -85,11 +85,29 @@ public final class HarnessEnvironment
 	{
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
-		environment.put("HOME", home.toString());
-		Platform platform = Platform.current();
-		environment.put(platform.homeVariable(), home.toString());
+		environment.putAll(homeVariables(home, Platform.current()));
+	}
+
+	/**
+	 * Returns the variables that give a child process a home directory on a platform, as
+	 * {@link #setHomeDirectory(Map, Path)} sets them: {@code HOME} and, on Windows, also {@code USERPROFILE} and
+	 * {@code LOCALAPPDATA}.
+	 *
+	 * @param home     the child's home directory
+	 * @param platform the platform that the child runs on
+	 * @return each variable's name mapped to its value
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static Map<String, String> homeVariables(Path home, Platform platform)
+	{
+		requireThat(home, "home").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		Map<String, String> variables = new HashMap<>();
+		variables.put("HOME", home.toString());
+		variables.put(platform.homeVariable(), home.toString());
 		if (platform.isWindows())
-			environment.put("LOCALAPPDATA", home.resolve("AppData").resolve("Local").toString());
+			variables.put("LOCALAPPDATA", home.resolve("AppData").resolve("Local").toString());
+		return Map.copyOf(variables);
 	}
 
 	/**

@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
+import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 
 import java.io.File;
@@ -43,6 +44,14 @@ import java.util.Set;
 public final class CodexRunner
 {
 	private static final Set<String> AUTHENTICATION_VARIABLES = Set.of("CODEX_API_KEY", "OPENAI_API_KEY");
+	/**
+	 * The variable that names the Codex home, which holds Codex's login, configuration and state.
+	 */
+	private static final String CODEX_HOME = "CODEX_HOME";
+	/**
+	 * The name of Codex's configuration file in the Codex home.
+	 */
+	private static final String CONFIGURATION = "config.toml";
 	/**
 	 * The path of a Codex plugin's manifest, relative to the plugin directory.
 	 */
@@ -219,19 +228,15 @@ public final class CodexRunner
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = codexHome(environment);
 			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of("auth.json"));
-			Path isolatedConfiguration = isolatedHome.resolve("config.toml");
+			Path isolatedConfiguration = isolatedHome.resolve(CONFIGURATION);
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
-			CodexConnectionConfiguration.copy(hostHome.resolve("config.toml"), isolatedConfiguration, caches,
+			CodexConnectionConfiguration.copy(hostHome.resolve(CONFIGURATION), isolatedConfiguration, caches,
 				temporaryDirectory, toolOutputTokenLimit, Platform.current());
 			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
-				readOnlyEvidence, sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, Platform.current()));
-			Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
-			HarnessEnvironment.copyAllowed(environment, isolatedEnvironment, AUTHENTICATION_VARIABLES);
-			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
-			// independent trials do not redownload the same immutable registry artifacts.
-			isolatedEnvironment.putAll(caches.environment());
-			isolatedEnvironment.put("CODEX_HOME", isolatedHome.toString());
-			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
+				readOnlyEvidence, sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, Platform.current(),
+					environment));
+			Map<String, String> isolatedEnvironment = processEnvironment(environment, caches, isolatedHome,
+				run.directory());
 			Path worktree = run.directory().resolve("project");
 			installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome, isolatedEnvironment,
 				executables, (setup, step) -> HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables,
@@ -291,6 +296,35 @@ public final class CodexRunner
 	}
 
 	/**
+	 * Returns the environment of a run's app-server. It holds the caller's generic operating-system variables, its
+	 * Codex authentication variables and the shared dependency caches, names the run's isolated home as the Codex home,
+	 * and stops Git from finding a repository above the run directory.
+	 *
+	 * @param environment  the caller's environment
+	 * @param caches       the shared dependency caches
+	 * @param isolatedHome the run's isolated home
+	 * @param runDirectory the run's directory
+	 * @return the environment, which the caller may change
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code runDirectory} is relative
+	 */
+	public static Map<String, String> processEnvironment(Map<String, String> environment,
+		HarnessDependencyCaches caches, Path isolatedHome, Path runDirectory)
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireThat(caches, "caches").isNotNull();
+		requireThat(isolatedHome, "isolatedHome").isNotNull();
+		Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
+		HarnessEnvironment.copyAllowed(environment, isolatedEnvironment, AUTHENTICATION_VARIABLES);
+		// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
+		// independent trials do not redownload the same immutable registry artifacts.
+		isolatedEnvironment.putAll(caches.environment());
+		isolatedEnvironment.put(CODEX_HOME, isolatedHome.toString());
+		HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, runDirectory);
+		return isolatedEnvironment;
+	}
+
+	/**
 	 * Returns the developer instructions of a session: a note that the denied reads under the run root cover neither
 	 * the session's project nor its home, followed by the agent's contract, if any. Codex lists the run root among the
 	 * denied reads in the model's instructions, and without the note models answered that their own project was
@@ -321,9 +355,13 @@ public final class CodexRunner
 	/**
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every file
 	 * and directory under the run root except the session's project, home and evidence, the directory where Codex logs
-	 * the session's events, and the login that the runner copied into the session's home. The session therefore cannot
-	 * read the runner's records of its own run or of any other run, the workspace files of any run, or the login. The
-	 * method creates the session log directory, because the sandbox skips a denied path that does not exist yet.
+	 * the session's events, and every harness's login and configuration files in the session's home and in the user's
+	 * home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them, except the session's own
+	 * {@code config.toml}, which holds no login and from which CAT's {@code read-part} command reads the session's tool
+	 * output limit. The session therefore cannot read the runner's records of its own run or of any other run, the
+	 * workspace files of any run, or a login or the user's configuration. The method creates the session log
+	 * directory, because the sandbox skips a denied path that does not exist yet; for the same reason, it leaves out a
+	 * login or configuration file that does not exist.
 	 * <p>
 	 * The result names the run root and each directory that the caller denies rather than each path under them, which
 	 * also denies the runs that start after the session. It omits a path inside another directory that it names, except
@@ -337,18 +375,21 @@ public final class CodexRunner
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @param platform the platform that the session runs on
+	 * @param environment the caller's environment, which names the user's home and harness directories
 	 * @return the paths to deny, each once
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if a denied directory cannot be listed or the session log directory cannot be created
 	 */
 	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
-		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform) throws IOException
+		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment)
+		throws IOException
 	{
 		requireThat(manager, "manager").isNotNull();
 		requireThat(run, "run").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
 		requireThat(platform, "platform").isNotNull();
+		requireThat(environment, "environment").isNotNull();
 		Path home = run.directory().resolve("home");
 		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
 		accessible.add(run.directory().resolve("project"));
@@ -374,10 +415,20 @@ public final class CodexRunner
 		result.removeIf(path -> named.stream().anyMatch(other -> !other.equals(path) && path.startsWith(other)));
 		// The session's events are the same record as the run's artifacts, kept by Codex instead of the runner
 		result.add(Files.createDirectories(home.resolve("sessions")));
-		// The Codex process reads the login itself; the sandbox confines only the commands that the session runs
-		Path login = home.resolve("auth.json");
-		if (Files.exists(login, NOFOLLOW_LINKS))
-			result.add(login);
+		// The Codex process reads the logins and configuration itself; the sandbox confines only the commands that the
+		// session runs
+		Map<String, String> commandEnvironment = new HashMap<>(SessionCommandLimits.homeEnvironment(home, platform));
+		commandEnvironment.put(CODEX_HOME, home.toString());
+		List<Path> harnessFiles = new ArrayList<>(SessionCommandLimits.harnessFiles(environment, platform));
+		harnessFiles.addAll(SessionCommandLimits.harnessFiles(commandEnvironment, platform));
+		for (Path file : harnessFiles)
+		{
+			// CAT's read-part command reads the session's tool output limit from the session's configuration
+			if (file.equals(home.resolve(CONFIGURATION).toAbsolutePath().normalize()))
+				continue;
+			if (Files.exists(file, NOFOLLOW_LINKS))
+				result.add(file);
+		}
 		return List.copyOf(result);
 	}
 
@@ -412,8 +463,8 @@ public final class CodexRunner
 		requireThat(isolatedEnvironment, "isolatedEnvironment").isNotNull();
 		requireThat(executables, "executables").isNotNull();
 		requireThat(commands, "commands").isNotNull();
-		Path hostConfiguration = hostHome.resolve("config.toml");
-		Path isolatedConfiguration = isolatedHome.resolve("config.toml");
+		Path hostConfiguration = hostHome.resolve(CONFIGURATION);
+		Path isolatedConfiguration = isolatedHome.resolve(CONFIGURATION);
 		List<String> names = new ArrayList<>();
 		for (Path trialPlugin : trialPlugins)
 		{
@@ -551,7 +602,7 @@ public final class CodexRunner
 	private static Path codexHome(Map<String, String> environment)
 	{
 		assert environment != null;
-		String configured = environment.get("CODEX_HOME");
+		String configured = environment.get(CODEX_HOME);
 		if (configured != null && !configured.isBlank())
 			return Path.of(configured);
 		String home = environment.get(Platform.current().homeVariable());

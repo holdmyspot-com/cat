@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
+import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,6 +17,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -132,8 +134,17 @@ public final class CodexConnectionConfiguration
 				copied.append("writable_roots = ").append(roots).append(System.lineSeparator());
 			}
 		}
-		copied.append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
-		for (Entry<String, String> variable : new TreeMap<>(caches.environment()).entrySet())
+		// The commands that a session runs get the run's home as their home and no harness credential, so that a
+		// harness started from a command finds neither the user's login nor the user's configuration
+		StringJoiner credentials = new StringJoiner(", ", "[", "]");
+		for (String credential : new TreeSet<>(SessionCommandLimits.CREDENTIAL_VARIABLES))
+			credentials.add('"' + credential + '"');
+		copied.append(System.lineSeparator()).append("[shell_environment_policy]").append(System.lineSeparator()).
+			append("exclude = ").append(credentials).append(System.lineSeparator()).
+			append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
+		Map<String, String> commandEnvironment = new TreeMap<>(caches.environment());
+		commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(destination.getParent(), platform));
+		for (Entry<String, String> variable : commandEnvironment.entrySet())
 		{
 			copied.append(variable.getKey()).append(" = \"").append(toml(variable.getValue())).append('"').
 				append(System.lineSeparator());

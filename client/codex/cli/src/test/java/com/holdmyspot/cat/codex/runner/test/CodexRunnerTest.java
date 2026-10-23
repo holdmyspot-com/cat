@@ -342,7 +342,7 @@ public final class CodexRunnerTest
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
 			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
-				Platform.LINUX_X64);
+				Platform.LINUX_X64, Map.of());
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut, root,
 				directory.resolve("home/sessions"), login));
@@ -397,7 +397,7 @@ public final class CodexRunnerTest
 			for (Platform platform : List.of(Platform.MACOS_ARM64, Platform.WINDOWS_X64))
 			{
 				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
-					platform);
+					platform, Map.of());
 
 				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(heldOut, root,
 					directory.resolve("home/sessions"), login));
@@ -429,7 +429,7 @@ public final class CodexRunnerTest
 			for (Platform platform : List.of(Platform.MACOS_X64, Platform.WINDOWS_ARM64))
 			{
 				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
-					List.of(heldOut), platform);
+					List.of(heldOut), platform, Map.of());
 
 				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(heldOut, root,
 					directory.resolve("home/sessions")));
@@ -463,7 +463,7 @@ public final class CodexRunnerTest
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
 			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
-				List.of(heldOut), Platform.LINUX_X64);
+				List.of(heldOut), Platform.LINUX_X64, Map.of());
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
 				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
@@ -503,7 +503,7 @@ public final class CodexRunnerTest
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 
 			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
-				List.of(project), Platform.LINUX_X64);
+				List.of(project), Platform.LINUX_X64, Map.of());
 
 			requireThat(deniedReads.size(), "deniedReads.size()").isEqualTo(Set.copyOf(deniedReads).size());
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(instructions, documents,
@@ -514,7 +514,7 @@ public final class CodexRunnerTest
 			for (Platform platform : List.of(Platform.MACOS_ARM64, Platform.WINDOWS_X64))
 			{
 				deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
-					List.of(project), platform);
+					List.of(project), platform, Map.of());
 
 				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(project,
 					directory.resolve("home/sessions")));
@@ -545,7 +545,7 @@ public final class CodexRunnerTest
 			for (Platform platform : List.of(Platform.LINUX_X64, Platform.MACOS_ARM64, Platform.WINDOWS_X64))
 			{
 				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(),
-					List.of(heldOutRoot, project), platform);
+					List.of(heldOutRoot, project), platform, Map.of());
 
 				requireThat(deniedReads, platform + ".deniedReads").containsExactly(List.of(project,
 					run.directory().resolve("home/sessions")));
