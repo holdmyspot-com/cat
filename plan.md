@@ -3097,7 +3097,8 @@ The riskiest pure code, built first.
 - **Change:**
 	- one harness-neutral definition in the common runner package lists the limits of a session's commands: the run's
 		home as `HOME` (and the Windows equivalents), no harness credential variable in their environment, and denied
-		reads of every harness's login and configuration in the run's home and the user's home and of every other run;
+		reads of every harness's login and configuration files in the run's home and the user's home and of every other
+		run, leaving the rest of the user's harness directories readable because installed plugins link there;
 	- both runners build their sandbox settings and environment from it: Claude sets its subprocess scrub, Codex sets
 		its shell environment policy and the commands' home;
 	- one conformance test runs against both runners' generated settings and environment, so a limit that one runner
@@ -3121,8 +3122,9 @@ The riskiest pure code, built first.
 		the response up to a bound and prints the response file's path, or the request id and how to wait again;
 	- the runner validates each request (count, harness, paths readable by the session, model and effort) and starts
 		the session through the requested harness's runner launcher, resolved as the runner skills resolve it, with the
-		requester's run root and denied reads and no requests of its own; it writes a response that names the requested
-		run's transcript, receipt and native transcripts, never their content;
+		requester's run root and denied reads and no requests of its own; it copies the requested run's transcript,
+		receipt and native transcripts into the request's directory and writes a response that names the copies, never
+		their content;
 	- a requested session takes a slot of its harness's capacity, honouring the hold, and fails with `capacity` after
 		waiting 10 minutes; ending the run or interrupting its turn stops requested sessions and answers pending requests
 		with `stopped`;

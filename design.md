@@ -2358,10 +2358,12 @@ and at the end of the run copies every native transcript of the run, subagents' 
 records read what a model received from those copies (D97).
 
 **Trial limits (user rulings, 2026-10-23):** the commands that a session runs have the same limits in both harnesses,
-on every platform, and one harness-neutral definition that both runners apply sets them, so a limit cannot hold in one
-harness and not the other. A session's commands run with the run's isolated home as their home directory, receive no
-harness credential in their environment, and cannot read any harness's login or configuration, in the run's home or
-the user's, or any run under the run root except their own. A harness that a command starts directly therefore cannot
+and one harness-neutral definition that both runners apply sets them, so a limit cannot hold in one harness and not
+the other. A session's commands run with the run's isolated home as their home directory, receive no harness
+credential in their environment, and cannot read any harness's login or configuration files, in the run's home or the
+user's, or any run under the run root except their own. The user's harness directories stay readable otherwise,
+because a session's installed plugins link to files there. On Windows, where Claude Code runs commands without its
+sandbox, the read limits bind only Claude's file tools. A harness that a command starts directly therefore cannot
 reach the model provider; a session that needs another session requests one instead (D98).
 
 **Requested sessions (user rulings, 2026-10-23):** a caller that passes `--session-requests <count>` lets the session
@@ -2370,8 +2372,9 @@ trials. The session requests one by running the `request-session` launcher that 
 with the harness, a project directory, one or more prompt files and, optionally, plugins, a model, an effort and
 `--session-transcripts`. Every input and result passes as a file path, never as content: the launcher writes the
 request into the run's `requests` directory, the one directory outside its project and home that the session may
-write, and the runner answers with a response file that names the requested run's transcript, receipt and native
-transcripts. The runner, outside the session's sandbox, validates the request and starts the session through that
+write, and the runner answers with a response file in the request's directory that names copies, in the same
+directory, of the requested run's transcript, receipt and native transcripts, since the requesting session cannot
+read other runs. The runner, outside the session's sandbox, validates the request and starts the session through that
 harness's runner launcher, resolved as the runner skills resolve it, with the requesting session's run root and denied
 reads, and without requested sessions of its own. A requested session therefore has at most the permissions of the
 session that requested it, and no credential ever reaches a command. It takes its own slot of its harness's shared
