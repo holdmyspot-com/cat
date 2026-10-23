@@ -18,6 +18,8 @@ actual subject.
 	origin unclaimed rather than invent one.
 - Let a maintainer learn from the comment beside a deliberate divergence from the normal approach why the divergence
 	is required and what would fail without it, so that it is neither removed nor copied incorrectly.
+- Keep every instruction that a model must follow out of the comments of a prompt file, because CAT removes them
+	before the model reads the file.
 
 ## Guidance
 
@@ -29,6 +31,10 @@ When an explanatory comment justifies a Design Goal, place it immediately above 
 situation that prompted the addition and how the goal addresses it. Do not substitute a generic example, a restatement
 of the goal, or a fabricated incident for the known reason it was added. If that reason is unavailable, do not invent
 one; say what is known and leave the origin unclaimed.
+
+Comments in a prompt file remind the plugin developers why a Design Goal was added. CAT removes every HTML comment other
+than a `<!-- cat: -->` directive from the prompt files it ships, and from a role brief before sending it, so the model
+never reads them. State any instruction that the model must follow in the file's guidance, not in a comment.
 
 When maintained code deliberately differs from its normal peer, shared design, or platform-neutral approach because of
 an external boundary, document the decision beside that implementation. State the normal approach, the observed

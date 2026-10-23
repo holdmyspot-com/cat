@@ -20,6 +20,9 @@
 	reader decision; retain uncertain wording and report the possible improvement instead.
 - When test runs measure an artifact's compliance, measure each conditional obligation where its trigger is absent too,
 	so wording that applies the obligation beyond its trigger fails a test instead of passing every one.
+- Make a prompt file's guidance carry every instruction its model needs, because its Design Goals, which guide its
+	authors, and its comments, which remind the plugin developers why a Design Goal was added, are removed before the
+	model reads it.
 
 ## Guidance
 
@@ -49,6 +52,15 @@ Guidance` when the remaining content is unheaded, or let the next named `##` sec
 that only routes to another prompt or supplies minimal metadata without independent guidance is not substantive and does
 not need goal boilerplate. `## Design Goals` is the sole summary of why a substantive prompt exists; keep only distinct
 invocation criteria, constraints, procedures, examples, or verification in the remaining sections.
+
+`## Design Goals` is the reference that a prompt file's authors update its guidance from, and its HTML comments remind
+the plugin developers why a Design Goal was added; neither is for the model that follows the file. CAT's build removes
+both from every prompt file it ships, and CAT removes them from a role brief before sending it, keeping only `<!-- cat:
+-->` directives and the text inside fenced code blocks and code spans, so the model never reads them. Write the
+remaining sections so that a model reading only them reaches every outcome the goals promise: state each instruction,
+condition, output form and authority there, even when a goal already says it. Before accepting a prompt file, delete its
+`## Design Goals` section and comments in a copy, read what remains, and check that every goal is still achieved by that
+text alone; add any missing instruction to the guidance rather than relying on the goals.
 
 Before creating or accepting a prompt file as a companion, classify it separately from its parent. A companion that a
 reader can load directly and that supplies an independent procedure, constraint, or decision is substantive even when a
