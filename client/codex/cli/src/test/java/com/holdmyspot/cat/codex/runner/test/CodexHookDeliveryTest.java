@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.runner.CodexHookDelivery;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.IOException;
 import org.testng.annotations.Test;
 
@@ -19,7 +20,7 @@ public final class CodexHookDeliveryTest
 		expectedExceptionsMessageRegExp = ".*subagent start hook is untrusted.*")
 	public void rejectsUntrustedSubagentHook() throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			CodexHookDelivery.verifyConfiguredHooks(scope.json().readTree("""
 				{"result":{"data":[{"hooks":[
@@ -39,7 +40,7 @@ public final class CodexHookDeliveryTest
 		expectedExceptionsMessageRegExp = ".*post tool use hook is untrusted.*")
 	public void rejectsUntrustedPostToolUseHook() throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			CodexHookDelivery.verifyConfiguredHooks(scope.json().readTree("""
 				{"result":{"data":[{"hooks":[
@@ -60,7 +61,7 @@ public final class CodexHookDeliveryTest
 	@Test
 	public void acceptsUndeclaredPostToolUseHook() throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			CodexHookDelivery.verifyConfiguredHooks(scope.json().readTree("""
 				{"result":{"data":[{"hooks":[
@@ -79,7 +80,7 @@ public final class CodexHookDeliveryTest
 		expectedExceptionsMessageRegExp = ".*did not deliver CAT's SubagentStart.*")
 	public void rejectsMissingSubagentStartEvent() throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			CodexHookDelivery.verifySubagentDelivery("""
 				{"method":"item/started","params":{"item":{"type":"subAgentActivity","kind":"started","agentThreadId":"c"}}}
@@ -93,7 +94,7 @@ public final class CodexHookDeliveryTest
 	@Test
 	public void acceptsDeliveredSubagentStartEvent() throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			CodexHookDelivery.verifySubagentDelivery("""
 				{"method":"hook/completed","params":{"threadId":"child","run":{"eventName":"subagentStart"}}}
@@ -110,7 +111,7 @@ public final class CodexHookDeliveryTest
 	@Test
 	public void ignoresInteractedSubagentActivity() throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			CodexHookDelivery.verifySubagentDelivery("""
 				{"method":"item/started","params":{"item":{"type":"subAgentActivity","kind":"started","agentThreadId":"child"}}}

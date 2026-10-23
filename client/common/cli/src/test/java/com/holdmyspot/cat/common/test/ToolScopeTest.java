@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,7 +40,7 @@ public final class ToolScopeTest
 	@Test
 	public void defaultScopeHasNoSession() throws IOException
 	{
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			requireThat(scope.sessionDirectory(), "sessionDirectory").isEqualTo(Optional.empty());
 			requireThat(scope.missingSession(), "missingSession").isEqualTo("No harness session variable is known");

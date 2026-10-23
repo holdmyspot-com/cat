@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.contract.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -84,21 +86,24 @@ public final class TestWorkspaceTest
 	@Test
 	public void writesEachFixtureWithTheTestCaseValues() throws IOException
 	{
-		// Requirement: R-C21
-		PromptTest test = test("When was the release in `docs/{{notes}}` published?", List.of(NOTES));
-		TestCase testCase = testCase();
-		TestWorkspace testWorkspace = TestWorkspace.of(test, testCase);
-		requireThat(List.copyOf(testWorkspace.files().keySet()), "paths").isEqualTo(List.of("docs/release-notes.md"));
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"workspace"));
-			testWorkspace.write(workspace);
+			// Requirement: R-C21
+			PromptTest test = test("When was the release in `docs/{{notes}}` published?", List.of(NOTES));
+			TestCase testCase = testCase();
+			TestWorkspace testWorkspace = TestWorkspace.of(test, testCase);
+			requireThat(List.copyOf(testWorkspace.files().keySet()), "paths").isEqualTo(List.of("docs/release-notes.md"));
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path workspace = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"workspace"));
+				testWorkspace.write(workspace);
 
-			StringWriter logs = new StringWriter();
-			((TestValue.Generated) testCase.values().get("before")).write(logs);
-			requireThat(Files.readString(workspace.resolve("docs/release-notes.md")), "notes").
-				isEqualTo(logs + "\nRelease 4.2 was published on 2025-03-04.\n");
+				StringWriter logs = new StringWriter();
+				((TestValue.Generated) testCase.values().get("before")).write(logs);
+				requireThat(Files.readString(workspace.resolve("docs/release-notes.md")), "notes").
+					isEqualTo(logs + "\nRelease 4.2 was published on 2025-03-04.\n");
+			}
 		}
 	}
 
@@ -111,20 +116,23 @@ public final class TestWorkspaceTest
 	@Test
 	public void writesLinkFixtureAsLink() throws IOException
 	{
-		WorkspaceFile latest = new WorkspaceFile("latest", "docs/{{notes}}", ".cat/tests/release_date/workspace/latest",
-			true);
-		PromptTest test = test("When was the release in `latest` published?", List.of(NOTES, latest));
-		TestWorkspace testWorkspace = TestWorkspace.of(test, testCase());
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"workspace"));
-			testWorkspace.write(workspace);
+			WorkspaceFile latest = new WorkspaceFile("latest", "docs/{{notes}}", ".cat/tests/release_date/workspace/latest",
+				true);
+			PromptTest test = test("When was the release in `latest` published?", List.of(NOTES, latest));
+			TestWorkspace testWorkspace = TestWorkspace.of(test, testCase());
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path workspace = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"workspace"));
+				testWorkspace.write(workspace);
 
-			requireThat(Files.readSymbolicLink(workspace.resolve("latest")), "latest").
-				isEqualTo(Path.of("docs/release-notes.md"));
-			requireThat(Files.readString(workspace.resolve("latest")), "throughLatest").
-				endsWith("Release 4.2 was published on 2025-03-04.\n");
+				requireThat(Files.readSymbolicLink(workspace.resolve("latest")), "latest").
+					isEqualTo(Path.of("docs/release-notes.md"));
+				requireThat(Files.readString(workspace.resolve("latest")), "throughLatest").
+					endsWith("Release 4.2 was published on 2025-03-04.\n");
+			}
 		}
 	}
 
@@ -158,26 +166,29 @@ public final class TestWorkspaceTest
 	@Test
 	public void refusesAnExistingPath() throws IOException
 	{
-		// Requirement: R-C21
-		PromptTest test = test("When was the release in `docs/{{notes}}` published?", List.of(NOTES));
-		TestWorkspace testWorkspace = TestWorkspace.of(test, testCase());
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"workspace"));
-			Files.createDirectories(workspace.resolve("docs"));
-			Files.writeString(workspace.resolve("docs/release-notes.md"), "Project notes");
-			try
+			// Requirement: R-C21
+			PromptTest test = test("When was the release in `docs/{{notes}}` published?", List.of(NOTES));
+			TestWorkspace testWorkspace = TestWorkspace.of(test, testCase());
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				testWorkspace.write(workspace);
-				throw new AssertionError("A fixture replaced an existing file");
+				Path workspace = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"workspace"));
+				Files.createDirectories(workspace.resolve("docs"));
+				Files.writeString(workspace.resolve("docs/release-notes.md"), "Project notes");
+				try
+				{
+					testWorkspace.write(workspace);
+					throw new AssertionError("A fixture replaced an existing file");
+				}
+				catch (FileAlreadyExistsException e)
+				{
+					requireThat(e.getMessage(), "message").contains("release-notes.md");
+				}
+				requireThat(Files.readString(workspace.resolve("docs/release-notes.md")), "notes").
+					isEqualTo("Project notes");
 			}
-			catch (FileAlreadyExistsException e)
-			{
-				requireThat(e.getMessage(), "message").contains("release-notes.md");
-			}
-			requireThat(Files.readString(workspace.resolve("docs/release-notes.md")), "notes").
-				isEqualTo("Project notes");
 		}
 	}
 

@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.codex.optimizer;
 
+import com.holdmyspot.cat.common.JvmScope;
+
 import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -121,7 +123,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		ensureOpen();
 		if (sessions == null)
 		{
-			sessions = sessions(environment, home, hostProject(), runRoot(), artifact, configurationDirectory,
+			sessions = sessions(this, environment, home, hostProject(), runRoot(), artifact, configurationDirectory,
 				this::heldOutDirectories, clock(), fileReplacer());
 		}
 		return sessions;
@@ -158,6 +160,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	/**
 	 * Creates the port that runs nested sessions through the Codex runner.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param environment            the process environment
 	 * @param home                   the user's home directory
 	 * @param hostProject            the project of the host session, which holds the run root
@@ -169,11 +172,12 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param replacer               replaces the files of the sessions' runs
 	 * @return the port
 	 */
-	private static SessionPort sessions(Map<String, String> environment, Path home, Path hostProject, Path runRoot,
+	private static SessionPort sessions(JvmScope jvm, Map<String, String> environment, Path home, Path hostProject,
+		Path runRoot,
 		Path artifact, Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock,
 		FileReplacer replacer)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, heldOut, "", true,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, heldOut, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock, replacer, Optional.of(ProjectRuleLoader.rulesDirectory(home)),
 			hostProject);

@@ -1,5 +1,8 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -105,27 +108,30 @@ public final class CodexTrialRecordTest
 	@Test
 	public void checksDecideFromRecordedEvents() throws IOException, UndecidableToolException
 	{
-		// Requirement: R-C9
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trial-record-"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			CodexSessions sessions = new CodexSessions(settings);
-			Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1, SANDBOX_ERROR)));
-			Recorded record = new Recorded(sessions.readEvidence(transcript), Map.of());
-
-			requireThat(sessions.reportsExitStatus(), "reportsExitStatus").isTrue();
-			requireThat(record.tools(), "tools").isNotEmpty();
-			for (SessionEvidence.Tool tool : record.tools())
+			// Requirement: R-C9
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				requireThat(tool.command(), tool.tool() + ".command").
-					isEqualTo(tool.tool().equals("commandExecution"));
+				Path root = cleanup.add(Files.createTempDirectory("cat-codex-trial-record-"));
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+					root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				CodexSessions sessions = new CodexSessions(settings);
+				Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1, SANDBOX_ERROR)));
+				Recorded record = new Recorded(sessions.readEvidence(transcript), Map.of());
+
+				requireThat(sessions.reportsExitStatus(), "reportsExitStatus").isTrue();
+				requireThat(record.tools(), "tools").isNotEmpty();
+				for (SessionEvidence.Tool tool : record.tools())
+				{
+					requireThat(tool.command(), tool.tool() + ".command").
+						isEqualTo(tool.tool().equals("commandExecution"));
+				}
+				requireThat(decide("exit-status \"-lc true$\" 1", record), "failedToStart").isTrue();
+				requireThat(decide("exit-status \"-lc true$\" 0", record), "succeeded").isFalse();
+				requireThat(decide("tool-used commandExecution", record), "toolUsed").isTrue();
+				requireThat(decide("no-tool-call", record), "noToolCall").isFalse();
 			}
-			requireThat(decide("exit-status \"-lc true$\" 1", record), "failedToStart").isTrue();
-			requireThat(decide("exit-status \"-lc true$\" 0", record), "succeeded").isFalse();
-			requireThat(decide("tool-used commandExecution", record), "toolUsed").isTrue();
-			requireThat(decide("no-tool-call", record), "noToolCall").isFalse();
 		}
 	}
 
@@ -139,10 +145,11 @@ public final class CodexTrialRecordTest
 	@Test
 	public void readingCountsOnlyReceivedOutput() throws IOException, UndecidableToolException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trial-record-"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
 				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = new CodexSessions(settings);
 			Map<String, String> initial = Map.of("error.log", SANDBOX_ERROR);

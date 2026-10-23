@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -743,7 +744,7 @@ public final class CodexSessionStartHookTest
 	 */
 	private static JsonNode readJson(String text)
 	{
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			return scope.json().readTree(text);
 		}
@@ -759,7 +760,7 @@ public final class CodexSessionStartHookTest
 	private static JsonNode readResponse(HookResult result) throws IOException
 	{
 		assert result != null;
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			return scope.json().readTree(result.output());
 		}

@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
@@ -68,14 +70,17 @@ public final class TranscriptInterruptSignalContractTest
 	@Test
 	public void reportsNoInterruptWithoutRecord() throws IOException
 	{
-		// Requirement: R-E10
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path temporaryRoot = Path.of(System.getProperty("cat.session.temp"));
-			Files.createDirectories(temporaryRoot);
-			Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
-				resolve("session.jsonl");
-			contract(log).reportsNoInterruptWithoutRecord();
+			// Requirement: R-E10
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path temporaryRoot = jvm.temporaryDirectory();
+				Files.createDirectories(temporaryRoot);
+				Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
+					resolve("session.jsonl");
+				contract(log).reportsNoInterruptWithoutRecord();
+			}
 		}
 	}
 
@@ -87,14 +92,17 @@ public final class TranscriptInterruptSignalContractTest
 	@Test
 	public void comparesTimestampStrictly() throws IOException
 	{
-		// Requirement: R-E10
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path temporaryRoot = Path.of(System.getProperty("cat.session.temp"));
-			Files.createDirectories(temporaryRoot);
-			Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
-				resolve("session.jsonl");
-			contract(log).comparesTimestampStrictly();
+			// Requirement: R-E10
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path temporaryRoot = jvm.temporaryDirectory();
+				Files.createDirectories(temporaryRoot);
+				Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
+					resolve("session.jsonl");
+				contract(log).comparesTimestampStrictly();
+			}
 		}
 	}
 
@@ -106,14 +114,17 @@ public final class TranscriptInterruptSignalContractTest
 	@Test
 	public void retainsLatestTimestamp() throws IOException
 	{
-		// Requirement: R-E10
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path temporaryRoot = Path.of(System.getProperty("cat.session.temp"));
-			Files.createDirectories(temporaryRoot);
-			Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
-				resolve("session.jsonl");
-			contract(log).retainsLatestTimestamp();
+			// Requirement: R-E10
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path temporaryRoot = jvm.temporaryDirectory();
+				Files.createDirectories(temporaryRoot);
+				Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
+					resolve("session.jsonl");
+				contract(log).retainsLatestTimestamp();
+			}
 		}
 	}
 
@@ -125,14 +136,17 @@ public final class TranscriptInterruptSignalContractTest
 	@Test(expectedExceptions = NullPointerException.class)
 	public void rejectsNullStart() throws IOException
 	{
-		// Requirement: R-E10
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path temporaryRoot = Path.of(System.getProperty("cat.session.temp"));
-			Files.createDirectories(temporaryRoot);
-			Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
-				resolve("session.jsonl");
-			contract(log).rejectsNullStart();
+			// Requirement: R-E10
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path temporaryRoot = jvm.temporaryDirectory();
+				Files.createDirectories(temporaryRoot);
+				Path log = cleanup.add(Files.createTempDirectory(temporaryRoot, "cat-interrupt-contract-")).
+					resolve("session.jsonl");
+				contract(log).rejectsNullStart();
+			}
 		}
 	}
 }

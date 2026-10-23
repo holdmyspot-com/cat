@@ -2,37 +2,37 @@ package com.holdmyspot.cat.common.secrets;
 
 import java.lang.invoke.MethodHandles;
 
-import com.holdmyspot.cat.common.optimizer.cli.OptimizerCommandScope;
+import com.holdmyspot.cat.common.optimizer.cli.AbstractOptimizerCommandScope;
 
 /**
- * Exposes narrowly scoped {@link OptimizerCommandScope} access required by tests.
+ * Exposes narrowly scoped {@link AbstractOptimizerCommandScope} access required by tests.
  */
 public final class OptimizerCommandScopeSecrets
 {
 	private static OptimizerCommandScopeAccess optimizerCommandScopeAccess;
 
 	/**
-	 * Returns the {@link OptimizerCommandScope} access point.
+	 * Returns the {@link AbstractOptimizerCommandScope} access point.
 	 *
 	 * @return the access point
-	 * @throws AssertionError if {@code OptimizerCommandScope} cannot initialize or fails to register access
+	 * @throws AssertionError if {@code AbstractOptimizerCommandScope} cannot initialize or fails to register access
 	 */
 	public static OptimizerCommandScopeAccess getOptimizerCommandScopeAccess()
 	{
 		OptimizerCommandScopeAccess access = optimizerCommandScopeAccess;
 		if (access == null)
 		{
-			ensureClassInitialized(OptimizerCommandScope.class);
+			ensureClassInitialized(AbstractOptimizerCommandScope.class);
 			access = optimizerCommandScopeAccess;
 			if (access == null)
-				throw new AssertionError(OptimizerCommandScope.class.getName() + " did not register " +
+				throw new AssertionError(AbstractOptimizerCommandScope.class.getName() + " did not register " +
 					"OptimizerCommandScopeAccess");
 		}
 		return access;
 	}
 
 	/**
-	 * Registers the implementation supplied by {@link OptimizerCommandScope}.
+	 * Registers the implementation supplied by {@link AbstractOptimizerCommandScope}.
 	 *
 	 * @param access the implementation registered by the owning class
 	 */

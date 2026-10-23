@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static com.holdmyspot.cat.common.git.replay.test.ReplayFixtures.addedPath;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayRepository.invocationManifest;
@@ -51,9 +53,10 @@ public final class EditorInventoryTest
 	 */
 	private static void rejectCommand(String... args) throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "retired-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "retired-"));
 			ReplayFixtures.editor(repository).execute(args);
 		}
 	}
@@ -81,9 +84,10 @@ public final class EditorInventoryTest
 	@Test
 	public void reportsHeartbeatForSilentCommand() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path workingDirectory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path workingDirectory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"cat-command-runner-"));
 			Path marker = workingDirectory.resolve("heartbeat");
 			AtomicInteger heartbeatCount = new AtomicInteger();
@@ -142,9 +146,10 @@ public final class EditorInventoryTest
 	@Test
 	public void excludesAddedPathsFromOrigins() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "inventory-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "inventory-"));
 			Path manifest = invocationManifest(repository);
 			Files.writeString(manifest, manifestJson());
 			ByteArrayOutputStream output = new ByteArrayOutputStream();

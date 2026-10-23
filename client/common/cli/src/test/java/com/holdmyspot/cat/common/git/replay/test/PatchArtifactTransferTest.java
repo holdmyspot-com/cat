@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -36,9 +38,10 @@ public final class PatchArtifactTransferTest
 	@Test
 	public void copiesBatchAsReceivingManifestArtifact() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "patch-transfer-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "patch-transfer-"));
 			Path previousDirectory = Files.createDirectories(root.resolve("previous"));
 			Path replacementDirectory = Files.createDirectories(root.resolve("replacement"));
 			Path previousManifest = Files.writeString(previousDirectory.resolve("manifest.json"), "{}\n");

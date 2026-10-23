@@ -1,5 +1,9 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
+import com.holdmyspot.cat.common.JvmScope;
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -44,7 +48,8 @@ public final class CodexReceivedResultsTest
 	@Test
 	public void readsEachOutputShape() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-received-"));
 			Path transcript = RecordedTrial.write(root, EVENTS, List.of(
@@ -58,7 +63,7 @@ public final class CodexReceivedResultsTest
 				"{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"call_id\":\"call_3\"," +
 					"\"output\":{\"content\":\"object content\",\"success\":true}}}"));
 
-			requireThat(sessions(root).readEvidence(transcript).received(), "received").
+			requireThat(sessions(jvm, root).readEvidence(transcript).received(), "received").
 				isEqualTo(List.of("plain text", "first item", "second item", "object content"));
 		}
 	}
@@ -72,7 +77,8 @@ public final class CodexReceivedResultsTest
 	@Test
 	public void decodesWrappedResults() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-received-"));
 			String wrapped = "{\"output\":\"line 1\\nline 2\\n\",\"metadata\":{\"exit_code\":0}}";
@@ -80,7 +86,7 @@ public final class CodexReceivedResultsTest
 			Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.toolResult(wrapped),
 				RecordedTrial.toolResult(cut)));
 
-			requireThat(sessions(root).readEvidence(transcript).received(), "received").
+			requireThat(sessions(jvm, root).readEvidence(transcript).received(), "received").
 				isEqualTo(List.of(wrapped, "line 1\nline 2\n", cut, "{\"output\":\"line 1\nline \"2\"\tendé"));
 		}
 	}
@@ -94,7 +100,8 @@ public final class CodexReceivedResultsTest
 	@Test
 	public void readsOnlyRollouts() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-received-"));
 			Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.toolResult("root result")));
@@ -103,7 +110,7 @@ public final class CodexReceivedResultsTest
 				RecordedTrial.toolResult("child result") + "\n", UTF_8);
 			Files.writeString(rollouts.resolve("notes.txt"), RecordedTrial.toolResult("not a rollout") + "\n", UTF_8);
 
-			requireThat(sessions(root).readEvidence(transcript).received(), "received").
+			requireThat(sessions(jvm, root).readEvidence(transcript).received(), "received").
 				isEqualTo(List.of("child result", "root result"));
 		}
 	}
@@ -117,25 +124,27 @@ public final class CodexReceivedResultsTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*rollouts were not retained.*")
 	public void missingRolloutsFail() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-received-"));
 			Path transcript = Files.createDirectories(root.resolve("artifacts")).resolve("transcript.jsonl");
 			Files.copy(EVENTS, transcript);
 
-			sessions(root).readEvidence(transcript);
+			sessions(jvm, root).readEvidence(transcript);
 		}
 	}
 
 	/**
 	 * Returns a port whose run directories are below a directory.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param root the directory
 	 * @return the port
 	 */
-	private static CodexSessions sessions(Path root)
+	private static CodexSessions sessions(JvmScope jvm, Path root)
 	{
-		return new CodexSessions(new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(), root,
+		return new CodexSessions(new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(), root,
 			HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()));
 	}
 }

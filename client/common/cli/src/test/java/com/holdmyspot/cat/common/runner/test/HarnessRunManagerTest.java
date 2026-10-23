@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
@@ -46,10 +48,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void deletesSuccessfulRunAfterOutput() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Path output = root.resolve("result.json");
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
@@ -70,10 +73,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void createsOwnerOnlyRunDirectory() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			if (run.directory().getFileSystem().supportedFileAttributeViews().contains("posix"))
@@ -93,10 +97,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void prunesOnlyDisposableRuntimeState() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -124,10 +129,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void prunesOnlyTerminalRuntimes() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun terminal = manager.create("harness");
@@ -154,10 +160,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void pruneSkipsEntriesThatAreNotRuns() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun terminal = manager.create("harness");
@@ -182,10 +189,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void retainsFailedRunDiagnostics() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -206,10 +214,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void recordsExternallyObservedRunFailure() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -234,10 +243,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void preservesRecordedHarnessFailure() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -262,10 +272,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void deletesExplicitOwnedRun() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -285,10 +296,11 @@ public final class HarnessRunManagerTest
 	@Test(expectedExceptions = IOException.class)
 	public void refusesMalformedRunManifest() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -306,10 +318,11 @@ public final class HarnessRunManagerTest
 	@Test(expectedExceptions = IOException.class)
 	public void refusesOversizedRunManifest() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -328,10 +341,11 @@ public final class HarnessRunManagerTest
 	@Test(expectedExceptions = IOException.class)
 	public void refusesToDeleteLockedRun() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -351,10 +365,11 @@ public final class HarnessRunManagerTest
 	@Test(expectedExceptions = IOException.class)
 	public void refusesToDeleteRunWithLiveOwner() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -371,10 +386,11 @@ public final class HarnessRunManagerTest
 	@Test(expectedExceptions = IOException.class)
 	public void refusesDirectDeletionOfRunWithLiveOwner() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -391,10 +407,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void recordsCompletedStateBeforeCleanup() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -413,10 +430,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void recordsHarnessProcessIdentity() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -437,16 +455,17 @@ public final class HarnessRunManagerTest
 	@Test
 	public void recordsRedactedHarnessProcessMetadata() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Path artifact = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-artifact-"));
 			Path project = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-project-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -472,10 +491,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void retainsHarnessCommandStreams() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -498,10 +518,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void retainsHarnessTurnStreams() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -522,10 +543,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void recordsCurrentHarnessPhase() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -549,10 +571,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void appendsLiveHarnessTurnEvents() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -572,10 +595,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void excludesSourceGitMetadata() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("README.md"), "project");
@@ -605,39 +629,42 @@ public final class HarnessRunManagerTest
 	@Test
 	public void workspaceKeepsProjectFiles() throws IOException
 	{
-		// Requirement: R-C21
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
-				"cat-run-root-"));
-			Path project = Files.createDirectories(root.resolve("project/docs"));
-			Files.writeString(project.resolve("guide.md"), "project guide");
-			Path workspaces = Files.createDirectories(root.resolve("workspaces/docs"));
-			Files.writeString(workspaces.resolve("notes.md"), "fixture notes");
-			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
-			manager.copyProject(root.resolve("project"), run);
-
-			manager.copyWorkspace(root.resolve("workspaces"), run);
-
-			Path copy = run.directory().resolve("project");
-			requireThat(Files.readString(copy.resolve("docs/notes.md")), "fixture").isEqualTo("fixture notes");
-			requireThat(Files.readString(copy.resolve("docs/guide.md")), "projectFile").isEqualTo("project guide");
-
-			Files.writeString(workspaces.resolve("guide.md"), "fixture guide");
-			Files.delete(workspaces.resolve("notes.md"));
-			try
+			// Requirement: R-C21
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
+				Path root = cleanup.add(Files.createTempDirectory(
+					jvm.temporaryDirectory(),
+					"cat-run-root-"));
+				Path project = Files.createDirectories(root.resolve("project/docs"));
+				Files.writeString(project.resolve("guide.md"), "project guide");
+				Path workspaces = Files.createDirectories(root.resolve("workspaces/docs"));
+				Files.writeString(workspaces.resolve("notes.md"), "fixture notes");
+				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+					Yielding.fileReplacer());
+				HarnessRun run = manager.create("harness");
+				manager.copyProject(root.resolve("project"), run);
+
 				manager.copyWorkspace(root.resolve("workspaces"), run);
-				throw new AssertionError("A fixture replaced a project file");
+
+				Path copy = run.directory().resolve("project");
+				requireThat(Files.readString(copy.resolve("docs/notes.md")), "fixture").isEqualTo("fixture notes");
+				requireThat(Files.readString(copy.resolve("docs/guide.md")), "projectFile").isEqualTo("project guide");
+
+				Files.writeString(workspaces.resolve("guide.md"), "fixture guide");
+				Files.delete(workspaces.resolve("notes.md"));
+				try
+				{
+					manager.copyWorkspace(root.resolve("workspaces"), run);
+					throw new AssertionError("A fixture replaced a project file");
+				}
+				catch (IOException e)
+				{
+					requireThat(e.getMessage(), "message").contains("guide.md");
+				}
+				requireThat(Files.readString(copy.resolve("docs/guide.md")), "kept").isEqualTo("project guide");
 			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "message").contains("guide.md");
-			}
-			requireThat(Files.readString(copy.resolve("docs/guide.md")), "kept").isEqualTo("project guide");
 		}
 	}
 
@@ -650,41 +677,44 @@ public final class HarnessRunManagerTest
 	@Test
 	public void workspaceKeepsLinksInsideProject() throws IOException
 	{
-		// Requirement: R-C21
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
-				"cat-run-root-"));
-			Path project = Files.createDirectories(root.resolve("project/docs"));
-			Files.writeString(project.resolve("handbook.md"), "Ship small, ship often.\n");
-			Path linkDirectory = Files.createDirectories(root.resolve("workspaces/draft/workspace/docs"));
-			Path target = Path.of("../../../docs/handbook.md");
-			Files.createSymbolicLink(linkDirectory.resolve("handbook.md"), target);
-			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
-			manager.copyProject(root.resolve("project"), run);
-
-			manager.copyWorkspace(root.resolve("workspaces"), run);
-
-			Path link = run.directory().resolve("project/draft/workspace/docs/handbook.md");
-			requireThat(Files.isSymbolicLink(link), "isLink").isTrue();
-			requireThat(Files.readSymbolicLink(link), "target").isEqualTo(target);
-			requireThat(Files.readString(link), "content").isEqualTo("Ship small, ship often.\n");
-
-			Path escaping = Files.createDirectories(root.resolve("escaping/docs"));
-			Files.createSymbolicLink(escaping.resolve("secret.md"), Path.of("../../../outside.md"));
-			HarnessRun other = manager.create("harness");
-			manager.copyProject(root.resolve("project"), other);
-			try
+			// Requirement: R-C21
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				manager.copyWorkspace(root.resolve("escaping"), other);
-				throw new AssertionError("A link that leaves the project was copied");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "message").contains("secret.md");
+				Path root = cleanup.add(Files.createTempDirectory(
+					jvm.temporaryDirectory(),
+					"cat-run-root-"));
+				Path project = Files.createDirectories(root.resolve("project/docs"));
+				Files.writeString(project.resolve("handbook.md"), "Ship small, ship often.\n");
+				Path linkDirectory = Files.createDirectories(root.resolve("workspaces/draft/workspace/docs"));
+				Path target = Path.of("../../../docs/handbook.md");
+				Files.createSymbolicLink(linkDirectory.resolve("handbook.md"), target);
+				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+					Yielding.fileReplacer());
+				HarnessRun run = manager.create("harness");
+				manager.copyProject(root.resolve("project"), run);
+
+				manager.copyWorkspace(root.resolve("workspaces"), run);
+
+				Path link = run.directory().resolve("project/draft/workspace/docs/handbook.md");
+				requireThat(Files.isSymbolicLink(link), "isLink").isTrue();
+				requireThat(Files.readSymbolicLink(link), "target").isEqualTo(target);
+				requireThat(Files.readString(link), "content").isEqualTo("Ship small, ship often.\n");
+
+				Path escaping = Files.createDirectories(root.resolve("escaping/docs"));
+				Files.createSymbolicLink(escaping.resolve("secret.md"), Path.of("../../../outside.md"));
+				HarnessRun other = manager.create("harness");
+				manager.copyProject(root.resolve("project"), other);
+				try
+				{
+					manager.copyWorkspace(root.resolve("escaping"), other);
+					throw new AssertionError("A link that leaves the project was copied");
+				}
+				catch (IOException e)
+				{
+					requireThat(e.getMessage(), "message").contains("secret.md");
+				}
 			}
 		}
 	}
@@ -698,10 +728,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void snapshotKeepsInitialProject() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Path project = Files.createDirectories(root.resolve("project/docs"));
 			Files.writeString(project.resolve("guide.md"), "project guide");
@@ -732,15 +763,16 @@ public final class HarnessRunManagerTest
 	@Test
 	public void retainsExecutableProjectFiles() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			if (!root.getFileSystem().supportedFileAttributeViews().contains("posix"))
 				return;
 			Path project = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-project-"));
 			Path script = project.resolve("build.sh");
 			Files.writeString(script, "#!/bin/sh\n");
@@ -762,10 +794,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void excludesNestedRunnerRootFromProjectCopy() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-project-"));
 			Files.writeString(project.resolve("README.md"), "project");
 			Path root = project.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp/runner-runs");
@@ -790,10 +823,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void deniesReadingAllButAccessiblePaths() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()), "cat-run-root-"));
+				jvm.temporaryDirectory(), "cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			HarnessRun other = manager.create("harness");
@@ -805,7 +839,7 @@ public final class HarnessRunManagerTest
 			Path workspaces = Files.createDirectories(root.resolve("workspaces"));
 			Path otherHarness = Files.createDirectories(root.resolve("other-harness"));
 			Path outside = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()), "cat-outside-"));
+				jvm.temporaryDirectory(), "cat-outside-"));
 
 			Path home = run.directory().resolve("home");
 
@@ -827,10 +861,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void deletesStaleFailedRuns() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			HarnessRunManager oldManager = new HarnessRunManager(root, oldClock, Yielding.fileReplacer());
@@ -853,10 +888,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void keepsRecentRunDespiteOldMtime() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Clock clock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
 			HarnessRunManager manager = new HarnessRunManager(root, clock, Yielding.fileReplacer());
@@ -879,10 +915,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void recordsAbandonedRunBeforeRetention() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			HarnessRun run = new HarnessRunManager(root, oldClock, Yielding.fileReplacer()).create("harness");
@@ -908,10 +945,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void recordsAbandonedHarnessRunFailure() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			FakeProcessLiveness processLiveness = new FakeProcessLiveness(12_345,
@@ -946,10 +984,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void retainsStaleRunWithLiveOwner() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			HarnessRun run = new HarnessRunManager(root, oldClock, Yielding.fileReplacer()).create("harness");
@@ -970,10 +1009,11 @@ public final class HarnessRunManagerTest
 	@Test
 	public void retainsLockedStaleRun() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			HarnessRunManager oldManager = new HarnessRunManager(root, oldClock, Yielding.fileReplacer());

@@ -165,7 +165,7 @@ public final class OptimizerCore implements Core
 	 * hash, or the user's loader settings.
 	 */
 	private static final int LOADER_LINE_CAPACITY = 128;
-	private final OptimizerCommandScope scope;
+	private final AbstractOptimizerCommandScope scope;
 	private final ProposalSchema schema;
 	/**
 	 * The directory that holds each campaign of another session that this command reads, by the campaign's
@@ -179,7 +179,7 @@ public final class OptimizerCore implements Core
 	 * @param scope the command's scope
 	 * @throws NullPointerException if {@code scope} is null
 	 */
-	public OptimizerCore(OptimizerCommandScope scope)
+	public OptimizerCore(AbstractOptimizerCommandScope scope)
 	{
 		requireThat(scope, "scope").isNotNull();
 		this.scope = scope;

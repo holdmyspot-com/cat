@@ -3,8 +3,6 @@ package com.holdmyspot.cat.common.git.replay.test;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.git.replay.GitTopicReplayEditor;
 import com.holdmyspot.cat.common.git.replay.History;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -19,18 +17,6 @@ final class ReplayFixtures
 	{
 	}
 
-	/**
-	 * Returns the normalized CAT temporary root supplied by the build.
-	 *
-	 * @return the build's {@code cat.session.temp} root
-	 * @throws IOException if the temporary root cannot be created
-	 */
-	static Path temporaryRoot() throws IOException
-	{
-		Path root = Path.of(System.getProperty("cat.session.temp")).toAbsolutePath().normalize();
-		Files.createDirectories(root);
-		return root;
-	}
 
 	/**
 	 * Returns an editor that keeps its state in a temporary directory inside its repository.

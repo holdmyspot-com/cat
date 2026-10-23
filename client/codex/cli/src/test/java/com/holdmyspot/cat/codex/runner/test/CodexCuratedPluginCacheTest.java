@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.codex.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -53,10 +55,11 @@ public final class CodexCuratedPluginCacheTest
 	@Test
 	public void skipsUnverifiedSnapshot() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
+				jvm.temporaryDirectory(),
 				"cat-curated-plugin-cache-"));
 			Path parentHome = root.resolve("parent");
 			Files.createDirectories(parentHome.resolve(".tmp/plugins/.git"));

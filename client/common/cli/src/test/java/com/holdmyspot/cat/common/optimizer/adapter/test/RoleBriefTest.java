@@ -1,5 +1,9 @@
 package com.holdmyspot.cat.common.optimizer.adapter.test;
 
+import com.holdmyspot.cat.common.JvmScope;
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -50,7 +54,6 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public final class RoleBriefTest
 {
-	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
 
@@ -64,6 +67,7 @@ public final class RoleBriefTest
 	/**
 	 * Sends a request through an in-memory bridge and returns its observed prompts.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param root the test-owned run root
 	 * @param artifact the installed fixture artifact
 	 * @param request the role request
@@ -72,7 +76,7 @@ public final class RoleBriefTest
 	 * @throws ExecutionException if the session fails
 	 * @throws TimeoutException if the session does not finish
 	 */
-	private static List<String> deliver(Path root, Path artifact, SessionRequest request)
+	private static List<String> deliver(JvmScope jvm, Path root, Path artifact, SessionRequest request)
 		throws InterruptedException, ExecutionException, TimeoutException
 	{
 		List<String> prompts = new CopyOnWriteArrayList<>();
@@ -81,7 +85,8 @@ public final class RoleBriefTest
 		if (request.followUp().isPresent())
 			++turns;
 		List<Turn> replies = Collections.nCopies(turns, Turn.replies("ok"));
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "", true,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of, "",
+			true,
 			Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
@@ -104,29 +109,32 @@ public final class RoleBriefTest
 	public void promptAuthorGetsCompleteRenderedRules()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E20
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-brief-"));
-			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			PromptAuthorPrompt promptAuthor = new PromptAuthorPrompt(json, schema, Set.of(Path.of("AGENTS.md")),
-				Set.of());
-			PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
-				ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(),
-				List.of());
-
-			String delivered = deliver(root, artifact, promptAuthor.request(brief, root)).getFirst();
-
-			ProjectRuleLoader loader = new ProjectRuleLoader(YAMLMapper.builder().build());
-			for (String rule : RoleRuleFixtures.PROMPT_AUTHOR_RULES)
+			// Requirement: R-E20
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				requireThat(delivered, "brief").contains(loader.loadRule(artifact,
-					Path.of("include/common/" + rule + ".md")));
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-role-brief-"));
+				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+				PromptAuthorPrompt promptAuthor = new PromptAuthorPrompt(json, schema, Set.of(Path.of("AGENTS.md")),
+					Set.of());
+				PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
+					ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(),
+					List.of());
+
+				String delivered = deliver(jvm, root, artifact, promptAuthor.request(brief, root)).getFirst();
+
+				ProjectRuleLoader loader = new ProjectRuleLoader(YAMLMapper.builder().build());
+				for (String rule : RoleRuleFixtures.PROMPT_AUTHOR_RULES)
+				{
+					requireThat(delivered, "brief").contains(loader.loadRule(artifact,
+						Path.of("include/common/" + rule + ".md")));
+				}
+				Path companion = artifact.resolve("rules/include/common/companion.md").toAbsolutePath().normalize();
+				requireThat(delivered, "brief").contains(companion.toString()).
+					doesNotContain("${CAT_PLUGIN_ROOT}").doesNotContain("<!-- cat:plugin-root -->").
+					doesNotContain("<!-- cat:include").doesNotContain("depends-on:").doesNotContain("\n{{rules}}\n");
 			}
-			Path companion = artifact.resolve("rules/include/common/companion.md").toAbsolutePath().normalize();
-			requireThat(delivered, "brief").contains(companion.toString()).
-				doesNotContain("${CAT_PLUGIN_ROOT}").doesNotContain("<!-- cat:plugin-root -->").
-				doesNotContain("<!-- cat:include").doesNotContain("depends-on:").doesNotContain("\n{{rules}}\n");
 		}
 	}
 
@@ -143,32 +151,35 @@ public final class RoleBriefTest
 	public void contractAuthorReceivesOnlyContractDesign()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E20
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-brief-"));
-			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema,
-				new JudgeTemplate(json, new TrialProfile("role-model", "high")), new RegressionScenarios(root, List.of()),
-				root.resolve("CLAUDE.md"), null, true, List.of(),
-				root.toAbsolutePath().resolve("bin/prompt-optimizer"), profile -> OptionalLong.empty());
-			SessionRequest request = contractAuthor.request(root, new ProfileEvidence(ContractFixtures.ONE_PROFILE,
-				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), List.of(), List.of(),
-				ContractFixtures.SALT);
-
-			List<String> delivered = deliver(root, artifact, request);
-
-			ProjectRuleLoader loader = new ProjectRuleLoader(YAMLMapper.builder().build());
-			requireThat(delivered.getFirst(), "brief").contains(loader.loadRule(artifact,
-				Path.of("include/common/contract-design.md")));
-			for (String rule : RoleRuleFixtures.PROMPT_AUTHOR_RULES)
+			// Requirement: R-E20
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				if (!rule.equals("contract-design"))
-					requireThat(delivered.getFirst(), "brief").doesNotContain("Complete guidance for " + rule);
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-role-brief-"));
+				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+				ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema,
+					new JudgeTemplate(json, new TrialProfile("role-model", "high")), new RegressionScenarios(root, List.of()),
+					root.resolve("CLAUDE.md"), null, true, List.of(),
+					root.toAbsolutePath().resolve("bin/prompt-optimizer"), profile -> OptionalLong.empty());
+				SessionRequest request = contractAuthor.request(root, new ProfileEvidence(ContractFixtures.ONE_PROFILE,
+					ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), List.of(), List.of(),
+					ContractFixtures.SALT);
+
+				List<String> delivered = deliver(jvm, root, artifact, request);
+
+				ProjectRuleLoader loader = new ProjectRuleLoader(YAMLMapper.builder().build());
+				requireThat(delivered.getFirst(), "brief").contains(loader.loadRule(artifact,
+					Path.of("include/common/contract-design.md")));
+				for (String rule : RoleRuleFixtures.PROMPT_AUTHOR_RULES)
+				{
+					if (!rule.equals("contract-design"))
+						requireThat(delivered.getFirst(), "brief").doesNotContain("Complete guidance for " + rule);
+				}
+				requireThat(delivered.getFirst(), "brief").doesNotContain("\n{{rules}}\n");
+				requireThat(delivered.get(1), "correctionTurn").startsWith("CAT refused the proposal").
+					doesNotContain("Complete guidance for");
 			}
-			requireThat(delivered.getFirst(), "brief").doesNotContain("\n{{rules}}\n");
-			requireThat(delivered.get(1), "correctionTurn").startsWith("CAT refused the proposal").
-				doesNotContain("Complete guidance for");
 		}
 	}
 
@@ -184,15 +195,19 @@ public final class RoleBriefTest
 	public void judgeAndTrialBriefsRemainUnchanged()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E20
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-brief-"));
-			for (SessionRole role : List.of(SessionRole.JUDGE, SessionRole.TRIAL))
+			// Requirement: R-E20
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				SessionRequest request = new SessionRequest(role, partOf(role), root, List.of("Frozen brief {{rules}}"),
-					List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
-				requireThat(deliver(root, root.resolve("missing-artifact"), request), "briefs").isEqualTo(request.turns());
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-role-brief-"));
+				for (SessionRole role : List.of(SessionRole.JUDGE, SessionRole.TRIAL))
+				{
+					SessionRequest request = new SessionRequest(role, partOf(role), root, List.of("Frozen brief {{rules}}"),
+						List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+					requireThat(deliver(jvm, root, root.resolve("missing-artifact"), request),
+						"briefs").isEqualTo(request.turns());
+				}
 			}
 		}
 	}
@@ -209,17 +224,21 @@ public final class RoleBriefTest
 	public void appendsRulesWhenTheBriefHasNoPlaceholder()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E20
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-brief-"));
-			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			for (SessionRole role : List.of(SessionRole.PROMPT_AUTHOR, SessionRole.CONTRACT_AUTHOR))
+			// Requirement: R-E20
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				SessionRequest request = new SessionRequest(role, partOf(role), root, List.of("Saved brief"), List.of(),
-					Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
-				requireThat(deliver(root, artifact, request).getFirst(), "brief").startsWith("Saved brief\n\n## Rules\n\n").
-					contains("Complete guidance for contract-design");
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-role-brief-"));
+				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+				for (SessionRole role : List.of(SessionRole.PROMPT_AUTHOR, SessionRole.CONTRACT_AUTHOR))
+				{
+					SessionRequest request = new SessionRequest(role, partOf(role), root, List.of("Saved brief"), List.of(),
+						Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+					requireThat(deliver(jvm, root, artifact, request).getFirst(),
+						"brief").startsWith("Saved brief\n\n## Rules\n\n").
+						contains("Complete guidance for contract-design");
+				}
 			}
 		}
 	}
@@ -237,16 +256,19 @@ public final class RoleBriefTest
 	public void missingPromptAuthorRuleNamesItsFile()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E20
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-brief-"));
-			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			Files.delete(artifact.resolve("rules/include/common/prompt-file-references.md"));
-			SessionRequest request = new SessionRequest(SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT, root,
-				List.of("Brief {{rules}}"), List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+			// Requirement: R-E20
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-role-brief-"));
+				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+				Files.delete(artifact.resolve("rules/include/common/prompt-file-references.md"));
+				SessionRequest request = new SessionRequest(SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT, root,
+					List.of("Brief {{rules}}"), List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
 
-			deliver(root, artifact, request);
+				deliver(jvm, root, artifact, request);
+			}
 		}
 	}
 }

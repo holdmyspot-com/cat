@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.AbstractHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
@@ -172,7 +173,7 @@ public final class ClaudeRunner
 		Path artifactRoot = HarnessArtifact.validate(artifact, MANIFEST);
 		HarnessRun run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
-		HarnessRunnerScope scope = new MainHarnessRunnerScope();
+		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment);
 		try
 		{
 			ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());

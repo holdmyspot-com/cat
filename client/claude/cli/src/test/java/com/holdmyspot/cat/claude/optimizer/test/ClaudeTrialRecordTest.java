@@ -1,5 +1,8 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -100,23 +103,26 @@ public final class ClaudeTrialRecordTest
 	@Test
 	public void checksDecideFromRecordedEvents() throws IOException, UndecidableToolException
 	{
-		// Requirement: R-C9
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-trial-record-"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			ClaudeSessions sessions = new ClaudeSessions(settings);
-			Recorded record = new Recorded(sessions.readEvidence(EVENTS), Map.of("sample.txt", "sample\n"));
+			// Requirement: R-C9
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory("cat-claude-trial-record-"));
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+					root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				ClaudeSessions sessions = new ClaudeSessions(settings);
+				Recorded record = new Recorded(sessions.readEvidence(EVENTS), Map.of("sample.txt", "sample\n"));
 
-			requireThat(sessions.reportsExitStatus(), "reportsExitStatus").isFalse();
-			requireThat(record.tools().stream().map(SessionEvidence.Tool::command).toList(), "command").
-				isEqualTo(List.of(true, true, false));
-			requireThat(decide("tool-used Read", record), "toolUsed").isTrue();
-			requireThat(decide("tool-unused Bash", record), "toolUnused").isFalse();
-			requireThat(decide("no-tool-call", record), "noToolCall").isFalse();
-			requireThat(decide("read-in-full sample.txt", record), "readInFull").isTrue();
-			requireThat(decide("read-at-most sample.txt 0", record), "readAtMost").isFalse();
+				requireThat(sessions.reportsExitStatus(), "reportsExitStatus").isFalse();
+				requireThat(record.tools().stream().map(SessionEvidence.Tool::command).toList(), "command").
+					isEqualTo(List.of(true, true, false));
+				requireThat(decide("tool-used Read", record), "toolUsed").isTrue();
+				requireThat(decide("tool-unused Bash", record), "toolUnused").isFalse();
+				requireThat(decide("no-tool-call", record), "noToolCall").isFalse();
+				requireThat(decide("read-in-full sample.txt", record), "readInFull").isTrue();
+				requireThat(decide("read-at-most sample.txt 0", record), "readAtMost").isFalse();
+			}
 		}
 	}
 

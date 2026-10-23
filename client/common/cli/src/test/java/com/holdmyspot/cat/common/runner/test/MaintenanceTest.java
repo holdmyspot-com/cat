@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -28,7 +30,6 @@ import java.util.Map;
  */
 public final class MaintenanceTest
 {
-	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp")).toAbsolutePath().normalize();
 	/**
 	 * The temporary root of a command that runs outside a harness session, so each run root comes from
 	 * {@code --run-root}.
@@ -51,9 +52,10 @@ public final class MaintenanceTest
 	@Test
 	public void deletesSelectedRun() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"maintenance-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harnessa");
@@ -73,9 +75,10 @@ public final class MaintenanceTest
 	@Test
 	public void recordsSupervisorFailure() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"maintenance-"));
 			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harnessa");
 			Path manifest = run.directory().resolve("run.json");
@@ -97,9 +100,10 @@ public final class MaintenanceTest
 	@Test
 	public void deletesOnlyStaleRuns() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"maintenance-"));
 			HarnessRunManager oldManager = new HarnessRunManager(root,
 				Clock.fixed(Instant.parse("2000-01-01T00:00:00Z"), ZoneOffset.UTC), Yielding.fileReplacer());
@@ -122,9 +126,10 @@ public final class MaintenanceTest
 	@Test
 	public void prunesSelectedTerminalRuntime() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"maintenance-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun terminal = manager.create("harnessa");
@@ -150,9 +155,10 @@ public final class MaintenanceTest
 	@Test
 	public void verifiesDependencyCache() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path home = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"maintenance-"));
 			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))

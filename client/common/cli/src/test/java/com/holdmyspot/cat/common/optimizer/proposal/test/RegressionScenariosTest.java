@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.proposal.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.PortablePaths;
@@ -167,24 +169,27 @@ public final class RegressionScenariosTest
 	@Test
 	public void readsModuleScenario() throws IOException
 	{
-		// Requirement: R-I3
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"module-scenarios"));
-			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
-				resolve("wording.md");
-			Files.writeString(guidance, "Be brief.");
-			Path scenario = Files.createDirectories(root.resolve("plugin/src/test/resources/common/wording/reported"));
-			Files.writeString(scenario.resolve("scenario.md"), "Turn: Summarize.\nExpected: Be brief.");
-			Files.writeString(scenario.getParent().resolve("context.md"), "Fixture context");
-			RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
-			requireThat(found.scenarios().size(), "scenarios.size()").isEqualTo(1);
-			RegressionScenarios.Scenario only = found.scenarios().getFirst();
-			requireThat(only.source(), "source").isEqualTo(guidance.normalize());
-			requireThat(only.citation(), "citation").
-				isEqualTo("plugin/src/test/resources/common/wording/reported/scenario.md");
-			requireThat(only.content(), "content").isEqualTo("Turn: Summarize.\nExpected: Be brief.");
+			// Requirement: R-I3
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"module-scenarios"));
+				Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
+					resolve("wording.md");
+				Files.writeString(guidance, "Be brief.");
+				Path scenario = Files.createDirectories(root.resolve("plugin/src/test/resources/common/wording/reported"));
+				Files.writeString(scenario.resolve("scenario.md"), "Turn: Summarize.\nExpected: Be brief.");
+				Files.writeString(scenario.getParent().resolve("context.md"), "Fixture context");
+				RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
+				requireThat(found.scenarios().size(), "scenarios.size()").isEqualTo(1);
+				RegressionScenarios.Scenario only = found.scenarios().getFirst();
+				requireThat(only.source(), "source").isEqualTo(guidance.normalize());
+				requireThat(only.citation(), "citation").
+					isEqualTo("plugin/src/test/resources/common/wording/reported/scenario.md");
+				requireThat(only.content(), "content").isEqualTo("Turn: Summarize.\nExpected: Be brief.");
+			}
 		}
 	}
 
@@ -197,20 +202,23 @@ public final class RegressionScenariosTest
 	@Test
 	public void nestedGuidanceKeepsItsScenarios() throws IOException
 	{
-		// Requirement: R-I3
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"nested-scenarios"));
-			Path rules = Files.createDirectories(root.resolve(".cat/rules/common/testing"));
-			Files.writeString(rules.getParent().resolve("testing.md"), "Test behaviour.");
-			Path doubles = rules.resolve("doubles.md");
-			Files.writeString(doubles, "Prefer real collaborators.");
-			Path scenario = Files.createDirectories(root.resolve(".cat/tests/common/testing/doubles/reported"));
-			Files.writeString(scenario.resolve("scenario.md"), "Turn: Mock the clock.");
-			RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
-			requireThat(found.scenarios().stream().map(RegressionScenarios.Scenario::source).toList(), "sources").
-				isEqualTo(List.of(doubles.normalize()));
+			// Requirement: R-I3
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"nested-scenarios"));
+				Path rules = Files.createDirectories(root.resolve(".cat/rules/common/testing"));
+				Files.writeString(rules.getParent().resolve("testing.md"), "Test behaviour.");
+				Path doubles = rules.resolve("doubles.md");
+				Files.writeString(doubles, "Prefer real collaborators.");
+				Path scenario = Files.createDirectories(root.resolve(".cat/tests/common/testing/doubles/reported"));
+				Files.writeString(scenario.resolve("scenario.md"), "Turn: Mock the clock.");
+				RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
+				requireThat(found.scenarios().stream().map(RegressionScenarios.Scenario::source).toList(), "sources").
+					isEqualTo(List.of(doubles.normalize()));
+			}
 		}
 	}
 
@@ -222,21 +230,24 @@ public final class RegressionScenariosTest
 	@Test
 	public void readsScenarioBesideFixtures() throws IOException
 	{
-		// Requirement: R-I3
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"scenario-discovery"));
-			Path rules = Files.createDirectories(root.resolve(".cat/rules/common"));
-			Files.writeString(rules.resolve("wording.md"), "Be brief.");
-			Path scenario = Files.createDirectories(root.resolve(".cat/tests/common/wording/reported"));
-			Files.writeString(scenario.resolve("scenario.md"), "Turn: Summarize.\nExpected: Be brief.");
-			Files.writeString(scenario.resolve("context.md"), "Fixture context");
-			RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
-			requireThat(found.scenarios().stream().map(RegressionScenarios.Scenario::citation).toList(), "citations").
-				isEqualTo(List.of(".cat/tests/common/wording/reported/scenario.md"));
-			requireThat(found.scenarios().getFirst().content(), "content").
-				isEqualTo("Turn: Summarize.\nExpected: Be brief.");
+			// Requirement: R-I3
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"scenario-discovery"));
+				Path rules = Files.createDirectories(root.resolve(".cat/rules/common"));
+				Files.writeString(rules.resolve("wording.md"), "Be brief.");
+				Path scenario = Files.createDirectories(root.resolve(".cat/tests/common/wording/reported"));
+				Files.writeString(scenario.resolve("scenario.md"), "Turn: Summarize.\nExpected: Be brief.");
+				Files.writeString(scenario.resolve("context.md"), "Fixture context");
+				RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
+				requireThat(found.scenarios().stream().map(RegressionScenarios.Scenario::citation).toList(), "citations").
+					isEqualTo(List.of(".cat/tests/common/wording/reported/scenario.md"));
+				requireThat(found.scenarios().getFirst().content(), "content").
+					isEqualTo("Turn: Summarize.\nExpected: Be brief.");
+			}
 		}
 	}
 
@@ -250,56 +261,59 @@ public final class RegressionScenariosTest
 	@Test
 	public void readsCurrentAndEarlierFormats() throws IOException
 	{
-		// Requirement: R-I3, R-C20
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"scenario-formats"));
-			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
-				resolve("reading.md");
-			Files.writeString(guidance, "Read files whole.");
-			Path tests = Files.createDirectories(root.resolve("plugin/src/test/resources/common/reading"));
-			Path current = Files.createDirectories(tests.resolve("whole_file_read"));
-			Files.writeString(current.resolve("scenario.md"), """
-				## Variables
+			// Requirement: R-I3, R-C20
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"scenario-formats"));
+				Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
+					resolve("reading.md");
+				Files.writeString(guidance, "Read files whole.");
+				Path tests = Files.createDirectories(root.resolve("plugin/src/test/resources/common/reading"));
+				Path current = Files.createDirectories(tests.resolve("whole_file_read"));
+				Files.writeString(current.resolve("scenario.md"), """
+					## Variables
 
-				- **notes**: The notes file name
+					- **notes**: The notes file name
 
-				## Scenario
+					## Scenario
 
-				Summarize `{{notes}}`.
+					Summarize `{{notes}}`.
 
-				## Assertions
+					## Assertions
 
-				### summary_given
+					### summary_given
 
-				- **kind**: effect
-				- **description**: The reply summarizes the notes.
-				""");
-			Files.createDirectories(current.resolve("workspace"));
-			Files.writeString(current.resolve("workspace/{{notes}}"), "Release 4.2 shipped.");
-			Files.writeString(current.resolve("values.json"), """
-				{"format_version": 1, "test_cases": [{"values": {"notes": "a.md"}, "expected_outcome": "4.2"}]}
-				""");
-			Path earlier = Files.createDirectories(tests.resolve("reported"));
-			Files.writeString(earlier.resolve("scenario.md"), "## Scenario\n\n### Request 1\n\nSummarize.\n");
+					- **kind**: effect
+					- **description**: The reply summarizes the notes.
+					""");
+				Files.createDirectories(current.resolve("workspace"));
+				Files.writeString(current.resolve("workspace/{{notes}}"), "Release 4.2 shipped.");
+				Files.writeString(current.resolve("values.json"), """
+					{"format_version": 1, "test_cases": [{"values": {"notes": "a.md"}, "expected_outcome": "4.2"}]}
+					""");
+				Path earlier = Files.createDirectories(tests.resolve("reported"));
+				Files.writeString(earlier.resolve("scenario.md"), "## Scenario\n\n### Request 1\n\nSummarize.\n");
 
-			RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
-			List<RegressionScenarios.Scenario> found = read.scenarios();
-			requireThat(found.stream().map(RegressionScenarios.Scenario::citation).toList(), "citations").
-				isEqualTo(List.of("plugin/src/test/resources/common/reading/reported/scenario.md",
-					"plugin/src/test/resources/common/reading/whole_file_read/scenario.md"));
-			if (!(found.get(0).format() instanceof RegressionScenarios.Earlier(String problem)))
-				throw new AssertionError("Not an earlier format: " + found.get(0).format());
-			requireThat(problem, "problem").contains("## Variables");
-			if (!(found.get(1).format() instanceof RegressionScenarios.Current(PromptTestFiles files, var texts)))
-				throw new AssertionError("Not the current format: " + found.get(1).format());
-			requireThat(files.scenario().turns(), "turns").isEqualTo(List.of("Summarize `{{notes}}`."));
-			requireThat(files.workspaceFiles().size(), "workspaceFiles.size()").isEqualTo(1);
-			requireThat(files.testCases().size(), "testCases.size()").isEqualTo(1);
-			String source = "plugin/src/test/resources/common/reading/whole_file_read/workspace/{{notes}}";
-			requireThat(texts, "texts").isEqualTo(List.of(new WorkspaceFile("{{notes}}", "Release 4.2 shipped.",
-				source)));
+				RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
+				List<RegressionScenarios.Scenario> found = read.scenarios();
+				requireThat(found.stream().map(RegressionScenarios.Scenario::citation).toList(), "citations").
+					isEqualTo(List.of("plugin/src/test/resources/common/reading/reported/scenario.md",
+						"plugin/src/test/resources/common/reading/whole_file_read/scenario.md"));
+				if (!(found.get(0).format() instanceof RegressionScenarios.Earlier(String problem)))
+					throw new AssertionError("Not an earlier format: " + found.get(0).format());
+				requireThat(problem, "problem").contains("## Variables");
+				if (!(found.get(1).format() instanceof RegressionScenarios.Current(PromptTestFiles files, var texts)))
+					throw new AssertionError("Not the current format: " + found.get(1).format());
+				requireThat(files.scenario().turns(), "turns").isEqualTo(List.of("Summarize `{{notes}}`."));
+				requireThat(files.workspaceFiles().size(), "workspaceFiles.size()").isEqualTo(1);
+				requireThat(files.testCases().size(), "testCases.size()").isEqualTo(1);
+				String source = "plugin/src/test/resources/common/reading/whole_file_read/workspace/{{notes}}";
+				requireThat(texts, "texts").isEqualTo(List.of(new WorkspaceFile("{{notes}}", "Release 4.2 shipped.",
+					source)));
+			}
 		}
 	}
 
@@ -314,68 +328,71 @@ public final class RegressionScenariosTest
 	@Test
 	public void readsSharedFixtures() throws IOException
 	{
-		// Requirement: R-I3, R-C21
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"shared-fixtures"));
-			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
-				resolve("reading.md");
-			Files.writeString(guidance, "Read files whole.");
-			Path rules = Files.createDirectories(root.resolve(".cat/rules"));
-			Files.writeString(rules.resolve("wording.md"), "Be brief.");
-			for (Path tests : List.of(root.resolve("plugin/src/test/resources"), root.resolve(".cat/tests")))
+			// Requirement: R-I3, R-C21
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				Files.createDirectories(tests.resolve("shared"));
-				Files.writeString(tests.resolve("shared/shared.md"), "Shared by every guidance.");
-			}
-			Path reading = root.resolve("plugin/src/test/resources/common/reading");
-			Files.createDirectories(reading.resolve("shared"));
-			Files.writeString(reading.resolve("shared/AGENTS.md"), "Shared by the reading tests.");
-			String scenario = """
-				## Variables
-
-				- **topic**: The topic to summarize
-
-				## Scenario
-
-				Summarize {{topic}}.
-
-				## Assertions
-
-				### summary_given
-
-				- **kind**: effect
-				- **description**: The reply summarizes the topic.
-				""";
-			Path wholeFileRead = Files.createDirectories(reading.resolve("whole_file_read"));
-			Files.writeString(wholeFileRead.resolve("scenario.md"), scenario);
-			Path workspace = Files.createDirectories(wholeFileRead.resolve("workspace"));
-			Files.createSymbolicLink(workspace.resolve("AGENTS.md"), Path.of("../../shared/AGENTS.md"));
-			Files.createSymbolicLink(workspace.resolve("shared.md"), Path.of("../../../../shared/shared.md"));
-			Path briefReply = Files.createDirectories(root.resolve(".cat/tests/wording/brief_reply"));
-			Files.writeString(briefReply.resolve("scenario.md"), scenario);
-
-			RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
-			List<RegressionScenarios.Scenario> found = read.scenarios();
-			requireThat(found.size(), "found.size()").isEqualTo(2);
-			for (RegressionScenarios.Scenario regression : found)
-			{
-				if (!(regression.format() instanceof RegressionScenarios.Current(PromptTestFiles _, var texts)))
-					throw new AssertionError("Not the current format: " + regression.format());
-				List<WorkspaceFile> expected;
-				if (regression.citation().startsWith(".cat/tests/"))
-					expected = List.of();
-				else
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"shared-fixtures"));
+				Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
+					resolve("reading.md");
+				Files.writeString(guidance, "Read files whole.");
+				Path rules = Files.createDirectories(root.resolve(".cat/rules"));
+				Files.writeString(rules.resolve("wording.md"), "Be brief.");
+				for (Path tests : List.of(root.resolve("plugin/src/test/resources"), root.resolve(".cat/tests")))
 				{
-					expected = List.of(new WorkspaceFile("AGENTS.md", "Shared by the reading tests.",
-							"plugin/src/test/resources/common/reading/shared/AGENTS.md"),
-						new WorkspaceFile("shared.md", "Shared by every guidance.",
-							"plugin/src/test/resources/shared/shared.md"));
+					Files.createDirectories(tests.resolve("shared"));
+					Files.writeString(tests.resolve("shared/shared.md"), "Shared by every guidance.");
 				}
-				requireThat(texts, "texts").withContext(regression.citation(), "citation").isEqualTo(expected);
-				requireThat(read.recordedWorkspaceFiles(List.of(regression.citation(), regression.citation())),
-					"recordedWorkspaceFiles").withContext(regression.citation(), "citation").isEqualTo(expected);
+				Path reading = root.resolve("plugin/src/test/resources/common/reading");
+				Files.createDirectories(reading.resolve("shared"));
+				Files.writeString(reading.resolve("shared/AGENTS.md"), "Shared by the reading tests.");
+				String scenario = """
+					## Variables
+
+					- **topic**: The topic to summarize
+
+					## Scenario
+
+					Summarize {{topic}}.
+
+					## Assertions
+
+					### summary_given
+
+					- **kind**: effect
+					- **description**: The reply summarizes the topic.
+					""";
+				Path wholeFileRead = Files.createDirectories(reading.resolve("whole_file_read"));
+				Files.writeString(wholeFileRead.resolve("scenario.md"), scenario);
+				Path workspace = Files.createDirectories(wholeFileRead.resolve("workspace"));
+				Files.createSymbolicLink(workspace.resolve("AGENTS.md"), Path.of("../../shared/AGENTS.md"));
+				Files.createSymbolicLink(workspace.resolve("shared.md"), Path.of("../../../../shared/shared.md"));
+				Path briefReply = Files.createDirectories(root.resolve(".cat/tests/wording/brief_reply"));
+				Files.writeString(briefReply.resolve("scenario.md"), scenario);
+
+				RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
+				List<RegressionScenarios.Scenario> found = read.scenarios();
+				requireThat(found.size(), "found.size()").isEqualTo(2);
+				for (RegressionScenarios.Scenario regression : found)
+				{
+					if (!(regression.format() instanceof RegressionScenarios.Current(PromptTestFiles _, var texts)))
+						throw new AssertionError("Not the current format: " + regression.format());
+					List<WorkspaceFile> expected;
+					if (regression.citation().startsWith(".cat/tests/"))
+						expected = List.of();
+					else
+					{
+						expected = List.of(new WorkspaceFile("AGENTS.md", "Shared by the reading tests.",
+								"plugin/src/test/resources/common/reading/shared/AGENTS.md"),
+							new WorkspaceFile("shared.md", "Shared by every guidance.",
+								"plugin/src/test/resources/shared/shared.md"));
+					}
+					requireThat(texts, "texts").withContext(regression.citation(), "citation").isEqualTo(expected);
+					requireThat(read.recordedWorkspaceFiles(List.of(regression.citation(), regression.citation())),
+						"recordedWorkspaceFiles").withContext(regression.citation(), "citation").isEqualTo(expected);
+				}
 			}
 		}
 	}
@@ -390,9 +407,10 @@ public final class RegressionScenariosTest
 	@Test
 	public void refusesLinkCheckedOutAsFile() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"link-checkout"));
 			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
 				resolve("reading.md");

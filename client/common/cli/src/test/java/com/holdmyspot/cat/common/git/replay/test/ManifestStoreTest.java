@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -33,11 +35,12 @@ public final class ManifestStoreTest
 	@Test
 	public void rejectsManifestOutsideTemporaryRoot() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryRoot = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path temporaryRoot = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"cat-session-temporary-root-"));
-			Path externalManifest = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path externalManifest = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"cat-topic-replay-")).resolve("manifest.json");
 			ManifestStore<ManifestStore.Manifest> store =
 				new ManifestStore<>(temporaryRoot, ReplayJson.newMapper(), Yielding.fileReplacer(),
@@ -63,9 +66,10 @@ public final class ManifestStoreTest
 	@Test
 	public void roundTripsUnfinalizedManifest() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryRoot = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path temporaryRoot = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"cat-session-temporary-root-"));
 			Path manifestFile = temporaryRoot.resolve("replay/manifest.json");
 			ManifestStore<FixtureManifest> store = new ManifestStore<>(temporaryRoot,

@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessRun;
@@ -435,17 +437,20 @@ public final class SessionRequestBrokerTest
 		 */
 		private Fixture() throws IOException
 		{
-			root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")), "broker-"));
-			run = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(), Yielding.fileReplacer()).create("claude");
-			project = run.directory().resolve("project");
-			denied = Files.createDirectory(root.resolve("denied"));
-			Files.writeString(project.resolve("marker"), "original");
-			Files.writeString(project.resolve("prompt"), "test the plugin");
-			requests = Files.createDirectory(SessionRequestAccess.requestsDirectory(run));
-			responses = Files.createDirectory(SessionRequestAccess.responsesDirectory(run));
-			options = HarnessRunnerOptions.parse(new String[]{"--artifact", root.toString(), "--project", project.toString(),
-				"--keep-run", "--session-requests", "1", "--deny-read", denied.toString()}, "harness",
-				HarnessTemporaryRoot.of(root));
+			try (TestJvmScope jvm = new TestJvmScope())
+			{
+				root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "broker-"));
+				run = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(), Yielding.fileReplacer()).create("claude");
+				project = run.directory().resolve("project");
+				denied = Files.createDirectory(root.resolve("denied"));
+				Files.writeString(project.resolve("marker"), "original");
+				Files.writeString(project.resolve("prompt"), "test the plugin");
+				requests = Files.createDirectory(SessionRequestAccess.requestsDirectory(run));
+				responses = Files.createDirectory(SessionRequestAccess.responsesDirectory(run));
+				options = HarnessRunnerOptions.parse(new String[]{"--artifact", root.toString(), "--project",
+					project.toString(), "--keep-run", "--session-requests", "1", "--deny-read", denied.toString()}, "harness",
+					HarnessTemporaryRoot.of(root));
+			}
 		}
 
 		/**

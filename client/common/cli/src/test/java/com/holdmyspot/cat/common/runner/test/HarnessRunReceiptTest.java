@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -37,7 +38,7 @@ public final class HarnessRunReceiptTest
 	@Test
 	public void readsTypedRetainedEvidence() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
 			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
@@ -63,7 +64,7 @@ public final class HarnessRunReceiptTest
 	public void listsSessionTranscripts() throws IOException
 	{
 		// Requirement: R-I7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
 			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
@@ -92,9 +93,9 @@ public final class HarnessRunReceiptTest
 	public void listsRequestedSessions() throws IOException
 	{
 		// Requirement: R-I9
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")), "receipt-"));
+			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-"));
 			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path child = Files.createDirectories(run.directory().resolve("responses/first")).resolve("response.json");
@@ -121,7 +122,7 @@ public final class HarnessRunReceiptTest
 	@Test
 	public void convertsParsedReceipt() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
 			Path project = Files.createDirectory(root.resolve("project"));
@@ -145,7 +146,7 @@ public final class HarnessRunReceiptTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*unsupported fields.*")
 	public void rejectsReceiptWithUnknownField() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
 			Path project = Files.createDirectory(root.resolve("project"));

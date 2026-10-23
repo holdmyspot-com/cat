@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.replay.GitTopicReplayEditor;
@@ -48,9 +50,10 @@ public final class RecoveryTest
 	@Test
 	public void validatesSealedPrefixAndSuffix() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "recovery-prefix-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "recovery-prefix-"));
 			Path manifestFile = directory.resolve("manifest.json");
 			Path patch = directory.resolve("first.patch");
 			Files.writeString(patch, "captured patch bytes\n");
@@ -118,9 +121,10 @@ public final class RecoveryTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*recorded digest.*")
 	public void rejectsChangedSealedPatch() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "recovery-patch-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "recovery-patch-"));
 			Path manifestFile = directory.resolve("manifest.json");
 			Path patch = directory.resolve("first.patch");
 			Files.writeString(patch, "captured patch bytes\n");

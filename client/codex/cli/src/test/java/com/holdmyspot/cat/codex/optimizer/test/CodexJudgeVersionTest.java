@@ -1,5 +1,8 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -61,38 +64,41 @@ public final class CodexJudgeVersionTest
 	@Test
 	public void versionMatchesJudge() throws IOException
 	{
-		// Requirement: R-M1
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-judge-version-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			Path effects = Files.createDirectories(root.resolve("effects"));
-			Files.writeString(source.resolve("README.md"), "Before\n", UTF_8);
-			Files.writeString(effects.resolve("README.md"), "After\n", UTF_8);
-			for (Path file : List.of(source.resolve("README.md"), effects.resolve("README.md")))
-				PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
+			// Requirement: R-M1
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory("cat-codex-judge-version-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path effects = Files.createDirectories(root.resolve("effects"));
+				Files.writeString(source.resolve("README.md"), "Before\n", UTF_8);
+				Files.writeString(effects.resolve("README.md"), "After\n", UTF_8);
+				for (Path file : List.of(source.resolve("README.md"), effects.resolve("README.md")))
+					PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
 
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			CodexSessions sessions = new CodexSessions(settings);
-			Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1,
-				"error building bubblewrap command: app-server socket directory must be a user-owned directory with " +
-					"mode 0700\n")));
-			// Run directories differ per run, so the hash covers the section with their root replaced. The paths that
-			// the section names are written with "/" so that every platform hashes the same content.
-			String section = EvidenceSection.render(sessions.readEvidence(transcript), transcript, effects, source).
-				replace(transcript.toString(), "<root>/" + PortablePaths.text(root.relativize(transcript))).
-				replace(effects.toString(), "<root>/effects").
-				replace(root.toString(), "<root>");
-			CodexProfileInventory inventory = new CodexProfileInventory(ARTIFACT.toAbsolutePath().normalize(), "codex",
-				_ ->
-				{
-					throw new IOException("Reading the role profile does not run Codex");
-				});
-			JudgeProfile judge = new JudgeTemplate(JsonMapper.builder().build(), inventory.roleProfile()).
-				profile("The reply is brief.", "Pass only if every rubric item holds.");
-			VersionRegistry.requireRegistered(REGISTRY, "judge", sessions.judgeVersion(),
-				VersionRegistry.hash(JudgeVersionContent.of(judge, section)));
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+					root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				CodexSessions sessions = new CodexSessions(settings);
+				Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1,
+					"error building bubblewrap command: app-server socket directory must be a user-owned directory with " +
+						"mode 0700\n")));
+				// Run directories differ per run, so the hash covers the section with their root replaced. The paths that
+				// the section names are written with "/" so that every platform hashes the same content.
+				String section = EvidenceSection.render(sessions.readEvidence(transcript), transcript, effects, source).
+					replace(transcript.toString(), "<root>/" + PortablePaths.text(root.relativize(transcript))).
+					replace(effects.toString(), "<root>/effects").
+					replace(root.toString(), "<root>");
+				CodexProfileInventory inventory = new CodexProfileInventory(ARTIFACT.toAbsolutePath().normalize(), "codex",
+					_ ->
+					{
+						throw new IOException("Reading the role profile does not run Codex");
+					});
+				JudgeProfile judge = new JudgeTemplate(JsonMapper.builder().build(), inventory.roleProfile()).
+					profile("The reply is brief.", "Pass only if every rubric item holds.");
+				VersionRegistry.requireRegistered(REGISTRY, "judge", sessions.judgeVersion(),
+					VersionRegistry.hash(JudgeVersionContent.of(judge, section)));
+			}
 		}
 	}
 }

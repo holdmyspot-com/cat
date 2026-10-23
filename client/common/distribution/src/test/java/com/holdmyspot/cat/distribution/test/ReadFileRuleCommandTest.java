@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -55,7 +56,7 @@ public final class ReadFileRuleCommandTest
 	public void runPartCommandAcceptsQuoteInPluginPath() throws IOException, URISyntaxException, InterruptedException
 	{
 		Platform platform = Platform.current();
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-o'brien plugin-")).toAbsolutePath().normalize();
 			Path project = cleanup.add(Files.createTempDirectory("cat-read-file-project-"));

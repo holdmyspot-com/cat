@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayRepository.commit;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayRepository.commitVersions;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayRepository.fastImport;
@@ -41,9 +43,10 @@ public final class EditorPatchWorkflowTest
 	@Test
 	public void capturesPatchForEarlierFileVersion() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-topic-replay-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			String base = git.run("rev-parse", "HEAD").trim();
@@ -119,9 +122,10 @@ public final class EditorPatchWorkflowTest
 	@Test
 	public void adaptsSourcePatchThroughThreeWayMerge() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-topic-replay-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			// The target commit shares the baseline parent with the source commit, and the branch ends at the source
@@ -218,9 +222,10 @@ public final class EditorPatchWorkflowTest
 	@Test
 	public void writesDraftOutputTree() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-topic-replay-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			String base = git.run("rev-parse", "HEAD").trim();

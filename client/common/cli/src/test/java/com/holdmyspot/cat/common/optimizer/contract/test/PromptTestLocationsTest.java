@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.contract.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -92,33 +94,36 @@ public final class PromptTestLocationsTest
 	@Test
 	public void excludedPathsCoverEveryCitedScenario() throws IOException
 	{
-		// Requirement: R-W11, R-C21
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"project"));
-			Path cited = Files.createDirectories(project.resolve(".cat/tests/main/tone_kept"));
-			Files.writeString(cited.resolve("scenario.md"), "# Tone kept\n");
-			Path workspace = Files.createDirectories(cited.resolve("workspace"));
-			Files.createDirectories(project.resolve(".cat/tests/shared"));
-			Files.writeString(project.resolve(".cat/tests/shared/a.md"), "Shared\n");
-			Files.createDirectories(project.resolve(".cat/tests/main/common"));
-			Files.createDirectories(project.resolve("src"));
-			Files.writeString(project.resolve("src/x.md"), "Source\n");
-			Files.createSymbolicLink(workspace.resolve("a.md"), Path.of("../../../shared/a.md"));
-			Files.createSymbolicLink(workspace.resolve("common"), Path.of("../../common"));
-			Files.createSymbolicLink(workspace.resolve("x.md"), Path.of("../../../../../src/x.md"));
-			Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
-				"formatting", List.of(".cat/tests/main/tone_kept/scenario.md"),
-				"plain_list", List.of(".cat/tests/other/list_given/scenario.md", ".cat/tests/other/old_list.md"),
-				"safety", List.of(Path.of("/home/user/.cat/tests/main/asks_first/scenario.md").toAbsolutePath().
-					toString())));
-			requireThat(PromptTestLocations.excluded(contract, TARGET, project), "excluded").isEqualTo(Set.of(
-				Path.of(".cat/tests/main/tone_kept"), Path.of(".cat/tests/main/plain_list"),
-				Path.of(".cat/tests/main/safety"), Path.of(".cat/tests/other/list_given"),
-				Path.of(".cat/tests/other/old_list.md"), Path.of(".cat/tests/main/common"),
-				Path.of(".cat/tests/shared/a.md"), PromptConfiguration.location(TARGET),
-				PromptTestLocations.certificationHistory(TARGET)));
+			// Requirement: R-W11, R-C21
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path project = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"project"));
+				Path cited = Files.createDirectories(project.resolve(".cat/tests/main/tone_kept"));
+				Files.writeString(cited.resolve("scenario.md"), "# Tone kept\n");
+				Path workspace = Files.createDirectories(cited.resolve("workspace"));
+				Files.createDirectories(project.resolve(".cat/tests/shared"));
+				Files.writeString(project.resolve(".cat/tests/shared/a.md"), "Shared\n");
+				Files.createDirectories(project.resolve(".cat/tests/main/common"));
+				Files.createDirectories(project.resolve("src"));
+				Files.writeString(project.resolve("src/x.md"), "Source\n");
+				Files.createSymbolicLink(workspace.resolve("a.md"), Path.of("../../../shared/a.md"));
+				Files.createSymbolicLink(workspace.resolve("common"), Path.of("../../common"));
+				Files.createSymbolicLink(workspace.resolve("x.md"), Path.of("../../../../../src/x.md"));
+				Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
+					"formatting", List.of(".cat/tests/main/tone_kept/scenario.md"),
+					"plain_list", List.of(".cat/tests/other/list_given/scenario.md", ".cat/tests/other/old_list.md"),
+					"safety", List.of(Path.of("/home/user/.cat/tests/main/asks_first/scenario.md").toAbsolutePath().
+						toString())));
+				requireThat(PromptTestLocations.excluded(contract, TARGET, project), "excluded").isEqualTo(Set.of(
+					Path.of(".cat/tests/main/tone_kept"), Path.of(".cat/tests/main/plain_list"),
+					Path.of(".cat/tests/main/safety"), Path.of(".cat/tests/other/list_given"),
+					Path.of(".cat/tests/other/old_list.md"), Path.of(".cat/tests/main/common"),
+					Path.of(".cat/tests/shared/a.md"), PromptConfiguration.location(TARGET),
+					PromptTestLocations.certificationHistory(TARGET)));
+			}
 		}
 	}
 
@@ -131,19 +136,22 @@ public final class PromptTestLocationsTest
 	@Test
 	public void createdTestsExcludeOnlyTheirDirectories() throws IOException
 	{
-		// Requirement: R-W11, R-C21
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"project"));
-			Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
-				"formatting", List.of(), "plain_list", List.of(), "safety", List.of()));
-			Path target = Path.of("client/codex/cli/src/main/resources/rules/codex/read-file.md");
-			Path tests = Path.of("client/codex/cli/src/test/resources");
-			requireThat(PromptTestLocations.excluded(contract, target, project), "excluded").isEqualTo(Set.of(
-				tests.resolve("codex/read-file/formatting"), tests.resolve("codex/read-file/plain_list"),
-				tests.resolve("codex/read-file/safety"), tests.resolve("codex/read-file/prompt.json"),
-				tests.resolve("codex/read-file/certifications.json")));
+			// Requirement: R-W11, R-C21
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path project = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"project"));
+				Contract contract = ContractFixtures.citing(ContractFixtures.contract(), Map.of(
+					"formatting", List.of(), "plain_list", List.of(), "safety", List.of()));
+				Path target = Path.of("client/codex/cli/src/main/resources/rules/codex/read-file.md");
+				Path tests = Path.of("client/codex/cli/src/test/resources");
+				requireThat(PromptTestLocations.excluded(contract, target, project), "excluded").isEqualTo(Set.of(
+					tests.resolve("codex/read-file/formatting"), tests.resolve("codex/read-file/plain_list"),
+					tests.resolve("codex/read-file/safety"), tests.resolve("codex/read-file/prompt.json"),
+					tests.resolve("codex/read-file/certifications.json")));
+			}
 		}
 	}
 }

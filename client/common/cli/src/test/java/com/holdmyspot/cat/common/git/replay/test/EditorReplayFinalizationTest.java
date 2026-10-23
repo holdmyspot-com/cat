@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -53,9 +55,10 @@ public final class EditorReplayFinalizationTest
 	@Test
 	public void sealsAbsorbedCorrection() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.correction();
 			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 
@@ -79,9 +82,10 @@ public final class EditorReplayFinalizationTest
 		"(?s).*Topic-replay output plan conflicts with recorded origin decisions.*feature.txt.*output_1.*secondary.txt.*")
 	public void rejectsConflictingOriginPlan() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.conflict();
 			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 			String original = Files.readString(manifestFile);
@@ -110,9 +114,10 @@ public final class EditorReplayFinalizationTest
 	@Test
 	public void sealsLaterSameOutputCorrection() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.laterCorrection();
 			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 
@@ -137,9 +142,10 @@ public final class EditorReplayFinalizationTest
 	@Test
 	public void sealsAbsorbedSourceWithoutBatch() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.absorbedWithoutBatch();
 			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 
@@ -164,9 +170,10 @@ public final class EditorReplayFinalizationTest
 	@Test
 	public void sealsSupersededAbsorbedSource() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.supersededAbsorbed();
 			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 
@@ -210,9 +217,10 @@ public final class EditorReplayFinalizationTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*requires origin reviews.*")
 	public void rejectsMissingRemovalOrigin() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.removal();
 			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, List.of());
 			String original = Files.readString(manifestFile);
@@ -238,9 +246,10 @@ public final class EditorReplayFinalizationTest
 	@Test
 	public void sealsRemovalAndIndependentRouting() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-plan-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-plan-"));
 			OriginPlanFixtures.Facts facts = OriginPlanFixtures.removal();
 			Path manifestFile = writeInputs(ReplayJson.newMapper(), directory, facts, facts.origins());
 

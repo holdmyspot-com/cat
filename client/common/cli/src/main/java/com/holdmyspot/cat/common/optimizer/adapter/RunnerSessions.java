@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.adapter;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
@@ -259,7 +260,8 @@ public abstract class RunnerSessions implements SessionPort
 			PluginBase base = cat;
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				Path overlay = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+				Path overlay = cleanup.add(Files.createTempDirectory(settings.scope().temporaryDirectory(),
+					"cat-plugin-rules-"));
 				overlayRules(root, base, overlay);
 				for (Loaded loaded : ruleSources(overlay, root,
 					file -> pluginName(root, base, overlay, file), file -> key(root, overlay, file)))
@@ -1161,6 +1163,7 @@ public abstract class RunnerSessions implements SessionPort
 	 * How a harness runner is configured. Every session of a port shares these settings; the model and reasoning
 	 * effort come from each request's profile.
 	 *
+	 * @param scope the process scope borrowed for this adapter
 	 * @param artifact the complete harness artifact that the runner validates and installs
 	 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 	 * @param heldOut lists, when each session starts, the campaigns' held-out directories
@@ -1177,13 +1180,15 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param hostProject the project of the host session that starts the sessions, whose files no session may read
 	 *   except those of its own run and the evidence that it reads, or {@code null} to deny no project's files
 	 */
-	public record Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
+	public record Settings(JvmScope scope, Path artifact, Path runRoot, HeldOutPaths heldOut, String executable,
+		boolean installCat,
 		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
 		FileReplacer replacer, Optional<Path> userRules, Path hostProject)
 	{
 		/**
 		 * Creates settings.
 		 *
+		 * @param scope the process scope borrowed for this adapter
 		 * @param artifact the complete harness artifact that the runner validates and installs
 		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
@@ -1206,6 +1211,7 @@ public abstract class RunnerSessions implements SessionPort
 		 */
 		public Settings
 		{
+			requireThat(scope, "scope").isNotNull();
 			requireThat(artifact, "artifact").isNotNull();
 			requireThat(runRoot, "runRoot").isNotNull();
 			requireThat(runRoot.isAbsolute(), "runRoot.isAbsolute").isTrue();
@@ -1230,6 +1236,7 @@ public abstract class RunnerSessions implements SessionPort
 		/**
 		 * Creates settings that deny no project's files.
 		 *
+		 * @param scope the process scope borrowed for this adapter
 		 * @param artifact the complete harness artifact that the runner validates and installs
 		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
@@ -1246,17 +1253,19 @@ public abstract class RunnerSessions implements SessionPort
 		 * @throws NullPointerException if any argument is null
 		 * @throws IllegalArgumentException if {@code runRoot} is not absolute or is a file system root
 		 */
-		public Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
+		public Settings(JvmScope scope, Path artifact, Path runRoot, HeldOutPaths heldOut, String executable,
+			boolean installCat,
 			Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
 			FileReplacer replacer, Optional<Path> userRules)
 		{
-			this(artifact, runRoot, heldOut, executable, installCat, environment, configurationDirectory, capacity,
+			this(scope, artifact, runRoot, heldOut, executable, installCat, environment, configurationDirectory, capacity,
 				clock, replacer, userRules, null);
 		}
 
 		/**
 		 * Creates settings whose trials load no user rules and that deny no project's files.
 		 *
+		 * @param scope the process scope borrowed for this adapter
 		 * @param artifact the complete harness artifact that the runner validates and installs
 		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
@@ -1271,11 +1280,12 @@ public abstract class RunnerSessions implements SessionPort
 		 * @throws NullPointerException if any argument is null
 		 * @throws IllegalArgumentException if {@code runRoot} is not absolute or is a file system root
 		 */
-		public Settings(Path artifact, Path runRoot, HeldOutPaths heldOut, String executable, boolean installCat,
+		public Settings(JvmScope scope, Path artifact, Path runRoot, HeldOutPaths heldOut, String executable,
+			boolean installCat,
 			Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
 			FileReplacer replacer)
 		{
-			this(artifact, runRoot, heldOut, executable, installCat, environment, configurationDirectory, capacity,
+			this(scope, artifact, runRoot, heldOut, executable, installCat, environment, configurationDirectory, capacity,
 				clock, replacer, Optional.empty());
 		}
 

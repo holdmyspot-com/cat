@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.claude.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -283,9 +285,10 @@ public final class ClaudeRunnerTest
 	@Test
 	public void deniesReadingRunRecordsOtherRunsAndLogin() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("claude");
@@ -322,9 +325,10 @@ public final class ClaudeRunnerTest
 	@Test
 	public void deniesProjectAroundRunRoot() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path temporary = jvm.temporaryDirectory();
 			Path project = cleanup.add(Files.createTempDirectory(temporary, "cat-user-project-"));
 			Path instructions = Files.writeString(project.resolve("CLAUDE.md"), "Follow the handbook.");
 			Path documents = Files.createDirectories(project.resolve("docs"));

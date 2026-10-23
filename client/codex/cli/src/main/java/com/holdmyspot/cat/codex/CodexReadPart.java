@@ -175,27 +175,27 @@ public final class CodexReadPart
 		{
 			file = null;
 		}
-		if (file != null)
-		{
-			Path folder = file.toAbsolutePath().normalize().getParent();
-			if (folder == null || !CodexRunPart.isOutputFolder(folder, environment))
-				return notSaved(path, error);
-			if (Files.notExists(folder, LinkOption.NOFOLLOW_LINKS))
-			{
-				error.println("read-part: \"" + path + "\" was deleted after its last part was read");
-				return 1;
-			}
-			if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && !CodexRunPart.isSavedOutput(file, environment))
-				return notSaved(path, error);
-		}
-		if (file == null || !Files.isRegularFile(file) || !Files.isReadable(file))
-		{
-			error.println("read-part: cannot read \"" + path + "\"");
-			suggest(path, args, shell, readPart, error);
-			return 1;
-		}
 		try
 		{
+			if (file != null)
+			{
+				Path folder = file.toAbsolutePath().normalize().getParent();
+				if (folder == null || !CodexRunPart.isOutputFolder(folder, environment))
+					return notSaved(path, error);
+				if (Files.notExists(folder, LinkOption.NOFOLLOW_LINKS))
+				{
+					error.println("read-part: \"" + path + "\" was deleted after its last part was read");
+					return 1;
+				}
+				if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && !CodexRunPart.isSavedOutput(file, environment))
+					return notSaved(path, error);
+			}
+			if (file == null || !Files.isRegularFile(file) || !Files.isReadable(file))
+			{
+				error.println("read-part: cannot read \"" + path + "\"");
+				suggest(path, args, shell, readPart, error);
+				return 1;
+			}
 			long count = countLines(file);
 			if (count < 0)
 			{

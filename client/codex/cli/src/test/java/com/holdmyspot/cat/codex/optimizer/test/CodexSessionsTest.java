@@ -1,5 +1,9 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
+import com.holdmyspot.cat.common.JvmScope;
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -69,7 +73,6 @@ import tools.jackson.databind.json.JsonMapper;
 public final class CodexSessionsTest
 {
 	private static final Duration LIMIT = Duration.ofMinutes(5);
-	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 
 	/**
 	 * Creates the test.
@@ -97,6 +100,7 @@ public final class CodexSessionsTest
 	/**
 	 * Creates a port whose runner plays a script.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param runRoot the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
@@ -104,15 +108,16 @@ public final class CodexSessionsTest
 	 * @param script what the harness does, turn by turn
 	 * @return the port
 	 */
-	private static CodexSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
+	private static CodexSessions port(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
-		return port(runRoot, capacity, clock, arguments, script, new CopyOnWriteArrayList<>());
+		return port(jvm, runRoot, capacity, clock, arguments, script, new CopyOnWriteArrayList<>());
 	}
 
 	/**
 	 * Creates a port and observes the prompts that CAT sends through the bridge.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param runRoot the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
@@ -121,10 +126,10 @@ public final class CodexSessionsTest
 	 * @param requests receives the decoded prompts in turn order
 	 * @return the port
 	 */
-	private static CodexSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
+	private static CodexSessions port(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script, List<String> requests)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, List::of, "", false, Map.of(),
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, runRoot, runRoot, List::of, "", false, Map.of(),
 			runRoot, capacity, clock, Yielding.fileReplacer());
 		return CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (options, input, output) ->
 		{
@@ -161,56 +166,60 @@ public final class CodexSessionsTest
 	public void passesPluginsOnlyForTrialSessions(SessionRole role)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E20
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			Path artifact = plugin(RoleRuleFixtures.write(root.resolve("artifact")), "cat");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "", true,
-				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().
-				newCodexSessions(settings, (options, input, output) ->
+			// Requirement: R-E20
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				arguments.add(options);
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
-					List.of(Turn.replies("ok")), input, output);
-			});
-			// CAT is recognized by its manifest's repository, whatever the user named it
-			Path cat = plugin(root.resolve("plugins/workflow"), "workflow");
-			Files.writeString(cat.resolve(".codex-plugin/plugin.json"), "{\"name\": \"workflow\", \"repository\": \"" +
-				PluginInfo.CAT_REPOSITORY + "\"}\n");
-			Path tools = plugin(root.resolve("plugins/tools"), "tools");
-			List<Path> plugins = List.of();
-			if (role == SessionRole.TRIAL)
-				plugins = List.of(tools, cat);
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-role-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path artifact = plugin(RoleRuleFixtures.write(root.resolve("artifact")), "cat");
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
+					"", true,
+					Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().
+					newCodexSessions(settings, (options, input, output) ->
+				{
+					arguments.add(options);
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+						List.of(Turn.replies("ok")), input, output);
+				});
+				// CAT is recognized by its manifest's repository, whatever the user named it
+				Path cat = plugin(root.resolve("plugins/workflow"), "workflow");
+				Files.writeString(cat.resolve(".codex-plugin/plugin.json"), "{\"name\": \"workflow\", \"repository\": \"" +
+					PluginInfo.CAT_REPOSITORY + "\"}\n");
+				Path tools = plugin(root.resolve("plugins/tools"), "tools");
+				List<Path> plugins = List.of();
+				if (role == SessionRole.TRIAL)
+					plugins = List.of(tools, cat);
 
-			SessionResult result = await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
-				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, plugins)));
+				SessionResult result = await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, plugins)));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
-			List<String> options = arguments.getFirst();
-			// Requirement: R-I9
-			requireThat(options, "options").doesNotContain("--session-requests");
-			if (role == SessionRole.TRIAL)
-			{
-				requireThat(options, "options").contains("--install-cat");
-				requireThat(ScriptedHarness.optionValue(options, "--artifact"), "artifact").isEqualTo(cat.toString());
-				requireThat(options.subList(0, 2), "plugin").isEqualTo(List.of("--plugin", tools.toString()));
-				requireThat(options.lastIndexOf("--plugin"), "lastPlugin").isEqualTo(0);
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+				List<String> options = arguments.getFirst();
+				// Requirement: R-I9
+				requireThat(options, "options").doesNotContain("--session-requests");
+				if (role == SessionRole.TRIAL)
+				{
+					requireThat(options, "options").contains("--install-cat");
+					requireThat(ScriptedHarness.optionValue(options, "--artifact"), "artifact").isEqualTo(cat.toString());
+					requireThat(options.subList(0, 2), "plugin").isEqualTo(List.of("--plugin", tools.toString()));
+					requireThat(options.lastIndexOf("--plugin"), "lastPlugin").isEqualTo(0);
 
-				requireThat(await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(tools)))), "withoutCat").
-					isInstanceOf(SessionResult.Completed.class);
-				requireThat(arguments.getLast(), "withoutCatOptions").doesNotContain("--install-cat");
-				requireThat(ScriptedHarness.optionValue(arguments.getLast(), "--artifact"), "withoutCatArtifact").
-					isEqualTo(artifact.toString());
-				return;
+					requireThat(await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
+						List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(tools)))), "withoutCat").
+						isInstanceOf(SessionResult.Completed.class);
+					requireThat(arguments.getLast(), "withoutCatOptions").doesNotContain("--install-cat");
+					requireThat(ScriptedHarness.optionValue(arguments.getLast(), "--artifact"), "withoutCatArtifact").
+						isEqualTo(artifact.toString());
+					return;
+				}
+				requireThat(options, "options").doesNotContain("--install-cat").doesNotContain("--plugin");
+				requireThat(ScriptedHarness.optionValue(options, "--artifact"), "artifact").isEqualTo(artifact.toString());
 			}
-			requireThat(options, "options").doesNotContain("--install-cat").doesNotContain("--plugin");
-			requireThat(ScriptedHarness.optionValue(options, "--artifact"), "artifact").isEqualTo(artifact.toString());
 		}
 	}
 
@@ -259,59 +268,63 @@ public final class CodexSessionsTest
 	public void deniesHeldOutReadsToDevelopmentSessions(SessionRole role, Part part)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E24
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-denied-reads-")).
-				toRealPath();
-			Path source = Files.createDirectories(root.resolve("source"));
-			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			Path heldOut = Files.createDirectories(root.resolve("campaign/held_out"));
-			Path runRoot = root.resolve("runs");
-			Path heldOutRunRoot = root.resolve("runs-held_out");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, () -> List.of(heldOut), "",
-				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			List<Boolean> heldOutRunRootExisted = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().
-				newCodexSessions(settings, (options, input, output) ->
+			// Requirement: R-E24
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				arguments.add(options);
-				heldOutRunRootExisted.add(Files.isDirectory(heldOutRunRoot));
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
-					List.of(Turn.replies("ok")), input, output);
-			});
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-denied-reads-")).
+					toRealPath();
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+				Path heldOut = Files.createDirectories(root.resolve("campaign/held_out"));
+				Path runRoot = root.resolve("runs");
+				Path heldOutRunRoot = root.resolve("runs-held_out");
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, () -> List.of(heldOut),
+					"",
+					false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				List<Boolean> heldOutRunRootExisted = new CopyOnWriteArrayList<>();
+				CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().
+					newCodexSessions(settings, (options, input, output) ->
+				{
+					arguments.add(options);
+					heldOutRunRootExisted.add(Files.isDirectory(heldOutRunRoot));
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+						List.of(Turn.replies("ok")), input, output);
+				});
 
-			SessionResult result = await(sessions.start(new SessionRequest(role, part, source, List.of("brief"),
-				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+				SessionResult result = await(sessions.start(new SessionRequest(role, part, source, List.of("brief"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
-			requireThat(heldOutRunRootExisted, "heldOutRunRootExisted").isEqualTo(List.of(true));
-			List<String> denied = new ArrayList<>();
-			List<String> options = arguments.get(0);
-			for (int i = 0; i < options.size() - 1; ++i)
-			{
-				if (options.get(i).equals("--deny-read"))
-					denied.add(options.get(i + 1));
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+				requireThat(heldOutRunRootExisted, "heldOutRunRootExisted").isEqualTo(List.of(true));
+				List<String> denied = new ArrayList<>();
+				List<String> options = arguments.get(0);
+				for (int i = 0; i < options.size() - 1; ++i)
+				{
+					if (options.get(i).equals("--deny-read"))
+						denied.add(options.get(i + 1));
+				}
+				Path expectedRunRoot;
+				List<String> expectedDenied;
+				if (part == Part.HELD_OUT)
+				{
+					expectedRunRoot = heldOutRunRoot;
+					expectedDenied = List.of();
+				}
+				else
+				{
+					expectedRunRoot = runRoot;
+					expectedDenied = List.of(heldOut.toString(), heldOutRunRoot.toString());
+				}
+				requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
+					isEqualTo(expectedRunRoot.toString());
+				requireThat(denied, "denied").isEqualTo(expectedDenied);
+				requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedRunRoot), "transcript").
+					isTrue();
 			}
-			Path expectedRunRoot;
-			List<String> expectedDenied;
-			if (part == Part.HELD_OUT)
-			{
-				expectedRunRoot = heldOutRunRoot;
-				expectedDenied = List.of();
-			}
-			else
-			{
-				expectedRunRoot = runRoot;
-				expectedDenied = List.of(heldOut.toString(), heldOutRunRoot.toString());
-			}
-			requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
-				isEqualTo(expectedRunRoot.toString());
-			requireThat(denied, "denied").isEqualTo(expectedDenied);
-			requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedRunRoot), "transcript").
-				isTrue();
 		}
 	}
 
@@ -330,15 +343,16 @@ public final class CodexSessionsTest
 	public void contractAuthorWritesDraftAndRunsTools()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-contract-author-")).
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-contract-author-")).
 				toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			Path heldOut = Files.createDirectories(root.resolve("campaign/held_out"));
 			Path launcher = root.resolve("image/bin/prompt-optimizer");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"),
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"),
 				() -> List.of(heldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
@@ -387,9 +401,10 @@ public final class CodexSessionsTest
 	public void deniesHeldOutReadsInSessionDirectory()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-session-denied-")).
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-session-denied-")).
 				toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
@@ -401,7 +416,7 @@ public final class CodexSessionsTest
 			Path heldOut = Files.createDirectories(session.campaigns().resolve("c1/held_out"));
 			Path otherHeldOut = Files.createDirectories(root.resolve(".cat/sessions/" + otherSessionId +
 				"/optimizer/c2/held_out"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, session.runRoot("codex"),
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, session.runRoot("codex"),
 				() -> List.of(heldOut, otherHeldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
@@ -490,39 +505,42 @@ public final class CodexSessionsTest
 	public void completesEveryTurnWithObservedEvidence()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		// Requirement: R-E16
-		// Requirement: R-E6
-		// Requirement: R-C12
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<String> events = new ArrayList<>(recorded("codex-children.jsonl"));
-			events.addAll(recorded("codex-hooks.jsonl"));
-			List<Turn> script = List.of(Turn.replies("first", events.toArray(String[]::new)),
-				Turn.replies("second"));
-			List<String> requests = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), script, requests);
+			// Requirement: R-E13
+			// Requirement: R-E16
+			// Requirement: R-E6
+			// Requirement: R-C12
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<String> events = new ArrayList<>(recorded("codex-children.jsonl"));
+				events.addAll(recorded("codex-hooks.jsonl"));
+				List<Turn> script = List.of(Turn.replies("first", events.toArray(String[]::new)),
+					Turn.replies("second"));
+				List<String> requests = new CopyOnWriteArrayList<>();
+				CodexSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(), script, requests);
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one \"quoted\"", "two\nlines")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one \"quoted\"", "two\nlines")));
 
-			requireThat(requests, "requests").isEqualTo(List.of("one \"quoted\"", "two\nlines"));
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("first"), List.of("second")));
-			requireThat(completed.model(), "model").isEqualTo("gpt-6-luna");
-			requireThat(completed.reasoning(), "reasoning").isEqualTo("medium");
-			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(203_636, 148_992, 1_626, 531));
-			requireThat(completed.windows(), "windows").isEqualTo(List.of(
-				new RateLimitWindow(0.36, Instant.ofEpochSecond(1_791_046_710L))));
-			requireThat(Files.readAllLines(completed.transcript()), "transcript").isEqualTo(events);
-			requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
-				resolve("project"));
-			requireThat(completed.effects(), "effects").isDirectory();
-			requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
-			requireThat(completed.promptSources(), "promptSources").contains("hook:sessionStart plugin ");
+				requireThat(requests, "requests").isEqualTo(List.of("one \"quoted\"", "two\nlines"));
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				SessionResult.Completed completed = (SessionResult.Completed) result;
+				requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("first"), List.of("second")));
+				requireThat(completed.model(), "model").isEqualTo("gpt-6-luna");
+				requireThat(completed.reasoning(), "reasoning").isEqualTo("medium");
+				requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(203_636, 148_992, 1_626, 531));
+				requireThat(completed.windows(), "windows").isEqualTo(List.of(
+					new RateLimitWindow(0.36, Instant.ofEpochSecond(1_791_046_710L))));
+				requireThat(Files.readAllLines(completed.transcript()), "transcript").isEqualTo(events);
+				requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
+					resolve("project"));
+				requireThat(completed.effects(), "effects").isDirectory();
+				requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
+				requireThat(completed.promptSources(), "promptSources").contains("hook:sessionStart plugin ");
+			}
 		}
 	}
 
@@ -538,35 +556,39 @@ public final class CodexSessionsTest
 	public void completesWithRootToolCalls()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-C9
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<String> events = recorded("codex-tool-calls.jsonl");
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.replies("done", events.toArray(String[]::new))));
+			// Requirement: R-C9
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<String> events = recorded("codex-tool-calls.jsonl");
+				CodexSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(), List.of(Turn.replies("done", events.toArray(String[]::new))));
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "run commands")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "run commands")));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(completed.toolCalls(), "toolCalls").isEqualTo(List.of(
-				new ToolCall("commandExecution", "/bin/bash -lc true", 1),
-				new ToolCall("commandExecution", "/bin/bash -lc false", 1), new ToolCall("wait", null, null)));
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				SessionResult.Completed completed = (SessionResult.Completed) result;
+				requireThat(completed.toolCalls(), "toolCalls").isEqualTo(List.of(
+					new ToolCall("commandExecution", "/bin/bash -lc true", 1),
+					new ToolCall("commandExecution", "/bin/bash -lc false", 1), new ToolCall("wait", null, null)));
+			}
 		}
 	}
 
 	/**
 	 * Creates a port whose runner must never be started.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param root the directory for run directories and the host configuration
 	 * @param environment the host environment
 	 * @return the port
 	 */
-	private static CodexSessions loginPort(Path root, Map<String, String> environment)
+	private static CodexSessions loginPort(JvmScope jvm, Path root, Map<String, String> environment)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "", false,
 			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		return CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (options, input, output) ->
 		{
@@ -583,15 +605,18 @@ public final class CodexSessionsTest
 	@Test(timeOut = 120_000)
 	public void classifiesASubscriptionLogin() throws IOException
 	{
-		// Requirement: R-E7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Files.writeString(root.resolve("auth.json"), "{\"tokens\":{}}", UTF_8);
+			// Requirement: R-E7
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Files.writeString(root.resolve("auth.json"), "{\"tokens\":{}}", UTF_8);
 
-			HostLogin login = loginPort(root, Map.of()).hostLogin();
+				HostLogin login = loginPort(jvm, root, Map.of()).hostLogin();
 
-			requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
+				requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
+			}
 		}
 	}
 
@@ -604,15 +629,18 @@ public final class CodexSessionsTest
 	@Test(timeOut = 120_000)
 	public void classifiesAnApiKeyLogin() throws IOException
 	{
-		// Requirement: R-E7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Files.writeString(root.resolve("auth.json"), "{\"tokens\":{}}", UTF_8);
+			// Requirement: R-E7
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Files.writeString(root.resolve("auth.json"), "{\"tokens\":{}}", UTF_8);
 
-			HostLogin login = loginPort(root, Map.of("CODEX_API_KEY", "")).hostLogin();
+				HostLogin login = loginPort(jvm, root, Map.of("CODEX_API_KEY", "")).hostLogin();
 
-			requireThat(login, "login").isEqualTo(HostLogin.API_KEY);
+				requireThat(login, "login").isEqualTo(HostLogin.API_KEY);
+			}
 		}
 	}
 
@@ -625,14 +653,17 @@ public final class CodexSessionsTest
 	@Test(timeOut = 120_000)
 	public void classifiesAMissingLoginAsUnknown() throws IOException
 	{
-		// Requirement: R-E7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			// Requirement: R-E7
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 
-			HostLogin login = loginPort(root, Map.of()).hostLogin();
+				HostLogin login = loginPort(jvm, root, Map.of()).hostLogin();
 
-			requireThat(login, "login").isEqualTo(HostLogin.UNKNOWN);
+				requireThat(login, "login").isEqualTo(HostLogin.UNKNOWN);
+			}
 		}
 	}
 
@@ -649,21 +680,24 @@ public final class CodexSessionsTest
 	public void startsTheRunnerWithTheSessionsSource()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				arguments, List.of(Turn.replies("ok")));
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				CodexSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					arguments, List.of(Turn.replies("ok")));
 
-			await(sessions.start(request(source, List.of(), "judge")));
+				await(sessions.start(request(source, List.of(), "judge")));
 
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
-			List<String> options = arguments.get(0);
-			requireThat(ScriptedHarness.optionValue(options, "--project"), "project").isEqualTo(source.toString());
-			requireThat(options.contains("--keep-run"), "keepRun").isTrue();
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+				List<String> options = arguments.get(0);
+				requireThat(ScriptedHarness.optionValue(options, "--project"), "project").isEqualTo(source.toString());
+				requireThat(options.contains("--keep-run"), "keepRun").isTrue();
+			}
 		}
 	}
 
@@ -680,22 +714,25 @@ public final class CodexSessionsTest
 	public void trialsAskForSessionTranscripts()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-I7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				arguments, List.of(Turn.replies("ok")));
+			// Requirement: R-I7
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				CodexSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					arguments, List.of(Turn.replies("ok")));
 
-			await(sessions.start(request(source, List.of(), "trial")));
-			await(sessions.start(new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, source, List.of("judge"),
-				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+				await(sessions.start(request(source, List.of(), "trial")));
+				await(sessions.start(new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, source, List.of("judge"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
 
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(2);
-			requireThat(arguments.get(0).contains("--session-transcripts"), "trial").isTrue();
-			requireThat(arguments.get(1).contains("--session-transcripts"), "judge").isFalse();
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(2);
+				requireThat(arguments.get(0).contains("--session-transcripts"), "trial").isTrue();
+				requireThat(arguments.get(1).contains("--session-transcripts"), "judge").isFalse();
+			}
 		}
 	}
 
@@ -712,23 +749,26 @@ public final class CodexSessionsTest
 	public void passesTheToolOutputTokenLimit()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-C19
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				arguments, List.of(Turn.replies("ok")));
+			// Requirement: R-C19
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				CodexSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					arguments, List.of(Turn.replies("ok")));
 
-			await(sessions.start(request(new TrialProfile("gpt-6-luna", "low", 5000), source, List.of(), "limited")));
-			await(sessions.start(request(new TrialProfile("gpt-6-luna", "low"), source, List.of(), "unlimited")));
+				await(sessions.start(request(new TrialProfile("gpt-6-luna", "low", 5000), source, List.of(), "limited")));
+				await(sessions.start(request(new TrialProfile("gpt-6-luna", "low"), source, List.of(), "unlimited")));
 
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(2);
-			List<String> limited = arguments.get(0);
-			requireThat(ScriptedHarness.optionValue(limited, "--tool-output-token-limit"), "limit").isEqualTo("5000");
-			requireThat(ScriptedHarness.optionValue(limited, "--effort"), "effort").isEqualTo("low");
-			requireThat(arguments.get(1).contains("--tool-output-token-limit"), "unlimited").isFalse();
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(2);
+				List<String> limited = arguments.get(0);
+				requireThat(ScriptedHarness.optionValue(limited, "--tool-output-token-limit"), "limit").isEqualTo("5000");
+				requireThat(ScriptedHarness.optionValue(limited, "--effort"), "effort").isEqualTo("low");
+				requireThat(arguments.get(1).contains("--tool-output-token-limit"), "unlimited").isFalse();
+			}
 		}
 	}
 
@@ -746,25 +786,28 @@ public final class CodexSessionsTest
 	public void reportsRequestedInterrupt()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			CountDownLatch entered = new CountDownLatch(1);
-			List<String> events = recorded("codex-children.jsonl");
-			List<Turn> script = List.of(Turn.blocksUntilInterrupted(events.toArray(String[]::new)).announcing(entered),
-				Turn.replies("never"));
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), script);
-			SessionHandle handle = sessions.start(request(source, List.of(), "one", "two"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
+			// Requirement: R-E15
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				CountDownLatch entered = new CountDownLatch(1);
+				List<String> events = recorded("codex-children.jsonl");
+				List<Turn> script = List.of(Turn.blocksUntilInterrupted(events.toArray(String[]::new)).announcing(entered),
+					Turn.replies("never"));
+				CodexSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(), script);
+				SessionHandle handle = sessions.start(request(source, List.of(), "one", "two"));
+				requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
 
-			handle.interrupt();
+				handle.interrupt();
 
-			SessionResult result = await(handle);
-			requireThat(result, "result").isInstanceOf(SessionResult.Interrupted.class);
-			requireThat(result.windows().size(), "windows.size()").isEqualTo(1);
+				SessionResult result = await(handle);
+				requireThat(result, "result").isInstanceOf(SessionResult.Interrupted.class);
+				requireThat(result.windows().size(), "windows.size()").isEqualTo(1);
+			}
 		}
 	}
 
@@ -781,29 +824,33 @@ public final class CodexSessionsTest
 	public void classifiesRateLimitRejection()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			String rejected = "{\"method\":\"account/rateLimits/updated\",\"params\":{\"rateLimits\":" +
-				"{\"primary\":{\"usedPercent\":100,\"windowDurationMins\":300,\"resetsAt\":1791000000}," +
-				"\"secondary\":null,\"rateLimitReachedType\":\"primary\"}}}";
-			List<String> requests = new CopyOnWriteArrayList<>();
-			Instant resetsAt = Instant.ofEpochSecond(1_791_000_000L);
-			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				throw new AssertionError("The session must not wait for capacity");
-			}, Clock.fixed(resetsAt.minus(Duration.ofHours(1)), ZoneOffset.UTC));
-			CodexSessions sessions = port(root.resolve("runs"), capacity, Clock.systemUTC(), new CopyOnWriteArrayList<>(),
-				List.of(Turn.replies("limit", rejected), Turn.replies("never")), requests);
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				String rejected = "{\"method\":\"account/rateLimits/updated\",\"params\":{\"rateLimits\":" +
+					"{\"primary\":{\"usedPercent\":100,\"windowDurationMins\":300,\"resetsAt\":1791000000}," +
+					"\"secondary\":null,\"rateLimitReachedType\":\"primary\"}}}";
+				List<String> requests = new CopyOnWriteArrayList<>();
+				Instant resetsAt = Instant.ofEpochSecond(1_791_000_000L);
+				HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+				{
+					throw new AssertionError("The session must not wait for capacity");
+				}, Clock.fixed(resetsAt.minus(Duration.ofHours(1)), ZoneOffset.UTC));
+				CodexSessions sessions = port(jvm, root.resolve("runs"), capacity, Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(),
+					List.of(Turn.replies("limit", rejected), Turn.replies("never")), requests);
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
 
-			requireThat(result, "result").isEqualTo(new SessionResult.RateLimited(new HarnessCapacity.Hold(resetsAt, 0),
-				List.of(new RateLimitWindow(1.0, resetsAt))));
-			requireThat(capacity.hold(), "hold").isEqualTo(new HarnessCapacity.Hold(resetsAt, 0));
-			requireThat(requests, "requests").isEqualTo(List.of("one"));
+				requireThat(result, "result").isEqualTo(new SessionResult.RateLimited(new HarnessCapacity.Hold(resetsAt, 0),
+					List.of(new RateLimitWindow(1.0, resetsAt))));
+				requireThat(capacity.hold(), "hold").isEqualTo(new HarnessCapacity.Hold(resetsAt, 0));
+				requireThat(requests, "requests").isEqualTo(List.of("one"));
+			}
 		}
 	}
 
@@ -820,24 +867,27 @@ public final class CodexSessionsTest
 	public void classifiesErrorResultAsFailure()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			String started = "{\"method\":\"thread/started\",\"params\":{\"thread\":{\"id\":\"root\"," +
-				"\"parentThreadId\":null,\"model\":\"gpt-6-luna\",\"reasoningEffort\":\"medium\"}}}";
-			String error = "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"root\",\"turn\":" +
-				"{\"status\":\"failed\",\"error\":{\"message\":\"details\"}}}}";
-			List<String> requests = new CopyOnWriteArrayList<>();
-			CodexSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.replies("oops", started, error), Turn.replies("never")), requests);
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				String started = "{\"method\":\"thread/started\",\"params\":{\"thread\":{\"id\":\"root\"," +
+					"\"parentThreadId\":null,\"model\":\"gpt-6-luna\",\"reasoningEffort\":\"medium\"}}}";
+				String error = "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"root\",\"turn\":" +
+					"{\"status\":\"failed\",\"error\":{\"message\":\"details\"}}}}";
+				List<String> requests = new CopyOnWriteArrayList<>();
+				CodexSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(), List.of(Turn.replies("oops", started, error), Turn.replies("never")), requests);
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
 
-			requireThat(result, "result").isEqualTo(new SessionResult.Failed(
-				"Codex turn finished with status failed", List.of()));
-			requireThat(requests, "requests").isEqualTo(List.of("one"));
+				requireThat(result, "result").isEqualTo(new SessionResult.Failed(
+					"Codex turn finished with status failed", List.of()));
+				requireThat(requests, "requests").isEqualTo(List.of("one"));
+			}
 		}
 	}
 
@@ -850,11 +900,12 @@ public final class CodexSessionsTest
 	@Test
 	public void derivesAgentsInstructions() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-instructions-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-instructions-"));
 			Path project = Files.createDirectories(root.resolve("project"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{
@@ -891,9 +942,10 @@ public final class CodexSessionsTest
 	@Test
 	public void derivesFilesThatHooksAndServersRun() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-commands-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-commands-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			write(project.resolve(".codex/hooks.json"), """
 				{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "bash scripts/start.sh"}]}], \
@@ -907,7 +959,7 @@ public final class CodexSessionsTest
 				""");
 			for (String file : List.of("scripts/start.sh", "servers/docs.py"))
 				write(project.resolve(file), "script");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{
@@ -932,9 +984,10 @@ public final class CodexSessionsTest
 	@Test
 	public void listsUserConfigurationThatTrialsLack() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-user-configuration-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-user-configuration-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path configuration = root.resolve("codex");
 			write(configuration.resolve("hooks.json"), """
@@ -964,7 +1017,7 @@ public final class CodexSessionsTest
 				""");
 			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
 				new TrialPlugin.Installed(), List.of(), null), root.resolve("tools")));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), configuration, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{
@@ -990,15 +1043,16 @@ public final class CodexSessionsTest
 	@Test
 	public void listsEarlyHooks() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-early-hooks-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-early-hooks-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			write(project.resolve(".codex/hooks.json"), """
 				{"hooks": {"SessionStart": [{"matcher": "^(startup|resume)$", "hooks": [{"type": "command", \
 				"command": "start.sh", "commandWindows": "start.cmd"}]}], \
 				"Stop": [{"hooks": [{"type": "command", "command": "stop.sh"}]}]}}""");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{
@@ -1033,9 +1087,10 @@ public final class CodexSessionsTest
 	@Test
 	public void listsHookRegistrations() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-hooks-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-hooks-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			write(project.resolve(".codex/hooks.json"), """
 				{"hooks": {"PreToolUse": [{"matcher": "shell", "hooks": [{"type": "command", "command": "check.sh"}]}]}}""");
@@ -1062,7 +1117,7 @@ public final class CodexSessionsTest
 					tools),
 				new PluginBase(new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"),
 					Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("plugin/hooks"), Path.of("hooks"))), null), cat));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{

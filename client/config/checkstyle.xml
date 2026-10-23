@@ -8,6 +8,10 @@
 <module name="Checker">
 	<property name="tabWidth" value="2"/>
 	<module name="SuppressWarningsFilter"/>
+	<module name="SuppressionSingleFilter">
+		<property name="files" value="[/\\]TestJvmScope\.java$"/>
+		<property name="id" value="directSessionTempRead"/>
+	</module>
 	<module name="BeforeExecutionExclusionFileFilter">
 		<property name="fileNamePattern" value="module\-info\.java$"/>
 	</module>
@@ -20,6 +24,12 @@
 		<property name="checks" value="MissingJavadocType"/>
 	</module>
 	<module name="TreeWalker">
+		<module name="RegexpSinglelineJava">
+			<property name="id" value="directSessionTempRead"/>
+			<property name="format" value="&quot;cat\.session\.temp&quot;"/>
+			<property name="ignoreComments" value="true"/>
+			<property name="message" value="Use the test scope's temporaryDirectory() instead of reading cat.session.temp"/>
+		</module>
 		<module name="SuppressWarningsHolder"/>
 		<module name="InvalidJavadocPosition"/>
 		<module name="JavadocBlockTagLocation"/>

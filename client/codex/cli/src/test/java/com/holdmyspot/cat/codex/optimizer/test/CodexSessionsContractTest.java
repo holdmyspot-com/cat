@@ -1,5 +1,9 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
+import com.holdmyspot.cat.common.JvmScope;
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static com.holdmyspot.cat.codex.optimizer.test.RecordedAppServer.recorded;
@@ -56,7 +60,6 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class CodexSessionsContractTest
 {
-	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 	private static final Duration LIMIT = Duration.ofMinutes(5);
 	/**
 	 * How long a replay may run before the test treats it as hung. Replays finish in well under a second; the margin
@@ -76,14 +79,15 @@ public final class CodexSessionsContractTest
 	/**
 	 * Creates a port over an explicitly supplied bridge and test-owned configuration directory.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param root the directory holding configuration and session artifacts
 	 * @param bridge the external app-server replacement
 	 * @return the production adapter
 	 */
-	private static CodexSessions port(Path root, Bridge bridge)
+	private static CodexSessions port(JvmScope jvm, Path root, Bridge bridge)
 	{
 		return CodexSessionsSecrets.getCodexSessionsAccess().
-			newCodexSessions(new RunnerSessions.Settings(root, root.resolve("runs"),
+			newCodexSessions(new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
 			List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
 			bridge);
 	}
@@ -126,24 +130,27 @@ public final class CodexSessionsContractTest
 	@Test(timeOut = 60_000)
 	public void interruptEndsARunningTurnAsInterrupted() throws Exception
 	{
-		// Requirement: R-E10
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
-			List<String> events = recorded("interrupt-turn-1.jsonl");
-			RecordedAppServer server = new RecordedAppServer(List.of(events));
+			// Requirement: R-E10
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
+				List<String> events = recorded("interrupt-turn-1.jsonl");
+				RecordedAppServer server = new RecordedAppServer(List.of(events));
 
-			new SessionPortContract(() -> new RecordedSubject(port(root, server), root, server)).
-				interruptEndsARunningTurnAsInterrupted();
+				new SessionPortContract(() -> new RecordedSubject(port(jvm, root, server), root, server)).
+					interruptEndsARunningTurnAsInterrupted();
 
-			requireThat(Files.readAllLines(server.transcript(), UTF_8), "transcript").isEqualTo(
-				RecordedAppServer.rebindResponse(events, 3));
-			List<JsonNode> interrupts = server.interrupts();
-			requireThat(interrupts.size(), "interrupts.size").isEqualTo(1);
-			JsonNode params = interrupts.getFirst().path("params");
-			JsonNode terminal = JsonMapper.builder().build().readTree(events.getLast()).path("params");
-			requireThat(params.path("threadId"), "threadId").isEqualTo(terminal.path("threadId"));
-			requireThat(params.path("turnId"), "turnId").isEqualTo(terminal.path("turn").path("id"));
+				requireThat(Files.readAllLines(server.transcript(), UTF_8), "transcript").isEqualTo(
+					RecordedAppServer.rebindResponse(events, 3));
+				List<JsonNode> interrupts = server.interrupts();
+				requireThat(interrupts.size(), "interrupts.size").isEqualTo(1);
+				JsonNode params = interrupts.getFirst().path("params");
+				JsonNode terminal = JsonMapper.builder().build().readTree(events.getLast()).path("params");
+				requireThat(params.path("threadId"), "threadId").isEqualTo(terminal.path("threadId"));
+				requireThat(params.path("turnId"), "turnId").isEqualTo(terminal.path("turn").path("id"));
+			}
 		}
 	}
 
@@ -156,16 +163,19 @@ public final class CodexSessionsContractTest
 	@Test(timeOut = 60_000)
 	public void interruptAfterTheEndChangesNothing() throws Exception
 	{
-		// Requirement: R-E10
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
-			RecordedAppServer server = new RecordedAppServer(List.of(recorded("trial-turn-1.jsonl")));
+			// Requirement: R-E10
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
+				RecordedAppServer server = new RecordedAppServer(List.of(recorded("trial-turn-1.jsonl")));
 
-			new SessionPortContract(() -> new RecordedSubject(port(root, server), root, server)).
-				interruptAfterTheEndChangesNothing();
+				new SessionPortContract(() -> new RecordedSubject(port(jvm, root, server), root, server)).
+					interruptAfterTheEndChangesNothing();
 
-			requireThat(server.interrupts().isEmpty(), "interrupts.isEmpty").isTrue();
+				requireThat(server.interrupts().isEmpty(), "interrupts.isEmpty").isTrue();
+			}
 		}
 	}
 
@@ -182,41 +192,44 @@ public final class CodexSessionsContractTest
 	public void completesWithEvidenceOfEveryTurn()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E20
-		// Requirement: R-E13
-		// Requirement: R-E16
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
-			Path rules = Files.createDirectories(root.resolve("rules/include/common"));
-			Files.writeString(rules.resolve("contract-design.md"), "# Contract design\nDefine the contract.\n", UTF_8);
-			List<String> first = recorded("deriver-turn-1.jsonl");
-			List<String> second = recorded("deriver-turn-2.jsonl");
-			CodexSessions sessions = port(root, new RecordedAppServer(List.of(first, second)));
+			// Requirement: R-E20
+			// Requirement: R-E13
+			// Requirement: R-E16
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
+				Path rules = Files.createDirectories(root.resolve("rules/include/common"));
+				Files.writeString(rules.resolve("contract-design.md"), "# Contract design\nDefine the contract.\n", UTF_8);
+				List<String> first = recorded("deriver-turn-1.jsonl");
+				List<String> second = recorded("deriver-turn-2.jsonl");
+				CodexSessions sessions = port(jvm, root, new RecordedAppServer(List.of(first, second)));
 
-			SessionResult result = await(sessions.start(request(root, SessionRole.CONTRACT_AUTHOR, "inspect",
-				"propose")));
+				SessionResult result = await(sessions.start(request(root, SessionRole.CONTRACT_AUTHOR, "inspect",
+					"propose")));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(completed.responses().size(), "responses.size").isEqualTo(2);
-			requireThat(completed.responses().getFirst(), "firstResponse").isEqualTo(List.of(
-				"I’ll inspect the prompt sources and apply your feedback to the complete proposal " +
-					"without changing any files.\n",
-				"The inspection is complete, and the revised proposal is settled with only direct-factual-answers, " +
-					"gpt-6.1-sol/low, and the requested motto exemption."));
-			requireThat(completed.responses().getLast().size(), "secondResponse.size").isEqualTo(1);
-			requireThat(completed.responses().getLast().getFirst(), "proposal").contains("\"requirements\": [");
-			List<String> all = new ArrayList<>(RecordedAppServer.rebindResponse(first, 3));
-			all.addAll(RecordedAppServer.rebindResponse(second, 4));
-			requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(all);
-			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(291_014, 232_960, 4_804, 1_490));
-			requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
-				resolve("project"));
-			requireThat(completed.effects(), "effects").isDirectory();
-			requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
-			requireThat(completed.promptSources(), "promptSources").isNotBlank();
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				SessionResult.Completed completed = (SessionResult.Completed) result;
+				requireThat(completed.responses().size(), "responses.size").isEqualTo(2);
+				requireThat(completed.responses().getFirst(), "firstResponse").isEqualTo(List.of(
+					"I’ll inspect the prompt sources and apply your feedback to the complete proposal " +
+						"without changing any files.\n",
+					"The inspection is complete, and the revised proposal is settled with only direct-factual-answers, " +
+						"gpt-6.1-sol/low, and the requested motto exemption."));
+				requireThat(completed.responses().getLast().size(), "secondResponse.size").isEqualTo(1);
+				requireThat(completed.responses().getLast().getFirst(), "proposal").contains("\"requirements\": [");
+				List<String> all = new ArrayList<>(RecordedAppServer.rebindResponse(first, 3));
+				all.addAll(RecordedAppServer.rebindResponse(second, 4));
+				requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(all);
+				requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(291_014, 232_960, 4_804, 1_490));
+				requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
+					resolve("project"));
+				requireThat(completed.effects(), "effects").isDirectory();
+				requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
+				requireThat(completed.promptSources(), "promptSources").isNotBlank();
+			}
 		}
 	}
 
@@ -233,21 +246,24 @@ public final class CodexSessionsContractTest
 	public void reportsTheObservedModelUsageAndWindows()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E16
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
-			CodexSessions sessions = port(root, new RecordedAppServer(List.of(recorded("trial-turn-1.jsonl"))));
+			// Requirement: R-E16
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
+				CodexSessions sessions = port(jvm, root, new RecordedAppServer(List.of(recorded("trial-turn-1.jsonl"))));
 
-			SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "answer")));
+				SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "answer")));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(completed.model(), "model").isEqualTo("gpt-6.1-sol");
-			requireThat(completed.reasoning(), "reasoning").isEqualTo("low");
-			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(62_269, 29_312, 113, 0));
-			requireThat(completed.windows(), "windows").isEqualTo(WINDOWS);
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				SessionResult.Completed completed = (SessionResult.Completed) result;
+				requireThat(completed.model(), "model").isEqualTo("gpt-6.1-sol");
+				requireThat(completed.reasoning(), "reasoning").isEqualTo("low");
+				requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(62_269, 29_312, 113, 0));
+				requireThat(completed.windows(), "windows").isEqualTo(WINDOWS);
+			}
 		}
 	}
 
@@ -259,17 +275,20 @@ public final class CodexSessionsContractTest
 	@Test
 	public void classifiesTheHostLogin() throws IOException
 	{
-		// Requirement: R-E7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
-			Files.writeString(root.resolve("auth.json"), "{\"tokens\":{}}", UTF_8);
-			CodexSessions sessions = port(root, (_, _, _) ->
+			// Requirement: R-E7
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				throw new AssertionError("Login classification must not start a session");
-			});
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
+				Files.writeString(root.resolve("auth.json"), "{\"tokens\":{}}", UTF_8);
+				CodexSessions sessions = port(jvm, root, (_, _, _) ->
+				{
+					throw new AssertionError("Login classification must not start a session");
+				});
 
-			requireThat(sessions.hostLogin(), "login").isEqualTo(HostLogin.SUBSCRIPTION);
+				requireThat(sessions.hostLogin(), "login").isEqualTo(HostLogin.SUBSCRIPTION);
+			}
 		}
 	}
 
@@ -282,19 +301,22 @@ public final class CodexSessionsContractTest
 	@Test
 	public void reportsTheHostLoginWithoutASession() throws IOException
 	{
-		// Requirement: R-E7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
-			CodexSessions sessions = port(root, (_, _, _) ->
+			// Requirement: R-E7
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				throw new AssertionError("Login classification must not start a session");
-			});
-			Files.writeString(root.resolve("auth.json"), "{\"OPENAI_API_KEY\":\"placeholder\"}", UTF_8);
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
+				CodexSessions sessions = port(jvm, root, (_, _, _) ->
+				{
+					throw new AssertionError("Login classification must not start a session");
+				});
+				Files.writeString(root.resolve("auth.json"), "{\"OPENAI_API_KEY\":\"placeholder\"}", UTF_8);
 
-			requireThat(sessions.hostLogin(), "apiKeyLogin").isEqualTo(HostLogin.API_KEY);
-			Files.writeString(root.resolve("auth.json"), "{\"OPENAI_API_KEY\":{}}", UTF_8);
-			requireThat(sessions.hostLogin(), "unsupportedKeyType").isEqualTo(HostLogin.UNKNOWN);
+				requireThat(sessions.hostLogin(), "apiKeyLogin").isEqualTo(HostLogin.API_KEY);
+				Files.writeString(root.resolve("auth.json"), "{\"OPENAI_API_KEY\":{}}", UTF_8);
+				requireThat(sessions.hostLogin(), "unsupportedKeyType").isEqualTo(HostLogin.UNKNOWN);
+			}
 		}
 	}
 
@@ -310,42 +332,45 @@ public final class CodexSessionsContractTest
 	public void runsOneSessionPerRole()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E20
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
-			RoleRuleFixtures.write(root);
-			// A triage session, like a judge session, answers with one JSON object, so it replays the judge's recording
-			Map<SessionRole, List<String>> events = Map.of(SessionRole.TRIAL, recorded("trial-turn-1.jsonl"),
-				SessionRole.JUDGE, recorded("judge-turn-1.jsonl"), SessionRole.TRIAGE, recorded("judge-turn-1.jsonl"),
-				SessionRole.PROMPT_AUTHOR, recorded("author-turn-1.jsonl"), SessionRole.CONTRACT_AUTHOR,
-				recorded("deriver-turn-1.jsonl"));
-			Map<SessionRole, Integer> messages = Map.of(SessionRole.TRIAL, 1, SessionRole.JUDGE, 2,
-				SessionRole.TRIAGE, 2, SessionRole.PROMPT_AUTHOR, 3, SessionRole.CONTRACT_AUTHOR, 2);
-			AtomicInteger next = new AtomicInteger();
-			CodexSessions sessions = port(root, (arguments, input, output) ->
-				new RecordedAppServer(List.of(events.get(SessionRole.values()[next.getAndIncrement()]))).
-					serve(arguments, input, output));
-			Set<Path> transcripts = new HashSet<>();
-			Set<Path> effects = new HashSet<>();
-			for (SessionRole role : SessionRole.values())
+			// Requirement: R-E20
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				SessionResult result = await(sessions.start(request(root, role, role.name())));
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
+				RoleRuleFixtures.write(root);
+				// A triage session, like a judge session, answers with one JSON object, so it replays the judge's recording
+				Map<SessionRole, List<String>> events = Map.of(SessionRole.TRIAL, recorded("trial-turn-1.jsonl"),
+					SessionRole.JUDGE, recorded("judge-turn-1.jsonl"), SessionRole.TRIAGE, recorded("judge-turn-1.jsonl"),
+					SessionRole.PROMPT_AUTHOR, recorded("author-turn-1.jsonl"), SessionRole.CONTRACT_AUTHOR,
+					recorded("deriver-turn-1.jsonl"));
+				Map<SessionRole, Integer> messages = Map.of(SessionRole.TRIAL, 1, SessionRole.JUDGE, 2,
+					SessionRole.TRIAGE, 2, SessionRole.PROMPT_AUTHOR, 3, SessionRole.CONTRACT_AUTHOR, 2);
+				AtomicInteger next = new AtomicInteger();
+				CodexSessions sessions = port(jvm, root, (arguments, input, output) ->
+					new RecordedAppServer(List.of(events.get(SessionRole.values()[next.getAndIncrement()]))).
+						serve(arguments, input, output));
+				Set<Path> transcripts = new HashSet<>();
+				Set<Path> effects = new HashSet<>();
+				for (SessionRole role : SessionRole.values())
+				{
+					SessionResult result = await(sessions.start(request(root, role, role.name())));
 
-				requireThat(result, role + ".result").isInstanceOf(SessionResult.Completed.class);
-				SessionResult.Completed completed = (SessionResult.Completed) result;
-				requireThat(completed.responses().size(), "responses.size").isEqualTo(1);
-				requireThat(completed.responses().getFirst().size(), "messages.size").
-					isEqualTo(messages.get(role));
-				requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(
-					RecordedAppServer.rebindResponse(events.get(role), 3));
-				transcripts.add(completed.transcript());
-				effects.add(completed.effects());
+					requireThat(result, role + ".result").isInstanceOf(SessionResult.Completed.class);
+					SessionResult.Completed completed = (SessionResult.Completed) result;
+					requireThat(completed.responses().size(), "responses.size").isEqualTo(1);
+					requireThat(completed.responses().getFirst().size(), "messages.size").
+						isEqualTo(messages.get(role));
+					requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(
+						RecordedAppServer.rebindResponse(events.get(role), 3));
+					transcripts.add(completed.transcript());
+					effects.add(completed.effects());
+				}
+				requireThat(next.get(), "sessionsStarted").isEqualTo(SessionRole.values().length);
+				requireThat(transcripts.size(), "transcripts.size").isEqualTo(SessionRole.values().length);
+				requireThat(effects.size(), "effects.size").isEqualTo(SessionRole.values().length);
 			}
-			requireThat(next.get(), "sessionsStarted").isEqualTo(SessionRole.values().length);
-			requireThat(transcripts.size(), "transcripts.size").isEqualTo(SessionRole.values().length);
-			requireThat(effects.size(), "effects.size").isEqualTo(SessionRole.values().length);
 		}
 	}
 
@@ -363,23 +388,26 @@ public final class CodexSessionsContractTest
 	public void recordsAChildOfTheSession()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E14
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "codex-contract-"));
-			List<String> events = recorded("child-work.jsonl");
-			CodexSessions sessions = port(root, (options, input, output) -> ScriptedHarness.serve(
-				Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
-				List.of(Turn.replies("done", events.toArray(String[]::new))), input, output));
+			// Requirement: R-E14
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
+				List<String> events = recorded("child-work.jsonl");
+				CodexSessions sessions = port(jvm, root, (options, input, output) -> ScriptedHarness.serve(
+					Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+					List.of(Turn.replies("done", events.toArray(String[]::new))), input, output));
 
-			SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "delegate")));
+				SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "delegate")));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(events);
-			requireThat(completed.toolCalls(), "rootToolCalls").isEqualTo(List.of(
-				new ToolCall("commandExecution", "/bin/bash -lc true", 1),
-				new ToolCall("commandExecution", "/bin/bash -lc false", 1), new ToolCall("wait", null, null)));
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				SessionResult.Completed completed = (SessionResult.Completed) result;
+				requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(events);
+				requireThat(completed.toolCalls(), "rootToolCalls").isEqualTo(List.of(
+					new ToolCall("commandExecution", "/bin/bash -lc true", 1),
+					new ToolCall("commandExecution", "/bin/bash -lc false", 1), new ToolCall("wait", null, null)));
+			}
 		}
 	}
 

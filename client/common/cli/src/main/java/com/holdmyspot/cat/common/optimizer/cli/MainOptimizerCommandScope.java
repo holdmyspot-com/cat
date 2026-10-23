@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionDirectory;
@@ -13,11 +14,9 @@ import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import io.github.cowwoc.pouch10.core.LazyReference;
 import io.github.cowwoc.pouch10.core.Reference;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.random.RandomGenerator;
@@ -28,7 +27,7 @@ import java.util.random.RandomGenerator;
  * session that the process environment names. Each harness's scope adds the sessions and the host interrupt signal
  * that it resolves from the process environment.
  */
-public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
+public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommandScope
 {
 	/**
 	 * The launcher's name in the runtime image's {@code bin} directory.
@@ -40,7 +39,6 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 	private final Path configurationDirectory;
 	private final Path directory;
 	private final List<Path> loaderConfiguration;
-	private final Reference<JsonMapper> json = LazyReference.create(() -> JsonMapper.builder().build());
 	private final Reference<RandomGenerator> random = LazyReference.create(RandomGenerator::getDefault);
 	private final Reference<FileReplacer> fileReplacer = LazyReference.create(FileReplacer::sleeping);
 	private final Reference<Forks> forks = LazyReference.create(() -> new GitForks(fileReplacer.getValue()));
@@ -60,6 +58,7 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 	protected MainOptimizerCommandScope(Harness harness, SessionHarness sessionHarness,
 		Map<String, String> environment, Path configurationDirectory, Path directory, List<Path> loaderConfiguration)
 	{
+		super(new MainJvmScope(environment));
 		requireThat(harness, "harness").isNotNull();
 		requireThat(sessionHarness, "sessionHarness").isNotNull();
 		requireThat(environment, "environment").isNotNull();
@@ -74,19 +73,7 @@ public abstract class MainOptimizerCommandScope extends OptimizerCommandScope
 		this.loaderConfiguration = List.copyOf(loaderConfiguration);
 	}
 
-	@Override
-	public final JsonMapper json()
-	{
-		ensureOpen();
-		return json.getValue();
-	}
 
-	@Override
-	public final Clock clock()
-	{
-		ensureOpen();
-		return Clock.systemUTC();
-	}
 
 	@Override
 	public final FileReplacer fileReplacer()

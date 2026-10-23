@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.MainToolScope;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
 import com.holdmyspot.cat.distribution.bundle.ModuleDescriptorPatcher;
@@ -250,7 +251,7 @@ public final class DistributionMain
 			codexPluginLayer(codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexImage,
 			codexAgentLaunchers(), legalMaterials, List.of(commonInstallers, codexInstallers),
 			runtimeDirectory.resolve("codex"));
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new MainToolScope())
 		{
 			validateRuleDependencies(claudeRoot, codexRoot, projectRoot, scope.yaml());
 			RuleArtifactRouter.route(claudeRoot, scope.yaml());

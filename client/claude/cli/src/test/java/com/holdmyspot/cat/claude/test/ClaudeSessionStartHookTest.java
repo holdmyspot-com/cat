@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -341,7 +342,7 @@ public final class ClaudeSessionStartHookTest
 			requireThat(directory.resolve("temp"), "temp").isDirectory();
 			requireThat(Files.readString(rules), "rulesContent").
 				contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/sessions/" + SESSION_ID + "/temp`.");
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				JsonNode marker = scope.json().readTree(Files.readString(directory.resolve("session.json")));
 				requireThat(marker.path("harness").asString(), "harness").isEqualTo("claude");
@@ -884,7 +885,7 @@ public final class ClaudeSessionStartHookTest
 	private static String context(HookResult result) throws IOException
 	{
 		assert result != null;
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			JsonNode envelope = scope.json().readTree(result.output());
 			return envelope.at("/hookSpecificOutput/additionalContext").asString();

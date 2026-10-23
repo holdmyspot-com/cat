@@ -14,7 +14,7 @@ public final class HarnessRunSession implements AutoCloseable
 {
 	private final HarnessRun run;
 	private final HarnessProcess process;
-	private final HarnessRunnerScope scope;
+	private final AbstractHarnessRunnerScope scope;
 	private final HarnessRunLock lock;
 	private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -26,7 +26,7 @@ public final class HarnessRunSession implements AutoCloseable
 	 * @param scope services owned for the process lifetime
 	 * @throws NullPointerException if {@code run}, {@code process}, or {@code scope} are null
 	 */
-	public HarnessRunSession(HarnessRun run, HarnessProcess process, HarnessRunnerScope scope)
+	public HarnessRunSession(HarnessRun run, HarnessProcess process, AbstractHarnessRunnerScope scope)
 	{
 		this(run, process, scope, HarnessRunLock.unlocked());
 	}
@@ -40,7 +40,8 @@ public final class HarnessRunSession implements AutoCloseable
 	 * @param lock the exclusive run lock
 	 * @throws NullPointerException if {@code run}, {@code process}, {@code scope}, or {@code lock} are null
 	 */
-	public HarnessRunSession(HarnessRun run, HarnessProcess process, HarnessRunnerScope scope, HarnessRunLock lock)
+	public HarnessRunSession(HarnessRun run, HarnessProcess process, AbstractHarnessRunnerScope scope,
+		HarnessRunLock lock)
 	{
 		requireThat(run, "run").isNotNull();
 		requireThat(process, "process").isNotNull();
@@ -127,7 +128,7 @@ public final class HarnessRunSession implements AutoCloseable
 	 *
 	 * @return the live session scope
 	 */
-	public HarnessRunnerScope scope()
+	public AbstractHarnessRunnerScope scope()
 	{
 		return scope;
 	}

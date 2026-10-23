@@ -1,5 +1,9 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+import com.holdmyspot.cat.common.JvmScope;
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.claude.optimizer.test.RecordedClaude.recorded;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
@@ -52,7 +56,6 @@ import tools.jackson.databind.JsonNode;
  */
 public final class ClaudeSessionsContractTest
 {
-	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 	private static final Duration LIMIT = Duration.ofMinutes(5);
 	/**
 	 * How long a replay may run before the test treats it as hung. Replays finish in well under a second; the margin
@@ -70,14 +73,15 @@ public final class ClaudeSessionsContractTest
 	/**
 	 * Creates a port over an explicitly supplied bridge and test-owned configuration directory.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param root   the directory holding configuration and session artifacts
 	 * @param bridge the replacement for the runner's Claude process
 	 * @return the production adapter
 	 */
-	private static ClaudeSessions port(Path root, Bridge bridge)
+	private static ClaudeSessions port(JvmScope jvm, Path root, Bridge bridge)
 	{
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().
-			newClaudeSessions(new RunnerSessions.Settings(root, root.resolve("runs"),
+			newClaudeSessions(new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
 			List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
 			bridge);
 	}
@@ -114,18 +118,19 @@ public final class ClaudeSessionsContractTest
 	/**
 	 * Creates the contract over the real adapter, replaying the recorded turns once per session.
 	 *
+	 * @param jvm the borrowed process scope, open until the contract check completes
 	 * @param turns the recordings, one per turn
 	 * @return the contract
 	 */
-	private static SessionPortContract contract(List<List<String>> turns)
+	private static SessionPortContract contract(JvmScope jvm, List<List<String>> turns)
 	{
 		return new SessionPortContract(() ->
 		{
-			Path root = Files.createTempDirectory(Files.createDirectories(TEMP), "claude-contract-");
+			Path root = Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-");
 			TemporaryDirectories cleanup = new TemporaryDirectories();
 			cleanup.add(root);
 			RecordedClaude claude = new RecordedClaude(turns);
-			return new RecordedSubject(cleanup, port(root, claude), root, claude);
+			return new RecordedSubject(cleanup, port(jvm, root, claude), root, claude);
 		});
 	}
 
@@ -140,8 +145,11 @@ public final class ClaudeSessionsContractTest
 		// Requirement: R-E13
 		// Requirement: R-E16
 		// Requirement: R-E6
-		contract(List.of(recorded("two-turn-trial-turn-1.jsonl"), recorded("two-turn-trial-turn-2.jsonl"))).
-			completesWithEvidenceOfEveryTurn();
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			contract(jvm, List.of(recorded("two-turn-trial-turn-1.jsonl"), recorded("two-turn-trial-turn-2.jsonl"))).
+				completesWithEvidenceOfEveryTurn();
+		}
 	}
 
 	/**
@@ -153,7 +161,10 @@ public final class ClaudeSessionsContractTest
 	public void judgeLeavesReadOnlyEvidenceUnchanged() throws Exception
 	{
 		// Requirement: R-E13
-		contract(List.of(recorded("judge-turn-1.jsonl"))).judgeLeavesReadOnlyEvidenceUnchanged();
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			contract(jvm, List.of(recorded("judge-turn-1.jsonl"))).judgeLeavesReadOnlyEvidenceUnchanged();
+		}
 	}
 
 	/**
@@ -165,19 +176,22 @@ public final class ClaudeSessionsContractTest
 	@Test(timeOut = 60_000)
 	public void interruptEndsARunningTurnAsInterrupted() throws Exception
 	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "claude-contract-"));
-			RecordedClaude claude = new RecordedClaude(List.of(recorded("interrupted-judge-turn-1.jsonl")));
+			// Requirement: R-E15
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-"));
+				RecordedClaude claude = new RecordedClaude(List.of(recorded("interrupted-judge-turn-1.jsonl")));
 
-			new SessionPortContract(() -> new RecordedSubject(new TemporaryDirectories(), port(root, claude), root,
-				claude)).interruptEndsARunningTurnAsInterrupted();
+				new SessionPortContract(() -> new RecordedSubject(new TemporaryDirectories(), port(jvm, root, claude), root,
+					claude)).interruptEndsARunningTurnAsInterrupted();
 
-			List<JsonNode> requests = claude.controlRequests();
-			requireThat(requests.size(), "controlRequests.size").isEqualTo(1);
-			requireThat(requests.getFirst().path("request").path("subtype").asString(""), "subtype").
-				isEqualTo("interrupt");
+				List<JsonNode> requests = claude.controlRequests();
+				requireThat(requests.size(), "controlRequests.size").isEqualTo(1);
+				requireThat(requests.getFirst().path("request").path("subtype").asString(""), "subtype").
+					isEqualTo("interrupt");
+			}
 		}
 	}
 
@@ -190,16 +204,19 @@ public final class ClaudeSessionsContractTest
 	@Test(timeOut = 60_000)
 	public void interruptAfterTheEndChangesNothing() throws Exception
 	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "claude-contract-"));
-			RecordedClaude claude = new RecordedClaude(List.of(recorded("trial-turn-1.jsonl")));
+			// Requirement: R-E15
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-"));
+				RecordedClaude claude = new RecordedClaude(List.of(recorded("trial-turn-1.jsonl")));
 
-			new SessionPortContract(() -> new RecordedSubject(new TemporaryDirectories(), port(root, claude), root,
-				claude)).interruptAfterTheEndChangesNothing();
+				new SessionPortContract(() -> new RecordedSubject(new TemporaryDirectories(), port(jvm, root, claude), root,
+					claude)).interruptAfterTheEndChangesNothing();
 
-			requireThat(claude.controlRequests().isEmpty(), "controlRequests.isEmpty").isTrue();
+				requireThat(claude.controlRequests().isEmpty(), "controlRequests.isEmpty").isTrue();
+			}
 		}
 	}
 
@@ -211,18 +228,21 @@ public final class ClaudeSessionsContractTest
 	@Test(timeOut = 60_000)
 	public void reportsTheHostLoginWithoutASession() throws Exception
 	{
-		// Requirement: R-E7
-		new SessionPortContract(() ->
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = Files.createTempDirectory(Files.createDirectories(TEMP), "claude-contract-");
-			TemporaryDirectories cleanup = new TemporaryDirectories();
-			cleanup.add(root);
-			RecordedClaude claude = new RecordedClaude(List.of());
-			return new RecordedSubject(cleanup, port(root, (_, _, _) ->
+			// Requirement: R-E7
+			new SessionPortContract(() ->
 			{
-				throw new AssertionError("Login classification must not start a session");
-			}), root, claude);
-		}).reportsTheHostLoginWithoutASession();
+				Path root = Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-");
+				TemporaryDirectories cleanup = new TemporaryDirectories();
+				cleanup.add(root);
+				RecordedClaude claude = new RecordedClaude(List.of());
+				return new RecordedSubject(cleanup, port(jvm, root, (_, _, _) ->
+				{
+					throw new AssertionError("Login classification must not start a session");
+				}), root, claude);
+			}).reportsTheHostLoginWithoutASession();
+		}
 	}
 
 	/**
@@ -239,32 +259,35 @@ public final class ClaudeSessionsContractTest
 	public void completesWithEvidenceOfEveryTurn()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		// Requirement: R-E16
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "claude-contract-"));
-			List<String> first = recorded("two-turn-trial-turn-1.jsonl");
-			List<String> second = recorded("two-turn-trial-turn-2.jsonl");
-			ClaudeSessions sessions = port(root, new RecordedClaude(List.of(first, second)));
+			// Requirement: R-E13
+			// Requirement: R-E16
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-"));
+				List<String> first = recorded("two-turn-trial-turn-1.jsonl");
+				List<String> second = recorded("two-turn-trial-turn-2.jsonl");
+				ClaudeSessions sessions = port(jvm, root, new RecordedClaude(List.of(first, second)));
 
-			SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "element", "compound")));
+				SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "element", "compound")));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(completed.responses(), "responses").isEqualTo(List.of(
-				List.of("Hydrogen (H) has atomic number 1: its nucleus contains one proton.\n\nShip small, ship often."),
-				List.of("Hydrogen and oxygen form water (H₂O).\n\nShip small, ship often.")));
-			List<String> all = new ArrayList<>(first);
-			all.addAll(second);
-			requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(all);
-			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(119_179, 97_940, 627, 337));
-			requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
-				resolve("project"));
-			requireThat(completed.effects(), "effects").isDirectory();
-			requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
-			requireThat(completed.promptSources(), "promptSources").isNotBlank();
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				SessionResult.Completed completed = (SessionResult.Completed) result;
+				requireThat(completed.responses(), "responses").isEqualTo(List.of(
+					List.of("Hydrogen (H) has atomic number 1: its nucleus contains one proton.\n\nShip small, ship often."),
+					List.of("Hydrogen and oxygen form water (H₂O).\n\nShip small, ship often.")));
+				List<String> all = new ArrayList<>(first);
+				all.addAll(second);
+				requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(all);
+				requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(119_179, 97_940, 627, 337));
+				requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
+					resolve("project"));
+				requireThat(completed.effects(), "effects").isDirectory();
+				requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
+				requireThat(completed.promptSources(), "promptSources").isNotBlank();
+			}
 		}
 	}
 
@@ -281,22 +304,25 @@ public final class ClaudeSessionsContractTest
 	public void reportsTheObservedModelUsageAndWindows()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E16
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "claude-contract-"));
-			ClaudeSessions sessions = port(root, new RecordedClaude(List.of(recorded("trial-turn-1.jsonl"))));
+			// Requirement: R-E16
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-"));
+				ClaudeSessions sessions = port(jvm, root, new RecordedClaude(List.of(recorded("trial-turn-1.jsonl"))));
 
-			SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "answer")));
+				SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "answer")));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(completed.model(), "model").isEqualTo("claude-haiku-5-5");
-			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(86_786, 66_468, 544, 242));
-			requireThat(completed.windows(), "windows").isEqualTo(List.of(
-				new RateLimitWindow(0.79, Instant.ofEpochSecond(1_792_473_600L)),
-				new RateLimitWindow(0.34, Instant.ofEpochSecond(1_792_879_200L))));
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				SessionResult.Completed completed = (SessionResult.Completed) result;
+				requireThat(completed.model(), "model").isEqualTo("claude-haiku-5-5");
+				requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(86_786, 66_468, 544, 242));
+				requireThat(completed.windows(), "windows").isEqualTo(List.of(
+					new RateLimitWindow(0.79, Instant.ofEpochSecond(1_792_473_600L)),
+					new RateLimitWindow(0.34, Instant.ofEpochSecond(1_792_879_200L))));
+			}
 		}
 	}
 
@@ -313,41 +339,44 @@ public final class ClaudeSessionsContractTest
 	public void runsOneSessionPerRole()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "claude-contract-"));
-			RoleRuleFixtures.write(root);
-			Map<SessionRole, List<String>> events = Map.of(SessionRole.TRIAL, recorded("trial-turn-1.jsonl"),
-				SessionRole.JUDGE, recorded("judge-turn-1.jsonl"), SessionRole.TRIAGE, recorded("triage-turn-1.jsonl"),
-				SessionRole.PROMPT_AUTHOR, recorded("prompt-author-turn-1.jsonl"), SessionRole.CONTRACT_AUTHOR,
-				recorded("contract-author-turn-1.jsonl"));
-			// The contract author's recording replies with an interim message before its tool calls and then its result
-			Map<SessionRole, Integer> messages = Map.of(SessionRole.TRIAL, 1, SessionRole.JUDGE, 1,
-				SessionRole.TRIAGE, 1, SessionRole.PROMPT_AUTHOR, 1, SessionRole.CONTRACT_AUTHOR, 2);
-			AtomicInteger next = new AtomicInteger();
-			ClaudeSessions sessions = port(root, (arguments, input, output) ->
-				new RecordedClaude(List.of(events.get(SessionRole.values()[next.getAndIncrement()]))).
-					serve(arguments, input, output));
-			Set<Path> transcripts = new HashSet<>();
-			Set<Path> effects = new HashSet<>();
-			for (SessionRole role : SessionRole.values())
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				SessionResult result = await(sessions.start(request(root, role, role.name())));
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-"));
+				RoleRuleFixtures.write(root);
+				Map<SessionRole, List<String>> events = Map.of(SessionRole.TRIAL, recorded("trial-turn-1.jsonl"),
+					SessionRole.JUDGE, recorded("judge-turn-1.jsonl"), SessionRole.TRIAGE, recorded("triage-turn-1.jsonl"),
+					SessionRole.PROMPT_AUTHOR, recorded("prompt-author-turn-1.jsonl"), SessionRole.CONTRACT_AUTHOR,
+					recorded("contract-author-turn-1.jsonl"));
+				// The contract author's recording replies with an interim message before its tool calls and then its result
+				Map<SessionRole, Integer> messages = Map.of(SessionRole.TRIAL, 1, SessionRole.JUDGE, 1,
+					SessionRole.TRIAGE, 1, SessionRole.PROMPT_AUTHOR, 1, SessionRole.CONTRACT_AUTHOR, 2);
+				AtomicInteger next = new AtomicInteger();
+				ClaudeSessions sessions = port(jvm, root, (arguments, input, output) ->
+					new RecordedClaude(List.of(events.get(SessionRole.values()[next.getAndIncrement()]))).
+						serve(arguments, input, output));
+				Set<Path> transcripts = new HashSet<>();
+				Set<Path> effects = new HashSet<>();
+				for (SessionRole role : SessionRole.values())
+				{
+					SessionResult result = await(sessions.start(request(root, role, role.name())));
 
-				requireThat(result, role + ".result").isInstanceOf(SessionResult.Completed.class);
-				SessionResult.Completed completed = (SessionResult.Completed) result;
-				requireThat(completed.responses().size(), role + ".responses.size").isEqualTo(1);
-				requireThat(completed.responses().getFirst().size(), role + ".messages.size").
-					isEqualTo(messages.get(role));
-				requireThat(Files.readAllLines(completed.transcript(), UTF_8), role + ".transcript").
-					isEqualTo(events.get(role));
-				transcripts.add(completed.transcript());
-				effects.add(completed.effects());
+					requireThat(result, role + ".result").isInstanceOf(SessionResult.Completed.class);
+					SessionResult.Completed completed = (SessionResult.Completed) result;
+					requireThat(completed.responses().size(), role + ".responses.size").isEqualTo(1);
+					requireThat(completed.responses().getFirst().size(), role + ".messages.size").
+						isEqualTo(messages.get(role));
+					requireThat(Files.readAllLines(completed.transcript(), UTF_8), role + ".transcript").
+						isEqualTo(events.get(role));
+					transcripts.add(completed.transcript());
+					effects.add(completed.effects());
+				}
+				requireThat(next.get(), "sessionsStarted").isEqualTo(SessionRole.values().length);
+				requireThat(transcripts.size(), "transcripts.size").isEqualTo(SessionRole.values().length);
+				requireThat(effects.size(), "effects.size").isEqualTo(SessionRole.values().length);
 			}
-			requireThat(next.get(), "sessionsStarted").isEqualTo(SessionRole.values().length);
-			requireThat(transcripts.size(), "transcripts.size").isEqualTo(SessionRole.values().length);
-			requireThat(effects.size(), "effects.size").isEqualTo(SessionRole.values().length);
 		}
 	}
 

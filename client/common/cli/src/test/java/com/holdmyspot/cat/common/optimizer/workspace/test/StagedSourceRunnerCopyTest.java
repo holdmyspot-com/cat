@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.workspace.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.file;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -65,41 +67,44 @@ public final class StagedSourceRunnerCopyTest
 	@Test(dataProvider = "harnesses")
 	public void runnerAcceptsStagedSourceWithLinks(String harness) throws IOException
 	{
-		// Requirement: R-W5
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path fixture = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize()),
-				"staged-runner-copy-"));
-			LinkedProject project = ProjectFixtures.linkedProject(fixture);
-			Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).
-				stage(Overlay.of(project.tree().inventory()), Set.of());
-			HarnessRunManager manager = new HarnessRunManager(fixture.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
-
-			HarnessRun refused = manager.create(harness);
-			try
+			// Requirement: R-W5
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				manager.copyProject(project.base(), refused);
-				throw new AssertionError("The runner must refuse a project that contains links");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "message").contains("symbolic-link");
-			}
+				Path fixture = cleanup.add(Files.createTempDirectory(
+					jvm.temporaryDirectory(),
+					"staged-runner-copy-"));
+				LinkedProject project = ProjectFixtures.linkedProject(fixture);
+				Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).
+					stage(Overlay.of(project.tree().inventory()), Set.of());
+				HarnessRunManager manager = new HarnessRunManager(fixture.resolve("runs"), Clock.systemUTC(),
+					Yielding.fileReplacer());
 
-			HarnessRun accepted = manager.create(harness);
-			manager.copyProject(staged, accepted);
+				HarnessRun refused = manager.create(harness);
+				try
+				{
+					manager.copyProject(project.base(), refused);
+					throw new AssertionError("The runner must refuse a project that contains links");
+				}
+				catch (IOException e)
+				{
+					requireThat(e.getMessage(), "message").contains("symbolic-link");
+				}
 
-			Path copy = accepted.directory().resolve("project");
-			Map<Path, FileEntry> entries = InventoryScanner.scan(copy, Set.of()).entries();
-			requireThat(entries.values().stream().filter(SymbolicLink.class::isInstance).toList(), "links").isEmpty();
-			requireThat(entries.get(Path.of("alias.md")), "fileLink").isEqualTo(file("prompt"));
-			requireThat(entries.get(Path.of("docs/a.md")), "directoryLink").isEqualTo(file("rule a"));
-			requireThat(entries.get(Path.of("shared.md")), "externalLink").isEqualTo(file("shared"));
-			requireThat(entries.get(Path.of("ext-dir/x.md")), "externalDirectoryLink").isEqualTo(file("external x"));
-			requireThat(entries.get(Path.of("fixtures/data.txt")), "fixture").isEqualTo(file("fixture data"));
-			requireThat(Files.exists(copy.resolve(".cat/sessions")), "sessionDirectories").isFalse();
+				HarnessRun accepted = manager.create(harness);
+				manager.copyProject(staged, accepted);
+
+				Path copy = accepted.directory().resolve("project");
+				Map<Path, FileEntry> entries = InventoryScanner.scan(copy, Set.of()).entries();
+				requireThat(entries.values().stream().filter(SymbolicLink.class::isInstance).toList(), "links").isEmpty();
+				requireThat(entries.get(Path.of("alias.md")), "fileLink").isEqualTo(file("prompt"));
+				requireThat(entries.get(Path.of("docs/a.md")), "directoryLink").isEqualTo(file("rule a"));
+				requireThat(entries.get(Path.of("shared.md")), "externalLink").isEqualTo(file("shared"));
+				requireThat(entries.get(Path.of("ext-dir/x.md")), "externalDirectoryLink").isEqualTo(file("external x"));
+				requireThat(entries.get(Path.of("fixtures/data.txt")), "fixture").isEqualTo(file("fixture data"));
+				requireThat(Files.exists(copy.resolve(".cat/sessions")), "sessionDirectories").isFalse();
+			}
 		}
 	}
 }

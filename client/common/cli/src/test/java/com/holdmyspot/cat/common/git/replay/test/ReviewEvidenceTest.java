@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.replay.ActionResultMatrix;
 import com.holdmyspot.cat.common.git.replay.CandidateUniverse;
@@ -37,9 +39,10 @@ public final class ReviewEvidenceTest
 		expectedExceptionsMessageRegExp = ".*requires an auditable semantic plan.*")
 	public void rejectsMissingSemanticCandidateArtifact() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"topic-replay-review-evidence-"));
 			new ReviewEvidence(ReplayJson.newMapper()).readSemanticCandidates(
 				root.resolve("semantic-plan.json"), "semantic plan");
@@ -55,9 +58,10 @@ public final class ReviewEvidenceTest
 		expectedExceptionsMessageRegExp = ".*requires a non-empty review packet.*")
 	public void rejectsBlankReviewPacket() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"topic-replay-review-evidence-"));
 			Path packet = root.resolve("review-packet.md");
 			Path ledger = root.resolve("adversarial-challenges.json");
@@ -77,9 +81,10 @@ public final class ReviewEvidenceTest
 		expectedExceptionsMessageRegExp = ".*may only request an evidence-backed add or split.*")
 	public void rejectsUnsupportedChallenge() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"topic-replay-review-evidence-"));
 			Path packet = root.resolve("review-packet.md");
 			Path ledger = root.resolve("adversarial-challenges.json");
@@ -99,9 +104,10 @@ public final class ReviewEvidenceTest
 		expectedExceptionsMessageRegExp = ".*discovery evidence must end with a complete pass.*")
 	public void rejectsIncompleteDiscoveryTerminalPass() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"topic-replay-review-evidence-"));
 			Path evidence = root.resolve("passes.json");
 			Files.writeString(evidence, """
@@ -125,9 +131,10 @@ public final class ReviewEvidenceTest
 		expectedExceptionsMessageRegExp = ".*action-result matrix must cover every candidate.*")
 	public void rejectsMatrixMissingCandidateRow() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"topic-replay-review-evidence-"));
 			Path matrix = root.resolve("action-result-matrix.json");
 			Files.writeString(matrix, """
@@ -151,9 +158,10 @@ public final class ReviewEvidenceTest
 		expectedExceptionsMessageRegExp = ".*Candidate universe must cover every captured artifact.*")
 	public void rejectsUniverseMissingInventoryArtifact() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"topic-replay-review-evidence-"));
 			CandidateUniverseRequirements requirements = new CandidateUniverseRequirements(Set.of("inventory-a"),
 				List.of(), Set.of(), false);
@@ -173,9 +181,10 @@ public final class ReviewEvidenceTest
 		expectedExceptionsMessageRegExp = ".*must cite a source-neutral reviewer discovery record.*")
 	public void rejectsCandidateWithoutReviewerDiscovery() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"topic-replay-review-evidence-"));
 			SemanticCandidate candidate = new SemanticCandidate("candidate_a", "outcome", "discovery", "split",
 				List.of("unknown"), "output_a", List.of(), List.of(), List.of(), List.of(), List.of(), "evidence");

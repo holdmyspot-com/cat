@@ -19,7 +19,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunLock;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
-import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.AbstractHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
@@ -255,7 +255,7 @@ public final class CodexRunner
 				map(bubblewrap -> withPrivateTmp(appServer, bubblewrap, run.directory())).
 				orElse(appServer);
 			manager.initialize(run, artifact, project, "codex_app_server", command);
-			HarnessRunnerScope scope = new MainHarnessRunnerScope();
+			AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment);
 			lock = manager.acquireLock(run);
 			HarnessSessionTranscripts transcripts = null;
 			if (sessionTranscripts)

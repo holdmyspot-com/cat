@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.claude.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
@@ -24,8 +26,6 @@ import org.testng.annotations.Test;
  */
 public final class ClaudeRunnerCliTest
 {
-	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp")).toAbsolutePath().normalize();
-
 	/**
 	 * Creates the test.
 	 */
@@ -42,30 +42,33 @@ public final class ClaudeRunnerCliTest
 	@Test
 	public void capacityWaitExpires() throws IOException
 	{
-		// Requirement: R-I9
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "runner-cli-"));
-			ManualClock clock = new ManualClock(Instant.parse("2026-10-23T12:00:00Z"));
-			AtomicInteger pauses = new AtomicInteger();
-			Pause second = () ->
+			// Requirement: R-I9
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				if (pauses.incrementAndGet() > 100)
-					throw new AssertionError("The capacity wait did not end");
-				clock.advance(Duration.ofSeconds(1));
-			};
-			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, second, clock);
-			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--capacity-wait",
-				"5"};
-			try (HarnessCapacity.Permit _ = capacity.acquire())
-			{
-				ClaudeRunnerCli.serve(args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity);
-				throw new AssertionError("The bridge did not give up waiting for capacity");
-			}
-			catch (HarnessCapacityWaitExpiredException _)
-			{
-				requireThat(pauses.get(), "pauses").isEqualTo(5);
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+				ManualClock clock = new ManualClock(Instant.parse("2026-10-23T12:00:00Z"));
+				AtomicInteger pauses = new AtomicInteger();
+				Pause second = () ->
+				{
+					if (pauses.incrementAndGet() > 100)
+						throw new AssertionError("The capacity wait did not end");
+					clock.advance(Duration.ofSeconds(1));
+				};
+				HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, second, clock);
+				String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
+					root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--capacity-wait",
+					"5"};
+				try (HarnessCapacity.Permit _ = capacity.acquire())
+				{
+					ClaudeRunnerCli.serve(args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity);
+					throw new AssertionError("The bridge did not give up waiting for capacity");
+				}
+				catch (HarnessCapacityWaitExpiredException _)
+				{
+					requireThat(pauses.get(), "pauses").isEqualTo(5);
+				}
 			}
 		}
 	}

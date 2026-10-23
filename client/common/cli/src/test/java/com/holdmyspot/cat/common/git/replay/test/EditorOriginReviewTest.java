@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.git.replay.test.OriginReviewFixtures.writeManifest;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayReviewFixtures.originReviews;
@@ -38,9 +40,10 @@ public final class EditorOriginReviewTest
 	@Test
 	public void scaffoldsAndAuditsOriginDecisions() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-review-"));
 			Path manifest = writeManifest(ReplayJson.newMapper(), repository, false, "feature.txt", "secondary.txt");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer());
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -79,9 +82,10 @@ public final class EditorOriginReviewTest
 		"(?s).*feature.txt.*earlier possible output.*Select the earlier output.*required prerequisite.*")
 	public void rejectsUnexplainedLaterOriginDecision() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-review-"));
 			Path manifest = writeManifest(ReplayJson.newMapper(), repository, false, "feature.txt");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer());
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -102,9 +106,10 @@ public final class EditorOriginReviewTest
 	@Test
 	public void recordsDifferentUnitOriginDecision() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-review-"));
 			Path manifest = writeManifest(ReplayJson.newMapper(), repository, false, "shared.txt");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer());
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -135,9 +140,10 @@ public final class EditorOriginReviewTest
 	@Test
 	public void recordsRevertedPredecessorOriginDecision() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "origin-review-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "origin-review-"));
 			Path manifest = writeManifest(ReplayJson.newMapper(), repository, true, "feature.txt");
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(repository, repository, Yielding.fileReplacer());
 			ByteArrayOutputStream output = new ByteArrayOutputStream();

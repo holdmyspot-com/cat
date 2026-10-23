@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
 import org.testng.annotations.Test;
 
@@ -37,7 +38,7 @@ public final class BundledRuleAudienceTest
 	@Test
 	public void subagentGetsRoutingNotUserRules() throws IOException, URISyntaxException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
@@ -73,7 +74,7 @@ public final class BundledRuleAudienceTest
 	@Test
 	public void codexAgentsGetReadFileRule() throws IOException, URISyntaxException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
@@ -108,7 +109,7 @@ public final class BundledRuleAudienceTest
 	@Test
 	public void packagedPathRulesMatchOnlyInsideProject() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));

@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import java.io.IOException;
 import java.io.Reader;
@@ -37,7 +38,6 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
 
 /**
  * Tests {@link HarnessRunnerBridge}.
@@ -115,17 +115,18 @@ public final class HarnessRunnerBridgeTest
 	@Test
 	public void recordsEveryAssistantMessage() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+		try (TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories();
 			FakeProcess process = new FakeProcess(List.of("interim with a \"quote\"", "done"));
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
 				"{\"type\":\"complete\"}\n"))
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))), "cat-run-"));
+				scope.temporaryDirectory(), "cat-run-"));
 			HarnessRun run = new HarnessRun("harness", "run-1", directory);
 			StringWriter output = new StringWriter();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, scope), input,
 				output);
 
 			JsonMapper json = JsonMapper.builder().build();

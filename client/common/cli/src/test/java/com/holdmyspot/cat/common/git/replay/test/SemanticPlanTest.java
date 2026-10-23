@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.git.replay.CandidateUniverseEvidence;
@@ -38,9 +40,10 @@ public final class SemanticPlanTest
 	@Test
 	public void acceptsCompletedSemanticPlan() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "semantic-ready-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "semantic-ready-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReviewEvidence review = new ReviewEvidence(ReplayJson.newMapper());
@@ -64,9 +67,10 @@ public final class SemanticPlanTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*must resolve every challenge.*")
 	public void rejectsUnresolvedChallenges() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "semantic-challenge-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "semantic-challenge-"));
 			Path packet = directory.resolve("review.md");
 			Files.writeString(packet, "Captured artifacts reviewed\n");
 			Path ledger = directory.resolve("challenges.json");
@@ -174,9 +178,10 @@ public final class SemanticPlanTest
 		".*must exactly reproduce the declared semantic-placement ledger.*")
 	public void rejectsPlanLedgerDivergence() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "semantic-ledger-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "semantic-ledger-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReviewEvidence review = new ReviewEvidence(ReplayJson.newMapper());

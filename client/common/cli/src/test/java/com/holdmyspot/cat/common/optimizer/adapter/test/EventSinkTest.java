@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.adapter.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -46,10 +48,11 @@ public final class EventSinkTest
 	@Test
 	public void ignoresWaitingRecord() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))),
+				jvm.temporaryDirectory(),
 				"cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
@@ -81,10 +84,11 @@ public final class EventSinkTest
 	@Test
 	public void forwardsEveryAssistantMessage() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))), "cat-event-sink-"));
+				jvm.temporaryDirectory(), "cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 			try (EventSink sink = EventSinkSecrets.getEventSinkAccess().newEventSink(JSON, new TestSessions.Events(JSON),
@@ -110,10 +114,11 @@ public final class EventSinkTest
 	@Test
 	public void forwardsTurnFailure() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))), "cat-event-sink-"));
+				jvm.temporaryDirectory(), "cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 			try (EventSink sink = EventSinkSecrets.getEventSinkAccess().newEventSink(JSON, new TestSessions.Events(JSON),
@@ -170,10 +175,11 @@ public final class EventSinkTest
 	@Test
 	public void retainsHarnessEventInTranscript() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path harnessDirectory = cleanup.add(Files.createTempDirectory(
-				Files.createDirectories(Path.of(System.getProperty("cat.session.temp"))),
+				jvm.temporaryDirectory(),
 				"cat-event-sink-"));
 			Files.createDirectories(harnessDirectory.resolve("r").resolve("artifacts"));
 			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();

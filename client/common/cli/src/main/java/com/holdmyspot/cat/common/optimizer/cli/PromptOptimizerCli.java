@@ -27,7 +27,7 @@ public final class PromptOptimizerCli
 		 * @return the open command scope
 		 * @throws IOException if the harness environment cannot supply the scope
 		 */
-		OptimizerCommandScope open() throws IOException;
+		AbstractOptimizerCommandScope open() throws IOException;
 	}
 
 	/**
@@ -76,7 +76,7 @@ public final class PromptOptimizerCli
 		List<String> arguments = List.of(args);
 		if (Commands.isContractTool(arguments))
 			return Commands.executeContractTool(JsonMapper.builder().build(), arguments, out);
-		try (OptimizerCommandScope scope = factory.open())
+		try (AbstractOptimizerCommandScope scope = factory.open())
 		{
 			return run(scope, arguments, zone, out);
 		}
@@ -97,7 +97,7 @@ public final class PromptOptimizerCli
 	 * @return the exit code: 0 for a result, 1 for a refusal or a failure, 2 for invalid input
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static int run(OptimizerCommandScope scope, List<String> args, ZoneId zone, PrintStream out)
+	public static int run(AbstractOptimizerCommandScope scope, List<String> args, ZoneId zone, PrintStream out)
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(args, "args").isNotNull();

@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.RuleSource;
 import com.holdmyspot.cat.common.SessionRules;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,7 +49,7 @@ public final class ProjectRuleLoaderTest
 			write(project, ".cat/rules/harnessa/path.md", "---\npaths: [\"*.java\"]\n---\nproject Java rule");
 
 			String context;
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -73,7 +74,7 @@ public final class ProjectRuleLoaderTest
 	@Test
 	public void restrictsBundledPathRulesToProject() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -94,7 +95,7 @@ public final class ProjectRuleLoaderTest
 	public void rendersInstalledRuleForRole() throws IOException
 	{
 		// Requirement: R-E20
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			write(plugin, "rules/include/common/role.md", "---\npaths: [\"*.md\"]\n---\n# Role\n\n" +
@@ -119,7 +120,7 @@ public final class ProjectRuleLoaderTest
 	public void rejectsMissingInstalledRule() throws IOException
 	{
 		// Requirement: R-E20
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			new ProjectRuleLoader(scope.yaml()).loadRule(plugin, Path.of("include/common/missing.md"));
@@ -132,7 +133,7 @@ public final class ProjectRuleLoaderTest
 	@Test
 	public void filtersRulesByAgentAudience() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -169,7 +170,7 @@ public final class ProjectRuleLoaderTest
 			write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
 
 			String context;
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -194,7 +195,7 @@ public final class ProjectRuleLoaderTest
 			write(project, ".cat/rules/common/project.md", "# Project\n\nProject guidance\n");
 
 			String context;
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -222,7 +223,7 @@ public final class ProjectRuleLoaderTest
 			write(project, ".cat/rules/common/project.md", "# Project\n\nProject guidance\n");
 
 			String context;
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -252,7 +253,7 @@ public final class ProjectRuleLoaderTest
 			write(project, ".cat/rules/common/project.md", "# Project\n\nProject guidance\n");
 
 			SessionRules session;
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				session = new ProjectRuleLoader(scope.yaml()).loadSessionForMainAgent(plugin, null, project, "harnessa");
 			}
@@ -276,7 +277,7 @@ public final class ProjectRuleLoaderTest
 	@Test
 	public void quotesPluginPathsForShells() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-o'brien-plugin-")).toAbsolutePath().normalize();
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -302,7 +303,7 @@ public final class ProjectRuleLoaderTest
 	@Test
 	public void includesWindowsFragmentsOnWindows() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -324,7 +325,7 @@ public final class ProjectRuleLoaderTest
 	@Test
 	public void includesPosixFragmentsOnLinux() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -346,7 +347,7 @@ public final class ProjectRuleLoaderTest
 	@Test
 	public void listsCurrentPlatformFragments() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-")).toAbsolutePath().normalize();
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -390,7 +391,7 @@ public final class ProjectRuleLoaderTest
 	@Test
 	public void keepsEveryRuleWithoutReadingGuidance() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -422,7 +423,7 @@ public final class ProjectRuleLoaderTest
 			write(plugin, "rules/harnessa/z-prerequisite.md", "# Prerequisite\n\nPrerequisite guidance\n");
 
 			String context;
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -439,7 +440,7 @@ public final class ProjectRuleLoaderTest
 	@Test
 	public void loadsDependenciesForSubagents() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -470,7 +471,7 @@ public final class ProjectRuleLoaderTest
 			write(plugin, "rules/include/java/javadoc.md", "Javadoc guidance\n");
 
 			String context;
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -497,7 +498,7 @@ public final class ProjectRuleLoaderTest
 				"Shared guidance\n");
 
 			String context;
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -524,7 +525,7 @@ public final class ProjectRuleLoaderTest
 				"Project guidance\n");
 
 			String context;
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -549,7 +550,7 @@ public final class ProjectRuleLoaderTest
 			write(plugin, "rules/common/direct.md", "# Direct\n\n" + mention + "\n");
 
 			String context;
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -566,7 +567,7 @@ public final class ProjectRuleLoaderTest
 	public void statesPluginRootInBundledRules() throws IOException
 	{
 		// Requirement: R-I5
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -590,7 +591,7 @@ public final class ProjectRuleLoaderTest
 	public void keepsPluginRootDirectiveOutsidePlugin() throws IOException
 	{
 		// Requirement: R-I5
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-"));
@@ -618,7 +619,7 @@ public final class ProjectRuleLoaderTest
 			write(plugin, "rules/common/dependent.md", "---\ndepends-on: [\"./missing.md\"]\n---\n" +
 				"Dependent guidance\n");
 
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -640,7 +641,7 @@ public final class ProjectRuleLoaderTest
 			write(plugin, "rules/common/scoped.md", "---\npaths: [\"**/*.java\"]\n---\n" +
 				"Scoped guidance\n");
 
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -662,7 +663,7 @@ public final class ProjectRuleLoaderTest
 			write(plugin, "rules/common/scoped.md", "---\npaths: [\"**/*.java\"]\ndepends-on: [\"./direct.md\"]\n" +
 				"---\nScoped guidance\n");
 
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -685,7 +686,7 @@ public final class ProjectRuleLoaderTest
 			write(plugin, "rules/common/dependent.md", "---\ndepends_on: [\"./direct.md\"]\n---\n" +
 				"Dependent guidance\n");
 
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -707,7 +708,7 @@ public final class ProjectRuleLoaderTest
 			write(plugin, "rules/common/second.md", "---\ndepends-on: [\"./first.md\"]\n---\n" +
 				"Second guidance\n");
 
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -727,7 +728,7 @@ public final class ProjectRuleLoaderTest
 			write(plugin, "rules/common/dependent.md", "---\ndepends-on: [\"../../.cat/rules/common/terms.md\"]\n" +
 				"---\nDependent guidance\n");
 
-			try (ToolScope scope = new ToolScope())
+			try (ToolScope scope = new TestToolScope())
 			{
 				new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
@@ -740,7 +741,7 @@ public final class ProjectRuleLoaderTest
 	@Test
 	public void loadsUserRulesOutsideTheProject() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-"));
@@ -771,7 +772,7 @@ public final class ProjectRuleLoaderTest
 	@Test
 	public void listsSourcesForMainAgent() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-"));

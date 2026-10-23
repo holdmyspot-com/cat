@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -200,7 +201,7 @@ public final class CodexSubagentStartHookTest
 	private static String context(HookResult result) throws IOException
 	{
 		assert result != null;
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new TestToolScope())
 		{
 			JsonNode envelope = scope.json().readTree(result.output());
 			return envelope.at("/hookSpecificOutput/additionalContext").asString();

@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.git.replay.Backup;
 
@@ -38,9 +40,10 @@ public final class BackupTest
 	@Test
 	public void recordsAndDeletesBackupBranch() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-topic-replay-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			Path manifest = repository.resolve("manifest.json");

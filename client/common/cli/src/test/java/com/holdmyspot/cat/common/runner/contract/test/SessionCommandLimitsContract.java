@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.runner.contract.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.Platform;
@@ -371,43 +373,46 @@ public abstract class SessionCommandLimitsContract
 	 */
 	private Fixture fixture(TemporaryDirectories cleanup) throws IOException
 	{
-		Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
-		Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-session-command-limits-")).toRealPath();
-		Path userHome = Files.createDirectories(root.resolve("user"));
-		Path codexHome = Files.createDirectories(root.resolve("codex-home"));
-		for (String file : List.of(".claude/.credentials.json", ".claude/settings.json", ".claude/settings.local.json",
-			".claude.json", ".codex/auth.json", ".codex/config.toml", ".claude/plugins/cache/example/plugin.json"))
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			write(userHome.resolve(file));
-		}
-		write(codexHome.resolve("auth.json"));
-		write(codexHome.resolve("config.toml"));
-		Files.createDirectories(userHome.resolve(".npm"));
-		Files.createDirectories(userHome.resolve(".m2"));
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-session-command-limits-")).toRealPath();
+			Path userHome = Files.createDirectories(root.resolve("user"));
+			Path codexHome = Files.createDirectories(root.resolve("codex-home"));
+			for (String file : List.of(".claude/.credentials.json", ".claude/settings.json", ".claude/settings.local.json",
+				".claude.json", ".codex/auth.json", ".codex/config.toml", ".claude/plugins/cache/example/plugin.json"))
+			{
+				write(userHome.resolve(file));
+			}
+			write(codexHome.resolve("auth.json"));
+			write(codexHome.resolve("config.toml"));
+			Files.createDirectories(userHome.resolve(".npm"));
+			Files.createDirectories(userHome.resolve(".m2"));
 
-		Map<String, String> userEnvironment = new HashMap<>();
-		userEnvironment.put("PATH", "");
-		userEnvironment.put(Platform.current().homeVariable(), userHome.toString());
-		userEnvironment.putAll(SessionCommandLimits.homeEnvironment(userHome, Platform.current()));
-		userEnvironment.put("CODEX_HOME", codexHome.toString());
-		for (String variable : SessionCommandLimits.CREDENTIAL_VARIABLES)
-			userEnvironment.put(variable, CREDENTIAL);
+			Map<String, String> userEnvironment = new HashMap<>();
+			userEnvironment.put("PATH", "");
+			userEnvironment.put(Platform.current().homeVariable(), userHome.toString());
+			userEnvironment.putAll(SessionCommandLimits.homeEnvironment(userHome, Platform.current()));
+			userEnvironment.put("CODEX_HOME", codexHome.toString());
+			for (String variable : SessionCommandLimits.CREDENTIAL_VARIABLES)
+				userEnvironment.put(variable, CREDENTIAL);
 
-		HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
-			Yielding.fileReplacer());
-		HarnessRun run = manager.create("harness");
-		manager.snapshotProject(run);
-		Path runHome = run.directory().resolve("home");
-		// The logins and configuration that a runner may have put in the run's home for its harness
-		for (String file : List.of(".claude/.credentials.json", ".claude/settings.json", ".claude.json",
-			".codex/auth.json", "auth.json", "config.toml"))
-		{
-			write(runHome.resolve(file));
+			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			manager.snapshotProject(run);
+			Path runHome = run.directory().resolve("home");
+			// The logins and configuration that a runner may have put in the run's home for its harness
+			for (String file : List.of(".claude/.credentials.json", ".claude/settings.json", ".claude.json",
+				".codex/auth.json", "auth.json", "config.toml"))
+			{
+				write(runHome.resolve(file));
+			}
+			HarnessRun otherRun = manager.create("harness");
+			write(otherRun.directory().resolve("project/notes.txt"));
+			Path artifact = Files.createDirectories(root.resolve("artifact"));
+			return new Fixture(Map.copyOf(userEnvironment), userHome, manager, run, otherRun, artifact, List.of());
 		}
-		HarnessRun otherRun = manager.create("harness");
-		write(otherRun.directory().resolve("project/notes.txt"));
-		Path artifact = Files.createDirectories(root.resolve("artifact"));
-		return new Fixture(Map.copyOf(userEnvironment), userHome, manager, run, otherRun, artifact, List.of());
 	}
 
 	/**

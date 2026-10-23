@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
@@ -371,7 +372,7 @@ public final class PluginArtifactBuilderTest
 	@Test
 	public void routesBundledLazyDependencies() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-lazy-rule-artifact-"));
 			Path common = Files.createDirectories(artifact.resolve("rules/common"));
@@ -402,7 +403,7 @@ public final class PluginArtifactBuilderTest
 		".*rules/common/lazy-rule-dependencies\\.md.*Rename.*")
 	public void rejectsRuleNamedLikeLazyDependencyIndex() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-lazy-rule-artifact-"));
 			Path common = Files.createDirectories(artifact.resolve("rules/common"));
@@ -427,7 +428,7 @@ public final class PluginArtifactBuilderTest
 		".*rules/common/path-scoped-rules\\.md.*Rename.*")
 	public void rejectsRuleNamedLikePathScopedIndex() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-path-rule-artifact-"));
 			Path common = Files.createDirectories(artifact.resolve("rules/common"));
@@ -448,7 +449,7 @@ public final class PluginArtifactBuilderTest
 		".*rules/include/common/java\\.md.*Rename.*")
 	public void rejectsOccupiedPathScopedDestination() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-path-rule-artifact-"));
 			Path common = Files.createDirectories(artifact.resolve("rules/common"));
@@ -469,7 +470,7 @@ public final class PluginArtifactBuilderTest
 		".*Unknown frontmatter key depends_on.*supports agents, depends-on and paths.*")
 	public void rejectsUnknownRuleFrontmatterKey() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new ToolScope())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-lazy-rule-artifact-"));
 			Path common = Files.createDirectories(artifact.resolve("rules/common"));

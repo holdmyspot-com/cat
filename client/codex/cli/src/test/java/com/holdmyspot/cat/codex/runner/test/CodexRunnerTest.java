@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.codex.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -329,9 +331,10 @@ public final class CodexRunnerTest
 	@Test
 	public void deniesRunRootOnLinux() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
@@ -400,9 +403,10 @@ public final class CodexRunnerTest
 	@Test
 	public void deniesRunRootOutsideLinux() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
@@ -433,9 +437,10 @@ public final class CodexRunnerTest
 	@Test
 	public void deniesRunRootBesideEvidenceOutsideLinux() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
@@ -466,9 +471,10 @@ public final class CodexRunnerTest
 	@Test
 	public void deniesEachRunBesideEvidenceInRoot() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
@@ -503,9 +509,10 @@ public final class CodexRunnerTest
 	@Test
 	public void deniesProjectBesideEvidence() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path temporary = jvm.temporaryDirectory();
 			Path project = cleanup.add(Files.createTempDirectory(temporary, "cat-user-project-"));
 			Path instructions = Files.writeString(project.resolve("AGENTS.md"), "Follow the handbook.");
 			Path documents = Files.createDirectories(project.resolve("docs"));
@@ -551,9 +558,10 @@ public final class CodexRunnerTest
 	@Test
 	public void skipsDeniedReadsInsideDeniedDirectory() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporary = Files.createDirectories(Path.of(System.getProperty("cat.session.temp")).normalize());
+			Path temporary = jvm.temporaryDirectory();
 			Path project = cleanup.add(Files.createTempDirectory(temporary, "cat-user-project-"));
 			Path session = Files.createDirectories(project.resolve(".cat/sessions/session-1"));
 			Path root = Files.createDirectories(session.resolve("optimizer-runs/codex"));

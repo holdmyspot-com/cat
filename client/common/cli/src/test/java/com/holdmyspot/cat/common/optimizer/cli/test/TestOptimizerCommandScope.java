@@ -9,6 +9,8 @@ import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.cli.HarnessVersion;
 import com.holdmyspot.cat.common.optimizer.cli.OptimizerCommandScope;
+import com.holdmyspot.cat.common.optimizer.cli.AbstractOptimizerCommandScope;
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.execution.test.FixedCalibrator;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
@@ -16,7 +18,6 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -41,7 +42,7 @@ import java.util.random.RandomGenerator;
  *
  * @param <S> the type of the session port
  */
-final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCommandScope
+final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOptimizerCommandScope
 {
 	/**
 	 * The ID of the host session that runs a command unless the test names another one.
@@ -56,7 +57,6 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	private final Harness harness;
 	private final String sessionId;
 	private final Path directory;
-	private final JsonMapper json = JsonMapper.builder().build();
 	private final ManualClock clock = new ManualClock(START);
 	private final RandomGenerator random = new Random(SEED);
 	private final FakeHostInterruptSignal interrupts = new FakeHostInterruptSignal();
@@ -123,6 +123,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 	TestOptimizerCommandScope(Harness harness, String sessionId, Path directory, Set<Path> tracked,
 		Function<ManualClock, S> sessions)
 	{
+		super(new TestJvmScope());
 		requireThat(harness, "harness").isNotNull();
 		requireThat(sessionId, "sessionId").isNotNull();
 		requireThat(directory, "directory").isNotNull();
@@ -135,12 +136,6 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends OptimizerCo
 		this.sessions = sessions.apply(clock);
 	}
 
-	@Override
-	public JsonMapper json()
-	{
-		ensureOpen();
-		return json;
-	}
 
 	@Override
 	public S sessions()

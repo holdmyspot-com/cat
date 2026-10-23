@@ -1,5 +1,8 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -62,31 +65,34 @@ public final class ClaudeJudgeVersionTest
 	@Test
 	public void versionMatchesJudge() throws IOException
 	{
-		// Requirement: R-M1
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-judge-version-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			Path effects = Files.createDirectories(root.resolve("effects"));
-			Files.writeString(source.resolve("README.md"), "Before\n", UTF_8);
-			Files.writeString(effects.resolve("README.md"), "After\n", UTF_8);
-			for (Path file : List.of(source.resolve("README.md"), effects.resolve("README.md")))
-				PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
+			// Requirement: R-M1
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory("cat-claude-judge-version-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path effects = Files.createDirectories(root.resolve("effects"));
+				Files.writeString(source.resolve("README.md"), "Before\n", UTF_8);
+				Files.writeString(effects.resolve("README.md"), "After\n", UTF_8);
+				for (Path file : List.of(source.resolve("README.md"), effects.resolve("README.md")))
+					PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
 
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root, List::of, "", false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			ClaudeSessions sessions = new ClaudeSessions(settings);
-			// Run directories differ per run, so the hash covers the section with their root replaced. The paths that
-			// the section names are written with "/" so that every platform hashes the same content.
-			String section = EvidenceSection.render(sessions.readEvidence(EVENTS), EVENTS, effects, source).
-				replace(EVENTS.toString(), PortablePaths.text(EVENTS)).
-				replace(effects.toString(), "<root>/effects").
-				replace(root.toString(), "<root>");
-			TrialProfile role = new ClaudeProfileInventory(ARTIFACT.toAbsolutePath().normalize()).roleProfile();
-			JudgeProfile judge = new JudgeTemplate(JsonMapper.builder().build(), role).profile("The reply is brief.",
-				"Pass only if every rubric item holds.");
-			VersionRegistry.requireRegistered(REGISTRY, "judge", sessions.judgeVersion(),
-				VersionRegistry.hash(JudgeVersionContent.of(judge, section)));
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+					root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				ClaudeSessions sessions = new ClaudeSessions(settings);
+				// Run directories differ per run, so the hash covers the section with their root replaced. The paths that
+				// the section names are written with "/" so that every platform hashes the same content.
+				String section = EvidenceSection.render(sessions.readEvidence(EVENTS), EVENTS, effects, source).
+					replace(EVENTS.toString(), PortablePaths.text(EVENTS)).
+					replace(effects.toString(), "<root>/effects").
+					replace(root.toString(), "<root>");
+				TrialProfile role = new ClaudeProfileInventory(ARTIFACT.toAbsolutePath().normalize()).roleProfile();
+				JudgeProfile judge = new JudgeTemplate(JsonMapper.builder().build(), role).profile("The reply is brief.",
+					"Pass only if every rubric item holds.");
+				VersionRegistry.requireRegistered(REGISTRY, "judge", sessions.judgeVersion(),
+					VersionRegistry.hash(JudgeVersionContent.of(judge, section)));
+			}
 		}
 	}
 }

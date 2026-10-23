@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.HookScope;
+import com.holdmyspot.cat.common.fakes.test.TestHookScope;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -240,6 +241,6 @@ public final class HookScopeTest
 	 */
 	private static HookScope scope(Path pluginRoot, Path userHome)
 	{
-		return new HookScope(pluginRoot, userHome, HARNESS_A, userHome);
+		return new TestHookScope(pluginRoot, userHome, HARNESS_A, userHome);
 	}
 }

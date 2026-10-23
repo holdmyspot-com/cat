@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.git.replay.EntryPoints;
 import com.holdmyspot.cat.common.git.replay.ExposedEntryPoint;
@@ -70,9 +72,10 @@ public final class HistoryTest
 	@Test
 	public void inventoriesSourcePathStates() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "history-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "history-"));
 			TopicReplayRepository.initializeRepository(repository);
 			Git git = new Git(repository);
 			TopicReplayRepository.commit(git, repository, "rules/example.md", "first\n", "add rule");

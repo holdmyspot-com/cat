@@ -6,6 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.HookScope;
+import com.holdmyspot.cat.common.fakes.test.TestHookScope;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
@@ -63,7 +64,7 @@ public final class SessionDirectoryTest
 			Path configuration = root.resolve("configuration");
 			JsonMapper json = JsonMapper.builder().build();
 			JsonNode event = json.readTree("{\"session_id\":\"" + SESSION_ID + "\"}");
-			try (HookScope scope = new HookScope(plugin, root.resolve("home"), HARNESS_A, configuration))
+			try (HookScope scope = new TestHookScope(plugin, root.resolve("home"), HARNESS_A, configuration))
 			{
 				SessionDirectory session = scope.sessionDirectory(project, event, "session_id");
 

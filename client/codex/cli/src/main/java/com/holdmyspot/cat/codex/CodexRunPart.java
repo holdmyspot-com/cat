@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.MainJvmScope;
 import java.io.Console;
 import java.io.File;
 import java.io.IOException;
@@ -212,8 +213,8 @@ public final class CodexRunPart
 				if (session.isPresent())
 					return session.get().temp();
 			}
+			return scope.temporaryDirectory();
 		}
-		return fallbackFolder(environment);
 	}
 
 	/**
@@ -221,20 +222,17 @@ public final class CodexRunPart
 	 * thread.
 	 *
 	 * @param environment the environment of the JVM
-	 * @return the folder that {@code TMPDIR}, or else {@code TEMP}, names, or the JVM's temporary folder
-	 *   ({@code java.io.tmpdir}) when both are unset or empty
+	 * @return the absolute, normalized folder named by {@code TMPDIR}, then {@code TEMP}, then the JVM temporary folder
+	 *   ({@code java.io.tmpdir}) when both are unset or empty; creates the folder when necessary
 	 * @throws NullPointerException if {@code environment} is null
+	 * @throws IOException if the process temporary directory cannot be created
 	 */
-	public static Path fallbackFolder(Map<String, String> environment)
+	public static Path fallbackFolder(Map<String, String> environment) throws IOException
 	{
-		requireThat(environment, "environment").isNotNull();
-		for (String name : new String[]{"TMPDIR", "TEMP"})
+		try (MainJvmScope scope = new MainJvmScope(environment))
 		{
-			String temporary = environment.get(name);
-			if (temporary != null && !temporary.isEmpty())
-				return Path.of(temporary);
+			return scope.temporaryDirectory();
 		}
-		return Path.of(System.getProperty("java.io.tmpdir"));
 	}
 
 	/**
@@ -245,8 +243,9 @@ public final class CodexRunPart
 	 * @param folder the folder
 	 * @param environment the environment of the JVM
 	 * @return {@code true} if the folder's name and location match
+	 * @throws IOException if the process temporary directory cannot be created
 	 */
-	static boolean isOutputFolder(Path folder, Map<String, String> environment)
+	static boolean isOutputFolder(Path folder, Map<String, String> environment) throws IOException
 	{
 		Path normalized = folder.toAbsolutePath().normalize();
 		Path name = normalized.getFileName();
@@ -265,8 +264,9 @@ public final class CodexRunPart
 	 * @param file the file
 	 * @param environment the environment of the JVM
 	 * @return {@code true} if {@code run-part} saved the file
+	 * @throws IOException if the process temporary directory cannot be created
 	 */
-	static boolean isSavedOutput(Path file, Map<String, String> environment)
+	static boolean isSavedOutput(Path file, Map<String, String> environment) throws IOException
 	{
 		Path normalized = file.toAbsolutePath().normalize();
 		Path name = normalized.getFileName();

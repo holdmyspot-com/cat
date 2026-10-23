@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayRepository.fastImport;
 import static com.holdmyspot.cat.common.git.replay.test.TopicReplayRepository.initializeRepository;
@@ -59,9 +61,10 @@ public final class ReplayExecutionTest
 	@Test
 	public void replaysOrderedBatchesWithMatchingTag() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "replay-execution-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "replay-execution-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			List<String> head = git.lines("rev-parse", "HEAD", "--abbrev-ref", "HEAD");

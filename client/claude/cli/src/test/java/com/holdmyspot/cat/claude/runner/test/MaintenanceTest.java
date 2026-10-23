@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.claude.runner.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -19,8 +21,6 @@ import java.time.Clock;
  */
 public final class MaintenanceTest
 {
-	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp")).toAbsolutePath().normalize();
-
 	/**
 	 * Creates the test.
 	 */
@@ -36,9 +36,10 @@ public final class MaintenanceTest
 	@Test
 	public void mainPrunesTerminalRuntime() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP),
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"maintenance-"));
 			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("claude");

@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.contract.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -72,17 +74,20 @@ public final class TestWorkspacesTest
 	 */
 	private static Path promptTest(TemporaryDirectories cleanup) throws IOException
 	{
-		Path directory = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-			"prompt-test"));
-		Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
-		Path docs = Files.createDirectories(directory.resolve("workspace/docs"));
-		Files.writeString(docs.resolve("{{notes}}"), """
-			{{before}}
-			Release 4.2 was published on {{expected_outcome}}.
-			Deploy with ${{ github.token }} and {{undeclared}}.
-			""");
-		Files.write(directory.resolve("workspace/logo.png"), BINARY);
-		return directory;
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"prompt-test"));
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+			Path docs = Files.createDirectories(directory.resolve("workspace/docs"));
+			Files.writeString(docs.resolve("{{notes}}"), """
+				{{before}}
+				Release 4.2 was published on {{expected_outcome}}.
+				Deploy with ${{ github.token }} and {{undeclared}}.
+				""");
+			Files.write(directory.resolve("workspace/logo.png"), BINARY);
+			return directory;
+		}
 	}
 
 	/**
@@ -159,26 +164,29 @@ public final class TestWorkspacesTest
 	@Test
 	public void replacesPlaceholders() throws IOException, ScenarioFormatException
 	{
-		// Requirement: R-C21
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			PromptTestFiles files = read(promptTest(cleanup));
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"workspace"));
-			Files.writeString(workspace.resolve("README.md"), "Project");
-			TestCase testCase = testCase("release-notes.md");
-			TestWorkspaces.copy(files, testCase, workspace);
+			// Requirement: R-C21
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				PromptTestFiles files = read(promptTest(cleanup));
+				Path workspace = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"workspace"));
+				Files.writeString(workspace.resolve("README.md"), "Project");
+				TestCase testCase = testCase("release-notes.md");
+				TestWorkspaces.copy(files, testCase, workspace);
 
-			StringWriter logs = new StringWriter();
-			((TestValue.Generated) testCase.values().get("before")).write(logs);
-			requireThat(files(workspace), "files").isEqualTo(Set.of("README.md", "docs/release-notes.md",
-				"logo.png"));
-			requireThat(Files.readString(workspace.resolve("docs/release-notes.md")), "notes").isEqualTo(logs + """
+				StringWriter logs = new StringWriter();
+				((TestValue.Generated) testCase.values().get("before")).write(logs);
+				requireThat(files(workspace), "files").isEqualTo(Set.of("README.md", "docs/release-notes.md",
+					"logo.png"));
+				requireThat(Files.readString(workspace.resolve("docs/release-notes.md")), "notes").isEqualTo(logs + """
 
-				Release 4.2 was published on 2025-03-04.
-				Deploy with ${{ github.token }} and {{undeclared}}.
-				""");
-			requireThat(Files.readAllBytes(workspace.resolve("logo.png")), "logo").isEqualTo(BINARY);
+					Release 4.2 was published on 2025-03-04.
+					Deploy with ${{ github.token }} and {{undeclared}}.
+					""");
+				requireThat(Files.readAllBytes(workspace.resolve("logo.png")), "logo").isEqualTo(BINARY);
+			}
 		}
 	}
 
@@ -192,24 +200,27 @@ public final class TestWorkspacesTest
 	 */
 	private static Path linkedProject(TemporaryDirectories cleanup) throws IOException
 	{
-		Path project = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")), "project"));
-		Files.createDirectories(project.resolve("src"));
-		Files.writeString(project.resolve("src/Main.java"), "class Main {}");
-		Files.createDirectories(project.resolve("docs/guide"));
-		Files.writeString(project.resolve("docs/guide/intro.md"), "Intro to {{notes}}");
-		Path logs = Files.createDirectories(project.resolve(".cat/tests/guidance/shared/logs"));
-		Files.writeString(logs.resolveSibling("AGENTS.md"), "Published on {{expected_outcome}}");
-		Files.writeString(logs.resolve("{{notes}}"), "{{before}}\nShared");
-		Path directory = Files.createDirectories(project.resolve(".cat/tests/guidance/case"));
-		Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
-		Path workspace = Files.createDirectories(directory.resolve(PromptTestFiles.WORKSPACE));
-		Files.writeString(workspace.resolve("own.md"), "Own");
-		link(workspace.resolve("AGENTS.md"), "../../shared/AGENTS.md");
-		link(workspace.resolve("logs"), "../../shared/logs");
-		Files.createDirectories(workspace.resolve("src"));
-		link(workspace.resolve("src/Main.java"), "../../../../../../src/Main.java");
-		link(workspace.resolve("guide"), "../../../../../docs/guide");
-		return project;
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "project"));
+			Files.createDirectories(project.resolve("src"));
+			Files.writeString(project.resolve("src/Main.java"), "class Main {}");
+			Files.createDirectories(project.resolve("docs/guide"));
+			Files.writeString(project.resolve("docs/guide/intro.md"), "Intro to {{notes}}");
+			Path logs = Files.createDirectories(project.resolve(".cat/tests/guidance/shared/logs"));
+			Files.writeString(logs.resolveSibling("AGENTS.md"), "Published on {{expected_outcome}}");
+			Files.writeString(logs.resolve("{{notes}}"), "{{before}}\nShared");
+			Path directory = Files.createDirectories(project.resolve(".cat/tests/guidance/case"));
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+			Path workspace = Files.createDirectories(directory.resolve(PromptTestFiles.WORKSPACE));
+			Files.writeString(workspace.resolve("own.md"), "Own");
+			link(workspace.resolve("AGENTS.md"), "../../shared/AGENTS.md");
+			link(workspace.resolve("logs"), "../../shared/logs");
+			Files.createDirectories(workspace.resolve("src"));
+			link(workspace.resolve("src/Main.java"), "../../../../../../src/Main.java");
+			link(workspace.resolve("guide"), "../../../../../docs/guide");
+			return project;
+		}
 	}
 
 	/**
@@ -246,37 +257,40 @@ public final class TestWorkspacesTest
 	@Test
 	public void readsWorkspaceLinks() throws IOException, ScenarioFormatException
 	{
-		// Requirement: R-C21, R-W15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path project = linkedProject(cleanup);
-			Path root = project.resolve(".cat/tests");
-			PromptTestFiles files = PromptTestFiles.read(json, project, root, linkedTest(project));
-			requireThat(files.workspaceFiles(), "workspaceFiles").isEqualTo(List.of(
-				new PromptTestFiles.WorkspaceEntry("AGENTS.md", true, Set.of()),
-				new PromptTestFiles.WorkspaceEntry("guide/intro.md", true, Set.of("notes")),
-				new PromptTestFiles.WorkspaceEntry("logs/{{notes}}", true, Set.of("before")),
-				new PromptTestFiles.WorkspaceEntry("own.md", true, Set.of()),
-				new PromptTestFiles.WorkspaceEntry("src/Main.java", true, Set.of())));
-			requireThat(files.source(files.workspaceFiles().get(2)), "shared").
-				isEqualTo(root.resolve("guidance/shared/logs/{{notes}}"));
-			requireThat(files.source(files.workspaceFiles().get(1)), "project").
-				isEqualTo(project.resolve("docs/guide/intro.md"));
+			// Requirement: R-C21, R-W15
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path project = linkedProject(cleanup);
+				Path root = project.resolve(".cat/tests");
+				PromptTestFiles files = PromptTestFiles.read(json, project, root, linkedTest(project));
+				requireThat(files.workspaceFiles(), "workspaceFiles").isEqualTo(List.of(
+					new PromptTestFiles.WorkspaceEntry("AGENTS.md", true, Set.of()),
+					new PromptTestFiles.WorkspaceEntry("guide/intro.md", true, Set.of("notes")),
+					new PromptTestFiles.WorkspaceEntry("logs/{{notes}}", true, Set.of("before")),
+					new PromptTestFiles.WorkspaceEntry("own.md", true, Set.of()),
+					new PromptTestFiles.WorkspaceEntry("src/Main.java", true, Set.of())));
+				requireThat(files.source(files.workspaceFiles().get(2)), "shared").
+					isEqualTo(root.resolve("guidance/shared/logs/{{notes}}"));
+				requireThat(files.source(files.workspaceFiles().get(1)), "project").
+					isEqualTo(project.resolve("docs/guide/intro.md"));
 
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"workspace"));
-			TestWorkspaces.copy(files, testCase("notes.md"), workspace);
-			requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "guide/intro.md", "logs/notes.md",
-				"own.md", "src/Main.java"));
-			requireThat(Files.readString(workspace.resolve("AGENTS.md")), "agents").
-				isEqualTo("Published on 2025-03-04");
-			requireThat(Files.readString(workspace.resolve("guide/intro.md")), "intro").isEqualTo("Intro to notes.md");
-			requireThat(Files.readString(workspace.resolve("logs/notes.md")), "notes").endsWith("\nShared");
+				Path workspace = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"workspace"));
+				TestWorkspaces.copy(files, testCase("notes.md"), workspace);
+				requireThat(files(workspace), "files").isEqualTo(Set.of("AGENTS.md", "guide/intro.md", "logs/notes.md",
+					"own.md", "src/Main.java"));
+				requireThat(Files.readString(workspace.resolve("AGENTS.md")), "agents").
+					isEqualTo("Published on 2025-03-04");
+				requireThat(Files.readString(workspace.resolve("guide/intro.md")), "intro").isEqualTo("Intro to notes.md");
+				requireThat(Files.readString(workspace.resolve("logs/notes.md")), "notes").endsWith("\nShared");
 
-			Path bare = Files.createDirectories(root.resolve("guidance/bare"));
-			Files.writeString(bare.resolve(PromptTestFiles.SCENARIO), SCENARIO);
-			PromptTestFiles none = PromptTestFiles.read(json, project, root, bare);
-			requireThat(none.workspaceFiles(), "noWorkspaceFiles").isEmpty();
+				Path bare = Files.createDirectories(root.resolve("guidance/bare"));
+				Files.writeString(bare.resolve(PromptTestFiles.SCENARIO), SCENARIO);
+				PromptTestFiles none = PromptTestFiles.read(json, project, root, bare);
+				requireThat(none.workspaceFiles(), "noWorkspaceFiles").isEmpty();
+			}
 		}
 	}
 
@@ -325,7 +339,8 @@ public final class TestWorkspacesTest
 	@Test
 	public void keepsLinksInsideTheWorkspace() throws IOException, ScenarioFormatException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = linkedProject(cleanup);
 			Path workspace = linkedTest(project).resolve(PromptTestFiles.WORKSPACE);
@@ -349,7 +364,7 @@ public final class TestWorkspacesTest
 				"logs", "../../shared/logs",
 				"src/Main.java", "../../../../../../src/Main.java"));
 
-			Path trial = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
+			Path trial = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"workspace"));
 			TestWorkspaces.copy(files, testCase("notes.md"), trial);
 			requireThat(Files.readSymbolicLink(trial.resolve("a")), "a").isEqualTo(Path.of("b"));
@@ -449,18 +464,21 @@ public final class TestWorkspacesTest
 	@Test
 	public void refusesLinkToAbsoluteProjectLink() throws IOException
 	{
-		// Requirement: R-W15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path project = linkedProject(cleanup);
-			Path outside = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"outside"));
-			Files.writeString(outside.resolve("rules.md"), "Rules");
-			Files.createSymbolicLink(project.resolve("docs/rules.md"), outside.resolve("rules.md"));
-			link(linkedTest(project).resolve(PromptTestFiles.WORKSPACE).resolve("rules.md"),
-				"../../../../../docs/rules.md");
-			requireRefused(project, "workspace/rules.md: ",
-				"the link reaches docs/rules.md, a link of the project whose target");
+			// Requirement: R-W15
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path project = linkedProject(cleanup);
+				Path outside = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"outside"));
+				Files.writeString(outside.resolve("rules.md"), "Rules");
+				Files.createSymbolicLink(project.resolve("docs/rules.md"), outside.resolve("rules.md"));
+				link(linkedTest(project).resolve(PromptTestFiles.WORKSPACE).resolve("rules.md"),
+					"../../../../../docs/rules.md");
+				requireRefused(project, "workspace/rules.md: ",
+					"the link reaches docs/rules.md, a link of the project whose target");
+			}
 		}
 	}
 
@@ -495,39 +513,42 @@ public final class TestWorkspacesTest
 	@Test
 	public void refusesCollisionWithStagedSource() throws IOException, ScenarioFormatException
 	{
-		// Requirement: R-C21
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			PromptTestFiles files = read(promptTest(cleanup));
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"workspace"));
-			Files.createDirectories(workspace.resolve("docs"));
-			Files.writeString(workspace.resolve("docs/notes.md"), "Project notes");
-			try
+			// Requirement: R-C21
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				TestWorkspaces.copy(files, testCase("notes.md"), workspace);
-				throw new AssertionError("A colliding workspace file was copied");
-			}
-			catch (FileAlreadyExistsException e)
-			{
-				requireThat(e.getMessage(), "message").contains("docs/notes.md");
-			}
-			requireThat(files(workspace), "files").isEqualTo(Set.of("docs/notes.md"));
-			requireThat(Files.readString(workspace.resolve("docs/notes.md")), "notes").isEqualTo("Project notes");
+				PromptTestFiles files = read(promptTest(cleanup));
+				Path workspace = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"workspace"));
+				Files.createDirectories(workspace.resolve("docs"));
+				Files.writeString(workspace.resolve("docs/notes.md"), "Project notes");
+				try
+				{
+					TestWorkspaces.copy(files, testCase("notes.md"), workspace);
+					throw new AssertionError("A colliding workspace file was copied");
+				}
+				catch (FileAlreadyExistsException e)
+				{
+					requireThat(e.getMessage(), "message").contains("docs/notes.md");
+				}
+				requireThat(files(workspace), "files").isEqualTo(Set.of("docs/notes.md"));
+				requireThat(Files.readString(workspace.resolve("docs/notes.md")), "notes").isEqualTo("Project notes");
 
-			Files.delete(workspace.resolve("docs/notes.md"));
-			Files.delete(workspace.resolve("docs"));
-			Files.writeString(workspace.resolve("docs"), "A file named like the workspace file's directory");
-			try
-			{
-				TestWorkspaces.copy(files, testCase("notes.md"), workspace);
-				throw new AssertionError("A workspace file below a file was copied");
+				Files.delete(workspace.resolve("docs/notes.md"));
+				Files.delete(workspace.resolve("docs"));
+				Files.writeString(workspace.resolve("docs"), "A file named like the workspace file's directory");
+				try
+				{
+					TestWorkspaces.copy(files, testCase("notes.md"), workspace);
+					throw new AssertionError("A workspace file below a file was copied");
+				}
+				catch (FileAlreadyExistsException e)
+				{
+					requireThat(e.getMessage(), "message").contains("docs");
+				}
+				requireThat(files(workspace), "afterParent").isEqualTo(Set.of("docs"));
 			}
-			catch (FileAlreadyExistsException e)
-			{
-				requireThat(e.getMessage(), "message").contains("docs");
-			}
-			requireThat(files(workspace), "afterParent").isEqualTo(Set.of("docs"));
 		}
 	}
 
@@ -540,22 +561,25 @@ public final class TestWorkspacesTest
 	@Test
 	public void refusesInvalidName() throws IOException, ScenarioFormatException
 	{
-		// Requirement: R-C21
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			PromptTestFiles files = read(promptTest(cleanup));
-			Path workspace = cleanup.add(Files.createTempDirectory(Path.of(System.getProperty("cat.session.temp")),
-				"workspace"));
-			try
+			// Requirement: R-C21
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				TestWorkspaces.copy(files, testCase("../escape.md"), workspace);
-				throw new AssertionError("An invalid file name was accepted");
+				PromptTestFiles files = read(promptTest(cleanup));
+				Path workspace = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"workspace"));
+				try
+				{
+					TestWorkspaces.copy(files, testCase("../escape.md"), workspace);
+					throw new AssertionError("An invalid file name was accepted");
+				}
+				catch (IllegalArgumentException e)
+				{
+					requireThat(e.getMessage(), "message").contains("../escape.md");
+				}
+				requireThat(files(workspace), "files").isEmpty();
 			}
-			catch (IllegalArgumentException e)
-			{
-				requireThat(e.getMessage(), "message").contains("../escape.md");
-			}
-			requireThat(files(workspace), "files").isEmpty();
 		}
 	}
 

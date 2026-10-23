@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.replay.Finalization;
 import com.holdmyspot.cat.common.git.replay.ReplayJson;
@@ -31,9 +33,10 @@ public final class TopicReplayCompletionTest
 	@Test
 	public void preservesReceiptAcrossCleanupRetry() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "completion-retry-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "completion-retry-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReceiptFixtures.writeGates(manifest);

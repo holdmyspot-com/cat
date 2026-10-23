@@ -1,138 +1,34 @@
 package com.holdmyspot.cat.common;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.that;
-
-import io.github.cowwoc.pouch10.core.LazyReference;
-import io.github.cowwoc.pouch10.core.Reference;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.Map;
-import java.util.Set;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Owns values and services shared for one harness hook invocation, including the CAT session directory of the session
- * that the hook input names.
+ * Supplies services for one harness hook invocation.
  */
-public final class HookScope implements AutoCloseable
+public interface HookScope extends JvmScope
 {
-	private static final int MAXIMUM_EVENT_BYTES = 1_048_576;
 	/**
-	 * The variables in which a jlink launcher saves the caller's locale, whenever that locale is not UTF-8.
-	 */
-	private static final Set<String> SAVED_LOCALE = Set.of("CAT_CALLER_LC_ALL", "CAT_CALLER_LC_CTYPE");
-	private boolean closed;
-	private final Path pluginRoot;
-	private final Path userRulesRoot;
-	private final SessionHarness harness;
-	private final Path configurationDirectory;
-	private final Reference<JsonMapper> json = LazyReference.create(() -> JsonMapper.builder().
-		build());
-	private final Reference<YAMLMapper> yaml = LazyReference.create(() -> YAMLMapper.builder().
-		build());
-
-	/**
-	 * Creates an open hook scope from explicit directories.
-	 *
-	 * @param pluginRoot a non-null CAT plugin root
-	 * @param userHome the current user's non-null home directory
-	 * @param harness the harness that runs the hook, whose sessions own the CAT session directories that the hook
-	 *   obtains
-	 * @param configurationDirectory the harness's configuration directory, which a new session marker records
-	 * @throws NullPointerException if any argument is null
-	 */
-	public HookScope(Path pluginRoot, Path userHome, SessionHarness harness, Path configurationDirectory)
-	{
-		requireThat(pluginRoot, "pluginRoot").isNotNull();
-		requireThat(userHome, "userHome").isNotNull();
-		requireThat(harness, "harness").isNotNull();
-		requireThat(configurationDirectory, "configurationDirectory").isNotNull();
-		this.pluginRoot = pluginRoot.toAbsolutePath().normalize();
-		this.userRulesRoot = ProjectRuleLoader.rulesDirectory(userHome.toAbsolutePath().normalize());
-		this.harness = harness;
-		this.configurationDirectory = configurationDirectory.toAbsolutePath().normalize();
-	}
-
-	/**
-	 * Creates an open hook scope from the environment of a harness hook invocation.
-	 * <p>
-	 * Every error names the harness and the variable that it concerns.
+	 * Creates a hook scope from the harness environment.
 	 *
 	 * @param environment the hook environment
-	 * @param harness the harness's display name
-	 * @param pluginRootVariable the variable through which the harness supplies CAT's installation directory
-	 * @param homeVariable the variable that names the current user's home directory
-	 * @param sessionHarness the harness's session values; its configuration variable, when set, names the harness's
-	 *   configuration directory
-	 * @return the scope
+	 * @param harness the harness display name
+	 * @param pluginRootVariable the installation variable
+	 * @param homeVariable the user home variable
+	 * @param sessionHarness the harness session contract
+	 * @return the open scope
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code harness}, {@code pluginRootVariable} or {@code homeVariable} are
-	 *   blank
-	 * @throws IOException if either variable is unset or blank, or if the environment sets a {@code CAT_} variable
-	 *   other than a {@code CAT_INSTALL_DIR} that names the plugin root or a variable in which the hook's launcher
-	 *   saved the caller's locale
+	 * @throws IllegalArgumentException if any variable name or harness name is blank
+	 * @throws IOException if a required variable is absent or a CAT variable conflicts
 	 */
-	public static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
+	static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
 		String homeVariable, SessionHarness sessionHarness) throws IOException
 	{
-		requireThat(sessionHarness, "sessionHarness").isNotNull();
-		requireThat(environment, "environment").isNotNull();
-		requireThat(harness, "harness").isNotBlank();
-		requireThat(pluginRootVariable, "pluginRootVariable").isNotBlank();
-		requireThat(homeVariable, "homeVariable").isNotBlank();
-		String pluginRoot = environment.get(pluginRootVariable);
-		if (pluginRoot == null || pluginRoot.isBlank())
-			throw new IOException(harness + " " + pluginRootVariable + " is not set");
-		Path resolvedPluginRoot = Path.of(pluginRoot.strip()).toAbsolutePath().normalize();
-		String home = environment.get(homeVariable);
-		if (home == null || home.isBlank())
-			throw new IOException(harness + " " + homeVariable + " is not set");
-		Path userHome = Path.of(home.strip());
-		for (Map.Entry<String, String> entry : environment.entrySet())
-		{
-			String name = entry.getKey();
-			if (!name.startsWith("CAT_") || SAVED_LOCALE.contains(name))
-				continue;
-			if (name.equals("CAT_INSTALL_DIR") &&
-				Path.of(entry.getValue().strip()).toAbsolutePath().normalize().equals(resolvedPluginRoot))
-			{
-				continue;
-			}
-			throw new IOException(name + " conflicts with " + harness + " " + pluginRootVariable);
-		}
-		return new HookScope(resolvedPluginRoot, userHome, sessionHarness,
-			sessionHarness.configurationDirectory(environment, homeVariable));
-	}
-
-	/**
-	 * Returns the JSON mapper shared by this hook invocation.
-	 *
-	 * @return the shared JSON mapper
-	 * @throws IllegalStateException if this scope is closed
-	 */
-	public JsonMapper json()
-	{
-		ensureOpen();
-		return json.getValue();
-	}
-
-	/**
-	 * Returns the YAML mapper shared by this hook invocation.
-	 *
-	 * @return the shared YAML mapper
-	 * @throws IllegalStateException if this scope is closed
-	 */
-	public YAMLMapper yaml()
-	{
-		ensureOpen();
-		return yaml.getValue();
+		return AbstractHookScope.fromEnvironment(environment, harness, pluginRootVariable, homeVariable, sessionHarness);
 	}
 
 	/**
@@ -141,14 +37,8 @@ public final class HookScope implements AutoCloseable
 	 * @return the normalized CAT installation directory
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	public Path pluginRoot()
-		throws IOException
-	{
-		ensureOpen();
-		if (!Files.isDirectory(pluginRoot))
-			throw new IOException("CAT installation directory is not a directory");
-		return pluginRoot;
-	}
+	Path pluginRoot()
+		throws IOException;
 
 	/**
 	 * Returns the current user's CAT rule directory.
@@ -156,11 +46,7 @@ public final class HookScope implements AutoCloseable
 	 * @return the normalized user-rule directory, which may not exist yet
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	public Path userRulesRoot()
-	{
-		ensureOpen();
-		return userRulesRoot;
-	}
+	Path userRulesRoot();
 
 	/**
 	 * Reads the event that the harness passed to the hook.
@@ -174,21 +60,7 @@ public final class HookScope implements AutoCloseable
 	 * @throws IOException if the input cannot be read, is larger than 1 MiB or is not a JSON object
 	 * @throws JacksonException if the input is not valid JSON
 	 */
-	public JsonNode readEvent(String eventName, InputStream input) throws IOException
-	{
-		requireThat(eventName, "eventName").isNotBlank();
-		requireThat(input, "input").isNotNull();
-		ensureOpen();
-		byte[] bytes = input.readNBytes(MAXIMUM_EVENT_BYTES + 1);
-		if (bytes.length > MAXIMUM_EVENT_BYTES)
-			throw new IOException(eventName + " input is too large");
-		JsonNode event = json().createObjectNode();
-		if (bytes.length != 0)
-			event = json().readTree(bytes);
-		if (event == null || !event.isObject())
-			throw new IOException(eventName + " input must be a JSON object");
-		return event;
-	}
+	JsonNode readEvent(String eventName, InputStream input) throws IOException;
 
 	/**
 	 * Returns the type of the subagent that a hook event concerns, without making malformed optional metadata a hook
@@ -199,15 +71,7 @@ public final class HookScope implements AutoCloseable
 	 * @throws NullPointerException if {@code event} is null
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	public String subagentType(JsonNode event)
-	{
-		requireThat(event, "event").isNotNull();
-		ensureOpen();
-		JsonNode agentType = event.path("agent_type");
-		if (!agentType.isString())
-			return "";
-		return agentType.stringValue();
-	}
+	String subagentType(JsonNode event);
 
 	/**
 	 * Resolves the harness hook's current working directory.
@@ -219,18 +83,7 @@ public final class HookScope implements AutoCloseable
 	 * @throws IllegalStateException if this scope is closed
 	 * @throws IOException if the resolved project directory is not a directory
 	 */
-	public Path projectDir(JsonNode event, Path workingDirectory) throws IOException
-	{
-		ensureOpen();
-		String candidate = text(event, "cwd");
-		Path result = workingDirectory;
-		if (!candidate.isEmpty())
-			result = Path.of(candidate);
-		result = result.toAbsolutePath().normalize();
-		if (!Files.isDirectory(result))
-			throw new IOException("Project directory is not a directory");
-		return result;
-	}
+	Path projectDir(JsonNode event, Path workingDirectory) throws IOException;
 
 	/**
 	 * Returns the CAT session directory of the session that a hook input names, creating it and its marker on first use.
@@ -247,55 +100,6 @@ public final class HookScope implements AutoCloseable
 	 * @throws IOException if the property is not a UUID in canonical form, or if the directory or its marker cannot be
 	 *   created
 	 */
-	public SessionDirectory sessionDirectory(Path projectDir, JsonNode event, String property)
-		throws IOException
-	{
-		requireThat(projectDir, "projectDir").isNotNull();
-		requireThat(event, "event").isNotNull();
-		requireThat(property, "property").isNotBlank();
-		ensureOpen();
-		JsonNode sessionId = event.path(property);
-		if (!sessionId.isString())
-			throw new IOException("The hook input lacks " + property);
-		return SessionDirectory.open(projectDir, sessionId.stringValue(), harness, configurationDirectory,
-			Instant.now(), json());
-	}
-
-	/**
-	 * Prevents further service access.
-	 */
-	@Override
-	public void close()
-	{
-		if (closed)
-			return;
-		closed = true;
-	}
-
-	/**
-	 * Ensures this scope remains open.
-	 *
-	 * @throws IllegalStateException if this scope is closed
-	 */
-	private void ensureOpen()
-	{
-		if (closed)
-			throw new IllegalStateException("Scope is closed");
-	}
-
-	/**
-	 * Returns a stripped textual JSON property, or an empty string.
-	 *
-	 * @param object a non-null JSON object
-	 * @param name a non-blank property name
-	 * @return the property value
-	 */
-	private static String text(JsonNode object, String name)
-	{
-		assert that(name, "name").isNotBlank().elseThrow();
-		JsonNode value = object.get(name);
-		if (value == null || !value.isString())
-			return "";
-		return value.asString().strip();
-	}
+	SessionDirectory sessionDirectory(Path projectDir, JsonNode event, String property)
+		throws IOException;
 }

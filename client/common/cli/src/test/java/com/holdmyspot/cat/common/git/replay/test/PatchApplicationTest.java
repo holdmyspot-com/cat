@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.git.replay.BatchManifest;
@@ -39,9 +41,10 @@ public final class PatchApplicationTest
 		expectedExceptionsMessageRegExp = ".*source-patch hash does not match its declared SHA-256.*")
 	public void rejectsChangedPatchAfterVerification() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryRoot = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "patch-application-"));
+			Path temporaryRoot = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "patch-application-"));
 			Path manifestFile = temporaryRoot.resolve("replay/manifest.json");
 			Path patchFile = manifestFile.resolveSibling("source.patch");
 			Files.createDirectories(patchFile.getParent());

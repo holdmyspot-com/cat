@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.history;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.MainToolScope;
 import com.holdmyspot.cat.common.secrets.SessionHistoryAccess;
 import com.holdmyspot.cat.common.secrets.SessionHistorySecrets;
 import java.io.IOException;
@@ -152,7 +153,7 @@ public final class SessionHistory
 		Instant lastTimestamp = null;
 		boolean truncated = false;
 		Map<String, Integer> types = new TreeMap<>();
-		try (ToolScope scope = new ToolScope();
+		try (ToolScope scope = new MainToolScope();
 			Stream<String> lines = Files.lines(transcript))
 		{
 			Iterator<String> iterator = lines.iterator();
@@ -351,7 +352,7 @@ public final class SessionHistory
 	{
 		List<String> records = records(transcript);
 		List<String> types = new ArrayList<>();
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new MainToolScope())
 		{
 			for (String record : records)
 			{
@@ -482,7 +483,7 @@ public final class SessionHistory
 	private static List<String> records(Path transcript) throws IOException
 	{
 		List<String> result = Files.readAllLines(transcript).stream().filter(line -> !line.isBlank()).toList();
-		try (ToolScope scope = new ToolScope())
+		try (ToolScope scope = new MainToolScope())
 		{
 			for (String record : result)
 				scope.json().readTree(record);

@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.git.replay.ActionPairAssessment;
@@ -76,9 +78,10 @@ public final class EditorTest
 	@Test
 	public void combinesSourcesInOneTopicOutput() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path replay = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-output-"));
+			Path replay = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "topic-output-"));
 			Path manifest = writeManifest(replay);
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(replay, replay, Yielding.fileReplacer());
 			Path outputs = replay.resolve("topic-outputs.json");
@@ -291,9 +294,10 @@ public final class EditorTest
 	@Test
 	public void rejectsCollapseWithoutPlacementLedger() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path replay = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-collapse-"));
+			Path replay = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "topic-collapse-"));
 			Path manifest = writeManifest(replay);
 			GitTopicReplayEditor editor = new GitTopicReplayEditor(replay, replay, Yielding.fileReplacer());
 			recordCandidateUniverseEvidence(manifest);
@@ -385,9 +389,10 @@ public final class EditorTest
 	@Test
 	public void reviewsOnlySourcesAfterFixedPrefix() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-fixed-prefix-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "topic-fixed-prefix-"));
 			Path manifestFile = root.resolve("manifest.json");
 			BatchManifest manifest = ReplayManifestInitialization.withFixedPrefix(capturedManifest(), List.of("source-1"));
 			ReplayJson.newMapper().writeValue(manifestFile.toFile(), manifest);
@@ -463,9 +468,10 @@ public final class EditorTest
 	@Test
 	public void preservesFailingQualityGateOutput() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-gate-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "topic-gate-"));
 			Path manifest = Files.writeString(repository.resolve("manifest.json"), "{}\n");
 			Gates gates = new Gates(new CommandRunner(repository));
 
@@ -492,9 +498,10 @@ public final class EditorTest
 	@Test
 	public void reportsConfigurationOriginCandidate() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-origin-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "topic-origin-"));
 			Path manifest = OriginReviewFixtures.writeManifest(ReplayJson.newMapper(), repository, false, "release.yml");
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
@@ -512,9 +519,10 @@ public final class EditorTest
 	@Test
 	public void printsOriginCandidateKeysInSnakeCase() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-origin-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "topic-origin-"));
 			Path manifest = OriginReviewFixtures.writeManifest(ReplayJson.newMapper(), repository, false, "release.yml");
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
@@ -534,9 +542,10 @@ public final class EditorTest
 	@Test(expectedExceptions = UnrecognizedPropertyException.class)
 	public void rejectsCamelCaseManifestKeys() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-camel-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "topic-camel-"));
 			Path manifest = OriginReviewFixtures.writeManifest(JsonMapper.builder().build(), repository, false,
 				"release.yml");
 
@@ -553,9 +562,10 @@ public final class EditorTest
 	@Test
 	public void rejectsInvalidatingSealedOutputSuffix() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path replay = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "topic-sealed-suffix-"));
+			Path replay = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "topic-sealed-suffix-"));
 			Path manifest = replay.resolve("manifest.json");
 			BatchManifest sealed = capturedManifest().withBatches(List.of(
 				new Batch("source", "source-1", "output_1", null, null))).withOutputWitnesses(List.of(

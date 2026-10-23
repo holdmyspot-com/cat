@@ -9,7 +9,7 @@ module com.holdmyspot.cat.common.cli.test
 	requires org.testng;
 
 	exports com.holdmyspot.cat.common.fakes.test to org.testng, com.holdmyspot.cat.claude.cli.test,
-		com.holdmyspot.cat.codex.cli.test;
+		com.holdmyspot.cat.codex.cli.test, com.holdmyspot.cat.distribution.test;
 	exports com.holdmyspot.cat.common.git.replay.test to org.testng;
 	exports com.holdmyspot.cat.common.git.test to org.testng;
 	exports com.holdmyspot.cat.common.history.test to org.testng;

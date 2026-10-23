@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.git.replay.Finalization;
 import com.holdmyspot.cat.common.git.replay.History;
@@ -42,9 +44,10 @@ public final class FinalizationTest
 		".*receipt is missing.*this history is unreviewed.*")
 	public void rejectsManualRewordWithoutReceipt() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-missing-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "receipt-missing-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 
@@ -60,9 +63,10 @@ public final class FinalizationTest
 	@Test
 	public void publishesCapturedReceiptFacts() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-facts-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "receipt-facts-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReceiptFixtures.writeGates(manifest);
@@ -103,9 +107,10 @@ public final class FinalizationTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*evidence changed or is missing.*")
 	public void rejectsChangedEvidence() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-evidence-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "receipt-evidence-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReceiptFixtures.writeGates(manifest);
@@ -126,9 +131,10 @@ public final class FinalizationTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*does not match its manifest.*")
 	public void rejectsChangedManifest() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-manifest-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "receipt-manifest-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			Finalization finalization = ReceiptFixtures.finalization(directory);
@@ -147,9 +153,10 @@ public final class FinalizationTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*requires per-output-build.*")
 	public void rejectsMissingOutputBuild() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-build-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "receipt-build-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReceiptFixtures.writeGates(manifest);
@@ -167,9 +174,10 @@ public final class FinalizationTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*requires per-output-acceptance.*")
 	public void rejectsMissingOutputAcceptance() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-acceptance-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "receipt-acceptance-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			ReceiptFixtures.writeGates(manifest);
@@ -213,9 +221,10 @@ public final class FinalizationTest
 	@Test
 	public void publishAndVerifyGitReceipt() throws IOException, NoSuchAlgorithmException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "receipt-git-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "receipt-git-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			git.lines("commit", "--allow-empty", "--quiet", "-m", "feat: first");

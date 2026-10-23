@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -30,9 +32,10 @@ public final class GatesTest
 	@Test
 	public void retainsSuccessfulGateOutput() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-topic-replay-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 

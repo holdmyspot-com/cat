@@ -1,5 +1,9 @@
 package com.holdmyspot.cat.common.optimizer.adapter.test;
 
+import com.holdmyspot.cat.common.JvmScope;
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -48,6 +52,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Stream;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -63,7 +68,6 @@ import org.testng.annotations.Test;
 public final class RunnerSessionsTest
 {
 	private static final Duration LIMIT = Duration.ofMinutes(5);
-	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 	private static final Instant START = Instant.parse("2026-10-01T00:00:00Z");
 
 	/**
@@ -76,6 +80,7 @@ public final class RunnerSessionsTest
 	/**
 	 * Creates a port whose runner plays a script.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param runRoot the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
@@ -83,15 +88,16 @@ public final class RunnerSessionsTest
 	 * @param script what the harness does, turn by turn
 	 * @return the port
 	 */
-	private static TestSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
+	private static TestSessions port(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
-		return port(runRoot, runRoot, capacity, clock, arguments, script);
+		return port(jvm, runRoot, runRoot, capacity, clock, arguments, script);
 	}
 
 	/**
 	 * Creates a port whose runner plays a script.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param artifact the installed artifact that supplies the roles' rules
 	 * @param runRoot the directory for run directories
 	 * @param capacity the shared capacity
@@ -100,10 +106,10 @@ public final class RunnerSessionsTest
 	 * @param script what the harness does, turn by turn
 	 * @return the port
 	 */
-	private static TestSessions port(Path artifact, Path runRoot, HarnessCapacity capacity, Clock clock,
+	private static TestSessions port(JvmScope jvm, Path artifact, Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, List::of, "", false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, List::of, "", false,
 			Map.of(), runRoot, capacity, clock, Yielding.fileReplacer());
 		return new TestSessions(settings, (options, input, output) ->
 		{
@@ -208,15 +214,18 @@ public final class RunnerSessionsTest
 	@Test
 	public void declaresRunRoots() throws IOException
 	{
-		// Requirement: R-E11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path runRoot = root.resolve("runs").normalize();
-			TestSessions sessions = port(runRoot, HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of());
-			Path heldOutRunRoot = root.resolve("runs-held_out").normalize();
-			requireThat(sessions.runRoots(), "runRoots").isEqualTo(List.of(runRoot, heldOutRunRoot));
+			// Requirement: R-E11
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path runRoot = root.resolve("runs").normalize();
+				TestSessions sessions = port(jvm, runRoot, HarnessCapacity.unlimited(), Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(), List.of());
+				Path heldOutRunRoot = root.resolve("runs-held_out").normalize();
+				requireThat(sessions.runRoots(), "runRoots").isEqualTo(List.of(runRoot, heldOutRunRoot));
+			}
 		}
 	}
 
@@ -233,29 +242,32 @@ public final class RunnerSessionsTest
 	public void passesTheRequestedProfile()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E17
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				arguments, List.of(Turn.replies("ok")));
+			// Requirement: R-E17
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					arguments, List.of(Turn.replies("ok")));
 
-			await(sessions.start(request(new TrialProfile("model-a", "high"), source, List.of(), "complete")));
-			await(sessions.start(request(new TrialProfile("model-b", ""), source, List.of(), "partial")));
-			await(sessions.start(request(new TrialProfile("", "low"), source, List.of(), "effortOnly")));
+				await(sessions.start(request(new TrialProfile("model-a", "high"), source, List.of(), "complete")));
+				await(sessions.start(request(new TrialProfile("model-b", ""), source, List.of(), "partial")));
+				await(sessions.start(request(new TrialProfile("", "low"), source, List.of(), "effortOnly")));
 
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(3);
-			List<String> complete = arguments.get(0);
-			requireThat(ScriptedHarness.optionValue(complete, "--model"), "completeModel").isEqualTo("model-a");
-			requireThat(ScriptedHarness.optionValue(complete, "--effort"), "completeEffort").isEqualTo("high");
-			List<String> partial = arguments.get(1);
-			requireThat(ScriptedHarness.optionValue(partial, "--model"), "partialModel").isEqualTo("model-b");
-			requireThat(partial.contains("--effort"), "partialEffort").isFalse();
-			List<String> effortOnly = arguments.get(2);
-			requireThat(effortOnly.contains("--model"), "effortOnlyModel").isFalse();
-			requireThat(ScriptedHarness.optionValue(effortOnly, "--effort"), "effortOnlyEffort").isEqualTo("low");
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(3);
+				List<String> complete = arguments.get(0);
+				requireThat(ScriptedHarness.optionValue(complete, "--model"), "completeModel").isEqualTo("model-a");
+				requireThat(ScriptedHarness.optionValue(complete, "--effort"), "completeEffort").isEqualTo("high");
+				List<String> partial = arguments.get(1);
+				requireThat(ScriptedHarness.optionValue(partial, "--model"), "partialModel").isEqualTo("model-b");
+				requireThat(partial.contains("--effort"), "partialEffort").isFalse();
+				List<String> effortOnly = arguments.get(2);
+				requireThat(effortOnly.contains("--model"), "effortOnlyModel").isFalse();
+				requireThat(ScriptedHarness.optionValue(effortOnly, "--effort"), "effortOnlyEffort").isEqualTo("low");
+			}
 		}
 	}
 
@@ -272,24 +284,27 @@ public final class RunnerSessionsTest
 	public void passesControlSourceOptions()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-W10
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				arguments, List.of(Turn.replies("ok")));
-
-			for (boolean controlSource : List.of(true, false))
+			// Requirement: R-W10
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(), Optional.empty(),
-					controlSource)));
-			}
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					arguments, List.of(Turn.replies("ok")));
 
-			requireThat(arguments.get(0), "control").contains("--control-source");
-			requireThat(arguments.get(1), "formal").doesNotContain("--control-source");
+				for (boolean controlSource : List.of(true, false))
+				{
+					await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
+						List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(), Optional.empty(),
+						controlSource)));
+				}
+
+				requireThat(arguments.get(0), "control").contains("--control-source");
+				requireThat(arguments.get(1), "formal").doesNotContain("--control-source");
+			}
 		}
 	}
 
@@ -306,32 +321,35 @@ public final class RunnerSessionsTest
 	public void passesGeneratedFixtureToRunner()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-C21
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			TestValue.Generated lines = new TestValue.Generated("log_lines", 1, 11, Map.of("count", 3L));
-			TestWorkspace files = new TestWorkspace(Map.of("logs/build.log",
-				new WorkspaceFile("logs/build.log", "{{before}}\nBuild finished on {{expected_outcome}}.\n")),
-				Map.of("before", lines), "2025-03-04");
-			List<String> received = new CopyOnWriteArrayList<>();
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
-				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			// Requirement: R-C21
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				Path workspace = Path.of(ScriptedHarness.optionValue(options, "--workspace"));
-				received.add(Files.readString(workspace.resolve("logs/build.log")));
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
-					List.of(Turn.replies("ok")), input, output);
-			});
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				TestValue.Generated lines = new TestValue.Generated("log_lines", 1, 11, Map.of("count", 3L));
+				TestWorkspace files = new TestWorkspace(Map.of("logs/build.log",
+					new WorkspaceFile("logs/build.log", "{{before}}\nBuild finished on {{expected_outcome}}.\n")),
+					Map.of("before", lines), "2025-03-04");
+				List<String> received = new CopyOnWriteArrayList<>();
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+					false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+				{
+					Path workspace = Path.of(ScriptedHarness.optionValue(options, "--workspace"));
+					received.add(Files.readString(workspace.resolve("logs/build.log")));
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+						List.of(Turn.replies("ok")), input, output);
+				});
 
-			await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
-				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, files, List.of())));
+				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, files, List.of())));
 
-			StringWriter generated = new StringWriter();
-			lines.write(generated);
-			requireThat(received, "received").isEqualTo(List.of(generated + "\nBuild finished on 2025-03-04.\n"));
+				StringWriter generated = new StringWriter();
+				lines.write(generated);
+				requireThat(received, "received").isEqualTo(List.of(generated + "\nBuild finished on 2025-03-04.\n"));
+			}
 		}
 	}
 
@@ -350,9 +368,10 @@ public final class RunnerSessionsTest
 	public void installsTrialPlugins()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path artifact = manifest(root.resolve("artifact"), "cat", PluginInfo.CAT_REPOSITORY);
 			// CAT is recognized by its manifest's repository, whatever the user named it, and a plugin that takes
@@ -360,7 +379,7 @@ public final class RunnerSessionsTest
 			Path catCopy = manifest(root.resolve("plugins/workflow"), "workflow", PluginInfo.CAT_REPOSITORY);
 			Path otherCopy = manifest(root.resolve("plugins/cat"), "cat", "https://example.com/cat");
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of, "",
 				true, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
@@ -404,9 +423,10 @@ public final class RunnerSessionsTest
 	@Test
 	public void loadsSourcesOfBuiltCat() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-")).
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-")).
 				toRealPath();
 			Path artifact = manifest(root.resolve("artifact"), "cat", PluginInfo.CAT_REPOSITORY);
 			Path base = manifest(root.resolve("base"), "cat", PluginInfo.CAT_REPOSITORY);
@@ -420,7 +440,7 @@ public final class RunnerSessionsTest
 			write(home.resolve(".cat/rules/common/personal.md"), "Personal rule");
 			TrialPlugin plugin = new TrialPlugin("cat", "0".repeat(64), new TrialPlugin.Build(List.of("build"),
 				Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("rules/include"), Path.of("rules/include"))), null);
-			TestSessions sessions = new TestSessions(new RunnerSessions.Settings(artifact, root.resolve("runs"),
+			TestSessions sessions = new TestSessions(new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"),
 				List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 				Yielding.fileReplacer(), Optional.of(home.resolve(".cat/rules"))), (_, _, _) ->
 			{
@@ -442,6 +462,45 @@ public final class RunnerSessionsTest
 	}
 
 	/**
+	 * Verifies rule overlays use the process scope's temporary directory and remove their own child directory.
+	 *
+	 * @throws IOException if fixture files or loaded sources cannot be read or written
+	 */
+	@Test
+	public void createsOverlayInProcessDirectory() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "overlay-location-"));
+			Path temporary = root.resolve("process-temporary");
+			try (TestJvmScope process = new TestJvmScope(temporary))
+			{
+				Path artifact = manifest(root.resolve("artifact"), "cat", PluginInfo.CAT_REPOSITORY);
+				Path base = manifest(root.resolve("base"), "cat", PluginInfo.CAT_REPOSITORY);
+				Path project = Files.createDirectories(root.resolve("project"));
+				write(base.resolve("rules/common/default.md"), "Guidance");
+				TrialPlugin plugin = new TrialPlugin("cat", "0".repeat(64), new TrialPlugin.Build(List.of("build"),
+					Path.of("out")), List.of(), null);
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(process, artifact, root.resolve("runs"),
+					List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
+					Yielding.fileReplacer());
+				TestSessions sessions = new TestSessions(settings, (_, _, _) ->
+				{
+				});
+
+				sessions.loadedSources(project, List.of(new PluginBase(plugin, base)));
+
+				requireThat(temporary, "temporary").isDirectory();
+				try (Stream<Path> children = Files.list(temporary))
+				{
+					requireThat(children.toList(), "children").isEmpty();
+				}
+			}
+		}
+	}
+
+	/**
 	 * Verifies that CAT's rules from the installed artifact load in production exactly when the settings install CAT,
 	 * that they never load in trials without a CAT trial plugin, and that they are then listed as loading in
 	 * production only.
@@ -451,9 +510,10 @@ public final class RunnerSessionsTest
 	@Test
 	public void loadsInstalledCatInProductionOnly() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-")).
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-")).
 				toRealPath();
 			Path artifact = manifest(root.resolve("artifact"), "cat", PluginInfo.CAT_REPOSITORY);
 			Path project = Files.createDirectories(root.resolve("project"));
@@ -466,7 +526,7 @@ public final class RunnerSessionsTest
 
 			for (boolean installCat : List.of(true, false))
 			{
-				TestSessions sessions = new TestSessions(new RunnerSessions.Settings(artifact, root.resolve("runs"),
+				TestSessions sessions = new TestSessions(new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"),
 					List::of, "", installCat, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 					Yielding.fileReplacer()),
 					(_, _, _) ->
@@ -530,10 +590,12 @@ public final class RunnerSessionsTest
 	public void retainsMessagesForEachTurn()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+				false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
@@ -572,10 +634,12 @@ public final class RunnerSessionsTest
 	@Test(timeOut = 120_000)
 	public void sendsFollowUpTurn() throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+				false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			List<String> sent = new CopyOnWriteArrayList<>();
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
@@ -622,45 +686,49 @@ public final class RunnerSessionsTest
 	public void sendsInterruptAfterTurnStart()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			Path runs = root.resolve("runs");
-			List<String> requests = new CopyOnWriteArrayList<>();
-			CountDownLatch turnReceived = new CountDownLatch(1);
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, runs, List::of, "", false, Map.of(), root,
-				HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			// Requirement: R-E15
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				HarnessRunManager manager = new HarnessRunManager(runs, Clock.systemUTC(), Yielding.fileReplacer());
-				HarnessRun run = manager.create(TestSessions.HARNESS);
-				manager.initialize(run, root, root, "scripted", List.of("scripted"));
-				output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
-				output.flush();
-				BufferedReader lines = new BufferedReader(input);
-				String line = lines.readLine();
-				while (line != null)
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path runs = root.resolve("runs");
+				List<String> requests = new CopyOnWriteArrayList<>();
+				CountDownLatch turnReceived = new CountDownLatch(1);
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, runs, List::of, "", false, Map.of(),
+					root,
+					HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 				{
-					requests.add(line);
-					if (line.contains("\"type\":\"turn\""))
-						turnReceived.countDown();
-					if (line.contains("\"type\":\"interrupt\""))
+					HarnessRunManager manager = new HarnessRunManager(runs, Clock.systemUTC(), Yielding.fileReplacer());
+					HarnessRun run = manager.create(TestSessions.HARNESS);
+					manager.initialize(run, root, root, "scripted", List.of("scripted"));
+					output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
+					output.flush();
+					BufferedReader lines = new BufferedReader(input);
+					String line = lines.readLine();
+					while (line != null)
 					{
-						output.write("{\"type\":\"turn_completed\",\"assistant_messages\":[\"stopped\"]}\n");
-						output.flush();
+						requests.add(line);
+						if (line.contains("\"type\":\"turn\""))
+							turnReceived.countDown();
+						if (line.contains("\"type\":\"interrupt\""))
+						{
+							output.write("{\"type\":\"turn_completed\",\"assistant_messages\":[\"stopped\"]}\n");
+							output.flush();
+						}
+						line = lines.readLine();
 					}
-					line = lines.readLine();
-				}
-			});
-			SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-			requireThat(turnReceived.await(60, TimeUnit.SECONDS), "turnReceived").isTrue();
+				});
+				SessionHandle handle = sessions.start(request(source, List.of(), "one"));
+				requireThat(turnReceived.await(60, TimeUnit.SECONDS), "turnReceived").isTrue();
 
-			handle.interrupt();
+				handle.interrupt();
 
-			requireThat(await(handle), "result").isInstanceOf(SessionResult.Interrupted.class);
-			requireThat(requests, "requests").contains("{\"type\":\"interrupt\",\"after\":\"turn_started\"}");
+				requireThat(await(handle), "result").isInstanceOf(SessionResult.Interrupted.class);
+				requireThat(requests, "requests").contains("{\"type\":\"interrupt\",\"after\":\"turn_started\"}");
+			}
 		}
 	}
 
@@ -679,25 +747,28 @@ public final class RunnerSessionsTest
 	public void interruptsWhileWaitingForCapacity()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E8
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+			// Requirement: R-E8
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-			}, Clock.systemUTC());
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			TestSessions sessions = port(root.resolve("runs"), capacity, Clock.systemUTC(), arguments,
-				List.of(Turn.replies("never")));
-			try (HarnessCapacity.Permit _ = capacity.acquire())
-			{
-				SessionHandle handle = sessions.start(request(source, List.of(), "one"));
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+				{
+				}, Clock.systemUTC());
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				TestSessions sessions = port(jvm, root.resolve("runs"), capacity, Clock.systemUTC(), arguments,
+					List.of(Turn.replies("never")));
+				try (HarnessCapacity.Permit _ = capacity.acquire())
+				{
+					SessionHandle handle = sessions.start(request(source, List.of(), "one"));
 
-				handle.interrupt();
+					handle.interrupt();
 
-				requireThat(await(handle), "result").isEqualTo(new SessionResult.Interrupted(List.of()));
-				requireThat(arguments, "arguments").isEmpty();
+					requireThat(await(handle), "result").isEqualTo(new SessionResult.Interrupted(List.of()));
+					requireThat(arguments, "arguments").isEmpty();
+				}
 			}
 		}
 	}
@@ -714,28 +785,31 @@ public final class RunnerSessionsTest
 	public void holdsOnePermitForTheSessionsLifetime()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E8
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+			// Requirement: R-E8
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-			}, Clock.systemUTC());
-			CountDownLatch entered = new CountDownLatch(1);
-			TestSessions sessions = port(root.resolve("runs"), capacity, Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.blocksUntilInterrupted().announcing(entered)));
-			SessionHandle handle = sessions.start(request(source, List.of(), "one"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+				{
+				}, Clock.systemUTC());
+				CountDownLatch entered = new CountDownLatch(1);
+				TestSessions sessions = port(jvm, root.resolve("runs"), capacity, Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(), List.of(Turn.blocksUntilInterrupted().announcing(entered)));
+				SessionHandle handle = sessions.start(request(source, List.of(), "one"));
+				requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
 
-			Optional<HarnessCapacity.Permit> duringSession = capacity.tryAcquire();
-			handle.interrupt();
-			await(handle);
-			Optional<HarnessCapacity.Permit> afterSession = capacity.tryAcquire();
+				Optional<HarnessCapacity.Permit> duringSession = capacity.tryAcquire();
+				handle.interrupt();
+				await(handle);
+				Optional<HarnessCapacity.Permit> afterSession = capacity.tryAcquire();
 
-			requireThat(duringSession.isPresent(), "duringSession").isFalse();
-			requireThat(afterSession.isPresent(), "afterSession").isTrue();
-			afterSession.get().close();
+				requireThat(duringSession.isPresent(), "duringSession").isFalse();
+				requireThat(afterSession.isPresent(), "afterSession").isTrue();
+				afterSession.get().close();
+			}
 		}
 	}
 
@@ -752,18 +826,21 @@ public final class RunnerSessionsTest
 	public void classifiesTurnWithoutResultAsFailure()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.replies("first"), Turn.fails(), Turn.replies("third")));
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(), List.of(Turn.replies("first"), Turn.fails(), Turn.replies("third")));
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two", "three")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one", "two", "three")));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Failed.class);
-			requireThat(((SessionResult.Failed) result).reason(), "reason").contains("Turn 2");
+				requireThat(result, "result").isInstanceOf(SessionResult.Failed.class);
+				requireThat(((SessionResult.Failed) result).reason(), "reason").contains("Turn 2");
+			}
 		}
 	}
 
@@ -780,11 +857,12 @@ public final class RunnerSessionsTest
 	public void classifiesRejectedTurnAsFailure()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
-			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+			TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
 				new CopyOnWriteArrayList<>(), List.of(Turn.replies("first"), Turn.rejected()));
 
 			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
@@ -807,21 +885,25 @@ public final class RunnerSessionsTest
 	public void classifiesRunnerStartupFailureAsFailure()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
-				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				throw new IOException("artifact is invalid");
-			});
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+					false,
+					Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+				{
+					throw new IOException("artifact is invalid");
+				});
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one")));
 
-			requireThat(result, "result").isEqualTo(new SessionResult.Failed("artifact is invalid", List.of()));
+				requireThat(result, "result").isEqualTo(new SessionResult.Failed("artifact is invalid", List.of()));
+			}
 		}
 	}
 
@@ -839,25 +921,28 @@ public final class RunnerSessionsTest
 	public void completesWithRepliesSoFarAtTheTimeLimit()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			ManualClock clock = new ManualClock(START);
-			CountDownLatch entered = new CountDownLatch(1);
-			List<Turn> script = List.of(Turn.replies("first"),
-				Turn.blocksUntilInterrupted(TestSessions.OUTPUT_EVENT).announcing(entered));
-			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), clock,
-				new CopyOnWriteArrayList<>(), script);
-			SessionHandle handle = sessions.start(request(source, List.of(), "one", "two", "three"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				ManualClock clock = new ManualClock(START);
+				CountDownLatch entered = new CountDownLatch(1);
+				List<Turn> script = List.of(Turn.replies("first"),
+					Turn.blocksUntilInterrupted(TestSessions.OUTPUT_EVENT).announcing(entered));
+				TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
+					new CopyOnWriteArrayList<>(), script);
+				SessionHandle handle = sessions.start(request(source, List.of(), "one", "two", "three"));
+				requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
 
-			clock.advance(LIMIT.plusSeconds(1));
+				clock.advance(LIMIT.plusSeconds(1));
 
-			SessionResult result = await(handle);
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(List.of(List.of("first")));
+				SessionResult result = await(handle);
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(List.of(List.of("first")));
+			}
 		}
 	}
 
@@ -894,26 +979,29 @@ public final class RunnerSessionsTest
 	public void failsAtTheTimeLimitUnlessTrial(SessionRole role, String word)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			ManualClock clock = new ManualClock(START);
-			CountDownLatch entered = new CountDownLatch(1);
-			List<Turn> script = List.of(Turn.replies("first"), Turn.blocksUntilInterrupted().announcing(entered));
-			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			TestSessions sessions = port(artifact, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
-				new CopyOnWriteArrayList<>(), script);
-			SessionHandle handle = sessions.start(request(role, TrialProfile.HARNESS_DEFAULT, source, List.of(), "one",
-				"two", "three"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				ManualClock clock = new ManualClock(START);
+				CountDownLatch entered = new CountDownLatch(1);
+				List<Turn> script = List.of(Turn.replies("first"), Turn.blocksUntilInterrupted().announcing(entered));
+				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+				TestSessions sessions = port(jvm, artifact, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
+					new CopyOnWriteArrayList<>(), script);
+				SessionHandle handle = sessions.start(request(role, TrialProfile.HARNESS_DEFAULT, source, List.of(), "one",
+					"two", "three"));
+				requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
 
-			clock.advance(LIMIT.plusSeconds(1));
+				clock.advance(LIMIT.plusSeconds(1));
 
-			SessionResult result = await(handle);
-			requireThat(result, "result").isEqualTo(new SessionResult.Failed("The " + word +
-				" session reached its 5-minute time limit", List.of()));
+				SessionResult result = await(handle);
+				requireThat(result, "result").isEqualTo(new SessionResult.Failed("The " + word +
+					" session reached its 5-minute time limit", List.of()));
+			}
 		}
 	}
 
@@ -931,15 +1019,16 @@ public final class RunnerSessionsTest
 	private static SessionResult timeOutTrial(List<Turn> earlier, String... lastEvents)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			ManualClock clock = new ManualClock(START);
 			CountDownLatch entered = new CountDownLatch(1);
 			List<Turn> script = new ArrayList<>(earlier);
 			script.add(Turn.blocksUntilInterrupted(lastEvents).announcing(entered));
-			TestSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), clock,
+			TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
 				new CopyOnWriteArrayList<>(), script);
 			String[] turns = new String[script.size()];
 			Arrays.fill(turns, "turn");
@@ -1049,6 +1138,7 @@ public final class RunnerSessionsTest
 	/**
 	 * Creates a port whose runner plays a script and records the turn requests that reach the harness.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param runRoot the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
@@ -1056,10 +1146,11 @@ public final class RunnerSessionsTest
 	 * @param requests receives each turn request that reaches the harness
 	 * @return the port
 	 */
-	private static TestSessions recordingPort(Path runRoot, HarnessCapacity capacity, Clock clock, List<Turn> script,
+	private static TestSessions recordingPort(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
+		List<Turn> script,
 		List<String> requests)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, List::of, "", false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, runRoot, runRoot, List::of, "", false,
 			Map.of(), runRoot, capacity, clock, Yielding.fileReplacer());
 		return new TestSessions(settings, (options, input, output) ->
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
@@ -1095,23 +1186,26 @@ public final class RunnerSessionsTest
 	public void refusedSessionHoldsTheHarness()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			ManualClock clock = new ManualClock(START);
-			HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
-			List<String> requests = new CopyOnWriteArrayList<>();
-			TestSessions sessions = recordingPort(root.resolve("runs"), capacity, clock,
-				List.of(Turn.replies("refused", TestSessions.REFUSED_EVENT), Turn.replies("never")), requests);
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				ManualClock clock = new ManualClock(START);
+				HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+				List<String> requests = new CopyOnWriteArrayList<>();
+				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock,
+					List.of(Turn.replies("refused", TestSessions.REFUSED_EVENT), Turn.replies("never")), requests);
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
 
-			HarnessCapacity.Hold hold = new HarnessCapacity.Hold(START.plus(Duration.ofMinutes(1)), 1);
-			requireThat(result, "result").isEqualTo(new SessionResult.Refused(hold, false, List.of()));
-			requireThat(capacity.hold(), "hold").isEqualTo(hold);
-			requireThat(requests.size(), "requests.size()").isEqualTo(1);
+				HarnessCapacity.Hold hold = new HarnessCapacity.Hold(START.plus(Duration.ofMinutes(1)), 1);
+				requireThat(result, "result").isEqualTo(new SessionResult.Refused(hold, false, List.of()));
+				requireThat(capacity.hold(), "hold").isEqualTo(hold);
+				requireThat(requests.size(), "requests.size()").isEqualTo(1);
+			}
 		}
 	}
 
@@ -1127,24 +1221,27 @@ public final class RunnerSessionsTest
 	public void refusalAfterLongestHoldIsReported()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			ManualClock clock = new ManualClock(START);
-			HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
-			// Six refusals reach the 30-minute hold
-			for (int refused = 0; refused < 6; ++refused)
-				clock.set(capacity.refuse().hold().endsAt());
-			Instant now = clock.instant();
-			TestSessions sessions = recordingPort(root.resolve("runs"), capacity, clock,
-				List.of(Turn.replies("refused", TestSessions.REFUSED_EVENT)), new CopyOnWriteArrayList<>());
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				ManualClock clock = new ManualClock(START);
+				HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+				// Six refusals reach the 30-minute hold
+				for (int refused = 0; refused < 6; ++refused)
+					clock.set(capacity.refuse().hold().endsAt());
+				Instant now = clock.instant();
+				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock,
+					List.of(Turn.replies("refused", TestSessions.REFUSED_EVENT)), new CopyOnWriteArrayList<>());
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one")));
 
-			requireThat(result, "result").isEqualTo(new SessionResult.Refused(
-				new HarnessCapacity.Hold(now.plus(Duration.ofMinutes(30)), 6), true, List.of()));
+				requireThat(result, "result").isEqualTo(new SessionResult.Refused(
+					new HarnessCapacity.Hold(now.plus(Duration.ofMinutes(30)), 6), true, List.of()));
+			}
 		}
 	}
 
@@ -1161,21 +1258,24 @@ public final class RunnerSessionsTest
 	public void rejectionWithoutResetTimeHoldsTheHarness()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			ManualClock clock = new ManualClock(START);
-			HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
-			TestSessions sessions = recordingPort(root.resolve("runs"), capacity, clock,
-				List.of(Turn.replies("limit", TestSessions.REJECTED_EVENT)), new CopyOnWriteArrayList<>());
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				ManualClock clock = new ManualClock(START);
+				HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock,
+					List.of(Turn.replies("limit", TestSessions.REJECTED_EVENT)), new CopyOnWriteArrayList<>());
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one")));
 
-			HarnessCapacity.Hold hold = new HarnessCapacity.Hold(START.plus(Duration.ofMinutes(1)), 1);
-			requireThat(result, "result").isEqualTo(new SessionResult.RateLimited(hold, List.of()));
-			requireThat(capacity.hold(), "hold").isEqualTo(hold);
+				HarnessCapacity.Hold hold = new HarnessCapacity.Hold(START.plus(Duration.ofMinutes(1)), 1);
+				requireThat(result, "result").isEqualTo(new SessionResult.RateLimited(hold, List.of()));
+				requireThat(capacity.hold(), "hold").isEqualTo(hold);
+			}
 		}
 	}
 
@@ -1191,22 +1291,25 @@ public final class RunnerSessionsTest
 	public void completedTurnResetsHoldLength()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			ManualClock clock = new ManualClock(START.minus(Duration.ofMinutes(10)));
-			HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
-			HarnessCapacity.Hold ended = capacity.reject(null);
-			clock.set(START);
-			TestSessions sessions = recordingPort(root.resolve("runs"), capacity, clock, List.of(Turn.replies("done")),
-				new CopyOnWriteArrayList<>());
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				ManualClock clock = new ManualClock(START.minus(Duration.ofMinutes(10)));
+				HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+				HarnessCapacity.Hold ended = capacity.reject(null);
+				clock.set(START);
+				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock, List.of(Turn.replies("done")),
+					new CopyOnWriteArrayList<>());
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one")));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			requireThat(capacity.hold(), "hold").isEqualTo(new HarnessCapacity.Hold(ended.endsAt(), 0));
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				requireThat(capacity.hold(), "hold").isEqualTo(new HarnessCapacity.Hold(ended.endsAt(), 0));
+			}
 		}
 	}
 }

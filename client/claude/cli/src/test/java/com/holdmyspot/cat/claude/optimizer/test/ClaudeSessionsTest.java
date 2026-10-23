@@ -1,5 +1,9 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+import com.holdmyspot.cat.common.JvmScope;
+
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -71,7 +75,6 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ClaudeSessionsTest
 {
 	private static final Duration LIMIT = Duration.ofMinutes(5);
-	private static final Path TEMP = Path.of(System.getProperty("cat.session.temp"));
 
 	/**
 	 * Creates the test.
@@ -99,6 +102,7 @@ public final class ClaudeSessionsTest
 	/**
 	 * Creates a port whose runner plays a script.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param runRoot the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
@@ -106,15 +110,16 @@ public final class ClaudeSessionsTest
 	 * @param script what the harness does, turn by turn
 	 * @return the port
 	 */
-	private static ClaudeSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
+	private static ClaudeSessions port(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
-		return port(runRoot, capacity, clock, arguments, script, new CopyOnWriteArrayList<>());
+		return port(jvm, runRoot, capacity, clock, arguments, script, new CopyOnWriteArrayList<>());
 	}
 
 	/**
 	 * Creates a port and observes the prompts that CAT sends through the bridge.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param runRoot the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
@@ -123,10 +128,10 @@ public final class ClaudeSessionsTest
 	 * @param requests receives the decoded prompts in turn order
 	 * @return the port
 	 */
-	private static ClaudeSessions port(Path runRoot, HarnessCapacity capacity, Clock clock,
+	private static ClaudeSessions port(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script, List<String> requests)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(runRoot, runRoot, List::of, "", false, Map.of(),
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, runRoot, runRoot, List::of, "", false, Map.of(),
 			runRoot, capacity, clock, Yielding.fileReplacer());
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (options, input, output) ->
 		{
@@ -163,56 +168,60 @@ public final class ClaudeSessionsTest
 	public void passesPluginsOnlyForTrialSessions(SessionRole role)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E20
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-role-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			Path artifact = plugin(RoleRuleFixtures.write(root.resolve("artifact")), "cat");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"), List::of, "", true,
-				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().
-				newClaudeSessions(settings, (options, input, output) ->
+			// Requirement: R-E20
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				arguments.add(options);
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
-					List.of(Turn.replies("ok")), input, output);
-			});
-			// CAT is recognized by its manifest's repository, whatever the user named it
-			Path cat = plugin(root.resolve("plugins/workflow"), "workflow");
-			Files.writeString(cat.resolve(".claude-plugin/plugin.json"), "{\"name\": \"workflow\", \"repository\": \"" +
-				PluginInfo.CAT_REPOSITORY + "\"}\n");
-			Path tools = plugin(root.resolve("plugins/tools"), "tools");
-			List<Path> plugins = List.of();
-			if (role == SessionRole.TRIAL)
-				plugins = List.of(tools, cat);
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-role-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path artifact = plugin(RoleRuleFixtures.write(root.resolve("artifact")), "cat");
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
+					"", true,
+					Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().
+					newClaudeSessions(settings, (options, input, output) ->
+				{
+					arguments.add(options);
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
+						List.of(Turn.replies("ok")), input, output);
+				});
+				// CAT is recognized by its manifest's repository, whatever the user named it
+				Path cat = plugin(root.resolve("plugins/workflow"), "workflow");
+				Files.writeString(cat.resolve(".claude-plugin/plugin.json"), "{\"name\": \"workflow\", \"repository\": \"" +
+					PluginInfo.CAT_REPOSITORY + "\"}\n");
+				Path tools = plugin(root.resolve("plugins/tools"), "tools");
+				List<Path> plugins = List.of();
+				if (role == SessionRole.TRIAL)
+					plugins = List.of(tools, cat);
 
-			SessionResult result = await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
-				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, plugins)));
+				SessionResult result = await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, plugins)));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
-			List<String> options = arguments.getFirst();
-			// Requirement: R-I9
-			requireThat(options, "options").doesNotContain("--session-requests");
-			if (role == SessionRole.TRIAL)
-			{
-				requireThat(options, "options").contains("--install-cat");
-				requireThat(ScriptedHarness.optionValue(options, "--artifact"), "artifact").isEqualTo(cat.toString());
-				requireThat(options.subList(0, 2), "plugin").isEqualTo(List.of("--plugin", tools.toString()));
-				requireThat(options.lastIndexOf("--plugin"), "lastPlugin").isEqualTo(0);
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+				List<String> options = arguments.getFirst();
+				// Requirement: R-I9
+				requireThat(options, "options").doesNotContain("--session-requests");
+				if (role == SessionRole.TRIAL)
+				{
+					requireThat(options, "options").contains("--install-cat");
+					requireThat(ScriptedHarness.optionValue(options, "--artifact"), "artifact").isEqualTo(cat.toString());
+					requireThat(options.subList(0, 2), "plugin").isEqualTo(List.of("--plugin", tools.toString()));
+					requireThat(options.lastIndexOf("--plugin"), "lastPlugin").isEqualTo(0);
 
-				requireThat(await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(tools)))), "withoutCat").
-					isInstanceOf(SessionResult.Completed.class);
-				requireThat(arguments.getLast(), "withoutCatOptions").doesNotContain("--install-cat");
-				requireThat(ScriptedHarness.optionValue(arguments.getLast(), "--artifact"), "withoutCatArtifact").
-					isEqualTo(artifact.toString());
-				return;
+					requireThat(await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
+						List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(tools)))), "withoutCat").
+						isInstanceOf(SessionResult.Completed.class);
+					requireThat(arguments.getLast(), "withoutCatOptions").doesNotContain("--install-cat");
+					requireThat(ScriptedHarness.optionValue(arguments.getLast(), "--artifact"), "withoutCatArtifact").
+						isEqualTo(artifact.toString());
+					return;
+				}
+				requireThat(options, "options").doesNotContain("--install-cat").doesNotContain("--plugin");
+				requireThat(ScriptedHarness.optionValue(options, "--artifact"), "artifact").isEqualTo(artifact.toString());
 			}
-			requireThat(options, "options").doesNotContain("--install-cat").doesNotContain("--plugin");
-			requireThat(ScriptedHarness.optionValue(options, "--artifact"), "artifact").isEqualTo(artifact.toString());
 		}
 	}
 
@@ -261,59 +270,63 @@ public final class ClaudeSessionsTest
 	public void deniesHeldOutReadsToDevelopmentSessions(SessionRole role, Part part)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E24
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-denied-reads-")).
-				toRealPath();
-			Path source = Files.createDirectories(root.resolve("source"));
-			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-			Path heldOut = Files.createDirectories(root.resolve("campaign/held_out"));
-			Path runRoot = root.resolve("runs");
-			Path heldOutRunRoot = root.resolve("runs-held_out");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, () -> List.of(heldOut), "",
-				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			List<Boolean> heldOutRunRootExisted = new CopyOnWriteArrayList<>();
-			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().
-				newClaudeSessions(settings, (options, input, output) ->
+			// Requirement: R-E24
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				arguments.add(options);
-				heldOutRunRootExisted.add(Files.isDirectory(heldOutRunRoot));
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
-					List.of(Turn.replies("ok")), input, output);
-			});
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-denied-reads-")).
+					toRealPath();
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+				Path heldOut = Files.createDirectories(root.resolve("campaign/held_out"));
+				Path runRoot = root.resolve("runs");
+				Path heldOutRunRoot = root.resolve("runs-held_out");
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, () -> List.of(heldOut),
+					"",
+					false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				List<Boolean> heldOutRunRootExisted = new CopyOnWriteArrayList<>();
+				ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().
+					newClaudeSessions(settings, (options, input, output) ->
+				{
+					arguments.add(options);
+					heldOutRunRootExisted.add(Files.isDirectory(heldOutRunRoot));
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
+						List.of(Turn.replies("ok")), input, output);
+				});
 
-			SessionResult result = await(sessions.start(new SessionRequest(role, part, source, List.of("brief"),
-				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+				SessionResult result = await(sessions.start(new SessionRequest(role, part, source, List.of("brief"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
 
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
-			requireThat(heldOutRunRootExisted, "heldOutRunRootExisted").isEqualTo(List.of(true));
-			List<String> denied = new ArrayList<>();
-			List<String> options = arguments.get(0);
-			for (int i = 0; i < options.size() - 1; ++i)
-			{
-				if (options.get(i).equals("--deny-read"))
-					denied.add(options.get(i + 1));
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+				requireThat(heldOutRunRootExisted, "heldOutRunRootExisted").isEqualTo(List.of(true));
+				List<String> denied = new ArrayList<>();
+				List<String> options = arguments.get(0);
+				for (int i = 0; i < options.size() - 1; ++i)
+				{
+					if (options.get(i).equals("--deny-read"))
+						denied.add(options.get(i + 1));
+				}
+				Path expectedRunRoot;
+				List<String> expectedDenied;
+				if (part == Part.HELD_OUT)
+				{
+					expectedRunRoot = heldOutRunRoot;
+					expectedDenied = List.of();
+				}
+				else
+				{
+					expectedRunRoot = runRoot;
+					expectedDenied = List.of(heldOut.toString(), heldOutRunRoot.toString());
+				}
+				requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
+					isEqualTo(expectedRunRoot.toString());
+				requireThat(denied, "denied").isEqualTo(expectedDenied);
+				requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedRunRoot), "transcript").
+					isTrue();
 			}
-			Path expectedRunRoot;
-			List<String> expectedDenied;
-			if (part == Part.HELD_OUT)
-			{
-				expectedRunRoot = heldOutRunRoot;
-				expectedDenied = List.of();
-			}
-			else
-			{
-				expectedRunRoot = runRoot;
-				expectedDenied = List.of(heldOut.toString(), heldOutRunRoot.toString());
-			}
-			requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
-				isEqualTo(expectedRunRoot.toString());
-			requireThat(denied, "denied").isEqualTo(expectedDenied);
-			requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedRunRoot), "transcript").
-				isTrue();
 		}
 	}
 
@@ -332,14 +345,15 @@ public final class ClaudeSessionsTest
 	public void deniesHostProjectReads(SessionRole role, Part part)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-host-project-")).
+			Path project = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-host-project-")).
 				toRealPath();
 			Path source = Files.createDirectories(project.resolve("source"));
 			Path artifact = RoleRuleFixtures.write(project.resolve("artifact"));
 			Path runRoot = project.resolve(".cat/sessions/session-1/optimizer-runs/claude");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, runRoot, List::of, "", false,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, List::of, "", false,
 				Map.of(), project, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer(), Optional.empty(),
 				project);
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
@@ -381,15 +395,16 @@ public final class ClaudeSessionsTest
 	public void contractAuthorWritesDraftAndRunsTools()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-contract-author-")).
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-contract-author-")).
 				toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			Path heldOut = Files.createDirectories(root.resolve("campaign/held_out"));
 			Path launcher = root.resolve("image/bin/prompt-optimizer");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, root.resolve("runs"),
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"),
 				() -> List.of(heldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
@@ -439,9 +454,10 @@ public final class ClaudeSessionsTest
 	public void deniesHeldOutReadsInSessionDirectory()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-session-denied-")).
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-session-denied-")).
 				toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
@@ -453,7 +469,7 @@ public final class ClaudeSessionsTest
 			Path heldOut = Files.createDirectories(session.campaigns().resolve("c1/held_out"));
 			Path otherHeldOut = Files.createDirectories(root.resolve(".cat/sessions/" + otherSessionId +
 				"/optimizer/c2/held_out"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(artifact, session.runRoot("claude"),
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, session.runRoot("claude"),
 				() -> List.of(heldOut, otherHeldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
@@ -523,26 +539,29 @@ public final class ClaudeSessionsTest
 	public void reportsSettingThatTurnsOffTheSandbox(String location, String content, String setting)
 		throws IOException
 	{
-		// Requirement: R-E24
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-exposure-")).
-				toRealPath();
-			Path project = Files.createDirectories(root.resolve("project"));
-			Path managed = root.resolve("managed-settings.json");
-			Path file;
-			if (location.equals("managed"))
-				file = managed;
-			else
-				file = project.resolve(location);
-			Files.createDirectories(file.getParent());
-			Files.writeString(file, content, UTF_8);
+			// Requirement: R-E24
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-exposure-")).
+					toRealPath();
+				Path project = Files.createDirectories(root.resolve("project"));
+				Path managed = root.resolve("managed-settings.json");
+				Path file;
+				if (location.equals("managed"))
+					file = managed;
+				else
+					file = project.resolve(location);
+				Files.createDirectories(file.getParent());
+				Files.writeString(file, content, UTF_8);
 
-			Optional<String> exposure = exposurePort(root, managed).findHeldOutExposure(project);
+				Optional<String> exposure = exposurePort(jvm, root, managed).findHeldOutExposure(project);
 
-			requireThat(exposure.isPresent(), "exposure.isPresent").isTrue();
-			requireThat(exposure.orElseThrow(), "exposure").contains(file.toString()).contains(setting).
-				contains("held-out").contains("run `start` again");
+				requireThat(exposure.isPresent(), "exposure.isPresent").isTrue();
+				requireThat(exposure.orElseThrow(), "exposure").contains(file.toString()).contains(setting).
+					contains("held-out").contains("run `start` again");
+			}
 		}
 	}
 
@@ -557,25 +576,28 @@ public final class ClaudeSessionsTest
 	@Test
 	public void reportsNoExposureWhenTheSandboxStaysOn() throws IOException
 	{
-		// Requirement: R-E24
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-exposure-")).
-				toRealPath();
-			Path project = Files.createDirectories(root.resolve("project"));
-			Path managed = root.resolve("managed-settings.json");
-			Files.writeString(root.resolve("settings.json"), "{\"sandbox\": {\"enabled\": false}}", UTF_8);
-			ClaudeSessions sessions = exposurePort(root, managed);
-			requireThat(sessions.findHeldOutExposure(project), "absent").isEmpty();
+			// Requirement: R-E24
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-exposure-")).
+					toRealPath();
+				Path project = Files.createDirectories(root.resolve("project"));
+				Path managed = root.resolve("managed-settings.json");
+				Files.writeString(root.resolve("settings.json"), "{\"sandbox\": {\"enabled\": false}}", UTF_8);
+				ClaudeSessions sessions = exposurePort(jvm, root, managed);
+				requireThat(sessions.findHeldOutExposure(project), "absent").isEmpty();
 
-			Files.writeString(managed, "{\"permissions\": {\"allow\": []}}", UTF_8);
-			Files.createDirectories(project.resolve(".claude"));
-			Files.writeString(project.resolve(".claude/settings.json"),
-				"{\"sandbox\": {\"enabled\": true, \"allowUnsandboxedCommands\": false, \"excludedCommands\": []," +
-					" \"filesystem\": {\"allowRead\": []}}}", UTF_8);
-			Files.writeString(project.resolve(".claude/settings.local.json"),
-				"{\"sandbox\": {\"filesystem\": {\"allowWrite\": [\"/tmp\"]}}}", UTF_8);
-			requireThat(sessions.findHeldOutExposure(project), "sandboxOn").isEmpty();
+				Files.writeString(managed, "{\"permissions\": {\"allow\": []}}", UTF_8);
+				Files.createDirectories(project.resolve(".claude"));
+				Files.writeString(project.resolve(".claude/settings.json"),
+					"{\"sandbox\": {\"enabled\": true, \"allowUnsandboxedCommands\": false, \"excludedCommands\": []," +
+						" \"filesystem\": {\"allowRead\": []}}}", UTF_8);
+				Files.writeString(project.resolve(".claude/settings.local.json"),
+					"{\"sandbox\": {\"filesystem\": {\"allowWrite\": [\"/tmp\"]}}}", UTF_8);
+				requireThat(sessions.findHeldOutExposure(project), "sandboxOn").isEmpty();
+			}
 		}
 	}
 
@@ -583,13 +605,14 @@ public final class ClaudeSessionsTest
 	 * Creates a port that reads the given managed settings file and whose host configuration directory is
 	 * {@code root}.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param root the host configuration directory
 	 * @param managed the managed settings file
 	 * @return the port
 	 */
-	private static ClaudeSessions exposurePort(Path root, Path managed)
+	private static ClaudeSessions exposurePort(JvmScope jvm, Path root, Path managed)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "", false,
 			Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 		{
@@ -653,57 +676,61 @@ public final class ClaudeSessionsTest
 	public void completesEveryTurnWithObservedEvidence()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-C9
-		// Requirement: R-E13
-		// Requirement: R-E16
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<String> events = new ArrayList<>(recorded("claude-single-turn.jsonl"));
-			events.addAll(recorded("claude-tool-calls.jsonl"));
-			List<Turn> script = List.of(Turn.replies("first", events.toArray(String[]::new)),
-				Turn.replies("second"));
-			List<String> requests = new CopyOnWriteArrayList<>();
-			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), script, requests);
+			// Requirement: R-C9
+			// Requirement: R-E13
+			// Requirement: R-E16
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<String> events = new ArrayList<>(recorded("claude-single-turn.jsonl"));
+				events.addAll(recorded("claude-tool-calls.jsonl"));
+				List<Turn> script = List.of(Turn.replies("first", events.toArray(String[]::new)),
+					Turn.replies("second"));
+				List<String> requests = new CopyOnWriteArrayList<>();
+				ClaudeSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(), script, requests);
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one \"quoted\"", "two\nlines")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one \"quoted\"", "two\nlines")));
 
-			requireThat(requests, "requests").isEqualTo(List.of("one \"quoted\"", "two\nlines"));
-			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
-			SessionResult.Completed completed = (SessionResult.Completed) result;
-			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("first"), List.of("second")));
-			requireThat(completed.toolCalls(), "toolCalls").isEqualTo(List.of(
-				new ToolCall("Bash", "true", 0), new ToolCall("Bash", "false", 1),
-				new ToolCall("Read", null, null)));
-			requireThat(completed.model(), "model").isEqualTo("claude-haiku-4-5-20251001");
-			requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(56_055, 40_099, 565, 397));
-			requireThat(completed.windows(), "windows").isEqualTo(List.of(
-				new RateLimitWindow(0.3, Instant.ofEpochSecond(1_790_851_200L)),
-				new RateLimitWindow(0.04, Instant.ofEpochSecond(1_791_064_800L))));
-			requireThat(Files.readAllLines(completed.transcript()), "transcript").isEqualTo(events);
-			requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
-				resolve("project"));
-			requireThat(completed.effects(), "effects").isDirectory();
-			requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
-			List<String> sources = completed.promptSources().lines().toList();
-			requireThat(sources, "promptSources").contains("skill:cat:git-squash");
-			requireThat(sources, "promptSources").contains("agent:cat:claude:optimize-medium");
+				requireThat(requests, "requests").isEqualTo(List.of("one \"quoted\"", "two\nlines"));
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				SessionResult.Completed completed = (SessionResult.Completed) result;
+				requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("first"), List.of("second")));
+				requireThat(completed.toolCalls(), "toolCalls").isEqualTo(List.of(
+					new ToolCall("Bash", "true", 0), new ToolCall("Bash", "false", 1),
+					new ToolCall("Read", null, null)));
+				requireThat(completed.model(), "model").isEqualTo("claude-haiku-4-5-20251001");
+				requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(56_055, 40_099, 565, 397));
+				requireThat(completed.windows(), "windows").isEqualTo(List.of(
+					new RateLimitWindow(0.3, Instant.ofEpochSecond(1_790_851_200L)),
+					new RateLimitWindow(0.04, Instant.ofEpochSecond(1_791_064_800L))));
+				requireThat(Files.readAllLines(completed.transcript()), "transcript").isEqualTo(events);
+				requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
+					resolve("project"));
+				requireThat(completed.effects(), "effects").isDirectory();
+				requireThat(Files.exists(completed.effects().resolveSibling("home")), "homeExists").isFalse();
+				List<String> sources = completed.promptSources().lines().toList();
+				requireThat(sources, "promptSources").contains("skill:cat:git-squash");
+				requireThat(sources, "promptSources").contains("agent:cat:claude:optimize-medium");
+			}
 		}
 	}
 
 	/**
 	 * Creates a port whose runner must never be started.
 	 *
+	 * @param jvm the borrowed process scope
 	 * @param root the directory for run directories and the host configuration
 	 * @param environment the host environment
 	 * @return the port
 	 */
-	private static ClaudeSessions loginPort(Path root, Map<String, String> environment)
+	private static ClaudeSessions loginPort(JvmScope jvm, Path root, Map<String, String> environment)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "", false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "", false,
 			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (options, input, output) ->
 		{
@@ -720,15 +747,18 @@ public final class ClaudeSessionsTest
 	@Test(timeOut = 120_000)
 	public void classifiesASubscriptionLogin() throws IOException
 	{
-		// Requirement: R-E7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Files.writeString(root.resolve(".credentials.json"), "{\"claudeAiOauth\":{}}", UTF_8);
+			// Requirement: R-E7
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Files.writeString(root.resolve(".credentials.json"), "{\"claudeAiOauth\":{}}", UTF_8);
 
-			HostLogin login = loginPort(root, Map.of()).hostLogin();
+				HostLogin login = loginPort(jvm, root, Map.of()).hostLogin();
 
-			requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
+				requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
+			}
 		}
 	}
 
@@ -741,15 +771,18 @@ public final class ClaudeSessionsTest
 	@Test(timeOut = 120_000)
 	public void classifiesAnApiKeyLogin() throws IOException
 	{
-		// Requirement: R-E7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Files.writeString(root.resolve(".credentials.json"), "{\"claudeAiOauth\":{}}", UTF_8);
+			// Requirement: R-E7
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Files.writeString(root.resolve(".credentials.json"), "{\"claudeAiOauth\":{}}", UTF_8);
 
-			HostLogin login = loginPort(root, Map.of("ANTHROPIC_API_KEY", "")).hostLogin();
+				HostLogin login = loginPort(jvm, root, Map.of("ANTHROPIC_API_KEY", "")).hostLogin();
 
-			requireThat(login, "login").isEqualTo(HostLogin.API_KEY);
+				requireThat(login, "login").isEqualTo(HostLogin.API_KEY);
+			}
 		}
 	}
 
@@ -762,14 +795,17 @@ public final class ClaudeSessionsTest
 	@Test(timeOut = 120_000)
 	public void classifiesAMissingLoginAsUnknown() throws IOException
 	{
-		// Requirement: R-E7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
+			// Requirement: R-E7
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 
-			HostLogin login = loginPort(root, Map.of()).hostLogin();
+				HostLogin login = loginPort(jvm, root, Map.of()).hostLogin();
 
-			requireThat(login, "login").isEqualTo(HostLogin.UNKNOWN);
+				requireThat(login, "login").isEqualTo(HostLogin.UNKNOWN);
+			}
 		}
 	}
 
@@ -786,27 +822,30 @@ public final class ClaudeSessionsTest
 	public void passesEvidenceToTheRunnerReadOnly()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			Path first = Files.createDirectories(root.resolve("evidence-1"));
-			Path second = Files.createDirectories(root.resolve("evidence-2"));
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				arguments, List.of(Turn.replies("ok")));
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path first = Files.createDirectories(root.resolve("evidence-1"));
+				Path second = Files.createDirectories(root.resolve("evidence-2"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				ClaudeSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					arguments, List.of(Turn.replies("ok")));
 
-			await(sessions.start(request(source, List.of(first, second), "judge")));
+				await(sessions.start(request(source, List.of(first, second), "judge")));
 
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
-			List<String> options = arguments.get(0);
-			requireThat(ScriptedHarness.optionValue(options, "--project"), "project").isEqualTo(source.toString());
-			int firstEvidence = options.indexOf("--read-only-evidence");
-			requireThat(firstEvidence, "firstEvidence").isGreaterThanOrEqualTo(0);
-			requireThat(options.subList(firstEvidence, firstEvidence + 4), "evidenceOptions").isEqualTo(List.of(
-				"--read-only-evidence", first.toString(), "--read-only-evidence", second.toString()));
-			requireThat(options.contains("--keep-run"), "keepRun").isTrue();
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+				List<String> options = arguments.get(0);
+				requireThat(ScriptedHarness.optionValue(options, "--project"), "project").isEqualTo(source.toString());
+				int firstEvidence = options.indexOf("--read-only-evidence");
+				requireThat(firstEvidence, "firstEvidence").isGreaterThanOrEqualTo(0);
+				requireThat(options.subList(firstEvidence, firstEvidence + 4), "evidenceOptions").isEqualTo(List.of(
+					"--read-only-evidence", first.toString(), "--read-only-evidence", second.toString()));
+				requireThat(options.contains("--keep-run"), "keepRun").isTrue();
+			}
 		}
 	}
 
@@ -823,22 +862,25 @@ public final class ClaudeSessionsTest
 	public void trialsAskForSessionTranscripts()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-I7
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				arguments, List.of(Turn.replies("ok")));
+			// Requirement: R-I7
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				ClaudeSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					arguments, List.of(Turn.replies("ok")));
 
-			await(sessions.start(request(source, List.of(), "trial")));
-			await(sessions.start(new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, source, List.of("judge"),
-				List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+				await(sessions.start(request(source, List.of(), "trial")));
+				await(sessions.start(new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, source, List.of("judge"),
+					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
 
-			requireThat(arguments.size(), "arguments.size()").isEqualTo(2);
-			requireThat(arguments.get(0).contains("--session-transcripts"), "trial").isTrue();
-			requireThat(arguments.get(1).contains("--session-transcripts"), "judge").isFalse();
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(2);
+				requireThat(arguments.get(0).contains("--session-transcripts"), "trial").isTrue();
+				requireThat(arguments.get(1).contains("--session-transcripts"), "judge").isFalse();
+			}
 		}
 	}
 
@@ -855,25 +897,28 @@ public final class ClaudeSessionsTest
 	public void controlTrialLoadsOnlyClaudeMd()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-W10
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				arguments, List.of(Turn.replies("ok")));
-
-			for (boolean controlSource : List.of(true, false))
+			// Requirement: R-W10
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(), Optional.empty(),
-					controlSource)));
-			}
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				ClaudeSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					arguments, List.of(Turn.replies("ok")));
 
-			requireThat(ScriptedHarness.optionValue(arguments.get(0), "--instruction-files"), "control").
-				isEqualTo("claude-md");
-			requireThat(arguments.get(1), "formal").doesNotContain("--instruction-files");
+				for (boolean controlSource : List.of(true, false))
+				{
+					await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
+						List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(), Optional.empty(),
+						controlSource)));
+				}
+
+				requireThat(ScriptedHarness.optionValue(arguments.get(0), "--instruction-files"), "control").
+					isEqualTo("claude-md");
+				requireThat(arguments.get(1), "formal").doesNotContain("--instruction-files");
+			}
 		}
 	}
 
@@ -891,25 +936,28 @@ public final class ClaudeSessionsTest
 	public void reportsRequestedInterrupt()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			CountDownLatch entered = new CountDownLatch(1);
-			List<String> events = recorded("claude-single-turn.jsonl");
-			List<Turn> script = List.of(Turn.blocksUntilInterrupted(events.toArray(String[]::new)).announcing(entered),
-				Turn.replies("never"));
-			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), script);
-			SessionHandle handle = sessions.start(request(source, List.of(), "one", "two"));
-			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
+			// Requirement: R-E15
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				CountDownLatch entered = new CountDownLatch(1);
+				List<String> events = recorded("claude-single-turn.jsonl");
+				List<Turn> script = List.of(Turn.blocksUntilInterrupted(events.toArray(String[]::new)).announcing(entered),
+					Turn.replies("never"));
+				ClaudeSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(), script);
+				SessionHandle handle = sessions.start(request(source, List.of(), "one", "two"));
+				requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
 
-			handle.interrupt();
+				handle.interrupt();
 
-			SessionResult result = await(handle);
-			requireThat(result, "result").isInstanceOf(SessionResult.Interrupted.class);
-			requireThat(result.windows().size(), "windows.size()").isEqualTo(2);
+				SessionResult result = await(handle);
+				requireThat(result, "result").isInstanceOf(SessionResult.Interrupted.class);
+				requireThat(result.windows().size(), "windows.size()").isEqualTo(2);
+			}
 		}
 	}
 
@@ -926,29 +974,33 @@ public final class ClaudeSessionsTest
 	public void classifiesRateLimitRejection()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E6
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			String rejected = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\"," +
-				"\"resetsAt\":1790851200,\"rateLimitType\":\"five_hour\",\"unifiedWindows\":{\"five_hour\":" +
-				"{\"utilization\":1.0,\"resetsAt\":1790851200}}}}";
-			List<String> requests = new CopyOnWriteArrayList<>();
-			Instant resetsAt = Instant.ofEpochSecond(1_790_851_200L);
-			HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+			// Requirement: R-E6
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				throw new AssertionError("The session must not wait for capacity");
-			}, Clock.fixed(resetsAt.minus(Duration.ofHours(1)), ZoneOffset.UTC));
-			ClaudeSessions sessions = port(root.resolve("runs"), capacity, Clock.systemUTC(), new CopyOnWriteArrayList<>(),
-				List.of(Turn.replies("limit", rejected), Turn.replies("never")), requests);
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				String rejected = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\"," +
+					"\"resetsAt\":1790851200,\"rateLimitType\":\"five_hour\",\"unifiedWindows\":{\"five_hour\":" +
+					"{\"utilization\":1.0,\"resetsAt\":1790851200}}}}";
+				List<String> requests = new CopyOnWriteArrayList<>();
+				Instant resetsAt = Instant.ofEpochSecond(1_790_851_200L);
+				HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+				{
+					throw new AssertionError("The session must not wait for capacity");
+				}, Clock.fixed(resetsAt.minus(Duration.ofHours(1)), ZoneOffset.UTC));
+				ClaudeSessions sessions = port(jvm, root.resolve("runs"), capacity, Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(),
+					List.of(Turn.replies("limit", rejected), Turn.replies("never")), requests);
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
 
-			requireThat(result, "result").isEqualTo(new SessionResult.RateLimited(new HarnessCapacity.Hold(resetsAt, 0),
-				List.of(new RateLimitWindow(1.0, resetsAt))));
-			requireThat(capacity.hold(), "hold").isEqualTo(new HarnessCapacity.Hold(resetsAt, 0));
-			requireThat(requests, "requests").isEqualTo(List.of("one"));
+				requireThat(result, "result").isEqualTo(new SessionResult.RateLimited(new HarnessCapacity.Hold(resetsAt, 0),
+					List.of(new RateLimitWindow(1.0, resetsAt))));
+				requireThat(capacity.hold(), "hold").isEqualTo(new HarnessCapacity.Hold(resetsAt, 0));
+				requireThat(requests, "requests").isEqualTo(List.of("one"));
+			}
 		}
 	}
 
@@ -965,22 +1017,25 @@ public final class ClaudeSessionsTest
 	public void classifiesErrorResultAsFailure()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		// Requirement: R-E13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-sessions-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			String error = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":500," +
-				"\"terminal_reason\":\"model_error\",\"result\":\"details\"}";
-			List<String> requests = new CopyOnWriteArrayList<>();
-			ClaudeSessions sessions = port(root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
-				new CopyOnWriteArrayList<>(), List.of(Turn.replies("oops", error), Turn.replies("never")), requests);
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				String error = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":500," +
+					"\"terminal_reason\":\"model_error\",\"result\":\"details\"}";
+				List<String> requests = new CopyOnWriteArrayList<>();
+				ClaudeSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					new CopyOnWriteArrayList<>(), List.of(Turn.replies("oops", error), Turn.replies("never")), requests);
 
-			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
+				SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
 
-			requireThat(result, "result").isEqualTo(new SessionResult.Failed(
-				"Claude reported an error result (api_error_status=500, terminal_reason=model_error)", List.of()));
-			requireThat(requests, "requests").isEqualTo(List.of("one"));
+				requireThat(result, "result").isEqualTo(new SessionResult.Failed(
+					"Claude reported an error result (api_error_status=500, terminal_reason=model_error)", List.of()));
+				requireThat(requests, "requests").isEqualTo(List.of("one"));
+			}
 		}
 	}
 
@@ -994,9 +1049,10 @@ public final class ClaudeSessionsTest
 	@Test
 	public void derivesClaudeInstructions() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-instructions-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-instructions-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			for (String file : List.of("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md", ".claude/rules/style.md",
 				".claude/rules/java/testing.md", ".claude/rules/notes.txt", "docs/CLAUDE.md"))
@@ -1005,7 +1061,7 @@ public final class ClaudeSessionsTest
 				Files.createDirectories(path.getParent());
 				Files.writeString(path, "Instructions");
 			}
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1027,9 +1083,10 @@ public final class ClaudeSessionsTest
 	@Test
 	public void derivesImportedInstructions() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-imports-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-imports-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Map<String, String> files = Map.of(
 				"CLAUDE.md", """
@@ -1056,7 +1113,7 @@ public final class ClaudeSessionsTest
 				Files.writeString(path, file.getValue());
 			}
 			Files.writeString(root.resolve("outside.md"), "Outside");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1076,9 +1133,10 @@ public final class ClaudeSessionsTest
 	@Test
 	public void reportsUnreachableImports() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-imports-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-imports-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("CLAUDE.md"), """
 				@AGENTS.md
@@ -1086,7 +1144,7 @@ public final class ClaudeSessionsTest
 				""");
 			Files.writeString(project.resolve("AGENTS.md"), "@./gone.txt");
 			Files.writeString(root.resolve("outside.md"), "Outside");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1111,9 +1169,10 @@ public final class ClaudeSessionsTest
 	@Test
 	public void derivesFilesThatHooksAndServersRun() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-commands-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-commands-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			write(project.resolve(".claude/settings.json"), """
 				{"hooks": {"SessionStart": [{"hooks": [{"type": "command", \
@@ -1128,7 +1187,7 @@ public final class ClaudeSessionsTest
 				"web": {"type": "http", "url": "https://example.com/mcp"}}}""");
 			for (String file : List.of("scripts/inject.sh", "tools/prompt.py", "servers/docs.js"))
 				write(project.resolve(file), "script");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1154,9 +1213,10 @@ public final class ClaudeSessionsTest
 	@Test
 	public void listsUserConfigurationThatTrialsLack() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-user-configuration-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-user-configuration-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path configuration = root.resolve("home/.claude");
 			write(configuration.resolve("settings.json"), """
@@ -1168,7 +1228,7 @@ public final class ClaudeSessionsTest
 				"web": {"type": "http", "url": "https://example.com/mcp"}}}""");
 			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
 				new TrialPlugin.Installed(), List.of(), null), root.resolve("tools")));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), configuration, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1196,9 +1256,10 @@ public final class ClaudeSessionsTest
 	@Test
 	public void listsEarlyHooks() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-early-hooks-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-early-hooks-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			write(project.resolve(".claude/settings.json"), """
 				{"hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "a.sh"}]}, \
@@ -1213,7 +1274,7 @@ public final class ClaudeSessionsTest
 				"command": "${CLAUDE_PLUGIN_ROOT}/start.sh"}]}]}}""");
 			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
 				new TrialPlugin.Installed(), List.of(), null), tools));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1264,9 +1325,10 @@ public final class ClaudeSessionsTest
 	@Test
 	public void listsHookRegistrations() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(TEMP), "cat-hooks-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-hooks-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			write(project.resolve(".claude/settings.json"), """
 				{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "check.sh"}]}]}}""");
@@ -1292,7 +1354,7 @@ public final class ClaudeSessionsTest
 					tools),
 				new PluginBase(new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"),
 					Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("plugin/hooks"), Path.of("hooks"))), null), cat));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{

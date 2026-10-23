@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.git.replay.test;
 
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.git.replay.DraftOutputAcceptance;
 import com.holdmyspot.cat.common.git.replay.OutputGates;
@@ -38,9 +40,10 @@ public final class OutputGatesTest
 	@Test
 	public void rejectsNoOpCommand() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-topic-replay-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			OutputGates gates = new OutputGates(new Git(directory),
@@ -67,9 +70,10 @@ public final class OutputGatesTest
 	@Test
 	public void rejectsNoOpDraftCommand() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "cat-topic-replay-"));
+			Path directory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-topic-replay-"));
 			Path manifest = directory.resolve("manifest.json");
 			Files.writeString(manifest, "{}\n");
 			OutputGates gates = new OutputGates(new Git(directory),
@@ -96,9 +100,10 @@ public final class OutputGatesTest
 	@Test
 	public void retainedOutputWorktreeLifecycle() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "retained-gates-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "retained-gates-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			String first = commitFeature(git, repository, "first\n");
@@ -128,9 +133,10 @@ public final class OutputGatesTest
 	@Test
 	public void draftOutputWorktreeLifecycle() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path repository = cleanup.add(Files.createTempDirectory(ReplayFixtures.temporaryRoot(), "draft-gates-"));
+			Path repository = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "draft-gates-"));
 			initializeRepository(repository);
 			Git git = new Git(repository);
 			String first = commitFeature(git, repository, "first\n");
