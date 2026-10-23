@@ -194,6 +194,8 @@ public final class ClaudeSessionsTest
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
 			List<String> options = arguments.getFirst();
+			// Requirement: R-I9
+			requireThat(options, "options").doesNotContain("--session-requests");
 			if (role == SessionRole.TRIAL)
 			{
 				requireThat(options, "options").contains("--install-cat");
