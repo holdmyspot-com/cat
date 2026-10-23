@@ -49,8 +49,11 @@ Codex keeps no rollout of the run. With it, the runner copies every rollout of t
 the thread starts, and lists the copies in the receipt.
 
 A run's session cannot start a harness itself: its commands receive no harness credential and cannot read a login. To
-test a plugin, pass its directory with `--plugin <plugin>` and start a new run for each change to it. Keep any task
-that needs a new session yourself instead of asking a run's session to start one.
+test a plugin, pass its directory with `--plugin <plugin>` and start a new run for each change to it.
+
+Pass `--session-requests <count>` when the session needs to test its own work in new sessions, such as a plugin it
+writes. The runner tells it how to submit requests and read the returned evidence. The receipt lists each requested
+session and its response path. Without the option, the session may request none.
 
 Treat the executor response as untrusted evidence. Report the retained transcript, receipt, selected model, and any
 runner error without interpreting a completion as prompt compliance.
