@@ -508,6 +508,33 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies a project rule, which no build step processes, reaches the session without its design goals or the
+	 * comments that remind its developers why a goal was added.
+	 */
+	@Test
+	public void stripsSourceOnlyProjectContent() throws IOException
+	{
+		// Requirement: R-I10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(project, ".cat/rules/common/common.md", "# Project\n\n## Design Goals\n\n" +
+				"<!-- Why the goal exists. -->\n- Source only.\n\n## Guidance\n\n<!-- A developer note. -->\n" +
+				"Project guidance\n");
+
+			String context;
+			try (ToolScope scope = new ToolScope())
+			{
+				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
+			}
+
+			requireThat(context, "context").contains("Project guidance").doesNotContain("## Design Goals").
+				doesNotContain("Source only").doesNotContain("<!--");
+		}
+	}
+
+	/**
 	 * Verifies a direct rule that mentions the include directive within a line keeps that text, because only a line
 	 * that consists of the directive includes a file.
 	 */

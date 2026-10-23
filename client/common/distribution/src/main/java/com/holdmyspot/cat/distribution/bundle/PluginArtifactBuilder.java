@@ -10,6 +10,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
 
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.MarkdownIncludes;
+import com.holdmyspot.cat.common.SourceOnlyContent;
 import com.holdmyspot.cat.common.runner.RunnerRuntimeManifest;
 import java.io.IOException;
 import java.io.InputStream;

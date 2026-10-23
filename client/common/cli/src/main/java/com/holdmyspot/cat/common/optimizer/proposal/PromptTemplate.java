@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.SourceOnlyContent;
 import com.holdmyspot.cat.common.secrets.PromptTemplateAccess;
 import com.holdmyspot.cat.common.secrets.PromptTemplateSecrets;
 
@@ -63,7 +64,8 @@ public final class PromptTemplate
 	}
 
 	/**
-	 * Returns the text of a file that CAT ships.
+	 * Returns the text of a file that CAT ships. A Markdown file is returned without the design goals and comments
+	 * that guide its authors, which a session must not receive.
 	 *
 	 * @param resource the absolute classpath location of the file
 	 * @return the text
@@ -77,7 +79,10 @@ public final class PromptTemplate
 		{
 			if (in == null)
 				throw new IOException("The packaged resource " + resource + " is missing");
-			return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+			String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+			if (resource.endsWith(".md"))
+				return SourceOnlyContent.remove(text, resource);
+			return text;
 		}
 		catch (IOException e)
 		{

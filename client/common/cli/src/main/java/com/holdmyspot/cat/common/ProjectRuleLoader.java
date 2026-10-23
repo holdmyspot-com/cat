@@ -84,7 +84,6 @@ public final class ProjectRuleLoader
 	 */
 	private static final String POSIX_FRAGMENTS = "posix";
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
-	private static final Pattern DESIGN_GOALS = Pattern.compile("(?ms)^## Design Goals\\R.*?(?=^## |\\z)");
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
 	/**
 	 * The start of a bundled rule's reference to another bundled rule through the installation directory that the
@@ -387,7 +386,7 @@ public final class ProjectRuleLoader
 		String body = content;
 		if (frontmatter != null)
 			body = frontmatter.body();
-		body = DESIGN_GOALS.matcher(body).replaceFirst("");
+		body = SourceOnlyContent.remove(body, file.toString());
 		Optional<Path> referrer = Optional.of(file);
 
 		Matcher directive = MarkdownIncludes.DIRECTIVE.matcher(body);
@@ -1021,7 +1020,8 @@ public final class ProjectRuleLoader
 	}
 
 	/**
-	 * Removes source-only design goals and trailing line breaks from injected rule content.
+	 * Removes source-only design goals and comments, and trailing line breaks, from injected rule content. Project
+	 * rules reach this point without passing through the plugin build, which removes them from plugin rules.
 	 *
 	 * @param frontmatter parsed rule frontmatter, if present
 	 * @param content a non-null rule body
@@ -1029,14 +1029,15 @@ public final class ProjectRuleLoader
 	 * @param ruleRoot the rule tree that bounds available lazy rules
 	 * @param root the source kind of {@code ruleRoot}
 	 * @return the rule content to inject
+	 * @throws IOException if the content contains a comment that never ends
 	 */
 	private static String injectedBody(Frontmatter frontmatter, String content, Path file, Path ruleRoot,
-		RuleRoot root)
+		RuleRoot root) throws IOException
 	{
 		String body = content;
 		if (frontmatter != null)
 			body = frontmatter.body();
-		String withoutDesignGoals = DESIGN_GOALS.matcher(body).replaceFirst("");
+		String withoutDesignGoals = SourceOnlyContent.remove(body, file.toString());
 		int end = withoutDesignGoals.length();
 		while (end > 0 && (withoutDesignGoals.charAt(end - 1) == '\n' || withoutDesignGoals.charAt(end - 1) == '\r'))
 			--end;

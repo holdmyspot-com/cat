@@ -1,8 +1,8 @@
-package com.holdmyspot.cat.distribution.bundle.test;
+package com.holdmyspot.cat.common.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.distribution.bundle.SourceOnlyContent;
+import com.holdmyspot.cat.common.SourceOnlyContent;
 import java.io.IOException;
 import org.testng.annotations.Test;
 

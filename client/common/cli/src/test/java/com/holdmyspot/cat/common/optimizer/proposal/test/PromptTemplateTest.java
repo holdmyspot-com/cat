@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.optimizer.proposal.PromptTemplate;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.testng.annotations.Test;
@@ -42,5 +43,23 @@ public final class PromptTemplateTest
 		values.put(null, "supplied");
 
 		template.fill(values);
+	}
+
+	/**
+	 * Verifies that no role brief CAT sends holds the design goals or comments that guide its authors, while each
+	 * brief keeps its guidance.
+	 */
+	@Test
+	public void briefsOmitSourceOnlyContent()
+	{
+		// Requirement: R-I10
+		for (String resource : List.of("/optimizer/judge/judge.md", "/optimizer/triage/triage.md",
+			"/optimizer/values/values.md", "/optimizer/prompt-author/prompt-author.md",
+			"/optimizer/proposal/contract-author.md", "/optimizer/proposal/test-revision.md"))
+		{
+			String text = PromptTemplate.load(resource).text();
+			requireThat(text, resource).doesNotContain("\n## Design Goals\n").doesNotContain("<!-- ").
+				contains("\n## ");
+		}
 	}
 }

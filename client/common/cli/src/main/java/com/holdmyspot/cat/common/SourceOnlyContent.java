@@ -1,9 +1,8 @@
-package com.holdmyspot.cat.distribution.bundle;
+package com.holdmyspot.cat.common;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
-import com.holdmyspot.cat.common.BoundedInput;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
