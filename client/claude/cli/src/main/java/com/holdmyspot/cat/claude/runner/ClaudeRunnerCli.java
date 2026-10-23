@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunStarter;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerMaintenance;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
@@ -175,7 +176,25 @@ public final class ClaudeRunnerCli
 				options.model(),
 				options.effort(), agent, options.installCat(), options.includeUserRules(), readOnlyEvidence,
 				options.deniedReads(), instructionFilesMode, options.sessionTranscripts(), options.sessionRequests());
-			HarnessRunnerBridge.serve(starter, manager, options, json, replacer, input, output);
+			HarnessRunnerBridge.serve(starter, manager, options, json, replacer, input, output,
+				(harness, arguments, directory) ->
+			{
+				RequestedRunner runner;
+				if (harness.equals("claude"))
+				{
+					Path artifact = options.artifact().toAbsolutePath();
+					String launcher = "claude-runner";
+					if (Platform.current().isWindows())
+						launcher += ".cmd";
+					runner = new RequestedRunner(artifact, artifact.resolve("bin").resolve(launcher),
+						List.of());
+				}
+				else if (harness.equals("codex"))
+					runner = RequestedRunner.resolved(CodexArtifact.execute(environment), List.of("serve"));
+				else
+					throw new IllegalArgumentException("Unsupported requested harness: " + harness);
+				return runner.start(arguments, directory, environment);
+			});
 		}
 	}
 

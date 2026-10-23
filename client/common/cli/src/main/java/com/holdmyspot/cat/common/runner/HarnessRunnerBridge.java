@@ -101,6 +101,25 @@ public final class HarnessRunnerBridge
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
 		Writer output) throws IOException
 	{
+		return serve(starter, manager, keepRun, input, output, null, null);
+	}
+
+	/**
+	 * Serves a bridge with optional requested-session ownership.
+	 *
+	 * @param starter starts the parent session
+	 * @param manager the lifecycle manager
+	 * @param keepRun indicates whether the completed run is retained
+	 * @param input the bridge input
+	 * @param output the bridge output
+	 * @param options request settings, null when requests are disabled
+	 * @param requestedStarter starts child runners, null when requests are disabled
+	 * @return the completed parent run
+	 * @throws IOException if the bridge or a request broker fails
+	 */
+	private static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
+		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter) throws IOException
+	{
 		requireThat(starter, "starter").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
@@ -113,7 +132,8 @@ public final class HarnessRunnerBridge
 		try
 		{
 			try (HarnessRunSession session = starter.start();
-				ClientOutput client = ClientOutput.open(session, output))
+				ClientOutput client = ClientOutput.open(session, output);
+				SessionRequestBroker broker = requestBroker(session, options, requestedStarter))
 			{
 				try
 				{
@@ -159,6 +179,8 @@ public final class HarnessRunnerBridge
 									}
 									catch (IOException | RuntimeException e)
 									{
+										if (broker != null)
+											broker.stopChildren();
 										reportTurnFailure(session, client, e);
 										throw e;
 									}
@@ -199,6 +221,8 @@ public final class HarnessRunnerBridge
 							if (client.turnActive())
 							{
 								awaitRequestedTurnStart(request, activeTurnStarted);
+								if (broker != null)
+									broker.stopChildren();
 								session.interrupt();
 								client.write(event(session.scope(), "interrupted").put("run_id", session.run().id()));
 							}
@@ -407,13 +431,40 @@ public final class HarnessRunnerBridge
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, HarnessRunnerOptions options,
 		JsonMapper json, FileReplacer replacer, Reader input, Writer output) throws IOException
 	{
+		return serve(starter, manager, options, json, replacer, input, output, null);
+	}
+
+	/**
+	 * Serves a managed bridge with requested child sessions, then writes its retained-evidence receipt.
+	 *
+	 * @param starter starts the parent session
+	 * @param manager the lifecycle manager
+	 * @param options runner options
+	 * @param json the receipt mapper
+	 * @param replacer replaces the receipt
+	 * @param input the bridge input
+	 * @param output the bridge output when no output path is requested
+	 * @param requestedStarter starts requested child runners
+	 * @return the completed run
+	 * @throws IOException if bridge execution or evidence publication fails
+	 */
+	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, HarnessRunnerOptions options,
+		JsonMapper json, FileReplacer replacer, Reader input, Writer output, RequestedSessionStarter requestedStarter)
+		throws IOException
+	{
 		requireThat(manager, "manager").isNotNull();
 		requireThat(options, "options").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		if (options.output() == null)
-			return serve(starter, manager, options.keepRun(), input, output);
-		HarnessRun run = serve(starter, manager, options.keepRun(), input, options.output());
+			return serve(starter, manager, options.keepRun(), input, output, options, requestedStarter);
+		HarnessRun run;
+		Path parent = options.output().toAbsolutePath().getParent();
+		Files.createDirectories(parent);
+		try (Writer transcript = Files.newBufferedWriter(options.output(), StandardCharsets.UTF_8))
+		{
+			run = serve(starter, manager, options.keepRun(), input, transcript, options, requestedStarter);
+		}
 		if (options.receipt() != null)
 		{
 			List<Path> sessionTranscripts = List.of();
@@ -423,6 +474,25 @@ public final class HarnessRunnerBridge
 			manager.pruneRuntime(run);
 		}
 		return run;
+	}
+
+	/**
+	 * Starts request discovery only for a run whose caller explicitly permits it.
+	 *
+	 * @param session the parent session
+	 * @param options runner options, null when disabled
+	 * @param starter starts child runners
+	 * @return the started broker, or null when disabled
+	 */
+	private static SessionRequestBroker requestBroker(HarnessRunSession session, HarnessRunnerOptions options,
+		RequestedSessionStarter starter)
+	{
+		if (options == null || options.sessionRequests() == 0)
+			return null;
+		requireThat(starter, "requestedStarter").isNotNull();
+		SessionRequestBroker broker = new SessionRequestBroker(session.run(), options, starter);
+		broker.start(session.scope().heartbeatTicker());
+		return broker;
 	}
 
 	/**

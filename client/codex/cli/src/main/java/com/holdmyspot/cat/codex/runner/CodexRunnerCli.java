@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessOneShotOptions;
 import com.holdmyspot.cat.common.runner.HarnessOneShotRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerMaintenance;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
@@ -191,7 +192,24 @@ public final class CodexRunnerCli
 					options.workspace(), options.plugins(), manager, options.executable(), environment, options.model(),
 					options.effort(), options.installCat(), agent, List.of(), options.deniedReads(), toolOutputTokenLimit,
 					options.sessionTranscripts(), options.sessionRequests()),
-					manager, options, scope.json(), replacer, input, output);
+					manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
+			{
+				RequestedRunner runner;
+				if (harness.equals("codex"))
+				{
+					Path artifact = options.artifact().toAbsolutePath();
+					String launcher = "codex-runner";
+					if (Platform.current().isWindows())
+						launcher += ".cmd";
+					runner = new RequestedRunner(artifact, artifact.resolve("bin").resolve(launcher),
+						List.of("serve"));
+				}
+				else if (harness.equals("claude"))
+					runner = RequestedRunner.resolved(ClaudeArtifact.execute(environment), List.of());
+				else
+					throw new IllegalArgumentException("Unsupported requested harness: " + harness);
+				return runner.start(arguments, directory, environment);
+			});
 			}
 		}
 	}

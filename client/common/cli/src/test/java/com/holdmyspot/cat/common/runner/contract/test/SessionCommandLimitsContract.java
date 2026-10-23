@@ -51,9 +51,10 @@ public abstract class SessionCommandLimitsContract
 	 * @param run             the session's run, whose project is snapshotted
 	 * @param otherRun        another run under the same run root
 	 * @param artifact        the harness artifact that the session's runner uses
+	 * @param deniedReads     additional directories that the caller denies reading
 	 */
 	public record Fixture(Map<String, String> userEnvironment, Path userHome, HarnessRunManager manager,
-		HarnessRun run, HarnessRun otherRun, Path artifact)
+		HarnessRun run, HarnessRun otherRun, Path artifact, List<Path> deniedReads)
 	{
 		/**
 		 * Returns the run's isolated home.
@@ -278,6 +279,37 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
+	 * Verifies that a requested session can read its own project while the parent's run root denies parent and sibling
+	 * runs, including credentials created after the sibling run roots were allocated.
+	 *
+	 * @throws IOException if fixture or configuration I/O fails
+	 */
+	@Test
+	public void childCannotReadParentOrSibling() throws IOException
+	{
+		// Requirement: R-I9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture parent = fixture(cleanup);
+			limits(parent, 2);
+			Path requested = parent.run().directory().resolve("requested-runs");
+			HarnessRunManager manager = new HarnessRunManager(requested.resolve("1"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun childRun = manager.create("harness");
+			manager.snapshotProject(childRun);
+			Fixture child = new Fixture(parent.userEnvironment(), parent.userHome(), manager, childRun,
+				parent.run(), parent.artifact(), List.of(parent.manager().root()));
+			write(requested.resolve("2/future/home/login"));
+
+			Limits childLimits = limits(child, 0);
+
+			requireThat(readable(childLimits, childRun.directory().resolve("project")), "ownProject").isTrue();
+			requireThat(readable(childLimits, parent.runHome()), "parentHome").isFalse();
+			requireThat(readable(childLimits, requested.resolve("2/future/home/login")), "siblingLogin").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that a session that may request no session gets neither the requests nor the responses directory, nor
 	 * the variables that name them.
 	 *
@@ -375,7 +407,7 @@ public abstract class SessionCommandLimitsContract
 		HarnessRun otherRun = manager.create("harness");
 		write(otherRun.directory().resolve("project/notes.txt"));
 		Path artifact = Files.createDirectories(root.resolve("artifact"));
-		return new Fixture(Map.copyOf(userEnvironment), userHome, manager, run, otherRun, artifact);
+		return new Fixture(Map.copyOf(userEnvironment), userHome, manager, run, otherRun, artifact, List.of());
 	}
 
 	/**

@@ -54,6 +54,7 @@ public final class FakeHarnessCli extends Process
 	private final BlockingQueue<byte[]> standardOutput = new LinkedBlockingQueue<>();
 	private final List<String> requests = new ArrayList<>();
 	private final Consumer<String> requestHandler;
+	private final int exitStatus;
 	private final CountDownLatch exited = new CountDownLatch(1);
 	private volatile boolean exitsWhenAwaited;
 	private volatile byte[] standardError = new byte[0];
@@ -68,7 +69,19 @@ public final class FakeHarnessCli extends Process
 	 */
 	public FakeHarnessCli(Consumer<String> requestHandler)
 	{
+		this(requestHandler, 0);
+	}
+
+	/**
+	 * Creates a child with a caller-selected exit status, modeling the JDK process exit contract.
+	 *
+	 * @param requestHandler receives each input line
+	 * @param exitStatus the terminal process status
+	 */
+	public FakeHarnessCli(Consumer<String> requestHandler, int exitStatus)
+	{
 		this.requestHandler = requestHandler;
+		this.exitStatus = exitStatus;
 	}
 
 	/**
@@ -150,7 +163,7 @@ public final class FakeHarnessCli extends Process
 	{
 		exitIfAwaited();
 		exited.await();
-		return 0;
+		return exitStatus;
 	}
 
 	@Override
@@ -174,7 +187,7 @@ public final class FakeHarnessCli extends Process
 	{
 		if (exited.getCount() != 0)
 			throw new IllegalThreadStateException("The child has not exited");
-		return 0;
+		return exitStatus;
 	}
 
 	@Override

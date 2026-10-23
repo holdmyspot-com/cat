@@ -48,8 +48,8 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 			Platform.current());
 		List<Path> readOnly = CodexRunner.sessionReadOnly(List.of(), requestAccess);
 		String profile = CodexConnectionConfiguration.addSessionProfile(configuration, readOnly,
-			CodexRunner.sessionDeniedReads(fixture.manager(), fixture.run(), readOnly, List.of(), Platform.current(),
-				fixture.userEnvironment(), requestAccess));
+			CodexRunner.sessionDeniedReads(fixture.manager(), fixture.run(), readOnly, fixture.deniedReads(),
+				Platform.current(), fixture.userEnvironment(), requestAccess));
 		JsonNode root = TomlMapper.builder().build().readTree(Files.readString(configuration));
 
 		Map<String, String> commandEnvironment = new HashMap<>(CodexRunner.processEnvironment(
@@ -62,7 +62,8 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 			commandEnvironment.put(name, set.get(name).stringValue());
 
 		List<Path> deniedReads = new ArrayList<>();
-		List<Path> writable = new ArrayList<>();
+		// The built-in workspace profile grants the thread's project as its workspace root.
+		List<Path> writable = new ArrayList<>(List.of(fixture.run().directory().resolve("project")));
 		List<Path> readable = new ArrayList<>();
 		// A profile has the entries of the profiles that it extends, up to Codex's built-in workspace profile
 		JsonNode permissions = root.path("permissions");
