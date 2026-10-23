@@ -23,13 +23,19 @@ import java.net.http.HttpTimeoutException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.Period;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -52,6 +58,11 @@ import java.util.stream.Collectors;
  * A download over HTTP waits at most 30 seconds to connect, 60 seconds for the server's response headers and 15 minutes
  * for the whole file, and reports the limit that expired. After a download, the bundles of other CAT versions, of any
  * harness and platform, are deleted from the bundle directory.
+ * <p>
+ * A bundle's last-modified time tells when it was last used: a download sets it to the time of the download, and each
+ * resolution that uses the bundle sets it to the time of that resolution. Every resolution deletes the bundles, of any
+ * CAT version, harness and platform, that were last used more than three calendar months earlier, except the bundle
+ * that it uses.
  */
 public final class ReleaseBundles
 {
@@ -61,9 +72,10 @@ public final class ReleaseBundles
 		{
 			@Override
 			public ReleaseBundles create(Path directory, URI release, Platform platform, Duration connectLimit,
-				Duration responseLimit, Duration downloadLimit)
+				Duration responseLimit, Duration downloadLimit, Clock clock)
 			{
-				return new ReleaseBundles(directory, release, platform, connectLimit, responseLimit, downloadLimit);
+				return new ReleaseBundles(directory, release, platform, connectLimit, responseLimit, downloadLimit,
+					clock);
 			}
 		});
 	}
@@ -97,6 +109,10 @@ public final class ReleaseBundles
 	 * How long a download of one file may take in total.
 	 */
 	private static final Duration DOWNLOAD_LIMIT = Duration.ofMinutes(15);
+	/**
+	 * How long a bundle that no resolution uses is kept, in calendar months of UTC.
+	 */
+	private static final Period UNUSED_LIMIT = Period.ofMonths(3);
 	/**
 	 * The name of a downloaded artifact's directory, {@code cat-<harness>-v<version>-<platform>}, whose first group is
 	 * the CAT version.
@@ -145,6 +161,7 @@ public final class ReleaseBundles
 	private final Duration connectLimit;
 	private final Duration responseLimit;
 	private final Duration downloadLimit;
+	private final Clock clock;
 
 	/**
 	 * Creates a resolution.
@@ -158,11 +175,11 @@ public final class ReleaseBundles
 	 */
 	public ReleaseBundles(Path directory, URI release, Platform platform)
 	{
-		this(directory, release, platform, CONNECT_LIMIT, RESPONSE_LIMIT, DOWNLOAD_LIMIT);
+		this(directory, release, platform, CONNECT_LIMIT, RESPONSE_LIMIT, DOWNLOAD_LIMIT, Clock.systemUTC());
 	}
 
 	/**
-	 * Creates a resolution with the given time limits for a download over HTTP.
+	 * Creates a resolution with the given time limits for a download over HTTP and the given clock.
 	 *
 	 * @param directory     the directory that holds the downloaded artifacts
 	 * @param release       the location of this CAT version's release
@@ -170,10 +187,11 @@ public final class ReleaseBundles
 	 * @param connectLimit  how long a download waits to connect to the release's server
 	 * @param responseLimit how long a download waits for the server's response headers
 	 * @param downloadLimit how long a download of one file may take in total
+	 * @param clock         the clock that tells when a bundle was last used
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	private ReleaseBundles(Path directory, URI release, Platform platform, Duration connectLimit,
-		Duration responseLimit, Duration downloadLimit)
+		Duration responseLimit, Duration downloadLimit, Clock clock)
 	{
 		requireThat(directory, "directory").isNotNull();
 		requireThat(release, "release").isNotNull();
@@ -181,17 +199,20 @@ public final class ReleaseBundles
 		requireThat(connectLimit, "connectLimit").isNotNull();
 		requireThat(responseLimit, "responseLimit").isNotNull();
 		requireThat(downloadLimit, "downloadLimit").isNotNull();
+		requireThat(clock, "clock").isNotNull();
 		this.directory = directory.toAbsolutePath().normalize();
 		this.release = release;
 		this.platform = platform;
 		this.connectLimit = connectLimit;
 		this.responseLimit = responseLimit;
 		this.downloadLimit = downloadLimit;
+		this.clock = clock;
 	}
 
 	/**
 	 * Resolves a harness's CAT artifact of this CAT version and platform, downloading it when neither the installed
-	 * plugin nor an earlier download is usable.
+	 * plugin nor an earlier download is usable. Before that, it deletes the bundles that were last used more than three
+	 * calendar months earlier, except the bundle that it uses.
 	 *
 	 * @param installed the directory where the harness's CAT plugin is installed, which need not exist
 	 * @param harness   the harness's name in release archive names, such as {@code codex}
@@ -212,11 +233,22 @@ public final class ReleaseBundles
 		requireThat(runner, "runner").isNotBlank();
 
 		RunnerArtifact plugin = findInstalled(installed, manifest, runner);
-		if (plugin != null)
-			return plugin;
 		String name = "cat-" + harness + "-v" + PluginInfo.CAT_VERSION + "-" + platform.id();
 		Path bundle = directory.resolve(name);
-		if (Files.exists(bundle, NOFOLLOW_LINKS))
+		boolean usesBundle = plugin == null && Files.exists(bundle, NOFOLLOW_LINKS);
+		Set<String> inUse;
+		if (usesBundle)
+		{
+			markUsed(bundle);
+			inUse = Set.of(name);
+		}
+		else
+			inUse = Set.of();
+		deleteUnusedBundles(inUse);
+
+		if (plugin != null)
+			return plugin;
+		if (usesBundle)
 			return verify(bundle, manifest, runner, RunnerArtifact.Source.BUNDLE);
 		return download(name, manifest, runner);
 	}
@@ -317,8 +349,62 @@ public final class ReleaseBundles
 				throw new IOException(archiveName + " does not hold the directory " + name);
 			verify(artifact, manifest, runner, RunnerArtifact.Source.DOWNLOAD);
 			RunnerArtifact result = moveIntoPlace(artifact, directory.resolve(name), manifest, runner);
+			markUsed(result.artifact());
 			deleteOtherVersions();
 			return result;
+		}
+	}
+
+	/**
+	 * Records that a bundle is used now, so that its age restarts. A time that cannot be recorded is left as it was,
+	 * because the resolution that uses the bundle keeps it and a later use records the time again.
+	 *
+	 * @param bundle the bundle's directory
+	 */
+	private void markUsed(Path bundle)
+	{
+		try
+		{
+			Files.setLastModifiedTime(bundle, FileTime.from(clock.instant()));
+		}
+		catch (IOException _)
+		{
+			// Retried by the next use
+		}
+	}
+
+	/**
+	 * Deletes the bundles, of any CAT version, harness and platform, that were last used more than three calendar
+	 * months earlier. Hidden entries, such as the temporary directory of a download that is under way, and entries that
+	 * are not bundles are kept. A bundle that cannot be deleted is left for the next resolution.
+	 *
+	 * @param inUse the names of the bundles that this resolution uses, which are kept
+	 */
+	private void deleteUnusedBundles(Set<String> inUse)
+	{
+		Instant oldestKept = clock.instant().atZone(ZoneOffset.UTC).minus(UNUSED_LIMIT).toInstant();
+		try (DirectoryStream<Path> entries = Files.newDirectoryStream(directory))
+		{
+			for (Path entry : entries)
+			{
+				String name = entry.getFileName().toString();
+				if (!BUNDLE_NAME.matcher(name).matches() || inUse.contains(name))
+					continue;
+				try
+				{
+					Instant lastUsed = Files.getLastModifiedTime(entry, NOFOLLOW_LINKS).toInstant();
+					if (lastUsed.isBefore(oldestKept))
+						TemporaryDirectories.deleteRecursively(entry);
+				}
+				catch (IOException _)
+				{
+					// Retried by the next resolution
+				}
+			}
+		}
+		catch (IOException _)
+		{
+			// The directory is missing or unreadable; retried by the next resolution
 		}
 	}
 

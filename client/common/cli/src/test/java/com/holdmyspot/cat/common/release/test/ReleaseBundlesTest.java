@@ -18,7 +18,11 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -34,6 +38,11 @@ public final class ReleaseBundlesTest
 	private static final Path MANIFEST = Path.of(".harness-a/plugin.json");
 	private static final String HARNESS = "harness-a";
 	private static final String RUNNER = "harness-a-runner";
+	/**
+	 * The time at which the tests that age bundles resolve. Three calendar months earlier is 2026-02-28T12:00:00Z,
+	 * which 90 days would place on 2026-03-02.
+	 */
+	private static final Instant NOW = Instant.parse("2026-05-31T12:00:00Z");
 
 	/**
 	 * Creates a test instance.
@@ -88,6 +97,54 @@ public final class ReleaseBundlesTest
 	private static ReleaseBundles bundles(Path bundles, Path release)
 	{
 		return new ReleaseBundles(bundles, release.toUri(), Platform.current());
+	}
+
+	/**
+	 * Returns resolution against a release directory, at a fixed time.
+	 *
+	 * @param bundles the bundle directory
+	 * @param release the release directory
+	 * @param now     the time of the resolution
+	 * @return the resolution
+	 */
+	private static ReleaseBundles bundles(Path bundles, Path release, Instant now)
+	{
+		return ReleaseBundlesSecrets.getReleaseBundlesAccess().create(bundles, release.toUri(), Platform.current(),
+			Duration.ofSeconds(30), Duration.ofSeconds(60), Duration.ofMinutes(15), Clock.fixed(now, ZoneOffset.UTC));
+	}
+
+	/**
+	 * Sets the time at which a file or directory was last modified, which tells when a bundle was last used.
+	 *
+	 * @param path the file or directory
+	 * @param time the time
+	 * @throws IOException if the time cannot be set
+	 */
+	private static void lastUsed(Path path, Instant time) throws IOException
+	{
+		Files.setLastModifiedTime(path, FileTime.from(time));
+	}
+
+	/**
+	 * Checks for another harness's bundle, which neither exists nor can be downloaded, at a fixed time.
+	 *
+	 * @param bundlesDirectory the bundle directory
+	 * @param root             the test's directory
+	 * @param now              the time of the check
+	 */
+	private static void checkOtherHarness(Path bundlesDirectory, Path root, Instant now)
+	{
+		try
+		{
+			bundles(bundlesDirectory, root.resolve("missing-release"), now).resolve(root.resolve("not-installed"),
+				"harness-b", MANIFEST, RUNNER);
+		}
+		catch (IOException _)
+		{
+			// The release is missing, so the download fails after the check
+			return;
+		}
+		throw new AssertionError("The resolution succeeded");
 	}
 
 	/**
@@ -434,7 +491,8 @@ public final class ReleaseBundlesTest
 				URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/download/v1.0");
 				Path bundlesDirectory = root.resolve("bundles");
 				ReleaseBundles bundles = ReleaseBundlesSecrets.getReleaseBundlesAccess().create(bundlesDirectory, uri,
-					Platform.current(), Duration.ofSeconds(30), Duration.ofMillis(300), Duration.ofSeconds(30));
+					Platform.current(), Duration.ofSeconds(30), Duration.ofMillis(300), Duration.ofSeconds(30),
+					Clock.systemUTC());
 
 				IOException failure = expectFailure(bundles, root);
 
@@ -469,7 +527,8 @@ public final class ReleaseBundlesTest
 				URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/download/v1.0");
 				Path bundlesDirectory = root.resolve("bundles");
 				ReleaseBundles bundles = ReleaseBundlesSecrets.getReleaseBundlesAccess().create(bundlesDirectory, uri,
-					Platform.current(), Duration.ofSeconds(30), Duration.ofSeconds(30), Duration.ofMillis(400));
+					Platform.current(), Duration.ofSeconds(30), Duration.ofSeconds(30), Duration.ofMillis(400),
+					Clock.systemUTC());
 
 				IOException failure = expectFailure(bundles, root);
 
@@ -543,6 +602,95 @@ public final class ReleaseBundlesTest
 			requireThat(fromPlugin.source(), "pluginSource").isEqualTo(RunnerArtifact.Source.INSTALLED);
 			requireThat(entries(bundlesDirectory), "bundles").isEqualTo(
 				List.of(bundleName(), old).stream().sorted().toList());
+		}
+	}
+
+	/**
+	 * Verifies that checking for a bundle deletes the bundles of any version, harness and platform that were last used
+	 * more than three calendar months earlier, and keeps the bundles used since then, the entries that are not bundles
+	 * and the hidden temporary directories of a concurrent download.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void checkDeletesBundlesUnusedForThreeMonths() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-age-"));
+			Path bundlesDirectory = root.resolve("bundles");
+			Instant threeMonthsEarlier = Instant.parse("2026-02-28T12:00:00Z");
+			String expired = "cat-" + HARNESS + "-v" + PluginInfo.CAT_VERSION + "-windows-arm64";
+			String expiredOldVersion = "cat-other-v0.9-linux-x64";
+			String kept = "cat-other-v" + PluginInfo.CAT_VERSION + "-macos-arm64";
+			String hidden = ".cat-other-v0.9-linux-x64-temporary";
+			for (String name : List.of(expired, expiredOldVersion, kept, hidden, "notes"))
+				Files.createDirectories(bundlesDirectory.resolve(name));
+			lastUsed(bundlesDirectory.resolve(expired), threeMonthsEarlier.minusSeconds(1));
+			lastUsed(bundlesDirectory.resolve(expiredOldVersion), Instant.parse("2025-01-01T00:00:00Z"));
+			lastUsed(bundlesDirectory.resolve(kept), threeMonthsEarlier);
+			lastUsed(bundlesDirectory.resolve(hidden), Instant.parse("2025-01-01T00:00:00Z"));
+			lastUsed(bundlesDirectory.resolve("notes"), Instant.parse("2025-01-01T00:00:00Z"));
+
+			checkOtherHarness(bundlesDirectory, root, NOW);
+
+			requireThat(entries(bundlesDirectory), "bundles").isEqualTo(
+				List.of(hidden, kept, "notes").stream().sorted().toList());
+		}
+	}
+
+	/**
+	 * Verifies that using a bundle restarts its age: a bundle last used four months earlier is used rather than deleted,
+	 * survives a check two months after that use, and is deleted by a check more than three months after it.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void usingBundleRestartsItsAge() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-age-use-"));
+			Path bundlesDirectory = root.resolve("bundles");
+			Path bundle = artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION);
+			lastUsed(bundle, Instant.parse("2026-01-31T12:00:00Z"));
+
+			RunnerArtifact result = bundles(bundlesDirectory, root.resolve("missing-release"), NOW).
+				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+
+			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.BUNDLE);
+			checkOtherHarness(bundlesDirectory, root, Instant.parse("2026-07-31T12:00:00Z"));
+			requireThat(entries(bundlesDirectory), "afterTwoMonths").isEqualTo(List.of(bundleName()));
+			checkOtherHarness(bundlesDirectory, root, Instant.parse("2026-08-31T12:00:01Z"));
+			requireThat(entries(bundlesDirectory), "afterThreeMonths").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a downloaded bundle's age starts at its download: it survives a check three months after the
+	 * download and is deleted by a check more than three months after it.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void downloadStartsBundleAge() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-age-download-"));
+			Path release = root.resolve("release");
+			FakeRelease.publish(release, bundleName(), artifact(root.resolve("source"), PluginInfo.CAT_VERSION));
+			Path bundlesDirectory = root.resolve("bundles");
+			Instant downloaded = Instant.parse("2020-01-30T12:00:00Z");
+
+			RunnerArtifact result = bundles(bundlesDirectory, release, downloaded).resolve(root.resolve("not-installed"),
+				HARNESS, MANIFEST, RUNNER);
+
+			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
+			checkOtherHarness(bundlesDirectory, root, Instant.parse("2020-04-30T12:00:00Z"));
+			requireThat(entries(bundlesDirectory), "afterThreeMonths").isEqualTo(List.of(bundleName()));
+			checkOtherHarness(bundlesDirectory, root, Instant.parse("2020-04-30T12:00:01Z"));
+			requireThat(entries(bundlesDirectory), "afterLonger").isEmpty();
 		}
 	}
 

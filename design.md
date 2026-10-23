@@ -2345,7 +2345,9 @@ downloads that harness's release archive and the release's `SHA256SUMS.txt`, ver
 extracts it into that directory before the run; a failed download, checksum or extraction leaves no copy and reports
 the failure (D96). A download waits at most 30 seconds to connect, 60 seconds for the server's response and 15 minutes
 for the whole file. After a download, the skill deletes the copies of every other CAT version in that directory, and
-uninstalling CAT for either harness removes the directory (user rulings, 2026-10-22).
+uninstalling CAT for either harness removes the directory (user rulings, 2026-10-22). A copy's age counts from its last
+use: each check for a copy deletes the copies, of any version, harness and platform, that no run has used for more than
+three calendar months (user ruling, 2026-10-23).
 
 **Retirement of the existing skill:** this skill's body (`skills/prompt-optimizer/first-use.md`) and wrapper text
 replace the observe-diagnose-retest procedure. `failure-regression-promotion.md` applies its own correction and
