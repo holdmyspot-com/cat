@@ -9,20 +9,34 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
+import com.holdmyspot.cat.common.secrets.ReleaseBundlesAccess;
+import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Resolves another harness's CAT artifact of this CAT version and platform, so that a runner skill can run a task in
@@ -34,9 +48,26 @@ import java.util.Map;
  * archive's checksum, extracts it into a temporary directory beside its destination, verifies the extracted artifact
  * and only then moves it into place, so that a failed download, checksum or extraction leaves no copy for a later
  * resolution to use.
+ * <p>
+ * A download over HTTP waits at most 30 seconds to connect, 60 seconds for the server's response headers and 15 minutes
+ * for the whole file, and reports the limit that expired. After a download, the bundles of other CAT versions, of any
+ * harness and platform, are deleted from the bundle directory.
  */
 public final class ReleaseBundles
 {
+	static
+	{
+		ReleaseBundlesSecrets.setReleaseBundlesAccess(new ReleaseBundlesAccess()
+		{
+			@Override
+			public ReleaseBundles create(Path directory, URI release, Platform platform, Duration connectLimit,
+				Duration responseLimit, Duration downloadLimit)
+			{
+				return new ReleaseBundles(directory, release, platform, connectLimit, responseLimit, downloadLimit);
+			}
+		});
+	}
+
 	/**
 	 * The release of this CAT version on GitHub, which holds every harness's archive for every platform.
 	 */
@@ -57,7 +88,22 @@ public final class ReleaseBundles
 	/**
 	 * How long a download waits to connect to the release's server.
 	 */
-	private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
+	private static final Duration CONNECT_LIMIT = Duration.ofSeconds(30);
+	/**
+	 * How long a download waits for the server's response headers, once connected.
+	 */
+	private static final Duration RESPONSE_LIMIT = Duration.ofSeconds(60);
+	/**
+	 * How long a download of one file may take in total.
+	 */
+	private static final Duration DOWNLOAD_LIMIT = Duration.ofMinutes(15);
+	/**
+	 * The name of a downloaded artifact's directory, {@code cat-<harness>-v<version>-<platform>}, whose first group is
+	 * the CAT version.
+	 */
+	private static final Pattern BUNDLE_NAME = Pattern.compile("cat-.+-v([^-]+)-(?:" +
+		Arrays.stream(Platform.values()).map(platform -> Pattern.quote(platform.id())).
+			collect(Collectors.joining("|")) + ")");
 
 	/**
 	 * Returns the location of this CAT version's release.
@@ -96,6 +142,9 @@ public final class ReleaseBundles
 	private final Path directory;
 	private final URI release;
 	private final Platform platform;
+	private final Duration connectLimit;
+	private final Duration responseLimit;
+	private final Duration downloadLimit;
 
 	/**
 	 * Creates a resolution.
@@ -109,12 +158,35 @@ public final class ReleaseBundles
 	 */
 	public ReleaseBundles(Path directory, URI release, Platform platform)
 	{
+		this(directory, release, platform, CONNECT_LIMIT, RESPONSE_LIMIT, DOWNLOAD_LIMIT);
+	}
+
+	/**
+	 * Creates a resolution with the given time limits for a download over HTTP.
+	 *
+	 * @param directory     the directory that holds the downloaded artifacts
+	 * @param release       the location of this CAT version's release
+	 * @param platform      the platform whose artifact to resolve
+	 * @param connectLimit  how long a download waits to connect to the release's server
+	 * @param responseLimit how long a download waits for the server's response headers
+	 * @param downloadLimit how long a download of one file may take in total
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	private ReleaseBundles(Path directory, URI release, Platform platform, Duration connectLimit,
+		Duration responseLimit, Duration downloadLimit)
+	{
 		requireThat(directory, "directory").isNotNull();
 		requireThat(release, "release").isNotNull();
 		requireThat(platform, "platform").isNotNull();
+		requireThat(connectLimit, "connectLimit").isNotNull();
+		requireThat(responseLimit, "responseLimit").isNotNull();
+		requireThat(downloadLimit, "downloadLimit").isNotNull();
 		this.directory = directory.toAbsolutePath().normalize();
 		this.release = release;
 		this.platform = platform;
+		this.connectLimit = connectLimit;
+		this.responseLimit = responseLimit;
+		this.downloadLimit = downloadLimit;
 	}
 
 	/**
@@ -201,7 +273,8 @@ public final class ReleaseBundles
 	}
 
 	/**
-	 * Downloads, verifies and extracts a release archive into the bundle directory.
+	 * Downloads, verifies and extracts a release archive into the bundle directory, and then deletes the bundles of
+	 * other CAT versions.
 	 *
 	 * @param name     the archive's name without {@code .tar.gz}, which is also its top-level directory's name and
 	 *                 the bundle's name
@@ -219,7 +292,8 @@ public final class ReleaseBundles
 			// A sibling of the destination, so that the move into place is a rename on one file system
 			Path temporary = cleanup.add(Files.createTempDirectory(directory, "." + name + "-"));
 			Path archive = temporary.resolve(archiveName);
-			String digest = fetch(archiveName, archive);
+			fetch(archiveName, archive);
+			String digest = sha256(archive);
 			Path checksums = temporary.resolve(CHECKSUMS);
 			fetch(CHECKSUMS, checksums);
 			String expected = publishedChecksum(checksums, archiveName);
@@ -242,7 +316,39 @@ public final class ReleaseBundles
 			if (!Files.isDirectory(artifact, NOFOLLOW_LINKS))
 				throw new IOException(archiveName + " does not hold the directory " + name);
 			verify(artifact, manifest, runner, RunnerArtifact.Source.DOWNLOAD);
-			return moveIntoPlace(artifact, directory.resolve(name), manifest, runner);
+			RunnerArtifact result = moveIntoPlace(artifact, directory.resolve(name), manifest, runner);
+			deleteOtherVersions();
+			return result;
+		}
+	}
+
+	/**
+	 * Deletes the bundles of CAT versions other than this one, of any harness and platform. Hidden entries, such as
+	 * the temporary directory of a download that is under way, and entries that are not bundles are kept. A bundle
+	 * that cannot be deleted is left for the next download, because a stale copy does not affect the resolution.
+	 */
+	private void deleteOtherVersions()
+	{
+		try (DirectoryStream<Path> entries = Files.newDirectoryStream(directory))
+		{
+			for (Path entry : entries)
+			{
+				Matcher matcher = BUNDLE_NAME.matcher(entry.getFileName().toString());
+				if (!matcher.matches() || matcher.group(1).equals(PluginInfo.CAT_VERSION))
+					continue;
+				try
+				{
+					TemporaryDirectories.deleteRecursively(entry);
+				}
+				catch (IOException _)
+				{
+					// Retried by the next download
+				}
+			}
+		}
+		catch (IOException _)
+		{
+			// Retried by the next download
 		}
 	}
 
@@ -250,14 +356,12 @@ public final class ReleaseBundles
 	 * Copies a release file to a local file.
 	 *
 	 * @param name   the file's name in the release
-	 * @param target the local file
-	 * @return the SHA-256 digest of the file, in lower-case hexadecimal
+	 * @param target the local file, which must not exist
 	 * @throws IOException if the file cannot be fetched
 	 */
-	private String fetch(String name, Path target) throws IOException
+	private void fetch(String name, Path target) throws IOException
 	{
 		URI uri = URI.create(release + "/" + name);
-		MessageDigest digest = sha256();
 		try
 		{
 			String scheme = uri.getScheme();
@@ -265,14 +369,8 @@ public final class ReleaseBundles
 				throw new IOException("The release location names no scheme");
 			switch (scheme)
 			{
-				case "file" ->
-				{
-					try (InputStream in = new DigestInputStream(Files.newInputStream(Path.of(uri)), digest))
-					{
-						Files.copy(in, target);
-					}
-				}
-				case "http", "https" -> fetchHttp(uri, target, digest);
+				case "file" -> Files.copy(Path.of(uri), target);
+				case "http", "https" -> fetchHttp(uri, target);
 				default -> throw new IOException("Unsupported release location scheme: " + scheme);
 			}
 		}
@@ -280,36 +378,85 @@ public final class ReleaseBundles
 		{
 			throw new IOException("Cannot download " + uri + ": " + e.getMessage(), e);
 		}
-		return HexFormat.of().formatHex(digest.digest());
 	}
 
 	/**
-	 * Copies a release file over HTTP, following the redirects that GitHub answers a release download with.
+	 * Copies a release file over HTTP, following the redirects that GitHub answers a release download with, within the
+	 * time limits of this resolution.
 	 *
 	 * @param uri    the file's location
 	 * @param target the local file
-	 * @param digest receives the file's content
-	 * @throws IOException if the request fails or its status is not 200
+	 * @throws IOException if the request fails, its status is not 200, or a time limit expires
 	 */
-	private static void fetchHttp(URI uri, Path target, MessageDigest digest) throws IOException
+	private void fetchHttp(URI uri, Path target) throws IOException
 	{
 		try (HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).
-			connectTimeout(CONNECT_TIMEOUT).build())
+			connectTimeout(connectLimit).build())
 		{
-			HttpResponse<InputStream> response = client.send(HttpRequest.newBuilder(uri).GET().build(),
-				HttpResponse.BodyHandlers.ofInputStream());
-			try (InputStream in = new DigestInputStream(response.body(), digest))
+			HttpRequest request = HttpRequest.newBuilder(uri).timeout(responseLimit).GET().build();
+			CompletableFuture<HttpResponse<Path>> future = client.sendAsync(request,
+				HttpResponse.BodyHandlers.ofFile(target));
+			HttpResponse<Path> response;
+			try
 			{
-				if (response.statusCode() != 200)
-					throw new IOException("HTTP status " + response.statusCode());
-				Files.copy(in, target);
+				response = future.get(downloadLimit.toNanos(), TimeUnit.NANOSECONDS);
 			}
+			catch (TimeoutException e)
+			{
+				future.cancel(true);
+				client.shutdownNow();
+				throw new IOException("The download did not finish within " + describe(downloadLimit), e);
+			}
+			catch (ExecutionException e)
+			{
+				client.shutdownNow();
+				Throwable cause = e.getCause();
+				if (cause instanceof HttpConnectTimeoutException)
+					throw new IOException("No connection within " + describe(connectLimit), cause);
+				if (cause instanceof HttpTimeoutException)
+					throw new IOException("No response within " + describe(responseLimit), cause);
+				if (cause instanceof IOException ioe)
+					throw ioe;
+				throw new IOException(String.valueOf(cause), cause);
+			}
+			if (response.statusCode() != 200)
+				throw new IOException("HTTP status " + response.statusCode());
 		}
 		catch (InterruptedException e)
 		{
 			Thread.currentThread().interrupt();
 			throw new IOException("Interrupted", e);
 		}
+	}
+
+	/**
+	 * Describes a time limit for an error message.
+	 *
+	 * @param limit the limit
+	 * @return the limit in the largest of minutes, seconds and milliseconds that holds it exactly
+	 */
+	private static String describe(Duration limit)
+	{
+		long milliseconds = limit.toMillis();
+		if (milliseconds % 60_000 == 0)
+			return plural(milliseconds / 60_000, "minute");
+		if (milliseconds % 1_000 == 0)
+			return plural(milliseconds / 1_000, "second");
+		return plural(milliseconds, "millisecond");
+	}
+
+	/**
+	 * Returns a count and a unit.
+	 *
+	 * @param count the count
+	 * @param unit  the unit's singular name
+	 * @return the count and the unit, in the plural unless the count is 1
+	 */
+	private static String plural(long count, String unit)
+	{
+		if (count == 1)
+			return count + " " + unit;
+		return count + " " + unit + "s";
 	}
 
 	/**
@@ -361,19 +508,27 @@ public final class ReleaseBundles
 	}
 
 	/**
-	 * Returns a SHA-256 digest.
+	 * Returns the SHA-256 digest of a file.
 	 *
-	 * @return the digest
+	 * @param file the file
+	 * @return the digest, in lower-case hexadecimal
+	 * @throws IOException if the file cannot be read
 	 */
-	private static MessageDigest sha256()
+	private static String sha256(Path file) throws IOException
 	{
+		MessageDigest digest;
 		try
 		{
-			return MessageDigest.getInstance("SHA-256");
+			digest = MessageDigest.getInstance("SHA-256");
 		}
 		catch (NoSuchAlgorithmException e)
 		{
 			throw new AssertionError("Every Java implementation must provide SHA-256", e);
 		}
+		try (InputStream in = new DigestInputStream(Files.newInputStream(file), digest))
+		{
+			in.transferTo(OutputStream.nullOutputStream());
+		}
+		return HexFormat.of().formatHex(digest.digest());
 	}
 }

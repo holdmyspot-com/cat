@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.release.ReleaseBundles;
 import com.holdmyspot.cat.common.release.RunnerArtifact;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease.Entry;
+import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -17,8 +18,10 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
 
@@ -413,6 +416,137 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
+	 * Verifies that a server that sends no response headers within the response limit is reported with the URL and the
+	 * expired limit, and leaves no copy, although the limit for the whole file has not expired.
+	 *
+	 * @throws IOException if the fixture cannot be written or the server cannot start
+	 */
+	@Test
+	public void silentServerExpiresResponseLimit() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-silent-"));
+			CountDownLatch release = new CountDownLatch(1);
+			HttpServer server = serveStalled(release, false);
+			try
+			{
+				URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/download/v1.0");
+				Path bundlesDirectory = root.resolve("bundles");
+				ReleaseBundles bundles = ReleaseBundlesSecrets.getReleaseBundlesAccess().create(bundlesDirectory, uri,
+					Platform.current(), Duration.ofSeconds(30), Duration.ofMillis(300), Duration.ofSeconds(30));
+
+				IOException failure = expectFailure(bundles, root);
+
+				requireThat(failure.getMessage(), "message").contains(uri.toString()).contains("No response").
+					contains("300 milliseconds");
+				requireThat(entries(bundlesDirectory), "bundles").isEmpty();
+			}
+			finally
+			{
+				release.countDown();
+				server.stop(0);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a server that sends headers but never finishes the body is reported with the URL and the expired
+	 * limit for the whole file, and leaves no copy, although the response limit has not expired.
+	 *
+	 * @throws IOException if the fixture cannot be written or the server cannot start
+	 */
+	@Test
+	public void unfinishedBodyExpiresDownloadLimit() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-unfinished-"));
+			CountDownLatch release = new CountDownLatch(1);
+			HttpServer server = serveStalled(release, true);
+			try
+			{
+				URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/download/v1.0");
+				Path bundlesDirectory = root.resolve("bundles");
+				ReleaseBundles bundles = ReleaseBundlesSecrets.getReleaseBundlesAccess().create(bundlesDirectory, uri,
+					Platform.current(), Duration.ofSeconds(30), Duration.ofSeconds(30), Duration.ofMillis(400));
+
+				IOException failure = expectFailure(bundles, root);
+
+				requireThat(failure.getMessage(), "message").contains(uri.toString()).contains("did not finish").
+					contains("400 milliseconds");
+				requireThat(entries(bundlesDirectory), "bundles").isEmpty();
+			}
+			finally
+			{
+				release.countDown();
+				server.stop(0);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a download deletes the bundles of other CAT versions, of any harness and platform, and keeps this
+	 * version's bundles, unrelated entries and the hidden temporary directories of a concurrent download.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void downloadDeletesOtherVersions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-prune-"));
+			Path release = root.resolve("release");
+			FakeRelease.publish(release, bundleName(), artifact(root.resolve("source"), PluginInfo.CAT_VERSION));
+			Path bundlesDirectory = root.resolve("bundles");
+			String otherPlatform = "cat-" + HARNESS + "-v" + PluginInfo.CAT_VERSION + "-windows-arm64";
+			String hidden = ".cat-" + HARNESS + "-v0.9-linux-x64-temporary";
+			Files.createDirectories(bundlesDirectory.resolve("cat-" + HARNESS + "-v0.9-linux-x64/bin"));
+			Files.createDirectories(bundlesDirectory.resolve("cat-other-v2.0-macos-arm64"));
+			Files.createDirectories(bundlesDirectory.resolve(otherPlatform));
+			Files.createDirectories(bundlesDirectory.resolve("notes"));
+			Files.createDirectories(bundlesDirectory.resolve(hidden));
+			Files.writeString(bundlesDirectory.resolve("cat-" + HARNESS + "-v0.8-windows-x64"), "file");
+
+			RunnerArtifact result = bundles(bundlesDirectory, release).resolve(root.resolve("not-installed"), HARNESS,
+				MANIFEST, RUNNER);
+
+			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
+			requireThat(entries(bundlesDirectory), "bundles").isEqualTo(
+				List.of(hidden, bundleName(), otherPlatform, "notes").stream().sorted().toList());
+		}
+	}
+
+	/**
+	 * Verifies that resolving to an existing bundle or the installed plugin deletes nothing.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void resolutionWithoutDownloadDeletesNothing() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-no-prune-"));
+			Path bundlesDirectory = root.resolve("bundles");
+			Path installed = artifact(root.resolve("installed"), PluginInfo.CAT_VERSION);
+			artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION);
+			String old = "cat-" + HARNESS + "-v0.9-linux-x64";
+			Files.createDirectories(bundlesDirectory.resolve(old));
+			ReleaseBundles bundles = bundles(bundlesDirectory, root.resolve("missing-release"));
+
+			RunnerArtifact fromBundle = bundles.resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+			RunnerArtifact fromPlugin = bundles.resolve(installed, HARNESS, MANIFEST, RUNNER);
+
+			requireThat(fromBundle.source(), "bundleSource").isEqualTo(RunnerArtifact.Source.BUNDLE);
+			requireThat(fromPlugin.source(), "pluginSource").isEqualTo(RunnerArtifact.Source.INSTALLED);
+			requireThat(entries(bundlesDirectory), "bundles").isEqualTo(
+				List.of(bundleName(), old).stream().sorted().toList());
+		}
+	}
+
+	/**
 	 * Verifies that the release's location defaults to the GitHub release of CAT's version.
 	 */
 	@Test
@@ -460,6 +594,40 @@ public final class ReleaseBundlesTest
 			return e;
 		}
 		throw new AssertionError("The resolution succeeded");
+	}
+
+	/**
+	 * Starts an HTTP server on the loopback address whose every request stalls until a latch is released: before the
+	 * response headers, or after the headers and the first bytes of the body.
+	 *
+	 * @param release   the latch that ends the stall
+	 * @param afterHead {@code true} to send the headers and a part of the body before stalling
+	 * @return the started server
+	 * @throws IOException if the server cannot start
+	 */
+	private static HttpServer serveStalled(CountDownLatch release, boolean afterHead) throws IOException
+	{
+		HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+		server.createContext("/download/v1.0/", exchange ->
+		{
+			try (exchange)
+			{
+				if (afterHead)
+				{
+					exchange.sendResponseHeaders(200, 1_000_000);
+					OutputStream out = exchange.getResponseBody();
+					out.write(new byte[1024]);
+					out.flush();
+				}
+				release.await();
+			}
+			catch (InterruptedException _)
+			{
+				Thread.currentThread().interrupt();
+			}
+		});
+		server.start();
+		return server;
 	}
 
 	/**
