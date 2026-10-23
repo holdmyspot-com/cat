@@ -2349,6 +2349,37 @@ uninstalling CAT for either harness removes the directory (user rulings, 2026-10
 use: each check for a copy deletes the copies, of any version, harness and platform, that no run has used for more than
 three calendar months (user ruling, 2026-10-23).
 
+**Session transcripts (user rulings, 2026-10-23):** a run leaves no harness transcript on disk unless its caller passes
+`--session-transcripts`, which requires `--keep-run`. Without it, Claude runs with `--no-session-persistence` and Codex
+starts ephemeral threads. With it, the harness writes its native JSONL transcripts, the runner reports each session's
+transcript path in a `session_transcript` record once the session starts, so a caller can read it while the run lasts,
+and at the end of the run copies every native transcript of the run, subagents' included, into the kept run's
+`artifacts/session-transcripts/` and lists them in the receipt. The optimizer passes the option for its trials, whose
+records read what a model received from those copies (D97).
+
+**Trial limits (user rulings, 2026-10-23):** the commands that a session runs have the same limits in both harnesses,
+on every platform, and one harness-neutral definition that both runners apply sets them, so a limit cannot hold in one
+harness and not the other. A session's commands run with the run's isolated home as their home directory, receive no
+harness credential in their environment, and cannot read any harness's login or configuration, in the run's home or
+the user's, or any run under the run root except their own. A harness that a command starts directly therefore cannot
+reach the model provider; a session that needs another session requests one instead (D98).
+
+**Requested sessions (user rulings, 2026-10-23):** a caller that passes `--session-requests <count>` lets the session
+request up to that many sessions over the run; the default, `0`, allows none, and the optimizer allows none in its
+trials. The session requests one by running the `request-session` launcher that the runner names in its environment,
+with the harness, a project directory, one or more prompt files and, optionally, plugins, a model, an effort and
+`--session-transcripts`. Every input and result passes as a file path, never as content: the launcher writes the
+request into the run's `requests` directory, the one directory outside its project and home that the session may
+write, and the runner answers with a response file that names the requested run's transcript, receipt and native
+transcripts. The runner, outside the session's sandbox, validates the request and starts the session through that
+harness's runner launcher, resolved as the runner skills resolve it, with the requesting session's run root and denied
+reads, and without requested sessions of its own. A requested session therefore has at most the permissions of the
+session that requested it, and no credential ever reaches a command. It takes its own slot of its harness's shared
+capacity and honours its hold, but waits at most 10 minutes for a slot, because the requesting session keeps its own
+slot while it waits; a request that times out fails with the reason `capacity`. Ending the run or interrupting its turn
+stops the requested sessions that still run. The receipt lists each requested session, its run and its evidence. When
+`--session-requests` allows any, the runner tells the session in its instructions how to request one (D99).
+
 **Retirement of the existing skill:** this skill's body (`skills/prompt-optimizer/first-use.md`) and wrapper text
 replace the observe-diagnose-retest procedure. `failure-regression-promotion.md` applies its own correction and
 regression procedure instead of invoking `cat:prompt-optimizer` for every qualifying failure, and it may recommend a
@@ -2627,6 +2658,9 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D94 | Name no model provider in a certification's environment or measurement identity (user ruling, 2026-10-22). | The provider name that Codex reports is only the name configured in its `config.toml`; behind a proxy such as codex-lb it does not say who serves the model, and Claude Code reports no provider at all. A fact that one harness can state wrongly and the other cannot state is not a condition to certify against. | The `Model` line reads `Model: <model>, reasoning <level>`. Stored campaigns and certification histories that carry the retired condition load without it. |
 | D95 | Neither record nor control the host machine's programs and outside sources, such as MCP servers, websites and web search: they are not measurement conditions, never material and never compared. Every certification's environment block and every `status` report state this as a limitation and recommend running the campaign, and the sessions that later use the prompt, in the same container image to limit changes to them. A stored campaign or certification history that records the retired host tools or external sources conditions loads with them dropped, and a pending measurement change that names only them is dropped (user ruling, 2026-10-22, superseding the earlier ruling of the same day to record them). | CAT cannot snapshot the host environment; short of a container, nothing it records would let a user reproduce it. Which tools a trial runs varies from trial to trial, so recording them gives noise and making them material gives false alarms that pause campaigns. The candidate, control and incumbent trials paired within one attempt run on the same machine at the same time, so they already share the environment that the comparison depends on. A container is the user's means to limit changes to it. | The tools that trials invoke usually do not affect prompt optimization, but sometimes do; a certification stays current when they change, and only the limitation and the container recommendation warn the user. |
 | D96 | Give each harness's plugin a runner skill for the other harness, and have it download the other harness's CAT release archive, verified against the release's checksums, when neither that harness's installed CAT plugin of the same version nor an earlier download exists (user rulings, 2026-10-22). | A plugin that bundled the other harness's classes and plugin files would grow for every user to serve a skill few run, and one that required the other harness's plugin installed would fail for a user who never installed it. Downloading the published, checksummed archive of the same version reuses the installer's trust model and costs nothing until the skill first runs. |
+| D97 | Write harness transcripts only when the caller passes `--session-transcripts` to a kept run, copy them into the run's artifacts and list them in the receipt (user rulings, 2026-10-23: "1a, 2a"). | Transcripts on disk by default would keep every trial's conversation, which callers rarely read; a caller that tests what a harness records, such as a plugin's effect on the transcript, had no way to get it. | Optimizer trials pass the option, so a campaign keeps the transcripts that its records read. |
+| D98 | Give a session's commands one set of limits in both harnesses from one harness-neutral definition: the run's home as their home, no harness credential in their environment, and no reads of any harness's login or configuration or of other runs (user ruling, 2026-10-23). | A Codex session's commands kept the user's home, and a Claude session's commands received the provider token, so a harness started from a command reached the provider in one harness and not the other, and an agent could not predict which. | A command that needs the user's harness configuration, such as a harness CLI started directly, no longer works in a session; it requests a session instead (D99). |
+| D99 | Let a caller allow a session to request sessions, which the runner starts outside the session's sandbox through the requested harness's runner with no more than the requesting session's permissions, passing every input and result as a file path (user ruling, 2026-10-23: option C). | Starting a harness inside a session would put credentials in reach of every command and escape the shared capacity, interrupts and evidence; making the caller start every session prevents a session from checking its own work, such as a plugin it just wrote. A broker keeps credentials, capacity and evidence with the runner. | A requested session waits at most 10 minutes for a capacity slot and fails with `capacity` after that; requested sessions request none of their own and are unavailable in optimizer trials. |
 
 ## 14. Acceptance evidence
 
