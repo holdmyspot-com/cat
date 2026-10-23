@@ -61,6 +61,22 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
+	 * Verifies that a run asked for session transcripts lets Claude persist its session, and still sets no generated
+	 * sandbox policy of its own.
+	 */
+	@Test
+	public void persistsSessionForTranscripts()
+	{
+		// Requirement: R-I7
+		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"),
+			List.of(), true);
+
+		requireThat(command, "command").doesNotContain("--no-session-persistence").doesNotContain("--settings");
+		requireThat(ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"), List.of(),
+			false), "withoutTranscripts").contains("--no-session-persistence");
+	}
+
+	/**
 	 * Verifies a CAT run grants Claude access to spilled hook context without exposing the isolated home.
 	 */
 	@Test
@@ -96,7 +112,7 @@ public final class ClaudeRunnerTest
 	public void permitsTrialPluginDirectory()
 	{
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "",
-			List.of(Path.of("release-docs-marketplace/plugins/release-docs")), Path.of("hook-results"), List.of());
+			List.of(Path.of("release-docs-marketplace/plugins/release-docs")), Path.of("hook-results"), List.of(), false);
 
 		requireThat(command, "command").contains(Path.of("release-docs-marketplace/plugins/release-docs").toString()).
 			contains("hook-results");

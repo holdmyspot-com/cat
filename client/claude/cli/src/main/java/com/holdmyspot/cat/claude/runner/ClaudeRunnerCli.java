@@ -165,7 +165,7 @@ public final class ClaudeRunnerCli
 				environment,
 				options.model(),
 				options.effort(), agent, options.installCat(), options.includeUserRules(), readOnlyEvidence,
-				options.deniedReads(), instructionFilesMode);
+				options.deniedReads(), instructionFilesMode, options.sessionTranscripts());
 			HarnessRunnerBridge.serve(starter, manager, options, json, replacer, input, output);
 		}
 	}

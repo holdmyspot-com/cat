@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.runner.HarnessEventListener;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
+import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.HarnessStandardError;
 
 import java.io.BufferedReader;
@@ -15,10 +16,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -71,6 +74,18 @@ public final class ClaudeProcess implements HarnessProcess
 	 * one at a time, but not always on the same thread.
 	 */
 	private volatile boolean sessionStatePrinted;
+	/**
+	 * Where Claude writes the root session's transcript, or {@code null} if the process keeps no transcripts.
+	 */
+	private final Path projectDirectory;
+	/**
+	 * Copies the session's transcripts when the process closes, or {@code null} if the process keeps no transcripts.
+	 */
+	private final HarnessSessionTranscripts transcripts;
+	/**
+	 * The root session's identifier, or an empty string until Claude reports it.
+	 */
+	private volatile String sessionId = "";
 
 	/**
 	 * Wraps a started Claude process configured for stream-json input and output.
@@ -81,10 +96,29 @@ public final class ClaudeProcess implements HarnessProcess
 	 */
 	public ClaudeProcess(HarnessRunnerScope scope, Process process)
 	{
+		this(scope, process, null, null);
+	}
+
+	/**
+	 * Wraps a started Claude process that was asked to keep its session transcripts.
+	 *
+	 * @param scope services shared for the runner process lifetime
+	 * @param process the started Claude process
+	 * @param projectDirectory the directory in which Claude writes the root session's transcript, which is named after
+	 *   the session's identifier, or {@code null} if the process keeps no transcripts
+	 * @param transcripts copies the transcripts of the root session and its subagents when the process closes, or
+	 *   {@code null} if the process keeps no transcripts
+	 * @throws NullPointerException if {@code scope} or {@code process} are null
+	 */
+	public ClaudeProcess(HarnessRunnerScope scope, Process process, Path projectDirectory,
+		HarnessSessionTranscripts transcripts)
+	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(process, "process").isNotNull();
 		this.scope = scope;
 		this.process = process;
+		this.projectDirectory = projectDirectory;
+		this.transcripts = transcripts;
 		input = new OutputStreamWriter(process.getOutputStream(), UTF_8);
 		standardError = new HarnessStandardError(process.getErrorStream());
 		// The output reader thread owns Claude's standard output and closes it when the stream ends.
@@ -174,6 +208,8 @@ public final class ClaudeProcess implements HarnessProcess
 				listener.accept(line);
 				LineEffect effect = boundary.accept(line);
 				sessionStatePrinted = boundary.sessionStatePrinted();
+				if (!boundary.sessionId().isEmpty())
+					sessionId = boundary.sessionId();
 				switch (effect)
 				{
 					case TURN_ENDS ->
@@ -402,9 +438,23 @@ public final class ClaudeProcess implements HarnessProcess
 	}
 
 	/**
-	 * Closes input and waits for Claude to exit.
+	 * Returns the root session's native transcript once Claude has reported the session's identifier.
 	 *
-	 * @throws IOException if closing input fails
+	 * @return the transcript, or none if the process keeps no transcripts or Claude has not reported the identifier
+	 */
+	@Override
+	public Optional<Path> sessionTranscript()
+	{
+		String id = sessionId;
+		if (projectDirectory == null || id.isEmpty())
+			return Optional.empty();
+		return Optional.of(projectDirectory.resolve(id + ".jsonl"));
+	}
+
+	/**
+	 * Closes input and waits for Claude to exit, and then copies the session's transcripts if the process keeps them.
+	 *
+	 * @throws IOException if closing input fails or the transcripts cannot be copied
 	 */
 	@Override
 	public void close() throws IOException
@@ -417,6 +467,8 @@ public final class ClaudeProcess implements HarnessProcess
 			HarnessProcessTermination.terminate(process, "Claude");
 			standardError.close();
 			standardError.await();
+			if (transcripts != null)
+				transcripts.copy();
 		}
 	}
 
@@ -466,6 +518,10 @@ public final class ClaudeProcess implements HarnessProcess
 		 * The version in the latest {@code system/init} line, or an empty string if there was none.
 		 */
 		private String claudeVersion = "";
+		/**
+		 * The session identifier in the latest {@code system/init} line, or an empty string if there was none.
+		 */
+		private String sessionId = "";
 
 		/**
 		 * Creates the state of a turn that has just been sent.
@@ -498,6 +554,16 @@ public final class ClaudeProcess implements HarnessProcess
 		String claudeVersion()
 		{
 			return claudeVersion;
+		}
+
+		/**
+		 * Returns the session identifier from the latest {@code system/init} line.
+		 *
+		 * @return the identifier, or an empty string if no {@code system/init} line reported one
+		 */
+		String sessionId()
+		{
+			return sessionId;
 		}
 
 		/**
@@ -557,6 +623,7 @@ public final class ClaudeProcess implements HarnessProcess
 				case "init" ->
 				{
 					claudeVersion = event.path("claude_code_version").asString("");
+					sessionId = event.path("session_id").asString("");
 					if (!sessionStatePrinted)
 						return LineEffect.SESSION_STATE_MISSING;
 				}

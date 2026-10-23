@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.UserRuleTree;
@@ -113,7 +114,7 @@ public final class ClaudeRunner
 		Map<String, String> environment, String model, boolean installCat) throws IOException
 	{
 		return start(artifact, project, null, List.of(), manager, executable, environment, model, "", null, installCat,
-			true, List.of(), List.of(), "");
+			true, List.of(), List.of(), "", false);
 	}
 
 	/**
@@ -136,13 +137,15 @@ public final class ClaudeRunner
 	 * @param deniedReads the files and directories that the session must not read
 	 * @param instructionFilesMode the choice of which instruction files load, such as {@code claude-md}, or an empty
 	 *   string to keep the parent's choice
+	 * @param sessionTranscripts whether Claude persists its session and the run copies the session's transcripts, its
+	 *   subagents' included, into the run's session transcripts directory when the session closes
 	 * @return the live run session
 	 * @throws IOException if startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, boolean includeUserRules, List<Path> readOnlyEvidence,
-		List<Path> deniedReads, String instructionFilesMode) throws IOException
+		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -220,11 +223,20 @@ public final class ClaudeRunner
 				selectedAgent = agent.name();
 			}
 			List<String> command = command(executable, selectedModel, selectedEffort, selectedAgent, plugins, hookResults,
-				readOnlyEvidence);
+				readOnlyEvidence, sessionTranscripts);
 			manager.initialize(run, artifact, project, "claude_stream_json", command);
 			lock = manager.acquireLock(run);
+			Path projectDirectory = null;
+			HarnessSessionTranscripts transcripts = null;
+			if (sessionTranscripts)
+			{
+				// Claude names the root session's transcript after the session, below the directory it names for the worktree
+				projectDirectory = hookResults.resolve(claudeProjectDirectory(worktree.toAbsolutePath().normalize()));
+				transcripts = new HarnessSessionTranscripts(hookResults, run.sessionTranscripts(),
+					name -> name.endsWith(".jsonl"));
+			}
 			ClaudeProcess process = new ClaudeProcess(scope, HarnessProcessStarter.start(command, worktree,
-				isolatedEnvironment, executables));
+				isolatedEnvironment, executables), projectDirectory, transcripts);
 			try
 			{
 				manager.recordHarnessProcess(run, process.pid(), process.startedAt());
@@ -465,7 +477,7 @@ public final class ClaudeRunner
 			requireThat(marketplace, "marketplace").isNotNull();
 			plugins = List.of(marketplace.resolve("plugins/cat"));
 		}
-		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence);
+		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, false);
 	}
 
 	/**
@@ -545,10 +557,12 @@ public final class ClaudeRunner
 	 * @param plugins the directories of the plugins installed in the isolated home
 	 * @param hookResults the hook context directory
 	 * @param readOnlyEvidence executor evidence exposed through added directories
+	 * @param sessionTranscripts whether Claude persists its session, which is what writes the transcripts that the run
+	 *   copies; otherwise Claude keeps no session
 	 * @return the complete harness command
 	 */
 	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
-		Path hookResults, List<Path> readOnlyEvidence)
+		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts)
 	{
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(model, "model").isNotNull();
@@ -558,7 +572,9 @@ public final class ClaudeRunner
 		requireThat(hookResults, "hookResults").isNotNull();
 		List<String> command = new ArrayList<>(List.of(executable, "--print", "--input-format", "stream-json",
 			"--output-format", "stream-json", "--permission-mode", "acceptEdits", "--verbose",
-			"--include-partial-messages", "--no-session-persistence"));
+			"--include-partial-messages"));
+		if (!sessionTranscripts)
+			command.add("--no-session-persistence");
 		for (Path plugin : plugins)
 		{
 			command.add("--add-dir");

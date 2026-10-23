@@ -6,14 +6,19 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.claude.runner.ClaudeProcess.LineEffect;
 import com.holdmyspot.cat.claude.runner.ClaudeProcess.TurnBoundary;
 import com.holdmyspot.cat.claude.runner.ClaudeProcess;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
+import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -520,6 +525,73 @@ public final class ClaudeProcessTest
 
 			requireThat(next.completed(), "completed").isTrue();
 			requireThat(next.assistantResponse(), "assistantResponse").isEqualTo("TWO");
+		}
+	}
+
+	/**
+	 * Verifies that a process asked to keep session transcripts names the root session's transcript once Claude
+	 * reports the session's identifier, not before, and that closing the process copies the root's transcript and its
+	 * subagents' beside each other, and no other file.
+	 *
+	 * @throws IOException if the fixture cannot be written or read, or a turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void copiesSessionTranscriptsOnClose() throws IOException
+	{
+		// Requirement: R-I7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-transcripts-"));
+			Path projectDirectory = Files.createDirectories(root.resolve("home/.claude/projects/-work-project"));
+			Path subagents = Files.createDirectories(projectDirectory.resolve("s/subagents"));
+			Files.writeString(projectDirectory.resolve("s.jsonl"), "{\"root\":true}\n", UTF_8);
+			Files.writeString(subagents.resolve("agent-a.jsonl"), "{\"child\":true}\n", UTF_8);
+			Files.writeString(projectDirectory.resolve("spill.txt"), "context\n", UTF_8);
+			Path copies = root.resolve("artifacts/session-transcripts");
+			FakeHarnessCli claude = new FakeHarnessCli(_ ->
+			{
+			});
+			HarnessSessionTranscripts transcripts = new HarnessSessionTranscripts(projectDirectory.getParent(), copies,
+				name -> name.endsWith(".jsonl"));
+			try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude, projectDirectory,
+				transcripts))
+			{
+				requireThat(process.sessionTranscript().isPresent(), "knownBeforeInit").isFalse();
+				claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
+
+				process.sendTurn("Reply LAUNCHED.");
+
+				requireThat(process.sessionTranscript().orElseThrow(), "transcript").
+					isEqualTo(projectDirectory.resolve("s.jsonl"));
+			}
+
+			try (Stream<Path> files = Files.list(copies))
+			{
+				requireThat(files.map(file -> file.getFileName().toString()).sorted().toList(), "copies").
+					isEqualTo(List.of("agent-a.jsonl", "s.jsonl"));
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a process that was not asked to keep session transcripts names none.
+	 *
+	 * @throws IOException if a turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void namesNoTranscriptUnlessAsked() throws IOException
+	{
+		// Requirement: R-I7
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
+
+			process.sendTurn("Reply LAUNCHED.");
+
+			requireThat(process.sessionTranscript().isPresent(), "known").isFalse();
 		}
 	}
 
