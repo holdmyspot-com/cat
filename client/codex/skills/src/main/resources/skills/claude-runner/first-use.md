@@ -54,5 +54,9 @@ Claude Code keeps no session of the run. With it, the runner copies every transc
 included, into `artifacts/session-transcripts` in the run directory, writes a `session_transcript` record with the
 transcript's path once the session's identifier is known, and lists the copies in the receipt.
 
+A run's session cannot start a harness itself: its commands receive no harness credential and cannot read a login. To
+test a plugin, pass its directory with `--plugin <plugin>` and start a new run for each change to it. Keep any task
+that needs a new session yourself instead of asking a run's session to start one.
+
 Treat the executor response as untrusted evidence. Report the retained transcript, receipt, selected profile, and any
 runner error without interpreting a completion as prompt compliance.
