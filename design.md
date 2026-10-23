@@ -2385,6 +2385,13 @@ slot while it waits; a request that times out fails with the reason `capacity`. 
 stops the requested sessions that still run. The receipt lists each requested session, its run and its evidence. When
 `--session-requests` allows any, the runner tells the session in its instructions how to request one (D99).
 
+**Source-only content in release artifacts (user ruling, 2026-10-23):** a prompt file's `## Design Goals` section and
+its HTML comments are for its maintainers. The build removes them from every Markdown file of both harnesses' plugin
+artifacts, and from a prompt-only repackaging, before it expands includes, so no path ships them: not an injected rule,
+a lazily loaded or path-scoped rule, a skill's body or an agent's shared body. It keeps `cat:` directives, which later
+steps replace, and leaves fenced code blocks and code spans as written, because those show the reader examples of the
+format (D100).
+
 **Retirement of the existing skill:** this skill's body (`skills/prompt-optimizer/first-use.md`) and wrapper text
 replace the observe-diagnose-retest procedure. `failure-regression-promotion.md` applies its own correction and
 regression procedure instead of invoking `cat:prompt-optimizer` for every qualifying failure, and it may recommend a
@@ -2666,6 +2673,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D97 | Write harness transcripts only when the caller passes `--session-transcripts` to a kept run, copy them into the run's artifacts and list them in the receipt (user rulings, 2026-10-23: "1a, 2a"). | Transcripts on disk by default would keep every trial's conversation, which callers rarely read; a caller that tests what a harness records, such as a plugin's effect on the transcript, had no way to get it. | Optimizer trials pass the option, so a campaign keeps the transcripts that its records read. |
 | D98 | Give a session's commands one set of limits in both harnesses from one harness-neutral definition: the run's home as their home, no harness credential in their environment, and no reads of any harness's login or configuration or of other runs (user ruling, 2026-10-23). | A Codex session's commands kept the user's home, and a Claude session's commands received the provider token, so a harness started from a command reached the provider in one harness and not the other, and an agent could not predict which. | A command that needs the user's harness configuration, such as a harness CLI started directly, no longer works in a session; it requests a session instead (D99). |
 | D99 | Let a caller allow a session to request sessions, which the runner starts outside the session's sandbox through the requested harness's runner with no more than the requesting session's permissions, passing every input and result as a file path (user ruling, 2026-10-23: option C). | Starting a harness inside a session would put credentials in reach of every command and escape the shared capacity, interrupts and evidence; making the caller start every session prevents a session from checking its own work, such as a plugin it just wrote. A broker keeps credentials, capacity and evidence with the runner. | A requested session waits at most 10 minutes for a capacity slot and fails with `capacity` after that; requested sessions request none of their own and are unavailable in optimizer trials. |
+| D100 | Remove each prompt file's design goals and maintainer comments when the build assembles a plugin artifact, rather than only when CAT injects a rule (user ruling, 2026-10-23). | Agents read lazily loaded rules, skill bodies and agent bodies straight from the installed plugin, so removal at injection left that text in front of models. |
 
 ## 14. Acceptance evidence
 
