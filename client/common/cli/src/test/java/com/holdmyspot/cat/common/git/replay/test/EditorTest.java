@@ -72,6 +72,10 @@ public final class EditorTest
 
 	/**
 	 * Verifies reviewers can place multiple source commits in one independently declared topic output.
+	 * <p>
+	 * Runtime includes writing and validating the independent discovery, review, scope and placement evidence for
+	 * each refusal before accepting one persisted output with two contributing sources. Those file-backed public
+	 * declaration checks preserve the refusal reasons and final manifest outcomes; no harness or model runs.
 	 *
 	 * @throws IOException if the fixture or replay operations cannot be created
 	 */
