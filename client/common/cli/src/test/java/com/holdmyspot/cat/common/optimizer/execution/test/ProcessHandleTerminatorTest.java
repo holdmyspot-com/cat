@@ -3,15 +3,12 @@ package com.holdmyspot.cat.common.optimizer.execution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator;
 import com.holdmyspot.cat.common.test.ProcessFixture;
 import org.testng.annotations.Test;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -36,19 +33,6 @@ public final class ProcessHandleTerminatorTest
 	}
 
 	/**
-	 * Starts a process that runs until it is terminated.
-	 *
-	 * @param directory the process's working directory
-	 * @param mode the process's behavior
-	 * @return the process
-	 * @throws IOException if the process cannot start
-	 */
-	private static Process start(Path directory, ProcessFixture.Mode mode) throws IOException
-	{
-		return ProcessFixture.builder(mode).directory(directory.toFile()).start();
-	}
-
-	/**
 	 * Returns a process's start time.
 	 *
 	 * @param process the process
@@ -69,23 +53,19 @@ public final class ProcessHandleTerminatorTest
 	public void mismatchedStartTimeIsLeftRunning() throws IOException
 	{
 		// Requirement: R-E11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (Process process = ProcessFixture.builder(ProcessFixture.Mode.CHILD).start())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory("terminator"));
-			try (Process process = start(directory, ProcessFixture.Mode.CHILD))
+			try
 			{
-				try
-				{
-					ProcessHandle handle = process.toHandle();
-					boolean terminated = new ProcessHandleTerminator().terminate(handle.pid(),
-						startedAt(handle).minusSeconds(1));
-					requireThat(terminated, "terminated").isFalse();
-					requireThat(process.isAlive(), "isAlive").isTrue();
-				}
-				finally
-				{
-					process.destroyForcibly();
-				}
+				ProcessHandle handle = process.toHandle();
+				boolean terminated = new ProcessHandleTerminator().terminate(handle.pid(),
+					startedAt(handle).minusSeconds(1));
+				requireThat(terminated, "terminated").isFalse();
+				requireThat(process.isAlive(), "isAlive").isTrue();
+			}
+			finally
+			{
+				process.destroyForcibly();
 			}
 		}
 	}
@@ -104,35 +84,31 @@ public final class ProcessHandleTerminatorTest
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (Process process = ProcessFixture.builder(ProcessFixture.Mode.TREE).start())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory("terminator"));
-			try (Process process = start(directory, ProcessFixture.Mode.TREE))
+			List<ProcessHandle> descendants = List.of();
+			try
 			{
-				List<ProcessHandle> descendants = List.of();
-				try
+				// The Java parent reports readiness after its child has started
+				try (BufferedReader output = process.inputReader(UTF_8))
 				{
-					// The Java parent reports readiness after its child has started
-					try (BufferedReader output = process.inputReader(UTF_8))
-					{
-						requireThat(output.readLine(), "output").isEqualTo("started");
-					}
-					ProcessHandle handle = process.toHandle();
-					descendants = handle.descendants().toList();
-					requireThat(descendants, "descendants").isNotEmpty();
+					requireThat(output.readLine(), "output").isEqualTo("started");
+				}
+				ProcessHandle handle = process.toHandle();
+				descendants = handle.descendants().toList();
+				requireThat(descendants, "descendants").isNotEmpty();
 
-					boolean terminated = new ProcessHandleTerminator().terminate(handle.pid(), startedAt(handle));
-					requireThat(terminated, "terminated").isTrue();
-					handle.onExit().get(WAIT_SECONDS, TimeUnit.SECONDS);
-					for (ProcessHandle descendant : descendants)
-						descendant.onExit().get(WAIT_SECONDS, TimeUnit.SECONDS);
-				}
-				finally
-				{
-					// A child that outlived the parent is no longer its descendant
-					descendants.forEach(ProcessHandle::destroyForcibly);
-					process.destroyForcibly();
-				}
+				boolean terminated = new ProcessHandleTerminator().terminate(handle.pid(), startedAt(handle));
+				requireThat(terminated, "terminated").isTrue();
+				handle.onExit().get(WAIT_SECONDS, TimeUnit.SECONDS);
+				for (ProcessHandle descendant : descendants)
+					descendant.onExit().get(WAIT_SECONDS, TimeUnit.SECONDS);
+			}
+			finally
+			{
+				// A child that outlived the parent is no longer its descendant
+				descendants.forEach(ProcessHandle::destroyForcibly);
+				process.destroyForcibly();
 			}
 		}
 	}
@@ -159,17 +135,13 @@ public final class ProcessHandleTerminatorTest
 	public void exitedProcessIsNotTerminated() throws IOException, InterruptedException
 	{
 		// Requirement: R-E11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (Process process = ProcessFixture.builder(ProcessFixture.Mode.CHILD).start())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory("terminator"));
-			try (Process process = start(directory, ProcessFixture.Mode.CHILD))
-			{
-				ProcessHandle handle = process.toHandle();
-				Instant startedAt = startedAt(handle);
-				process.destroy();
-				requireThat(process.waitFor(WAIT_SECONDS, TimeUnit.SECONDS), "exited").isTrue();
-				requireThat(new ProcessHandleTerminator().terminate(handle.pid(), startedAt), "terminated").isFalse();
-			}
+			ProcessHandle handle = process.toHandle();
+			Instant startedAt = startedAt(handle);
+			process.destroy();
+			requireThat(process.waitFor(WAIT_SECONDS, TimeUnit.SECONDS), "exited").isTrue();
+			requireThat(new ProcessHandleTerminator().terminate(handle.pid(), startedAt), "terminated").isFalse();
 		}
 	}
 }
