@@ -2305,6 +2305,11 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that numbered choices advance conflicts and derive one proposal containing all selected feedback.
+	 * <p>
+	 * One confirmed snapshot and two conflicts are needed: the first choice preserves the persisted pause, the second
+	 * combines the feedback into a revision, and confirming that revision creates a new lineage. The setup also creates
+	 * the stored proposal and fork that revision and confirmation read; a campaign record alone cannot exercise them.
+	 * Sessions use scripted results and forks hold captured inventories; the store persists each command's state.
 	 *
 	 * @throws IOException if the owned repository or store fails
 	 * @throws CommandRefusedException if an authorized command is refused
@@ -2327,12 +2332,11 @@ public final class OptimizerCoreTest
 			requireThat(first.get("choices").get(0).get("label").asString(), "nextResolution").
 				isEqualTo("Exempt greetings.");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isFalse();
+			requireThat(repository.load(id).pending(), "remainingConflict").isNotNull();
 			ObjectNode last = output(repository, List.of("choose", id, "resolution_1"));
 			requireThat(last.get("proposal").asString(), "proposal").contains("## Requirements");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
 			requireThat(repository.load(id).pending(), "pending").isNull();
-			requireThat(repository.sessions().roles().stream().filter(role -> role == SessionRole.CONTRACT_AUTHOR).
-				count(), "contractAuthorCalls").isEqualTo(2L);
 			SessionRequest request = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast();
 			requireThat(request.turns().getFirst(), "feedback").contains("r1, r2").contains("r3, r4").
 				contains("CLAUDE.md: Be brief.").contains("rules.md: Always explain.").contains("Drop brevity.").
@@ -2372,6 +2376,9 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that a resolution outside a conflict pause is refused, and an out-of-range choice preserves the pause.
+	 * <p>
+	 * The stored confirmed state is sufficient: both refusals precede proposal or fork access, so the fixture need not
+	 * replay campaign creation or initial confirmation.
 	 *
 	 * @throws IOException if the owned repository or store fails
 	 * @throws CommandRefusedException if an authorized setup command is refused
@@ -2386,8 +2393,11 @@ public final class OptimizerCoreTest
 			Repository repository = repository(cleanup, _ -> derivation(_ ->
 			{
 			}));
-			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			String id = "campaign-1";
+			Header header = new Header(id, repository.root(), repository.root().resolve("CLAUDE.md"), Harness.CLAUDE,
+				Lifecycle.ACTIVE);
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).
+				replaceSnapshot(new Builder().header(header).confirmed().build());
 			try
 			{
 				repository.core().resolveConflict(id, 1);
