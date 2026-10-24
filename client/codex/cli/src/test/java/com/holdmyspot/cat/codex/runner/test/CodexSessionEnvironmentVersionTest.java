@@ -85,6 +85,8 @@ public final class CodexSessionEnvironmentVersionTest
 					forced_login_method = "api"
 					model = "gpt-6-sol"
 					model_reasoning_effort = "medium"
+					project_doc_fallback_filenames = ["GUIDE.md", "TEAM.md"]
+					project_doc_max_bytes = 16384
 					approval_policy = "never"
 
 					[sandbox_workspace_write]

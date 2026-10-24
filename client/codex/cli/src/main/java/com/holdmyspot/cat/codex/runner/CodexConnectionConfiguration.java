@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.TreeMap;
@@ -23,8 +24,13 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
+import tools.jackson.dataformat.toml.TomlMapper;
+
 /**
- * Copies the connection settings needed by an isolated Codex process without inheriting host customization state.
+ * Copies connection and project instruction settings for an isolated Codex process.
  */
 public final class CodexConnectionConfiguration
 {
@@ -43,8 +49,58 @@ public final class CodexConnectionConfiguration
 		"(?m)^trusted_hash\\s*=\\s*\\\"(sha256:[0-9a-f]{64})\\\"\\s*$");
 
 	/**
-	 * Copies supported top-level connection settings from a host Codex configuration and disables Codex's startup update
-	 * check in the isolated configuration.
+	 * Returns the parent's explicitly configured project instruction settings as TOML. An absent setting stays absent;
+	 * configured filename lists and byte limits retain their values regardless of their original TOML layout.
+	 *
+	 * @param source the host configuration file
+	 * @return the configured instruction settings, or empty when none are set
+	 * @throws NullPointerException if {@code source} is null
+	 * @throws IOException if the configuration cannot be read or parsed
+	 */
+	public static Optional<String> instructionSettings(Path source) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
+		if (!Files.isRegularFile(source))
+			return Optional.empty();
+		String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		return instructionSettings(source, configuration);
+	}
+
+	/**
+	 * Extracts the explicitly configured instruction settings from an already bounded host configuration.
+	 *
+	 * @param source the source file, named when parsing fails
+	 * @param configuration the host configuration
+	 * @return the configured instruction settings, or empty when none are set
+	 * @throws IOException if the configuration cannot be parsed
+	 */
+	private static Optional<String> instructionSettings(Path source, String configuration) throws IOException
+	{
+		assert source != null;
+		assert configuration != null;
+		try
+		{
+			TomlMapper mapper = TomlMapper.builder().build();
+			JsonNode values = mapper.readTree(configuration);
+			ObjectNode selected = mapper.createObjectNode();
+			for (String name : List.of("project_doc_fallback_filenames", "project_doc_max_bytes"))
+			{
+				if (values.has(name))
+					selected.set(name, values.get(name));
+			}
+			if (selected.isEmpty())
+				return Optional.empty();
+			return Optional.of(mapper.writeValueAsString(selected));
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("Cannot parse Codex instruction settings from " + source, e);
+		}
+	}
+
+	/**
+	 * Copies supported connection and project instruction settings and disables startup update checks in the isolated
+	 * configuration.
 	 *
 	 * @param source the host configuration file
 	 * @param destination the isolated configuration file
@@ -56,8 +112,8 @@ public final class CodexConnectionConfiguration
 	}
 
 	/**
-	 * Copies supported connection settings and makes the verified dependency caches available to nested shell
-	 * commands.
+	 * Copies supported connection and project instruction settings and makes verified dependency caches available to
+	 * shell commands.
 	 *
 	 * <p>
 	 * Codex starts its own sandboxed shell processes. Passing a cache variable to the app server alone does not make
@@ -78,9 +134,9 @@ public final class CodexConnectionConfiguration
 	}
 
 	/**
-	 * Copies supported connection settings, makes the verified dependency caches available to nested shell commands
-	 * and limits the tokens that the session keeps of each tool output. On Windows, the configuration prefers Codex's MXC
-	 * sandbox where the system offers it.
+	 * Copies supported connection and project instruction settings, exposes verified dependency caches to shell
+	 * commands and limits each tool output's retained tokens. On Windows, it prefers Codex's MXC sandbox where the
+	 * system offers it.
 	 *
 	 * @param source the host configuration file
 	 * @param destination the isolated configuration file
@@ -129,6 +185,7 @@ public final class CodexConnectionConfiguration
 		if (Files.isRegularFile(source))
 		{
 			String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+			instructionSettings(source, configuration).ifPresent(copied::append);
 			for (String line : configuration.lines().toList())
 			{
 				String trimmed = line.stripLeading();

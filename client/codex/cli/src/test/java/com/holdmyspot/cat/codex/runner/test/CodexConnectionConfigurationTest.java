@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.codex.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.common.Platform;
@@ -11,13 +12,151 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
  * Tests {@link CodexConnectionConfiguration}.
  */
 public final class CodexConnectionConfigurationTest
 {
+	/**
+	 * Returns parent configurations and the instruction values that an isolated session must receive. Null expected
+	 * values mean the corresponding setting is absent.
+	 *
+	 * @return the parent configurations, fallback filename lists and byte limits
+	 */
+	@DataProvider
+	public Object[][] projectInstructionSettings()
+	{
+		return new Object[][]
+		{
+			{"", null, null},
+			{"project_doc_fallback_filenames = []\nproject_doc_max_bytes = 0\n", List.of(), 0L},
+			{"""
+				project_doc_fallback_filenames = [
+				  'GUIDE.md',
+				  'team "notes".md', # retain these filenames
+				]
+				project_doc_max_bytes = 32_768
+				""", List.of("GUIDE.md", "team \"notes\".md"), 32_768L},
+			{"""
+				"project_doc_fallback_filenames" = ['RULES.md']
+				"project_doc_max_bytes" = 4096
+				[other]
+				project_doc_max_bytes = 999
+				""", List.of("RULES.md"), 4096L},
+			{"""
+				[other]
+				project_doc_fallback_filenames = ['wrong.md']
+				project_doc_max_bytes = 100
+				""", null, null}
+		};
+	}
+
+	/**
+	 * Verifies that isolated sessions inherit the parent's top-level instruction filename fallbacks and byte limits,
+	 * retaining explicit empty and zero values while leaving unspecified settings absent.
+	 *
+	 * @param configuration the parent's configuration
+	 * @param filenames the expected fallback filenames, or null when unspecified
+	 * @param maximumBytes the expected byte limit, or null when unspecified
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "projectInstructionSettings")
+	public void inheritsProjectInstructionSettings(String configuration, List<String> filenames, Long maximumBytes)
+		throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-instructions-"));
+			Path source = Files.writeString(root.resolve("host.toml"), configuration);
+			Path destination = root.resolve("isolated/config.toml");
+
+			CodexConnectionConfiguration.copy(source, destination);
+
+			JsonNode result = TomlMapper.builder().build().readTree(Files.readString(destination));
+			requireThat(result.has("project_doc_fallback_filenames"), "fallbacksPresent").isEqualTo(filenames != null);
+			if (filenames != null)
+			{
+				List<String> actual = result.get("project_doc_fallback_filenames").values().stream().
+					map(JsonNode::asString).toList();
+				requireThat(actual, "fallbackFilenames").isEqualTo(filenames);
+			}
+			requireThat(result.has("project_doc_max_bytes"), "limitPresent").isEqualTo(maximumBytes != null);
+			if (maximumBytes != null)
+				requireThat(result.get("project_doc_max_bytes").asLong(), "maximumBytes").isEqualTo(maximumBytes);
+		}
+	}
+
+	/**
+	 * Verifies that a malformed parent configuration produces a source-specific diagnostic before an isolated
+	 * configuration is written.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void refusesMalformedInstructionConfiguration() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-instructions-"));
+			Path source = Files.writeString(root.resolve("host.toml"), "project_doc_fallback_filenames = [\n");
+			Path destination = root.resolve("isolated/config.toml");
+
+			IOException failure = expectThrows(IOException.class, () ->
+				CodexConnectionConfiguration.copy(source, destination));
+
+			requireThat(failure.getMessage(), "diagnostic").contains(source.toString());
+			requireThat(failure.getCause(), "cause").isNotNull();
+			requireThat(Files.exists(destination), "configurationWritten").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that loader identity includes explicitly configured instruction values, ignores unrelated host settings
+	 * and TOML layout, and observes a later change to the configured values.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void identifiesConfiguredInstructionValues() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-instruction-identity-"));
+			Path source = root.resolve("host.toml");
+			requireThat(CodexConnectionConfiguration.instructionSettings(source).isEmpty(), "missingSettings").isTrue();
+			Files.writeString(source, """
+				project_doc_max_bytes = 16_384
+				project_doc_fallback_filenames = ['GUIDE.md']
+				model = 'first'
+				""");
+			Optional<String> original = CodexConnectionConfiguration.instructionSettings(source);
+			requireThat(original.isPresent(), "configuredSettings").isTrue();
+
+			Files.writeString(source, """
+				model = 'second'
+				"project_doc_fallback_filenames" = [
+				  "GUIDE.md",
+				]
+				"project_doc_max_bytes" = 16384
+				""");
+			requireThat(CodexConnectionConfiguration.instructionSettings(source), "equivalentSettings").
+				isEqualTo(original);
+
+			Files.writeString(source, "project_doc_max_bytes = 16385\nproject_doc_fallback_filenames = ['GUIDE.md']\n");
+			requireThat(CodexConnectionConfiguration.instructionSettings(source), "changedSettings").
+				isNotEqualTo(original);
+
+			Files.writeString(source, "model = 'third'\n");
+			requireThat(CodexConnectionConfiguration.instructionSettings(source).isEmpty(), "unrelatedSettings").isTrue();
+		}
+	}
+
 	/**
 	 * Verifies an isolated Codex configuration retains connection settings but excludes host customizations.
 	 *

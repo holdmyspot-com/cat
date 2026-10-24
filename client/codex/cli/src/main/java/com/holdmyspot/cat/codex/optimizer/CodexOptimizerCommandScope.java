@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeAccess;
 import com.holdmyspot.cat.codex.CodexSessionHarness;
+import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeSecrets;
 
 import java.io.IOException;
@@ -151,10 +152,10 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	}
 
 	@Override
-	protected Optional<String> userLoaderSettings()
+	protected Optional<String> userLoaderSettings() throws IOException
 	{
 		ensureOpen();
-		return Optional.empty();
+		return CodexConnectionConfiguration.instructionSettings(configurationDirectory.resolve("config.toml"));
 	}
 
 	/**

@@ -416,7 +416,8 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Writes a file and the directories above it.
+	 * Writes a placeholder file and the directories above it. TOML files receive an empty document; other files
+	 * receive a JSON object.
 	 *
 	 * @param file the file
 	 * @throws IOException if the file cannot be written
@@ -424,7 +425,10 @@ public abstract class SessionCommandLimitsContract
 	private static void write(Path file) throws IOException
 	{
 		Files.createDirectories(file.getParent());
-		Files.writeString(file, "{}");
+		String content = "{}";
+		if (file.getFileName().toString().endsWith(".toml"))
+			content = "";
+		Files.writeString(file, content);
 	}
 
 	/**
