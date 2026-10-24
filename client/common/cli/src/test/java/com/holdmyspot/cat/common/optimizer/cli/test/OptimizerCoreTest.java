@@ -1993,6 +1993,10 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that confirmation refuses the proposal format whose contract groups its prompt tests into categories.
+	 * <p>
+	 * The test writes a current proposal through the public start operation, changes only its stored version marker,
+	 * and confirms through the public reader. The filesystem and validation work that creates this input can exceed
+	 * one second during a parallel build.
 	 *
 	 * @throws IOException if the proposal file cannot be written or its obsolete format is refused
 	 * @throws CommandRefusedException if the project cannot start a campaign
@@ -2470,6 +2474,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that a described scope without described cells is refused and confirms nothing, and that
 	 * {@code confirm} without a certification scope freezes the weakest cell only with the contract.
+	 * <p>
+	 * One stored proposal is used for the refused described scope and the successful command with no scope argument.
+	 * Creating that proposal and persisting the resulting confirmation can exceed one second during a parallel
+	 * build; both commands are needed to distinguish refusal from the default choice.
 	 */
 	@Test
 	public void confirmDefaultsToWeakestCell() throws Exception
@@ -2514,6 +2522,10 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that {@code confirm} freezes the contract and that the incumbent's prompt is staged afterwards.
+	 * <p>
+	 * Public start and confirmation create the stored proposal, captured fork and incumbent overlay before the test
+	 * stages and inspects the prompt. This filesystem and validation work can exceed one second during a parallel
+	 * build; a confirmation flag alone would not prove that the confirmed prompt can be staged.
 	 */
 	@Test
 	public void confirmFreezesContract() throws Exception
@@ -3506,6 +3518,11 @@ public final class OptimizerCoreTest
 	 * Verifies that a revision after confirmation that lists a derived source the fork does not hold records it and
 	 * reruns its guard pilot, leaves the campaign's incumbent alone until the user confirms, and that confirming moves
 	 * the incumbent onto the larger fork in a new lineage.
+	 * <p>
+	 * The test needs an initial confirmation, a newly discovered file, a revision and a second confirmation to inspect
+	 * both the preserved incumbent and its replacement. Scripted pilot sessions supply the observations, while the
+	 * commands persist the proposal and expanded fork. That filesystem and validation work can exceed one second
+	 * during a parallel build.
 	 */
 	@Test
 	public void confirmedRevisionRecordsNewDerivedSource() throws Exception
@@ -4687,6 +4704,10 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies exact formatting of several conflict groups, including three identifiers, with links listed first.
+	 * <p>
+	 * The stored proposal contains two conflict groups, and one provider case also adds a broken link. The public
+	 * start and confirmation read that proposal and preserve the actual campaign file on refusal. Creating and
+	 * validating these inputs can exceed one second during a parallel build.
 	 *
 	 * @param brokenLink whether a broken symbolic link also blocks confirmation
 	 * @throws IOException if the owned repository cannot be read or written
@@ -4764,6 +4785,10 @@ public final class OptimizerCoreTest
 	 * Verifies that confirmation is refused when a recorded prompt test's {@code workspace/} links to a prompt file under
 	 * another name, whose frozen copy would stand in for the candidate's version that every trial receives, and that the
 	 * refusal names the linked file.
+	 * <p>
+	 * The input includes a recorded scenario and an actual workspace link to the prompt. Public start records that
+	 * scenario before confirmation checks its captured workspace. Preparing and validating these files can exceed
+	 * one second during a parallel build; an ordinary copied file would not exercise the prompt-link refusal.
 	 *
 	 * @throws IOException if the project cannot be written
 	 * @throws CommandRefusedException for the expected confirmation refusal
