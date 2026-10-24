@@ -3177,6 +3177,8 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that when CAT is a trial plugin, the project rules count as files that trials load from the project, so
 	 * the proposal never warns that a rule is a prompt file that no trial plugin holds a copy of.
+	 * Producing the proposal runs the guard pilot with scripted sessions; one project rule and one trial plugin
+	 * exercise the distinction between project instructions and plugin-owned prompt files.
 	 *
 	 * @throws CommandRefusedException if a command is refused
 	 * @throws IOException if a file cannot be read or written
@@ -3369,6 +3371,8 @@ public final class OptimizerCoreTest
 	 * Verifies that the guard pilot, which runs before confirmation, does not give its trials the project's ignored
 	 * files, which reach a trial only through a link in its prompt test's workspace, and that a revision after
 	 * confirmation reuses every pilot because the control trials see the same files.
+	 * The proposal, confirmation and unchanged revision are required to observe both the pilot's input files and
+	 * reuse across a revision. Scripted sessions supply the trials without launching a harness.
 	 */
 	@Test
 	public void pilotLeavesOutIgnoredFiles() throws Exception
@@ -3394,8 +3398,9 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that presenting a proposal records its derived sources that Git ignores in the fork before the guard
-	 * pilot runs, so that confirmation records nothing more.
+	 * Verifies that presenting a proposal records its derived sources that Git ignores in the fork and that
+	 * confirmation preserves the recorded files. Starting the proposal includes the guard pilot because this test
+	 * exercises the command's transition from a presented proposal to a confirmed campaign.
 	 */
 	@Test
 	public void presentingRecordsDerivedSources() throws Exception
@@ -3411,11 +3416,12 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			requireThat(fork.inventory().entries().keySet(), "held").contains(Path.of("extra.local.md"));
-			List<Set<Path>> selections = repository.forks().selections();
+			FileInventory recorded = fork.inventory();
 
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 
-			requireThat(repository.forks().selections(), "selectionsAfterConfirmation").isEqualTo(selections);
+			ForkView confirmed = repository.forks().open(repository.root(), repository.directory(id));
+			requireThat(confirmed.inventory(), "recordedFilesAfterConfirmation").isEqualTo(recorded);
 		}
 	}
 
@@ -4078,6 +4084,8 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that a new campaign's proposal reports the target's history like {@code status} does: the latest record
 	 * of each harness and the earlier records.
+	 * Two certification records are needed to distinguish the latest record from earlier history. Starting the
+	 * proposal includes the guard pilot with scripted sessions before the command presents that history.
 	 */
 	@Test
 	public void proposalListsEarlierCertifications() throws Exception

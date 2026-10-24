@@ -329,6 +329,8 @@ public final class ClaudeSessionsContractTest
 	/**
 	 * Verifies that each role starts an independent session, with its own transcript and effects directory, and
 	 * replies with the root session's messages from its recorded role session.
+	 * One recorded reply per role exercises every role's request and response handling through the session adapter.
+	 * The in-memory harness bridge replays these replies without launching Claude or making a model request.
 	 *
 	 * @throws IOException          if a fixture cannot be created or read
 	 * @throws InterruptedException if the test is interrupted
