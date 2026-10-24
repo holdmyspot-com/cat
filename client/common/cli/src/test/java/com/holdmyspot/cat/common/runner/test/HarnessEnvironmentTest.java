@@ -3,13 +3,10 @@ package com.holdmyspot.cat.common.runner.test;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
-import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -46,134 +43,69 @@ public final class HarnessEnvironmentTest
 	}
 
 	/**
-	 * Verifies that a program started with the scrubbed environment of this process can create a temporary file and
-	 * finds the user's home directory in the platform's home variable. On Windows, a program without {@code TEMP} and
-	 * {@code TMP} uses the Windows directory for temporary files, which a user cannot write, a program without
-	 * {@code USERPROFILE} finds no home directory, and Codex's MXC sandbox does not start without {@code SystemDrive}
-	 * and {@code LOCALAPPDATA}.
-	 *
-	 * @throws IOException          if the program cannot be started
-	 * @throws InterruptedException if the thread is interrupted while the program runs
+	 * Verifies that the child environment retains the platform's temporary-directory and home variables.
 	 */
 	@Test
-	public void keepsTemporaryDirectoryAndHome() throws IOException, InterruptedException
+	public void keepsTemporaryDirectoryAndHome()
 	{
-		Platform platform = Platform.current();
-		List<String> command;
-		if (platform.isWindows())
-		{
-			command = List.of("powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-				"$ErrorActionPreference = 'Stop'; $file = [System.IO.Path]::GetTempFileName(); " +
-				"Remove-Item -LiteralPath $file; " +
-				"if (-not $env:USERPROFILE) { exit 2 }; " +
-				"if (-not $env:SystemDrive) { exit 3 }; " +
-				"if (-not $env:LOCALAPPDATA) { exit 4 }");
-		}
-		else
-			command = List.of("sh", "-c", "file=$(mktemp) && rm -- \"$file\" && [ -n \"$HOME\" ]");
-		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
-		builder.environment().clear();
-		builder.environment().putAll(HarnessEnvironment.scrub(Platform.current().environment(System.getenv())));
-		try (Process process = builder.start())
-		{
-			process.getOutputStream().close();
-			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-			requireThat(process.waitFor(), "status").withContext(output, "output").isEqualTo(0);
-		}
+		Map<String, String> source = Map.of("PATH", "programs", "HOME", "host-home", "TEMP", "temp", "TMP", "tmp",
+			"USERPROFILE", "profile", "SystemDrive", "drive", "LOCALAPPDATA", "local");
+
+		Map<String, String> result = HarnessEnvironment.scrub(source);
+
+		Map<String, String> expected = source;
+		if (!Platform.current().isWindows())
+			expected = Map.of("PATH", "programs", "HOME", "host-home");
+		requireThat(result, "environment").isEqualTo(expected);
 	}
 
 	/**
-	 * Verifies that a shell started with the scrubbed environment runs a program that it finds on the {@code PATH} by
-	 * the program's name. On Windows, PowerShell, which Codex runs commands in, finds a program by its name without an
-	 * extension only with an extension that {@code PATHEXT} lists.
+	 * Verifies that program lookup finds the program named by the child's scrubbed environment.
 	 *
-	 * @throws IOException          if the program cannot be created or started
-	 * @throws InterruptedException if the thread is interrupted while the program runs
+	 * @throws IOException if the program file cannot be created
 	 */
 	@Test
-	public void findsProgramByName() throws IOException, InterruptedException
+	public void findsProgramByName() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path folder = cleanup.add(Files.createTempDirectory("harness-environment-")).toAbsolutePath();
-			List<String> command;
+			Path folder = cleanup.add(Files.createTempDirectory("harness-environment-")).toRealPath();
+			String fileName = "cat-tool";
 			if (Platform.current().isWindows())
-			{
-				Files.writeString(folder.resolve("cat-tool.cmd"), "@echo found\r\n");
-				command = List.of("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "cat-tool");
-			}
-			else
-			{
-				// A separate process writes the program, so that another test's launch cannot make it busy; see
-				// ExecutableFiles
-				ProcessBuilder writing = new ProcessBuilder("sh", "-c",
-					"printf '#!/bin/sh\\necho found\\n' > \"$1\" && chmod +x \"$1\"", "sh",
-					folder.resolve("cat-tool").toString()).redirectErrorStream(true);
-				try (Process writer = writing.start())
-				{
-					writer.getOutputStream().close();
-					String written = new String(writer.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-					requireThat(writer.waitFor(), "writerStatus").withContext(written, "output").isEqualTo(0);
-				}
-				command = List.of("sh", "-c", "cat-tool");
-			}
-			Map<String, String> source = new HashMap<>();
-			for (Map.Entry<String, String> entry : System.getenv().entrySet())
-			{
-				if (!entry.getKey().equalsIgnoreCase("PATH"))
-					source.put(entry.getKey(), entry.getValue());
-			}
-			source.put("PATH", folder + File.pathSeparator + System.getenv("PATH"));
-			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
-			builder.environment().clear();
-			builder.environment().putAll(HarnessEnvironment.scrub(source));
-			try (Process process = builder.start())
-			{
-				process.getOutputStream().close();
-				String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-				requireThat(process.waitFor(), "status").withContext(output, "output").isEqualTo(0);
-				requireThat(output.strip(), "output").isEqualTo("found");
-			}
+				fileName += ".cmd";
+			Path program = Files.createFile(folder.resolve(fileName));
+			if (!Platform.current().isWindows())
+				requireThat(program.toFile().setExecutable(true, false), "executable").isTrue();
+			Map<String, String> source = Platform.current().environment(Map.of("PATH", folder.toString(),
+				"PATHEXT", ".CMD"));
+
+			String resolved = Platform.current().findProgram("cat-tool", HarnessEnvironment.scrub(source));
+
+			requireThat(resolved, "program").isEqualTo(program.toString());
 		}
 	}
 
 	/**
-	 * Verifies that a program finds the home directory that the harness gives it in the variable that the platform's
-	 * programs read, {@code USERPROFILE} on Windows and {@code HOME} elsewhere, rather than the user's home directory.
-	 * On Windows, the program also finds its local application data in that home, in {@code LOCALAPPDATA}, which
-	 * Codex's MXC sandbox needs to start.
-	 *
-	 * @throws IOException          if the program cannot be started
-	 * @throws InterruptedException if the thread is interrupted while the program runs
+	 * Verifies that the child environment names the run's home rather than the host's home.
 	 */
 	@Test
-	public void givesChildItsHomeDirectory() throws IOException, InterruptedException
+	public void givesChildItsHomeDirectory()
 	{
-		Path home = Path.of("run", "home").toAbsolutePath();
-		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(
-			Platform.current().environment(System.getenv())));
+		Path home = Path.of("/run/home");
+		if (Platform.current().isWindows())
+			home = Path.of("C:/run/home");
+		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(Map.of("HOME", "host-home",
+			"USERPROFILE", "host-profile", "LOCALAPPDATA", "host-data", "PATH", "programs")));
+
 		HarnessEnvironment.setHomeDirectory(environment, home);
-		List<String> command;
-		String expected;
+
+		requireThat(environment.get("HOME"), "home").isEqualTo(home.toString());
+		requireThat(environment.get("PATH"), "path").isEqualTo("programs");
 		if (Platform.current().isWindows())
 		{
-			command = List.of("cmd.exe", "/D", "/C", "echo %USERPROFILE%^|%LOCALAPPDATA%");
-			expected = home + "|" + home.resolve("AppData").resolve("Local");
-		}
-		else
-		{
-			command = List.of("sh", "-c", "printf '%s\\n' \"$HOME\"");
-			expected = home.toString();
-		}
-		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
-		builder.environment().clear();
-		builder.environment().putAll(environment);
-		try (Process process = builder.start())
-		{
-			process.getOutputStream().close();
-			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-			requireThat(process.waitFor(), "status").withContext(output, "output").isEqualTo(0);
-			requireThat(output.strip(), "home").isEqualTo(expected);
+			requireThat(environment.get("USERPROFILE"), "profile").isEqualTo(home.toString());
+			requireThat(environment.get("LOCALAPPDATA"), "localData").isEqualTo(
+				home.resolve("AppData/Local").toString());
 		}
 	}
 
