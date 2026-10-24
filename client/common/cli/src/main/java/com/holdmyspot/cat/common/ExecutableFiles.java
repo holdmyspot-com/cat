@@ -34,6 +34,12 @@ public final class ExecutableFiles
 			{
 				return executables.run(start);
 			}
+
+			@Override
+			public ExecutableFiles create(Pause pause, Clock clock, ProcessLauncher launcher)
+			{
+				return new ExecutableFiles(pause, clock, launcher);
+			}
 		});
 	}
 
@@ -47,6 +53,7 @@ public final class ExecutableFiles
 	private static final Duration RETRY_INTERVAL = Duration.ofMillis(25);
 	private final Pause pause;
 	private final Clock clock;
+	private final ProcessLauncher launcher;
 
 	/**
 	 * Returns an instance that sleeps between attempts and measures its limit with the system clock.
@@ -69,10 +76,26 @@ public final class ExecutableFiles
 	 */
 	public ExecutableFiles(Pause pause, Clock clock)
 	{
+		this(pause, clock, ProcessBuilder::start);
+	}
+
+	/**
+	 * Creates an instance with a controlled process launcher.
+	 *
+	 * @param pause    waits between attempts
+	 * @param clock    measures how long a start has been trying
+	 * @param launcher starts the configured process on each attempt
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	private ExecutableFiles(Pause pause, Clock clock, ProcessLauncher launcher)
+	{
 		requireThat(pause, "pause").isNotNull();
 		requireThat(clock, "clock").isNotNull();
+		requireThat(launcher, "launcher").isNotNull();
+
 		this.pause = pause;
 		this.clock = clock;
+		this.launcher = launcher;
 	}
 
 	/**
@@ -86,7 +109,7 @@ public final class ExecutableFiles
 	public Process run(ProcessBuilder builder) throws IOException
 	{
 		requireThat(builder, "builder").isNotNull();
-		return run(builder::start);
+		return run(() -> launcher.start(builder));
 	}
 
 	/**
@@ -135,6 +158,22 @@ public final class ExecutableFiles
 	{
 		String message = failure.getMessage();
 		return message != null && (message.contains("ETXTBSY") || message.contains("Text file busy"));
+	}
+
+	/**
+	 * Starts a configured process on one attempt.
+	 */
+	@FunctionalInterface
+	public interface ProcessLauncher
+	{
+		/**
+		 * Starts the configured process.
+		 *
+		 * @param builder the configured process builder
+		 * @return the started process
+		 * @throws IOException if the process cannot be started
+		 */
+		Process start(ProcessBuilder builder) throws IOException;
 	}
 
 	/**

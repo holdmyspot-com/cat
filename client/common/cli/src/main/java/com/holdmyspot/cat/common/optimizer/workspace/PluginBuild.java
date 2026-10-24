@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.workspace;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 
@@ -37,17 +38,21 @@ public final class PluginBuild
 
 	/**
 	 * Runs a build command in a worktree and waits for it to end. A program that names a directory is resolved
-	 * against the worktree; any other program is looked up on the {@code PATH}.
+	 * against the worktree; any other program is looked up on the {@code PATH}. A transient text-file-busy start
+	 * failure is retried through {@link ExecutableFiles}.
 	 *
-	 * @param worktree the directory that the command runs in
-	 * @param build the build
+	 * @param executables runs the build program
+	 * @param worktree    the directory that the command runs in
+	 * @param build       the build
 	 * @return how the command ended
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the command cannot start or its output cannot be read
+	 * @throws IOException          if the command cannot start or its output cannot be read
 	 * @throws InterruptedException if the thread is interrupted while it waits; the command is then destroyed
 	 */
-	public static Result run(Path worktree, TrialPlugin.Build build) throws IOException, InterruptedException
+	public static Result run(ExecutableFiles executables, Path worktree, TrialPlugin.Build build)
+		throws IOException, InterruptedException
 	{
+		requireThat(executables, "executables").isNotNull();
 		requireThat(worktree, "worktree").isNotNull();
 		requireThat(build, "build").isNotNull();
 		ProcessBuilder builder = new ProcessBuilder().directory(worktree.toFile()).redirectErrorStream(true);
@@ -57,7 +62,7 @@ public final class PluginBuild
 			program = worktree.resolve(program).toString();
 		command.set(0, Platform.current().findProgram(program, builder.environment()));
 		// Closing the process destroys it, so a failure or an interrupt does not leave the build running
-		try (Process process = builder.command(command).start())
+		try (Process process = executables.run(builder.command(command)))
 		{
 			process.getOutputStream().close();
 			String tail = tail(process.getInputStream());

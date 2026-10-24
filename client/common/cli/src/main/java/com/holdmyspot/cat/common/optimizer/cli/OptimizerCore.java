@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
@@ -166,6 +167,7 @@ public final class OptimizerCore implements Core
 	 */
 	private static final int LOADER_LINE_CAPACITY = 128;
 	private final AbstractOptimizerCommandScope scope;
+	private final ExecutableFiles executables;
 	private final ProposalSchema schema;
 	/**
 	 * The directory that holds each campaign of another session that this command reads, by the campaign's
@@ -176,13 +178,16 @@ public final class OptimizerCore implements Core
 	/**
 	 * Creates the core.
 	 *
-	 * @param scope the command's scope
-	 * @throws NullPointerException if {@code scope} is null
+	 * @param scope       the command's scope
+	 * @param executables runs trial plugin build programs
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public OptimizerCore(AbstractOptimizerCommandScope scope)
+	public OptimizerCore(AbstractOptimizerCommandScope scope, ExecutableFiles executables)
 	{
 		requireThat(scope, "scope").isNotNull();
+		requireThat(executables, "executables").isNotNull();
 		this.scope = scope;
+		this.executables = executables;
 		this.schema = new ProposalSchema(scope.json());
 	}
 
@@ -946,7 +951,7 @@ public final class OptimizerCore implements Core
 			PluginBuild.Result result;
 			try
 			{
-				result = PluginBuild.run(workspace.worktree(), build);
+				result = PluginBuild.run(executables, workspace.worktree(), build);
 			}
 			catch (IOException e)
 			{

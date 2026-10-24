@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
+import com.holdmyspot.cat.common.ExecutableFiles;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
@@ -103,7 +104,7 @@ public final class PromptOptimizerCli
 		requireThat(args, "args").isNotNull();
 		requireThat(zone, "zone").isNotNull();
 		requireThat(out, "out").isNotNull();
-		return new Commands(new OptimizerCore(scope), scope.json(), zone).execute(args, out);
+		return new Commands(new OptimizerCore(scope, ExecutableFiles.sleeping()), scope.json(), zone).execute(args, out);
 	}
 
 	/**

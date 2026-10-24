@@ -2,15 +2,22 @@ package com.holdmyspot.cat.common.optimizer.workspace.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.ManualClock;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
+import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.workspace.PluginBuild;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.testng.annotations.Test;
 
@@ -36,8 +43,8 @@ public final class PluginBuildTest
 			Files.createDirectories(worktree.resolve("tools"));
 			writeProgram(worktree.resolve("tools"));
 
-			PluginBuild.Result result = PluginBuild.run(worktree, new TrialPlugin.Build(List.of("tools/build"),
-				Path.of("out")));
+			PluginBuild.Result result = PluginBuild.run(Yielding.executableFiles(), worktree,
+				new TrialPlugin.Build(List.of("tools/build"), Path.of("out")));
 
 			requireThat(result.exitStatus(), "exitStatus").isEqualTo(4);
 			List<String> lines = result.tail().lines().toList();
@@ -45,6 +52,45 @@ public final class PluginBuildTest
 			requireThat(lines.getLast().strip(), "last").isEqualTo("line 100");
 			requireThat(result.tail(), "tail").doesNotContain("line 60\n");
 			requireThat(worktree.resolve("out/built.txt"), "output").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that a build retries a start reporting the Linux busy-file diagnostic described by
+	 * {@link ExecutableFiles}, then collects the started process's result.
+	 *
+	 * @throws IOException          if the fixture cannot be written or the build cannot run
+	 * @throws InterruptedException if the wait is interrupted
+	 */
+	@Test
+	public void retriesBusyBuildProgram() throws IOException, InterruptedException
+	{
+		AtomicInteger attempts = new AtomicInteger();
+		AtomicInteger pauses = new AtomicInteger();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FakeHarnessCli process = new FakeHarnessCli(_ -> {}, 4))
+		{
+			Path worktree = cleanup.add(Files.createTempDirectory("cat-plugin-build-")).toRealPath();
+			Files.createDirectories(worktree.resolve("tools"));
+			writeProgram(worktree.resolve("tools"));
+			process.emit("build output");
+			process.exit();
+			ExecutableFiles executables = ExecutableFilesSecrets.getExecutableFilesAccess().create(
+				pauses::incrementAndGet, new ManualClock(Instant.EPOCH), builder ->
+				{
+					if (attempts.getAndIncrement() == 0)
+						throw new IOException("error=26, Text file busy");
+					requireThat(builder.directory().toPath(), "directory").isEqualTo(worktree);
+					return process;
+				});
+
+			PluginBuild.Result result = PluginBuild.run(executables, worktree,
+				new TrialPlugin.Build(List.of("tools/build"), Path.of("out")));
+
+			requireThat(attempts.get(), "attempts").isEqualTo(2);
+			requireThat(pauses.get(), "pauses").isEqualTo(1);
+			requireThat(result.exitStatus(), "exitStatus").isEqualTo(4);
+			requireThat(result.tail(), "tail").isEqualTo("build output");
 		}
 	}
 
