@@ -2479,6 +2479,11 @@ Every implementation change must keep these properties; reviewers reject changes
 	- A test that needs "a certification attempt with 250 passes and 2 failures" constructs it directly. It never runs or
 		replays 252 trials and never parses a trial log.
 - **T3 — Expensive operations verified once:**
+	- Unit tests are the default (user ruling, 2026-10-24): identify the product requirement, then use controlled
+		inputs and fakes when they prove it. Assert outcomes, without asserting internal calls, ordering or counts.
+		Remove checks that only demonstrate documented JDK or OS behavior. If replacing the dependency would hide a
+		defect the requirement must catch, retain the smallest integration check of that boundary, including packaged
+		scripts, launchers, installers and harness interaction.
 	- Cap calibration is checked once against the [§2.4](#24-caps) fixtures. Other tests receive a precomputed decision
 		table through injection.
 	- Real Git operations are tested once per operation, in test-owned repositories. The other workspace tests use
