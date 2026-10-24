@@ -33,6 +33,7 @@ import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
+import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
@@ -70,6 +71,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 import java.util.SplittableRandom;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -114,20 +116,32 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-weakest"));
 			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
-			FakeWorkspacePort workspace = workspace(directory);
-			Overlay control = control();
+			Path project = Files.createDirectories(directory.resolve("project"));
+			Files.createDirectories(project.resolve("docs"));
+			Files.createDirectories(project.resolve(".cat/tests/main"));
+			Files.writeString(project.resolve(PROMPT), "fork", UTF_8);
+			Files.writeString(project.resolve("docs/selected.md"), "selected", UTF_8);
+			Files.writeString(project.resolve("unrelated.md"), "unrelated", UTF_8);
+			Files.writeString(project.resolve(".cat/tests/main/private.md"), "held out", UTF_8);
+			FileInventory fork = InventoryScanner.scan(project, Set.of());
+			requireThat(fork.entries().keySet(), "fixtureFiles").contains(Path.of(".cat/tests/main/private.md"));
+			FakeWorkspacePort workspace = new FakeWorkspacePort(directory.resolve("workspace"), fork, project);
+			Overlay control = Overlay.of(fork);
+			SourceSelection selection = SELECTION.withPatterns(List.of("docs/**", ".cat/tests/**"));
 
 			Set<Path> excluded = Set.of(Path.of(".cat/tests/main"));
 			Map<String, PilotResult> pilots = pilot(sessions, workspace, 4).run(contract, List.of(), control, excluded,
-				SELECTION, Map.of(), new SplittableRandom(1));
-
-			requireThat(workspace.excluded(control.identity()), "excluded").isEqualTo(excluded);
-			requireThat(workspace.selections(control.identity()), "selections").isEqualTo(List.of(SELECTION));
-			Path source = workspace.stage(control, excluded, SELECTION);
+				selection, Map.of(), new SplittableRandom(1));
 			for (SessionRequest request : sessions.requests(SessionRole.TRIAL))
 			{
 				requireThat(request.part(), "part").isEqualTo(Part.DEVELOPMENT);
-				requireThat(request.source(), "source").isEqualTo(source);
+				try (Stream<Path> files = Files.walk(request.source()))
+				{
+					requireThat(Set.copyOf(files.filter(Files::isRegularFile).map(request.source()::relativize).toList()),
+						"sourceFiles").isEqualTo(Set.of(PROMPT, Path.of("docs/selected.md")));
+				}
+				requireThat(Files.readString(request.source().resolve("docs/selected.md"), UTF_8), "selectedContent").
+					isEqualTo("selected");
 				requireThat(request.controlSource(), "controlSource").isTrue();
 			}
 			requireThat(sessions.requests(SessionRole.TRIAL).stream().

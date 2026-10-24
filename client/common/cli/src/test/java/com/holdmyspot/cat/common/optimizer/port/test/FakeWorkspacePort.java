@@ -24,9 +24,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,18 +55,6 @@ public final class FakeWorkspacePort implements WorkspacePort
 	 */
 	private final Path project;
 	private final Set<Sha256> staged = new LinkedHashSet<>();
-	/**
-	 * The paths that the latest request to stage each candidate excluded.
-	 */
-	private final Map<Sha256, Set<Path>> exclusions = new HashMap<>();
-	/**
-	 * The selections of the requests to stage each candidate, in request order.
-	 */
-	private final Map<Sha256, List<SourceSelection>> selections = new HashMap<>();
-	/**
-	 * The candidates that a request staged whole, without a selection.
-	 */
-	private final Set<Sha256> stagedWhole = new HashSet<>();
 	/**
 	 * The directories of the staged sources that exist.
 	 */
@@ -182,11 +168,6 @@ public final class FakeWorkspacePort implements WorkspacePort
 			requireThat(candidate, "candidate").isNotNull();
 			requireThat(excluded, "excluded").isNotNull();
 			Sha256 identity = candidate.identity();
-			exclusions.put(identity, Set.copyOf(excluded));
-			if (selection.isPresent())
-				selections.computeIfAbsent(identity, _ -> new ArrayList<>()).add(selection.get());
-			else
-				stagedWhole.add(identity);
 			String name = selection.map(chosen -> identity.hex() + "-" +
 				Sha256.of(chosen.describe().getBytes(UTF_8)).hex()).orElse(identity.hex());
 			Path directory = root.resolve("staged").resolve(name);
@@ -330,54 +311,15 @@ public final class FakeWorkspacePort implements WorkspacePort
 	}
 
 	/**
-	 * Indicates whether a request staged a candidate whole, without a selection.
+	 * Returns the staged-source directories currently held by this fake.
 	 *
-	 * @param candidate the candidate's identity
-	 * @return {@code true} if a request staged every file of the candidate
-	 * @throws NullPointerException if {@code candidate} is null
+	 * @return the current staged directories
 	 */
-	public boolean stagedWhole(Sha256 candidate)
+	public Set<Path> stagedSources()
 	{
 		synchronized (lock)
 		{
-			requireThat(candidate, "candidate").isNotNull();
-			return stagedWhole.contains(candidate);
-		}
-	}
-
-	/**
-	 * Returns the selections of the requests to stage a candidate.
-	 *
-	 * @param candidate the candidate's identity
-	 * @return the selections in request order, or an empty list if every request staged the whole candidate
-	 * @throws NullPointerException if {@code candidate} is null
-	 */
-	public List<SourceSelection> selections(Sha256 candidate)
-	{
-		synchronized (lock)
-		{
-			requireThat(candidate, "candidate").isNotNull();
-			return List.copyOf(selections.getOrDefault(candidate, List.of()));
-		}
-	}
-
-	/**
-	 * Returns the paths that the latest request to stage a candidate excluded.
-	 *
-	 * @param candidate the candidate's identity
-	 * @return the excluded paths
-	 * @throws NullPointerException     if {@code candidate} is null
-	 * @throws IllegalArgumentException if the candidate was never staged
-	 */
-	public Set<Path> excluded(Sha256 candidate)
-	{
-		synchronized (lock)
-		{
-			requireThat(candidate, "candidate").isNotNull();
-			Set<Path> excluded = exclusions.get(candidate);
-			if (excluded == null)
-				throw new IllegalArgumentException("The candidate " + candidate + " was never staged");
-			return excluded;
+			return Set.copyOf(directories);
 		}
 	}
 

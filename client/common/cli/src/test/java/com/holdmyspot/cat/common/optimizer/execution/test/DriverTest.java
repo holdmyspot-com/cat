@@ -93,7 +93,6 @@ import com.holdmyspot.cat.common.optimizer.execution.NeededEdit;
 import com.holdmyspot.cat.common.optimizer.execution.Reconciler;
 import com.holdmyspot.cat.common.optimizer.execution.SliceReports;
 import com.holdmyspot.cat.common.optimizer.execution.SliceResult;
-import com.holdmyspot.cat.common.optimizer.execution.TrialSelection;
 import com.holdmyspot.cat.common.optimizer.execution.SliceRunner;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.execution.Step;
@@ -106,6 +105,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
+import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Limit;
 import com.holdmyspot.cat.common.optimizer.inventory.Operation;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
@@ -125,7 +125,6 @@ import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
-import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.report.CellReport;
@@ -166,6 +165,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -3581,28 +3581,41 @@ public final class DriverTest
 		Contract contract = ContractFixtures.contract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("selected-trials")),
-				new Builder().confirmed(contract, 1).working(1).plugins(List.of(plugin)).build());
+			Path directory = cleanup.add(Files.createTempDirectory("selected-trials"));
+			Path project = Files.createDirectories(directory.resolve("project"));
+			Files.createDirectories(project.resolve("rules"));
+			Files.createDirectories(project.resolve(".cat/tests/main"));
+			Files.writeString(project.resolve(DriverHarness.PROMPT), "fork", UTF_8);
+			Files.writeString(project.resolve("rules/selection.md"), "mapped rule", UTF_8);
+			Files.writeString(project.resolve("unrelated.md"), "unrelated", UTF_8);
+			Files.writeString(project.resolve(".cat/tests/main/private.md"), "held out", UTF_8);
+			FileInventory fork = InventoryScanner.scan(project, Set.of());
+			DriverHarness harness = new DriverHarness(directory.resolve("driver"),
+				new Builder().confirmed(contract, 1).working(1).plugins(List.of(plugin)).build(), fork, project);
 			List<SessionRequest> trials = new CopyOnWriteArrayList<>();
 			harness.trials(request ->
 			{
 				trials.add(request);
 				return harness.passed();
 			});
-			Campaign campaign;
 			try (Driver driver = harness.open())
 			{
-				campaign = harness.runUntil(driver, _ -> trials.size() >= 2);
+				harness.runUntil(driver, _ -> trials.size() >= 2);
 			}
-			SourceSelection expected = TrialSelection.base(campaign.header().harness(), Set.of(DriverHarness.PROMPT),
-				Set.of(), campaign.contract(), List.of(plugin));
+
 			requireThat(trials, "trials").isNotEmpty();
+			Set<Path> sources = harness.workspace().stagedSources();
 			for (SessionRequest trial : trials)
+				requireThat(sources, "stagedSources").contains(trial.source());
+			for (Path source : sources)
 			{
-				Sha256 candidate = DriverHarness.stagedCandidate(trial);
-				requireThat(Set.copyOf(harness.workspace().selections(candidate)), "selections").
-					isEqualTo(Set.of(expected));
-				requireThat(harness.workspace().stagedWhole(candidate), "stagedWhole").isFalse();
+				try (Stream<Path> files = Files.walk(source))
+				{
+					requireThat(Set.copyOf(files.filter(Files::isRegularFile).map(source::relativize).toList()),
+						"sourceFiles").isEqualTo(Set.of(DriverHarness.PROMPT, Path.of("rules/selection.md")));
+				}
+				requireThat(Files.readString(source.resolve("rules/selection.md"), UTF_8), "mappedRule").
+					isEqualTo("mapped rule");
 			}
 		}
 	}
