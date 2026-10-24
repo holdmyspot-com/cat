@@ -166,16 +166,7 @@ public final class ForkTest
 			}
 			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
 
-			try
-			{
-				Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
-				throw new AssertionError("A dirty base must be refused: " + change);
-			}
-			catch (WorkspaceException e)
-			{
-				requireThat(e.getMessage(), "message").contains("commit, stash or remove");
-			}
-			requireThat(Files.exists(campaign), "campaignExists").isFalse();
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).refusesDirtyBase();
 			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
 		}
 	}
@@ -274,7 +265,8 @@ public final class ForkTest
 
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
 
-			requireThat(fork.excludeAdded(), "excludeAdded").isTrue();
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, base.resolve(CAMPAIGNS + "/c1")).
+				reportsExcludeAdditionOnlyAtCreation(fork, true);
 			requireThat(Files.readAllLines(excludeFile(base), UTF_8).stream().filter(EXCLUDE_LINE::equals).count(),
 				"excludeLines").isEqualTo(1L);
 			requireThat(Files.isDirectory(base.resolve(CAMPAIGNS + "/c1")), "campaignExists").isTrue();
@@ -301,7 +293,8 @@ public final class ForkTest
 
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
 
-			requireThat(fork.excludeAdded(), "excludeAdded").isFalse();
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, base.resolve(CAMPAIGNS + "/c1")).
+				reportsExcludeAdditionOnlyAtCreation(fork, false);
 			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
 		}
 	}
@@ -651,7 +644,24 @@ public final class ForkTest
 			Path unmanaged = project(root);
 
 			requireThat(Fork.trackedLinks(base), "trackedLinks").isEqualTo(Set.of(Path.of("alias.md")));
-			requireThat(Fork.trackedLinks(unmanaged), "unmanagedLinks").isEmpty();
+			new ForksContract(new GitForks(Yielding.fileReplacer()), unmanaged, root.resolve("campaign")).
+				hasNoTrackedLinksOutsideRepository();
+		}
+	}
+
+	/**
+	 * Verifies the empty-selection diff contract with an unmanaged project, without invoking Git in the check.
+	 *
+	 * @throws IOException if the fixture or contract check fails
+	 */
+	@Test
+	public void emptySelectionHasNoDiff() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			new ForksContract(new GitForks(Yielding.fileReplacer()), project(root), root.resolve("campaign")).
+				emptySelectionHasNoDiff();
 		}
 	}
 

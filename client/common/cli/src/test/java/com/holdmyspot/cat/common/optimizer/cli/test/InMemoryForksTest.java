@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -145,6 +146,98 @@ public final class InMemoryForksTest
 			InMemoryForks forks = new InMemoryForks(base, Set.of(Path.of("prompt.md")));
 
 			new ForksContract(forks, base, root.resolve("campaign")).missingParticipantCreatesNoWorktree();
+		}
+	}
+
+	/**
+	 * Verifies a controlled dirty-base observation produces the real adapter's refusal and no campaign storage.
+	 *
+	 * @throws IOException if the fixture or contract check fails
+	 */
+	@Test
+	public void refusesDirtyBase() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-memory-fork-contract-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			InMemoryForks forks = new InMemoryForks(base, Set.of());
+			forks.makeDirty();
+
+			new ForksContract(forks, base, root.resolve("campaign")).refusesDirtyBase();
+		}
+	}
+
+	/**
+	 * Returns whether the fixture's creation reports adding the exclude.
+	 *
+	 * @return the captured creation outcomes
+	 */
+	@DataProvider(name = "excludeFlags")
+	public Object[][] excludeFlags()
+	{
+		return new Object[][]
+			{
+				{false},
+				{true}
+			};
+	}
+
+	/**
+	 * Verifies the captured exclude-added result applies to creation and is absent after reopening.
+	 *
+	 * @param added whether the fixture's creation added the exclude
+	 * @throws IOException if the fixture or contract check fails
+	 */
+	@Test(dataProvider = "excludeFlags")
+	public void reportsExcludeAdditionOnlyAtCreation(boolean added) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-memory-fork-contract-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
+			InMemoryForks forks = new InMemoryForks(base, Set.of(Path.of("prompt.md")));
+			if (added)
+				forks.addExcludeOnCreate();
+			Path campaign = root.resolve("campaign");
+			ForkView fork = forks.create(base, campaign, Set.of());
+
+			new ForksContract(forks, base, campaign).reportsExcludeAdditionOnlyAtCreation(fork, added);
+		}
+	}
+
+	/**
+	 * Verifies the supported unmanaged-project fixture reports no tracked symbolic links.
+	 *
+	 * @throws IOException if the fixture or contract check fails
+	 */
+	@Test
+	public void hasNoTrackedLinksOutsideRepository() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-memory-fork-contract-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			new ForksContract(new InMemoryForks(base, Set.of()), base, root.resolve("campaign")).
+				hasNoTrackedLinksOutsideRepository();
+		}
+	}
+
+	/**
+	 * Verifies an empty path selection reports no diff, using the real adapter's contract.
+	 *
+	 * @throws IOException if the fixture or contract check fails
+	 */
+	@Test
+	public void emptySelectionHasNoDiff() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-memory-fork-contract-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			new ForksContract(new InMemoryForks(base, Set.of()), base, root.resolve("campaign")).
+				emptySelectionHasNoDiff();
 		}
 	}
 

@@ -2268,7 +2268,7 @@ public final class OptimizerCoreTest
 				refusal = e;
 			}
 			requireThat(refusal, "refusal").isNotNull();
-			requireThat(refusal.getMessage(), "message").contains("changes");
+			requireThat(refusal.getMessage(), "message").contains("changes").contains("commit, stash or remove");
 			requireThat(repository.sessions().roles(), "roles").isEmpty();
 			requireThat(OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
 				store(repository.scope()).listHeaders(), "headers").isEmpty();

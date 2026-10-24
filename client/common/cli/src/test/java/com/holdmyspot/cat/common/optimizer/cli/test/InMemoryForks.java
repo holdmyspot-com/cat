@@ -49,11 +49,6 @@ public final class InMemoryForks implements Forks
 	private final Map<Path, Map<Path, FileEntry>> recorded = new HashMap<>();
 	private final Map<Path, Set<Path>> created = new HashMap<>();
 	private final Map<Path, List<FileInventory>> versions = new HashMap<>();
-	private final List<Set<Path>> selections = new ArrayList<>();
-	/**
-	 * The workspace of every fork that this class created or opened, in creation order.
-	 */
-	private final List<FakeWorkspacePort> workspaces = new ArrayList<>();
 	private boolean dirty;
 	private boolean excludeAdded;
 	private boolean removalDenied;
@@ -96,29 +91,6 @@ public final class InMemoryForks implements Forks
 	}
 
 	/**
-	 * Returns the participants that {@code selectParticipants} received, one set per call.
-	 *
-	 * @return the sets, in call order
-	 */
-	List<Set<Path>> selections()
-	{
-		return List.copyOf(selections);
-	}
-
-	/**
-	 * Returns the plugin directories whose files the workspaces of every fork copied as trial plugin bases.
-	 *
-	 * @return the directories, in fork creation order and then request order
-	 */
-	List<Path> copiedBases()
-	{
-		List<Path> copied = new ArrayList<>();
-		for (FakeWorkspacePort workspace : workspaces)
-			copied.addAll(workspace.copiedBases());
-		return copied;
-	}
-
-	/**
 	 * Supplies a captured inventory, including symbolic-link entries that {@link Fork}'s scanner records.
 	 *
 	 * @param campaign the campaign storage directory
@@ -133,7 +105,8 @@ public final class InMemoryForks implements Forks
 	public ForkView create(Path base, Path campaign, Set<Path> participants) throws IOException
 	{
 		if (dirty)
-			throw new WorkspaceException("The base worktree " + base + " has staged, unstaged or untracked changes.");
+			throw new WorkspaceException("The base worktree " + base + " has staged, unstaged or untracked changes; " +
+				"commit, stash or remove them before retrying.");
 		Set<Path> paths = new LinkedHashSet<>(tracked);
 		paths.addAll(participants);
 		FileInventory inventory = scan(Map.of(), paths);
@@ -178,7 +151,7 @@ public final class InMemoryForks implements Forks
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The project has no {@code HEAD}, so no path differs from it.
+	 * The fixture supplies an empty diff as a controlled response. Patch-output checks use the real Git adapter.
 	 */
 	@Override
 	public String diff(Path base, List<Path> paths)
@@ -300,7 +273,6 @@ public final class InMemoryForks implements Forks
 			this.excludeAdded = excludeAdded;
 			this.inventory = inventory;
 			this.workspace = new FakeWorkspacePort(campaign, inventory, root);
-			workspaces.add(workspace);
 			if (current)
 				inventories.put(campaign, inventory);
 		}
@@ -326,7 +298,6 @@ public final class InMemoryForks implements Forks
 		@Override
 		public ForkView selectParticipants(Path base, Set<Path> participants) throws IOException
 		{
-			selections.add(Set.copyOf(participants));
 			Map<Path, FileEntry> all = recorded.computeIfAbsent(campaign, _ -> new LinkedHashMap<>(inventory.entries()));
 			Set<Path> creation = created.computeIfAbsent(campaign, _ -> Set.copyOf(inventory.entries().keySet()));
 			Set<Path> missing = new LinkedHashSet<>(participants);

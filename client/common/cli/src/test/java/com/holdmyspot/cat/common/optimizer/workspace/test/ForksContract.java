@@ -18,18 +18,20 @@ import com.holdmyspot.cat.common.test.ProgramFixture;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * Checks the same captured-file, selection, adoption and worktree lifecycle outcomes for a real fork adapter and
- * its in-memory fake. The caller supplies a project and an already-created current fork, except that creation-
- * refusal checks require a campaign directory with no fork. Selection checks require {@code prompt.md} with text
- * prompt and {@code ignored.md} with text ignored, with only {@code prompt.md} recorded at creation. Captured-file
- * checks require the same file texts, the tracked executable fixture program and an external participant holding
- * text shared. The caller owns fixture cleanup. These checks create no Git repository; creation and removal use
- * the supplied adapter, which may invoke Git. Passing them validates the fake's covered assumptions; its run is
- * test-support coverage, while the real adapter's run checks production behavior.
+ * Checks the same captured-file, selection, adoption, lifecycle, refusal and project-query outcomes for a real
+ * fork adapter and its in-memory fake. The caller supplies an isolated project and campaign storage. Selection,
+ * captured-file and lifecycle checks use an already-created current fork; creation-refusal checks use a campaign
+ * directory with no fork. Project-query checks need no fork. Selection checks require {@code prompt.md} with text
+ * prompt and {@code ignored.md} with text ignored, with only the prompt recorded at creation. Captured-file checks
+ * require the same texts, the tracked executable fixture program and an external participant holding text shared.
+ * The caller owns cleanup. These checks create no Git repository; operations use the supplied adapter, which may
+ * invoke Git. Passing them validates the fake's covered assumptions; the fake run is test-support coverage and the
+ * real run checks production behavior.
  */
 public final class ForksContract
 {
@@ -58,6 +60,58 @@ public final class ForksContract
 		this.forks = forks;
 		this.base = base;
 		this.campaign = campaign;
+	}
+
+	/**
+	 * Verifies a dirty project is refused with recovery advice before campaign storage is created.
+	 *
+	 * @throws IOException if creation fails for another reason
+	 */
+	public void refusesDirtyBase() throws IOException
+	{
+		try
+		{
+			forks.create(base, campaign, Set.of());
+			throw new AssertionError("A dirty base must be refused");
+		}
+		catch (WorkspaceException e)
+		{
+			requireThat(e.getMessage(), "message").contains("commit, stash or remove");
+		}
+		requireThat(Files.exists(campaign), "campaignExists").isFalse();
+	}
+
+	/**
+	 * Verifies the creation result reports whether it added the exclude, while a reopened view reports no addition.
+	 *
+	 * @param created the view returned by creation
+	 * @param added whether this fixture's creation added the exclude
+	 * @throws IOException if the recorded fork cannot be reopened
+	 */
+	public void reportsExcludeAdditionOnlyAtCreation(ForkView created, boolean added) throws IOException
+	{
+		requireThat(created.excludeAdded(), "excludeAdded").isEqualTo(added);
+		requireThat(forks.open(base, campaign).excludeAdded(), "reopenedExcludeAdded").isFalse();
+	}
+
+	/**
+	 * Verifies a project outside a Git repository reports no tracked symbolic links.
+	 *
+	 * @throws IOException if the adapter cannot inspect the project
+	 */
+	public void hasNoTrackedLinksOutsideRepository() throws IOException
+	{
+		requireThat(forks.trackedLinks(base), "unmanagedLinks").isEmpty();
+	}
+
+	/**
+	 * Verifies that an empty selection produces an empty diff without requiring a Git repository.
+	 *
+	 * @throws IOException if the adapter cannot report the diff
+	 */
+	public void emptySelectionHasNoDiff() throws IOException
+	{
+		requireThat(forks.diff(base, List.of()), "diff").isEmpty();
 	}
 
 	/**
