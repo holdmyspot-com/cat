@@ -36,7 +36,7 @@ import java.util.Set;
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe.
  */
-final class InMemoryForks implements Forks
+public final class InMemoryForks implements Forks
 {
 	private final Path root;
 	private final Set<Path> tracked;
@@ -59,7 +59,7 @@ final class InMemoryForks implements Forks
 	 * @param root the project
 	 * @param tracked the files, relative to the project, that Git tracks
 	 */
-	InMemoryForks(Path root, Set<Path> tracked)
+	public InMemoryForks(Path root, Set<Path> tracked)
 	{
 		this.root = root;
 		this.tracked = Set.copyOf(tracked);
