@@ -2816,12 +2816,21 @@ public final class OptimizerCoreTest
 			Files.writeString(stale, "The user's own build output.\n");
 
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			TrialPlugin plugin = repository.load(id).plugins().orElseThrow().getFirst();
+			Path worktree = repository.directory(id).toAbsolutePath().resolve("worktree");
+			Path pluginBase = repository.forks().open(root, repository.directory(id)).workspace().
+				pluginBase(plugin.baseDigest());
+			Map<String, String> built = contents(worktree.resolve("out"));
+			requireThat(contents(pluginBase), "builtPluginBase").isEqualTo(built);
+			Files.writeString(worktree.resolve("out/.claude-plugin/plugin.json"), "Changed build output.\n");
+
 			repository.core().revise(id, "cover the formal tone");
 
-			Path worktree = repository.directory(id).toAbsolutePath().resolve("worktree");
-			requireThat(repository.forks().copiedBases(), "copiedBases").isEqualTo(List.of(worktree.resolve("out")));
-			requireThat(Files.readAllLines(repository.directory(id).resolve("builds.log")), "builds").size().
-				isEqualTo(1);
+			requireThat(contents(pluginBase), "retainedPluginBase").isEqualTo(built);
+			requireThat(repository.load(id).plugins().orElseThrow().getFirst().baseDigest(), "retainedBaseDigest").
+				isEqualTo(plugin.baseDigest());
+			requireThat(Files.readString(worktree.resolve("out/.claude-plugin/plugin.json")), "unchangedBuildOutput").
+				isEqualTo("Changed build output.\n");
 			requireThat(Files.readString(stale), "stale").isEqualTo("The user's own build output.\n");
 			requireThat(Files.exists(root.resolve("out/.claude-plugin")), "baseManifest").isFalse();
 			List<TrialPlugin> plugins = repository.load(id).plugins().orElseThrow();
@@ -2886,7 +2895,11 @@ public final class OptimizerCoreTest
 				contains("exited with status 0").contains("building cat");
 			requireThat(other, "other").contains("produced the plugin other").contains("exited with status 0").
 				contains("building other");
-			requireThat(repository.forks().copiedBases(), "copiedBases").isEmpty();
+			try (Stream<Path> paths = Files.walk(repository.root()))
+			{
+				requireThat(paths.filter(path -> path.getFileName().toString().equals("plugin-bases")).toList(),
+					"pluginBasesAfterRefusal").isEmpty();
+			}
 		}
 	}
 
@@ -2918,7 +2931,13 @@ public final class OptimizerCoreTest
 			requireThat(two, "two").contains("2 copies");
 			requireThat(repository.load(id).plugins().orElseThrow().getFirst().isProjectBuilt(), "isProjectBuilt").
 				isFalse();
-			requireThat(repository.forks().copiedBases(), "copiedBases").isEqualTo(List.of(installed));
+			TrialPlugin plugin = repository.load(id).plugins().orElseThrow().getFirst();
+			Path pluginBase = repository.forks().open(repository.root(), repository.directory(id)).workspace().
+				pluginBase(plugin.baseDigest());
+			requireThat(contents(pluginBase), "installedPluginBase").isEqualTo(contents(installed));
+			Files.writeString(installed.resolve(".claude-plugin/plugin.json"), "Changed installed plugin.\n");
+			requireThat(Files.readString(pluginBase.resolve(".claude-plugin/plugin.json")), "retainedInstalledBase").
+				isEqualTo("{\"name\": \"tools\"}\n");
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
 			requireThat(trials, "trials").isNotEmpty();
 			for (SessionRequest trial : trials)
