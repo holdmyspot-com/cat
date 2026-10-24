@@ -65,6 +65,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
@@ -217,7 +218,9 @@ public final class DeliveryTest
 	 * resumes the same delivery: every change, including the certification record's, is written exactly once across
 	 * both runs, and the delivery completes. The restart decides whether a change was written from its kind, so the
 	 * crash follows each kind once: the certification record's creation, an edit and a deletion. Each crash point runs
-	 * its two deliveries in its own copy of one fixture.
+	 * its two deliveries in its own copy of one fixture. A controlled modification time on a completed creation or
+	 * edit survives restart, so rewriting identical bytes cannot masquerade as resuming an already applied change.
+	 * The persisted plan reaches completion, the deleted file stays absent and history holds one record.
 	 *
 	 * @throws IOException if the fixture or delivery fails
 	 */
@@ -235,10 +238,8 @@ public final class DeliveryTest
 					Fixture fixture = template.copy(cleanup);
 					Overlay candidate = fixture.candidate();
 					DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
-					List<Integer> written = new ArrayList<>();
 					Consumer<DeliveryChange> crashing = change ->
 					{
-						written.add(change.sequence());
 						if (change.target().equals(crashAfter))
 							throw new SimulatedCrash(change);
 					};
@@ -254,15 +255,31 @@ public final class DeliveryTest
 					}
 					requireThat(crashed, "crashed").withContext(crashAfter, "crashAfter").isTrue();
 
+					Path completedTarget = fixture.resolve(crashAfter);
+					Optional<FileTime> completedTime = Optional.empty();
+					if (Files.isRegularFile(completedTarget))
+					{
+						Files.setLastModifiedTime(completedTarget, FileTime.fromMillis(0));
+						completedTime = Optional.of(Files.getLastModifiedTime(completedTarget));
+					}
+					FileCampaignStore resumedStore = new FileCampaignStore(fixture.base(), JSON, Yielding.fileReplacer());
+					DeliveryJournal interrupted = resumedStore.loadJournal(CAMPAIGN).orElseThrow();
+					requireThat(interrupted.changes().get(interrupted.applied()).target(), "interruptedTarget").
+						isEqualTo(crashAfter);
+
 					// The restarted process opens a new store and executor over the same base worktree
-					DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON, Yielding.fileReplacer()),
-					candidate,
-						change -> written.add(change.sequence())).
+					DeliveryResult result = fixture.delivery(resumedStore, candidate, NO_HOOK).
 						deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of());
 
 					requireDelivered(result);
-					requireThat(written, "written").withContext(crashAfter, "crashAfter").
-						isEqualTo(List.of(0, 1, 2, 3));
+					if (completedTime.isPresent())
+					{
+						requireThat(Files.getLastModifiedTime(completedTarget), "completedTime").
+							withContext(crashAfter, "crashAfter").isEqualTo(completedTime.get());
+					}
+					DeliveryJournal completed = resumedStore.loadJournal(CAMPAIGN).orElseThrow();
+					requireThat(completed.changes(), "changes").isEqualTo(interrupted.changes());
+					requireThat(completed.applied(), "applied").isEqualTo(completed.changes().size());
 					requireCandidateDelivered(fixture);
 					requireThat(history(fixture).records(), "records").isEqualTo(List.of(RECORD));
 				}
