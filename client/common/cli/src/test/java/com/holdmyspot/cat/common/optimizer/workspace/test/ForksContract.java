@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -115,6 +116,22 @@ public final class ForksContract
 	}
 
 	/**
+	 * Verifies that a created fork exists, reopens with its inventory and exposes that inventory through its worktree.
+	 *
+	 * @param created the view returned by creation
+	 * @throws IOException if the fork or worktree cannot be read
+	 */
+	public void createdForkCanBeReopened(ForkView created) throws IOException
+	{
+		requireThat(forks.exists(campaign), "createdExists").isTrue();
+		ForkView reopened = forks.open(base, campaign);
+		requireThat(reopened.inventory(), "reopened").isEqualTo(created.inventory());
+		requireThat(reopened.workspace().worktree(), "worktree").isEqualTo(campaign.resolve("worktree"));
+		requireThat(reopened.workspace().scanWorktree().entries(), "worktreeEntries").
+			isEqualTo(created.inventory().entries());
+	}
+
+	/**
 	 * Verifies captured regular-file contents and modes, participant inclusion, absence of campaign files, reopened
 	 * inventory and physical worktree files. The fork was created with the ignored and external participants.
 	 *
@@ -124,6 +141,7 @@ public final class ForksContract
 	 */
 	public void recordsTrackedAndParticipantFiles(ForkView created, Path external) throws IOException
 	{
+		createdForkCanBeReopened(created);
 		FileInventory inventory = created.inventory();
 		requireThat(inventory.root(), "root").isEqualTo(base);
 		requireThat(inventory.entries().get(Path.of("prompt.md")), "prompt").isEqualTo(file("prompt"));
@@ -133,7 +151,6 @@ public final class ForksContract
 		requireThat(inventory.entries().get(external), "external").isEqualTo(file("shared"));
 		requireThat(inventory.entries().keySet().stream().filter(path -> path.startsWith(".cat")).toList(),
 			"campaignFiles").isEmpty();
-		requireThat(forks.open(base, campaign).inventory(), "reopened").isEqualTo(inventory);
 		Path worktree = campaign.resolve("worktree");
 		requireThat(Files.readString(worktree.resolve("prompt.md"), UTF_8), "worktreePrompt").isEqualTo("prompt");
 		requireThat(Files.readString(worktree.resolve("ignored.md"), UTF_8), "worktreeParticipant").isEqualTo("ignored");
@@ -214,6 +231,7 @@ public final class ForksContract
 		ForkView reopened = forks.open(base, campaign);
 		requireThat(reopened.inventory(), "adopted").isEqualTo(extended.inventory());
 		requireThat(reopened.version(earlier.identity()), "earlier").isEqualTo(Optional.of(earlier));
+		requireThat(reopened.version(new FileInventory(base, Map.of()).identity()), "unknownVersion").isEmpty();
 	}
 
 	/**
@@ -233,6 +251,7 @@ public final class ForksContract
 		FileInventory inventory = extended.inventory();
 		requireThat(inventory.entries().get(Path.of("ignored.md")), "ignored").isEqualTo(file("ignored"));
 		requireThat(inventory.entries().containsKey(external), "external").isTrue();
+		requireThat(Files.readString(external, UTF_8), "externalContent").isEqualTo("shared");
 		requireThat(Files.readString(campaign.resolve("worktree/ignored.md"), UTF_8), "worktreeFile").
 			isEqualTo("ignored");
 		requireThat(extended.workspace().scanWorktree().entries(), "worktreeEntries").

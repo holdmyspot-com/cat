@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.cli.test;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.EXECUTABLE;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.READ_WRITE;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.writeFile;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
@@ -127,6 +128,28 @@ public final class InMemoryForksTest
 			ForkView fork = forks.create(base, campaign, Set.of(Path.of("ignored.md"), external));
 
 			new ForksContract(forks, base, campaign).recordsTrackedAndParticipantFiles(fork, external);
+		}
+	}
+
+	/**
+	 * Verifies that an empty captured inventory still creates an existing, readable optimization worktree.
+	 *
+	 * @throws IOException if the fixture or contract check fails
+	 */
+	@Test
+	public void createsEmptyWorktree() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-memory-fork-contract-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			Path campaign = root.resolve("campaign");
+			InMemoryForks forks = new InMemoryForks(base, Set.of());
+
+			ForkView created = forks.create(base, campaign, Set.of());
+
+			requireThat(created.inventory().entries(), "inventory").isEmpty();
+			new ForksContract(forks, base, campaign).createdForkCanBeReopened(created);
 		}
 	}
 

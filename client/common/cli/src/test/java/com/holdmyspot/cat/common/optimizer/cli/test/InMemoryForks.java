@@ -112,6 +112,7 @@ public final class InMemoryForks implements Forks
 		FileInventory inventory = scan(Map.of(), paths);
 		// The optimization worktree holds the fork's project files apart from the base worktree, as a Git worktree does
 		Path worktree = campaign.toAbsolutePath().resolve("worktree");
+		Files.createDirectories(worktree);
 		for (Path path : paths)
 		{
 			if (path.isAbsolute())
