@@ -5,13 +5,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator;
 import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator.ProcessLookup;
 import com.holdmyspot.cat.common.secrets.ProcessHandleTerminatorSecrets;
+import com.holdmyspot.cat.common.test.FakeProcessHandle;
 import org.testng.annotations.Test;
 
-import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
 /**
@@ -33,19 +31,19 @@ public final class ProcessHandleTerminatorTest
 	public void unverifiedProcessIsLeftAlone()
 	{
 		// Requirement: R-E11
-		FakeProcess driver = new FakeProcess(1, Instant.EPOCH, true);
-		FakeProcess child = new FakeProcess(3, Instant.EPOCH, true);
+		FakeProcessHandle driver = new FakeProcessHandle(1, Instant.EPOCH, true);
+		FakeProcessHandle child = new FakeProcessHandle(3, Instant.EPOCH, true);
 		for (Instant actualStart : new Instant[]{Instant.EPOCH.plusSeconds(1), null})
 		{
-			FakeProcess process = new FakeProcess(2, actualStart, true, child);
+			FakeProcessHandle process = new FakeProcessHandle(2, actualStart, true, child);
 			ProcessHandleTerminator terminator = terminator(driver, process);
 
 			boolean terminated = terminator.terminate(process.pid(), Instant.EPOCH);
 
 			requireThat(terminated, "terminated").isFalse();
-			requireThat(process.stopRequested, "process.stopRequested").isFalse();
-			requireThat(child.stopRequested, "child.stopRequested").isFalse();
-			requireThat(driver.stopRequested, "driver.stopRequested").isFalse();
+			requireThat(process.stopRequested(), "process.stopRequested").isFalse();
+			requireThat(child.stopRequested(), "child.stopRequested").isFalse();
+			requireThat(driver.stopRequested(), "driver.stopRequested").isFalse();
 		}
 	}
 
@@ -56,21 +54,21 @@ public final class ProcessHandleTerminatorTest
 	public void matchingProcessTreeIsAskedToStop()
 	{
 		// Requirement: R-E11
-		FakeProcess driver = new FakeProcess(1, Instant.EPOCH, true);
-		FakeProcess grandchild = new FakeProcess(4, Instant.EPOCH, true);
-		FakeProcess child = new FakeProcess(3, Instant.EPOCH, true, grandchild);
-		FakeProcess process = new FakeProcess(2, Instant.EPOCH, true, child);
-		FakeProcess unrelated = new FakeProcess(5, Instant.EPOCH, true);
+		FakeProcessHandle driver = new FakeProcessHandle(1, Instant.EPOCH, true);
+		FakeProcessHandle grandchild = new FakeProcessHandle(4, Instant.EPOCH, true);
+		FakeProcessHandle child = new FakeProcessHandle(3, Instant.EPOCH, true, grandchild);
+		FakeProcessHandle process = new FakeProcessHandle(2, Instant.EPOCH, true, child);
+		FakeProcessHandle unrelated = new FakeProcessHandle(5, Instant.EPOCH, true);
 		ProcessHandleTerminator terminator = terminator(driver, process, child, grandchild, unrelated);
 
 		boolean terminated = terminator.terminate(process.pid(), Instant.EPOCH);
 
 		requireThat(terminated, "terminated").isTrue();
-		requireThat(process.stopRequested, "process.stopRequested").isTrue();
-		requireThat(child.stopRequested, "child.stopRequested").isTrue();
-		requireThat(grandchild.stopRequested, "grandchild.stopRequested").isTrue();
-		requireThat(unrelated.stopRequested, "unrelated.stopRequested").isFalse();
-		requireThat(driver.stopRequested, "driver.stopRequested").isFalse();
+		requireThat(process.stopRequested(), "process.stopRequested").isTrue();
+		requireThat(child.stopRequested(), "child.stopRequested").isTrue();
+		requireThat(grandchild.stopRequested(), "grandchild.stopRequested").isTrue();
+		requireThat(unrelated.stopRequested(), "unrelated.stopRequested").isFalse();
+		requireThat(driver.stopRequested(), "driver.stopRequested").isFalse();
 	}
 
 	/**
@@ -80,15 +78,15 @@ public final class ProcessHandleTerminatorTest
 	public void driverProcessIsLeftAlone()
 	{
 		// Requirement: R-E11
-		FakeProcess child = new FakeProcess(2, Instant.EPOCH, true);
-		FakeProcess driver = new FakeProcess(1, Instant.EPOCH, true, child);
+		FakeProcessHandle child = new FakeProcessHandle(2, Instant.EPOCH, true);
+		FakeProcessHandle driver = new FakeProcessHandle(1, Instant.EPOCH, true, child);
 		ProcessHandleTerminator terminator = terminator(driver, driver, child);
 
 		boolean terminated = terminator.terminate(driver.pid(), Instant.EPOCH);
 
 		requireThat(terminated, "terminated").isFalse();
-		requireThat(driver.stopRequested, "driver.stopRequested").isFalse();
-		requireThat(child.stopRequested, "child.stopRequested").isFalse();
+		requireThat(driver.stopRequested(), "driver.stopRequested").isFalse();
+		requireThat(child.stopRequested(), "child.stopRequested").isFalse();
 	}
 
 	/**
@@ -98,9 +96,9 @@ public final class ProcessHandleTerminatorTest
 	public void exitedOrMissingProcessIsLeftAlone()
 	{
 		// Requirement: R-E11
-		FakeProcess driver = new FakeProcess(1, Instant.EPOCH, true);
-		FakeProcess child = new FakeProcess(3, Instant.EPOCH, true);
-		FakeProcess exited = new FakeProcess(2, Instant.EPOCH, false, child);
+		FakeProcessHandle driver = new FakeProcessHandle(1, Instant.EPOCH, true);
+		FakeProcessHandle child = new FakeProcessHandle(3, Instant.EPOCH, true);
+		FakeProcessHandle exited = new FakeProcessHandle(2, Instant.EPOCH, false, child);
 		ProcessHandleTerminator terminator = terminator(driver, exited, child);
 
 		boolean terminatedExited = terminator.terminate(exited.pid(), Instant.EPOCH);
@@ -108,9 +106,9 @@ public final class ProcessHandleTerminatorTest
 
 		requireThat(terminatedExited, "terminatedExited").isFalse();
 		requireThat(terminatedMissing, "terminatedMissing").isFalse();
-		requireThat(exited.stopRequested, "exited.stopRequested").isFalse();
-		requireThat(child.stopRequested, "child.stopRequested").isFalse();
-		requireThat(driver.stopRequested, "driver.stopRequested").isFalse();
+		requireThat(exited.stopRequested(), "exited.stopRequested").isFalse();
+		requireThat(child.stopRequested(), "child.stopRequested").isFalse();
+		requireThat(driver.stopRequested(), "driver.stopRequested").isFalse();
 	}
 
 	/**
@@ -120,7 +118,7 @@ public final class ProcessHandleTerminatorTest
 	 * @param processes the processes available by identifier
 	 * @return the terminator
 	 */
-	private static ProcessHandleTerminator terminator(FakeProcess driver, FakeProcess... processes)
+	private static ProcessHandleTerminator terminator(FakeProcessHandle driver, FakeProcessHandle... processes)
 	{
 		return ProcessHandleTerminatorSecrets.getProcessHandleTerminatorAccess().create(new ProcessLookup()
 		{
@@ -137,154 +135,5 @@ public final class ProcessHandleTerminatorTest
 				return driver;
 			}
 		});
-	}
-
-	/**
-	 * Models the identity, liveness and descendants described by the JDK's {@link ProcessHandle} contract.
-	 * Both JDK termination operations record the same request; no operating-system process is created or stopped.
-	 */
-	private static final class FakeProcess implements ProcessHandle, ProcessHandle.Info
-	{
-		private final long pid;
-		private final Instant startedAt;
-		private final boolean running;
-		private final List<FakeProcess> children;
-
-		/**
-		 * Indicates whether the terminator asked this process to stop, without distinguishing the stopping mechanism.
-		 */
-		private boolean stopRequested;
-
-		/**
-		 * Creates a process with controlled identity and lifecycle inputs.
-		 *
-		 * @param pid       the process identifier
-		 * @param startedAt the reported start time, or null when the operating system does not report it
-		 * @param running   indicates whether the process is still running
-		 * @param children  the processes it started
-		 */
-		private FakeProcess(long pid, Instant startedAt, boolean running, FakeProcess... children)
-		{
-			this.pid = pid;
-			this.startedAt = startedAt;
-			this.running = running;
-			this.children = List.of(children);
-		}
-
-		@Override
-		public long pid()
-		{
-			return pid;
-		}
-
-		@Override
-		public Info info()
-		{
-			return this;
-		}
-
-		@Override
-		public Optional<Instant> startInstant()
-		{
-			return Optional.ofNullable(startedAt);
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return running;
-		}
-
-		@Override
-		public Stream<ProcessHandle> children()
-		{
-			return children.stream().map(ProcessHandle.class::cast);
-		}
-
-		@Override
-		public Stream<ProcessHandle> descendants()
-		{
-			return children().flatMap(child -> Stream.concat(Stream.of(child), child.descendants()));
-		}
-
-		@Override
-		public boolean destroy()
-		{
-			stopRequested = true;
-			return true;
-		}
-
-		@Override
-		public boolean destroyForcibly()
-		{
-			stopRequested = true;
-			return true;
-		}
-
-		@Override
-		public boolean supportsNormalTermination()
-		{
-			return true;
-		}
-
-		@Override
-		public int compareTo(ProcessHandle other)
-		{
-			return Long.compare(pid, other.pid());
-		}
-
-		@Override
-		public boolean equals(Object other)
-		{
-			return other instanceof ProcessHandle process && pid == process.pid();
-		}
-
-		@Override
-		public int hashCode()
-		{
-			return Long.hashCode(pid);
-		}
-
-		@Override
-		public Optional<ProcessHandle> parent()
-		{
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public CompletableFuture<ProcessHandle> onExit()
-		{
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public Optional<String> command()
-		{
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public Optional<String> commandLine()
-		{
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public Optional<String[]> arguments()
-		{
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public Optional<Duration> totalCpuDuration()
-		{
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public Optional<String> user()
-		{
-			throw new UnsupportedOperationException();
-		}
 	}
 }

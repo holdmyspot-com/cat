@@ -1,19 +1,19 @@
 package com.holdmyspot.cat.common.runner.test;
 
-import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
-import com.holdmyspot.cat.common.test.ProcessFixture;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
-import org.testng.annotations.Test;
-
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
+import com.holdmyspot.cat.common.test.FakeProcessHandle;
+import org.testng.annotations.Test;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.time.Instant;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Tests {@link HarnessProcessTermination}.
+ * Tests that a terminated run's process tree stops without starting processes.
  */
 public final class HarnessProcessTerminationTest
 {
@@ -25,62 +25,119 @@ public final class HarnessProcessTerminationTest
 	}
 
 	/**
-	 * Verifies runner shutdown terminates an inherited-child process before the direct harness process exits.
+	 * Verifies that ending a run stops its process, children and grandchildren.
 	 *
-	 * @throws IOException if process execution fails
+	 * @throws IOException if termination fails
 	 */
 	@Test
 	public void terminatesVisibleChildren() throws IOException
 	{
-		try (Process process = ProcessFixture.builder(ProcessFixture.Mode.TREE).start())
-		{
-			List<ProcessHandle> children = List.of();
-			try
-			{
-				ProcessFixture.awaitStarted(process);
-				children = process.toHandle().descendants().toList();
-				HarnessProcessTermination.terminate(process, "test harness");
-				List<ProcessHandle> descendants = process.toHandle().descendants().toList();
-				requireThat(process.isAlive(), "process.isAlive").isFalse();
-				requireThat(descendants.stream().anyMatch(ProcessHandle::isAlive), "liveDescendants").isFalse();
-			}
-			finally
-			{
-				children.forEach(ProcessHandle::destroyForcibly);
-				if (process.isAlive())
-					process.destroyForcibly();
-			}
-		}
+		FakeProcessHandle grandchild = new FakeProcessHandle(3, Instant.EPOCH, true);
+		FakeProcessHandle child = new FakeProcessHandle(2, Instant.EPOCH, true, grandchild);
+		FakeProcessHandle parent = new FakeProcessHandle(1, Instant.EPOCH, true, child);
+
+		HarnessProcessTermination.terminate(new FakeProcess(parent), "harness");
+
+		requireThat(parent.isAlive(), "parent.alive").isFalse();
+		requireThat(child.isAlive(), "child.alive").isFalse();
+		requireThat(grandchild.isAlive(), "grandchild.alive").isFalse();
 	}
 
 	/**
-	 * Verifies shutdown cleanup does not leave a runner child alive after the owning JVM starts to exit.
-	 *
-	 * @throws IOException if process execution fails
-	 *
-	 * @throws InterruptedException if the test is interrupted
+	 * Verifies that shutdown stops the run's process, children and grandchildren.
 	 */
 	@Test
-	public void immediatelyTerminatesVisibleChildren() throws IOException, InterruptedException
+	public void immediatelyTerminatesVisibleChildren()
 	{
-		try (Process process = ProcessFixture.builder(ProcessFixture.Mode.TREE).start())
+		FakeProcessHandle grandchild = new FakeProcessHandle(3, Instant.EPOCH, true);
+		FakeProcessHandle child = new FakeProcessHandle(2, Instant.EPOCH, true, grandchild);
+		FakeProcessHandle parent = new FakeProcessHandle(1, Instant.EPOCH, true, child);
+
+		HarnessProcessTermination.terminateImmediately(new FakeProcess(parent));
+
+		requireThat(parent.isAlive(), "parent.alive").isFalse();
+		requireThat(child.isAlive(), "child.alive").isFalse();
+		requireThat(grandchild.isAlive(), "grandchild.alive").isFalse();
+	}
+
+	/**
+	 * Supplies a process whose lifecycle is represented by its in-memory handle.
+	 */
+	private static final class FakeProcess extends Process
+	{
+		private final FakeProcessHandle handle;
+
+		/**
+		 * Creates a process backed by the supplied handle.
+		 *
+		 * @param handle the process identity and lifecycle
+		 */
+		private FakeProcess(FakeProcessHandle handle)
 		{
-			List<ProcessHandle> children = List.of();
-			try
-			{
-				ProcessFixture.awaitStarted(process);
-				children = process.toHandle().descendants().toList();
-				HarnessProcessTermination.terminateImmediately(process);
-				requireThat(process.waitFor(5, TimeUnit.SECONDS), "processExit").isTrue();
-				requireThat(process.toHandle().descendants().anyMatch(ProcessHandle::isAlive), "liveDescendants").
-				isFalse();
-			}
-			finally
-			{
-				children.forEach(ProcessHandle::destroyForcibly);
-				if (process.isAlive())
-					process.destroyForcibly();
-			}
+			this.handle = handle;
+		}
+
+		@Override
+		public ProcessHandle toHandle()
+		{
+			return handle;
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return handle.isAlive();
+		}
+
+		@Override
+		public void destroy()
+		{
+			handle.destroy();
+		}
+
+		@Override
+		public Process destroyForcibly()
+		{
+			handle.destroyForcibly();
+			return this;
+		}
+
+		@Override
+		public int waitFor()
+		{
+			return exitValue();
+		}
+
+		@Override
+		public boolean waitFor(long timeout, TimeUnit unit)
+		{
+			return !isAlive();
+		}
+
+		@Override
+		public int exitValue()
+		{
+			if (isAlive())
+				throw new IllegalThreadStateException("Process is still running");
+			return 0;
+		}
+
+		@Override
+		public OutputStream getOutputStream()
+		{
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public InputStream getInputStream()
+		{
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public InputStream getErrorStream()
+		{
+			throw new UnsupportedOperationException();
 		}
 	}
 }

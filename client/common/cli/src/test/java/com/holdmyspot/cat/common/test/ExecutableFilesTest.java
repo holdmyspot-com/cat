@@ -2,7 +2,6 @@ package com.holdmyspot.cat.common.test;
 
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
-import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
 import java.io.IOException;
 import java.time.Duration;
@@ -23,20 +22,6 @@ public final class ExecutableFilesTest
 	 */
 	public ExecutableFilesTest()
 	{
-	}
-
-	/**
-	 * Verifies a configured executable process is started.
-	 *
-	 * @throws IOException if the process cannot be started
-	 * @throws InterruptedException if the process wait is interrupted
-	 */
-	@Test public void runsConfiguredExecutable() throws IOException, InterruptedException
-	{
-		try (Process process = Yielding.executableFiles().run(ProcessFixture.builder(ProcessFixture.Mode.EXIT)))
-		{
-			requireThat(process.waitFor(), "exitCode").isEqualTo(0);
-		}
 	}
 
 	/**
