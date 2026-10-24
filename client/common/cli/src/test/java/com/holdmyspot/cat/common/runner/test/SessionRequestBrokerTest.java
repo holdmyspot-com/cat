@@ -25,6 +25,8 @@ import java.nio.ByteBuffer;
 import java.nio.file.StandardOpenOption;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.compress.archivers.tar.TarConstants;
+import org.apache.commons.compress.archivers.tar.TarUtils;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
@@ -33,6 +35,7 @@ import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -510,7 +513,7 @@ public final class SessionRequestBrokerTest
 					case "absolute" -> entry(archive, "/outside", new byte[0]);
 					case "parent" -> entry(archive, "project/../outside", new byte[0]);
 					case "drive" -> entry(archive, "C:/outside", new byte[0]);
-					case "backslash" -> entry(archive, "project\\outside", new byte[0]);
+					case "backslash" -> entry(archive, "project/outside", new byte[0]);
 					case "duplicate" -> entry(archive, "project/marker", new byte[0]);
 					case "directory_duplicate" -> entry(archive, "project/", new byte[0]);
 					case "link", "hardlink_entry", "special", "sparse" ->
@@ -561,6 +564,8 @@ public final class SessionRequestBrokerTest
 				entry.writeEntryHeader(header);
 				Files.write(file, header);
 			}
+			if (kind.equals("backslash"))
+				Files.write(file, withBackslash(Files.readAllBytes(file), "project/outside"));
 			if (kind.equals("checksum"))
 			{
 				byte[] content = Files.readAllBytes(file);
@@ -640,6 +645,34 @@ public final class SessionRequestBrokerTest
 			archive.putArchiveEntry(entry);
 			archive.write(content);
 			archive.closeArchiveEntry();
+		}
+
+		/**
+		 * Replaces the first slash in one entry's name with a backslash. Commons Compress replaces the platform
+		 * separator in a name that it is given, so on Windows only the written header bytes can hold a backslash.
+		 *
+		 * @param archive the archive bytes
+		 * @param name    the entry name, which must occupy a header's name field
+		 * @return the archive bytes, with that header's checksum recomputed
+		 */
+		private static byte[] withBackslash(byte[] archive, String name)
+		{
+			byte[] expected = name.getBytes(StandardCharsets.US_ASCII);
+			for (int offset = 0; offset < archive.length; offset += 512)
+			{
+				if (!Arrays.equals(archive, offset, offset + expected.length, expected, 0, expected.length) ||
+					archive[offset + expected.length] != 0)
+					continue;
+				byte[] header = Arrays.copyOfRange(archive, offset, offset + 512);
+				header[name.indexOf('/')] = '\\';
+				Arrays.fill(header, TarConstants.CHKSUM_OFFSET, TarConstants.CHKSUM_OFFSET + TarConstants.CHKSUMLEN,
+					(byte) ' ');
+				TarUtils.formatCheckSumOctalBytes(TarUtils.computeCheckSum(header), header, TarConstants.CHKSUM_OFFSET,
+					TarConstants.CHKSUMLEN);
+				System.arraycopy(header, 0, archive, offset, 512);
+				return archive;
+			}
+			throw new AssertionError("No header names " + name);
 		}
 
 		/**

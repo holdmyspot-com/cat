@@ -53,7 +53,9 @@ public final class SessionRequestCliTest
 			// Requirement: R-I9
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "request-"));
+				// The launcher refuses a link anywhere in an input's path, and macOS reaches its temporary directory
+				// through /var, a link to /private/var.
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "request-")).toRealPath();
 				Path requests = Files.createDirectory(root.resolve("requests"));
 				Path project = Files.createDirectory(root.resolve("project"));
 				Files.writeString(project.resolve("marker"), "project bytes");
