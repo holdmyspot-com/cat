@@ -1,7 +1,13 @@
 package com.holdmyspot.cat.common.optimizer.cli.test;
 
+import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.EXECUTABLE;
+import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.READ_WRITE;
+import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.writeFile;
+
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.test.ForksContract;
+import com.holdmyspot.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -95,6 +101,50 @@ public final class InMemoryForksTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-memory-fork-contract-"));
 			contract(root).missingWorktreeIsNotAFork();
+		}
+	}
+
+	/**
+	 * Verifies captured regular-file contents, executable modes and participants against the real adapter's contract.
+	 *
+	 * @throws IOException if fixture files or the contract check fail
+	 */
+	@Test
+	public void recordsTrackedAndParticipantFiles() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-memory-fork-contract-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
+			writeFile(base.resolve("ignored.md"), "ignored", READ_WRITE);
+			writeFile(base.resolve(ProgramFixture.name("run")), ProgramFixture.TEXT, EXECUTABLE);
+			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
+			Path campaign = root.resolve("campaign");
+			InMemoryForks forks = new InMemoryForks(base, Set.of(Path.of("prompt.md"),
+				Path.of(ProgramFixture.name("run"))));
+			ForkView fork = forks.create(base, campaign, Set.of(Path.of("ignored.md"), external));
+
+			new ForksContract(forks, base, campaign).recordsTrackedAndParticipantFiles(fork, external);
+		}
+	}
+
+	/**
+	 * Verifies that a missing participant leaves no worktree or fork record, as the real adapter requires.
+	 *
+	 * @throws IOException if fixture files or the contract check fail
+	 */
+	@Test
+	public void missingParticipantCreatesNoWorktree() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-memory-fork-contract-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
+			InMemoryForks forks = new InMemoryForks(base, Set.of(Path.of("prompt.md")));
+
+			new ForksContract(forks, base, root.resolve("campaign")).missingParticipantCreatesNoWorktree();
 		}
 	}
 

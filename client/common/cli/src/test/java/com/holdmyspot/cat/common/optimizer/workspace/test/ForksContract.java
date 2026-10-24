@@ -1,16 +1,19 @@
 package com.holdmyspot.cat.common.optimizer.workspace.test;
 
+import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.EXECUTABLE;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.READ_WRITE;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.file;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.writeFile;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.WorkspaceException;
+import com.holdmyspot.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,12 +22,14 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Checks the same selection, adoption and worktree lifecycle outcomes for a real fork adapter and its in-memory fake.
- * The caller supplies a project and an already-created current fork. Selection checks additionally require
- * {@code prompt.md} with text {@code prompt} and {@code ignored.md} with text {@code ignored}, with only
- * {@code prompt.md} recorded at creation. The caller owns fixture cleanup. These checks create no Git repository;
- * removal uses the supplied adapter, which may invoke Git. Passing them validates the fake's covered assumptions;
- * its run is test-support coverage, while the real adapter's run checks production behavior.
+ * Checks the same captured-file, selection, adoption and worktree lifecycle outcomes for a real fork adapter and
+ * its in-memory fake. The caller supplies a project and an already-created current fork, except that creation-
+ * refusal checks require a campaign directory with no fork. Selection checks require {@code prompt.md} with text
+ * prompt and {@code ignored.md} with text ignored, with only {@code prompt.md} recorded at creation. Captured-file
+ * checks require the same file texts, the tracked executable fixture program and an external participant holding
+ * text shared. The caller owns fixture cleanup. These checks create no Git repository; creation and removal use
+ * the supplied adapter, which may invoke Git. Passing them validates the fake's covered assumptions; its run is
+ * test-support coverage, while the real adapter's run checks production behavior.
  */
 public final class ForksContract
 {
@@ -46,13 +51,62 @@ public final class ForksContract
 	 *
 	 * @param forks the adapter under contract
 	 * @param base the project directory holding the contract files
-	 * @param campaign the storage directory of the already-created fork
+	 * @param campaign the fork storage directory; not yet populated for creation-refusal checks
 	 */
 	public ForksContract(Forks forks, Path base, Path campaign)
 	{
 		this.forks = forks;
 		this.base = base;
 		this.campaign = campaign;
+	}
+
+	/**
+	 * Verifies captured regular-file contents and modes, participant inclusion, absence of campaign files, reopened
+	 * inventory and physical worktree files. The fork was created with the ignored and external participants.
+	 *
+	 * @param created the view that creation returned
+	 * @param external the external participant, holding text {@code shared}
+	 * @throws IOException if fixture files or recorded inventory cannot be read
+	 */
+	public void recordsTrackedAndParticipantFiles(ForkView created, Path external) throws IOException
+	{
+		FileInventory inventory = created.inventory();
+		requireThat(inventory.root(), "root").isEqualTo(base);
+		requireThat(inventory.entries().get(Path.of("prompt.md")), "prompt").isEqualTo(file("prompt"));
+		requireThat(inventory.entries().get(Path.of(ProgramFixture.name("run"))), "executable").
+			isEqualTo(file(ProgramFixture.TEXT, EXECUTABLE));
+		requireThat(inventory.entries().get(Path.of("ignored.md")), "ignored").isEqualTo(file("ignored"));
+		requireThat(inventory.entries().get(external), "external").isEqualTo(file("shared"));
+		requireThat(inventory.entries().keySet().stream().filter(path -> path.startsWith(".cat")).toList(),
+			"campaignFiles").isEmpty();
+		requireThat(forks.open(base, campaign).inventory(), "reopened").isEqualTo(inventory);
+		Path worktree = campaign.resolve("worktree");
+		requireThat(Files.readString(worktree.resolve("prompt.md"), UTF_8), "worktreePrompt").isEqualTo("prompt");
+		requireThat(Files.readString(worktree.resolve("ignored.md"), UTF_8), "worktreeParticipant").isEqualTo("ignored");
+		requireThat(Files.readString(worktree.resolve(ProgramFixture.name("run")), UTF_8), "worktreeProgram").
+			isEqualTo(ProgramFixture.TEXT);
+		requireThat(PortableFiles.mode(worktree.resolve(ProgramFixture.name("run"))), "worktreeProgramMode").
+			isEqualTo(EXECUTABLE);
+	}
+
+	/**
+	 * Verifies that a missing participant refuses creation before a worktree or fork record appears.
+	 *
+	 * @throws IOException if creation fails for another reason
+	 */
+	public void missingParticipantCreatesNoWorktree() throws IOException
+	{
+		try
+		{
+			forks.create(base, campaign, Set.of(Path.of("missing.md")));
+			throw new AssertionError("A missing participant must stop the fork");
+		}
+		catch (WorkspaceException e)
+		{
+			requireThat(e.getMessage(), "message").contains("missing.md");
+		}
+		requireThat(Files.exists(campaign.resolve("worktree")), "worktreeExists").isFalse();
+		requireThat(Files.exists(campaign.resolve("fork")), "forkExists").isFalse();
 	}
 
 	/**

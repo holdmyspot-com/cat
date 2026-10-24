@@ -27,16 +27,18 @@ import java.util.Set;
 /**
  * Builds the project trees that the workspace tests record, stage and scan.
  */
-final class ProjectFixtures
+public final class ProjectFixtures
 {
 	/**
 	 * The permissions of an ordinary non-executable file.
 	 */
-	static final Set<PosixFilePermission> READ_WRITE = PosixFilePermissions.fromString("rw-r--r--");
+	public static final Set<PosixFilePermission> READ_WRITE =
+		Set.copyOf(PosixFilePermissions.fromString("rw-r--r--"));
 	/**
 	 * The permissions of an executable file.
 	 */
-	static final Set<PosixFilePermission> EXECUTABLE = PosixFilePermissions.fromString("rwxr-xr-x");
+	public static final Set<PosixFilePermission> EXECUTABLE =
+		Set.copyOf(PosixFilePermissions.fromString("rwxr-xr-x"));
 
 	/**
 	 * Prevents instantiation.
@@ -66,7 +68,7 @@ final class ProjectFixtures
 	 * @return {@code file}
 	 * @throws IOException if the file cannot be written
 	 */
-	static Path writeFile(Path file, String text, Set<PosixFilePermission> permissions) throws IOException
+	public static Path writeFile(Path file, String text, Set<PosixFilePermission> permissions) throws IOException
 	{
 		Files.createDirectories(file.getParent());
 		Files.writeString(file, text, UTF_8);

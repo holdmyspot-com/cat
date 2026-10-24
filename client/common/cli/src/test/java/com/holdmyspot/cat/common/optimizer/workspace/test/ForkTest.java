@@ -11,7 +11,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
-import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.workspace.Fork;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkTree;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
@@ -491,19 +490,10 @@ public final class ForkTest
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(Path.of("ignored.md"), external),
 				Yielding.fileReplacer());
 
-			FileInventory inventory = fork.inventory();
-			requireThat(inventory.root(), "root").isEqualTo(base);
-			requireThat(inventory.entries().get(Path.of("prompt.md")), "prompt").isEqualTo(file("prompt"));
-			requireThat(inventory.entries().get(Path.of(ProgramFixture.name("run"))), "executable").
-				isEqualTo(file(ProgramFixture.TEXT, EXECUTABLE));
-			requireThat(inventory.entries().get(Path.of("alias.md")), "link").
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, base.resolve(CAMPAIGNS + "/c1")).
+				recordsTrackedAndParticipantFiles(fork, external);
+			requireThat(fork.inventory().entries().get(Path.of("alias.md")), "link").
 				isEqualTo(new SymbolicLink(Path.of("prompt.md")));
-			requireThat(inventory.entries().get(Path.of("ignored.md")), "ignored").isEqualTo(file("ignored"));
-			requireThat(inventory.entries().get(external), "external").isEqualTo(file("shared"));
-			requireThat(inventory.entries().keySet().stream().filter(path -> path.startsWith(".cat")).toList(),
-				"campaignFiles").isEmpty();
-			requireThat(Fork.open(base, base.resolve(CAMPAIGNS + "/c1"), Yielding.fileReplacer()).inventory(), "reopened").
-				isEqualTo(inventory);
 		}
 	}
 
@@ -522,17 +512,7 @@ public final class ForkTest
 			Path base = repository(root);
 			Path campaign = base.resolve(CAMPAIGNS + "/c1");
 
-			try
-			{
-				Fork.create(base, campaign, Set.of(Path.of("missing.md")), Yielding.fileReplacer());
-				throw new AssertionError("A missing participant must stop the fork");
-			}
-			catch (WorkspaceException e)
-			{
-				requireThat(e.getMessage(), "message").contains("missing.md");
-			}
-			requireThat(Files.exists(campaign.resolve("worktree")), "worktreeExists").isFalse();
-			requireThat(Files.exists(campaign.resolve("fork")), "forkExists").isFalse();
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).missingParticipantCreatesNoWorktree();
 		}
 	}
 

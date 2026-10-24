@@ -20,7 +20,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -236,7 +235,7 @@ public final class InMemoryForks implements Forks
 			}
 			FileContent content = new FileContent(Files.readAllBytes(location));
 			contents.put(content.hash(), content);
-			entries.put(path, new RegularFile(content.hash(), PosixFilePermissions.fromString("rw-r--r--")));
+			entries.put(path, new RegularFile(content.hash(), PortableFiles.mode(location)));
 		}
 		return new FileInventory(root, entries);
 	}
