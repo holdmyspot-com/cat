@@ -3,7 +3,6 @@ set -eu
 
 SCRIPT_DIRECTORY="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 COMMON_SCRIPT="${SCRIPT_DIRECTORY}/common.sh"
-MARKETPLACE_METADATA="${SCRIPT_DIRECTORY}/claude-marketplace.json"
 [ -f "${COMMON_SCRIPT}" ] || {
 	echo "CAT installer library not found: ${COMMON_SCRIPT}" >&2
 	exit 1
@@ -15,6 +14,7 @@ trap cat_delete_download_temp_directory EXIT HUP INT TERM
 [ "$#" -le 1 ] || cat_print_install_usage "$0"
 cat_resolve_artifact_directory "claude" "${1:-${CAT_RELEASE_TAG}}"
 cat_validate_artifact "${CAT_ARTIFACT_DIRECTORY}" ".claude-plugin/plugin.json" "Claude"
+MARKETPLACE_METADATA="${CAT_ARTIFACT_DIRECTORY}/install/claude-marketplace.json"
 
 CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 CAT_DATA_DIR="${CAT_CLAUDE_DATA_DIR:-${CLAUDE_PLUGIN_DATA:-${CLAUDE_CONFIG_DIR}/plugins/data/cat-cat}}"

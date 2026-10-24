@@ -73,6 +73,8 @@ developer_instructions = '''
 Review evidence without editing.
 '''
 SCRIPT
+	else
+		cp "${CLAUDE_INSTALL_DIRECTORY}/claude-marketplace.json" "${artifact}/install/claude-marketplace.json"
 	fi
 	printf '{}\n' > "${artifact}/.${harness}-plugin/plugin.json"
 	printf '1.0\n' > "${artifact}/client/VERSION"
@@ -158,13 +160,18 @@ while [ "$#" -gt 0 ]; do
 	case "$1" in
 		-o) shift; output="$1" ;;
 		-*) ;;
-		*) url="$1" ;;
+		https://*) url="$1" ;;
+		*) exit 22 ;;
 	esac
 	shift
 done
 source="${FAKE_RELEASE_DIRECTORY}/${url##*/}"
 [ -f "${source}" ] || exit 22
-cp "${source}" "${output}"
+if [ -n "${output}" ]; then
+	cp "${source}" "${output}"
+else
+	cat "${source}"
+fi
 SCRIPT
 	chmod +x "${FAKE_BIN}/curl"
 	printf '%s\n' "${archive_directory}.tar.gz"
