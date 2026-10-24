@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.LockFileOpener;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
@@ -23,6 +24,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -31,6 +33,7 @@ import org.testng.annotations.Test;
 
 import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.WRITE;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
  * Tests {@link HarnessCapacity}.
@@ -481,6 +484,65 @@ public final class HarnessCapacityTest
 			{
 				requireThat(permit, "permit").isNotNull();
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a hold recorded by one JVM prevents a second JVM from acquiring a permit before expiry, and that
+	 * the second JVM can acquire at expiry. Two instances in one JVM could share an in-memory hold and miss a failure
+	 * to persist it. One child JVM records the hold; the test JVM's existing pool must then honour it. This process
+	 * boundary uses a controlled clock, starts no harness or model and does not sleep.
+	 *
+	 * @throws IOException if the fixture cannot run or its files cannot be used
+	 * @throws InterruptedException if waiting for a fixture is interrupted
+	 */
+	@Test
+	public void holdBlocksAnotherJvmUntilExpiry() throws IOException, InterruptedException
+	{
+		// Requirement: R-E6, R-E8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-capacity-process-"));
+			ManualClock clock = new ManualClock(HOLD_START);
+			HarnessCapacity capacity = heldBy(directory, clock);
+			requireThat(capacity.hold(), "initialHold").isEqualTo(HarnessCapacity.Hold.NONE);
+			requireThat(capacityProcess(directory), "recordedHold").
+				isEqualTo(HOLD_START.plus(Duration.ofMinutes(1)).toString());
+			requireThat(capacity.tryAcquire().isPresent(), "admittedDuringHold").isFalse();
+			clock.advance(Duration.ofMinutes(1));
+			try (HarnessCapacity.Permit permit = capacity.tryAcquire().orElseThrow())
+			{
+				requireThat(permit, "admittedAtExpiry").isNotNull();
+			}
+		}
+	}
+
+	/**
+	 * Records a hold in a separate JVM with the test runtime's classes and dependencies.
+	 *
+	 * @param directory the isolated lock and process working directory
+	 * @return the fixture's output with platform line endings normalized
+	 * @throws IOException if the process cannot start or its output cannot be read
+	 * @throws InterruptedException if waiting is interrupted
+	 */
+	private static String capacityProcess(Path directory) throws IOException, InterruptedException
+	{
+		String executable = "java";
+		if (Platform.current().isWindows())
+			executable = "java.exe";
+		Path java = Path.of(System.getProperty("java.home"), "bin", executable);
+		String classes = System.getProperty("jdk.module.path", System.getProperty("java.class.path"));
+		ProcessBuilder builder = new ProcessBuilder(java.toString(), "-XX:+PerfDisableSharedMem",
+			"-Djava.io.tmpdir=" + directory,
+			"-Duser.home=" + directory.resolve("absent-home"), "-cp", classes, CapacityHoldProcess.class.getName(),
+			directory.toString(), HOLD_START.toString()).directory(directory.toFile()).redirectErrorStream(true);
+		try (Process process = builder.start())
+		{
+			requireThat(process.waitFor(10, TimeUnit.SECONDS), "finished").isTrue();
+			String output = new String(process.getInputStream().readAllBytes(), UTF_8).replace("\r\n", "\n").strip();
+			if (process.exitValue() != 0)
+				throw new IOException("Capacity fixture exited with " + process.exitValue() + ": " + output);
+			return output;
 		}
 	}
 
