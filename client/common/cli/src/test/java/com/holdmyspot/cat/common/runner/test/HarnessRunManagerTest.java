@@ -448,6 +448,33 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
+	 * Verifies recording a harness process reads and preserves a long command containing quotes and backslashes.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void preservesLongHarnessCommand() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(
+				jvm.temporaryDirectory(),
+				"cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			String command = "a\"\\".repeat(40_000);
+			manager.initialize(run, root, root, "structured_protocol", List.of(command));
+
+			manager.recordHarnessProcess(run, 12_345, Clock.systemUTC().instant());
+
+			JsonNode fields = JsonMapper.builder().build().readTree(
+				Files.readString(run.directory().resolve("run.json")));
+			requireThat(fields.get("harness_command").asString(), "harnessCommand").isEqualTo(command);
+		}
+	}
+
+	/**
 	 * Verifies retained manifests record reproducible harness-process metadata without command secrets.
 	 *
 	 * @throws IOException if the filesystem operation fails

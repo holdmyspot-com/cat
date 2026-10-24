@@ -84,15 +84,15 @@ public final class HarnessRunManager
 		  "harness_pid": (?<harnessPid>null|[1-9][0-9]*),
 		  "harness_started_at": (?<harnessStartedAt>null|"(?<harnessStartedAtValue>[^\"]+)"),
 		  "created_at": "(?<createdAt>[^\"]+)",
-		  "artifact_path": "(?<artifactPath>(?:[^"\\\\]|\\\\.)*)",
-		  "project_path": "(?<projectPath>(?:[^"\\\\]|\\\\.)*)",
-		  "transport": "(?<transport>(?:[^"\\\\]|\\\\.)*)",
-		  "harness_command": "(?<harnessCommand>(?:[^"\\\\]|\\\\.)*)",
+		  "artifact_path": "(?<artifactPath>[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+)",
+		  "project_path": "(?<projectPath>[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+)",
+		  "transport": "(?<transport>[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+)",
+		  "harness_command": "(?<harnessCommand>[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+)",
 		  "started_at": (?<startedAt>null|"(?<startedAtValue>[^\"]+)"),
 		  "turn_number": (?<turnNumber>[0-9]+),
 		  "exit_code": (?<exitCode>null|-?[0-9]+),
 		  "finished_at": (?<finishedAt>null|"(?<finishedAtValue>[^\"]+)"),
-		  "diagnostic": "(?:[^"\\\\]|\\\\.)*"
+		  "diagnostic": "[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"
 		}\\n\\z""");
 	private final Path root;
 	private final Clock clock;
