@@ -1,11 +1,13 @@
 package com.holdmyspot.cat.common.optimizer.port.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
+import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
@@ -17,6 +19,7 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -110,8 +113,8 @@ public final class PortFakesTest
 	}
 
 	/**
-	 * Verifies the fake workspace's test-support records of staged sources, authoring copies and materialization
-	 * requests. Shared workspace checks establish the corresponding adapter behavior.
+	 * Verifies the fake workspace's staged and authoring-copy directory state and its materialized worktree.
+	 * Shared workspace checks establish the corresponding adapter behavior.
 	 *
 	 * @throws IOException if the fake fails
 	 */
@@ -137,8 +140,10 @@ public final class PortFakesTest
 			workspace.deleteAuthoringCopy(copy);
 			requireThat(workspace.authoringCopies(), "authoringCopies").isEmpty();
 
-			workspace.materialize(incumbent);
-			requireThat(workspace.materialized(), "materialized").isEqualTo(List.of(incumbent));
+			Overlay edited = incumbent.write(Path.of("prompt.md"), new FileContent("edited".getBytes(UTF_8)),
+				PosixFilePermissions.fromString("rw-r--r--"));
+			workspace.materialize(edited);
+			requireThat(workspace.scanWorktree(), "worktree").isEqualTo(edited.snapshot());
 		}
 	}
 

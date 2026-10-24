@@ -434,7 +434,7 @@ public final class DeliveryTest
 				kept, working, fixture.promptSources(), null, List.of());
 
 			Delivered delivered = requireDelivered(result);
-			requireThat(workspace.materialized(), "materialized").isEqualTo(List.of(kept));
+			requireThat(workspace.scanWorktree(), "worktree").isEqualTo(kept.snapshot());
 			requireThat(delivered.label(), "label").isEqualTo(Outcome.IMPROVED_NOT_CERTIFIED);
 			requireThat(delivered.label().label(), "labelText").isEqualTo("improved, not certified");
 			requireCandidateDelivered(fixture);
@@ -502,7 +502,7 @@ public final class DeliveryTest
 				new PathChange.Added(Path.of("rules/stray.md"), stray))));
 			requireThat(store.loadJournal(CAMPAIGN), "journal").isEmpty();
 			requireThat(read(fixture.base().resolve("rules/main.md")), "main.md").isEqualTo("main v1\n");
-			requireThat(workspace.materialized(), "materialized").isEmpty();
+			requireThat(workspace.scanWorktree(), "worktree").isEqualTo(new FileInventory(fixture.base(), files));
 		}
 	}
 

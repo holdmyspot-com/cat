@@ -2370,8 +2370,8 @@ public final class DriverTest
 					filter(request -> request.role() == SessionRole.PROMPT_AUTHOR).findFirst().orElseThrow();
 				requireThat(promptAuthor.source(), "source").
 					isEqualTo(harness.directory().resolve("workspace").resolve("authoring").resolve("1"));
-				requireThat(harness.workspace().materialized().getLast().identity(), "materialized").
-					isEqualTo(promoted);
+				requireThat(harness.workspace().scanWorktree(), "worktree").
+					isEqualTo(harness.overlays().require(promoted).snapshot());
 			}
 		}
 	}
@@ -3124,7 +3124,7 @@ public final class DriverTest
 			{
 				driver.apply(CampaignEvent.Choose.of(Choice.RESUME));
 				requireThat(harness.campaign().pending(), "pending").isNull();
-				requireThat(harness.workspace().materialized().getLast().snapshot(), "worktree").
+				requireThat(harness.workspace().scanWorktree(), "worktree").
 					isEqualTo(harness.overlays().require(Builder.snapshot("candidate-1")).snapshot());
 				driver.step();
 				requireThat(harness.sessions().sessions().size(), "sessions").isEqualTo(1);

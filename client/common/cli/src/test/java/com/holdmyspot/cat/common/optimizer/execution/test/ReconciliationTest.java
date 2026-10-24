@@ -327,14 +327,13 @@ public final class ReconciliationTest
 		{
 			DriverHarness harness = crashAtPromotion(cleanup.add(Files.createTempDirectory("reconcile")));
 			FileInventory worktree = harness.workspace().scanWorktree();
-			int materialized = harness.workspace().materialized().size();
 			try (Driver _ = harness.open())
 			{
 				Campaign reconciled = harness.campaign();
 				requireThat(reconciled.development().working().number(), "working").isEqualTo(2);
 				Overlay promoted = harness.overlays().require(reconciled.development().working().snapshot());
 				requireThat(worktree, "worktree").isEqualTo(promoted.snapshot());
-				requireThat(harness.workspace().materialized().size(), "materialized").isEqualTo(materialized);
+				requireThat(harness.workspace().scanWorktree(), "worktreeAfterReconciliation").isEqualTo(worktree);
 				requireThat(reconciled.pending(), "pending").isNull();
 			}
 		}
@@ -365,7 +364,6 @@ public final class ReconciliationTest
 				Campaign reconciled = harness.campaign();
 				requireThat(reconciled.development().working().number(), "working").isEqualTo(2);
 				Overlay promoted = harness.overlays().require(reconciled.development().working().snapshot());
-				requireThat(harness.workspace().materialized().getLast(), "materialized").isEqualTo(promoted);
 				requireThat(harness.workspace().scanWorktree(), "worktree").isEqualTo(promoted.snapshot());
 				requireThat(reconciled.pending(), "pending").isNull();
 			}
@@ -388,7 +386,8 @@ public final class ReconciliationTest
 			try (Driver _ = harness.open())
 			{
 				requireThat(harness.campaign().pending(), "pending").isNull();
-				requireThat(harness.workspace().materialized(), "materialized").isEmpty();
+				requireThat(harness.workspace().scanWorktree(), "worktree").isEqualTo(harness.overlays().
+					require(harness.campaign().development().working().snapshot()).snapshot());
 			}
 		}
 	}
@@ -414,7 +413,6 @@ public final class ReconciliationTest
 			try (Driver _ = harness.open())
 			{
 				requireThat(harness.campaign().pending(), "pending").isInstanceOf(PendingDecision.UnownedChange.class);
-				requireThat(harness.workspace().materialized(), "materialized").isEmpty();
 				requireThat(harness.workspace().scanWorktree(), "worktree").isEqualTo(edited);
 			}
 		}

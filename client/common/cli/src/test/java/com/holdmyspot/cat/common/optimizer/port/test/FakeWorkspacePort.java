@@ -76,11 +76,6 @@ public final class FakeWorkspacePort implements WorkspacePort
 	private final Map<Path, FileInventory> authoringCopies = new HashMap<>();
 	private final Map<Path, FileContent> contents = new HashMap<>();
 	private final Map<Path, FileInventory> promptAuthorEffects = new HashMap<>();
-	private final List<Overlay> materialized = new ArrayList<>();
-	/**
-	 * The plugin directories whose files were copied as bases, in request order.
-	 */
-	private final List<Path> copiedBases = new ArrayList<>();
 	private FileInventory worktree;
 	private int copiesPrepared;
 
@@ -287,7 +282,6 @@ public final class FakeWorkspacePort implements WorkspacePort
 		Path base = pluginBase(digest);
 		synchronized (lock)
 		{
-			copiedBases.add(directory);
 			if (Files.isDirectory(base))
 				return digest;
 			try (Stream<Path> files = Files.walk(directory))
@@ -320,19 +314,6 @@ public final class FakeWorkspacePort implements WorkspacePort
 	public Path worktree()
 	{
 		return root.toAbsolutePath().resolve("worktree");
-	}
-
-	/**
-	 * Returns the plugin directories whose files were copied as bases, in request order.
-	 *
-	 * @return the directories
-	 */
-	public List<Path> copiedBases()
-	{
-		synchronized (lock)
-		{
-			return List.copyOf(copiedBases);
-		}
 	}
 
 	/**
@@ -515,21 +496,7 @@ public final class FakeWorkspacePort implements WorkspacePort
 		synchronized (lock)
 		{
 			requireThat(candidate, "candidate").isNotNull();
-			materialized.add(candidate);
 			worktree = candidate.snapshot();
-		}
-	}
-
-	/**
-	 * Returns the candidates written into the optimization worktree.
-	 *
-	 * @return the candidates, in the order they were written
-	 */
-	public List<Overlay> materialized()
-	{
-		synchronized (lock)
-		{
-			return List.copyOf(materialized);
 		}
 	}
 }
