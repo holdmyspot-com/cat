@@ -10,6 +10,8 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.IOException;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -80,9 +82,11 @@ public final class ToolScopeTest
 	@Test
 	public void outsideProjectUsesWorkingDirectory() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FileSystem isolated = FileSystems.newFileSystem(cleanup.add(Files.createTempDirectory("cat-outside-")).
+				resolve("outside-project.zip"), Map.of("create", "true")))
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-outside-"));
+			Path root = isolated.getPath("/");
 			try (ToolScope scope = ToolScope.forSession(root, environment(HARNESS_B, SESSION_ID, root),
 				List.of(HARNESS_A, HARNESS_B)))
 			{
