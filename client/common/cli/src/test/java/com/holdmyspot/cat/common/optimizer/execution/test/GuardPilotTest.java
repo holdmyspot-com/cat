@@ -103,6 +103,10 @@ public final class GuardPilotTest
 	/**
 	 * The pilot runs 20 control trials of each prompt test in its weakest cell, on the control source and of
 	 * development test cases only, and counts how often the judge passed each assertion.
+	 * <p>
+	 * Runtime includes the required 20 trials for each of two tests, their scripted judge results and the staged
+	 * source-file checks for every trial. Shortening the pilot or replacing the staged files with a flag would lose
+	 * the trial-count, selected-source or held-out-file exclusion outcomes. No harness or model runs.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
@@ -437,6 +441,10 @@ public final class GuardPilotTest
 	/**
 	 * A stored pilot with a trial that ended without a decision runs again even though its test is unchanged, so that a
 	 * session failure does not stand in for the control trials.
+	 * <p>
+	 * Runtime includes generating a prior pilot with failed safety runs, then completing its required 20-trial
+	 * replacement while reusing the successful formatting pilot. Both phases use scripted sessions and staged
+	 * trial files; no harness or model runs.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
