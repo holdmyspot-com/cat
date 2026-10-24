@@ -544,6 +544,64 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Returns instruction files that belong to the other harness, with no importing instruction file present.
+	 *
+	 * @return the harness, target and absent instruction file
+	 */
+	@DataProvider
+	public Object[][] otherInstructionFiles()
+	{
+		return new Object[][]
+		{
+			{Harness.CLAUDE, Path.of("AGENTS.md"), Path.of("CLAUDE.md")},
+			{Harness.CODEX, Path.of("CLAUDE.md"), Path.of("AGENTS.md")}
+		};
+	}
+
+	/**
+	 * Verifies that start refuses the other harness's instruction file when no instruction file imports it,
+	 * before starting any session.
+	 *
+	 * @param harness     the harness running start
+	 * @param target      the other harness's instruction file
+	 * @param instruction the absent instruction file that could import the target
+	 * @throws IOException if the project cannot be created or read
+	 */
+	@Test(dataProvider = "otherInstructionFiles")
+	public void startRefusesOtherInstructionFile(Harness harness, Path target, Path instruction)
+		throws IOException
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("optimizer-other-instruction")).toRealPath();
+			Files.createDirectory(root.resolve(".git"));
+			Files.writeString(root.resolve(target), "Be brief.\n");
+			configure(root, target, "{\"claude\": {\"plugins\": []}, \"codex\": {\"plugins\": []}}");
+			try (TestOptimizerCommandScope<FakeSessionPort> command = new TestOptimizerCommandScope<>(harness,
+				root, Set.of(target), _ -> new FakeSessionPort()))
+			{
+				requireThat(Files.exists(root.resolve(instruction)), "instructionExists").isFalse();
+				ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+				try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+				{
+					OptimizerCore core = new OptimizerCore(command, Yielding.executableFiles());
+					requireThat(new Commands(core, JSON, ZoneOffset.UTC).
+						execute(List.of("start", target.toString()), out), "exitCode").isEqualTo(1);
+				}
+
+				JsonNode result = JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
+				requireThat(result.get("status").asString(), "status").isEqualTo("refused");
+				requireThat(result.get("message").asString(), "message").
+					isEqualTo("Trials would not load the target " + target +
+						": it does not load from the project, and no trial plugin that the project builds holds a copy of it. " +
+						"List the plugin that ships it, with its build, in the prompt test configuration, and run start again.");
+				requireThat(command.sessions().sessions(), "sessions").isEmpty();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the guard pilot's control trials empty only the target prompt file and leave every other prompt
 	 * file of the prompt system as the incumbent has it.
 	 */
