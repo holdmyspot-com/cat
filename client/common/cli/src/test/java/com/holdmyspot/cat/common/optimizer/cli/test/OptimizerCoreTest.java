@@ -4002,7 +4002,8 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code status} of a target that has no campaign but a certification record reports the record as
 	 * one result: current while the prompt file and every condition that CAT knows are unchanged, with the trial
-	 * model, which only a session observes, unchecked.
+	 * model, which only a session observes, unchecked. Editing the shell command that the unchanged prompt names
+	 * leaves the certification current, because CAT does not measure the machine's programs. No command is executed.
 	 */
 	@Test
 	public void statusOfTargetReportsCurrentRecord() throws Exception
@@ -4013,10 +4014,17 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}));
-			writeRecord(repository, "Be brief.\n", _ ->
+			String prompt = "Run sh reply.sh to answer.\n";
+			Files.writeString(repository.root().resolve("CLAUDE.md"), prompt);
+			Path command = repository.root().resolve("reply.sh");
+			Files.writeString(command, "printf 'earlier answer\\n'\n");
+			writeRecord(repository, prompt, _ ->
 			{
 			});
+			requireThat(output(repository, List.of("status", "CLAUDE.md")).get("latest").get(0).
+				get("applicability").get("status").asString(), "beforeCommandEdit").isEqualTo("current");
 
+			Files.writeString(command, "printf 'changed answer\\n'\n");
 			ObjectNode status = output(repository, List.of("status", "CLAUDE.md"));
 
 			requireThat(status.get("status").asString(), "status").isEqualTo("certified");
