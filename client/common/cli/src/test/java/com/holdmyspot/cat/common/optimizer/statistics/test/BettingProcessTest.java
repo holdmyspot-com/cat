@@ -84,6 +84,40 @@ public final class BettingProcessTest
 	}
 
 	/**
+	 * Verifies both sides of the certification boundary at minimum pass rates 0.80, 0.90, 0.97 and 0.99, for
+	 * attempts 1 to 5 and 0 to 2 failures. The fixtures come from an independent exact-rational calculation of the
+	 * weighted bets, including the loss of the certain bet after a failure.
+	 */
+	@Test
+	public void boundariesFollowMinimumPassRate()
+	{
+		// Requirement: R-S2
+		String[] rates = {"0.80", "0.90", "0.97", "0.99"};
+		int[][][] minimumPasses =
+		{
+			{{22, 33, 42}, {27, 40, 48}, {31, 44, 52}, {33, 47, 55}, {35, 49, 57}},
+			{{45, 71, 89}, {57, 85, 103}, {64, 93, 111}, {70, 99, 118}, {74, 104, 123}},
+			{{157, 247, 310}, {197, 294, 358}, {223, 323, 388}, {241, 345, 409}, {255, 362, 426}},
+			{{474, 749, 942}, {597, 892, 1086}, {674, 981, 1176}, {730, 1046, 1242}, {774, 1098, 1294}}
+		};
+		for (int rate = 0; rate < rates.length; ++rate)
+		{
+			BettingProcess certification = BettingProcess.above(new BigDecimal(rates[rate]));
+			for (int index = 1; index <= minimumPasses[rate].length; ++index)
+			{
+				SignificanceLevel level = ErrorBudget.certificationLevel(index);
+				for (int failures = 0; failures < minimumPasses[rate][index - 1].length; ++failures)
+				{
+					int passes = minimumPasses[rate][index - 1][failures];
+					String pair = rates[rate] + "i" + index + "F" + failures;
+					requireThat(certification.exceeds(passes, failures, level), pair + "Certifies").isTrue();
+					requireThat(certification.exceeds(passes - 1, failures, level), pair + "OneFewer").isFalse();
+				}
+			}
+		}
+	}
+
+	/**
 	 * Verifies the all-pass minimums per attempt and under alternative budget splits.
 	 */
 	@Test
