@@ -274,6 +274,16 @@ public final class InMemoryForks implements Forks
 			this.excludeAdded = excludeAdded;
 			this.inventory = inventory;
 			this.workspace = new FakeWorkspacePort(campaign, inventory, root);
+			for (Map.Entry<Path, FileEntry> entry : inventory.entries().entrySet())
+			{
+				if (entry.getValue() instanceof RegularFile file)
+				{
+					FileContent content = contents.get(file.contentHash());
+					if (content == null)
+						throw new IllegalStateException("The in-memory fork has no captured bytes for " + entry.getKey());
+					workspace.supplyFile(entry.getKey(), content);
+				}
+			}
 			if (current)
 				inventories.put(campaign, inventory);
 		}

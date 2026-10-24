@@ -10,6 +10,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
+import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.WorkspaceException;
@@ -133,7 +134,8 @@ public final class ForksContract
 
 	/**
 	 * Verifies captured regular-file contents and modes, participant inclusion, absence of campaign files, reopened
-	 * inventory and physical worktree files. The fork was created with the ignored and external participants.
+	 * inventory and physical worktree files. Saved reads and staged trials retain captured bytes after the base changes.
+	 * The fork was created with the ignored and external participants.
 	 *
 	 * @param created the view that creation returned
 	 * @param external the external participant, holding text {@code shared}
@@ -158,6 +160,14 @@ public final class ForksContract
 			isEqualTo(ProgramFixture.TEXT);
 		requireThat(PortableFiles.mode(worktree.resolve(ProgramFixture.name("run"))), "worktreeProgramMode").
 			isEqualTo(EXECUTABLE);
+
+		writeFile(base.resolve("prompt.md"), "live change", READ_WRITE);
+		Overlay candidate = Overlay.of(inventory);
+		String saved = new String(created.workspace().readFile(candidate, Path.of("prompt.md")).
+			orElseThrow().bytes(), UTF_8);
+		Path staged = created.workspace().stage(candidate, Set.of());
+		requireThat(Map.of("saved", saved, "staged", Files.readString(staged.resolve("prompt.md"), UTF_8)),
+			"capturedPrompt").isEqualTo(Map.of("saved", "prompt", "staged", "prompt"));
 	}
 
 	/**

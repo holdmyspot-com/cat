@@ -4,9 +4,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
+import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.OverlayEntry.Write;
@@ -38,6 +40,7 @@ import java.util.stream.Stream;
  * Returned paths are names under a root that the fake never reads or writes, except that it creates each staged
  * source's directory, which a trial record compares with the trial's effects. A fake created with a project directory
  * fills that directory with the fork's project files, copied from the project directory; otherwise it stays empty.
+ * Supplied captured bytes take precedence over project files for saved reads and staged sources.
  * Each authoring copy scans as the working candidate's snapshot rooted at the copy. Prompt author edits are supplied
  * with {@link #editAuthoringCopy(Path, FileInventory)}; an inventory rooted at a session's effects directory changes
  * those effects independently of the source copy. {@link WorkspaceContract} checks these operations against
@@ -138,14 +141,14 @@ public final class FakeWorkspacePort implements WorkspacePort
 			return Optional.empty();
 		if (candidate.entries().get(target) instanceof Write write)
 			return Optional.of(write.content());
-		if (project != null)
-			return Optional.of(new FileContent(Files.readAllBytes(project.resolve(target))));
 		synchronized (lock)
 		{
 			FileContent content = contents.get(target);
-			if (content == null)
-				throw new IOException("The in-memory workspace has no supplied content for " + target);
-			return Optional.of(content);
+			if (content != null)
+				return Optional.of(content);
+			if (project != null)
+				return Optional.of(new FileContent(Files.readAllBytes(project.resolve(target))));
+			throw new IOException("The in-memory workspace has no supplied content for " + target);
 		}
 	}
 
@@ -204,8 +207,15 @@ public final class FakeWorkspacePort implements WorkspacePort
 						continue;
 					Path target = directory.resolve(file);
 					Files.createDirectories(target.getParent());
+					FileContent captured = contents.get(file);
 					if (candidate.entries().get(file) instanceof Write write)
 						Files.write(target, write.content().bytes());
+					else if (captured != null)
+					{
+						Files.write(target, captured.bytes());
+						if (candidate.snapshot().entries().get(file) instanceof RegularFile regular)
+							PortableFiles.setMode(target, regular.permissions());
+					}
 					else
 						Files.copy(project.resolve(file), target, StandardCopyOption.REPLACE_EXISTING);
 				}
