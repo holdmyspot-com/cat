@@ -22,7 +22,7 @@ load bootstrap-helpers
 	done
 }
 
-@test "downloaded Codex bootstrap installs and registers metadata from the release archive" {
+@test "downloaded Codex bootstrap installs supported platforms and directs Windows users to PowerShell" {
 	create_fake_engine_command codex
 	create_fake_release codex > /dev/null
 	cp "${INSTALL_DIRECTORY}/bootstrap.sh" "${INSTALL_DIRECTORY}/common.sh" \
@@ -35,9 +35,18 @@ load bootstrap-helpers
 		FAKE_RELEASE_DIRECTORY="${FAKE_RELEASE_DIRECTORY}" \
 		sh "${standalone}/bootstrap-codex.sh" v1.0
 
-	[ "${status}" -eq 0 ]
-	[ -f "${CODEX_HOME}/plugins/cat-marketplace/.agents/plugins/marketplace.json" ]
-	grep -Fx "codex plugin add cat@cat" "${COMMAND_LOG}"
+	case "$(uname -s)" in
+		MINGW*|MSYS*)
+			[ "${status}" -eq 1 ]
+			[[ "${output}" == *"install CAT for Codex from PowerShell with bootstrap-codex.ps1"* ]]
+			[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
+			;;
+		*)
+			[ "${status}" -eq 0 ]
+			[ -f "${CODEX_HOME}/plugins/cat-marketplace/.agents/plugins/marketplace.json" ]
+			grep -Fx "codex plugin add cat@cat" "${COMMAND_LOG}"
+			;;
+	esac
 }
 
 @test "downloaded Codex uninstall bootstrap removes the registered CAT marketplace" {
