@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.cli.test;
 
 import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
@@ -192,13 +193,15 @@ public final class InMemoryForks implements Forks
 		FileInventory inventory = inventories.get(campaign);
 		if (inventory == null)
 			throw new WorkspaceException("The campaign directory " + campaign + " holds no fork.");
-		return new InMemoryFork(campaign, inventory, false, true);
+		if (exists(campaign))
+			return new InMemoryFork(campaign, inventory, false, true);
+		throw new WorkspaceException("The campaign directory " + campaign + " holds no optimization worktree.");
 	}
 
 	@Override
 	public boolean exists(Path campaign)
 	{
-		return inventories.containsKey(campaign);
+		return Files.isDirectory(campaign.resolve("worktree"));
 	}
 
 	@Override
@@ -206,6 +209,7 @@ public final class InMemoryForks implements Forks
 	{
 		if (removalDenied)
 			throw new AccessDeniedException(campaign.resolve("worktree").toString(), null, "Permission denied");
+		TemporaryDirectories.deleteRecursively(campaign.resolve("worktree"));
 		inventories.remove(campaign);
 	}
 

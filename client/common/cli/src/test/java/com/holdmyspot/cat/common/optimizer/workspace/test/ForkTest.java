@@ -221,10 +221,27 @@ public final class ForkTest
 			Git git = new Git(base);
 			requireThat(worktreeCount(git), "worktreesBefore").isEqualTo(2L);
 
-			Fork.remove(base, campaign);
-
-			requireThat(Files.exists(campaign.resolve("worktree")), "worktreeExists").isFalse();
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).removesExistingWorktree();
 			requireThat(worktreeCount(git), "worktreesAfter").isEqualTo(1L);
+		}
+	}
+
+	/**
+	 * Verifies that a missing optimization worktree is neither reported present nor opened, even when the recorded
+	 * fork inventory remains. The stored fixture needs no Git repository.
+	 *
+	 * @throws IOException if the fixture or contract check fails
+	 */
+	@Test
+	public void missingWorktreeIsNotAFork() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = project(root);
+			Path campaign = root.resolve("campaign");
+			storeFork(base, campaign);
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).missingWorktreeIsNotAFork();
 		}
 	}
 
@@ -372,7 +389,7 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			new ForkViewContract(new GitForks(Yielding.fileReplacer()), base, campaign).leavesOutDeselectedParticipants();
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).leavesOutDeselectedParticipants();
 		}
 	}
 
@@ -431,7 +448,7 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			new ForkViewContract(new GitForks(Yielding.fileReplacer()), base, campaign).extensionBecomesCurrentWhenAdopted();
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).extensionBecomesCurrentWhenAdopted();
 		}
 	}
 
@@ -451,7 +468,7 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			new ForkViewContract(new GitForks(Yielding.fileReplacer()), base, campaign).addsParticipantsAfterCreation();
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).addsParticipantsAfterCreation();
 		}
 	}
 

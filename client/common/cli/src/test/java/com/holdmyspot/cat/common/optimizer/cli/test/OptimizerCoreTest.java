@@ -3545,7 +3545,7 @@ public final class OptimizerCoreTest
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			CommandResult first = repository.core().run(id);
 			try (TestOptimizerCommandScope<FakeSessionPort> fresh = TestOptimizerCommandScope.of(Harness.CLAUDE,
-				repository.root()))
+				repository.root(), repository.forks()))
 			{
 				TokenStatistics reported = new OptimizerCore(fresh).status(id).status().tokens();
 				requireThat(reported, "reloadedUsage").isEqualTo(first.status().tokens());
@@ -3595,7 +3595,7 @@ public final class OptimizerCoreTest
 			repository.core().start(Path.of("CLAUDE.md"));
 			repository.core().revise(id, "Cover safety.");
 			try (TestOptimizerCommandScope<FakeSessionPort> fresh = TestOptimizerCommandScope.of(Harness.CLAUDE,
-				repository.root()))
+				repository.root(), repository.forks()))
 			{
 				TokenStatistics.RoleUsage reported = new OptimizerCore(fresh).
 					status(id).status().tokens().roles().get(SessionRole.CONTRACT_AUTHOR);

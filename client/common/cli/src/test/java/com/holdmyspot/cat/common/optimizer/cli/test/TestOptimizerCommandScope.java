@@ -81,6 +81,20 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	}
 
 	/**
+	 * Creates a fresh command scope backed by the forks that earlier commands used.
+	 *
+	 * @param harness the harness that runs the launcher
+	 * @param directory the project directory, which the test creates and deletes
+	 * @param forks the existing in-memory fork store
+	 * @return the scope
+	 * @throws NullPointerException if any argument is null
+	 */
+	static TestOptimizerCommandScope<FakeSessionPort> of(Harness harness, Path directory, InMemoryForks forks)
+	{
+		return new TestOptimizerCommandScope<>(harness, SESSION_ID, directory, forks, _ -> new FakeSessionPort());
+	}
+
+	/**
 	 * Creates a scope whose command runs in a named host session, and whose sessions end only when the test ends
 	 * them.
 	 *
@@ -123,16 +137,32 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	TestOptimizerCommandScope(Harness harness, String sessionId, Path directory, Set<Path> tracked,
 		Function<ManualClock, S> sessions)
 	{
+		this(harness, sessionId, directory, new InMemoryForks(directory, tracked), sessions);
+	}
+
+	/**
+	 * Creates a scope with an existing fork store.
+	 *
+	 * @param harness the harness that runs the launcher
+	 * @param sessionId the ID of the host session that runs the command
+	 * @param directory the project directory, which the test creates and deletes
+	 * @param forks the existing in-memory fork store
+	 * @param sessions creates the session port from the scope's clock
+	 * @throws NullPointerException if any argument is null
+	 */
+	private TestOptimizerCommandScope(Harness harness, String sessionId, Path directory, InMemoryForks forks,
+		Function<ManualClock, S> sessions)
+	{
 		super(new TestJvmScope());
 		requireThat(harness, "harness").isNotNull();
 		requireThat(sessionId, "sessionId").isNotNull();
 		requireThat(directory, "directory").isNotNull();
-		requireThat(tracked, "tracked").isNotNull();
+		requireThat(forks, "forks").isNotNull();
 		requireThat(sessions, "sessions").isNotNull();
 		this.harness = harness;
 		this.sessionId = sessionId;
 		this.directory = directory;
-		this.forks = new InMemoryForks(directory, tracked);
+		this.forks = forks;
 		this.sessions = sessions.apply(clock);
 	}
 

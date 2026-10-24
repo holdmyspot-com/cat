@@ -6,6 +6,7 @@ import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
@@ -18,13 +19,14 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Checks the same participant-selection and adoption outcomes for a real fork adapter and its in-memory test fake.
- * The caller supplies a project containing {@code prompt.md} with text {@code prompt} and {@code ignored.md} with
- * text {@code ignored}, and a current fork that records only {@code prompt.md}. These checks do not create Git
- * repositories or start processes. Passing them validates the fake's covered assumptions; its run is test-support
- * coverage, while the real adapter's run checks production behavior.
+ * Checks the same selection, adoption and worktree lifecycle outcomes for a real fork adapter and its in-memory fake.
+ * The caller supplies a project and an already-created current fork. Selection checks additionally require
+ * {@code prompt.md} with text {@code prompt} and {@code ignored.md} with text {@code ignored}, with only
+ * {@code prompt.md} recorded at creation. The caller owns fixture cleanup. These checks create no Git repository;
+ * removal uses the supplied adapter, which may invoke Git. Passing them validates the fake's covered assumptions;
+ * its run is test-support coverage, while the real adapter's run checks production behavior.
  */
-public final class ForkViewContract
+public final class ForksContract
 {
 	/**
 	 * The adapter under contract.
@@ -46,7 +48,7 @@ public final class ForkViewContract
 	 * @param base the project directory holding the contract files
 	 * @param campaign the storage directory of the already-created fork
 	 */
-	public ForkViewContract(Forks forks, Path base, Path campaign)
+	public ForksContract(Forks forks, Path base, Path campaign)
 	{
 		this.forks = forks;
 		this.base = base;
@@ -138,6 +140,57 @@ public final class ForkViewContract
 		catch (WorkspaceException e)
 		{
 			requireThat(e.getMessage(), "message").contains("missing.md");
+		}
+	}
+
+	/**
+	 * Verifies that removing a fork deletes its worktree, makes it absent and impossible to open, and can be repeated.
+	 *
+	 * @throws IOException if the worktree or its records cannot be removed
+	 */
+	public void removesExistingWorktree() throws IOException
+	{
+		requireThat(forks.exists(campaign), "existsBefore").isTrue();
+
+		forks.remove(base, campaign);
+
+		requireThat(Files.exists(campaign.resolve("worktree")), "worktreeExists").isFalse();
+		requireThat(forks.exists(campaign), "existsAfter").isFalse();
+		refusesOpening();
+		forks.remove(base, campaign);
+		requireThat(forks.exists(campaign), "existsAfterRepeatedRemoval").isFalse();
+	}
+
+	/**
+	 * Verifies that a worktree removed outside the adapter makes the fork absent and impossible to open.
+	 *
+	 * @throws IOException if the worktree cannot be removed or its records cannot be read
+	 */
+	public void missingWorktreeIsNotAFork() throws IOException
+	{
+		requireThat(forks.exists(campaign), "existsBefore").isTrue();
+
+		TemporaryDirectories.deleteRecursively(campaign.resolve("worktree"));
+
+		requireThat(forks.exists(campaign), "existsAfter").isFalse();
+		refusesOpening();
+	}
+
+	/**
+	 * Verifies the public refusal when the campaign no longer holds a worktree.
+	 *
+	 * @throws IOException if reading the recorded fork fails for another reason
+	 */
+	private void refusesOpening() throws IOException
+	{
+		try
+		{
+			forks.open(base, campaign);
+			throw new AssertionError("A campaign without a worktree must not open as a fork");
+		}
+		catch (WorkspaceException e)
+		{
+			requireThat(e.getMessage(), "message").contains(campaign.toString());
 		}
 	}
 }
