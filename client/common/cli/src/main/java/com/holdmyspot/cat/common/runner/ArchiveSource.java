@@ -51,14 +51,19 @@ final class ArchiveSource
 	 */
 	private static void copyUnix(Arena arena, Path source, OutputStream output) throws IOException
 	{
-		boolean linux = Platform.current().isLinux();
+		Platform platform = Platform.current();
+		boolean linux = platform.isLinux();
 		SymbolLookup symbols = Linker.nativeLinker().defaultLookup();
 		MethodHandle open = function(symbols, "open", FunctionDescriptor.of(ValueLayout.JAVA_INT,
 			ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-		// O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC on each Unix platform.
-		int flags = 0x1000104;
-		if (linux)
-			flags = 0xA0800;
+		// O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC on each Unix platform. Linux's O_NOFOLLOW differs by architecture: on
+		// arm64 the x64 value means O_LARGEFILE, so that open would follow a link.
+		int flags = switch (platform)
+		{
+			case LINUX_X64 -> 0xA0800;
+			case LINUX_ARM64 -> 0x88800;
+			default -> 0x1000104;
+		};
 		int descriptor;
 		try
 		{
