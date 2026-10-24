@@ -325,6 +325,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		List<AttemptSummary> attempts = new ArrayList<>();
 		List<KeepOffer> keepOffers = new ArrayList<>();
 		List<String> limitations = new ArrayList<>(FIXED_LIMITATIONS);
+		limitations.addAll(CertifiedEnvironment.acceptedChangeLines(campaign.identity()));
 		if (campaign.isConfirmed())
 		{
 			cells = CellReports.of(campaign, attempt);

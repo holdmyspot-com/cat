@@ -99,11 +99,11 @@ public final class KeepImprovement
 		{
 			if (!qualifies(attempt, currentLineage))
 				continue;
-			best.merge(attempt.identity(), attempt, KeepImprovement::better);
+			best.merge(attempt.identity().withoutAcceptedChanges(), attempt, KeepImprovement::better);
 		}
 		MeasurementIdentity current = campaign.identity();
 		List<ImprovementOffer> offers = new ArrayList<>();
-		CertificationAttempt currentBest = best.remove(current);
+		CertificationAttempt currentBest = best.remove(current.withoutAcceptedChanges());
 		if (currentBest != null)
 			offers.add(new ImprovementOffer(currentBest.index(), current, false, List.of()));
 		List<CertificationAttempt> earlier = new ArrayList<>(best.values());

@@ -137,8 +137,49 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 			MeasurementCondition.LOADER_FILES));
 		lines.add(checked("Trial setup: " + trialSetup(), MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
 			MeasurementCondition.SESSION_ENVIRONMENT_RELEASE));
+		lines.addAll(acceptedChangeLines(identity));
 		lines.add("");
 		lines.add(MACHINE_LIMITATION);
+		return lines;
+	}
+
+	/**
+	 * Describes explicitly accepted measurement changes and their effect on retained results.
+	 *
+	 * @param identity the recorded conditions and acceptances
+	 * @return the disclosure and each changed value, or an empty list when no changes were accepted
+	 * @throws NullPointerException if {@code identity} is null
+	 */
+	public static List<String> acceptedChangeLines(MeasurementIdentity identity)
+	{
+		requireThat(identity, "identity").isNotNull();
+		if (identity.acceptedChanges().isEmpty())
+			return List.of();
+		List<String> lines = new ArrayList<>();
+		lines.add("You accepted changed measurement conditions and retained earlier results; " +
+			"CAT did not verify equivalence.");
+		for (MeasurementIdentity accepted : identity.acceptedChanges())
+		{
+			for (MeasurementCondition condition : MeasurementCondition.values())
+			{
+				String original = identity.values().get(condition);
+				String observed = accepted.values().get(condition);
+				if (original != null && observed != null && !original.equals(observed))
+					lines.add("Accepted " + condition.displayName() + ": " + observed + " (original: " + original + ").");
+				for (String cell : accepted.cells().keySet())
+				{
+					String originalCell = identity.valueOf(cell, condition);
+					String observedCell = accepted.valueOf(cell, condition);
+					boolean changed = originalCell != null && observedCell != null &&
+						!originalCell.equals(observedCell);
+					if (changed)
+					{
+						lines.add("Accepted " + condition.displayName() + " in cell " + cell + ": " + observedCell +
+							" (original: " + originalCell + ").");
+					}
+				}
+			}
+		}
 		return lines;
 	}
 

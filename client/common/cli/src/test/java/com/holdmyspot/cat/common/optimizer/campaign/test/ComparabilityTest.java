@@ -24,6 +24,29 @@ public final class ComparabilityTest
 	}
 
 	/**
+	 * Accepted values compare with earlier measurements in the same cell, while other cells and missing observations
+	 * still prevent comparison.
+	 */
+	@Test
+	public void comparesExplicitlyAcceptedValues()
+	{
+		// Requirement: R-M4
+		MeasurementIdentity original = identity(MeasurementCondition.MODEL, "original");
+		MeasurementIdentity observed = new MeasurementIdentity(original.values(),
+			Map.of("first", Map.of(MeasurementCondition.MODEL, "accepted")));
+		MeasurementIdentity accepted = original.acceptChanges(observed);
+
+		requireThat(Comparability.of(accepted, observed).isComparable(), "allCells").isTrue();
+		requireThat(Comparability.of(accepted, observed, "first").isComparable(), "acceptedCell").isTrue();
+		requireThat(Comparability.of(accepted, observed, "first").unavailable(), "acceptedReason").isNull();
+		MeasurementIdentity elsewhere = new MeasurementIdentity(original.values(),
+			Map.of("second", Map.of(MeasurementCondition.MODEL, "accepted")));
+		requireThat(Comparability.of(accepted, elsewhere, "second").isComparable(), "otherCell").isFalse();
+		requireThat(Comparability.of(accepted, MeasurementIdentity.EMPTY, "first").status(), "missing").
+			isEqualTo(Comparability.Status.INDETERMINATE);
+	}
+
+	/**
 	 * Verifies that exactly equal conditions are comparable.
 	 */
 	@Test

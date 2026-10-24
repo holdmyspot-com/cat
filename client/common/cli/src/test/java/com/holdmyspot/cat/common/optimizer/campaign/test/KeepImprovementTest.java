@@ -262,6 +262,23 @@ public final class KeepImprovementTest
 	}
 
 	/**
+	 * Accepting changed measurements keeps earlier attempts in the current identity's improvement selection.
+	 */
+	@Test
+	public void acceptedChangesKeepCurrentOffer()
+	{
+		// Requirement: R-F6, R-M3
+		Campaign campaign = twoAttempts(new int[]{80, 100}, new int[]{60, 100}).build();
+		MeasurementIdentity observed = campaign.identity().replaceWith(new MeasurementIdentity(
+			Map.of(MeasurementCondition.JUDGE, "accepted-judge")));
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(observed));
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.KEEP_IDENTITY));
+
+		requireThat(KeepImprovement.offers(campaign), "currentOffer").isEqualTo(List.of(new ImprovementOffer(1,
+			campaign.identity(), false, List.of())));
+	}
+
+	/**
 	 * Verifies that attempts under two measurement identities are offered separately, the current identity first,
 	 * and that the earlier one is labelled historical with its differing conditions, even when it looks stronger.
 	 */

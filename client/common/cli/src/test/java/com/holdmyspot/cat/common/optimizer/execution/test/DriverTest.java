@@ -3384,7 +3384,7 @@ public final class DriverTest
 				changed = harness.campaign();
 				requireThat(changed.pending(), "pending").isInstanceOf(PendingDecision.MeasurementChanged.class);
 				requireThat(changed.choices(), "choices").
-					isEqualTo(List.of(Choice.RESTORE, Choice.NEW_IDENTITY, Choice.STOP));
+					isEqualTo(List.of(Choice.RESTORE, Choice.NEW_IDENTITY, Choice.KEEP_IDENTITY, Choice.STOP));
 				requireThat(harness.store().listUnadoptedOutcomes(changed), "outcomes").isEmpty();
 				observed = changed.trials().getFirst();
 				requireThat(observed.state(), "state").isEqualTo(TrialState.ASSIGNED);

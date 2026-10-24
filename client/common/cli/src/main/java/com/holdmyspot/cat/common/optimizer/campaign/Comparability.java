@@ -9,8 +9,8 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * The comparison of two observations' measurement conditions: whether they are equal, and which conditions prevent
- * comparison.
+ * The comparison of two observations' measurement conditions: whether they are equal or explicitly accepted as
+ * equivalent, and which conditions prevent comparison.
  * <p>
  * Compares campaign-wide values and values for the same cell, the prompt test under a runner profile.
  * A cell uses its recorded value when present, otherwise the campaign-wide value. Conditions absent from both
@@ -33,7 +33,7 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 	public enum Status
 	{
 		/**
-		 * The conditions that were observed are recorded and equal in both observations.
+		 * The observed conditions are recorded and equal, or the user explicitly accepted the different values.
 		 */
 		COMPARABLE,
 		/**
@@ -78,7 +78,7 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 	}
 
 	/**
-	 * Compares the conditions of two observations by exact equality.
+	 * Compares the conditions of two observations by equality or the user's explicit acceptances.
 	 *
 	 * @param first the working candidate's identity
 	 * @param second the incumbent baseline's identity
@@ -98,12 +98,15 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 				continue;
 			String firstValue = first.values().get(condition);
 			String secondValue = second.values().get(condition);
-			addReason(reasons, condition, firstValue, secondValue, null);
+			if (!first.equivalentValue(second, null, condition))
+				addReason(reasons, condition, firstValue, secondValue, null);
 			for (String cell : cells)
 			{
 				String firstCellValue = first.valueOf(cell, condition);
 				String secondCellValue = second.valueOf(cell, condition);
-				if (!Objects.equals(firstValue, firstCellValue) || !Objects.equals(secondValue, secondCellValue))
+				boolean ownValue = !Objects.equals(firstValue, firstCellValue) ||
+					!Objects.equals(secondValue, secondCellValue);
+				if (ownValue && !first.equivalentValue(second, cell, condition))
 					addReason(reasons, condition, firstCellValue, secondCellValue, cell);
 			}
 		}
@@ -134,11 +137,13 @@ public record Comparability(Status status, List<MeasurementCondition> differing,
 				continue;
 			String firstValue = first.valueOf(cell, condition);
 			String secondValue = second.valueOf(cell, condition);
+			boolean equivalent = first.equivalentValue(second, cell, condition);
 			if ((firstValue == null) != (secondValue == null))
 				missing.add(condition);
-			else if (!Objects.equals(firstValue, secondValue))
+			else if (!equivalent)
 				differing.add(condition);
-			addReason(reasons, condition, firstValue, secondValue, cell);
+			if (!equivalent)
+				addReason(reasons, condition, firstValue, secondValue, cell);
 		}
 		return result(differing, missing, reasons);
 	}

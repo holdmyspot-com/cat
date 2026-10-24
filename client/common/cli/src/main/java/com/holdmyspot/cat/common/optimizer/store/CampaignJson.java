@@ -2362,6 +2362,12 @@ final class CampaignJson
 		ObjectNode cells = node.putObject("cells");
 		for (Entry<String, Map<MeasurementCondition, String>> cell : new TreeMap<>(identity.cells()).entrySet())
 			writeConditions(cells.putObject(cell.getKey()), cell.getValue());
+		if (!identity.acceptedChanges().isEmpty())
+		{
+			ArrayNode accepted = node.putArray("accepted_changes");
+			for (MeasurementIdentity observation : identity.acceptedChanges())
+				accepted.add(writeIdentity(observation));
+		}
 		return node;
 	}
 
@@ -2390,10 +2396,26 @@ final class CampaignJson
 	static MeasurementIdentity readIdentity(JsonNode node)
 	{
 		requireObject(node, "identity");
+		List<MeasurementIdentity> accepted = new ArrayList<>();
+		if (node.has("accepted_changes"))
+		{
+			for (JsonNode observation : elements(node, "accepted_changes"))
+			{
+				if (observation.has("accepted_changes"))
+					throw new IllegalArgumentException("Accepted observations cannot contain nested acceptances");
+				accepted.add(readIdentity(observation));
+			}
+		}
+		for (String name : node.propertyNames())
+		{
+			if (!Set.of("conditions", "cells", "accepted_changes").contains(name))
+				throw new IllegalArgumentException("identity: unknown field " + name);
+		}
 		Map<String, Map<MeasurementCondition, String>> cells = new HashMap<>();
 		for (Entry<String, JsonNode> cell : object(node, "cells").properties())
 			cells.put(cell.getKey(), readConditions(cell.getValue(), "identity.cells." + cell.getKey()));
-		return new MeasurementIdentity(readConditions(field(node, "conditions"), "identity.conditions"), cells);
+		return new MeasurementIdentity(readConditions(field(node, "conditions"), "identity.conditions"), cells,
+			accepted);
 	}
 
 	/**

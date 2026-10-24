@@ -647,7 +647,7 @@ public final class Transitions
 			draft.raise(new PendingDecision.MeasurementChanged(observed, differences));
 			return;
 		}
-		MeasurementIdentity measured = trial.identity().extendWith(observed);
+		MeasurementIdentity measured = trial.identity().replaceWith(observed);
 		draft.optimization = draft.optimization.addTrial(measured,
 			complete.key().snapshot(), complete.key().cell(), complete.inputTokens());
 		boolean measuresIncumbent = switch (trial.key().purpose())

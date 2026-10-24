@@ -55,6 +55,29 @@ public final class CertificationHistoryTest
 	}
 
 	/**
+	 * A certification history retains the accepted observations that qualify its accumulated measurements.
+	 *
+	 * @throws IOException if the history cannot be written or read
+	 */
+	@Test
+	public void retainsAcceptedObservations() throws IOException
+	{
+		// Requirement: R-M6
+		MeasurementIdentity original = new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "original"));
+		MeasurementIdentity accepted = original.acceptChanges(new MeasurementIdentity(
+			Map.of(MeasurementCondition.JUDGE, "accepted")));
+		CertificationHistory history = CertificationHistory.EMPTY.appended(recordOf(1, accepted));
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(Files.createTempDirectory("accepted-history-")).resolve("certifications.json");
+			Files.write(file, codec.write(history));
+
+			requireThat(codec.read(file), "reloadedHistory").isEqualTo(history);
+		}
+	}
+
+	/**
 	 * The history of a target lies in the target's test directory, beside its prompt test configuration.
 	 */
 	@Test

@@ -433,7 +433,10 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 				if (changed.isLoaderChanged())
 					choices.add(Choice.NEW_CAMPAIGN);
 				else
+				{
 					choices.add(Choice.NEW_IDENTITY);
+					choices.add(Choice.KEEP_IDENTITY);
+				}
 			}
 			case PendingDecision.ConflictFound _ -> choices.add(Choice.RESOLUTION);
 			case PendingDecision.UnownedChange _ -> choices.add(Choice.RESUME);

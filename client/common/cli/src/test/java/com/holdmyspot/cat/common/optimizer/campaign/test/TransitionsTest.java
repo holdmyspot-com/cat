@@ -46,6 +46,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.statistics.ErrorBudget;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -489,7 +490,7 @@ public final class TransitionsTest
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.MeasurementChanged(observed,
 			List.of(MeasurementCondition.MODEL)));
 		requireThat(campaign.choices(), "choices").
-			containsExactly(List.of(Choice.RESTORE, Choice.NEW_IDENTITY, Choice.STOP));
+			containsExactly(List.of(Choice.RESTORE, Choice.NEW_IDENTITY, Choice.KEEP_IDENTITY, Choice.STOP));
 		requireThat(Scheduler.plan(campaign, NOW, 8), "paused").isEmpty();
 
 		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RESTORE));
@@ -590,7 +591,7 @@ public final class TransitionsTest
 		requireThat(campaign.pending(), "second").isEqualTo(new PendingDecision.MeasurementChanged(observed,
 			List.of(MeasurementCondition.MODEL)));
 		requireThat(campaign.choices(), "choices").
-			containsExactly(List.of(Choice.RESTORE, Choice.NEW_IDENTITY, Choice.STOP));
+			containsExactly(List.of(Choice.RESTORE, Choice.NEW_IDENTITY, Choice.KEEP_IDENTITY, Choice.STOP));
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
 	}
 
@@ -835,6 +836,122 @@ public final class TransitionsTest
 		requireThat(campaign.baseline().index(), "baseline").isEqualTo(2);
 		requireThat(campaign.development().series(), "series").isEqualTo(2);
 		requireThat(campaign.pending(), "pending").isNull();
+	}
+
+	/**
+	 * Verifies that explicitly keeping an identity retains evidence and lets its running attempt continue under
+	 * accepted measurement conditions, while a later unaccepted change still pauses.
+	 *
+	 * @param condition the changed measurement condition
+	 */
+	@Test(dataProvider = "acceptedConditions")
+	public void keepsIdentityEvidence(MeasurementCondition condition)
+	{
+		// Requirement: R-M3, R-M5
+		MeasurementIdentity initial = Builder.confirmedIdentity("model-a").extendWith(new MeasurementIdentity(
+			Map.of(MeasurementCondition.TOOL_OUTPUT_LIMIT, "original-limit")));
+		Campaign before = new Builder().identity(initial).confirmed().working(1).development("safety", 7, 1).
+			baseline("safety", 9, 2).certificationAttempt(1).cell("safety", 30, 0).build();
+		before = TransitionSteps.assign(before, Purpose.FORMAL, "safety");
+		MeasurementIdentity observed = changed(before, condition);
+		Campaign campaign = Transitions.apply(before, new CampaignEvent.ChangeMeasurement(observed));
+		requireThat(campaign.choices().stream().map(Enum::name).toList(), "choices").contains("KEEP_IDENTITY");
+
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.valueOf("KEEP_IDENTITY")));
+
+		requireThat(campaign.identity().values(), "recordedConditions").isEqualTo(before.identity().values());
+		requireThat(campaign.development(), "development").isEqualTo(before.development());
+		requireThat(campaign.baseline(), "baseline").isEqualTo(before.baseline());
+		requireThat(campaign.attempt(1).count("safety"), "formalEvidence").isEqualTo(counts(30, 0));
+		requireThat(campaign.attempt(1).isRunning(), "running").isTrue();
+		requireThat(campaign.attempt(1).formalStream(), "formalStream").isEqualTo(before.attempt(1).formalStream());
+		requireThat(campaign.trials(), "pendingTestCases").isEqualTo(before.trials());
+		requireThat(campaign.nextCertificationIndex(), "nextIndex").isEqualTo(2);
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(observed));
+		requireThat(campaign.pending(), "acceptedChange").isNull();
+		MeasurementIdentity unknown = observed.replaceWith(new MeasurementIdentity(Map.of(condition,
+			"unaccepted-change")));
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(unknown));
+		requireThat(campaign.pending(), "unacceptedChange").isInstanceOf(PendingDecision.MeasurementChanged.class);
+	}
+
+	/**
+	 * Returns every material measurement condition that may be accepted without a new campaign.
+	 *
+	 * @return one condition per row
+	 */
+	@DataProvider
+	public static Object[][] acceptedConditions()
+	{
+		return Arrays.stream(MeasurementCondition.values()).
+			filter(condition -> condition.isMaterial() && condition != MeasurementCondition.LOADER_CONFIGURATION).
+			map(condition -> new Object[]{condition}).toArray(Object[][]::new);
+	}
+
+	/**
+	 * Keeping an identity reruns the excluded trial with the same test case; only the rerun's outcome is counted,
+	 * and its recorded observation names the changed environment.
+	 */
+	@Test
+	public void acceptanceRequiresRerun()
+	{
+		// Requirement: R-M5
+		Campaign campaign = new Builder().confirmed().development("safety", 10, 0).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
+		TrialKey key = TransitionSteps.last(campaign);
+		DrawnTestCase testCase = campaign.trials().getFirst().testCase();
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+		MeasurementIdentity observed = changed(campaign, MeasurementCondition.JUDGE);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "", List.of(), null,
+			observed, null, List.of(), Builder.FILES));
+
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.KEEP_IDENTITY));
+
+		requireThat(campaign.development().count("safety"), "excludedVerdict").isEqualTo(counts(10, 0));
+		requireThat(campaign.trials().getFirst().testCase(), "sameTestCase").isEqualTo(testCase);
+		requireThat(Scheduler.plan(campaign, NOW, 8).getFirst(), "rerun").isEqualTo(new Admission.Rerun(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.PASS, "", List.of(), null,
+			observed, null, List.of(), Builder.FILES));
+		requireThat(campaign.pending(), "acceptedEnvironment").isNull();
+		requireThat(campaign.development().count("safety"), "rerunVerdict").isEqualTo(counts(11, 0));
+		requireThat(campaign.optimization().trialInputs().keySet(), "actualEnvironment").contains(observed);
+	}
+
+	/**
+	 * Keeping an identity is refused when the loader changed.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void loaderChangeRefusesKeepIdentity()
+	{
+		// Requirement: R-M3
+		Campaign campaign = new Builder().confirmed().build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(changed(campaign,
+			MeasurementCondition.LOADER_CONFIGURATION)));
+		Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.KEEP_IDENTITY));
+	}
+
+	/**
+	 * Acceptance removes another queued pause for the same accepted values without dismissing an unknown change.
+	 */
+	@Test
+	public void acceptanceResolvesCoveredPauses()
+	{
+		// Requirement: R-M3, R-M5
+		Campaign campaign = new Builder().confirmed().build();
+		MeasurementIdentity first = changed(campaign, MeasurementCondition.JUDGE);
+		MeasurementIdentity covered = first.replaceWith(new MeasurementIdentity(
+			Map.of(MeasurementCondition.CAT_VERSION, "different-informational-version")));
+		MeasurementIdentity unknown = first.replaceWith(new MeasurementIdentity(
+			Map.of(MeasurementCondition.JUDGE, "unaccepted-judge")));
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(first));
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(covered));
+		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(unknown));
+
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.KEEP_IDENTITY));
+
+		requireThat(campaign.pendingDecisions(), "remainingPauses").isEqualTo(List.of(
+			new PendingDecision.MeasurementChanged(unknown, List.of(MeasurementCondition.JUDGE))));
 	}
 
 	/**

@@ -30,13 +30,18 @@ import java.util.function.BiPredicate;
  * cell's value that equals the campaign-wide value is redundant and is not kept. Equal identities therefore record
  * equal conditions.
  * <p>
+ * Explicitly accepted observations permit comparisons with retained earlier measurements without replacing the
+ * original values. Acceptance applies only to the recorded values and scopes; missing data stays missing, and a
+ * loader configuration change cannot be accepted within an identity.
+ * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param values the observed value of each recorded condition that applies to the whole campaign
- * @param cells the observed value of each recorded condition of each cell, keyed by the cell's identifier
+ * @param values          the observed value of each recorded condition that applies to the whole campaign
+ * @param cells           the observed value of each recorded condition of each cell, keyed by the cell's identifier
+ * @param acceptedChanges observations that the user accepted as equivalent while retaining earlier measurements
  */
 public record MeasurementIdentity(Map<MeasurementCondition, String> values,
-	Map<String, Map<MeasurementCondition, String>> cells)
+	Map<String, Map<MeasurementCondition, String>> cells, List<MeasurementIdentity> acceptedChanges)
 {
 	/**
 	 * An identity with no recorded conditions.
@@ -55,15 +60,18 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	/**
 	 * Creates an identity.
 	 *
-	 * @param values the observed value of each recorded condition that applies to the whole campaign
-	 * @param cells the observed value of each recorded condition of each cell, keyed by the cell's identifier
-	 * @throws NullPointerException if {@code values} or {@code cells} are null, or contain a null key or value
-	 * @throws IllegalArgumentException if a value or a cell identifier is blank
+	 * @param values          the observed value of each recorded condition that applies to the whole campaign
+	 * @param cells           the observed value of each recorded condition of each cell, keyed by the cell's identifier
+	 * @param acceptedChanges observations explicitly accepted as equivalent, without nested acceptances
+	 * @throws NullPointerException if any argument is null or contains null
+	 * @throws IllegalArgumentException if a value or cell identifier is blank, an acceptance is nested, or an
+	 *   acceptance changes the loader configuration
 	 */
 	public MeasurementIdentity
 	{
 		requireThat(values, "values").isNotNull();
 		requireThat(cells, "cells").isNotNull();
+		requireThat(acceptedChanges, "acceptedChanges").isNotNull();
 		for (Map.Entry<MeasurementCondition, String> entry : values.entrySet())
 			requireThat(entry.getValue(), "values[" + entry.getKey() + "]").isNotBlank();
 		values = Map.copyOf(values);
@@ -82,6 +90,29 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 				copy.put(cell.getKey(), Map.copyOf(own));
 		}
 		cells = Collections.unmodifiableMap(copy);
+		acceptedChanges = List.copyOf(acceptedChanges);
+		for (MeasurementIdentity accepted : acceptedChanges)
+		{
+			if (!accepted.acceptedChanges.isEmpty())
+				throw new IllegalArgumentException("Accepted observations cannot contain nested acceptances");
+			MeasurementIdentity original = new MeasurementIdentity(values, cells);
+			if (original.differences(accepted).contains(MeasurementCondition.LOADER_CONFIGURATION))
+				throw new IllegalArgumentException("A loader configuration change requires a new campaign");
+		}
+	}
+
+	/**
+	 * Creates an identity without accepted measurement changes.
+	 *
+	 * @param values the campaign-wide conditions
+	 * @param cells  the per-cell conditions
+	 * @throws NullPointerException if either argument is null or contains null
+	 * @throws IllegalArgumentException if a value or cell identifier is blank
+	 */
+	public MeasurementIdentity(Map<MeasurementCondition, String> values,
+		Map<String, Map<MeasurementCondition, String>> cells)
+	{
+		this(values, cells, List.of());
 	}
 
 	/**
@@ -216,26 +247,27 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	 * Returns the material conditions for which a comparison of the two identities' values holds, for the whole
 	 * campaign or for any cell.
 	 *
-	 * @param other another identity
+	 * @param other   another identity
 	 * @param differs compares this identity's value of a condition with {@code other}'s; a value that is not
 	 *   recorded is {@code null}
 	 * @return the conditions, in declaration order
 	 */
 	private List<MeasurementCondition> compare(MeasurementIdentity other, BiPredicate<String, String> differs)
 	{
-		Set<String> cellIds = new HashSet<>(cells.keySet());
-		cellIds.addAll(other.cells.keySet());
+		Set<String> cellIds = comparisonCells(other);
 		List<MeasurementCondition> conditions = new ArrayList<>();
 		for (MeasurementCondition condition : MeasurementCondition.values())
 		{
 			if (!condition.isMaterial())
 				continue;
-			boolean found = differs.test(values.get(condition), other.values.get(condition));
+			boolean found = differs.test(values.get(condition), other.values.get(condition)) &&
+				!equivalentValue(other, null, condition);
 			for (String cell : cellIds)
 			{
 				if (found)
 					break;
-				found = differs.test(valueOf(cell, condition), other.valueOf(cell, condition));
+				found = differs.test(valueOf(cell, condition), other.valueOf(cell, condition)) &&
+					!equivalentValue(other, cell, condition);
 			}
 			if (found)
 				conditions.add(condition);
@@ -244,9 +276,115 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	}
 
 	/**
+	 * Returns the cells whose original or accepted conditions participate in a comparison.
+	 *
+	 * @param other the other identity
+	 * @return the cell identifiers
+	 */
+	private Set<String> comparisonCells(MeasurementIdentity other)
+	{
+		Set<String> result = new HashSet<>(cells.keySet());
+		result.addAll(other.cells.keySet());
+		for (MeasurementIdentity accepted : acceptedChanges)
+			result.addAll(accepted.cells.keySet());
+		for (MeasurementIdentity accepted : other.acceptedChanges)
+			result.addAll(accepted.cells.keySet());
+		return result;
+	}
+
+	/**
+	 * Compares a condition using recorded values and the user's explicit acceptances. Missing observations are never
+	 * supplied by an acceptance.
+	 *
+	 * @param other     the other identity
+	 * @param cell      the cell identifier, or {@code null} for campaign-wide observations
+	 * @param condition the condition
+	 * @return whether the recorded values are equal or share an explicitly accepted value
+	 * @throws NullPointerException if {@code other} or {@code condition} are null
+	 */
+	public boolean equivalentValue(MeasurementIdentity other, String cell, MeasurementCondition condition)
+	{
+		requireThat(other, "other").isNotNull();
+		requireThat(condition, "condition").isNotNull();
+		String first = observedValue(cell, condition);
+		String second = other.observedValue(cell, condition);
+		if (Objects.equals(first, second))
+			return true;
+		if (first == null || second == null)
+			return false;
+		Set<String> allowed = acceptedValues(cell, condition);
+		return other.acceptedValues(cell, condition).stream().anyMatch(allowed::contains);
+	}
+
+	/**
+	 * Returns the value recorded for a cell or the campaign.
+	 *
+	 * @param cell      the cell identifier, or {@code null} for campaign-wide observations
+	 * @param condition the condition
+	 * @return the recorded value, or {@code null} when absent
+	 */
+	private String observedValue(String cell, MeasurementCondition condition)
+	{
+		if (cell == null)
+			return values.get(condition);
+		return valueOf(cell, condition);
+	}
+
+	/**
+	 * Collects the recorded value and the values the user accepted for the same scope.
+	 *
+	 * @param cell      the cell identifier, or {@code null} for campaign-wide observations
+	 * @param condition the condition
+	 * @return the non-null values
+	 */
+	private Set<String> acceptedValues(String cell, MeasurementCondition condition)
+	{
+		Set<String> result = new HashSet<>();
+		String original = observedValue(cell, condition);
+		if (original != null)
+			result.add(original);
+		for (MeasurementIdentity accepted : acceptedChanges)
+		{
+			String value = accepted.observedValue(cell, condition);
+			if (value != null)
+				result.add(value);
+		}
+		return result;
+	}
+
+	/**
+	 * Records the user's acceptance of observed changes while retaining the original recorded conditions.
+	 *
+	 * @param observed the observations explicitly accepted by the user
+	 * @return the identity with the additional acceptance and any newly observed conditions
+	 * @throws NullPointerException if {@code observed} is null
+	 * @throws IllegalArgumentException if the loader configuration changed
+	 */
+	public MeasurementIdentity acceptChanges(MeasurementIdentity observed)
+	{
+		requireThat(observed, "observed").isNotNull();
+		List<MeasurementIdentity> accepted = new ArrayList<>(acceptedChanges);
+		MeasurementIdentity observation = observed.withoutAcceptedChanges();
+		if (!accepted.contains(observation))
+			accepted.add(observation);
+		MeasurementIdentity extended = extendWith(observed);
+		return new MeasurementIdentity(extended.values, extended.cells, accepted);
+	}
+
+	/**
+	 * Returns the original recorded conditions without acceptance metadata.
+	 *
+	 * @return the original identity
+	 */
+	public MeasurementIdentity withoutAcceptedChanges()
+	{
+		return new MeasurementIdentity(values, cells);
+	}
+
+	/**
 	 * Returns the value of a condition for a cell.
 	 *
-	 * @param cell the cell's identifier
+	 * @param cell      the cell's identifier
 	 * @param condition the condition
 	 * @return the cell's value, the campaign-wide value if the cell records none, or {@code null} if neither is
 	 *   recorded
@@ -281,7 +419,9 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 			}
 			sharedCells.put(cell.getKey(), own);
 		}
-		return new MeasurementIdentity(shared, sharedCells);
+		List<MeasurementIdentity> accepted = acceptedChanges.stream().
+			map(MeasurementIdentity::withoutHarnessSpecific).toList();
+		return new MeasurementIdentity(shared, sharedCells, accepted);
 	}
 
 	/**
@@ -295,7 +435,8 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	public MeasurementIdentity extendWith(MeasurementIdentity observed)
 	{
 		requireThat(observed, "observed").isNotNull();
-		return merge(observed, this);
+		MeasurementIdentity merged = merge(observed, this);
+		return new MeasurementIdentity(merged.values, merged.cells, acceptedChanges);
 	}
 
 	/**
@@ -314,7 +455,7 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 	/**
 	 * Merges two identities.
 	 *
-	 * @param base the identity whose values apply where {@code overrides} records none
+	 * @param base      the identity whose values apply where {@code overrides} records none
 	 * @param overrides the identity whose recorded values replace matching values in {@code base}
 	 * @return the merged identity
 	 */
@@ -324,13 +465,20 @@ public record MeasurementIdentity(Map<MeasurementCondition, String> values,
 		values.putAll(base.values);
 		values.putAll(overrides.values);
 		Map<String, Map<MeasurementCondition, String>> cells = new HashMap<>();
-		for (MeasurementIdentity identity : List.of(base, overrides))
+		Set<String> cellIds = new HashSet<>(base.cells.keySet());
+		cellIds.addAll(overrides.cells.keySet());
+		for (String cell : cellIds)
 		{
-			for (Map.Entry<String, Map<MeasurementCondition, String>> cell : identity.cells.entrySet())
+			Map<MeasurementCondition, String> own = new EnumMap<>(MeasurementCondition.class);
+			for (MeasurementCondition condition : MeasurementCondition.values())
 			{
-				cells.computeIfAbsent(cell.getKey(), _ -> new EnumMap<>(MeasurementCondition.class)).
-					putAll(cell.getValue());
+				String value = overrides.valueOf(cell, condition);
+				if (value == null)
+					value = base.valueOf(cell, condition);
+				if (value != null)
+					own.put(condition, value);
 			}
+			cells.put(cell, own);
 		}
 		return new MeasurementIdentity(values, cells);
 	}

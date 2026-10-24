@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
+import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
@@ -108,6 +109,38 @@ public abstract class CampaignStoreContract
 	 */
 	protected CampaignStoreContract()
 	{
+	}
+
+	/**
+	 * Reloading retains explicitly accepted conditions, the accumulated evidence and the guard against unaccepted
+	 * changes.
+	 *
+	 * @throws IOException if the campaign cannot be stored or loaded
+	 */
+	@Test
+	public void retainsAcceptedMeasurementChanges() throws IOException
+	{
+		// Requirement: R-M3, R-M4, R-M5
+		Campaign original = new Builder().confirmed().working(1).development("safety", 7, 1).
+			baseline("safety", 9, 2).certificationAttempt(1).cell("safety", 30, 0).build();
+		MeasurementIdentity observed = original.identity().replaceWith(new MeasurementIdentity(
+			Map.of(MeasurementCondition.JUDGE, "accepted-judge")));
+		Campaign accepted = Transitions.apply(original, new CampaignEvent.ChangeMeasurement(observed));
+		accepted = Transitions.apply(accepted, CampaignEvent.Choose.of(Choice.KEEP_IDENTITY));
+		try (StoreFixture fixture = open())
+		{
+			fixture.store().replaceSnapshot(accepted);
+
+			Campaign loaded = fixture.reopen().load(accepted.header().id()).orElseThrow();
+
+			requireThat(loaded, "reloadedCampaign").isEqualTo(accepted);
+			requireThat(Transitions.apply(loaded, new CampaignEvent.ChangeMeasurement(observed)).pending(),
+				"acceptedObservation").isNull();
+			MeasurementIdentity unknown = observed.replaceWith(new MeasurementIdentity(
+				Map.of(MeasurementCondition.JUDGE, "unaccepted-judge")));
+			requireThat(Transitions.apply(loaded, new CampaignEvent.ChangeMeasurement(unknown)).pending(),
+				"unacceptedObservation").isInstanceOf(PendingDecision.MeasurementChanged.class);
+		}
 	}
 
 	/**

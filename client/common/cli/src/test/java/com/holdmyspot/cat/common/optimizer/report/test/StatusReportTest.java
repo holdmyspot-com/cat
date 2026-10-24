@@ -109,6 +109,26 @@ import tools.jackson.databind.node.ObjectNode;
 public final class StatusReportTest
 {
 	/**
+	 * A campaign status discloses accepted measurement changes and retained evidence.
+	 */
+	@Test
+	public void disclosesAcceptedChanges()
+	{
+		// Requirement: R-M7
+		MeasurementIdentity original = Builder.confirmedIdentity("model-a");
+		MeasurementIdentity accepted = original.acceptChanges(original.replaceWith(new MeasurementIdentity(
+			Map.of(MeasurementCondition.JUDGE, "accepted-judge"))));
+		StatusReport report = StatusReport.of(new Builder().confirmed().identity(accepted).build(), ReportEvidence.NONE);
+
+		String limitations = String.join("\n", report.limitations());
+
+		requireThat(limitations, "disclosure").contains("retained earlier results").contains("accepted-judge").
+			contains("did not verify equivalence");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("retained earlier results").
+			contains("accepted-judge");
+	}
+
+	/**
 	 * The text and JSON concurrency reports show the configured campaign ceiling.
 	 */
 	// Requirement: R-E4

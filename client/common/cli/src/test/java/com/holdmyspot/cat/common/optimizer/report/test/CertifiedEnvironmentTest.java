@@ -27,6 +27,24 @@ public final class CertifiedEnvironmentTest
 	}
 
 	/**
+	 * Certification discloses the user's accepted changes and the earlier measurements that remain included.
+	 */
+	@Test
+	public void disclosesAcceptedChanges()
+	{
+		// Requirement: R-M7
+		MeasurementIdentity original = new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "judge-original"));
+		MeasurementIdentity accepted = original.acceptChanges(new MeasurementIdentity(
+			Map.of(MeasurementCondition.JUDGE, "judge-accepted")));
+		CertifiedEnvironment environment = new CertifiedEnvironment(accepted, List.of(), List.of(), List.of());
+
+		String text = String.join("\n", environment.lines());
+
+		requireThat(text, "disclosure").contains("retained earlier results").contains("did not verify equivalence").
+			contains("judge-original").contains("judge-accepted");
+	}
+
+	/**
 	 * A Codex certification with a project-built and an installed trial plugin, one cell and a settings file of the
 	 * project reads as the block that names each of them, followed by the limitation that trials ran with the
 	 * machine's programs and outside sources, which CAT neither records nor controls.

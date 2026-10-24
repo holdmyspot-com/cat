@@ -40,6 +40,7 @@ final class UserChoices
 		{
 			case RESTORE -> draft.resolve();
 			case NEW_IDENTITY -> newIdentity(draft, (PendingDecision.MeasurementChanged) pending);
+			case KEEP_IDENTITY -> keepIdentity(draft, (PendingDecision.MeasurementChanged) pending);
 			case NEW_CAMPAIGN -> draft.header = draft.header.withLifecycle(Lifecycle.CLOSED);
 			case RESUME ->
 			{
@@ -98,6 +99,23 @@ final class UserChoices
 		draft.startBaseline();
 		draft.slowStart = SlowStart.INITIAL;
 		draft.resolve();
+	}
+
+	/**
+	 * Records accepted observations without resetting any evidence or certification allowance.
+	 *
+	 * @param draft the state
+	 * @param changed the pending measurement decision
+	 */
+	private static void keepIdentity(Draft draft, PendingDecision.MeasurementChanged changed)
+	{
+		draft.identity = draft.identity.acceptChanges(changed.observed());
+		draft.runningAttempt().ifPresent(attempt -> draft.replaceAttempt(attempt.withEvidence(
+			attempt.identity().acceptChanges(changed.observed()), attempt.counts(), attempt.controlPairings(),
+			attempt.incumbentPairings(), attempt.failures(), attempt.formalStream())));
+		draft.resolve();
+		draft.pendingDecisions.removeIf(decision -> decision instanceof PendingDecision.MeasurementChanged other &&
+			draft.identity.differences(other.observed()).isEmpty());
 	}
 
 	/**

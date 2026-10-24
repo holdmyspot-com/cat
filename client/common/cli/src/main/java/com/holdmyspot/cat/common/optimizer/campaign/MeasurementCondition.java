@@ -4,8 +4,10 @@ package com.holdmyspot.cat.common.optimizer.campaign;
  * A condition that a measurement identity records, other than the candidate snapshot and time.
  * <p>
  * Every condition other than the runner and CAT versions, the session environment release and the loader configuration
- * files is material: a known change to any of them makes earlier results historical and pauses the campaign before the
- * next model call. The others are recorded and reported for information only: the session environment version stands
+ * files is material: a known, unaccepted change pauses the campaign before the next model call. The user can restore
+ * the condition, start a new identity with earlier results historical, or explicitly retain the identity and results
+ * while accepting the observed values. A changed loader configuration requires restoration or a new campaign.
+ * The others are recorded and reported for information only: the session environment version stands
  * for what the runner and CAT versions can change in a session and for its release, and the loader configuration for
  * its files.
  */
@@ -134,8 +136,8 @@ public enum MeasurementCondition
 	/**
 	 * Indicates whether a known change to the condition is material.
 	 *
-	 * @return {@code true} if a change makes earlier results historical and pauses the campaign; {@code false} if the
-	 *   condition is recorded for information only
+	 * @return {@code true} if an unaccepted change pauses the campaign; {@code false} if the condition is recorded for
+	 *   information only
 	 */
 	public boolean isMaterial()
 	{

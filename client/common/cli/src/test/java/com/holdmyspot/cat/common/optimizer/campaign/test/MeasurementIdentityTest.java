@@ -36,6 +36,72 @@ public final class MeasurementIdentityTest
 	}
 
 	/**
+	 * Explicit acceptance retains the original values, permits only accepted observations, and never supplies missing
+	 * observations. Starting a new identity drops the earlier acceptances.
+	 */
+	@Test
+	public void acceptsOnlyObservedChanges()
+	{
+		// Requirement: R-M3, R-M4
+		MeasurementIdentity original = identity(MeasurementCondition.JUDGE, "judge-original");
+		MeasurementIdentity observed = identity(MeasurementCondition.JUDGE, "judge-accepted");
+		MeasurementIdentity accepted = original.acceptChanges(observed);
+
+		requireThat(accepted.values(), "originalValues").isEqualTo(original.values());
+		requireThat(accepted.acceptedChanges(), "acceptedChanges").containsExactly(List.of(observed));
+		requireThat(accepted.differences(observed), "acceptedDifference").isEmpty();
+		requireThat(accepted.differences(original), "originalDifference").isEmpty();
+		requireThat(accepted.differences(identity(MeasurementCondition.JUDGE, "judge-unknown")), "unknownChange").
+			containsExactly(List.of(MeasurementCondition.JUDGE));
+		requireThat(accepted.missing(MeasurementIdentity.EMPTY), "missingObservation").
+			containsExactly(List.of(MeasurementCondition.JUDGE));
+		requireThat(accepted.extendWith(observed).acceptedChanges(), "extendedAcceptances").
+			isEqualTo(accepted.acceptedChanges());
+		requireThat(accepted.replaceWith(original).differences(observed), "newIdentityDifference").
+			containsExactly(List.of(MeasurementCondition.JUDGE));
+		MeasurementIdentity later = identity(MeasurementCondition.JUDGE, "judge-later");
+		MeasurementIdentity twice = accepted.acceptChanges(later);
+		requireThat(twice.differences(observed), "earlierAcceptance").isEmpty();
+		requireThat(twice.differences(later), "laterAcceptance").isEmpty();
+		requireThat(twice.values(), "originalAfterTwoChanges").isEqualTo(original.values());
+	}
+
+	/**
+	 * A value accepted for one cell does not authorize the same change in another cell.
+	 */
+	@Test
+	public void acceptanceRemainsCellSpecific()
+	{
+		// Requirement: R-M3, R-M4
+		MeasurementIdentity original = identity(MeasurementCondition.MODEL, "original");
+		MeasurementIdentity observed = new MeasurementIdentity(original.values(),
+			Map.of("first", Map.of(MeasurementCondition.MODEL, "accepted")));
+		MeasurementIdentity accepted = original.acceptChanges(observed);
+		MeasurementIdentity elsewhere = new MeasurementIdentity(original.values(),
+			Map.of("second", Map.of(MeasurementCondition.MODEL, "accepted")));
+
+		requireThat(accepted.withoutAcceptedChanges(), "originalCellConditions").isEqualTo(original);
+		requireThat(accepted.extendWith(observed).withoutAcceptedChanges(), "extendedCellConditions").
+			isEqualTo(original);
+		requireThat(accepted.differences(observed), "acceptedCell").isEmpty();
+		requireThat(accepted.differences(original), "earlierCellEvidence").isEmpty();
+		requireThat(accepted.differences(elsewhere), "differentCell").
+			containsExactly(List.of(MeasurementCondition.MODEL));
+	}
+
+	/**
+	 * A changed loader configuration cannot be accepted within a retained identity.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*loader configuration.*")
+	public void refusesAcceptedLoaderChange()
+	{
+		// Requirement: R-M3
+		identity(MeasurementCondition.LOADER_CONFIGURATION, "original").acceptChanges(
+			identity(MeasurementCondition.LOADER_CONFIGURATION, "changed"));
+	}
+
+	/**
 	 * Returns an identity with the given values.
 	 *
 	 * @param entries alternating conditions and values

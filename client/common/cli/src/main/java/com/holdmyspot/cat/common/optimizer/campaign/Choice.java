@@ -14,6 +14,10 @@ public enum Choice
 	 */
 	NEW_IDENTITY,
 	/**
+	 * Accept observed measurement changes as equivalent, retaining this identity and its accumulated evidence.
+	 */
+	KEEP_IDENTITY,
+	/**
 	 * Keep a changed loader configuration and close this campaign so that a new one can start.
 	 */
 	NEW_CAMPAIGN,
