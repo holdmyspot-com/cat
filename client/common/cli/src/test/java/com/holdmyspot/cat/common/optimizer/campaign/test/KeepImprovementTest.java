@@ -226,15 +226,23 @@ public final class KeepImprovementTest
 
 	/**
 	 * Verifies that the best attempt has the highest Wilson lower bound on its weakest test, regardless of
-	 * recency.
+	 * recency, and remains offered after a later attempt fails without qualifying.
 	 */
 	@Test
 	public void bestHasStrongestWeakestCell()
 	{
 		// Requirement: R-F6
-		Campaign campaign = twoAttempts(new int[]{80, 100}, new int[]{60, 100}).build();
+		Builder builder = twoAttempts(new int[]{80, 100}, new int[]{60, 100});
+		Campaign campaign = builder.build();
 		requireThat(KeepImprovement.offers(campaign), "offers").isEqualTo(List.of(new ImprovementOffer(1,
 			campaign.identity(), false, List.of())));
+
+		Campaign afterFailure = builder.certificationAttempt(3).boundaries(boundaries()).
+			cell("formatting", 0, 100).cell("plain_list", 100, 0).cell("safety", 100, 0).
+			outcome(Outcome.BELOW_MINIMUM).build();
+		requireThat(KeepImprovement.qualifies(afterFailure.attempt(3), 1), "failedAttemptQualifies").isFalse();
+		requireThat(KeepImprovement.offers(afterFailure), "offersAfterFailure").isEqualTo(List.of(
+			new ImprovementOffer(1, afterFailure.identity(), false, List.of())));
 	}
 
 	/**
