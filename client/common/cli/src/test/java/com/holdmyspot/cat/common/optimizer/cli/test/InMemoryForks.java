@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.cli.test;
 
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
@@ -41,6 +42,10 @@ public final class InMemoryForks implements Forks
 	private final Path root;
 	private final Set<Path> tracked;
 	private final Map<Path, FileInventory> inventories = new HashMap<>();
+	/**
+	 * The immutable bytes captured while scanning files, indexed by their inventory content hashes.
+	 */
+	private final Map<Sha256, FileContent> contents = new HashMap<>();
 	private final Map<Path, Map<Path, FileEntry>> recorded = new HashMap<>();
 	private final Map<Path, Set<Path>> created = new HashMap<>();
 	private final Map<Path, List<FileInventory>> versions = new HashMap<>();
@@ -225,10 +230,47 @@ public final class InMemoryForks implements Forks
 				throw new WorkspaceException("The participating path " + path + " does not exist, so it cannot be " +
 					"recorded in the fork.");
 			}
-			entries.put(path, new RegularFile(new FileContent(Files.readAllBytes(location)).hash(),
-				PosixFilePermissions.fromString("rw-r--r--")));
+			FileContent content = new FileContent(Files.readAllBytes(location));
+			contents.put(content.hash(), content);
+			entries.put(path, new RegularFile(content.hash(), PosixFilePermissions.fromString("rw-r--r--")));
 		}
 		return new FileInventory(root, entries);
+	}
+
+
+	/**
+	 * Rewrites the optimization worktree from the selected recorded files, leaving external files alone.
+	 *
+	 * @param campaign the campaign storage directory
+	 * @param held the selected inventory entries
+	 * @throws IOException if a worktree file cannot be written or removed
+	 */
+	private void materialize(Path campaign, Map<Path, FileEntry> held) throws IOException
+	{
+		Path worktree = campaign.toAbsolutePath().resolve("worktree");
+		for (Path path : inventories.get(campaign).entries().keySet())
+		{
+			if (path.isAbsolute())
+				continue;
+			if (held.containsKey(path))
+				continue;
+			Files.deleteIfExists(worktree.resolve(path));
+		}
+		for (Map.Entry<Path, FileEntry> entry : held.entrySet())
+		{
+			if (entry.getKey().isAbsolute())
+				continue;
+			if (entry.getValue() instanceof RegularFile file)
+			{
+				FileContent content = contents.get(file.contentHash());
+				if (content == null)
+					throw new WorkspaceException("The in-memory fork has no recorded bytes for " + entry.getKey());
+				Path copy = worktree.resolve(entry.getKey());
+				Files.createDirectories(copy.getParent());
+				Files.write(copy, content.bytes());
+				PortableFiles.setMode(copy, file.permissions());
+			}
+		}
 	}
 
 	/**
@@ -294,6 +336,7 @@ public final class InMemoryForks implements Forks
 				if (creation.contains(entry.getKey()) || participants.contains(entry.getKey()))
 					held.put(entry.getKey(), entry.getValue());
 			}
+			materialize(campaign, held);
 			return new InMemoryFork(campaign, new FileInventory(root, held), excludeAdded, true);
 		}
 

@@ -26,7 +26,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import org.testng.annotations.AfterClass;
@@ -373,20 +372,7 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			Forks forks = new GitForks(Yielding.fileReplacer());
-			ForkView fork = forks.open(base, campaign).selectParticipants(base, Set.of(Path.of("ignored.md")));
-
-			ForkView narrowed = fork.selectParticipants(base, Set.of());
-
-			requireThat(narrowed.inventory().entries().keySet(), "narrowed").doesNotContain(Path.of("ignored.md")).
-				contains(Path.of("prompt.md"));
-			requireThat(Files.exists(campaign.resolve("worktree/ignored.md")), "worktreeFile").isFalse();
-			requireThat(forks.open(base, campaign).inventory(), "reopened").isEqualTo(narrowed.inventory());
-
-			writeFile(base.resolve("ignored.md"), "changed", READ_WRITE);
-			ForkView restored = narrowed.selectParticipants(base, Set.of(Path.of("ignored.md")));
-			requireThat(restored.inventory().entries().get(Path.of("ignored.md")), "restored").
-				isEqualTo(file("ignored"));
+			new ForkViewContract(new GitForks(Yielding.fileReplacer()), base, campaign).leavesOutDeselectedParticipants();
 		}
 	}
 
@@ -445,25 +431,7 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			Forks forks = new GitForks(Yielding.fileReplacer());
-			FileInventory earlier = forks.open(base, campaign).inventory();
-
-			ForkView extended = forks.open(base, campaign).extend(base, Set.of(Path.of("ignored.md")));
-
-			requireThat(extended.inventory().entries().get(Path.of("ignored.md")), "ignored").
-				isEqualTo(file("ignored"));
-			requireThat(forks.open(base, campaign).inventory(), "current").isEqualTo(earlier);
-			requireThat(Files.exists(campaign.resolve("worktree/ignored.md")), "worktreeFile").isFalse();
-			writeFile(base.resolve("unrecorded.md"), "unrecorded", READ_WRITE);
-			ForkView including = forks.open(base, campaign).including(Set.of(Path.of("ignored.md"),
-				Path.of("unrecorded.md")));
-			requireThat(including.inventory(), "including").isEqualTo(extended.inventory());
-
-			extended.adopt();
-
-			ForkView reopened = forks.open(base, campaign);
-			requireThat(reopened.inventory(), "adopted").isEqualTo(extended.inventory());
-			requireThat(reopened.version(earlier.identity()), "earlier").isEqualTo(Optional.of(earlier));
+			new ForkViewContract(new GitForks(Yielding.fileReplacer()), base, campaign).extensionBecomesCurrentWhenAdopted();
 		}
 	}
 
@@ -481,34 +449,9 @@ public final class ForkTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = project(root);
-			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			Forks forks = new GitForks(Yielding.fileReplacer());
-			ForkView fork = forks.open(base, campaign);
-
-			ForkView extended = fork.selectParticipants(base, Set.of(Path.of("ignored.md"), Path.of("prompt.md"),
-				external));
-
-			FileInventory inventory = extended.inventory();
-			requireThat(inventory.entries().get(Path.of("ignored.md")), "ignored").isEqualTo(file("ignored"));
-			requireThat(inventory.entries().containsKey(external), "external").isTrue();
-			requireThat(Files.readString(campaign.resolve("worktree/ignored.md"), UTF_8), "worktreeFile").
-				isEqualTo("ignored");
-			requireThat(extended.workspace().scanWorktree().entries(), "worktreeEntries").
-				isEqualTo(inventory.entries());
-			requireThat(forks.open(base, campaign).inventory(), "reopened").isEqualTo(inventory);
-			requireThat(forks.exists(campaign), "exists").isTrue();
-			requireThat(forks.exists(campaign.resolveSibling("c2")), "otherExists").isFalse();
-			try
-			{
-				extended.selectParticipants(base, Set.of(Path.of("missing.md")));
-				throw new AssertionError("A missing participant must be refused.");
-			}
-			catch (WorkspaceException e)
-			{
-				requireThat(e.getMessage(), "message").contains("missing.md");
-			}
+			new ForkViewContract(new GitForks(Yielding.fileReplacer()), base, campaign).addsParticipantsAfterCreation();
 		}
 	}
 
