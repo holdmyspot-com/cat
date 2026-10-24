@@ -953,6 +953,115 @@ public final class CodexSessionsTest
 	}
 
 	/**
+	 * Verifies that configured fallback filenames follow the two standard instruction names, preserve their configured
+	 * order and skip empty files.
+	 *
+	 * @throws IOException if the fixture cannot be written or scanned
+	 */
+	@Test
+	public void discoversConfiguredInstructionFallbacks() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-fallback-instructions-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+			Files.writeString(root.resolve("config.toml"), """
+				project_doc_fallback_filenames = [
+				  'GUIDE.md',
+				  'TEAM.md',
+				]
+				""");
+			Files.writeString(project.resolve("GUIDE.md"), "");
+			Files.writeString(project.resolve("TEAM.md"), "Team instructions");
+
+			requireThat(paths(sessions.loadedSources(project, List.of()).trials()), "nonemptyFallback").
+				isEqualTo(List.of("TEAM.md"));
+
+			Files.writeString(project.resolve("GUIDE.md"), "Guide instructions");
+
+			requireThat(paths(sessions.loadedSources(project, List.of()).trials()), "firstFallback").
+				isEqualTo(List.of("GUIDE.md"));
+
+			Files.writeString(project.resolve("AGENTS.md"), "Project instructions");
+
+			requireThat(paths(sessions.loadedSources(project, List.of()).trials()), "standardInstructions").
+				isEqualTo(List.of("AGENTS.md"));
+
+			Files.writeString(project.resolve("AGENTS.override.md"), "Override instructions");
+
+			requireThat(paths(sessions.loadedSources(project, List.of()).trials()), "overrideInstructions").
+				isEqualTo(List.of("AGENTS.override.md"));
+		}
+	}
+
+	/**
+	 * Verifies that an explicit zero-byte limit disables instruction discovery, while an absent limit or a positive
+	 * limit preserves the selected project file.
+	 *
+	 * @throws IOException if the fixture cannot be written or scanned
+	 */
+	@Test
+	public void honorsDisabledProjectInstructions() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-disabled-instructions-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+			Files.writeString(project.resolve("AGENTS.override.md"), "Override instructions");
+			Files.writeString(root.resolve("config.toml"), "project_doc_max_bytes = 0\n");
+
+			requireThat(sessions.loadedSources(project, List.of()).trials(), "disabledInstructions").isEmpty();
+
+			Files.writeString(root.resolve("config.toml"), "");
+
+			requireThat(paths(sessions.loadedSources(project, List.of()).trials()), "defaultLimit").
+				isEqualTo(List.of("AGENTS.override.md"));
+
+			Files.writeString(root.resolve("config.toml"), "project_doc_max_bytes = 32_768\n");
+
+			requireThat(paths(sessions.loadedSources(project, List.of()).trials()), "positiveLimit").
+				isEqualTo(List.of("AGENTS.override.md"));
+		}
+	}
+
+	/**
+	 * Verifies that malformed inherited instruction settings fail discovery with an I/O error.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void rejectsMalformedInstructionSettings() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-invalid-instructions-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+			Files.writeString(root.resolve("config.toml"), "project_doc_fallback_filenames = [\n");
+			Files.writeString(project.resolve("AGENTS.md"), "Project instructions");
+
+			org.testng.Assert.expectThrows(IOException.class, () -> sessions.loadedSources(project, List.of()));
+		}
+	}
+
+	/**
 	 * Returns the paths of derived sources.
 	 *
 	 * @param sources the sources

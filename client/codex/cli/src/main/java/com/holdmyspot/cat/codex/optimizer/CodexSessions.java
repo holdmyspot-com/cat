@@ -7,6 +7,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
+import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
 import com.holdmyspot.cat.common.optimizer.adapter.PluginFiles;
@@ -185,13 +186,34 @@ public final class CodexSessions extends RunnerSessions
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * Codex reads the first nonempty file at the project root: {@code AGENTS.override.md}, then {@code AGENTS.md}.
+	 * Codex reads the first nonempty file at the project root: {@code AGENTS.override.md}, then {@code AGENTS.md},
+	 * then the parent's configured fallback filenames in order. An explicit zero-byte instruction limit disables
+	 * project instructions.
 	 */
 	@Override
 	protected List<DerivedSource> instructionFiles(Path project) throws IOException
 	{
 		requireThat(project, "project").isNotNull();
-		for (String name : List.of("AGENTS.override.md", "AGENTS.md"))
+		Path configuration = settings().configurationDirectory().resolve("config.toml");
+		JsonNode values;
+		try
+		{
+			Optional<String> selected = CodexConnectionConfiguration.instructionSettings(configuration);
+			values = TomlMapper.builder().build().readTree(selected.orElse(""));
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("Cannot parse Codex instruction settings from " + configuration, e);
+		}
+		JsonNode limit = values.path("project_doc_max_bytes");
+		boolean instructionsDisabled = limit.isIntegralNumber() && limit.bigIntegerValue().signum() == 0;
+		if (instructionsDisabled)
+			return List.of();
+
+		List<String> filenames = new ArrayList<>(List.of("AGENTS.override.md", "AGENTS.md"));
+		filenames.addAll(values.path("project_doc_fallback_filenames").values().stream().map(JsonNode::asString).
+			toList());
+		for (String name : filenames)
 		{
 			Path file = project.resolve(name);
 			boolean hasInstructions = Files.isRegularFile(file) && Files.size(file) > 0;
