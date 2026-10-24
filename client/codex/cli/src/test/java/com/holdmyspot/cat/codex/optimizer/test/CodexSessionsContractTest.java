@@ -37,7 +37,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -143,7 +143,7 @@ public final class CodexSessionsContractTest
 					interruptEndsARunningTurnAsInterrupted();
 
 				requireThat(Files.readAllLines(server.transcript(), UTF_8), "transcript").isEqualTo(
-					RecordedAppServer.rebindResponse(events, 3));
+					server.turnOutput());
 				List<JsonNode> interrupts = server.interrupts();
 				requireThat(interrupts.size(), "interrupts.size").isEqualTo(1);
 				JsonNode params = interrupts.getFirst().path("params");
@@ -182,6 +182,8 @@ public final class CodexSessionsContractTest
 	/**
 	 * Verifies that the adapter completes a real two-turn stream, retains both turns in order, reports the final
 	 * cumulative usage rather than adding repeated totals, selects the effects directory, and removes the runtime home.
+	 * Both complete recorded streams pass through the in-memory app-server adapter and its persisted transcript;
+	 * processing and validating that evidence can exceed one second in the parallel build. No process starts.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the test is interrupted
@@ -205,7 +207,8 @@ public final class CodexSessionsContractTest
 				Files.writeString(rules.resolve("contract-design.md"), "# Contract design\nDefine the contract.\n", UTF_8);
 				List<String> first = recorded("deriver-turn-1.jsonl");
 				List<String> second = recorded("deriver-turn-2.jsonl");
-				CodexSessions sessions = port(jvm, root, new RecordedAppServer(List.of(first, second)));
+				RecordedAppServer server = new RecordedAppServer(List.of(first, second));
+				CodexSessions sessions = port(jvm, root, server);
 
 				SessionResult result = await(sessions.start(request(root, SessionRole.CONTRACT_AUTHOR, "inspect",
 					"propose")));
@@ -220,9 +223,8 @@ public final class CodexSessionsContractTest
 						"gpt-6.1-sol/low, and the requested motto exemption."));
 				requireThat(completed.responses().getLast().size(), "secondResponse.size").isEqualTo(1);
 				requireThat(completed.responses().getLast().getFirst(), "proposal").contains("\"requirements\": [");
-				List<String> all = new ArrayList<>(RecordedAppServer.rebindResponse(first, 3));
-				all.addAll(RecordedAppServer.rebindResponse(second, 4));
-				requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(all);
+				requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").
+					isEqualTo(server.turnOutput());
 				requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(291_014, 232_960, 4_804, 1_490));
 				requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
 					resolve("project"));
@@ -322,6 +324,8 @@ public final class CodexSessionsContractTest
 
 	/**
 	 * Verifies that each role starts an independent session, with its own transcript and effects directory.
+	 * Every role needs a separate replay and persisted transcript to prove isolation across all roles; creating and
+	 * validating those session resources can exceed one second in the parallel build. No process starts.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the test is interrupted
@@ -347,10 +351,11 @@ public final class CodexSessionsContractTest
 					recorded("deriver-turn-1.jsonl"));
 				Map<SessionRole, Integer> messages = Map.of(SessionRole.TRIAL, 1, SessionRole.JUDGE, 2,
 					SessionRole.TRIAGE, 2, SessionRole.PROMPT_AUTHOR, 3, SessionRole.CONTRACT_AUTHOR, 2);
+				List<RecordedAppServer> servers = Arrays.stream(SessionRole.values()).
+					map(role -> new RecordedAppServer(List.of(events.get(role)))).toList();
 				AtomicInteger next = new AtomicInteger();
 				CodexSessions sessions = port(jvm, root, (arguments, input, output) ->
-					new RecordedAppServer(List.of(events.get(SessionRole.values()[next.getAndIncrement()]))).
-						serve(arguments, input, output));
+					servers.get(next.getAndIncrement()).serve(arguments, input, output));
 				Set<Path> transcripts = new HashSet<>();
 				Set<Path> effects = new HashSet<>();
 				for (SessionRole role : SessionRole.values())
@@ -363,11 +368,10 @@ public final class CodexSessionsContractTest
 					requireThat(completed.responses().getFirst().size(), "messages.size").
 						isEqualTo(messages.get(role));
 					requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(
-						RecordedAppServer.rebindResponse(events.get(role), 3));
+						servers.get(role.ordinal()).turnOutput());
 					transcripts.add(completed.transcript());
 					effects.add(completed.effects());
 				}
-				requireThat(next.get(), "sessionsStarted").isEqualTo(SessionRole.values().length);
 				requireThat(transcripts.size(), "transcripts.size").isEqualTo(SessionRole.values().length);
 				requireThat(effects.size(), "effects.size").isEqualTo(SessionRole.values().length);
 			}

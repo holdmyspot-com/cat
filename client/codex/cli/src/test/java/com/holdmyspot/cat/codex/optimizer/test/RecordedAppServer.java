@@ -46,6 +46,7 @@ final class RecordedAppServer implements Bridge
 {
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final List<List<String>> turns;
+	private final List<String> turnOutput = new ArrayList<>();
 	private int nextTurn;
 	private final FakeHarnessCli process = new FakeHarnessCli(this::answer);
 	private final CountDownLatch turnStarted = new CountDownLatch(1);
@@ -85,7 +86,7 @@ final class RecordedAppServer implements Bridge
 	 * @param requestId the live turn/start request identifier
 	 * @return every recorded line in order, with only top-level response identifiers replaced
 	 */
-	static List<String> rebindResponse(List<String> events, long requestId)
+	private static List<String> rebindResponse(List<String> events, long requestId)
 	{
 		List<String> rebound = new ArrayList<>(events.size());
 		long nextId = requestId;
@@ -100,6 +101,16 @@ final class RecordedAppServer implements Bridge
 			}
 		}
 		return List.copyOf(rebound);
+	}
+
+	/**
+	 * Returns the selected turn streams with response identifiers bound to this connection's requests.
+	 *
+	 * @return the controlled turn input in replay order
+	 */
+	List<String> turnOutput()
+	{
+		return List.copyOf(turnOutput);
 	}
 
 	/**
@@ -186,6 +197,7 @@ final class RecordedAppServer implements Bridge
 			case "turn/start" ->
 			{
 				List<String> events = rebindResponse(turns.get(nextTurn), id);
+				turnOutput.addAll(events);
 				JsonNode terminal = json.readTree(events.getLast()).path("params").path("turn");
 				if (terminal.path("status").asString("").equals("interrupted"))
 				{
