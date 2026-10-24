@@ -6,7 +6,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
-import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
@@ -131,14 +130,15 @@ public final class ClaudeRunnerCli
 			FileReplacer replacer = FileReplacer.sleeping();
 			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(), replacer);
 			manager.deleteStaleRuns(HarnessRunManager.DEFAULT_RETENTION);
-			serve(options, agent, readOnlyEvidence, instructionFilesMode, manager, input, output, environment,
-				scope.json(), replacer, capacityForMaximum.apply(options.maximumConcurrency()));
+			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, manager, input, output, environment,
+				replacer, capacityForMaximum.apply(options.maximumConcurrency()));
 		}
 	}
 
 	/**
 	 * Runs one configured bridge and directs its JSONL transcript to the requested destination.
 	 *
+	 * @param scope the borrowed command scope
 	 * @param options parsed shared bridge options
 	 * @param agent optional direct CAT agent
 	 * @param readOnlyEvidence completed executor evidence visible without write authority
@@ -148,15 +148,15 @@ public final class ClaudeRunnerCli
 	 * @param input bridge input
 	 * @param output bridge output when no durable destination was requested
 	 * @param environment host environment
-	 * @param json the operation-owned receipt mapper
 	 * @param replacer replaces the receipt
 	 * @param capacity the shared harness capacity
 	 * @throws IOException if bridge execution or retained-evidence writing fails
 	 */
-	private static void serve(HarnessRunnerOptions options, ClaudeAgentDefinition agent, List<Path> readOnlyEvidence,
+	private static void serve(ToolScope scope, HarnessRunnerOptions options, ClaudeAgentDefinition agent,
+		List<Path> readOnlyEvidence,
 		String instructionFilesMode, HarnessRunManager manager,
 		Reader input, Writer output,
-		Map<String, String> environment, tools.jackson.databind.json.JsonMapper json, FileReplacer replacer,
+		Map<String, String> environment, FileReplacer replacer,
 		HarnessCapacity capacity) throws IOException
 	{
 		assert options != null;
@@ -165,18 +165,18 @@ public final class ClaudeRunnerCli
 		assert input != null;
 		assert output != null;
 		assert environment != null;
-		assert json != null;
+		assert scope != null;
 		assert replacer != null;
 		assert capacity != null;
 		try (HarnessCapacity.Permit _ = acquire(capacity, options))
 		{
-			HarnessRunStarter starter = () -> new ClaudeRunner(ExecutableFiles.sleeping()).start(
+			HarnessRunStarter starter = () -> new ClaudeRunner().start(
 				options.artifact(), options.project(), options.workspace(), options.plugins(), manager, options.executable(),
 				environment,
 				options.model(),
 				options.effort(), agent, options.installCat(), options.includeUserRules(), readOnlyEvidence,
 				options.deniedReads(), instructionFilesMode, options.sessionTranscripts(), options.sessionRequests());
-			HarnessRunnerBridge.serve(starter, manager, options, json, replacer, input, output,
+			HarnessRunnerBridge.serve(starter, manager, options, scope.json(), replacer, input, output,
 				(harness, arguments, directory) ->
 			{
 				RequestedRunner runner;
@@ -186,11 +186,11 @@ public final class ClaudeRunnerCli
 					String launcher = "claude-runner";
 					if (Platform.current().isWindows())
 						launcher += ".cmd";
-					runner = new RequestedRunner(artifact, artifact.resolve("bin").resolve(launcher),
+					runner = new RequestedRunner(scope, artifact, artifact.resolve("bin").resolve(launcher),
 						List.of());
 				}
 				else if (harness.equals("codex"))
-					runner = RequestedRunner.resolved(CodexArtifact.execute(environment), List.of("serve"));
+					runner = RequestedRunner.resolved(scope, CodexArtifact.execute(environment), List.of("serve"));
 				else
 					throw new IllegalArgumentException("Unsupported requested harness: " + harness);
 				return runner.start(arguments, directory, environment);

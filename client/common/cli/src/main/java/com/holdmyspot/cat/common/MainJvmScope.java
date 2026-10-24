@@ -19,7 +19,7 @@ public final class MainJvmScope extends AbstractJvmScope
 	 */
 	public MainJvmScope(Map<String, String> environment)
 	{
-		super(resolveDirectory(environment));
+		super(resolveDirectory(environment), ExecutableFiles.sleeping());
 	}
 
 	/**

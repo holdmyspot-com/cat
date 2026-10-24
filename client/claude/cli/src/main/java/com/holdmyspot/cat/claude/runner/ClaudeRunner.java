@@ -60,7 +60,6 @@ public final class ClaudeRunner
 	 * The path of a Claude plugin's manifest, relative to the plugin directory.
 	 */
 	private static final Path MANIFEST = Path.of(".claude-plugin/plugin.json");
-	private final ExecutableFiles executables;
 
 	/**
 	 * Resolves the launch configuration Bubblewrap inspects beside one run's Claude temporary directory.
@@ -78,15 +77,10 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Creates a Claude artifact runner.
-	 *
-	 * @param executables runs Claude's and the setup commands' files
-	 * @throws NullPointerException if {@code executables} is null
+	 * Creates a Claude artifact runner. Each run obtains executable-file services from its owned scope.
 	 */
-	public ClaudeRunner(ExecutableFiles executables)
+	public ClaudeRunner()
 	{
-		requireThat(executables, "executables").isNotNull();
-		this.executables = executables;
 	}
 
 	/**
@@ -174,6 +168,7 @@ public final class ClaudeRunner
 		HarnessRun run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
 		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment);
+		ExecutableFiles executables = scope.executableFiles();
 		try
 		{
 			ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());

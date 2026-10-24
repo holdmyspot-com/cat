@@ -178,16 +178,14 @@ public final class OptimizerCore implements Core
 	/**
 	 * Creates the core.
 	 *
-	 * @param scope       the command's scope
-	 * @param executables runs trial plugin build programs
+	 * @param scope the command's scope, including its executable-file runner
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public OptimizerCore(AbstractOptimizerCommandScope scope, ExecutableFiles executables)
+	public OptimizerCore(AbstractOptimizerCommandScope scope)
 	{
 		requireThat(scope, "scope").isNotNull();
-		requireThat(executables, "executables").isNotNull();
 		this.scope = scope;
-		this.executables = executables;
+		this.executables = scope.executableFiles();
 		this.schema = new ProposalSchema(scope.json());
 	}
 

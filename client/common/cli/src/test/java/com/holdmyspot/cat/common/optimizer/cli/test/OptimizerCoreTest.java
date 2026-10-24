@@ -234,7 +234,7 @@ public final class OptimizerCoreTest
 			Map<String, String> before = contents(project.root());
 			try (TestOptimizerCommandScope<FakeSessionPort> command = project.scope(Harness.CODEX))
 			{
-				CommandResult result = new OptimizerCore(command, Yielding.executableFiles()).status(project.campaign());
+				CommandResult result = new OptimizerCore(command).status(project.campaign());
 				requireThat(result.status().campaignId(), "campaignId").isEqualTo("campaign-1");
 				requireThat(result.harness(), "harness").isEqualTo(Harness.CLAUDE);
 				requireThat(command.sessions().sessions(), "sessions").isEmpty();
@@ -258,7 +258,7 @@ public final class OptimizerCoreTest
 			Map<String, String> before = contents(project.root());
 			try (TestOptimizerCommandScope<FakeSessionPort> command = project.scope(Harness.CODEX))
 			{
-				OptimizerCore core = new OptimizerCore(command, Yielding.executableFiles());
+				OptimizerCore core = new OptimizerCore(command);
 				String id = project.campaign();
 				List<ThrowingCall> calls = List.of(
 					() -> core.run(id),
@@ -318,7 +318,7 @@ public final class OptimizerCoreTest
 			{
 				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
 				Map<String, String> before = contents(project.root());
-				OptimizerCore core = new OptimizerCore(command, Yielding.executableFiles());
+				OptimizerCore core = new OptimizerCore(command);
 				for (String subject : List.of(project.campaign(), "CLAUDE.md"))
 				{
 					CommandResult result = core.status(subject);
@@ -354,7 +354,7 @@ public final class OptimizerCoreTest
 				{
 					OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
 					Map<String, String> before = contents(project.root());
-					OptimizerCore core = new OptimizerCore(command, Yielding.executableFiles());
+					OptimizerCore core = new OptimizerCore(command);
 					String id = project.campaign();
 					List<ThrowingCall> calls = List.of(
 						() -> core.run(id),
@@ -412,7 +412,7 @@ public final class OptimizerCoreTest
 			{
 				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
 				Map<String, String> before = contents(root);
-				OptimizerCore core = new OptimizerCore(command, Yielding.executableFiles());
+				OptimizerCore core = new OptimizerCore(command);
 				List<ThrowingCall> calls = List.of(
 					() -> core.status("campaign-1"),
 					() -> core.status("CLAUDE.md"),
@@ -447,7 +447,7 @@ public final class OptimizerCoreTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Project project = project(scope, Harness.CLAUDE);
-			OptimizerCore core = new OptimizerCore(project.scope(Harness.CLAUDE), Yielding.executableFiles());
+			OptimizerCore core = new OptimizerCore(project.scope(Harness.CLAUDE));
 			CommandRefusedException refusal = null;
 			try
 			{
@@ -475,7 +475,7 @@ public final class OptimizerCoreTest
 			CommandRefusedException refusal = null;
 			try
 			{
-				new OptimizerCore(project.scope(Harness.CLAUDE), Yielding.executableFiles()).status("missing");
+				new OptimizerCore(project.scope(Harness.CLAUDE)).status("missing");
 			}
 			catch (CommandRefusedException e)
 			{
@@ -502,7 +502,7 @@ public final class OptimizerCoreTest
 			CommandRefusedException refusal = null;
 			try
 			{
-				new OptimizerCore(project.scope(Harness.CLAUDE), Yielding.executableFiles()).start(outside);
+				new OptimizerCore(project.scope(Harness.CLAUDE)).start(outside);
 			}
 			catch (CommandRefusedException e)
 			{
@@ -585,7 +585,7 @@ public final class OptimizerCoreTest
 				ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 				try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 				{
-					OptimizerCore core = new OptimizerCore(command, Yielding.executableFiles());
+					OptimizerCore core = new OptimizerCore(command);
 					requireThat(new Commands(core, JSON, ZoneOffset.UTC).
 						execute(List.of("start", target.toString()), out), "exitCode").isEqualTo(1);
 				}
@@ -655,7 +655,7 @@ public final class OptimizerCoreTest
 				before = contents(root);
 				try
 				{
-					new OptimizerCore(command, Yielding.executableFiles()).start(Path.of("CLAUDE.md"));
+					new OptimizerCore(command).start(Path.of("CLAUDE.md"));
 				}
 				catch (CommandRefusedException e)
 				{
@@ -1191,7 +1191,7 @@ public final class OptimizerCoreTest
 		{
 			throw new IOException(e.getMessage(), e);
 		}
-		return new Repository(root, command, new OptimizerCore(command, Yielding.executableFiles()));
+		return new Repository(root, command, new OptimizerCore(command));
 	}
 
 	/**
@@ -3523,13 +3523,13 @@ public final class OptimizerCoreTest
 			try (TestOptimizerCommandScope<FakeSessionPort> fresh = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				repository.root()))
 			{
-				TokenStatistics reported = new OptimizerCore(fresh, Yielding.executableFiles()).status(id).status().tokens();
+				TokenStatistics reported = new OptimizerCore(fresh).status(id).status().tokens();
 				requireThat(reported, "reloadedUsage").isEqualTo(first.status().tokens());
 				requireThat(reported.roles().get(SessionRole.TRIAL).input().median(), "trialMedian").isEqualTo(100L);
 				requireThat(reported.roles().get(SessionRole.JUDGE).cachedInput().p90(),
 					"judgeCachedP90").isEqualTo(40L);
 				CommandResult second = repository.core().run(id);
-				TokenStatistics combined = new OptimizerCore(fresh, Yielding.executableFiles()).status(id).status().tokens();
+				TokenStatistics combined = new OptimizerCore(fresh).status(id).status().tokens();
 				requireThat(combined, "combinedUsage").isEqualTo(second.status().tokens());
 				for (SessionRole role : List.of(SessionRole.TRIAL, SessionRole.JUDGE))
 				{
@@ -3573,7 +3573,7 @@ public final class OptimizerCoreTest
 			try (TestOptimizerCommandScope<FakeSessionPort> fresh = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				repository.root()))
 			{
-				TokenStatistics.RoleUsage reported = new OptimizerCore(fresh, Yielding.executableFiles()).
+				TokenStatistics.RoleUsage reported = new OptimizerCore(fresh).
 					status(id).status().tokens().roles().get(SessionRole.CONTRACT_AUTHOR);
 				requireThat(reported, "contractAuthorUsage").
 					isEqualTo(TokenStatistics.of(Map.of(SessionRole.CONTRACT_AUTHOR, List.of(usage.get(0), usage.get(1),
@@ -4253,7 +4253,7 @@ public final class OptimizerCoreTest
 			try (TestOptimizerCommandScope<FakeSessionPort> codex = TestOptimizerCommandScope.of(Harness.CODEX,
 				repository.root()))
 			{
-				result = new OptimizerCore(codex, Yielding.executableFiles()).status("CLAUDE.md");
+				result = new OptimizerCore(codex).status("CLAUDE.md");
 			}
 
 			Applicability applicability = result.certification().latest().getFirst().applicability();

@@ -36,6 +36,15 @@ public interface JvmScope extends AutoCloseable
 	Clock clock();
 
 	/**
+	 * Returns this process's executable-file runner. Production scopes pause between transient start failures;
+	 * test scopes supply a runner that does not sleep.
+	 *
+	 * @return the shared executable-file runner
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	ExecutableFiles executableFiles();
+
+	/**
 	 * Returns the absolute, normalized directory for process temporary files, creating it when necessary.
 	 * The process owns its children; closing this scope does not remove the shared directory.
 	 *

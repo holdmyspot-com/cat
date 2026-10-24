@@ -6,7 +6,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
-import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
@@ -107,7 +106,7 @@ public final class CodexRunnerCli
 		String prompt = options.prompt();
 		try (HarnessCapacity.Permit _ = capacity.acquire())
 		{
-			HarnessOneShotRunner.run(() -> new CodexRunner(ExecutableFiles.sleeping()).start(options.artifact(),
+			HarnessOneShotRunner.run(() -> new CodexRunner().start(options.artifact(),
 				options.project(), manager,
 				options.executable(), environment, options.model(), "", options.installCat(), agent), manager, prompt,
 				options.output(), options.keepRun());
@@ -187,7 +186,7 @@ public final class CodexRunnerCli
 				permit = capacity.acquire(options.capacityWait());
 			try (HarnessCapacity.Permit _ = permit)
 			{
-				HarnessRunnerBridge.serve(() -> new CodexRunner(ExecutableFiles.sleeping()).start(options.artifact(),
+				HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(),
 					options.project(),
 					options.workspace(), options.plugins(), manager, options.executable(), environment, options.model(),
 					options.effort(), options.installCat(), agent, List.of(), options.deniedReads(), toolOutputTokenLimit,
@@ -201,11 +200,11 @@ public final class CodexRunnerCli
 					String launcher = "codex-runner";
 					if (Platform.current().isWindows())
 						launcher += ".cmd";
-					runner = new RequestedRunner(artifact, artifact.resolve("bin").resolve(launcher),
+					runner = new RequestedRunner(scope, artifact, artifact.resolve("bin").resolve(launcher),
 						List.of("serve"));
 				}
 				else if (harness.equals("claude"))
-					runner = RequestedRunner.resolved(ClaudeArtifact.execute(environment), List.of());
+					runner = RequestedRunner.resolved(scope, ClaudeArtifact.execute(environment), List.of());
 				else
 					throw new IllegalArgumentException("Unsupported requested harness: " + harness);
 				return runner.start(arguments, directory, environment);

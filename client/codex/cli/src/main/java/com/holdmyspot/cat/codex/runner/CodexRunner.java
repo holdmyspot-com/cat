@@ -63,53 +63,11 @@ public final class CodexRunner
 	 * The system's shared temporary directory, which the app-server replaces with a private one.
 	 */
 	private static final Path TMP = Path.of("/tmp");
-	private final ExecutableFiles executables;
-	private final ProcessStarter processes;
-
 	/**
-	 * Starts the app-server process.
+	 * Creates a Codex artifact runner. Each run obtains executable-file services from its owned scope.
 	 */
-	@FunctionalInterface
-	interface ProcessStarter
+	public CodexRunner()
 	{
-		/**
-		 * Starts a process.
-		 *
-		 * @param command the executable and its arguments
-		 * @param workingDirectory the process's working directory
-		 * @param environment the process's complete environment
-		 * @return the started process
-		 * @throws IOException if the process cannot start
-		 */
-		Process start(List<String> command, Path workingDirectory, Map<String, String> environment)
-			throws IOException;
-	}
-
-	/**
-	 * Creates a Codex artifact runner.
-	 *
-	 * @param executables runs the app-server's and the setup commands' files
-	 * @throws NullPointerException if {@code executables} is null
-	 */
-	public CodexRunner(ExecutableFiles executables)
-	{
-		this(executables, (command, workingDirectory, environment) ->
-			HarnessProcessStarter.start(command, workingDirectory, environment, executables));
-	}
-
-	/**
-	 * Creates a Codex artifact runner that starts the app-server through {@code processes}.
-	 *
-	 * @param executables runs the setup commands' files
-	 * @param processes   starts the app-server process
-	 * @throws NullPointerException if any of the arguments are null
-	 */
-	CodexRunner(ExecutableFiles executables, ProcessStarter processes)
-	{
-		requireThat(executables, "executables").isNotNull();
-		requireThat(processes, "processes").isNotNull();
-		this.executables = executables;
-		this.processes = processes;
 	}
 
 	/**
@@ -222,6 +180,8 @@ public final class CodexRunner
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
 		HarnessRun run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
+		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment);
+		ExecutableFiles executables = scope.executableFiles();
 		try
 		{
 			manager.copyProject(project, run);
@@ -255,13 +215,12 @@ public final class CodexRunner
 				map(bubblewrap -> withPrivateTmp(appServer, bubblewrap, run.directory())).
 				orElse(appServer);
 			manager.initialize(run, artifact, project, "codex_app_server", command);
-			AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment);
 			lock = manager.acquireLock(run);
 			HarnessSessionTranscripts transcripts = null;
 			if (sessionTranscripts)
 				transcripts = CodexProcess.rollouts(isolatedHome, run.sessionTranscripts());
-			CodexProcess process = new CodexProcess(processes.start(command, worktree, isolatedEnvironment), scope,
-				installCat, transcripts);
+			CodexProcess process = new CodexProcess(HarnessProcessStarter.start(command, worktree,
+				isolatedEnvironment, executables), scope, installCat, transcripts);
 			try
 			{
 				manager.recordHarnessProcess(run, process.pid(), process.startedAt());
@@ -302,6 +261,7 @@ public final class CodexRunner
 				if (failure != null)
 					e.addSuppressed(failure);
 			}
+			scope.close();
 			manager.fail(run, e.getMessage());
 			throw e;
 		}

@@ -21,6 +21,7 @@ public abstract class AbstractJvmScope implements JvmScope
 	private final JvmScope parent;
 	private final boolean indentJson;
 	private final Reference<Path> temporaryDirectory;
+	private final Reference<ExecutableFiles> executableFiles;
 	private final Reference<JsonMapper> json = LazyReference.create(this::createJsonMapper);
 	private final Reference<YAMLMapper> yaml = LazyReference.create(this::createYamlMapper);
 	private final Reference<Clock> clock = LazyReference.create(this::createClock);
@@ -29,11 +30,14 @@ public abstract class AbstractJvmScope implements JvmScope
 	 * Creates a process scope with an explicit temporary directory.
 	 *
 	 * @param temporaryDirectory the process temporary directory
-	 * @throws NullPointerException if {@code temporaryDirectory} is null
+	 * @param executableFiles the process executable-file runner
+	 * @throws NullPointerException if any argument is null
 	 */
-	protected AbstractJvmScope(Path temporaryDirectory)
+	protected AbstractJvmScope(Path temporaryDirectory, ExecutableFiles executableFiles)
 	{
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
+		requireThat(executableFiles, "executableFiles").isNotNull();
+		this.executableFiles = LazyReference.create(() -> executableFiles);
 		this.parent = null;
 		this.indentJson = false;
 		this.temporaryDirectory = LazyReference.create(() -> temporaryDirectory.toAbsolutePath().normalize());
@@ -61,6 +65,7 @@ public abstract class AbstractJvmScope implements JvmScope
 	{
 		requireThat(parent, "parent").isNotNull();
 		this.parent = parent;
+		this.executableFiles = LazyReference.create(parent::executableFiles);
 		this.indentJson = indentJson;
 		this.temporaryDirectory = null;
 	}
@@ -84,6 +89,13 @@ public abstract class AbstractJvmScope implements JvmScope
 	{
 		ensureOpen();
 		return clock.getValue();
+	}
+
+	@Override
+	public ExecutableFiles executableFiles()
+	{
+		ensureOpen();
+		return executableFiles.getValue();
 	}
 
 	@Override

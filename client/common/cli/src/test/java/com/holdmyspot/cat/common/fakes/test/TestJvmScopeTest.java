@@ -3,9 +3,16 @@ package com.holdmyspot.cat.common.fakes.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.AbstractJvmScope;
+import com.holdmyspot.cat.common.ExecutableFiles;
+import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
+import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.testng.annotations.Test;
 
 /**
@@ -43,5 +50,51 @@ public final class TestJvmScopeTest
 		{
 		}
 		scope.temporaryDirectory();
+	}
+
+	/**
+	 * A child scope shares its parent's controlled executable runner, including recovery from a busy file without
+	 * sleeping or starting an external program.
+	 *
+	 * @throws IOException if the controlled process request fails
+	 */
+	@Test
+	public void sharesControlledExecutableRunner() throws IOException
+	{
+		try (TestJvmScope build = new TestJvmScope();
+			FakeHarnessCli process = new FakeHarnessCli(_ -> {}))
+		{
+			ManualClock clock = new ManualClock(Instant.EPOCH);
+			AtomicBoolean busy = new AtomicBoolean(true);
+			ExecutableFiles executables = ExecutableFilesSecrets.getExecutableFilesAccess().create(
+				() -> clock.advance(Duration.ofMillis(25)), clock, _ ->
+				{
+					if (busy.getAndSet(false))
+						throw new IOException("ETXTBSY: controlled busy executable");
+					return process;
+				});
+			try (TestJvmScope parent = new TestJvmScope(build.temporaryDirectory(), executables);
+				AbstractJvmScope child = new AbstractJvmScope(parent)
+				{
+				};
+				Process result = child.executableFiles().run(new ProcessBuilder("controlled-executable")))
+			{
+				requireThat(result, "process").isEqualTo(process);
+				requireThat(child.executableFiles(), "childExecutables").isEqualTo(parent.executableFiles());
+			}
+		}
+	}
+
+	/**
+	 * A closed scope refuses executable-file service access.
+	 */
+	@Test(expectedExceptions = IllegalStateException.class)
+	public void rejectsExecutableAccessAfterClose()
+	{
+		TestJvmScope scope = new TestJvmScope();
+		try (scope)
+		{
+		}
+		scope.executableFiles();
 	}
 }
