@@ -45,7 +45,7 @@ public final class ClaudeConnectionSettingsTest
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, Platform.LINUX_X64);
 			JsonNode allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
-			requireThat(allow.size(), "grantCount").isEqualTo(3);
+			requireThat(allow.size(), "grantCount").isEqualTo(4);
 			requireThat(allow.path(2).asString(), "launcherGrant").isEqualTo("Bash(" + launcher + ":*)");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
@@ -54,6 +54,52 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(allow.size(), "defaultGrantCount").isEqualTo(2);
 			requireThat(allow.path(0).asString(), "skillGrant").isEqualTo("Skill");
 			requireThat(allow.path(1).asString(), "editGrant").isEqualTo("Edit(./**)");
+		}
+	}
+
+	/**
+	 * Grants response reads without granting response writes, and preserves settings when requests are disabled.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void permitsOnlyResponseReads() throws IOException
+	{
+		// Requirement: R-I9
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-response-permissions-"));
+			Path destination = root.resolve("isolated/settings.json");
+			Path launcher = root.resolve("artifact with spaces/bin/request-session");
+			Path responses = root.resolve("responses");
+			SessionRequestAccess access = new SessionRequestAccess(root.resolve("requests"), responses,
+				root.resolve("requested-runs"), launcher);
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, Platform.LINUX_X64);
+			String defaultSettings = Files.readString(destination);
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, Platform.LINUX_X64);
+			JsonNode settings = scope.json().readTree(Files.readString(destination));
+			List<String> grants = new ArrayList<>();
+			for (JsonNode grant : settings.path("permissions").path("allow"))
+				grants.add(grant.asString());
+			requireThat(grants, "grants").isEqualTo(List.of("Skill", "Edit(./**)", "Bash(" + launcher + ":*)",
+				"Read(/" + ClaudeConnectionSettings.rulePath(responses) + "/**)"));
+			requireThat(settings.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
+			List<String> writablePaths = new ArrayList<>();
+			for (JsonNode path : settings.path("sandbox").path("filesystem").path("allowWrite"))
+			{
+				writablePaths.add(path.asString());
+				requireThat(responses.startsWith(Path.of(path.asString())), "writableResponses").isFalse();
+			}
+			requireThat(writablePaths, "writablePaths").isEqualTo(List.of(root.resolve("home").toString(),
+				access.requests().toString()));
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, Platform.LINUX_X64);
+			requireThat(Files.readString(destination), "defaultSettings").isEqualTo(defaultSettings);
 		}
 	}
 
