@@ -14,7 +14,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.Diagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.DiagnosticRerun;
+import com.holdmyspot.cat.common.optimizer.campaign.Development;
 import com.holdmyspot.cat.common.optimizer.campaign.Failure;
+import com.holdmyspot.cat.common.optimizer.campaign.IncumbentBaseline;
 import com.holdmyspot.cat.common.optimizer.campaign.InfrastructureAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
@@ -60,10 +62,6 @@ public final class TransitionsTest
 {
 	private static final Instant NOW = Instant.parse("2026-10-01T12:00:00Z");
 	private static final Sha256 REVISED = Builder.snapshot("revised contract");
-	/**
-	 * The cells of the fixture contract.
-	 */
-	private static final List<String> CELLS = ContractFixtures.contract().cellIds();
 
 	/**
 	 * Creates the test.
@@ -221,26 +219,26 @@ public final class TransitionsTest
 	}
 
 	/**
-	 * Adopts 100 passing development trials per test of the incumbent, and passing baseline trials until each
-	 * test's baseline holds 50.
+	 * Seeds the counts needed to commit, preserving the campaign's identities, history and pending state.
 	 *
 	 * @param campaign the campaign
 	 * @return the updated campaign
 	 */
 	private static Campaign makeReady(Campaign campaign)
 	{
-		Campaign result = campaign;
-		for (int trial = 0; trial < 100; ++trial)
-		{
-			for (String cell : CELLS)
-				result = TransitionSteps.adopt(result, Purpose.DEVELOPMENT, cell, Verdict.PASS);
-		}
-		for (String cell : CELLS)
-		{
-			while (result.baseline().count(cell).outcomes() < 50)
-				result = TransitionSteps.adopt(result, Purpose.BASELINE, cell, Verdict.PASS);
-		}
-		return result;
+		Campaign ready = new Builder().confirmed().readyDevelopment().readyBaseline().build();
+		Development current = campaign.development();
+		Development development = new Development(current.working(), current.series(), ready.development().counts(),
+			current.failures(), current.diagnosis(), current.round(), current.promptAuthor(), current.reviewPoints(),
+			current.testCaseOutcomes(), current.predecessor(), current.reverts());
+		IncumbentBaseline baseline = new IncumbentBaseline(campaign.baseline().index(),
+			campaign.baseline().identity(), ready.baseline().counts());
+		return new Campaign(campaign.header(), campaign.ceiling(), campaign.lineages(), campaign.identity(),
+			campaign.incumbent(), campaign.candidates(), campaign.promptAuthorAttempts(), development, baseline,
+			campaign.attempts(), campaign.trials(), campaign.sequences(), campaign.evidenceRevision(), campaign.slowStart(),
+			campaign.throttle(), campaign.pendingDecisions(), campaign.revisionRequested(), campaign.outcome(),
+			campaign.delivery(), campaign.optimization(), campaign.answeredWarnings(), campaign.testRevisions(),
+			campaign.plugins());
 	}
 
 	/**
@@ -309,6 +307,10 @@ public final class TransitionsTest
 	/**
 	 * Verifies that only freezing a certification procedure spends an index, revisions, new measurement identities
 	 * and cancel-then-resume keep it spent, and a new campaign starts again from 1.
+	 * <p>
+	 * Two commits and the intervening revision, identity change and cancellation exercise index retention. Their
+	 * development and baseline counts are seeded directly: replaying successful trials would only prepare the commit
+	 * gate, whose thresholds are checked separately by {@link CommitGateTest}. No harness, files or waits are needed.
 	 */
 	@Test
 	public void certificationIndexIsPermanent()
