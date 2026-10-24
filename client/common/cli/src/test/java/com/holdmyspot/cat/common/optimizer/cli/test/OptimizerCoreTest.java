@@ -339,6 +339,10 @@ public final class OptimizerCoreTest
 	 * Verifies that every command that runs, changes or delivers a campaign, and {@code start} for its target, refuses
 	 * a session other than the one that started it, names that session and the command that resumes it, and changes
 	 * nothing.
+	 * <p>
+	 * One directly stored campaign per harness checks all six entry points and both harness-specific resume commands.
+	 * Each entry point must preserve the project files; a check of the binding helper alone would miss an entry point
+	 * that skipped it. The fixture seeds the confirmed state and uses controlled session and version services.
 	 */
 	@Test
 	public void refusesOtherSessionBeforeAnyChange() throws Exception
@@ -1819,8 +1823,12 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that when a revised proposal is refused after its correction turn, CAT still offers {@code revise}, which
-	 * regenerates the stored proposal.
+	 * Verifies that a revised proposal refused after its correction turn still offers {@code revise} and {@code start}
+	 * as retry commands.
+	 * <p>
+	 * One valid creation supplies the stored proposal and fork that public revision restores. Invalid scripted revision
+	 * replies then exercise the refusal notice and its retry guidance. A campaign record alone lacks the proposal and
+	 * fork, so it cannot reach this failure path.
 	 *
 	 * @throws Exception if the test fails unexpectedly
 	 */
@@ -3764,6 +3772,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that a test revision that needs a requirement change pauses the campaign with the proposed change, and
 	 * that choosing it derives a revised proposal from that change for the user to confirm.
+	 * <p>
+	 * One confirmed proposal, one blocked test revision and the user's choice are needed to check both the persisted
+	 * pause and the derived proposal. Public run and choice handling restore the stored proposal and open its fork;
+	 * the initial creation supplies those artifacts. Sessions return scripted replies.
 	 */
 	@Test
 	public void proposedRequirementChangeRevisesContract() throws Exception
@@ -3805,6 +3817,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that a revised test that proves other requirements or reuses a test case of the confirmed test is
 	 * returned to the session once and then refused, leaving the confirmed contract and the request in place.
+	 * <p>
+	 * One confirmed proposal and one pending test revision are needed to check that public run retains the lineage and
+	 * pending request after invalid scripted replies. Run restores the stored proposal and opens its fork, so the
+	 * initial creation supplies artifacts that a campaign record alone cannot provide.
 	 */
 	@Test
 	public void refusesRevisionThatChangesRequirements() throws Exception
@@ -4415,6 +4431,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code cancel} and {@code choose} reach the campaign's driver: a cancel is applied, and a choice
 	 * the campaign does not wait for is refused by the driver.
+	 * <p>
+	 * A stored confirmed campaign and a captured-inventory fork provide the context that these commands read. Seeding
+	 * them directly keeps the assertions on the returned and persisted lifecycle and the refused choice, without
+	 * replaying proposal derivation or confirmation.
 	 */
 	@Test
 	public void chooseAndCancelReachTheDriver() throws Exception
@@ -4425,8 +4445,19 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}));
-			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			String id = "campaign-1";
+			Header header = new Header(id, repository.root(), repository.root().resolve("CLAUDE.md"), Harness.CLAUDE,
+				Lifecycle.ACTIVE);
+			ForkView fork = repository.scope().forks().create(repository.root(), repository.directory(id),
+				Set.of(Path.of("CLAUDE.md")));
+			Overlay incumbent = Overlay.of(fork.inventory());
+			new FileCandidateOverlays(repository.directory(id), fork.inventory(), repository.scope().json(),
+				Yielding.fileReplacer()).save(incumbent);
+			Campaign campaign = Campaign.start(header, Campaign.DEFAULT_CEILING, incumbent.identity(), Builder.OBSERVED);
+			Campaign confirmed = Transitions.apply(campaign, new CampaignEvent.Confirm(
+				new Builder().confirmed().build().contract(), Builder.contractHash(), 17));
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).
+				replaceSnapshot(confirmed);
 			CommandResult cancelled = repository.core().cancel(id);
 			requireThat(cancelled.status().lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
 			requireThat(repository.load(id).lifecycle(), "stored").isEqualTo(Lifecycle.CANCELLED);
