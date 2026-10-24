@@ -4123,6 +4123,10 @@ public final class DriverTest
 	 * group without seeing the salt or a held-out value, and reproduction trials run them before any development trial.
 	 * Once each group reproduces, its values join development, development counts restart and draw the added values, and
 	 * the unchanged candidate is committed again only after every development cell meets the commit gate on new trials.
+	 * <p>
+	 * Proving this interaction needs a failed formal attempt, reproduction of its failure groups and a second
+	 * commitment after fresh development. Persisting and validating those campaign transitions can exceed one second
+	 * during a parallel build.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */

@@ -194,6 +194,9 @@ public final class TestabilityAuditTest
 
 	/**
 	 * Verifies that the harness-neutral core references no harness package.
+	 * <p>
+	 * The first audit using the shared inventory also reads and parses the three modules' Java sources. With that
+	 * setup, this check can exceed one second during a parallel build.
 	 */
 	@Test
 	public void coreReferencesNoHarness()

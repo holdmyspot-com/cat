@@ -160,6 +160,9 @@ public final class SessionRequestBrokerTest
 
 	/**
 	 * Verifies that hostile inputs produce refusals and never reach the child starter.
+	 * <p>
+	 * The entry-count and cumulative-size cases decode actual limit-crossing archives. Constructing and processing
+	 * those fixtures can exceed one second; an archive below the corresponding limit would not prove its refusal.
 	 *
 	 * @param kind the invalid input category
 	 * @throws IOException if fixture or broker I/O fails

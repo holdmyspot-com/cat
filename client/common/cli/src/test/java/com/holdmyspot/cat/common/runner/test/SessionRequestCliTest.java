@@ -126,6 +126,10 @@ public final class SessionRequestCliTest
 
 	/**
 	 * Verifies that packing rejects links anywhere in an input path and enforces prompt and tree-file bounds.
+	 * <p>
+	 * The entry-count case creates 10,001 directories, and the total-size case packs files until it crosses the
+	 * cumulative byte limit. Creating, reading and removing these fixtures can take several seconds; inputs below
+	 * those limits would not exercise the corresponding refusals.
 	 *
 	 * @param kind the unsafe input category
 	 * @throws IOException if fixture I/O fails or packing rejects the input
