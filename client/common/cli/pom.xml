@@ -63,7 +63,7 @@
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
 					<!-- Request archive tests inspect and read the same native file handle. -->
-					<argLine>--enable-native-access=com.holdmyspot.cat.common.cli</argLine>
+					<argLine>${argLine} --enable-native-access=com.holdmyspot.cat.common.cli</argLine>
 					<systemPropertyVariables>
 						<!-- TestabilityAuditTest scans sources below this directory -->
 						<cat.client.directory>${project.basedir}/../..</cat.client.directory>

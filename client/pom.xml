@@ -19,6 +19,8 @@
 	</modules>
 
 	<properties>
+		<!-- Caller-supplied JVM options remain available to module test configurations. -->
+		<argLine/>
 		<build-helper-maven-plugin.version>3.6.2</build-helper-maven-plugin.version>
 		<cat.config.directory>${project.basedir}/config</cat.config.directory>
 		<!--
