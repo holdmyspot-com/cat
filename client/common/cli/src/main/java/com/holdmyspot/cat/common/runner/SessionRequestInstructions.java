@@ -2,6 +2,10 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.ShellQuoting;
+
+import java.nio.file.Path;
+
 /**
  * The instructions that tell a session how to request a session, the same in every harness. A runner adds them to the
  * session's instructions when the session may request any.
@@ -12,12 +16,22 @@ public final class SessionRequestInstructions
 	 * Returns the instructions.
 	 *
 	 * @param sessionRequests how many sessions the session may request over its run
+	 * @param launcher        the absolute path of the request-session launcher
+	 * @param powerShell      {@code true} to write PowerShell commands, {@code false} for POSIX shell commands
 	 * @return the instructions
-	 * @throws IllegalArgumentException if {@code sessionRequests} is not positive
+	 * @throws NullPointerException     if {@code launcher} is null
+	 * @throws IllegalArgumentException if {@code sessionRequests} is not positive or {@code launcher} is relative
 	 */
-	public static String text(int sessionRequests)
+	public static String text(int sessionRequests, Path launcher, boolean powerShell)
 	{
 		requireThat(sessionRequests, "sessionRequests").isPositive();
+		requireThat(launcher, "launcher").isAbsolute();
+		String command;
+		if (powerShell)
+			command = "& " + ShellQuoting.powerShell(launcher.toString());
+		else
+			command = ShellQuoting.posix(launcher.toString());
+
 		String sessions;
 		if (sessionRequests == 1)
 			sessions = "1 session";
@@ -30,7 +44,7 @@ public final class SessionRequestInstructions
 			"\n" +
 			"Write each prompt into a file inside your project, then run:\n" +
 			"\n" +
-			"\"$CAT_REQUEST_SESSION\" --harness <claude|codex> --project <directory> --prompt <file> " +
+			command + " --harness <claude|codex> --project <directory> --prompt <file> " +
 			"[--prompt <file>]... [--plugin <directory>]... [--model <name>] [--effort <level>] " +
 			"[--session-transcripts]\n" +
 			"\n" +
@@ -41,7 +55,7 @@ public final class SessionRequestInstructions
 			"with a reason, and whose fields name the file paths of the session's transcript, receipt and, with " +
 			"--session-transcripts, its native transcripts. Read those files for the results; you may read them " +
 			"although they lie under the run root. If the session is still running when the wait ends, the command " +
-			"prints the request's id and the command that waits again, \"$CAT_REQUEST_SESSION\" --await <id>.";
+			"prints the request's id and the command that waits again, " + command + " --await <id>.";
 	}
 
 	/**

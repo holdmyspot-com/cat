@@ -2,7 +2,9 @@ package com.holdmyspot.cat.common.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
+import java.nio.file.Path;
 import org.testng.annotations.Test;
 
 /**
@@ -25,10 +27,41 @@ public final class SessionRequestInstructionsTest
 	public void explainsRequests()
 	{
 		// Requirement: R-I9
-		String text = SessionRequestInstructions.text(3);
+		Path launcher = Path.of("artifact/bin/request-session").toAbsolutePath();
+		String text = SessionRequestInstructions.text(3, launcher, false);
+		String command = ShellQuoting.posix(launcher.toString());
 
 		requireThat(text, "text").contains("new session").contains("plugin").contains("up to 3").
-			contains("\"$CAT_REQUEST_SESSION\" --harness").contains("--project").contains("--prompt").
+			doesNotContain("$").contains(command + " --harness").contains(command + " --await <id>").
+			contains("--project").contains("--prompt").
 			contains("--plugin").contains("--await").contains("file path");
+	}
+
+	/**
+	 * Verifies that both POSIX commands quote a launcher path containing spaces.
+	 */
+	@Test
+	public void quotesPosixLauncher()
+	{
+		// Requirement: R-I9
+		Path launcher = Path.of("artifact with spaces/bin/request-session").toAbsolutePath();
+		String text = SessionRequestInstructions.text(1, launcher, false);
+
+		requireThat(text, "text").contains("'" + launcher + "' --harness").
+			contains("'" + launcher + "' --await <id>").doesNotContain("$");
+	}
+
+	/**
+	 * Verifies that both PowerShell commands invoke a quoted launcher with the call operator.
+	 */
+	@Test
+	public void quotesPowerShellLauncher()
+	{
+		// Requirement: R-I9
+		Path launcher = Path.of("artifact with spaces/bin/request-session.cmd").toAbsolutePath();
+		String text = SessionRequestInstructions.text(1, launcher, true);
+
+		requireThat(text, "text").contains("& '" + launcher + "' --harness").
+			contains("& '" + launcher + "' --await <id>").doesNotContain("$");
 	}
 }

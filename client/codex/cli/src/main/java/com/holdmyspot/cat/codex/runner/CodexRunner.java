@@ -274,8 +274,11 @@ public final class CodexRunner
 					agentInstructions = agent.developerInstructions();
 					selectedEffort = agent.effort();
 				}
+				Path requestLauncher = null;
+				if (requestAccess != null)
+					requestLauncher = requestAccess.launcher();
 				process.initialize(worktree, selectedModel, developerInstructions(manager.root().toRealPath(), worktree,
-					isolatedHome, agentInstructions, sessionRequests), selectedEffort, permissionProfile);
+					isolatedHome, agentInstructions, requestLauncher, sessionRequests), selectedEffort, permissionProfile);
 				return new HarnessRunSession(run, process, scope, lock);
 			}
 			catch (IOException e)
@@ -348,7 +351,7 @@ public final class CodexRunner
 	 */
 	public static String developerInstructions(Path root, Path project, Path home, String agentInstructions)
 	{
-		return developerInstructions(root, project, home, agentInstructions, 0);
+		return developerInstructions(root, project, home, agentInstructions, null, 0);
 	}
 
 	/**
@@ -356,17 +359,19 @@ public final class CodexRunner
 	 * {@link #developerInstructions(Path, Path, Path, String)} does, except that the instructions of a session that may
 	 * request sessions tell it how, between the note and the agent's contract.
 	 *
-	 * @param root the run root, as the denied reads name it
-	 * @param project the session's project, which is its working directory
-	 * @param home the session's Codex home
+	 * @param root              the run root, as the denied reads name it
+	 * @param project           the session's project, which is its working directory
+	 * @param home              the session's Codex home
 	 * @param agentInstructions the agent's contract, or an empty string for a session without an agent
-	 * @param sessionRequests how many sessions the session may request; {@code 0} adds no instructions
+	 * @param requestLauncher   the absolute request-session launcher path, or {@code null} when requests are disabled
+	 * @param sessionRequests   how many sessions the session may request; {@code 0} adds no instructions
 	 * @return the developer instructions
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code sessionRequests} is negative
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if {@code sessionRequests} is negative, or requests are enabled and
+	 *   {@code requestLauncher} is relative
 	 */
 	public static String developerInstructions(Path root, Path project, Path home, String agentInstructions,
-		int sessionRequests)
+		Path requestLauncher, int sessionRequests)
 	{
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(root, "root").isNotNull();
@@ -379,7 +384,8 @@ public final class CodexRunner
 			"command whenever a task needs it.";
 		StringJoiner instructions = new StringJoiner("\n\n").add(note);
 		if (sessionRequests > 0)
-			instructions.add(SessionRequestInstructions.text(sessionRequests));
+			instructions.add(SessionRequestInstructions.text(sessionRequests, requestLauncher,
+				Platform.current().isWindows()));
 		if (!agentInstructions.isEmpty())
 			instructions.add(agentInstructions);
 		return instructions.toString();

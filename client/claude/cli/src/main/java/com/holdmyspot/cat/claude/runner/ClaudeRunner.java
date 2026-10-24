@@ -224,8 +224,11 @@ public final class ClaudeRunner
 				selectedEffort = agent.effort();
 				selectedAgent = agent.name();
 			}
+			Path requestLauncher = null;
+			if (requestAccess != null)
+				requestLauncher = requestAccess.launcher();
 			List<String> command = command(executable, selectedModel, selectedEffort, selectedAgent, plugins, hookResults,
-				readOnlyEvidence, sessionTranscripts, sessionRequests);
+				readOnlyEvidence, sessionTranscripts, requestLauncher, sessionRequests);
 			manager.initialize(run, artifact, project, "claude_stream_json", command);
 			lock = manager.acquireLock(run);
 			Path projectDirectory = null;
@@ -656,7 +659,8 @@ public final class ClaudeRunner
 	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
 		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts)
 	{
-		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, sessionTranscripts, 0);
+		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, sessionTranscripts,
+			null, 0);
 	}
 
 	/**
@@ -664,22 +668,25 @@ public final class ClaudeRunner
 	 * {@link #command(String, String, String, String, List, Path, List, boolean)} does, except that a session that may
 	 * request sessions is told how in its appended system prompt.
 	 *
-	 * @param executable the Claude executable
-	 * @param model the requested model
-	 * @param effort the requested reasoning effort
-	 * @param agent the optional direct CAT agent name
-	 * @param plugins the directories of the plugins installed in the isolated home
-	 * @param hookResults the hook context directory
-	 * @param readOnlyEvidence executor evidence exposed through added directories
+	 * @param executable         the Claude executable
+	 * @param model              the requested model
+	 * @param effort             the requested reasoning effort
+	 * @param agent              the optional direct CAT agent name
+	 * @param plugins            the directories of the plugins installed in the isolated home
+	 * @param hookResults        the hook context directory
+	 * @param readOnlyEvidence   executor evidence exposed through added directories
 	 * @param sessionTranscripts whether Claude persists its session, which is what writes the transcripts that the run
 	 *   copies; otherwise Claude keeps no session
-	 * @param sessionRequests how many sessions the session may request; {@code 0} adds no instructions
+	 * @param requestLauncher    the absolute request-session launcher path, or {@code null} when requests are disabled
+	 * @param sessionRequests    how many sessions the session may request; {@code 0} adds no instructions
 	 * @return the complete harness command
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code executable} is blank or {@code sessionRequests} is negative
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if {@code executable} is blank, {@code sessionRequests} is negative, or
+	 *   requests are enabled and {@code requestLauncher} is relative
 	 */
 	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
-		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, int sessionRequests)
+		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, Path requestLauncher,
+		int sessionRequests)
 	{
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(executable, "executable").isNotBlank();
@@ -730,7 +737,7 @@ public final class ClaudeRunner
 		if (sessionRequests > 0)
 		{
 			command.add("--append-system-prompt");
-			command.add(SessionRequestInstructions.text(sessionRequests));
+			command.add(SessionRequestInstructions.text(sessionRequests, requestLauncher, false));
 		}
 		return command;
 	}

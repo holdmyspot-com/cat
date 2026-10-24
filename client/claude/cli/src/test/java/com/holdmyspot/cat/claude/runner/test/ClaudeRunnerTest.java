@@ -87,14 +87,16 @@ public final class ClaudeRunnerTest
 	public void explainsSessionRequests()
 	{
 		// Requirement: R-I9
+		Path launcher = Path.of("artifact with spaces/bin/request-session").toAbsolutePath();
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"),
-			List.of(), false, 2);
+			List.of(), false, launcher, 2);
 		List<String> without = ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"),
-			List.of(), false, 0);
+			List.of(), false, null, 0);
 
 		int option = command.indexOf("--append-system-prompt");
 		requireThat(option, "option").isNotNegative();
-		requireThat(command.get(option + 1), "systemPrompt").isEqualTo(SessionRequestInstructions.text(2));
+		requireThat(command.get(option + 1), "systemPrompt").
+			isEqualTo(SessionRequestInstructions.text(2, launcher, false)).doesNotContain("$");
 		requireThat(without, "without").doesNotContain("--append-system-prompt");
 	}
 

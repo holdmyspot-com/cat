@@ -177,7 +177,7 @@ public final class ClaudeConnectionSettings
 	 * Writes settings for an isolated Claude instance, as
 	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String, Platform)}
 	 * does, except that the sandbox also lets the instance's commands write the run's requests directory when the
-	 * session may request sessions.
+	 * session may request sessions. It also permits the literal launcher command with any arguments.
 	 *
 	 * @param scope                    services shared for the runner process lifetime
 	 * @param source                   the host Claude settings file
@@ -251,7 +251,11 @@ public final class ClaudeConnectionSettings
 			copyInstructionFilesMode(parentSettings, settings);
 		else
 			putInstructionFilesMode(settings, instructionFilesMode);
-		permissions(settings).set("allow", mapper.valueToTree(PERMISSION_GRANTS));
+		ArrayNode grants = permissions(settings).putArray("allow");
+		for (String grant : PERMISSION_GRANTS)
+			grants.add(grant);
+		if (requestAccess != null)
+			grants.add("Bash(" + requestAccess.launcher() + ":*)");
 		List<String> writablePaths = new ArrayList<>();
 		writablePaths.add(claudeHome.toString());
 		for (Path cache : dependencyCaches)

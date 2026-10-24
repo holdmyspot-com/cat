@@ -6,6 +6,7 @@ import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,6 +24,39 @@ import tools.jackson.databind.JsonNode;
  */
 public final class ClaudeConnectionSettingsTest
 {
+	/**
+	 * Verifies that requested sessions grant only the literal launcher command, and no command grant otherwise.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void permitsSessionRequestLauncher() throws IOException
+	{
+		// Requirement: R-I9
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-request-permissions-"));
+			Path destination = root.resolve("isolated/settings.json");
+			Path launcher = root.resolve("artifact with spaces/bin/request-session");
+			SessionRequestAccess access = new SessionRequestAccess(root.resolve("requests"), root.resolve("responses"),
+				root.resolve("requested-runs"), launcher);
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, Platform.LINUX_X64);
+			JsonNode allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
+			requireThat(allow.size(), "grantCount").isEqualTo(3);
+			requireThat(allow.path(2).asString(), "launcherGrant").isEqualTo("Bash(" + launcher + ":*)");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, Platform.LINUX_X64);
+			allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
+			requireThat(allow.size(), "defaultGrantCount").isEqualTo(2);
+			requireThat(allow.path(0).asString(), "skillGrant").isEqualTo("Skill");
+			requireThat(allow.path(1).asString(), "editGrant").isEqualTo("Edit(./**)");
+		}
+	}
+
 	/**
 	 * Preserves the process connection endpoint over settings without copying unrelated host configuration.
 	 *
