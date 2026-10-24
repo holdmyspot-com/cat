@@ -3,7 +3,6 @@ set -eu
 
 SCRIPT_DIRECTORY="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 COMMON_SCRIPT="${SCRIPT_DIRECTORY}/common.sh"
-MARKETPLACE_METADATA="${SCRIPT_DIRECTORY}/codex-marketplace.json"
 [ -f "${COMMON_SCRIPT}" ] || {
 	echo "CAT installer library not found: ${COMMON_SCRIPT}" >&2
 	exit 1
@@ -23,6 +22,7 @@ case "$(uname -s)" in
 esac
 cat_resolve_artifact_directory "codex" "${1:-${CAT_RELEASE_TAG}}"
 cat_validate_artifact "${CAT_ARTIFACT_DIRECTORY}" ".codex-plugin/plugin.json" "Codex"
+MARKETPLACE_METADATA="${CAT_ARTIFACT_DIRECTORY}/install/codex-marketplace.json"
 
 CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
 CAT_DATA_DIR="${CAT_CODEX_DATA_DIR:-${CODEX_HOME}/plugins/data/cat-cat}"

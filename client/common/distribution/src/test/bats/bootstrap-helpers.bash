@@ -65,6 +65,7 @@ create_test_artifact()
 	artifact="${TEST_ROOT}/${harness} artifact"
 	mkdir -p "${artifact}/.${harness}-plugin" "${artifact}/bin" "${artifact}/client" "${artifact}/install/migrations"
 	if [ "${harness}" = codex ]; then
+		cp "${CODEX_INSTALL_DIRECTORY}/codex-marketplace.json" "${artifact}/install/codex-marketplace.json"
 		mkdir -p "${artifact}/agents/codex"
 		cat > "${artifact}/agents/codex/reviewer.toml" <<'SCRIPT'
 name = "cat-reviewer"

@@ -194,6 +194,22 @@ platform=${expected_platform}" ]
 	[ -f "${CODEX_HOME}/agents/reviewer.toml" ]
 }
 
+@test "release bootstrap registers Codex using marketplace metadata from the verified archive" {
+	create_fake_engine_command codex
+	create_fake_release codex > /dev/null
+	cp "${INSTALL_DIRECTORY}/common.sh" "${INSTALL_DIRECTORY}/install-codex.sh" "${FAKE_RELEASE_DIRECTORY}/"
+
+	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
+		FAKE_RELEASE_DIRECTORY="${FAKE_RELEASE_DIRECTORY}" \
+		sh "${INSTALL_DIRECTORY}/bootstrap.sh" codex v1.0
+
+	[ "${status}" -eq 0 ]
+	cmp "${CODEX_INSTALL_DIRECTORY}/codex-marketplace.json" \
+		"${CODEX_HOME}/plugins/cat-marketplace/.agents/plugins/marketplace.json"
+	grep -Fx "codex plugin marketplace add ${CODEX_HOME}/plugins/cat-marketplace" "${COMMAND_LOG}"
+	grep -Fx "codex plugin add cat@cat" "${COMMAND_LOG}"
+}
+
 @test "release bootstrap installs the Codex archive for the current platform after verifying its checksum" {
 	create_fake_engine_command codex
 	archive="$(create_fake_release codex)"
