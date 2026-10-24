@@ -169,6 +169,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void usesInstalledPluginOfSameVersion() throws IOException
 	{
@@ -192,6 +193,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void installedOtherVersionUsesBundle() throws IOException
 	{
@@ -215,6 +217,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void downloadsVerifiesAndExtracts() throws IOException
 	{
@@ -249,6 +252,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void checksumMismatchLeavesNoCopy() throws IOException
 	{
@@ -274,6 +278,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void missingChecksumLeavesNoCopy() throws IOException
 	{
@@ -297,6 +302,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void missingArchiveLeavesNoCopy() throws IOException
 	{
@@ -319,6 +325,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void partialExtractionLeavesNoCopy() throws IOException
 	{
@@ -346,6 +353,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void otherVersionArchiveLeavesNoCopy() throws IOException
 	{
@@ -369,6 +377,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void entryOutsideArchiveRejected() throws IOException
 	{
@@ -393,6 +402,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void linkOutsideArchiveRejected() throws IOException
 	{
@@ -416,6 +426,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written or the server cannot start
 	 */
+	// Requirement: R-I6
 	@Test
 	public void downloadsOverHttp() throws IOException
 	{
@@ -448,6 +459,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written or the server cannot start
 	 */
+	// Requirement: R-I6
 	@Test
 	public void httpErrorLeavesNoCopy() throws IOException
 	{
@@ -478,6 +490,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written or the server cannot start
 	 */
+	// Requirement: R-I6
 	@Test
 	public void silentServerExpiresResponseLimit() throws IOException
 	{
@@ -514,6 +527,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written or the server cannot start
 	 */
+	// Requirement: R-I6
 	@Test
 	public void unfinishedBodyExpiresDownloadLimit() throws IOException
 	{
@@ -550,6 +564,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void downloadDeletesOtherVersions() throws IOException
 	{
@@ -582,6 +597,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void resolutionWithoutDownloadDeletesNothing() throws IOException
 	{
@@ -612,6 +628,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void checkDeletesBundlesUnusedForThreeMonths() throws IOException
 	{
@@ -645,6 +662,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void usingBundleRestartsItsAge() throws IOException
 	{
@@ -672,6 +690,7 @@ public final class ReleaseBundlesTest
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
+	// Requirement: R-I6
 	@Test
 	public void downloadStartsBundleAge() throws IOException
 	{
@@ -697,6 +716,7 @@ public final class ReleaseBundlesTest
 	/**
 	 * Verifies that the release's location defaults to the GitHub release of CAT's version.
 	 */
+	// Requirement: R-I6
 	@Test
 	public void releaseUriDefaultsToGitHub()
 	{
@@ -717,6 +737,7 @@ public final class ReleaseBundlesTest
 	/**
 	 * Verifies that bundles are kept in CAT's per-user directory.
 	 */
+	// Requirement: R-I6
 	@Test
 	public void bundlesLiveInCatDirectory()
 	{
