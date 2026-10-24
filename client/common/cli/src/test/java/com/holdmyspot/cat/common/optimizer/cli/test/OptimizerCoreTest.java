@@ -2798,6 +2798,10 @@ public final class OptimizerCoreTest
 	 * Verifies that {@code start} builds a project-built plugin in the optimization worktree and copies its output as
 	 * the plugin's base, leaving the user's own build output in the base worktree unread and unchanged, and that a
 	 * revision neither rebuilds nor recopies.
+	 * <p>
+	 * This outcome requires starting with captured build output and revising the stored campaign. The scripted build
+	 * and captured inventories launch no process; persisting both commands and validating saved file contents can
+	 * exceed one second during a parallel build.
 	 */
 	@Test
 	public void buildsInOptimizationWorktree() throws Exception
