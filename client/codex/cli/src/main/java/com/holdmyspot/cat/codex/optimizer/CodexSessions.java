@@ -185,7 +185,7 @@ public final class CodexSessions extends RunnerSessions
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * Codex reads {@code AGENTS.override.md} at the project root if it exists, and {@code AGENTS.md} otherwise.
+	 * Codex reads the first nonempty file at the project root: {@code AGENTS.override.md}, then {@code AGENTS.md}.
 	 */
 	@Override
 	protected List<DerivedSource> instructionFiles(Path project) throws IOException
@@ -193,7 +193,9 @@ public final class CodexSessions extends RunnerSessions
 		requireThat(project, "project").isNotNull();
 		for (String name : List.of("AGENTS.override.md", "AGENTS.md"))
 		{
-			if (Files.isRegularFile(project.resolve(name)))
+			Path file = project.resolve(name);
+			boolean hasInstructions = Files.isRegularFile(file) && Files.size(file) > 0;
+			if (hasInstructions)
 				return List.of(new DerivedSource(name, "Codex reads " + name + " at the project root in every session"));
 		}
 		return List.of();

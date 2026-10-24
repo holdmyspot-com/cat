@@ -922,6 +922,37 @@ public final class CodexSessionsTest
 	}
 
 	/**
+	 * Verifies that an empty override leaves the ordinary project instructions selected, and that two empty
+	 * instruction files contribute no derived source.
+	 *
+	 * @throws IOException if the fixture cannot be written or scanned
+	 */
+	@Test
+	public void ignoresEmptyAgentsInstructions() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-empty-instructions-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+			Files.writeString(project.resolve("AGENTS.override.md"), "");
+			Files.writeString(project.resolve("AGENTS.md"), "Project instructions");
+
+			requireThat(paths(sessions.loadedSources(project, List.of()).trials()), "ordinaryInstructions").
+				isEqualTo(List.of("AGENTS.md"));
+
+			Files.writeString(project.resolve("AGENTS.md"), "");
+
+			requireThat(sessions.loadedSources(project, List.of()).trials(), "emptyInstructions").isEmpty();
+		}
+	}
+
+	/**
 	 * Returns the paths of derived sources.
 	 *
 	 * @param sources the sources
