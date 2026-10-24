@@ -2341,6 +2341,13 @@ public final class DriverTest
 				new Builder().confirmed().working(1).readyBaseline().development("formatting", 50, 0).
 					development("plain_list", 50, 0).development("safety", 50, 0).build());
 			Sha256 first = Builder.snapshot("candidate-1");
+			FileInventory authoring = harness.overlays().require(first).snapshot();
+			harness.promptAuthors(request ->
+			{
+				requireThat(harness.workspace().scanAuthoringCopy(request.source()).entries(), "authoringFiles").
+					isEqualTo(authoring.entries());
+				return harness.edit(request, DriverHarness.PROMPT);
+			});
 			harness.trials(request ->
 			{
 				if (DriverHarness.cell(request).equals("safety") && harness.snapshot(request).equals(first))
@@ -2365,11 +2372,6 @@ public final class DriverTest
 				// Only the development failure is triaged; its diagnostic rerun is not
 				requireThat(failure.triage().impact(), "impact").isEqualTo(Impact.SELF_RECOVERING);
 				requireThat(triageRequests(harness).size(), "triages").isEqualTo(1);
-				// The prompt author session's project source is the first authoring copy that the workspace prepared
-				SessionRequest promptAuthor = harness.sessions().sessions().stream().map(FakeSession::request).
-					filter(request -> request.role() == SessionRole.PROMPT_AUTHOR).findFirst().orElseThrow();
-				requireThat(promptAuthor.source(), "source").
-					isEqualTo(harness.directory().resolve("workspace").resolve("authoring").resolve("1"));
 				requireThat(harness.workspace().scanWorktree(), "worktree").
 					isEqualTo(harness.overlays().require(promoted).snapshot());
 			}
