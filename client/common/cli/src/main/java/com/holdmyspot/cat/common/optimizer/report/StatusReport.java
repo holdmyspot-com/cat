@@ -601,9 +601,9 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			values.add(entry.getKey() + "=" + entry.getValue());
 		List<Cell> scopeCells = CellTier.scopeCells(contract);
 		String claim = "The pass rates describe candidate " + candidate.number() + " under the frozen judge (role " +
-			"profile " + judge.profile().label() + "; decision rule: " + judge.decisionRule() + ") on the balanced " +
-			"benchmark of " + scopeCells.size() + " cells, whose weights are testing assumptions, not usage " +
-			"frequencies, under the measured conditions " + String.join(", ", values) + ".";
+			"profile " + judge.profile().label() + "; decision rule: " + judge.decisionRule() + ") on the held-out part " +
+			"of the balanced benchmark of " + scopeCells.size() + " cells, whose weights are testing assumptions, not " +
+			"usage frequencies, under the measured conditions " + String.join(", ", values) + ".";
 		if (contract.profiles().scope() != CertificationScope.WEAKEST_CELL)
 			return claim;
 		List<String> profiles = new ArrayList<>();

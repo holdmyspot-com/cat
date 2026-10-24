@@ -1368,8 +1368,8 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Verifies that the claim names the frozen judge, the benchmark and the conditions, and that limitations are
-	 * listed.
+	 * Verifies that the claim names the frozen judge, the benchmark's held-out part and the conditions, and that
+	 * limitations are listed.
 	 */
 	@Test
 	public void claimNamesJudgeBenchmarkAndConditions()
@@ -1379,7 +1379,7 @@ public final class StatusReportTest
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		requireThat(report.claim(), "claim").contains(ContractFixtures.judge().profile().label()).
 			contains(ContractFixtures.judge().decisionRule()).contains("balanced benchmark").
-			contains("not usage frequencies").contains("model-a");
+			contains("held-out part").contains("not usage frequencies").contains("model-a");
 		requireThat(report.conditions().get("model"), "model").isEqualTo("model-a");
 		requireThat(report.conditions().size(), "conditions").
 			isEqualTo(campaign.identity().values().size());
