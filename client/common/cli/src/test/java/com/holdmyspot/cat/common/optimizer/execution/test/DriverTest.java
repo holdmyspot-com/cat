@@ -303,6 +303,10 @@ public final class DriverTest
 	/**
 	 * The model that a judge session reports is not a measurement condition: the judge version stands for the
 	 * judge, so a changed judge session model neither pauses the campaign nor is recorded.
+	 * <p>
+	 * The fixture seeds prior development counts, then observes profiles and completes outcomes in both cells before
+	 * and after changing the judge's reported model. Persisting those transitions can exceed one second during a
+	 * parallel build; omitting either observation would not exercise the change between judged trials.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
@@ -3248,6 +3252,10 @@ public final class DriverTest
 	 * The campaign pauses with {@code keep improvement}, {@code optimize further} and {@code stop}; the choice is
 	 * still pending after a restart, and keeping the improvement delivers the attempt's candidate labelled
 	 * {@code improved, not certified}.
+	 * <p>
+	 * The fixture seeds development, baseline and formal counts immediately before the cap. The remaining formal
+	 * outcome, persisted pending decision, restart and delivery are required to prove the public choice flow; their
+	 * filesystem work can exceed one second during a parallel build.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
