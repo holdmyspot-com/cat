@@ -447,6 +447,8 @@ public final class DriverTest
 
 	/**
 	 * Sessions with absent usage contribute no statistics and report the unavailable reason.
+	 * The fixture records one trial, expires the slice with the manual clock, and checks the live summary and the
+	 * reloaded campaign report.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
@@ -460,6 +462,8 @@ public final class DriverTest
 				new Builder().confirmed().build());
 			try (Driver driver = harness.open())
 			{
+				harness.runUntil(driver, campaign -> campaign.evidenceRevision() >= 1);
+				harness.clock().advance(Duration.ofHours(1));
 				SliceResult result = harness.runSlice(driver);
 				requireThat(result.status().tokens().roles(), "roles").isEmpty();
 				requireThat(result.status().tokens().unavailable(), "reason").isEqualTo("The harness reported no token usage.");
