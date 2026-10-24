@@ -19,7 +19,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
+import com.holdmyspot.cat.common.optimizer.campaign.DecisionTable;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
+import com.holdmyspot.cat.common.optimizer.campaign.Development;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureKind;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
@@ -36,6 +38,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
+import com.holdmyspot.cat.common.optimizer.campaign.test.Boundaries;
 import com.holdmyspot.cat.common.optimizer.cli.CommandRefusedException;
 import com.holdmyspot.cat.common.optimizer.cli.CommandResult;
 import com.holdmyspot.cat.common.optimizer.cli.Commands;
@@ -53,6 +56,7 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
+import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
 import tools.jackson.databind.JsonNode;
@@ -86,6 +90,8 @@ import com.holdmyspot.cat.common.optimizer.proposal.test.ProposalTest;
 import com.holdmyspot.cat.common.optimizer.report.TokenStatistics;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
+import com.holdmyspot.cat.common.optimizer.statistics.ComparisonBoundaries;
+import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
@@ -4551,6 +4557,10 @@ public final class OptimizerCoreTest
 	 * Verifies that {@code choose retain_incumbent} delivers the kept incumbent's prompt tests in the same command:
 	 * each prompt test's regression scenario and values file are written beside the unchanged target, the result
 	 * reports the delivery without a label, and the finished campaign's files are removed.
+	 * <p>
+	 * The fixture saves a changed candidate and seeds its certified, proven-worse formal evidence instead of running
+	 * formal trials. The public start, confirmation and choice, plus filesystem delivery and cleanup, are needed to
+	 * prove the combined result and can exceed one second during a parallel build.
 	 *
 	 * @throws Exception if the owned repository or store fails
 	 */
@@ -4568,12 +4578,35 @@ public final class OptimizerCoreTest
 			String target = Files.readString(repository.root().resolve("CLAUDE.md"), StandardCharsets.UTF_8);
 			// A certified attempt that proved a regression waits for the user to accept it or keep the incumbent
 			Campaign c = repository.load(id);
-			Campaign waiting = new Campaign(c.header(), c.ceiling(), c.lineages(), c.identity(), c.incumbent(),
-				c.candidates(), c.promptAuthorAttempts(), c.development(), c.baseline(), c.attempts(),
+			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
+			FileCandidateOverlays snapshots = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
+				repository.scope().json(), Yielding.fileReplacer());
+			Path prompt = Path.of("CLAUDE.md");
+			Overlay changed = snapshots.require(c.incumbent().snapshot()).write(prompt,
+				new FileContent("Use a different answer.\n".getBytes(StandardCharsets.UTF_8)),
+				((FileEntry.RegularFile) fork.inventory().entries().get(prompt)).permissions());
+			snapshots.save(changed);
+			fork.workspace().materialize(changed);
+			Candidate candidate = new Candidate(1, changed.identity());
+			MeasurementIdentity observed = c.identity().extendWith(Builder.OBSERVED);
+			ComparisonBoundaries comparison = Boundaries.comparison(Boundaries.STANDARD_CAP, 250, 0, 2);
+			DecisionBoundaries boundaries = Boundaries.decision(Boundaries.STANDARD_CAP, 100, 50, 5,
+				List.of(comparison, comparison, comparison));
+			Campaign evidence = new Builder().confirmed(c.contract(), c.lineage().number()).identity(observed).
+				certificationAttempt(1).candidate(candidate).boundaries(boundaries).
+				cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 200, 2).
+				outcome(Outcome.CERTIFIED).build();
+			Campaign waiting = new Campaign(c.header(), c.ceiling(), c.lineages(), observed, c.incumbent(),
+				1, c.promptAuthorAttempts(), Development.start(candidate, c.development().series() + 1),
+				c.baseline(), evidence.attempts(),
 				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
 				List.of(new PendingDecision.RegressionTradeOff(1)), c.revisionRequested(), Outcome.CERTIFIED,
 				c.delivery(), c.optimization(), c.answeredWarnings(), c.testRevisions(), c.plugins());
 			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(waiting);
+			requireThat(waiting.attempt(1).outcome(), "attemptOutcome").isEqualTo(Outcome.CERTIFIED);
+			requireThat(DecisionTable.attemptDecision(waiting.attempt(1)), "attemptDecision").
+				isEqualTo(DecisionTable.AttemptDecision.CERTIFIED_PROVEN_WORSE);
+			requireThat(fork.workspace().scanWorktree(), "candidateWorktree").isEqualTo(changed.snapshot());
 			requireThat(waiting.choices(), "choices").contains(Choice.RETAIN_INCUMBENT);
 
 			CommandResult result = repository.core().choose(id, Choice.RETAIN_INCUMBENT, 0, 0);
