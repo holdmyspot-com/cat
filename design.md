@@ -185,7 +185,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Prompt test configuration | The committed `prompt.json` in the target's test directory, which lists for each harness the trial plugins, and how the project builds each one that it builds ([§4.4](#44-trial-staging)). |
 | Certification history | The committed `certifications.json` beside `prompt.json` in the target's test directory, holding the certification record of each certified delivery of the target ([§5](#5-measurement-identity-and-applicability)). |
 | Trial plugin | A harness plugin that the prompt test configuration lists, which every trial installs. A plugin that the project builds is installed from a build of the fork commit, with the snapshot's prompt files in place of the build's copies ([§4.4](#44-trial-staging)). |
-| Runner | CAT's existing component that runs one nested Claude or Codex session in a fresh isolated run directory (`ClaudeRunner`, `CodexRunner`). |
+| Runner | CAT's existing component that runs one nested Claude or Codex session in a fresh isolated run directory (`ClaudeRunner`, `CodexRunner`); inside a run that may request sessions, its launchers forward a launch to the run's runner. |
 | Driver | The Java process that each `prompt-optimizer run` command starts. It makes every deterministic decision ([§3.1](#31-nested-sessions), [§3.7](#37-process-model)). |
 | Slice | One time-bounded run of the driver inside a foreground command. |
 
@@ -2357,10 +2357,13 @@ Agents locate CAT's installed files without shell variables that the harness doe
 render the plugin root into the injected CAT environment rule, and CAT derives the harness home from `CODEX_HOME` or
 `CLAUDE_CONFIG_DIR` when set, otherwise from `HOME`.
 
-**Runner skills (user rulings, 2026-10-22):** each harness's plugin has a runner skill for the other harness, Codex's
-`claude-runner` and Claude's `codex-runner`, which runs a task in that harness with CAT for that harness installed,
-through that harness's runner launcher. A plugin ships only its own harness's classes and files. The skill uses the
-other harness's CAT artifact of the same CAT version and platform: that harness's installed CAT plugin when its version
+**Runner skills (user rulings, 2026-10-22 and 2026-10-25):** both harnesses' plugins hold both runner skills,
+`claude-runner` and `codex-runner`, over one shared body, and both runner launchers, so a session in either harness
+runs a task in either harness, its own included, through the same launcher and options. The launcher for the other
+harness runs that harness's runner from the artifact described below and refuses a caller's `--artifact`; the
+launcher for the plugin's own harness runs the artifact that holds it. A session gives a launcher its records in a file
+named by `--input`, so it needs no pipe or redirection (D107). A plugin ships only its own harness's classes and files.
+The skill for the other harness uses that harness's CAT artifact of the same CAT version and platform: that harness's installed CAT plugin when its version
 matches, otherwise a copy in `${HOME}/.cat/bundles/cat-<harness>-v<version>-<platform>/`. When neither exists, it
 downloads that harness's release archive and the release's `SHA256SUMS.txt`, verifies the archive's checksum, and
 extracts it into that directory before the run; a failed download, checksum or extraction leaves no copy and reports
@@ -2402,12 +2405,26 @@ into a directory of its own, refusing links, absolute and parent paths and anyth
 therefore holds only what the session's sandbox let it read, on every platform. The runner validates the request and
 starts the session through that
 harness's runner launcher, resolved as the runner skills resolve it, with the requesting session's run root and denied
-reads, and without requested sessions of its own. A requested session therefore has at most the permissions of the
+reads, and with no requested sessions of its own unless the caller passed `--request-depth <levels>`: each level below
+may then request as many sessions as its parent, one level less deep, and each level's runner starts its own requested
+sessions outside its session's sandbox (D107). A requested session therefore has at most the permissions of the
 session that requested it, and no credential ever reaches a command. It takes its own slot of its harness's shared
 capacity and honours its hold, but waits at most 10 minutes for a slot, because the requesting session keeps its own
 slot while it waits; a request that times out fails with the reason `capacity`. Ending the run or interrupting its turn
 stops the requested sessions that still run. The receipt lists each requested session, its run and its evidence. When
 `--session-requests` allows any, the runner tells the session in its instructions how to request one (D99).
+
+**Runner launches inside a run (user rulings, 2026-10-25):** when `--session-requests` allows any, a session may also
+request a session by running either runner launcher, as it would outside a run. The runner names both launchers in the
+session's instructions and, for Claude, grants exactly those commands. The launcher sees the run's requests directory
+in its environment, starts no harness, and packs the launch as a session request with the launch's turns as prompt
+files; it waits for the response, writes the requested session's transcript to `--output` or standard output and its
+receipt to `--receipt`, and exits `0` when the session completed, `75` when no capacity was free, and `1` otherwise. The
+parent runner chooses the run root, artifact, harness executable, denied reads and every limit, so the launcher refuses
+the options that would choose them and accepts only the project, plugins, model, effort, `--install-cat`,
+`--session-transcripts`, input, output and receipt. The session's commands stay sandboxed and hold no login; only the
+user's top-level session runs a launcher outside its sandbox, through an exception that the user configures for
+exactly the two installed launchers (D107).
 
 **Source-only content in prompt files (user rulings, 2026-10-23):** a prompt file's `## Design Goals` section is the
 reference that its authors update the guidance from, and its HTML comments remind the plugin developers why a Design
@@ -2713,6 +2730,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D104 | Supply `executableFiles()` through `JvmScope`; production scopes retain retry pauses and test scopes do not sleep (user ruling, 2026-10-24). | Consumers need one scope-owned service that tests can control, rather than an inline production instance or a separate constructor argument. | The optimizer, requested runner and both harness runners obtain the service from their scope. |
 | D105 | Retain refusal of symlinks anywhere in a requested-session input path (user ruling, 2026-10-24). | The user chose to preserve the existing restriction. | macOS callers must supply resolved paths when an ancestor such as `/var` is a symlink. |
 | D106 | Refactor lock coordination into an explicitly shared, process-owned object, supplied by scopes to every lock consumer (user ruling, 2026-10-24). | A mutable static registry shares state across independent scopes and tests; opening and closing another channel to a held file can release its POSIX lock. | Each process scope owns its coordinator, child scopes share it, and reservations outlive open channels. Independent coordinators retain independent state; no mutable static lock registry remains. |
+| D107 | Let a session launch either harness, its own included, through CAT's runner launchers, which both plugins hold; inside a run whose caller allows requested sessions, the launcher forwards the launch to the run's runner, and `--request-depth` lets requested sessions request sessions to a bounded depth (user rulings, 2026-10-25: implemented directly, forward through the broker, keep the runner split for later). | A session that tests work needing another harness, or a grandchild of its own, needed a different command per harness and could not start any harness from a requested session, whose commands are sandboxed and hold no login. Forwarding keeps the login, capacity, evidence and limits with the runner that already starts requested sessions host-side, so no child needs a sandbox exception, a login copy or a credential in its commands, and the user exempts only the two installed launchers in the top-level session. | Supersedes D99's rule that requested sessions request none of their own. The user configures the top-level sandbox exception and permission; a launch must be one command without a pipe, redirection, `cd` or variable prefix for the exception to match, and Codex's rule names the versioned cache path, so it changes on upgrade. A forwarded launch carries only turns, not steering or interrupts. |
 | D108 | Give the prompt author a compact table of earlier attempts’ kinds and results, with no hunks or line ranges (user ruling, 2026-10-25). | Full earlier manifests grow with every attempt and exceeded Codex’s input limit in a campaign with 417 attempts. The recurrence decision needs only which kinds were targeted and how each attempt ended; the campaign edits already hold what CAT kept of promoted hunks. | One row per attempt, oldest first, gives its number, cell, result, whether CAT rejected its manifest, and each kind’s name, classification and failure count. The prompt author no longer sees an earlier hunk’s wording, only that a kind was targeted and how the attempt ended. Full manifests remain in campaign state; no campaign format or measurement identity changes. |
 
 ## 14. Acceptance evidence
