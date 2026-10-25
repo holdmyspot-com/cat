@@ -2223,12 +2223,41 @@ public final class DriverTest
 	}
 
 	/**
-	 * A campaign that the user stopped delivers nothing, not even its prompt tests.
+	 * Returns endings that have no certified or explicitly selected candidate delivery.
 	 *
+	 * @return the lifecycle and outcome of each ending
+	 */
+	@DataProvider
+	public static Object[][] uncertifiedEndings()
+	{
+		return new Object[][]
+			{
+				{Lifecycle.FINISHED, Outcome.BELOW_MINIMUM},
+				{Lifecycle.FINISHED, Outcome.BELOW_CONTROL},
+				{Lifecycle.FINISHED, Outcome.BELOW_INCUMBENT},
+				{Lifecycle.FINISHED, Outcome.INCONCLUSIVE},
+				{Lifecycle.FINISHED, Outcome.STOPPED_FOR_CONTRACT_REVISION},
+				{Lifecycle.FINISHED, Outcome.STOPPED_FOR_TEST_REVISION},
+				{Lifecycle.FINISHED, Outcome.TESTING_ENVIRONMENT_CHANGED},
+				{Lifecycle.FINISHED, Outcome.UNSUPPORTED_INSTRUCTION_SOURCE},
+				{Lifecycle.FINISHED, Outcome.INELIGIBLE_TRIAL_EFFECT},
+				{Lifecycle.FINISHED, Outcome.UNSUPPORTED_OUTPUT},
+				{Lifecycle.FINISHED, Outcome.UNSUPPORTED_TEST_INTERACTION},
+				{Lifecycle.FINISHED, Outcome.INVALID_STATISTICAL_ASSUMPTIONS},
+				{Lifecycle.CANCELLED, null}
+			};
+	}
+
+	/**
+	 * A campaign that ends without an approved delivery leaves its entire base inventory unchanged and delivers
+	 * no prompt tests. The controlled cases cover failure, revision and unavailable outcomes, plus cancellation.
+	 *
+	 * @param lifecycle the finished or cancelled lifecycle
+	 * @param outcome the uncertified outcome, or {@code null} for cancellation
 	 * @throws IOException if the test directory cannot be used
 	 */
-	@Test
-	public void stoppedCampaignDeliversNothing() throws IOException
+	@Test(dataProvider = "uncertifiedEndings")
+	public void uncertifiedEndingsLeaveBaseUnchanged(Lifecycle lifecycle, Outcome outcome) throws IOException
 	{
 		// Requirement: R-W11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -2238,7 +2267,7 @@ public final class DriverTest
 			Files.writeString(base.resolve(DriverHarness.PROMPT), "fork");
 			FileInventory fork = InventoryScanner.scan(base, Set.of());
 			DriverHarness harness = new DriverHarness(root.resolve("driver"),
-				new Builder().confirmed().working(1).lifecycle(Lifecycle.FINISHED).outcome(Outcome.INCONCLUSIVE).build(),
+				new Builder().confirmed().working(1).lifecycle(lifecycle).outcome(outcome).build(),
 				fork, base);
 			DriverContext context = deliveryContext(harness, base);
 			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
