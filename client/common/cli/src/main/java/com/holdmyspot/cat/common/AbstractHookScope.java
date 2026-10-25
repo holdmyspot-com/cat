@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.that;
 
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -22,6 +23,11 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 	 * The variables in which a jlink launcher saves the caller's locale, whenever that locale is not UTF-8.
 	 */
 	private static final Set<String> SAVED_LOCALE = Set.of("CAT_CALLER_LC_ALL", "CAT_CALLER_LC_CTYPE");
+	/**
+	 * The variables that a CAT runner sets in a session that it lets start sessions of its own.
+	 */
+	private static final Set<String> SESSION_REQUESTS = Set.of(SessionRequestAccess.REQUESTS_VARIABLE,
+		SessionRequestAccess.LAUNCHER_VARIABLE);
 	private final Path pluginRoot;
 	private final Path userRulesRoot;
 	private final SessionHarness harness;
@@ -68,8 +74,8 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 	 * @throws IllegalArgumentException if {@code harness}, {@code pluginRootVariable} or {@code homeVariable} are
 	 *   blank
 	 * @throws IOException if either variable is unset or blank, or if the environment sets a {@code CAT_} variable
-	 *   other than a {@code CAT_INSTALL_DIR} that names the plugin root or a variable in which the hook's launcher
-	 *   saved the caller's locale
+	 *   other than a {@code CAT_INSTALL_DIR} that names the plugin root, a variable in which the hook's launcher
+	 *   saved the caller's locale or a variable through which a CAT runner lets the session start sessions
 	 */
 	public static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
 		String homeVariable, SessionHarness sessionHarness) throws IOException
@@ -90,7 +96,7 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 		for (Map.Entry<String, String> entry : environment.entrySet())
 		{
 			String name = entry.getKey();
-			if (!name.startsWith("CAT_") || SAVED_LOCALE.contains(name))
+			if (!name.startsWith("CAT_") || SAVED_LOCALE.contains(name) || SESSION_REQUESTS.contains(name))
 				continue;
 			if (name.equals("CAT_INSTALL_DIR") &&
 				Path.of(entry.getValue().strip()).toAbsolutePath().normalize().equals(resolvedPluginRoot))

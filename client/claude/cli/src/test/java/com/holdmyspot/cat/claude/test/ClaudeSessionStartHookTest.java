@@ -106,6 +106,28 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
+	 * Verifies a session that its runner lets start sessions of its own still receives CAT's rules.
+	 */
+	@Test
+	public void loadsRulesWhenSessionsMayBeRequested() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path requests = cleanup.add(Files.createTempDirectory("cat-requests-"));
+			write(plugin, "rules/common/rule.md", "rule");
+
+			HookResult result = invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+				"CAT_SESSION_REQUESTS", requests.toString(),
+				"CAT_REQUEST_SESSION", plugin.resolve("client/bin/request-session").toString()), project);
+
+			requireThat(completeContext(result), "context").contains("rule");
+			requireThat(result.error(), "error").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies CAT installation variables must agree with Claude's harness plugin root and cannot override it.
 	 */
 	@Test
