@@ -83,6 +83,9 @@ import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
+import com.holdmyspot.cat.common.optimizer.delivery.test.DeliveredTestContract;
+import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.delivery.Delivery;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.cli.test.InMemoryForks;
@@ -2183,31 +2186,39 @@ public final class DriverTest
 	}
 
 	/**
-	 * A certified campaign whose user kept the incumbent delivers the confirmed prompt tests alone: the deliverer gets
-	 * no request, the incumbent's overlay, no certification record and every prompt test, once.
+	 * A certified campaign whose user kept the incumbent delivers every confirmed prompt test as scenario, values and
+	 * workspace files, keeps the base prompt unchanged and writes no certification record.
 	 *
 	 * @throws IOException if the test directory cannot be used
+	 * @throws ScenarioFormatException if a delivered scenario cannot be parsed
 	 */
 	@Test
-	public void keptIncumbentDeliversPromptTests() throws IOException
+	public void keptIncumbentDeliversPromptTests() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-W11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("kept-incumbent")),
-				new Builder().confirmed().working(1).lifecycle(Lifecycle.FINISHED).outcome(Outcome.CERTIFIED).build());
-			try (Driver driver = harness.open())
+			Path root = cleanup.add(Files.createTempDirectory("terminal-delivery"));
+			Path base = Files.createDirectory(root.resolve("base"));
+			Files.writeString(base.resolve(DriverHarness.PROMPT), "fork");
+			FileInventory fork = InventoryScanner.scan(base, Set.of());
+			DriverHarness harness = new DriverHarness(root.resolve("driver"),
+				new Builder().confirmed().working(1).lifecycle(Lifecycle.FINISHED).outcome(Outcome.CERTIFIED).build(),
+				fork, base);
+			DriverContext context = deliveryContext(harness, base);
+			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				SliceResult result = harness.runSlice(driver);
 				requireThat(result.delivery().result(), "delivery").isInstanceOf(DeliveryResult.Delivered.class);
 			}
-			requireThat(harness.deliverer().calls().size(), "deliveries").isEqualTo(1);
-			RecordingDeliverer.Call call = harness.deliverer().calls().getFirst();
-			requireThat(call.request(), "request").isEmpty();
-			requireThat(call.selected(), "selected").isEqualTo(harness.overlays().require(Builder.INCUMBENT));
-			requireThat(call.record(), "record").isEmpty();
-			requireThat(call.tests().stream().map(DeliveredTest::id).toList(), "tests").
-				isEqualTo(harness.campaign().contract().tests().stream().map(PromptTest::id).toList());
+			Campaign campaign = harness.campaign();
+			DeliveredTestContract contract = new DeliveredTestContract(base, JsonMapper.builder().build());
+			for (DeliveredTest test : DeliveredTest.of(campaign.contract(), campaign.developmentTestCases(),
+				DriverHarness.PROMPT))
+				contract.delivered(test);
+			requireThat(Files.readString(base.resolve(DriverHarness.PROMPT)), "keptPrompt").isEqualTo("fork");
+			requireThat(Files.exists(base.resolve(PromptTestLocations.certificationHistory(DriverHarness.PROMPT))),
+				"certificationHistory").isFalse();
 		}
 	}
 
@@ -2222,15 +2233,40 @@ public final class DriverTest
 		// Requirement: R-W11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("stopped")),
-				new Builder().confirmed().working(1).lifecycle(Lifecycle.FINISHED).outcome(Outcome.INCONCLUSIVE).build());
-			try (Driver driver = harness.open())
+			Path root = cleanup.add(Files.createTempDirectory("terminal-delivery"));
+			Path base = Files.createDirectory(root.resolve("base"));
+			Files.writeString(base.resolve(DriverHarness.PROMPT), "fork");
+			FileInventory fork = InventoryScanner.scan(base, Set.of());
+			DriverHarness harness = new DriverHarness(root.resolve("driver"),
+				new Builder().confirmed().working(1).lifecycle(Lifecycle.FINISHED).outcome(Outcome.INCONCLUSIVE).build(),
+				fork, base);
+			DriverContext context = deliveryContext(harness, base);
+			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				SliceResult result = harness.runSlice(driver);
 				requireThat(result.delivery(), "delivery").isNull();
 			}
-			requireThat(harness.deliverer().calls(), "deliveries").isEmpty();
+			requireThat(InventoryScanner.scan(base, Set.of()).entries(), "unchangedBase").isEqualTo(fork.entries());
 		}
+	}
+
+	/**
+	 * Returns the harness context with actual file delivery and a controlled Git diff response.
+	 *
+	 * @param harness the fixture whose existing services are borrowed
+	 * @param base the base worktree that delivery writes
+	 * @return a context that shares the fixture's stores, workspace and lock coordinator
+	 */
+	private static DriverContext deliveryContext(DriverHarness harness, Path base)
+	{
+		DriverContext original = harness.context();
+		Delivery deliverer = new Delivery(original.store(), original.workspace(),
+			new InMemoryForks(base, Set.of(DriverHarness.PROMPT)), original.json(), Yielding.fileReplacer());
+		return new DriverContext(original.fileLocks(), original.store(), original.sessions(),
+			original.workspace(), original.interrupts(), original.clock(), original.overlays(), original.judge(),
+			original.triage(), original.promptAuthor(), original.values(), deliverer::deliver, original.calibrator(),
+			original.terminator(), original.leftoverRuns(), original.authority(), original.promptSources(),
+			original.environment(), original.lockFile(), original.random(), original.settings(), original.json());
 	}
 
 	/**
@@ -3291,14 +3327,7 @@ public final class DriverTest
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
 			}
-			DriverContext original = harness.context();
-			Delivery deliverer = new Delivery(original.store(), original.workspace(),
-				new InMemoryForks(base, Set.of(DriverHarness.PROMPT)), original.json(), Yielding.fileReplacer());
-			DriverContext context = new DriverContext(original.fileLocks(), original.store(), original.sessions(),
-				original.workspace(), original.interrupts(), original.clock(), original.overlays(), original.judge(),
-				original.triage(), original.promptAuthor(), original.values(), deliverer::deliver, original.calibrator(),
-				original.terminator(), original.leftoverRuns(), original.authority(), original.promptSources(),
-				original.environment(), original.lockFile(), original.random(), original.settings(), original.json());
+			DriverContext context = deliveryContext(harness, base);
 			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				requireThat(harness.campaign().pending(), "pending").

@@ -1353,19 +1353,7 @@ public final class DeliveryTest
 	private static void requirePromptTestDelivered(Fixture fixture, DeliveredTest test)
 		throws IOException, ScenarioFormatException
 	{
-		Path directory = fixture.resolve(test.location().directory());
-		requireThat(Scenario.parse(read(directory.resolve(PromptTestFiles.SCENARIO))), "scenario").
-			withContext(test.id(), "id").isEqualTo(test.scenario());
-		try (Reader in = Files.newBufferedReader(directory.resolve(ValuesFile.NAME), UTF_8))
-		{
-			requireThat(ValuesFile.read(JSON, in, ValuesFile.NAME), "testCases").withContext(test.id(), "id").
-				isEqualTo(test.testCases());
-		}
-		for (WorkspaceFile file : test.workspaceFiles())
-		{
-			requireThat(read(directory.resolve(PromptTestFiles.WORKSPACE).resolve(file.path())), "fixture").
-				withContext(test.id(), "id").isEqualTo(file.content());
-		}
+		new DeliveredTestContract(fixture.base(), JSON).delivered(test);
 	}
 
 	/**
