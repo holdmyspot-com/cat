@@ -53,6 +53,7 @@ public final class HarnessRunnerOptionsTest
 			contains("--plugin <path>").
 			contains("[--session-transcripts]").
 			contains("[--session-requests <count>]").
+			contains("[--request-depth <levels>]").
 			contains("[--input <file>]").
 			contains("[--capacity-wait <seconds>]");
 	}
@@ -273,6 +274,41 @@ public final class HarnessRunnerOptionsTest
 		catch (IllegalArgumentException e)
 		{
 			requireThat(e.getMessage(), "message").contains("--session-requests");
+		}
+	}
+
+	/**
+	 * Verifies that {@code --request-depth} sets how many levels of requested sessions may request sessions in turn,
+	 * and that a run's requested sessions may request none unless it is given.
+	 */
+	@Test
+	public void parsesRequestDepth()
+	{
+		HarnessRunnerOptions nested = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--session-requests", "2", "--request-depth", "1"}, "harness", SESSION);
+		HarnessRunnerOptions flat = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--session-requests", "2"}, "harness", SESSION);
+
+		requireThat(nested.requestDepth(), "nested").isEqualTo(1);
+		requireThat(flat.requestDepth(), "flat").isEqualTo(0);
+	}
+
+	/**
+	 * Verifies that a request depth is refused unless the run's session may request sessions, since no requested
+	 * session would exist to use it.
+	 */
+	@Test
+	public void requiresSessionRequestsForRequestDepth()
+	{
+		try
+		{
+			HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--request-depth", "1"},
+				"harness", SESSION);
+			throw new AssertionError("A --request-depth without --session-requests was accepted");
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").contains("--request-depth").contains("--session-requests");
 		}
 	}
 

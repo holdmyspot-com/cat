@@ -182,7 +182,7 @@ public final class SessionRequestBroker implements Closeable
 		}
 		JsonNode value = json.readTree(Files.readAllBytes(inputs.resolve(RequestArchive.MANIFEST)));
 		Set<String> allowed = Set.of("format_version", "harness", "project", "prompts", "plugins", "model", "effort",
-			"session_transcripts");
+			"session_transcripts", "install_cat");
 		if (!value.isObject() || !allowed.containsAll(value.propertyNames()) ||
 			!value.path("format_version").isInt() || value.path("format_version").intValue() != RequestArchive.VERSION)
 			throw new IOException("Request must be a version 2 object with supported fields");
@@ -200,10 +200,13 @@ public final class SessionRequestBroker implements Closeable
 			prompts.add(Files.readString(prompt, StandardCharsets.UTF_8));
 		String model = optionalText(value, "model");
 		String effort = optionalText(value, "effort");
-		if (value.has("session_transcripts") && !value.path("session_transcripts").isBoolean())
-			throw new IOException("session_transcripts must be a boolean");
+		for (String flag : List.of("session_transcripts", "install_cat"))
+		{
+			if (value.has(flag) && !value.path(flag).isBoolean())
+				throw new IOException(flag + " must be a boolean");
+		}
 		return new Request(harness, project, plugins, prompts, model, effort,
-			value.path("session_transcripts").asBoolean(false));
+			value.path("session_transcripts").asBoolean(false), value.path("install_cat").asBoolean(false));
 	}
 
 	/**
@@ -274,13 +277,15 @@ public final class SessionRequestBroker implements Closeable
 
 	/**
 	 * Builds a child's runner options from private copies, retaining the parent's denied reads and capacity ceiling.
+	 * While the parent's request depth leaves a level below the child, the child may request as many sessions as the
+	 * parent, one level less deep; otherwise it may request none.
 	 *
-	 * @param request the validated request
-	 * @param project the project snapshot
-	 * @param plugins the plugin snapshots
+	 * @param request   the validated request
+	 * @param project   the project snapshot
+	 * @param plugins   the plugin snapshots
 	 * @param directory the response directory
-	 * @param ordinal the accepted request number
-	 * @return runner options with no permission to request further sessions
+	 * @param ordinal   the accepted request number
+	 * @return the runner options
 	 */
 	private List<String> arguments(Request request, Path project, List<Path> plugins, Path directory, int ordinal)
 	{
@@ -300,6 +305,15 @@ public final class SessionRequestBroker implements Closeable
 			arguments.addAll(List.of("--effort", request.effort()));
 		if (request.sessionTranscripts())
 			arguments.add("--session-transcripts");
+		if (request.installCat())
+			arguments.add("--install-cat");
+		if (options.requestDepth() > 0)
+		{
+			arguments.addAll(List.of("--session-requests", String.valueOf(options.sessionRequests())));
+			int childDepth = options.requestDepth() - 1;
+			if (childDepth > 0)
+				arguments.addAll(List.of("--request-depth", String.valueOf(childDepth)));
+		}
 		return arguments;
 	}
 
@@ -618,9 +632,10 @@ public final class SessionRequestBroker implements Closeable
 	 * @param model the selected model, empty for the runner default
 	 * @param effort the selected effort, empty for the runner default
 	 * @param sessionTranscripts indicates whether native transcripts are requested
+	 * @param installCat indicates whether CAT is installed in the requested session's home
 	 */
 	private record Request(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
-		String effort, boolean sessionTranscripts)
+		String effort, boolean sessionTranscripts, boolean installCat)
 	{
 	}
 }

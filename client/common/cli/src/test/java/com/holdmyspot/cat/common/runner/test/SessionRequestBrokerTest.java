@@ -36,8 +36,10 @@ import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -141,6 +143,94 @@ public final class SessionRequestBrokerTest
 				broker.scan();
 				requireThat(fixture.await("second").path("reason").asString(), "limit").isEqualTo("limit");
 			}
+		}
+	}
+
+	/**
+	 * Supplies the request depths of a requesting run and the depth that each requested session must receive, or
+	 * {@code -1} when the requested session must not request sessions.
+	 *
+	 * @return the run's depth and the requested session's depth
+	 */
+	@DataProvider
+	public Object[][] requestDepths()
+	{
+		return new Object[][]{{0, -1}, {1, 0}, {3, 2}};
+	}
+
+	/**
+	 * Verifies that a requested session may request sessions in turn, as many as the requesting run, only while the
+	 * run's request depth leaves a level below it, and that each level lowers the depth by one.
+	 *
+	 * @param depth    the requesting run's request depth
+	 * @param expected the requested session's request depth, or {@code -1} if it must request none
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(dataProvider = "requestDepths", timeOut = 30_000)
+	public void passesRequestDepthDown(int depth, int expected) throws IOException
+	{
+		try (Fixture fixture = new Fixture("--session-requests", "1", "--request-depth", String.valueOf(depth)))
+		{
+			AtomicReference<List<String>> arguments = new AtomicReference<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					arguments.set(options);
+					FakeHarnessCli process = new FakeHarnessCli(_ ->
+					{
+					}, 1);
+					process.closeOutputThenExitWhenAwaited();
+					return process;
+				}))
+			{
+				fixture.request("first");
+				broker.scan();
+				fixture.await("first");
+			}
+			if (expected < 0)
+				requireThat(arguments.get(), "arguments").doesNotContain("--session-requests");
+			else
+				requireThat(option(arguments.get(), "--session-requests"), "sessionRequests").isEqualTo("1");
+			if (expected <= 0)
+				requireThat(arguments.get(), "arguments").doesNotContain("--request-depth");
+			else
+				requireThat(option(arguments.get(), "--request-depth"), "requestDepth").
+					isEqualTo(String.valueOf(expected));
+		}
+	}
+
+	/**
+	 * Verifies that a request installs CAT in the requested session's home only when it asks for it, so that the
+	 * requested session has CAT's skills, such as the runner skills that request sessions in turn.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void installsCatWhenRequested() throws IOException
+	{
+		try (Fixture fixture = new Fixture("--session-requests", "2"))
+		{
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					arguments.add(options);
+					FakeHarnessCli process = new FakeHarnessCli(_ ->
+					{
+					}, 1);
+					process.closeOutputThenExitWhenAwaited();
+					return process;
+				}))
+			{
+				fixture.request("plain");
+				broker.scan();
+				fixture.await("plain");
+				fixture.writeRequest("installed", fixture.document().put("install_cat", true));
+				broker.scan();
+				fixture.await("installed");
+			}
+			requireThat(arguments.get(0), "plain").doesNotContain("--install-cat");
+			requireThat(arguments.get(1), "installed").contains("--install-cat");
 		}
 	}
 
@@ -441,6 +531,18 @@ public final class SessionRequestBrokerTest
 		 */
 		private Fixture() throws IOException
 		{
+			this("--session-requests", "1");
+		}
+
+		/**
+		 * Creates a requesting run whose runner options include the given options that govern session requests.
+		 *
+		 * @param requestOptions the runner's options that govern session requests, such as
+		 *                       {@code --session-requests}
+		 * @throws IOException if setup fails
+		 */
+		private Fixture(String... requestOptions) throws IOException
+		{
 			try (TestJvmScope jvm = new TestJvmScope())
 			{
 				root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "broker-"));
@@ -452,8 +554,10 @@ public final class SessionRequestBrokerTest
 				Files.writeString(project.resolve("prompt"), "test the plugin");
 				requests = Files.createDirectory(SessionRequestAccess.requestsDirectory(run));
 				responses = Files.createDirectory(SessionRequestAccess.responsesDirectory(run));
-				options = HarnessRunnerOptions.parse(new String[]{"--artifact", root.toString(), "--project",
-					project.toString(), "--keep-run", "--session-requests", "1", "--deny-read", denied.toString()}, "harness",
+				List<String> arguments = new ArrayList<>(List.of("--artifact", root.toString(), "--project",
+					project.toString(), "--keep-run", "--deny-read", denied.toString()));
+				arguments.addAll(List.of(requestOptions));
+				options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "harness",
 					HarnessTemporaryRoot.of(root));
 			}
 		}
@@ -467,11 +571,22 @@ public final class SessionRequestBrokerTest
 		 */
 		private ObjectNode request(String id) throws IOException
 		{
+			ObjectNode request = document();
+			writeRequest(id, request);
+			return request;
+		}
+
+		/**
+		 * Returns a valid request manifest without writing it.
+		 *
+		 * @return the manifest, which names the entries that {@link #writeRequest(String, ObjectNode)} packs
+		 */
+		private ObjectNode document()
+		{
 			ObjectNode request = json.createObjectNode().put("format_version", 2).put("harness", "claude").
 				put("project", "project").put("session_transcripts", true);
 			request.putArray("prompts").add("prompts/0").add("prompts/1");
 			request.putArray("plugins").add("plugins/0");
-			writeRequest(id, request);
 			return request;
 		}
 

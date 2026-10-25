@@ -32,13 +32,15 @@ import java.util.List;
  *   manifests' names, beside CAT when {@code installCat} is also set
  * @param sessionRequests how many sessions the session may request over the run; {@code 0} allows none
  * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
+ * @param requestDepth how many levels of requested sessions below the session may request sessions in turn, each
+ *   with the session's own {@code sessionRequests}; {@code 0} lets the session's requested sessions request none
  * @param input the file that holds the run's JSON Lines records, or {@code null} to read them from standard input
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String executable, String model,
 	String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat,
 	boolean includeUserRules, int maximumConcurrency, List<Path> deniedReads, Path workspace, List<Path> plugins,
-	int sessionRequests, Duration capacityWait, Path input)
+	int sessionRequests, Duration capacityWait, int requestDepth, Path input)
 {
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -137,6 +139,14 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				index += 2;
 				continue;
 			}
+			if (option.equals("--request-depth"))
+			{
+				options.requestDepth = Integer.parseInt(value);
+				if (options.requestDepth < 0)
+					throw new IllegalArgumentException("--request-depth must not be negative: " + value);
+				index += 2;
+				continue;
+			}
 			if (option.equals("--capacity-wait"))
 			{
 				long seconds = Long.parseLong(value);
@@ -182,11 +192,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new IllegalArgumentException("--session-transcripts requires --keep-run");
 		if (!options.installCat && !options.includeUserRules)
 			throw new IllegalArgumentException("--exclude-user-rules requires --install-cat");
+		if (options.requestDepth > 0 && options.sessionRequests == 0)
+			throw new IllegalArgumentException("--request-depth requires --session-requests");
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
 			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.includeUserRules,
 			options.maximumConcurrency, options.deniedReads, options.workspace, options.plugins, options.sessionRequests,
-			options.capacityWait, options.input);
+			options.capacityWait, options.requestDepth, options.input);
 	}
 
 	/**
@@ -202,7 +214,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			"[--executable <path>] [--model <name>] [--effort <level>] [--output <path>] [--keep-run] [--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--workspace <path>] [--plugin <path>]... [--session-requests <count>] " +
-			"[--input <file>] [--capacity-wait <seconds>]";
+			"[--request-depth <levels>] [--input <file>] [--capacity-wait <seconds>]";
 	}
 
 	/**
@@ -227,11 +239,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *   their manifests' names
 	 * @param sessionRequests how many sessions the session may request over the run
 	 * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
+	 * @param requestDepth how many levels of requested sessions below the session may request sessions in turn
 	 * @param input the file that holds the run's JSON Lines records, or {@code null} to read standard input
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait} and {@code input}
 	 * @throws IllegalArgumentException if {@code executable} is blank, {@code runRoot} or an element of
-	 *   {@code deniedReads} is not absolute, {@code sessionRequests} is negative, or {@code capacityWait} is not
+	 *   {@code deniedReads} is not absolute, {@code sessionRequests} or {@code requestDepth} is negative,
+	 *   {@code requestDepth} is positive while {@code sessionRequests} is zero, or {@code capacityWait} is not
 	 *   positive
 	 */
 	public HarnessRunnerOptions
@@ -255,6 +269,9 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		if (capacityWait != null)
 			requireThat(capacityWait, "capacityWait").isGreaterThan(Duration.ZERO);
+		requireThat(requestDepth, "requestDepth").isNotNegative();
+		if (requestDepth > 0 && sessionRequests == 0)
+			throw new IllegalArgumentException("--request-depth requires --session-requests");
 	}
 
 	/**
@@ -275,6 +292,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private final List<Path> plugins = new ArrayList<>();
 		private int sessionRequests;
 		private Duration capacityWait;
+		private int requestDepth;
 		private Path input;
 	}
 }
