@@ -17,6 +17,10 @@ public final class HarnessEnvironment
 	/**
 	 * Copies only generic operating-system variables and removes CAT/harness home state.
 	 * <p>
+	 * The copy also holds {@code NVM_DIR}, the Node version manager's directory. A {@code node} launcher that loads the
+	 * manager finds it through {@code NVM_DIR}, which defaults to {@code .nvm} in the home directory, and a child's
+	 * home is the run's own, so without the variable the Node programs that the harness runs would not start.
+	 * <p>
 	 * On Windows, the copy also holds {@code USERPROFILE}, {@code LOCALAPPDATA}, {@code TEMP}, {@code TMP},
 	 * {@code PATHEXT} and {@code SystemDrive}. Windows programs read the user's home directory from
 	 * {@code USERPROFILE} and its local data folder from {@code LOCALAPPDATA}; a program without {@code TEMP} and
@@ -38,6 +42,7 @@ public final class HarnessEnvironment
 		copy(source, result, "LANG");
 		copy(source, result, "LC_ALL");
 		copy(source, result, "TERM");
+		copy(source, result, "NVM_DIR");
 		if (Platform.current().isWindows())
 		{
 			copy(source, result, "USERPROFILE");

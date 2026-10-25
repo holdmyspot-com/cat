@@ -60,6 +60,20 @@ public final class HarnessEnvironmentTest
 	}
 
 	/**
+	 * Verifies that the child environment keeps the Node version manager's directory, so that a {@code node} launcher
+	 * that loads the manager from {@code NVM_DIR} finds the host's Node installation although the child's home is the
+	 * run's home.
+	 */
+	@Test
+	public void keepsNodeVersionManagerDirectory()
+	{
+		Map<String, String> result = HarnessEnvironment.scrub(Map.of("PATH", "programs", "HOME", "host-home",
+			"NVM_DIR", "host-home/.nvm"));
+
+		requireThat(result.get("NVM_DIR"), "nodeVersionManager").isEqualTo("host-home/.nvm");
+	}
+
+	/**
 	 * Verifies that program lookup finds the program named by the child's scrubbed environment.
 	 *
 	 * @throws IOException if the program file cannot be created
