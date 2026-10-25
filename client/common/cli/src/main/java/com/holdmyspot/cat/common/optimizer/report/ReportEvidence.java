@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
 
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 
@@ -14,8 +13,6 @@ import java.util.List;
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
  * @param observations the adopted outcomes of the reported phase, each with the concurrency level it ran at
- * @param accessedPaths the absolute paths that trials accessed
- * @param protectedRoots the absolute roots of state that no trial may access, such as another trial's records
  * @param symbolicLinks {@code true} if staging replaced symbolic links with copies of their targets
  * @param interrupted {@code true} if work stopped and can resume
  * @param infrastructureFailure the precise failure that stopped work and is not a pass or fail outcome, or
@@ -25,61 +22,50 @@ import java.util.List;
  * @param certifiedEnvironment the environment that the campaign's delivered certification was measured in, which the
  *   report shows, or {@code null} if the campaign delivered none
  */
-public record ReportEvidence(List<AssumptionCheck.Observation> observations,
-	List<Path> accessedPaths, List<Path> protectedRoots,
-	boolean symbolicLinks, boolean interrupted, String infrastructureFailure, Instant sharedHoldUntil,
+public record ReportEvidence(List<AssumptionCheck.Observation> observations, boolean symbolicLinks,
+	boolean interrupted, String infrastructureFailure, Instant sharedHoldUntil,
 	CertifiedEnvironment certifiedEnvironment)
 {
 	/**
 	 * No observations beyond the campaign state.
 	 */
-	public static final ReportEvidence NONE = new ReportEvidence(List.of(), List.of(), List.of(), false,
-		false, null);
+	public static final ReportEvidence NONE = new ReportEvidence(List.of(), false, false, null);
 
 	/**
 	 * Creates evidence.
 	 *
 	 * @param observations the adopted outcomes of the reported phase, each with the concurrency level it ran at
-	 * @param accessedPaths the absolute paths that trials accessed
-	 * @param protectedRoots the absolute roots of state that no trial may access
 	 * @param symbolicLinks {@code true} if staging replaced symbolic links with copies of their targets
 	 * @param interrupted {@code true} if work stopped and can resume
 	 * @param infrastructureFailure the precise failure that stopped work, or {@code null} if none did
 	 * @param sharedHoldUntil the end of the hold on the harness's shared capacity, or {@code null} if none lasts
 	 * @param certifiedEnvironment the environment that the campaign's delivered certification was measured in, or
 	 *   {@code null} if the campaign delivered none
-	 * @throws NullPointerException if {@code observations}, {@code accessedPaths} or {@code protectedRoots} are null
+	 * @throws NullPointerException if {@code observations} is null
 	 * @throws IllegalArgumentException if {@code infrastructureFailure} is blank
 	 */
 	public ReportEvidence
 	{
 		requireThat(observations, "observations").isNotNull();
-		requireThat(accessedPaths, "accessedPaths").isNotNull();
-		requireThat(protectedRoots, "protectedRoots").isNotNull();
 		if (infrastructureFailure != null)
 			requireThat(infrastructureFailure, "infrastructureFailure").isNotBlank();
 		observations = List.copyOf(observations);
-		accessedPaths = List.copyOf(accessedPaths);
-		protectedRoots = List.copyOf(protectedRoots);
 	}
 
 	/**
 	 * Creates evidence without a hold on the harness's shared capacity or a delivered certification.
 	 *
 	 * @param observations the adopted outcomes of the reported phase, each with the concurrency level it ran at
-	 * @param accessedPaths the absolute paths that trials accessed
-	 * @param protectedRoots the absolute roots of state that no trial may access
 	 * @param symbolicLinks {@code true} if staging replaced symbolic links with copies of their targets
 	 * @param interrupted {@code true} if work stopped and can resume
 	 * @param infrastructureFailure the precise failure that stopped work, or {@code null} if none did
-	 * @throws NullPointerException if a component other than {@code infrastructureFailure} is null
+	 * @throws NullPointerException if {@code observations} is null
 	 * @throws IllegalArgumentException if {@code infrastructureFailure} is blank
 	 */
-	public ReportEvidence(List<AssumptionCheck.Observation> observations, List<Path> accessedPaths,
-		List<Path> protectedRoots, boolean symbolicLinks, boolean interrupted, String infrastructureFailure)
+	public ReportEvidence(List<AssumptionCheck.Observation> observations, boolean symbolicLinks, boolean interrupted,
+		String infrastructureFailure)
 	{
-		this(observations, accessedPaths, protectedRoots, symbolicLinks, interrupted, infrastructureFailure, null,
-			null);
+		this(observations, symbolicLinks, interrupted, infrastructureFailure, null, null);
 	}
 
 	/**
@@ -90,7 +76,7 @@ public record ReportEvidence(List<AssumptionCheck.Observation> observations,
 	 */
 	public ReportEvidence withSharedHoldUntil(Instant sharedHoldUntil)
 	{
-		return new ReportEvidence(observations, accessedPaths, protectedRoots, symbolicLinks, interrupted,
+		return new ReportEvidence(observations, symbolicLinks, interrupted,
 			infrastructureFailure, sharedHoldUntil, certifiedEnvironment);
 	}
 
@@ -103,7 +89,7 @@ public record ReportEvidence(List<AssumptionCheck.Observation> observations,
 	 */
 	public ReportEvidence withCertifiedEnvironment(CertifiedEnvironment certifiedEnvironment)
 	{
-		return new ReportEvidence(observations, accessedPaths, protectedRoots, symbolicLinks, interrupted,
+		return new ReportEvidence(observations, symbolicLinks, interrupted,
 			infrastructureFailure, sharedHoldUntil, certifiedEnvironment);
 	}
 }

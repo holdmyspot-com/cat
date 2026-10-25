@@ -3,7 +3,6 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
 
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -79,7 +78,6 @@ public final class SliceEvidence
 	 */
 	ReportEvidence toReportEvidence(boolean symbolicLinks, boolean interrupted, String infrastructureFailure)
 	{
-		return new ReportEvidence(observations, List.<Path>of(), List.<Path>of(), symbolicLinks, interrupted,
-			infrastructureFailure);
+		return new ReportEvidence(observations, symbolicLinks, interrupted, infrastructureFailure);
 	}
 }

@@ -2385,7 +2385,7 @@ public final class OptimizerCore implements Core
 			links = !LinkReport.of(inventory, authority(root, campaign, inventory)).entries().isEmpty();
 		}
 		Instant sharedHoldUntil = scope.sessions().sharedHoldUntil(scope.clock().instant()).orElse(null);
-		ReportEvidence evidence = new ReportEvidence(List.of(), List.of(), List.of(), links, false, null).
+		ReportEvidence evidence = new ReportEvidence(List.of(), links, false, null).
 			withSharedHoldUntil(sharedHoldUntil).withCertifiedEnvironment(deliveredEnvironment(root, campaign));
 		return new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(), proposal, null,
 			message);

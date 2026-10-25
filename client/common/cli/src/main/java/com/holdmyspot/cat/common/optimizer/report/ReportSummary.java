@@ -166,8 +166,6 @@ final class ReportSummary
 					interval(rate.interval()));
 			}
 		}
-		if (report.assumptions().dependenceDetected())
-			lines.add("Dependence between trials was detected: " + report.assumptions().consequence().label());
 		for (AttemptSummary attempt : report.attempts())
 			attempt(lines, attempt);
 		for (KeepOffer offer : report.keepOffers())

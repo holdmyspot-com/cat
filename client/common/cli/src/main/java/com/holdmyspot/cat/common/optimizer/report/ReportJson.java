@@ -482,11 +482,6 @@ final class ReportJson
 			interval(rateNode.putObject("interval"), rate.interval());
 		}
 		node.put("descriptive", true);
-		node.put("dependence_detected", assumptions.dependenceDetected());
-		if (assumptions.consequence() == null)
-			node.putNull("consequence");
-		else
-			node.put("consequence", assumptions.consequence().label());
 	}
 
 	/**

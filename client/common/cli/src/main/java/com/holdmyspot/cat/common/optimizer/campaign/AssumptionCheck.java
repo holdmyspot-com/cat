@@ -5,19 +5,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.statistics.ExploratoryBounds;
 import com.holdmyspot.cat.common.optimizer.statistics.Interval;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
 /**
- * Describes trial pass rates by concurrency level and checks reported access to state forbidden to trials.
- * <p>
- * These results support review of trial independence. The caller decides whether detected dependence makes
- * certification unavailable with {@link Outcome#INVALID_STATISTICAL_ASSUMPTIONS}.
+ * Describes trial pass rates by concurrency level. These descriptive results support no statistical claim.
  */
 public final class AssumptionCheck
 {
@@ -111,39 +106,5 @@ public final class AssumptionCheck
 			rates.add(new LevelRate(entry.getKey(), passes, trials, ExploratoryBounds.wilson(passes, trials)));
 		}
 		return rates;
-	}
-
-	/**
-	 * Indicates whether a reported accessed path lies under a root forbidden to trials, after removing
-	 * {@code .} and {@code ..} path components. This checks paths without resolving symbolic links.
-	 *
-	 * @param accessed the absolute paths that the trial accessed
-	 * @param protectedRoots the absolute roots of state that no trial may access
-	 * @return {@code true} if an accessed path equals or lies under a protected root
-	 * @throws NullPointerException if either argument is null or contains null
-	 * @throws IllegalArgumentException if a path is not absolute
-	 */
-	public static boolean isDependent(Collection<Path> accessed, Collection<Path> protectedRoots)
-	{
-		requireThat(accessed, "accessed").isNotNull();
-		requireThat(protectedRoots, "protectedRoots").isNotNull();
-		List<Path> roots = new ArrayList<>();
-		for (Path root : protectedRoots)
-		{
-			requireThat(root.isAbsolute(), "root.isAbsolute()").withContext(root, "root").isTrue();
-			roots.add(root.normalize());
-		}
-		boolean dependent = false;
-		for (Path path : accessed)
-		{
-			requireThat(path.isAbsolute(), "path.isAbsolute()").withContext(path, "path").isTrue();
-			Path normalized = path.normalize();
-			for (Path root : roots)
-			{
-				if (normalized.startsWith(root))
-					dependent = true;
-			}
-		}
-		return dependent;
 	}
 }

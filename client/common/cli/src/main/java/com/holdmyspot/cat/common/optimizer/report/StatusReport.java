@@ -300,8 +300,6 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		String outcomeDetail = null;
 		if (campaign.outcome() != null)
 			outcome = campaign.outcome().label();
-		else if (assumptions.dependenceDetected())
-			outcome = Outcome.INVALID_STATISTICAL_ASSUMPTIONS.label();
 		else if (evidence.infrastructureFailure() != null)
 		{
 			outcome = INFRASTRUCTURE_FAILURE;

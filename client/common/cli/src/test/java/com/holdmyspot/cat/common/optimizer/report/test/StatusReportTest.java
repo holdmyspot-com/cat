@@ -1319,11 +1319,11 @@ public final class StatusReportTest
 			Campaign campaign = confirmed().readyDevelopment().outcome(outcome).build();
 			reported.add(StatusReport.of(campaign, ReportEvidence.NONE).outcome());
 		}
-		ReportEvidence interrupted = new ReportEvidence(List.of(), List.of(), List.of(), false, true,
+		ReportEvidence interrupted = new ReportEvidence(List.of(), false, true,
 			null);
 		Campaign running = confirmed().readyDevelopment().build();
 		reported.add(StatusReport.of(running, interrupted).outcome());
-		ReportEvidence failed = new ReportEvidence(List.of(), List.of(), List.of(), false, false,
+		ReportEvidence failed = new ReportEvidence(List.of(), false, false,
 			"The runner exited with status 7");
 		StatusReport failure = StatusReport.of(running, failed);
 		reported.add(failure.outcome());
@@ -1398,7 +1398,7 @@ public final class StatusReportTest
 	{
 		// Requirement: R-W6
 		Campaign campaign = confirmed().readyDevelopment().build();
-		ReportEvidence links = new ReportEvidence(List.of(), List.of(), List.of(), true, false, null);
+		ReportEvidence links = new ReportEvidence(List.of(), true, false, null);
 		List<String> without = StatusReport.of(campaign, ReportEvidence.NONE).limitations();
 		List<String> with = StatusReport.of(campaign, links).limitations();
 		requireThat(with.size(), "size").isEqualTo(without.size() + 1);

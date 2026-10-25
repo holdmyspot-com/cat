@@ -60,9 +60,7 @@
 	},
 	"assumptions": {
 		"pass_rates_by_concurrency": [],
-		"descriptive": true,
-		"dependence_detected": false,
-		"consequence": null
+		"descriptive": true
 	},
 	"attempts": [],
 	"keep_offers": [],
