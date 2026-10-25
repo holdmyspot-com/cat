@@ -42,21 +42,12 @@ final class RequestArchive
 	 * Includes tar headers, padding and PAX metadata in addition to the accepted payload.
 	 */
 	static final long MAXIMUM_ARCHIVE_BYTES = 300_000_000;
+	/**
+	 * The device that a sandbox mounts over each file that a session may not read.
+	 */
+	static final Path NULL_DEVICE = Path.of("/dev/null");
 	private static final Set<PosixFilePermission> FILE_MODE = PosixFilePermissions.fromString("rw-r--r--");
 	private static final Set<PosixFilePermission> PROGRAM_MODE = PosixFilePermissions.fromString("rwxr-xr-x");
-
-	/**
-	 * Publishes a request with archive-relative manifest paths, preserving prompt and plugin order.
-	 *
-	 * @param json        the manifest mapper
-	 * @param destination the final request file
-	 * @param request     the launcher options; receives archive-relative paths
-	 * @throws IOException if an input is linked, special, oversized, or cannot be packed
-	 */
-	static void pack(JsonMapper json, Path destination, ObjectNode request) throws IOException
-	{
-		pack(json, destination, request, List.of());
-	}
 
 	/**
 	 * Publishes a request with archive-relative manifest paths, packing prompt texts after the request's prompt files.
@@ -65,9 +56,12 @@ final class RequestArchive
 	 * @param destination the final request file
 	 * @param request     the launcher options; receives archive-relative paths
 	 * @param prompts     the prompt texts that follow the request's prompt files, in order
+	 * @param nullDevice  the null device, which a sandbox mounts over each file that the session may not read; the
+	 *                    request leaves those files out of the trees that it carries
 	 * @throws IOException if an input is linked, special, oversized, or cannot be packed
 	 */
-	static void pack(JsonMapper json, Path destination, ObjectNode request, List<String> prompts) throws IOException
+	static void pack(JsonMapper json, Path destination, ObjectNode request, List<String> prompts, Path nullDevice)
+		throws IOException
 	{
 		Path temporary = Files.createTempFile(destination.getParent(), ".request-", EXTENSION);
 		try
@@ -78,7 +72,7 @@ final class RequestArchive
 				archive.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU);
 				Budget budget = new Budget();
 				Path project = Path.of(request.path("project").asString());
-				packTree(archive, project, "project", budget);
+				packTree(archive, project, "project", budget, nullDevice);
 				request.put("project", "project");
 				for (String field : new String[]{"prompts", "plugins"})
 				{
@@ -92,7 +86,7 @@ final class RequestArchive
 						if (field.equals("prompts"))
 							packFile(archive, source, name, MAXIMUM_PROMPT_BYTES, budget);
 						else
-							packTree(archive, source, name, budget);
+							packTree(archive, source, name, budget, nullDevice);
 						paths.set(index, json.getNodeFactory().stringNode(name));
 					}
 				}
@@ -136,20 +130,24 @@ final class RequestArchive
 	}
 
 	/**
-	 * Packs one plain directory and its descendants without following symbolic links.
+	 * Packs one plain directory and its descendants without following symbolic links, leaving out the null-device
+	 * placeholders of files that the session may not read.
 	 *
-	 * @param archive the destination archive
-	 * @param source  the readable directory
-	 * @param name    its archive name
-	 * @param budget  the request's cumulative limits
+	 * @param archive    the destination archive
+	 * @param source     the readable directory
+	 * @param name       its archive name
+	 * @param budget     the request's cumulative limits
+	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read
 	 * @throws IOException if the input is unsafe, oversized or unreadable
 	 */
-	private static void packTree(TarArchiveOutputStream archive, Path source, String name, Budget budget)
-		throws IOException
+	private static void packTree(TarArchiveOutputStream archive, Path source, String name, Budget budget,
+		Path nullDevice) throws IOException
 	{
 		checkAncestors(source);
 		if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("Input must be a directory without symbolic links: " + source);
+		// Windows has no null device in its file system, so no placeholder there.
+		boolean placeholders = Files.exists(nullDevice, LinkOption.NOFOLLOW_LINKS);
 		try (Stream<Path> paths = Files.walk(source))
 		{
 			for (Path path : (Iterable<Path>) paths::iterator)
@@ -166,7 +164,7 @@ final class RequestArchive
 					archive.putArchiveEntry(new TarArchiveEntry(entryName + "/"));
 					archive.closeArchiveEntry();
 				}
-				else
+				else if (!placeholders || attributes.isSymbolicLink() || !Files.isSameFile(path, nullDevice))
 					packFile(archive, path, entryName, MAXIMUM_ENTRY_BYTES, budget);
 			}
 		}

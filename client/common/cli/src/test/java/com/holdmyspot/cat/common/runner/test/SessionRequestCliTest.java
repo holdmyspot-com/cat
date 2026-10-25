@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner.test;
 
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
 import java.io.IOException;
@@ -9,7 +10,10 @@ import java.io.StringWriter;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.StandardProtocolFamily;
+import java.net.UnixDomainSocketAddress;
 import java.nio.channels.FileChannel;
+import java.nio.channels.ServerSocketChannel;
 import java.nio.ByteBuffer;
 import java.nio.file.StandardOpenOption;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
@@ -115,6 +119,47 @@ public final class SessionRequestCliTest
 	}
 
 	/**
+	 * Verifies that a request carries the project as its session sees it, leaving out the null-device placeholders
+	 * that the session's sandbox puts over files that it may not read.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void omitsSandboxPlaceholders() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-I9
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "placeholder-")).toRealPath();
+				Path requests = Files.createDirectory(root.resolve("requests"));
+				Path project = Files.createDirectory(root.resolve("project"));
+				Files.writeString(project.resolve("marker"), "project bytes");
+				// A sandbox mounts the null device itself over each protected file; a second name of one file stands in for
+				// it, since creating a device requires administrator rights.
+				Path nullDevice = Files.writeString(root.resolve("null-device"), "");
+				Files.createLink(project.resolve(".credentials.json"), nullDevice);
+				Path prompt = Files.writeString(root.resolve("prompt"), "prompt bytes");
+				ManualClock time = new ManualClock(Instant.EPOCH);
+				SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
+					"--prompt", prompt.toString()}, requests, nullDevice, time,
+					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
+				Map<String, String> entries = new HashMap<>();
+				try (Stream<Path> files = Files.list(requests);
+					InputStream bytes = Files.newInputStream(files.findFirst().orElseThrow());
+					TarArchiveInputStream archive = new TarArchiveInputStream(bytes))
+				{
+					for (TarArchiveEntry entry = archive.getNextEntry(); entry != null; entry = archive.getNextEntry())
+						entries.put(entry.getName(), new String(archive.readNBytes(65_536), StandardCharsets.UTF_8));
+				}
+				requireThat(entries.get("project/marker"), "project").isEqualTo("project bytes");
+				requireThat(entries.keySet(), "entries").doesNotContain("project/.credentials.json");
+			}
+		}
+	}
+
+	/**
 	 * Supplies launcher inputs that must fail before an archive is published.
 	 *
 	 * @return unsafe or oversized input categories
@@ -123,22 +168,24 @@ public final class SessionRequestCliTest
 	public Object[][] unsafeInputs()
 	{
 		return new Object[][]{{"tree_link"}, {"prompt_link"}, {"ancestor_link"}, {"prompt_size"}, {"file_size"},
-			{"entry_count"}, {"total_size"}};
+			{"entry_count"}, {"total_size"}, {"special_file"}};
 	}
 
 	/**
-	 * Verifies that packing rejects links anywhere in an input path and enforces prompt and tree-file bounds.
+	 * Verifies that packing rejects links anywhere in an input path and special files other than the null device, and
+	 * enforces prompt and tree-file bounds.
 	 * <p>
 	 * The entry-count case creates 10,001 directories, and the total-size case packs files until it crosses the
 	 * cumulative byte limit. Creating, reading and removing these fixtures can take several seconds; inputs below
 	 * those limits would not exercise the corresponding refusals.
 	 *
 	 * @param kind the unsafe input category
-	 * @throws IOException if fixture I/O fails or packing rejects the input
+	 * @throws IOException          if fixture I/O fails or packing rejects the input
+	 * @throws InterruptedException if the thread is interrupted while creating a named pipe
 	 */
 	@Test(dataProvider = "unsafeInputs", expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*(symbolic link|bounds).*", timeOut = 30_000)
-	public void refusesUnsafeInputs(String kind) throws IOException
+		expectedExceptionsMessageRegExp = ".*(symbolic link|special types|bounds).*", timeOut = 30_000)
+	public void refusesUnsafeInputs(String kind) throws IOException, InterruptedException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -168,6 +215,25 @@ public final class SessionRequestCliTest
 					{
 						channel.position(size);
 						channel.write(ByteBuffer.wrap(new byte[]{0}));
+					}
+				}
+				if (kind.equals("special_file"))
+				{
+					// Windows has no named pipes in its file system, and a sandbox may refuse to bind a Unix socket.
+					if (Platform.current().isWindows())
+					{
+						try (ServerSocketChannel socket = ServerSocketChannel.open(StandardProtocolFamily.UNIX))
+						{
+							socket.bind(UnixDomainSocketAddress.of(project.resolve("socket")));
+						}
+					}
+					else
+					{
+						try (Process mkfifo = new ProcessBuilder("mkfifo", project.resolve("pipe").toString()).
+							redirectErrorStream(true).start())
+						{
+							requireThat(mkfifo.waitFor(), "mkfifo").isEqualTo(0);
+						}
 					}
 				}
 				if (kind.equals("entry_count"))

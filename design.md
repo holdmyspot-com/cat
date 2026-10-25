@@ -2402,7 +2402,9 @@ requested run's transcript, receipt and native transcripts, since the requesting
 runner, which runs outside the session's sandbox with the user's permissions, opens no path that the session chose:
 it opens only the archive, without following a link and refusing a file with more than one hard link, and unpacks it
 into a directory of its own, refusing links, absolute and parent paths and anything beyond its size bounds. An archive
-therefore holds only what the session's sandbox let it read, on every platform. The runner validates the request and
+therefore holds only what the session's sandbox let it read, on every platform. The launcher leaves out of each tree
+the placeholders through which a sandbox hides a file, entries that are the null device itself, and still refuses a
+link or any other special file, so a session may request a session over its own project (user ruling, 2026-10-25). The runner validates the request and
 starts the session through that
 harness's runner launcher, resolved as the runner skills resolve it, with the requesting session's run root and denied
 reads, and with no requested sessions of its own unless the caller passed `--request-depth <levels>`: each level below

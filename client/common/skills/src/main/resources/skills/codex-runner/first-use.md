@@ -80,9 +80,10 @@ and the limits, so pass only these options:
 [--install-cat] [--session-transcripts] [--output <transcript>] [--receipt <receipt>]
 ```
 
-The project and each plugin must contain no symbolic links. The launcher writes the session's transcript to
-`--output`, or prints it, and copies its receipt to `--receipt`. It exits with `0` when the session completed,
-`75` when no capacity was free, and `1` otherwise, with the reason.
+The project and each plugin must contain no symbolic links. Inside a run, the launcher leaves out the files that the
+sandbox hides behind the null device, so the requested session sees the project as the session does. It writes the
+session's transcript to `--output`, or prints it, and copies its receipt to `--receipt`. It exits with `0` when the
+session completed, `75` when no capacity was free, and `1` otherwise, with the reason.
 
 ## Evidence
 

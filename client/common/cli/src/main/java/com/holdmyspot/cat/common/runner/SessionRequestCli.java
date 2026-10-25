@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
@@ -66,8 +67,30 @@ public final class SessionRequestCli
 	public static int execute(String[] args, Path requests, Clock clock, Pause pause, PrintWriter output)
 		throws IOException
 	{
+		return execute(args, requests, RequestArchive.NULL_DEVICE, clock, pause, output);
+	}
+
+	/**
+	 * Writes a request atomically and waits, or waits again for an existing request. On timeout prints the id and the
+	 * exact follow-up command. Response paths are printed even for unsuccessful requested sessions.
+	 *
+	 * @param args       submission options or await options
+	 * @param requests   the owning run's requests directory
+	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read; the
+	 *                   request leaves those files out of the trees that it carries
+	 * @param clock      measures the wait bound
+	 * @param pause      paces response checks
+	 * @param output     receives response paths or timeout instructions
+	 * @return 0 for completed, 1 for another response status, or 3 after the wait bound (default 300 seconds)
+	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
+	 * @throws IOException              if request or response I/O fails
+	 */
+	public static int execute(String[] args, Path requests, Path nullDevice, Clock clock, Pause pause,
+		PrintWriter output) throws IOException
+	{
 		requireThat(args, "args").isNotNull();
 		requireThat(requests, "requests").isDirectory();
+		requireThat(nullDevice, "nullDevice").isNotNull();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		requireThat(output, "output").isNotNull();
@@ -122,7 +145,8 @@ public final class SessionRequestCli
 			// directories, we could swap a link or junction into its path and make it read a file we may not read.
 			// Packing here makes the sandbox refuse that read; the broker opens only one file in requests, with no
 			// session-controlled directory along its path.
-			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request);
+			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
+				List.of(), nullDevice);
 		}
 		else
 		{
