@@ -3,6 +3,8 @@ package com.holdmyspot.cat.common.runner;
 import com.holdmyspot.cat.common.Platform;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -15,11 +17,20 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessEnvironment
 {
 	/**
+	 * The upper-case names of the variables that route network connections through a proxy.
+	 */
+	private static final List<String> PROXY_VARIABLES = List.of("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY");
+
+	/**
 	 * Copies only generic operating-system variables and removes CAT/harness home state.
 	 * <p>
 	 * The copy also holds {@code NVM_DIR}, the Node version manager's directory. A {@code node} launcher that loads the
 	 * manager finds it through {@code NVM_DIR}, which defaults to {@code .nvm} in the home directory, and a child's
 	 * home is the run's own, so without the variable the Node programs that the harness runs would not start.
+	 * <p>
+	 * The copy also holds the proxy variables, in upper and lower case: {@code HTTP_PROXY}, {@code HTTPS_PROXY},
+	 * {@code ALL_PROXY} and {@code NO_PROXY}. A host that reaches the network only through a proxy names it there,
+	 * and a harness that lacks them cannot reach its model service.
 	 * <p>
 	 * On Windows, the copy also holds {@code USERPROFILE}, {@code LOCALAPPDATA}, {@code TEMP}, {@code TMP},
 	 * {@code PATHEXT} and {@code SystemDrive}. Windows programs read the user's home directory from
@@ -43,6 +54,11 @@ public final class HarnessEnvironment
 		copy(source, result, "LC_ALL");
 		copy(source, result, "TERM");
 		copy(source, result, "NVM_DIR");
+		for (String name : PROXY_VARIABLES)
+		{
+			copy(source, result, name);
+			copy(source, result, name.toLowerCase(Locale.ROOT));
+		}
 		if (Platform.current().isWindows())
 		{
 			copy(source, result, "USERPROFILE");

@@ -74,6 +74,25 @@ public final class HarnessEnvironmentTest
 	}
 
 	/**
+	 * Verifies that a child on a host that reaches the network only through a proxy keeps the proxy settings, so that
+	 * its harness reaches the model service.
+	 */
+	@Test
+	public void keepsProxySettings()
+	{
+		Map<String, String> proxies = Map.of("HTTPS_PROXY", "http://proxy:3128", "https_proxy", "http://proxy:3128",
+			"HTTP_PROXY", "http://proxy:3128", "ALL_PROXY", "http://proxy:3128", "NO_PROXY", "localhost",
+			"no_proxy", "localhost");
+		Map<String, String> source = new HashMap<>(proxies);
+		source.put("PATH", "programs");
+
+		Map<String, String> result = HarnessEnvironment.scrub(source);
+
+		for (Map.Entry<String, String> proxy : proxies.entrySet())
+			requireThat(result.get(proxy.getKey()), proxy.getKey()).isEqualTo(proxy.getValue());
+	}
+
+	/**
 	 * Verifies that program lookup finds the program named by the child's scrubbed environment.
 	 *
 	 * @throws IOException if the program file cannot be created
