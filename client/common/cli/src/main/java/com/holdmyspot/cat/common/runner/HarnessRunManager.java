@@ -964,11 +964,12 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Replaces one structured non-secret manifest.
+	 * Replaces one structured non-secret manifest. A terminal manifest also removes the run's login copies: a run
+	 * becomes terminal only after its harness has stopped, and a run kept after that holds no login.
 	 *
 	 * @param manifest the manifest to write
 	 * @param directory the owned run directory
-	 * @throws IOException if the manifest cannot be persisted
+	 * @throws IOException if the manifest cannot be persisted or a login copy cannot be removed
 	 */
 	private void writeManifest(Manifest manifest, Path directory) throws IOException
 	{
@@ -989,6 +990,8 @@ public final class HarnessRunManager
 			nullableInstant(manifest.finishedAt()) + ",\n  \"diagnostic\": \"" +
 			escape(manifest.diagnostic()) + "\"\n}\n";
 		writeAtomically(directory.resolve("run.json"), content);
+		if (!manifest.state().equals("running"))
+			HarnessCredentials.removeLoginCopies(directory);
 	}
 
 	/**

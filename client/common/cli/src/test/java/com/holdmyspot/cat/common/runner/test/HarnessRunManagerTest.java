@@ -212,6 +212,87 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
+	 * Verifies that a failed run, which stays for investigation, holds no copy of either harness's login.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void failedRunKeepsNoLogin() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Path codexLogin = Files.writeString(run.directory().resolve("home/auth.json"), "login");
+			Path claudeLogin = Files.writeString(Files.createDirectories(run.directory().resolve("home/.claude")).
+				resolve(".credentials.json"), "login");
+
+			manager.fail(run, "harness did not start");
+
+			requireThat(Files.exists(codexLogin), "codexLogin").isFalse();
+			requireThat(Files.exists(claudeLogin), "claudeLogin").isFalse();
+			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains("harness did not start");
+		}
+	}
+
+	/**
+	 * Verifies that a completed run kept for investigation holds no login but keeps its other evidence.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void keptRunKeepsNoLogin() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Path login = Files.writeString(run.directory().resolve("home/auth.json"), "login");
+			Path configuration = Files.writeString(run.directory().resolve("home/config.toml"), "model = \"m\"");
+			Path output = root.resolve("output.txt");
+
+			manager.complete(run, output, "answer", true);
+
+			requireThat(Files.exists(login), "login").isFalse();
+			requireThat(Files.readString(configuration), "configuration").isEqualTo("model = \"m\"");
+			requireThat(Files.readString(output), "output").isEqualTo("answer");
+		}
+	}
+
+	/**
+	 * Verifies that removing a run's logins does not follow a link that the harness left in the run, so that a file
+	 * outside the run survives.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void loginRemovalDoesNotFollowLinks() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path outside = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-outside-"));
+			Path hostLogin = Files.writeString(outside.resolve(".credentials.json"), "host login");
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Files.createSymbolicLink(run.directory().resolve("home/.claude"), outside);
+
+			manager.fail(run, "harness failed");
+
+			requireThat(Files.readString(hostLogin), "hostLogin").isEqualTo("host login");
+			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains("harness failed");
+		}
+	}
+
+	/**
 	 * Verifies a supervisor atomically records the observed exit status when its runner has ended before completing a
 	 * run.
 	 *
