@@ -454,8 +454,9 @@ scheduling decisions is at most the null value. The design meets or monitors eac
 | Control trials chosen by the candidate's outcomes | A control or incumbent comparison that paired its trials with chosen candidate trials, or stopped on the candidate's outcomes, could favour the candidate. | Each control or incumbent trial runs the test case of the candidate formal trial it pairs with, pairs follow assignment order, and the comparison decides only from its own pairs, up to the frozen cap ([§2.3](#23-sequential-tests)). Running the comparison only in certified cells cannot raise the false-certification probability, because a false certification still needs a false part to pass. |
 | Generated workspace-file text deciding the outcome | Filler that happened to contain the answer would make two answers correct. | Only values that the contract author writes decide a test case's expected outcome, and the contract author's instructions list each value generator's words and date range ([§6.3](#63-prompt-tests-and-test-cases)). |
 
-If CAT detects dependence it cannot rule out, the result is `certification unavailable: invalid statistical
-assumptions`, not a weaker claim. One example is an assignment that read another trial's records.
+CAT rules dependence out through the isolation mechanisms in the table rather than by inspecting what trials
+accessed. The outcome `certification unavailable: invalid statistical assumptions` is reserved for dependence
+that a future check detects and cannot rule out; CAT does not currently implement such a check.
 
 ### 2.7 Development: commit gate and edit-or-continue
 

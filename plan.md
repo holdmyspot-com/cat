@@ -934,7 +934,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | ID | Requirement | Design | Owner | Proof |
 |---|---|---|---|---|
 | R-P1 | Four outputs in both phases, with unavailable values explained, including the per-prompt-test comparison state at `β_i / K`. Allocation counts are shown apart from benchmark weights, and a pooled adaptive pass fraction is never presented as the future pass rate. | §2.9 | WI-12 | U: `StatusReportTest` |
-| R-P2 | Descriptive pass rates by concurrency level; detected dependence gives `invalid statistical assumptions`. | §2.6 | WI-12, WI-3 | U: `AssumptionCheckTest` |
+| R-P2 | Descriptive pass rates by concurrency level; dependence ruled out by isolated trial projects and harness homes, staging without optimizer state, a fresh judge seeing only its trial's evidence, and held-out content denied to development sessions. The `invalid statistical assumptions` outcome is reserved for dependence detected by a future check. | §2.6 | WI-12, WI-3 | U: `AssumptionCheckTest`, `AssumptionCheckReportTest`, `StagedSourceTest`, `StagedSourceRunnerCopyTest`, `DriverTest`, `HarnessRunManagerTest`, `HarnessEnvironmentTest`, `CodexSessionsTest`, `ClaudeSessionsTest` |
 | R-P3 | The outcome set and its labels match §1 exactly, including `improved, not certified`. | §1 | WI-12 | U: `StatusReportTest` |
 | R-P4 | Claim wording names the frozen judge, benchmark, held-out part and conditions, and lists limitations; a weakest-only claim names each prompt test's profile and says no other profile was certified. | §2.1, §5, §6.6 | WI-12, WI-32, WI-94 | U: `StatusReportTest` |
 | R-I1 | Skill wrappers in both harnesses share one body and follow the §8 loop. | §8 | WI-14 | E: both harnesses |
