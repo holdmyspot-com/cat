@@ -1022,6 +1022,11 @@ optimizer starts many nested sessions, and this bound is the only limit on their
 	turn resets the next length to 1 minute ([§3.5](#35-volume-safeguards)).
 - Tests construct an unlimited instance or one under a test-owned directory, so no test contends with another test or
 	with real sessions.
+- One process-owned `FileLocks` coordinator is shared explicitly by the process scope and its child scopes,
+	capacity pools, campaign locks and run locks. It reserves a file before opening its channel and releases the
+	reservation after the channel closes. Coordination uses no mutable static registry; independent process scopes
+	and tests own independent coordinators. This prevents another consumer in the same JVM from opening and closing
+	a held lock file, which would release the process's POSIX lock.
 
 ### 3.7 Process model
 
@@ -2706,6 +2711,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D103 | Codex trials inherit the parent's existing `project_doc_*` instruction-loading settings from `config.toml` (user ruling, 2026-10-24). | Filename fallbacks and instruction-size limits affect which prompt text Codex reads. | Preserve configured values and account for them in the loader configuration identity; implementation is tracked with the instruction-loading follow-up. |
 | D104 | Supply `executableFiles()` through `JvmScope`; production scopes retain retry pauses and test scopes do not sleep (user ruling, 2026-10-24). | Consumers need one scope-owned service that tests can control, rather than an inline production instance or a separate constructor argument. | The optimizer, requested runner and both harness runners obtain the service from their scope. |
 | D105 | Retain refusal of symlinks anywhere in a requested-session input path (user ruling, 2026-10-24). | The user chose to preserve the existing restriction. | macOS callers must supply resolved paths when an ancestor such as `/var` is a symlink. |
+| D106 | Refactor lock coordination into an explicitly shared, process-owned object, supplied by scopes to every lock consumer (user ruling, 2026-10-24). | A mutable static registry shares state across independent scopes and tests; opening and closing another channel to a held file can release its POSIX lock. | Each process scope owns its coordinator, child scopes share it, and reservations outlive open channels. Independent coordinators retain independent state; no mutable static lock registry remains. |
 
 ## 14. Acceptance evidence
 
