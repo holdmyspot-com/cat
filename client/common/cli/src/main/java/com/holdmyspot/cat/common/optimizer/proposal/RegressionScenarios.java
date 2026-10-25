@@ -11,7 +11,6 @@ import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
@@ -170,7 +169,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		List<Scenario> scenarios = new ArrayList<>();
 		readRoot(json, root, root, true, scenarios);
 		readModules(json, root, scenarios);
-		refuseLinksCheckedOutAsFiles(root, trackedLinks, scenarios);
+		refuseBrokenLinkCheckouts(root, trackedLinks, scenarios);
 		if (!user.equals(root))
 			readRoot(json, root, user, false, scenarios);
 		scenarios.sort(Comparator.comparing(Scenario::citation));
@@ -178,24 +177,23 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	}
 
 	/**
-	 * Keeps for conversion each prompt test of the project whose {@value PromptTestFiles#WORKSPACE} directory holds a
-	 * regular file where the project's Git index records a symbolic link. Git writes such a file, holding the link's
-	 * target, when it checks out a link with {@code core.symlinks} false, and the prompt test would read the target's
-	 * path as the file's content.
+	 * Keeps for conversion each prompt test whose {@value PromptTestFiles#WORKSPACE} has no symbolic link at a
+	 * Git-recorded link path. A regular file can hold the target path instead of its contents when
+	 * {@code core.symlinks} is false; a missing entry silently leaves required input out of the trial workspace.
 	 *
 	 * @param project      the project root
 	 * @param trackedLinks the files, relative to {@code project}, that the project's Git index records as symbolic
 	 *                     links
 	 * @param scenarios    the scenarios read from the project; each affected one is replaced
 	 */
-	private static void refuseLinksCheckedOutAsFiles(Path project, Set<Path> trackedLinks, List<Scenario> scenarios)
+	private static void refuseBrokenLinkCheckouts(Path project, Set<Path> trackedLinks, List<Scenario> scenarios)
 	{
-		List<Path> linksAsFiles = new ArrayList<>();
+		List<Path> brokenLinks = new ArrayList<>();
 		for (Path link : trackedLinks)
 		{
 			Path file = project.resolve(link);
-			if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(file))
-				linksAsFiles.add(file);
+			if (!Files.isSymbolicLink(file))
+				brokenLinks.add(file);
 		}
 		for (int i = 0; i < scenarios.size(); ++i)
 		{
@@ -203,12 +201,12 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 			if (!(scenario.format() instanceof Current current))
 				continue;
 			Path workspace = current.files().directory().resolve(PromptTestFiles.WORKSPACE);
-			Optional<Path> linkAsFile = linksAsFiles.stream().filter(file -> file.startsWith(workspace)).findFirst();
-			if (linkAsFile.isEmpty())
+			Optional<Path> brokenLink = brokenLinks.stream().filter(file -> file.startsWith(workspace)).findFirst();
+			if (brokenLink.isEmpty())
 				continue;
-			String path = cited(project, linkAsFile.get());
+			String path = cited(project, brokenLink.get());
 			scenarios.set(i, new Scenario(scenario.source(), scenario.citation(), scenario.content(),
-				new Earlier(path + ": Git records a symbolic link here, but the checkout holds a regular file. " +
+				new Earlier(path + ": Git records a symbolic link here; restore that link in the checkout. " +
 					"Enable symbolic links for Git: on Windows, turn on Developer Mode, then run `git config " +
 					"core.symlinks true` and `git checkout -- " + path + "`.")));
 		}

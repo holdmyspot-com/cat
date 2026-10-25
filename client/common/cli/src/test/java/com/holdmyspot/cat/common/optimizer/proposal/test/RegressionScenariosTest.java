@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.proposal.RegressionScenarios;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -398,14 +399,31 @@ public final class RegressionScenariosTest
 	}
 
 	/**
-	 * Verifies that a prompt test whose {@code workspace/} holds a regular file where the project's Git index records a
-	 * symbolic link is kept for conversion with a reason that names the link and how to restore it, and that a prompt
-	 * test whose checkout holds its links is read.
+	 * Returns the checkout entries that cannot stand in for a Git-recorded symbolic link.
 	 *
+	 * @return a regular file, a directory and an absent entry
+	 */
+	@DataProvider
+	public static Object[][] brokenLinkCheckouts()
+	{
+		return new Object[][]
+			{
+				{"file"},
+				{"directory"},
+				{"missing"}
+			};
+	}
+
+	/**
+	 * Verifies that a prompt test whose {@code workspace/} has a regular file, directory or missing entry at a
+	 * Git-recorded symbolic link is kept for conversion with the path and repair instructions. A valid link keeps
+	 * its target's content and source.
+	 *
+	 * @param checkoutKind the entry at the recorded link, or {@code missing} for no entry
 	 * @throws IOException if the scenario tree cannot be created or read
 	 */
-	@Test
-	public void refusesLinkCheckedOutAsFile() throws IOException
+	@Test(dataProvider = "brokenLinkCheckouts")
+	public void refusesBrokenLinkCheckout(String checkoutKind) throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -443,10 +461,18 @@ public final class RegressionScenariosTest
 				Files.createSymbolicLink(workspace.resolve("AGENTS.md"), Path.of("../../shared/AGENTS.md"));
 				trackedLinks.add(root.relativize(workspace.resolve("AGENTS.md")));
 			}
-			// Git checks out a link as a regular file that holds the target when core.symlinks is false
+			// Replace the tracked link with the selected broken checkout entry
 			Path broken = reading.resolve("broken_checkout/workspace/AGENTS.md");
 			Files.delete(broken);
-			Files.writeString(broken, "../../shared/AGENTS.md");
+			switch (checkoutKind)
+			{
+				case "file" -> Files.writeString(broken, "../../shared/AGENTS.md");
+				case "directory" -> Files.createDirectory(broken);
+				case "missing" ->
+				{
+				}
+				default -> throw new IllegalArgumentException("Unknown checkout kind: " + checkoutKind);
+			}
 
 			List<RegressionScenarios.Scenario> found = RegressionScenarios.read(JSON, root, root.resolve("home"),
 				trackedLinks).scenarios();

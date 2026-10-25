@@ -2777,6 +2777,9 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that a hook that reads only its plugin's files passes the hook check and is not listed.
+	 *
+	 * This test can exceed one second because it starts a complete campaign through the scripted session port
+	 * and checks hook output against a physical plugin context file.
 	 */
 	@Test
 	public void hookThatReadsItsPluginPasses() throws Exception
@@ -2941,6 +2944,9 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code start} refuses a plugin that the project does not build unless the harness's install
 	 * records name exactly one installed copy, and that it copies that one copy as the plugin's base.
+	 *
+	 * This test can exceed one second because it exercises three public starts for zero, two and one installed
+	 * copies, then verifies the physical plugin base remains unchanged when the installed copy changes.
 	 */
 	@Test
 	public void installedPluginNeedsOneCopy() throws Exception
@@ -4431,6 +4437,9 @@ public final class OptimizerCoreTest
 	 * Verifies that a removal that keeps failing does not fail other commands: a command for another target
 	 * succeeds and warns with the path and the cause, a refused command carries the same warning, and the removal
 	 * stays recorded for the next command.
+	 *
+	 * This test can exceed one second because it starts campaigns for two targets and exercises a refused command
+	 * while checking that failed removal remains persisted and its warning reaches both command outputs.
 	 */
 	@Test
 	public void failingRemovalWarnsOtherCommands() throws Exception
