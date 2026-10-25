@@ -93,6 +93,10 @@ import tools.jackson.databind.json.JsonMapper;
 public final class DeliveryTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
+	/**
+	 * Marks files completed before restart so that rewriting identical bytes becomes observable without waiting.
+	 */
+	private static final FileTime COMPLETED_WRITE_MARKER = FileTime.fromMillis(0);
 	private static final String CAMPAIGN = "campaign-1";
 	private static final Set<PosixFilePermission> READ_WRITE = PosixFilePermissions.fromString("rw-r--r--");
 	private static final Consumer<DeliveryChange> NO_HOOK = _ ->
@@ -259,7 +263,7 @@ public final class DeliveryTest
 					Optional<FileTime> completedTime = Optional.empty();
 					if (Files.isRegularFile(completedTarget))
 					{
-						Files.setLastModifiedTime(completedTarget, FileTime.fromMillis(0));
+						Files.setLastModifiedTime(completedTarget, COMPLETED_WRITE_MARKER);
 						completedTime = Optional.of(Files.getLastModifiedTime(completedTarget));
 					}
 					FileCampaignStore resumedStore = new FileCampaignStore(fixture.base(), JSON, Yielding.fileReplacer());
@@ -1193,13 +1197,15 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * A crash after a prompt test's file is written, before the journal records it, is followed by a restart that
-	 * resumes the same delivery: every change, including the prompt test's files, is written exactly once across both
-	 * runs, and the delivery completes. The crash follows the first of the prompt test's three files, so the restart
-	 * must skip that file and still write the other two. {@link #faultBetweenWritesResumesOnce()} covers a crash after
-	 * each kind of change.
+	 * A crash after the first prompt-test file is written, before the journal records it, is followed by a restart
+	 * that completes the same delivery. Every previously completed file keeps its physical modification time, the
+	 * durable plan completes unchanged, and certification history contains one record. The remaining prompt-test
+	 * scenario, values and workspace files must all be present with their intended contents.
+	 * <p>
+	 * Marking completed files makes an identical-byte rewrite observable without waiting for the filesystem clock.
+	 * {@link #faultBetweenWritesResumesOnce()} covers a crash after each kind of candidate change.
 	 *
-	 * @throws IOException             if the fixture or delivery fails
+	 * @throws IOException if the fixture or delivery fails
 	 * @throws ScenarioFormatException if a written file cannot be read back
 	 */
 	@Test
@@ -1212,10 +1218,8 @@ public final class DeliveryTest
 			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
 			DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
-			List<Integer> written = new ArrayList<>();
 			Consumer<DeliveryChange> crashing = change ->
 			{
-				written.add(change.sequence());
 				if (change.target().startsWith(created.location().directory()))
 					throw new SimulatedCrash(change);
 			};
@@ -1231,16 +1235,38 @@ public final class DeliveryTest
 			}
 			requireThat(crashed, "crashed").isTrue();
 
+			FileCampaignStore resumedStore = new FileCampaignStore(fixture.base(), JSON, Yielding.fileReplacer());
+			DeliveryJournal interrupted = resumedStore.loadJournal(CAMPAIGN).orElseThrow();
+			Path interruptedTarget = interrupted.changes().get(interrupted.applied()).target();
+			requireThat(interruptedTarget.startsWith(created.location().directory()), "interruptedPromptTest").isTrue();
+			Map<Path, FileTime> completedTimes = new HashMap<>();
+			for (DeliveryChange change : interrupted.changes().subList(0, interrupted.applied() + 1))
+			{
+				Path target = fixture.resolve(change.target());
+				if (Files.isRegularFile(target))
+				{
+					Files.setLastModifiedTime(target, COMPLETED_WRITE_MARKER);
+					completedTimes.put(change.target(), Files.getLastModifiedTime(target));
+				}
+			}
+			requireThat(completedTimes.containsKey(interruptedTarget), "completedPromptTestFile").isTrue();
+
 			// The restarted process opens a new store and executor over the same base worktree
-			DeliveryResult result = fixture.delivery(new FileCampaignStore(fixture.base(), JSON, Yielding.fileReplacer()),
-			candidate,
-				change -> written.add(change.sequence())).
+			DeliveryResult result = fixture.delivery(resumedStore, candidate, NO_HOOK).
 				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of(created));
 
 			requireDelivered(result);
-			requireThat(written, "written").isEqualTo(List.of(0, 1, 2, 3, 4, 5, 6));
+			for (Map.Entry<Path, FileTime> entry : completedTimes.entrySet())
+			{
+				requireThat(Files.getLastModifiedTime(fixture.resolve(entry.getKey())), "completedFileTime").
+					withContext(fixture.resolve(entry.getKey()), "target").isEqualTo(entry.getValue());
+			}
+			DeliveryJournal completed = resumedStore.loadJournal(CAMPAIGN).orElseThrow();
+			requireThat(completed.changes(), "changes").isEqualTo(interrupted.changes());
+			requireThat(completed.applied(), "applied").isEqualTo(completed.changes().size());
 			requireCandidateDelivered(fixture);
 			requirePromptTestDelivered(fixture, created);
+			requireThat(history(fixture).records(), "records").isEqualTo(List.of(RECORD));
 		}
 	}
 
