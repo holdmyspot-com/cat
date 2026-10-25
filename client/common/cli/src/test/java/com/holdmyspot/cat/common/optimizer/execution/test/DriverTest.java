@@ -3361,13 +3361,24 @@ public final class DriverTest
 		// Requirement: R-F6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Candidate first = new Candidate(1, Builder.snapshot("candidate-1"));
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new Builder().confirmed().working(2).readyDevelopment().readyBaseline().
-					certificationAttempt(1).candidate(first).cell("formatting", 296, 4).cell("plain_list", 250, 0).
-					cell("safety", 250, 0).outcome(Outcome.INCONCLUSIVE).campaign().
-					certificationAttempt(2).cell("formatting", 295, 4).cell("plain_list", 100, 0).
-					cell("safety", 100, 0).build());
+			Path root = cleanup.add(Files.createTempDirectory("best-delivery"));
+			Path base = Files.createDirectory(root.resolve("base"));
+			Files.writeString(base.resolve(DriverHarness.PROMPT), "fork");
+			FileInventory fork = InventoryScanner.scan(base, Set.of());
+			DriverHarness harness = new DriverHarness(root.resolve("driver"),
+				new Builder().confirmed().working(2).build(), fork, base);
+			Overlay earlier = harness.candidate("earlier best");
+			Overlay later = harness.candidate("later working");
+			Candidate first = new Candidate(1, earlier.identity());
+			Candidate second = new Candidate(2, later.identity());
+			harness.overlays().put(first.snapshot(), earlier);
+			harness.overlays().put(second.snapshot(), later);
+			harness.workspace().materialize(later);
+			harness.store().replaceSnapshot(new Builder().confirmed().working(second).readyDevelopment().
+				readyBaseline().certificationAttempt(1).candidate(first).cell("formatting", 296, 4).
+				cell("plain_list", 250, 0).cell("safety", 250, 0).outcome(Outcome.INCONCLUSIVE).campaign().
+				certificationAttempt(2).candidate(second).cell("formatting", 295, 4).cell("plain_list", 100, 0).
+				cell("safety", 100, 0).build());
 			harness.trials(_ ->
 			{
 				try
@@ -3392,7 +3403,8 @@ public final class DriverTest
 				harness.runUntil(driver, state -> state.attempts().size() >= 3 && !state.attempt(3).isRunning());
 				requireThat(harness.campaign().attempt(3).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
 			}
-			try (Driver driver = harness.open())
+			DriverContext context = deliveryContext(harness, base);
+			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				driver.apply(new CampaignEvent.Cancel());
 				Campaign campaign = harness.campaign();
@@ -3401,15 +3413,18 @@ public final class DriverTest
 				requireThat(report.keepOffers().getFirst().attempt(), "offer").isEqualTo(1);
 
 				driver.apply(CampaignEvent.Choose.keep(1));
-				harness.runSlice(driver);
-				RecordingDeliverer.Call call = harness.deliverer().calls().getFirst();
-				requireThat(call.request().orElseThrow().candidate(), "candidate").isEqualTo(first);
-				requireThat(call.selected(), "selected").isEqualTo(harness.overlays().require(first.snapshot()));
-				requireThat(call.working(), "working").
-					isEqualTo(harness.overlays().require(Builder.snapshot("candidate-2")));
-				requireThat(call.record(), "record").isEmpty();
+				SliceResult result = harness.runSlice(driver);
+				requireThat(harness.campaign().delivery(), "delivery").
+					isEqualTo(new DeliveryRequest(first, 1, Outcome.IMPROVED_NOT_CERTIFIED));
+				requireThat(harness.campaign().development().working(), "working").isEqualTo(second);
+				requireThat(result.delivery().result(), "deliveryResult").isInstanceOf(DeliveryResult.Delivered.class);
+				requireThat(((DeliveryResult.Delivered) result.delivery().result()).label(), "deliveryLabel").
+					isEqualTo(Outcome.IMPROVED_NOT_CERTIFIED);
+				requireThat(Files.readString(base.resolve(DriverHarness.PROMPT)), "deliveredPrompt").
+					isEqualTo("earlier best");
 				// Requirement: R-W11
-				requireThat(call.tests(), "tests").isEmpty();
+				requireThat(InventoryScanner.scan(base, Set.of()).entries(), "deliveredInventory").
+					isEqualTo(earlier.snapshot().entries());
 			}
 		}
 	}
