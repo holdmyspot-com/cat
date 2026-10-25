@@ -5086,6 +5086,46 @@ public final class DriverTest
 	}
 
 	/**
+	 * Each trial is judged in a separate session whose prompt and readable evidence exclude the other trial.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void judgesSeeOnlyTheirOwnTrial() throws IOException
+	{
+		// Requirement: R-P2
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing().slowStart(new SlowStart(1, 0)).build());
+			List<SessionResult.Completed> trials = new ArrayList<>();
+			harness.trials(_ ->
+			{
+				SessionResult.Completed trial = harness.completed("private reply " + trials.size(), DriverHarness.MODEL);
+				trials.add(trial);
+				return trial;
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> judgeRequests(harness).size() >= 2);
+			}
+
+			List<SessionRequest> judges = judgeRequests(harness);
+			for (int index = 0; index < 2; ++index)
+			{
+				SessionRequest judge = judges.get(index);
+				SessionResult.Completed own = trials.get(index);
+				SessionResult.Completed other = trials.get(1 - index);
+				requireThat(judge.turns().getFirst(), "judgePrompt").contains(own.responses().getFirst().getFirst()).
+					doesNotContain(other.responses().getFirst().getFirst()).doesNotContain(other.transcript().toString()).
+					doesNotContain(other.effects().toString());
+				requireThat(judge.readOnly(), "readableEvidence").
+					isEqualTo(List.of(own.effects(), own.transcript().getParent()));
+			}
+		}
+	}
+
+	/**
 	 * Checks that a stored frozen path prompt loads and grants transcript access without rendering new evidence.
 	 *
 	 * @throws IOException if the fixture cannot be stored or read

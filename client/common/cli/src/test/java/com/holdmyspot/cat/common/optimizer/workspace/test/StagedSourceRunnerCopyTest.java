@@ -3,8 +3,11 @@ package com.holdmyspot.cat.common.optimizer.workspace.test;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.READ_WRITE;
+import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.content;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.file;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
@@ -55,6 +58,55 @@ public final class StagedSourceRunnerCopyTest
 			{"claude"},
 			{"codex"}
 		};
+	}
+
+	/**
+	 * Trial project writes and harness-home state stay private to that trial, and optimizer records never reach
+	 * either trial's project copy.
+	 *
+	 * @param harness the harness whose runs receive the copies
+	 * @throws IOException if the fixture cannot be created or copied
+	 */
+	@Test(dataProvider = "harnesses")
+	public void trialsKeepProjectsAndHomesPrivate(String harness) throws IOException
+	{
+		// Requirement: R-P2
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path fixture = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "isolated-trials-"));
+			LinkedProject project = ProjectFixtures.linkedProject(fixture);
+			Path records = Files.createDirectories(project.base().resolve(".cat/sessions/campaign/optimizer"));
+			Files.writeString(records.resolve("assignments.jsonl"), "private assignment", UTF_8);
+			Files.writeString(records.resolve("results.jsonl"), "other trial result", UTF_8);
+			Files.writeString(records.resolve("campaign.json"), "private campaign record", UTF_8);
+			Overlay candidate = Overlay.of(project.tree().inventory()).
+				write(Path.of(".cat/sessions/campaign/optimizer/assignments.jsonl"), content("private assignment"), READ_WRITE).
+				write(Path.of(".cat/sessions/campaign/optimizer/results.jsonl"), content("other trial result"), READ_WRITE).
+				write(Path.of(".cat/sessions/campaign/optimizer/campaign.json"), content("campaign record"), READ_WRITE);
+			Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).stage(candidate, Set.of());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), fixture.resolve("runs"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun first = manager.create(harness);
+			manager.copyProject(staged, first);
+			Path firstProject = first.directory().resolve("project");
+			Files.writeString(firstProject.resolve("prompt.md"), "first trial edit", UTF_8);
+			Files.writeString(first.directory().resolve("home/memory.txt"), "first trial memory", UTF_8);
+
+			HarnessRun second = manager.create(harness);
+			manager.copyProject(staged, second);
+			Path secondProject = second.directory().resolve("project");
+			requireThat(Files.readString(secondProject.resolve("prompt.md"), UTF_8), "secondPrompt").isEqualTo("prompt");
+			requireThat(Files.exists(second.directory().resolve("home/memory.txt")), "inheritedMemory").isFalse();
+			Files.writeString(second.directory().resolve("home/memory.txt"), "second trial memory", UTF_8);
+			requireThat(Files.readString(first.directory().resolve("home/memory.txt"), UTF_8), "firstMemory").
+				isEqualTo("first trial memory");
+			requireThat(Files.readString(firstProject.resolve("prompt.md"), UTF_8), "firstPrompt").
+				isEqualTo("first trial edit");
+			requireThat(Files.readString(staged.resolve("prompt.md"), UTF_8), "stagedPrompt").isEqualTo("prompt");
+			for (Path copy : Set.of(firstProject, secondProject))
+				requireThat(Files.exists(copy.resolve(".cat/sessions")), "optimizerState").isFalse();
+		}
 	}
 
 	/**
