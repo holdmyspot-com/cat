@@ -435,14 +435,15 @@ public final class HarnessRunnerBridge
 	}
 
 	/**
-	 * Serves a managed bridge with requested child sessions, then writes its retained-evidence receipt.
+	 * Serves a managed bridge with requested child sessions, then writes its retained-evidence receipt. The bridge
+	 * reads its records from the options' input file when they name one, and from {@code input} otherwise.
 	 *
 	 * @param starter starts the parent session
 	 * @param manager the lifecycle manager
 	 * @param options runner options
 	 * @param json the receipt mapper
 	 * @param replacer replaces the receipt
-	 * @param input the bridge input
+	 * @param input the bridge input when the options name no input file
 	 * @param output the bridge output when no output path is requested
 	 * @param requestedStarter starts requested child runners
 	 * @return the completed run
@@ -456,6 +457,34 @@ public final class HarnessRunnerBridge
 		requireThat(options, "options").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
+		if (options.input() != null)
+		{
+			try (Reader records = Files.newBufferedReader(options.input(), StandardCharsets.UTF_8))
+			{
+				return serveRecords(starter, manager, options, json, replacer, records, output, requestedStarter);
+			}
+		}
+		return serveRecords(starter, manager, options, json, replacer, input, output, requestedStarter);
+	}
+
+	/**
+	 * Serves a managed bridge from one record source, then writes its retained-evidence receipt.
+	 *
+	 * @param starter          starts the parent session
+	 * @param manager          the lifecycle manager
+	 * @param options          runner options
+	 * @param json             the receipt mapper
+	 * @param replacer         replaces the receipt
+	 * @param input            the bridge's records
+	 * @param output           the bridge output when no output path is requested
+	 * @param requestedStarter starts requested child runners
+	 * @return the completed run
+	 * @throws IOException if bridge execution or evidence publication fails
+	 */
+	private static HarnessRun serveRecords(HarnessRunStarter starter, HarnessRunManager manager,
+		HarnessRunnerOptions options, JsonMapper json, FileReplacer replacer, Reader input, Writer output,
+		RequestedSessionStarter requestedStarter) throws IOException
+	{
 		if (options.output() == null)
 			return serve(starter, manager, options.keepRun(), input, output, options, requestedStarter);
 		HarnessRun run;

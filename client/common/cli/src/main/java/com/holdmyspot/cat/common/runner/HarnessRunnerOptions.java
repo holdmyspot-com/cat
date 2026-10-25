@@ -32,12 +32,13 @@ import java.util.List;
  *   manifests' names, beside CAT when {@code installCat} is also set
  * @param sessionRequests how many sessions the session may request over the run; {@code 0} allows none
  * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
+ * @param input the file that holds the run's JSON Lines records, or {@code null} to read them from standard input
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String executable, String model,
 	String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat,
 	boolean includeUserRules, int maximumConcurrency, List<Path> deniedReads, Path workspace, List<Path> plugins,
-	int sessionRequests, Duration capacityWait)
+	int sessionRequests, Duration capacityWait, Path input)
 {
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -167,6 +168,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.workspace = Path.of(value);
 			else if (option.equals("--plugin"))
 				options.plugins.add(Path.of(value));
+			else if (option.equals("--input"))
+				options.input = Path.of(value);
 			else
 				throw new IllegalArgumentException("Unsupported option: " + option);
 			index += 2;
@@ -183,7 +186,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
 			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.includeUserRules,
 			options.maximumConcurrency, options.deniedReads, options.workspace, options.plugins, options.sessionRequests,
-			options.capacityWait);
+			options.capacityWait, options.input);
 	}
 
 	/**
@@ -199,7 +202,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			"[--executable <path>] [--model <name>] [--effort <level>] [--output <path>] [--keep-run] [--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--workspace <path>] [--plugin <path>]... [--session-requests <count>] " +
-			"[--capacity-wait <seconds>]";
+			"[--input <file>] [--capacity-wait <seconds>]";
 	}
 
 	/**
@@ -224,8 +227,9 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *   their manifests' names
 	 * @param sessionRequests how many sessions the session may request over the run
 	 * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
+	 * @param input the file that holds the run's JSON Lines records, or {@code null} to read standard input
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
-	 *   {@code workspace} and {@code capacityWait}
+	 *   {@code workspace}, {@code capacityWait} and {@code input}
 	 * @throws IllegalArgumentException if {@code executable} is blank, {@code runRoot} or an element of
 	 *   {@code deniedReads} is not absolute, {@code sessionRequests} is negative, or {@code capacityWait} is not
 	 *   positive
@@ -271,5 +275,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private final List<Path> plugins = new ArrayList<>();
 		private int sessionRequests;
 		private Duration capacityWait;
+		private Path input;
 	}
 }

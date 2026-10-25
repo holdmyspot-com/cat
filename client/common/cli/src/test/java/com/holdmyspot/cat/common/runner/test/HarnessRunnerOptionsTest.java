@@ -53,6 +53,7 @@ public final class HarnessRunnerOptionsTest
 			contains("--plugin <path>").
 			contains("[--session-transcripts]").
 			contains("[--session-requests <count>]").
+			contains("[--input <file>]").
 			contains("[--capacity-wait <seconds>]");
 	}
 
@@ -273,6 +274,22 @@ public final class HarnessRunnerOptionsTest
 		{
 			requireThat(e.getMessage(), "message").contains("--session-requests");
 		}
+	}
+
+	/**
+	 * Verifies that {@code --input} names the file that holds the run's JSON Lines records, and that the records come
+	 * from standard input unless it is given.
+	 */
+	@Test
+	public void parsesInputFile()
+	{
+		HarnessRunnerOptions file = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--input", absolute("turns.jsonl")}, "harness", SESSION);
+		HarnessRunnerOptions standard = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+			"harness", SESSION);
+
+		requireThat(file.input(), "file").isEqualTo(path("turns.jsonl"));
+		requireThat(standard.input(), "standard").isNull();
 	}
 
 	/**

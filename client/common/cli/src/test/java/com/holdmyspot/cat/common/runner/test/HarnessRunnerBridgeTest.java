@@ -214,7 +214,7 @@ public final class HarnessRunnerBridgeTest
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, false, false, true, 1, List.of(), null, List.of(), 0, null);
+				"", transcript, true, receipt, false, false, true, 1, List.of(), null, List.of(), 0, null, null);
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
 
@@ -227,6 +227,40 @@ public final class HarnessRunnerBridgeTest
 			requireThat(HarnessRunReceipt.read(json, receipt).retainedProject(), "retainedProject").
 				isEqualTo(project);
 			requireThat(HarnessRunReceipt.read(json, receipt).rawResult(), "rawResult").isEqualTo(transcript);
+		}
+	}
+
+	/**
+	 * Verifies that a bridge given an input file serves the turns that the file holds, so that a caller that cannot
+	 * pipe records to the runner's standard input can name them instead.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void servesTurnsFromInputFile() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			FakeProcess process = new FakeProcess();
+			StringReader standardInput = new StringReader(""))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Files.createDirectories(run.directory().resolve("project"));
+			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
+			Path input = Files.writeString(evidence.resolve("turns.jsonl"), "{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n");
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
+				"", null, true, null, false, false, true, 1, List.of(), null, List.of(), 0, null, input);
+			StringWriter output = new StringWriter();
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, output);
+
+			requireThat(process.turns, "turns").isEqualTo(2);
+			requireThat(output.toString(), "output").contains("\"type\":\"completed\"");
 		}
 	}
 
@@ -256,7 +290,7 @@ public final class HarnessRunnerBridgeTest
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, true, false, true, 1, List.of(), null, List.of(), 0, null);
+				"", transcript, true, receipt, true, false, true, 1, List.of(), null, List.of(), 0, null, null);
 			JsonMapper json = JsonMapper.builder().build();
 
 			try (TranscriptProcess process = new TranscriptProcess(nativeFile, run.sessionTranscripts()))
@@ -300,7 +334,7 @@ public final class HarnessRunnerBridgeTest
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, false, false, true, 1, List.of(), null, List.of(), 0, null);
+				"", transcript, true, receipt, false, false, true, 1, List.of(), null, List.of(), 0, null, null);
 			JsonMapper json = JsonMapper.builder().build();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
