@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.campaign.test;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
@@ -343,8 +344,21 @@ public final class Builder
 	 */
 	public Builder working(int number)
 	{
-		this.working = new Candidate(number, snapshot("candidate-" + number));
-		this.candidates = Math.max(candidates, number);
+		return working(new Candidate(number, snapshot("candidate-" + number)));
+	}
+
+	/**
+	 * Makes a promoted candidate with a captured snapshot the working candidate.
+	 *
+	 * @param value the candidate
+	 * @return this builder
+	 * @throws NullPointerException if {@code value} is null
+	 */
+	public Builder working(Candidate value)
+	{
+		requireThat(value, "value").isNotNull();
+		this.working = value;
+		this.candidates = Math.max(candidates, value.number());
 		return this;
 	}
 

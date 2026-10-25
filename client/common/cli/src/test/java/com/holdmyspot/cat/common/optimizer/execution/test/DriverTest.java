@@ -83,7 +83,9 @@ import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
+import com.holdmyspot.cat.common.optimizer.delivery.Delivery;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
+import com.holdmyspot.cat.common.optimizer.cli.test.InMemoryForks;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorBrief;
 import com.holdmyspot.cat.common.optimizer.execution.CampaignLock;
@@ -3266,9 +3268,19 @@ public final class DriverTest
 		// Requirement: R-F6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
-					certificationAttempt(1).cell("formatting", 295, 4).cell("safety", 100, 0).build());
+			Path root = cleanup.add(Files.createTempDirectory("driver"));
+			Path base = Files.createDirectory(root.resolve("base"));
+			Files.writeString(base.resolve(DriverHarness.PROMPT), "fork");
+			FileInventory fork = InventoryScanner.scan(base, Set.of());
+			DriverHarness harness = new DriverHarness(root.resolve("driver"),
+				new Builder().confirmed().working(1).build(), fork, base);
+			Overlay selected = harness.candidate("kept improvement");
+			Candidate candidate = new Candidate(1, selected.identity());
+			harness.overlays().put(candidate.snapshot(), selected);
+			harness.workspace().materialize(selected);
+			harness.store().replaceSnapshot(new Builder().confirmed().working(candidate).readyDevelopment().
+				readyBaseline().certificationAttempt(1).candidate(candidate).cell("formatting", 295, 4).
+				cell("safety", 100, 0).build());
 			try (Driver driver = harness.open())
 			{
 				SliceResult result = harness.runSlice(driver);
@@ -3279,7 +3291,15 @@ public final class DriverTest
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
 			}
-			try (Driver driver = harness.open())
+			DriverContext original = harness.context();
+			Delivery deliverer = new Delivery(original.store(), original.workspace(),
+				new InMemoryForks(base, Set.of(DriverHarness.PROMPT)), original.json(), Yielding.fileReplacer());
+			DriverContext context = new DriverContext(original.fileLocks(), original.store(), original.sessions(),
+				original.workspace(), original.interrupts(), original.clock(), original.overlays(), original.judge(),
+				original.triage(), original.promptAuthor(), original.values(), deliverer::deliver, original.calibrator(),
+				original.terminator(), original.leftoverRuns(), original.authority(), original.promptSources(),
+				original.environment(), original.lockFile(), original.random(), original.settings(), original.json());
+			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				requireThat(harness.campaign().pending(), "pending").
 					isInstanceOf(PendingDecision.ImprovementProven.class);
@@ -3287,10 +3307,12 @@ public final class DriverTest
 				SliceResult result = harness.runSlice(driver);
 				Campaign campaign = harness.campaign();
 				requireThat(campaign.delivery(), "delivery").isEqualTo(new DeliveryRequest(
-					new Candidate(1, Builder.snapshot("candidate-1")), 1, Outcome.IMPROVED_NOT_CERTIFIED));
-				requireThat(harness.deliverer().calls().size(), "deliveries").isEqualTo(1);
-				requireThat(harness.deliverer().calls().getFirst().selected(), "selected").
-					isEqualTo(harness.overlays().require(Builder.snapshot("candidate-1")));
+					candidate, 1, Outcome.IMPROVED_NOT_CERTIFIED));
+				requireThat(result.delivery().result(), "deliveryResult").isInstanceOf(DeliveryResult.Delivered.class);
+				requireThat(((DeliveryResult.Delivered) result.delivery().result()).label(), "deliveryLabel").
+					isEqualTo(Outcome.IMPROVED_NOT_CERTIFIED);
+				requireThat(Files.readString(base.resolve(DriverHarness.PROMPT)), "deliveredPrompt").
+					isEqualTo("kept improvement");
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Ended(Outcome.IMPROVED_NOT_CERTIFIED));
 			}
