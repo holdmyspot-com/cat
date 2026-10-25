@@ -195,6 +195,28 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
+	 * Verifies that a launch without {@code --artifact} runs the artifact that holds the launcher, and that a named
+	 * artifact or the {@code serve} command keeps working.
+	 */
+	@Test
+	public void defaultsToLauncherArtifact()
+	{
+		Path own = path("own-artifact");
+
+		HarnessRunnerOptions unnamed = HarnessRunnerOptions.parse(HarnessRunnerOptions.withArtifact(
+			new String[] {"--project", absolute("project")}, own), "harness", SESSION);
+		HarnessRunnerOptions named = HarnessRunnerOptions.parse(HarnessRunnerOptions.withArtifact(
+			new String[] {"--artifact", absolute("artifact")}, own), "harness", SESSION);
+		HarnessRunnerOptions served = HarnessRunnerOptions.parseServe(HarnessRunnerOptions.withArtifact(
+			new String[] {"serve", "--project", absolute("project")}, own), "harness", SESSION);
+
+		requireThat(unnamed.artifact(), "unnamed").isEqualTo(own);
+		requireThat(unnamed.project(), "project").isEqualTo(path("project"));
+		requireThat(named.artifact(), "named").isEqualTo(path("artifact"));
+		requireThat(served.artifact(), "served").isEqualTo(own);
+	}
+
+	/**
 	 * Verifies a receipt has the bridge transcript and retained run that make it independently usable.
 	 */
 	@Test(expectedExceptions = IllegalArgumentException.class)

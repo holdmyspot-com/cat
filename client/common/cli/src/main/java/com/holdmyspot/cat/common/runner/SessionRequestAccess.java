@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Platform;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -158,6 +159,34 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 		if (platform.isWindows())
 			name += ".cmd";
 		return artifact.toAbsolutePath().normalize().resolve("bin").resolve(name);
+	}
+
+	/**
+	 * Returns the runner launchers beside a request launcher. Inside a run, each one requests a session of its harness
+	 * as the request launcher does.
+	 *
+	 * @param launcher the request launcher
+	 * @return the {@code claude-runner} and {@code codex-runner} launchers, in that order, as batch files when the
+	 *   request launcher is one
+	 * @throws NullPointerException if {@code launcher} is null
+	 */
+	public static List<Path> runners(Path launcher)
+	{
+		requireThat(launcher, "launcher").isNotNull();
+		String suffix = "";
+		if (launcher.getFileName().toString().endsWith(".cmd"))
+			suffix = ".cmd";
+		return List.of(launcher.resolveSibling("claude-runner" + suffix), launcher.resolveSibling("codex-runner" + suffix));
+	}
+
+	/**
+	 * Returns the runner launchers beside the request launcher.
+	 *
+	 * @return the {@code claude-runner} and {@code codex-runner} launchers, in that order
+	 */
+	public List<Path> runners()
+	{
+		return runners(launcher);
 	}
 
 	/**

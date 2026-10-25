@@ -8,6 +8,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
@@ -21,15 +22,19 @@ import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerMaintenance;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +47,12 @@ public final class ClaudeRunnerCli
 {
 	/**
 	 * Prints the usage, resolves a profile, verifies an artifact, runs a lifecycle-only command, or serves JSONL turns
-	 * through one persistent isolated Claude process, as the arguments select.
+	 * through one persistent isolated Claude process, as the arguments select. A command that names no
+	 * {@code --artifact} runs the artifact that holds this launcher.
+	 * <p>
+	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
+	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
+	 * receipt.
 	 *
 	 * @param args the command's options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
@@ -71,6 +81,15 @@ public final class ClaudeRunnerCli
 			return;
 		}
 		Map<String, String> environment = Platform.current().environment(System.getenv());
+		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
+		if (requests != null && !requests.isBlank())
+		{
+			System.exit(SessionRequestForwarder.forward(HARNESS_ID, args,
+				new InputStreamReader(System.in, UTF_8), Path.of(requests), Pause.sleeping(Duration.ofMillis(100)),
+				System.out, new PrintWriter(System.err, true, UTF_8)));
+		}
+		args = HarnessRunnerOptions.withArtifact(args,
+			Path.of(System.getProperty("java.home")).toAbsolutePath().getParent());
 		Path home = Platform.current().homeDirectory(environment);
 		FileLocks fileLocks = new FileLocks();
 		try

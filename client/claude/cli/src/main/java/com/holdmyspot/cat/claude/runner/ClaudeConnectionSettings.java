@@ -258,6 +258,8 @@ public final class ClaudeConnectionSettings
 		if (requestAccess != null)
 		{
 			grants.add("Bash(" + requestAccess.launcher() + ":*)");
+			for (Path runner : requestAccess.runners())
+				grants.add("Bash(" + runner + ":*)");
 			grants.add("Read(/" + rulePath(requestAccess.responses()) + "/**)");
 		}
 		List<String> writablePaths = new ArrayList<>();

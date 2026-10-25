@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.ShellQuoting;
 
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * The instructions that tell a session how to request a session, the same in every harness. A runner adds them to the
@@ -26,11 +27,10 @@ public final class SessionRequestInstructions
 	{
 		requireThat(sessionRequests, "sessionRequests").isPositive();
 		requireThat(launcher, "launcher").isAbsolute();
-		String command;
-		if (powerShell)
-			command = "& " + ShellQuoting.powerShell(launcher.toString());
-		else
-			command = ShellQuoting.posix(launcher.toString());
+		String command = command(launcher, powerShell);
+		List<Path> runners = SessionRequestAccess.runners(launcher);
+		String claudeRunner = command(runners.get(0), powerShell);
+		String codexRunner = command(runners.get(1), powerShell);
 
 		String sessions;
 		if (sessionRequests == 1)
@@ -55,7 +55,32 @@ public final class SessionRequestInstructions
 			"with a reason, and whose fields name the file paths of the session's transcript, receipt and, with " +
 			"--session-transcripts, its native transcripts. Read those files for the results; you may read them " +
 			"although they lie under the run root. If the session is still running when the wait ends, the command " +
-			"prints the request's id and the command that waits again, " + command + " --await <id>.";
+			"prints the request's id and the command that waits again, " + command + " --await <id>.\n" +
+			"\n" +
+			"The runner launchers " + claudeRunner + " and " + codexRunner + " request a session of their harness " +
+			"in the same way, from the same count, and wait until it ends. Write the session's turns into a file, one " +
+			"{\"type\":\"turn\",\"prompt\":\"<task>\"} line per turn followed by a {\"type\":\"complete\"} line, " +
+			"then run:\n" +
+			"\n" +
+			codexRunner + " --project <directory> --input <file> [--plugin <directory>]... [--model <name>] " +
+			"[--effort <level>] [--install-cat] [--session-transcripts] [--output <file>] [--receipt <file>]\n" +
+			"\n" +
+			"It writes the session's transcript to --output, or prints it, copies its receipt to --receipt, and exits " +
+			"with 0 when the session completed, 75 when no capacity was free, and 1 otherwise, with the reason.";
+	}
+
+	/**
+	 * Returns the command that runs a launcher.
+	 *
+	 * @param launcher   the launcher's absolute path
+	 * @param powerShell {@code true} for a PowerShell command, {@code false} for a POSIX shell command
+	 * @return the quoted command
+	 */
+	private static String command(Path launcher, boolean powerShell)
+	{
+		if (powerShell)
+			return "& " + ShellQuoting.powerShell(launcher.toString());
+		return ShellQuoting.posix(launcher.toString());
 	}
 
 	/**

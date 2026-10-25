@@ -8,6 +8,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
@@ -21,16 +22,21 @@ import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerMaintenance;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -47,20 +53,44 @@ public final class CodexRunnerCli
 	private static final String TOOL_OUTPUT_TOKEN_LIMIT = "--tool-output-token-limit";
 
 	/**
-	 * Serves JSONL turns through one persistent isolated Codex process.
+	 * Prints the usage, runs a lifecycle-only command or one prompt, or serves JSONL turns through one persistent
+	 * isolated Codex process, as the arguments select. A bridge command that names no {@code --artifact} runs the
+	 * artifact that holds this launcher.
+	 * <p>
+	 * Inside a run whose runner lets its session request sessions, a bridge launch becomes a session request instead:
+	 * the run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
+	 * receipt.
 	 *
-	 * @param args the {@code serve} command and its options
+	 * @param args the command and its options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
 	public static void main(String[] args) throws IOException
 	{
 		args = CommandLineArguments.recover(args);
+		if (args.length == 1 && args[0].equals("--help"))
+		{
+			System.out.println(HarnessRunnerOptions.usage("codex-runner"));
+			return;
+		}
 		if (HarnessRunnerMaintenance.isMaintenanceCommand(args))
 		{
 			executeMaintenance(args);
 			return;
 		}
 		Map<String, String> environment = Platform.current().environment(System.getenv());
+		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
+		if (requests != null && !requests.isBlank() && !isOneShotCommand(args))
+		{
+			String[] launch = args;
+			if (launch.length > 0 && launch[0].equals("serve"))
+				launch = Arrays.copyOfRange(launch, 1, launch.length);
+			System.exit(SessionRequestForwarder.forward(HARNESS_ID, launch,
+				new InputStreamReader(System.in, UTF_8), Path.of(requests), Pause.sleeping(Duration.ofMillis(100)),
+				System.out, new PrintWriter(System.err, true, UTF_8)));
+		}
+		Path artifact = Path.of(System.getProperty("java.home")).toAbsolutePath().getParent();
+		if (!isOneShotCommand(args))
+			args = HarnessRunnerOptions.withArtifact(args, artifact);
 		Path home = Platform.current().homeDirectory(environment);
 		FileLocks fileLocks = new FileLocks();
 		if (isOneShotCommand(args))

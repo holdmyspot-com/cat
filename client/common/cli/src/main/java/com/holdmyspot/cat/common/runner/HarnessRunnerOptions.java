@@ -202,6 +202,28 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	}
 
 	/**
+	 * Returns a runner command that names an artifact.
+	 *
+	 * @param args     the runner command, optionally starting with {@code serve}
+	 * @param artifact the artifact to name when the command names none
+	 * @return {@code args} if it names {@code --artifact}; otherwise {@code args} with {@code --artifact <artifact>}
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static String[] withArtifact(String[] args, Path artifact)
+	{
+		requireThat(args, "args").isNotNull();
+		requireThat(artifact, "artifact").isNotNull();
+		if (Arrays.asList(args).contains("--artifact"))
+			return args;
+		List<String> result = new ArrayList<>(Arrays.asList(args));
+		int position = 0;
+		if (!result.isEmpty() && result.getFirst().equals("serve"))
+			position = 1;
+		result.addAll(position, List.of("--artifact", artifact.toString()));
+		return result.toArray(String[]::new);
+	}
+
+	/**
 	 * Returns bridge command usage for one concrete launcher.
 	 *
 	 * @param launcherName the executable users invoke

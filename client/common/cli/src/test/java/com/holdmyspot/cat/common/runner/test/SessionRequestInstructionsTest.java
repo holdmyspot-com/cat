@@ -38,6 +38,22 @@ public final class SessionRequestInstructionsTest
 	}
 
 	/**
+	 * Verifies that the instructions name both runner launchers beside the request launcher as another way to request
+	 * a session, with its records in an input file.
+	 */
+	@Test
+	public void namesRunnerLaunchers()
+	{
+		// Requirement: R-I9
+		Path launcher = Path.of("artifact/bin/request-session").toAbsolutePath();
+		String text = SessionRequestInstructions.text(2, launcher, false);
+
+		requireThat(text, "text").contains(ShellQuoting.posix(launcher.resolveSibling("claude-runner").toString())).
+			contains(ShellQuoting.posix(launcher.resolveSibling("codex-runner").toString())).contains("--input").
+			contains("\"type\":\"turn\"").contains("\"type\":\"complete\"");
+	}
+
+	/**
 	 * Verifies that both POSIX commands quote a launcher path containing spaces.
 	 */
 	@Test

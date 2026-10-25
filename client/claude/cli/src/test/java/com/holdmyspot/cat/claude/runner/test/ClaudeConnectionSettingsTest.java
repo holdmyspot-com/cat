@@ -25,7 +25,8 @@ import tools.jackson.databind.JsonNode;
 public final class ClaudeConnectionSettingsTest
 {
 	/**
-	 * Verifies that requested sessions grant only the literal launcher command, and no command grant otherwise.
+	 * Verifies that requested sessions grant only the literal launcher commands, the request launcher and both runner
+	 * launchers beside it, and no command grant otherwise.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -45,8 +46,12 @@ public final class ClaudeConnectionSettingsTest
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, Platform.LINUX_X64);
 			JsonNode allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
-			requireThat(allow.size(), "grantCount").isEqualTo(4);
+			requireThat(allow.size(), "grantCount").isEqualTo(6);
 			requireThat(allow.path(2).asString(), "launcherGrant").isEqualTo("Bash(" + launcher + ":*)");
+			requireThat(allow.path(3).asString(), "claudeRunnerGrant").isEqualTo("Bash(" +
+				launcher.resolveSibling("claude-runner") + ":*)");
+			requireThat(allow.path(4).asString(), "codexRunnerGrant").isEqualTo("Bash(" +
+				launcher.resolveSibling("codex-runner") + ":*)");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, Platform.LINUX_X64);
@@ -86,6 +91,8 @@ public final class ClaudeConnectionSettingsTest
 			for (JsonNode grant : settings.path("permissions").path("allow"))
 				grants.add(grant.asString());
 			requireThat(grants, "grants").isEqualTo(List.of("Skill", "Edit(./**)", "Bash(" + launcher + ":*)",
+				"Bash(" + launcher.resolveSibling("claude-runner") + ":*)",
+				"Bash(" + launcher.resolveSibling("codex-runner") + ":*)",
 				"Read(/" + ClaudeConnectionSettings.rulePath(responses) + "/**)"));
 			requireThat(settings.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
 			List<String> writablePaths = new ArrayList<>();
