@@ -67,7 +67,8 @@ public final class SessionRequestCliTest
 				ManualClock time = new ManualClock(Instant.EPOCH);
 				StringWriter output = new StringWriter();
 				int status = SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
-					"--prompt", prompt.toString(), "--prompt", second.toString(), "--plugin", plugin.toString()}, requests, time,
+					"--prompt", prompt.toString(), "--prompt", second.toString(), "--plugin", plugin.toString(),
+					"--install-cat"}, requests, time,
 					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(output));
 				requireThat(status, "status").isEqualTo(3);
 				requireThat(output.toString(), "output").contains("--await");
@@ -90,6 +91,7 @@ public final class SessionRequestCliTest
 					JsonNode request = JsonMapper.builder().build().readTree(entries.get("request.json"));
 					requireThat(request.path("format_version").intValue(), "version").isEqualTo(2);
 					requireThat(request.path("prompts").get(1).asString(), "promptEntry").isEqualTo("prompts/1");
+					requireThat(request.path("install_cat").asBoolean(false), "installCat").isTrue();
 					String id = file.getFileName().toString().replace(".tar", "");
 					Path response = Files.createDirectories(root.resolve("responses").resolve(id)).resolve("response.json");
 					Files.writeString(response, "{\"status\":\"completed\"}");

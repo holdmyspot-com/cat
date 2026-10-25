@@ -39,7 +39,7 @@ public final class SessionRequestCli
 		{
 			System.out.println("Usage: request-session --harness <name> --project <dir> --prompt <file> " +
 				"[--prompt <file>]... [--plugin <dir>]... [--model <name>] [--effort <level>] " +
-				"[--session-transcripts] [--wait <seconds>] | --await <id> [--wait <seconds>]");
+				"[--install-cat] [--session-transcripts] [--wait <seconds>] | --await <id> [--wait <seconds>]");
 			return;
 		}
 		String directory = System.getenv(SessionRequestAccess.REQUESTS_VARIABLE);
@@ -81,9 +81,9 @@ public final class SessionRequestCli
 		for (int index = 0; index < args.length; ++index)
 		{
 			String option = args[index];
-			if (option.equals("--session-transcripts"))
+			if (option.equals("--session-transcripts") || option.equals("--install-cat"))
 			{
-				request.put("session_transcripts", true);
+				request.put(option.substring(2).replace('-', '_'), true);
 				continue;
 			}
 			if (index + 1 == args.length)
@@ -127,7 +127,7 @@ public final class SessionRequestCli
 		else
 		{
 			if (!Set.of("--await", "--wait").containsAll(scalars) || !request.path("prompts").isEmpty() ||
-				!request.path("plugins").isEmpty() || request.has("session_transcripts"))
+				!request.path("plugins").isEmpty() || request.has("session_transcripts") || request.has("install_cat"))
 				throw new IllegalArgumentException("--await accepts only --wait");
 			validateId(id);
 		}

@@ -45,11 +45,12 @@ public final class SessionRequestInstructions
 			"Write each prompt into a file inside your project, then run:\n" +
 			"\n" +
 			command + " --harness <claude|codex> --project <directory> --prompt <file> " +
-			"[--prompt <file>]... [--plugin <directory>]... [--model <name>] [--effort <level>] " +
+			"[--prompt <file>]... [--plugin <directory>]... [--model <name>] [--effort <level>] [--install-cat] " +
 			"[--session-transcripts]\n" +
 			"\n" +
 			"Every input is a file path you can read: the project to copy, one prompt file per turn, and each " +
-			"plugin directory to install. Inputs must contain no symbolic links. The command waits up to 300 seconds. " +
+			"plugin directory to install. --install-cat also installs CAT in the session. Inputs must contain no " +
+			"symbolic links. The command waits up to 300 seconds. " +
 			"When the session ends, it prints the " +
 			"file path of the response, a JSON file whose status is completed, failed, refused, capacity or stopped, " +
 			"with a reason, and whose fields name the file paths of the session's transcript, receipt and, with " +
