@@ -292,7 +292,8 @@ public final class ClaudeRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("claude");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
@@ -339,7 +340,8 @@ public final class ClaudeRunnerTest
 			Path campaigns = Files.createDirectories(session.resolve("campaigns"));
 			Path root = Files.createDirectories(session.resolve("optimizer-runs/claude"));
 			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/claude-held_out"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("claude");
 			Path directory = run.directory();
 			manager.snapshotProject(run);

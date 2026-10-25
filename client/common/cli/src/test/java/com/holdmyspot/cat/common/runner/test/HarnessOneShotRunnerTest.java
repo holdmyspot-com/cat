@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -37,10 +38,12 @@ public final class HarnessOneShotRunnerTest
 	@Test
 	public void persistsOutputAndRemovesSuccessfulRun() throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-one-shot-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			Path output = root.resolve("result.json");
 

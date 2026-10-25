@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -38,10 +39,12 @@ public final class HarnessRunReceiptTest
 	@Test
 	public void readsTypedRetainedEvidence() throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
-			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
+			HarnessRun run = new HarnessRunManager(fileLocks, root,
+				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path receipt = root.resolve("receipt.json");
 
@@ -63,11 +66,13 @@ public final class HarnessRunReceiptTest
 	@Test
 	public void listsSessionTranscripts() throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		// Requirement: R-I7
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
-			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
+			HarnessRun run = new HarnessRunManager(fileLocks, root,
+				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path transcript = Files.createDirectories(run.sessionTranscripts()).resolve("session-1.jsonl");
 			Files.writeString(transcript, "{}\n");
@@ -92,11 +97,13 @@ public final class HarnessRunReceiptTest
 	@Test
 	public void listsRequestedSessions() throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		// Requirement: R-I9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-"));
-			HarnessRun run = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
+			HarnessRun run = new HarnessRunManager(fileLocks, root,
+				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path child = Files.createDirectories(run.directory().resolve("responses/first")).resolve("response.json");
 			ObjectNode result = scope.json().createObjectNode().put("id", "first").put("harness", "harness").

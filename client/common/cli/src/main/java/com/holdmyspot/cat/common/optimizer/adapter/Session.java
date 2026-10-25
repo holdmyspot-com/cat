@@ -470,7 +470,8 @@ final class Session implements SessionHandle
 	{
 		List<RateLimitWindow> windows = events.windows();
 		if (ended != null)
-			new HarnessRunManager(runRoot(), clock, settings.replacer()).pruneTerminalRuntimes(sessions.harness());
+			new HarnessRunManager(settings.scope().fileLocks(), runRoot(),
+				clock, settings.replacer()).pruneTerminalRuntimes(sessions.harness());
 		if (interruptRequested.get())
 			return new SessionResult.Interrupted(windows);
 		Optional<HarnessEvents.Rejection> rejection = events.rejection();

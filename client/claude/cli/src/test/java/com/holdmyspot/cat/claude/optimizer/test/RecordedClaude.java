@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -46,6 +47,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 final class RecordedClaude implements Bridge
 {
+	private final FileLocks fileLocks = new FileLocks();
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final List<List<String>> turns;
 	private final FakeHarnessCli process = new FakeHarnessCli(this::answer);
@@ -124,7 +126,8 @@ final class RecordedClaude implements Bridge
 	public void serve(List<String> arguments, Reader input, Writer output) throws IOException
 	{
 		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--run-root"));
-		HarnessRunManager manager = new HarnessRunManager(runRoot, Clock.systemUTC(), Yielding.fileReplacer());
+		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot,
+			Clock.systemUTC(), Yielding.fileReplacer());
 		HarnessRun completed = HarnessRunnerBridge.serve(() ->
 		{
 			HarnessRun run = manager.create("claude");

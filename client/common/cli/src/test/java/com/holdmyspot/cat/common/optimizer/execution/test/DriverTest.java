@@ -419,7 +419,7 @@ public final class DriverTest
 			FileCampaignStore store = new FileCampaignStore(directory, JsonMapper.builder().build(), Yielding.fileReplacer());
 			store.replaceSnapshot(harness.campaign());
 			DriverContext original = harness.context();
-			DriverContext context = new DriverContext(store, original.sessions(), original.workspace(),
+			DriverContext context = new DriverContext(original.fileLocks(), store, original.sessions(), original.workspace(),
 				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), original.authority(), original.promptSources(), original.environment(),
@@ -3209,7 +3209,8 @@ public final class DriverTest
 				{
 					// Driver.open takes ownership of the lock and releases it when it fails
 					Driver.open(harness.context(), "missing-campaign",
-						CampaignLock.tryAcquire(directory.resolve("unlock.lock"), _ -> channel).orElseThrow()).close();
+						CampaignLock.tryAcquire(harness.context().fileLocks(), directory.resolve("unlock.lock"),
+							_ -> channel).orElseThrow()).close();
 					throw new AssertionError("Expected the missing campaign to fail");
 				}
 				catch (IllegalArgumentException e)
@@ -5376,7 +5377,7 @@ public final class DriverTest
 				authoring().baseline("formatting", 49, 0).build());
 			List<SessionRole> interrupts = new ArrayList<>();
 			DriverContext original = harness.context();
-			DriverContext failing = new DriverContext(original.store(),
+			DriverContext failing = new DriverContext(original.fileLocks(), original.store(),
 				rejectInterrupts(original.sessions(), rejectTrials, interrupts), original.workspace(), original.interrupts(),
 				original.clock(), original.overlays(), original.judge(), original.triage(), original.promptAuthor(),
 				original.values(), original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
@@ -5748,7 +5749,8 @@ public final class DriverTest
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				authoring().build(), fork);
 			DriverContext original = harness.context();
-			DriverContext context = new DriverContext(original.store(), original.sessions(), original.workspace(),
+			DriverContext context = new DriverContext(original.fileLocks(), original.store(), original.sessions(),
+				original.workspace(),
 				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), new Authority(Set.of(DriverHarness.PROMPT, Path.of("docs")), Set.of(), fork),

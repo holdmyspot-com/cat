@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.WRITE;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.LockFileOpener;
 import java.io.IOException;
@@ -36,14 +37,15 @@ public final class CampaignLock implements AutoCloseable
 	/**
 	 * Acquires the lock without waiting.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param file the campaign's lock file, which is created if needed
 	 * @return the lock, or empty if another driver holds it
-	 * @throws NullPointerException if {@code file} is null
+	 * @throws NullPointerException if {@code fileLocks} or {@code file} are null
 	 * @throws IOException if the lock directory cannot be created, the file cannot be opened, or locking fails
 	 */
-	public static Optional<CampaignLock> tryAcquire(Path file) throws IOException
+	public static Optional<CampaignLock> tryAcquire(FileLocks fileLocks, Path file) throws IOException
 	{
-		return tryAcquire(file, lockFile -> FileChannel.open(lockFile, CREATE, WRITE));
+		return tryAcquire(fileLocks, file, lockFile -> FileChannel.open(lockFile, CREATE, WRITE));
 	}
 
 	/**
@@ -51,21 +53,24 @@ public final class CampaignLock implements AutoCloseable
 	 * <p>
 	 * The opened channel is closed unless the returned lock holds it.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param file the campaign's lock file
 	 * @param opener opens the lock file, creating it if needed
 	 * @return the lock, or empty if another driver holds it
-	 * @throws NullPointerException if {@code file} or {@code opener} are null
+	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the lock directory cannot be created, the file cannot be opened, or locking or closing the
 	 *   channel fails
 	 */
-	public static Optional<CampaignLock> tryAcquire(Path file, LockFileOpener opener) throws IOException
+	public static Optional<CampaignLock> tryAcquire(FileLocks fileLocks, Path file, LockFileOpener opener)
+		throws IOException
 	{
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(file, "file").isNotNull();
 		requireThat(opener, "opener").isNotNull();
 		Path parent = file.toAbsolutePath().getParent();
 		if (parent != null)
 			Files.createDirectories(parent);
-		return ExclusiveFileLock.tryLock(file, opener).map(CampaignLock::new);
+		return fileLocks.tryLock(file, opener).map(CampaignLock::new);
 	}
 
 	/**

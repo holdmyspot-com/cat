@@ -78,7 +78,8 @@ public final class StagedSourceRunnerCopyTest
 				LinkedProject project = ProjectFixtures.linkedProject(fixture);
 				Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).
 					stage(Overlay.of(project.tree().inventory()), Set.of());
-				HarnessRunManager manager = new HarnessRunManager(fixture.resolve("runs"), Clock.systemUTC(),
+				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+					fixture.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 
 				HarnessRun refused = manager.create(harness);

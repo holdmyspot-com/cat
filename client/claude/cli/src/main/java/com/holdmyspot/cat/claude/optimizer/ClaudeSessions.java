@@ -716,7 +716,8 @@ public final class ClaudeSessions extends RunnerSessions
 	private static Bridge productionBridge(Settings settings)
 	{
 		requireThat(settings, "settings").isNotNull();
-		return (arguments, input, output) -> ClaudeRunnerCli.serve(arguments.toArray(String[]::new), input, output,
+		return (arguments, input, output) -> ClaudeRunnerCli.serve(settings.scope().fileLocks(),
+			arguments.toArray(String[]::new), input, output,
 			settings.environment(), _ -> HarnessCapacity.unlimited());
 	}
 }

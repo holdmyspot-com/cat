@@ -5,6 +5,7 @@ import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.WRITE;
 
 import com.holdmyspot.cat.common.ExclusiveFileLock;
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.LockFileOpener;
 import com.holdmyspot.cat.common.Pause;
@@ -29,8 +30,6 @@ import java.time.format.DateTimeParseException;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * Bounds how many harness sessions run at once, across every CAT process that shares one lock directory, and holds
@@ -55,9 +54,10 @@ public final class HarnessCapacity
 		HarnessCapacitySecrets.setHarnessCapacityAccess(new HarnessCapacityAccess()
 		{
 			@Override
-			public HarnessCapacity of(Path lockDirectory, int maximum, Pause pause, Clock clock, LockFileOpener opener)
+			public HarnessCapacity of(FileLocks fileLocks, Path lockDirectory, int maximum, Pause pause, Clock clock,
+				LockFileOpener opener)
 			{
-				return HarnessCapacity.of(lockDirectory, maximum, pause, clock, opener);
+				return HarnessCapacity.of(fileLocks, lockDirectory, maximum, pause, clock, opener);
 			}
 		});
 	}
@@ -80,12 +80,6 @@ public final class HarnessCapacity
 	private static final int HOLD_FORMAT_VERSION = 1;
 	private static final Set<String> HOLD_FIELDS = Set.of("format_version", "ends_at", "backoffs");
 	private static final JsonMapper JSON = JsonMapper.builder().build();
-	/**
-	 * Serializes hold updates inside this JVM, keyed by the real path of the lock directory. A second lock on
-	 * {@code hold.lock} would fail instead of waiting, and closing its channel would release the first lock for other
-	 * processes.
-	 */
-	private static final ConcurrentMap<Path, Object> HOLD_MONITORS = new ConcurrentHashMap<>();
 	private static final Permit UNLIMITED_PERMIT = () ->
 	{
 	};
@@ -93,6 +87,7 @@ public final class HarnessCapacity
 	 * Opens the slot and hold lock files, creating them if needed.
 	 */
 	private static final LockFileOpener CREATING_OPENER = file -> FileChannel.open(file, CREATE, WRITE);
+	private final FileLocks fileLocks;
 	private final Path lockDirectory;
 	private final int maximum;
 	private final Pause pause;
@@ -103,14 +98,17 @@ public final class HarnessCapacity
 	/**
 	 * Creates a capacity pool backed by lock files.
 	 *
+	 * @param fileLocks the process-owned lock coordinator, or {@code null} for an unlimited pool
 	 * @param lockDirectory the directory that holds the slot files, or {@code null} for an unlimited pool
 	 * @param maximum the number of slots
 	 * @param pause the wait between attempts to acquire a slot or to replace the hold file
 	 * @param clock the clock that decides whether a hold lasts
 	 * @param opener opens the slot and hold lock files
 	 */
-	private HarnessCapacity(Path lockDirectory, int maximum, Pause pause, Clock clock, LockFileOpener opener)
+	private HarnessCapacity(FileLocks fileLocks, Path lockDirectory, int maximum, Pause pause, Clock clock,
+		LockFileOpener opener)
 	{
+		this.fileLocks = fileLocks;
 		this.lockDirectory = lockDirectory;
 		this.maximum = maximum;
 		this.pause = pause;
@@ -122,23 +120,25 @@ public final class HarnessCapacity
 	/**
 	 * Creates a capacity pool whose slots are files in a directory.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param lockDirectory the directory that holds the slot files. It is created on first use.
 	 * @param maximum the number of permits that may be held at once, from 1 to {@link #MAXIMUM_CONCURRENCY}
 	 * @param pause the wait that {@link #acquire()} performs between attempts, and that a replacement of the hold file
 	 *   performs while Windows refuses it
 	 * @param clock the clock that decides whether a hold lasts
 	 * @return the pool
-	 * @throws NullPointerException if {@code lockDirectory}, {@code pause} or {@code clock} are null
+	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code maximum} is out of range
 	 */
-	public static HarnessCapacity of(Path lockDirectory, int maximum, Pause pause, Clock clock)
+	public static HarnessCapacity of(FileLocks fileLocks, Path lockDirectory, int maximum, Pause pause, Clock clock)
 	{
-		return of(lockDirectory, maximum, pause, clock, CREATING_OPENER);
+		return of(fileLocks, lockDirectory, maximum, pause, clock, CREATING_OPENER);
 	}
 
 	/**
 	 * Creates a capacity pool whose slots are files in a directory, opening its lock files through a given opener.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param lockDirectory the directory that holds the slot files. It is created on first use.
 	 * @param maximum the number of permits that may be held at once, from 1 to {@link #MAXIMUM_CONCURRENCY}
 	 * @param pause the wait that {@link #acquire()} performs between attempts, and that a replacement of the hold file
@@ -146,17 +146,19 @@ public final class HarnessCapacity
 	 * @param clock the clock that decides whether a hold lasts
 	 * @param opener opens the slot and hold lock files, creating them if needed
 	 * @return the pool
-	 * @throws NullPointerException if {@code lockDirectory}, {@code pause}, {@code clock} or {@code opener} are null
+	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code maximum} is out of range
 	 */
-	static HarnessCapacity of(Path lockDirectory, int maximum, Pause pause, Clock clock, LockFileOpener opener)
+	static HarnessCapacity of(FileLocks fileLocks, Path lockDirectory, int maximum, Pause pause, Clock clock,
+		LockFileOpener opener)
 	{
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(lockDirectory, "lockDirectory").isNotNull();
 		requireThat(maximum, "maximum").isBetween(1, MAXIMUM_CONCURRENCY + 1);
 		requireThat(pause, "pause").isNotNull();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(opener, "opener").isNotNull();
-		return new HarnessCapacity(lockDirectory.toAbsolutePath().normalize(), maximum, pause, clock, opener);
+		return new HarnessCapacity(fileLocks, lockDirectory.toAbsolutePath().normalize(), maximum, pause, clock, opener);
 	}
 
 	/**
@@ -166,7 +168,7 @@ public final class HarnessCapacity
 	 */
 	public static HarnessCapacity unlimited()
 	{
-		return new HarnessCapacity(null, MAXIMUM_CONCURRENCY, () ->
+		return new HarnessCapacity(null, null, MAXIMUM_CONCURRENCY, () ->
 		{
 			throw new AssertionError("An unlimited pool never waits");
 		}, Clock.systemUTC(), CREATING_OPENER);
@@ -180,19 +182,21 @@ public final class HarnessCapacity
 	 * Only an application entry point should call this method, because it is the one place that resolves the user's
 	 * home directory.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param home the user's home directory
 	 * @param harness the harness name, such as {@code claude}
 	 * @param maximum the number of permits that may be held at once, from 1 to {@link #MAXIMUM_CONCURRENCY}
 	 * @return the pool
-	 * @throws NullPointerException if {@code home} or {@code harness} are null
+	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code harness} is blank or {@code maximum} is out of range
 	 */
-	public static HarnessCapacity forHome(Path home, String harness, int maximum)
+	public static HarnessCapacity forHome(FileLocks fileLocks, Path home, String harness, int maximum)
 	{
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		Path lockDirectory = home.resolve(".cat").resolve("locks").resolve("harness-capacity").resolve(harness);
-		return of(lockDirectory, maximum, Pause.sleeping(RETRY_INTERVAL), Clock.systemUTC());
+		return of(fileLocks, lockDirectory, maximum, Pause.sleeping(RETRY_INTERVAL), Clock.systemUTC());
 	}
 
 	/**
@@ -254,7 +258,7 @@ public final class HarnessCapacity
 		Files.createDirectories(lockDirectory);
 		for (int slot = 0; slot < maximum; ++slot)
 		{
-			Optional<ExclusiveFileLock> lock = ExclusiveFileLock.tryLock(lockDirectory.resolve("slot-" + slot + ".lock"),
+			Optional<ExclusiveFileLock> lock = fileLocks.tryLock(lockDirectory.resolve("slot-" + slot + ".lock"),
 				opener);
 			if (lock.isPresent())
 				return Optional.of(lock.get()::close);
@@ -366,7 +370,7 @@ public final class HarnessCapacity
 	private Object holdMonitor() throws IOException
 	{
 		Files.createDirectories(lockDirectory);
-		return HOLD_MONITORS.computeIfAbsent(lockDirectory.toRealPath(), _ -> new Object());
+		return fileLocks.monitor(lockDirectory.resolve(HOLD_LOCK));
 	}
 
 	/**

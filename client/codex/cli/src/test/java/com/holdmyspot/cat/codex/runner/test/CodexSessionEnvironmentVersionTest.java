@@ -74,7 +74,9 @@ public final class CodexSessionEnvironmentVersionTest
 				Path deniedFile = Files.writeString(root.resolve("campaign.json"), "{}");
 				Path hostProject = Files.createDirectories(root.resolve("project"));
 				Files.writeString(hostProject.resolve("AGENTS.md"), "Follow the handbook.", UTF_8);
-				HarnessRunManager manager = new HarnessRunManager(hostProject.resolve("runs"), Clock.systemUTC(),
+				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+					hostProject.resolve("runs"),
+					Clock.systemUTC(),
 					Yielding.fileReplacer());
 				HarnessRun run = manager.create("codex");
 				manager.snapshotProject(run);

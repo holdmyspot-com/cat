@@ -6,6 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
@@ -71,11 +72,12 @@ public final class ClaudeRunnerCli
 		}
 		Map<String, String> environment = Platform.current().environment(System.getenv());
 		Path home = Platform.current().homeDirectory(environment);
+		FileLocks fileLocks = new FileLocks();
 		try
 		{
-			serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
+			serve(fileLocks, args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
 				new OutputStreamWriter(System.out, UTF_8), environment,
-				maximum -> HarnessCapacity.forHome(home, HARNESS_ID, maximum));
+				maximum -> HarnessCapacity.forHome(fileLocks, home, HARNESS_ID, maximum));
 		}
 		catch (HarnessCapacityWaitExpiredException e)
 		{
@@ -96,29 +98,32 @@ public final class ClaudeRunnerCli
 		Map<String, String> environment = Platform.current().environment(System.getenv());
 		try (ToolScope scope = ToolScope.forSession(Path.of(""), environment, SessionHarness.installed()))
 		{
-			HarnessRunnerMaintenance.execute(args, HARNESS_ID, HarnessTemporaryRoot.from(scope), environment,
-				System.out);
+			HarnessRunnerMaintenance.execute(scope.fileLocks(), args, HARNESS_ID, HarnessTemporaryRoot.from(scope),
+				environment, System.out);
 		}
 	}
 
 	/**
 	 * Serves one Claude bridge using caller-provided streams and environment.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param args bridge options
 	 * @param input the bridge input
 	 * @param output the bridge output
 	 * @param environment the host environment
 	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
 	 *   command selected
+	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
-	public static void serve(String[] args, Reader input, Writer output, Map<String, String> environment,
-		IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
+	public static void serve(FileLocks fileLocks, String[] args, Reader input, Writer output,
+		Map<String, String> environment, IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
 		try (ToolScope scope = ToolScope.forSession(Path.of(""), environment, SessionHarness.installed()))
 		{
@@ -128,7 +133,8 @@ public final class ClaudeRunnerCli
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			String instructionFilesMode = instructionFilesMode(args);
 			FileReplacer replacer = FileReplacer.sleeping();
-			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(), replacer);
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, options.runRoot(),
+				Clock.systemUTC(), replacer);
 			manager.deleteStaleRuns(HarnessRunManager.DEFAULT_RETENTION);
 			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, manager, input, output, environment,
 				replacer, capacityForMaximum.apply(options.maximumConcurrency()));

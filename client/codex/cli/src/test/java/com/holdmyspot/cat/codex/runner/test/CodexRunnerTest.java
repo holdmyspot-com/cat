@@ -336,7 +336,8 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
@@ -411,7 +412,8 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
@@ -445,7 +447,8 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
@@ -479,7 +482,8 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
@@ -524,7 +528,8 @@ public final class CodexRunnerTest
 			Path campaigns = Files.createDirectories(session.resolve("campaigns"));
 			Path root = Files.createDirectories(session.resolve("optimizer-runs/codex"));
 			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
@@ -569,7 +574,8 @@ public final class CodexRunnerTest
 			Path session = Files.createDirectories(project.resolve(".cat/sessions/session-1"));
 			Path root = Files.createDirectories(session.resolve("optimizer-runs/codex"));
 			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 
 			for (Platform platform : List.of(Platform.LINUX_X64, Platform.MACOS_ARM64, Platform.WINDOWS_X64))

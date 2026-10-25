@@ -203,7 +203,7 @@ public final class Driver implements AutoCloseable
 	{
 		requireThat(context, "context").isNotNull();
 		requireThat(campaignId, "campaignId").isNotBlank();
-		Optional<CampaignLock> lock = CampaignLock.tryAcquire(context.lockFile());
+		Optional<CampaignLock> lock = CampaignLock.tryAcquire(context.fileLocks(), context.lockFile());
 		if (lock.isEmpty())
 			return Optional.empty();
 		return Optional.of(open(context, campaignId, lock.get()));

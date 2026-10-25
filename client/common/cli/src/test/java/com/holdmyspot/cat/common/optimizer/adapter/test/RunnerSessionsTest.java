@@ -599,7 +599,8 @@ public final class RunnerSessionsTest
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
-				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+					root.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				HarnessRun run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
@@ -644,7 +645,8 @@ public final class RunnerSessionsTest
 			List<String> sent = new CopyOnWriteArrayList<>();
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
-				HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+					root.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				HarnessRun run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
@@ -701,7 +703,8 @@ public final class RunnerSessionsTest
 					HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 				{
-					HarnessRunManager manager = new HarnessRunManager(runs, Clock.systemUTC(), Yielding.fileReplacer());
+					HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runs,
+						Clock.systemUTC(), Yielding.fileReplacer());
 					HarnessRun run = manager.create(TestSessions.HARNESS);
 					manager.initialize(run, root, root, "scripted", List.of("scripted"));
 					output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
@@ -754,7 +757,8 @@ public final class RunnerSessionsTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
-				HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+				HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(),
+					root.resolve("locks"), 1, () ->
 				{
 				}, Clock.systemUTC());
 				List<List<String>> arguments = new CopyOnWriteArrayList<>();
@@ -792,7 +796,8 @@ public final class RunnerSessionsTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
-				HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+				HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(),
+					root.resolve("locks"), 1, () ->
 				{
 				}, Clock.systemUTC());
 				CountDownLatch entered = new CountDownLatch(1);
@@ -1161,13 +1166,14 @@ public final class RunnerSessionsTest
 	 * Creates a capacity pool over a test-owned directory whose holds follow a test-controlled clock, and that fails
 	 * the test if a session waits for it.
 	 *
+	 * @param jvm the process scope that owns file-lock coordination
 	 * @param directory the directory that holds the slot and hold files
 	 * @param clock the clock that decides whether a hold lasts
 	 * @return the pool
 	 */
-	private static HarnessCapacity heldBy(Path directory, ManualClock clock)
+	private static HarnessCapacity heldBy(JvmScope jvm, Path directory, ManualClock clock)
 	{
-		return HarnessCapacity.of(directory, 1, () ->
+		return HarnessCapacity.of(jvm.fileLocks(), directory, 1, () ->
 		{
 			throw new AssertionError("The session must not wait for capacity");
 		}, clock);
@@ -1194,7 +1200,7 @@ public final class RunnerSessionsTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
 				ManualClock clock = new ManualClock(START);
-				HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+				HarnessCapacity capacity = heldBy(jvm, root.resolve("locks"), clock);
 				List<String> requests = new CopyOnWriteArrayList<>();
 				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock,
 					List.of(Turn.replies("refused", TestSessions.REFUSED_EVENT), Turn.replies("never")), requests);
@@ -1229,7 +1235,7 @@ public final class RunnerSessionsTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
 				ManualClock clock = new ManualClock(START);
-				HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+				HarnessCapacity capacity = heldBy(jvm, root.resolve("locks"), clock);
 				// Six refusals reach the 30-minute hold
 				for (int refused = 0; refused < 6; ++refused)
 					clock.set(capacity.refuse().hold().endsAt());
@@ -1266,7 +1272,7 @@ public final class RunnerSessionsTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
 				ManualClock clock = new ManualClock(START);
-				HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+				HarnessCapacity capacity = heldBy(jvm, root.resolve("locks"), clock);
 				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock,
 					List.of(Turn.replies("limit", TestSessions.REJECTED_EVENT)), new CopyOnWriteArrayList<>());
 
@@ -1299,7 +1305,7 @@ public final class RunnerSessionsTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
 				ManualClock clock = new ManualClock(START.minus(Duration.ofMinutes(10)));
-				HarnessCapacity capacity = heldBy(root.resolve("locks"), clock);
+				HarnessCapacity capacity = heldBy(jvm, root.resolve("locks"), clock);
 				HarnessCapacity.Hold ended = capacity.reject(null);
 				clock.set(START);
 				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock, List.of(Turn.replies("done")),

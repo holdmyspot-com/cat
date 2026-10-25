@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
@@ -23,6 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> Callers may read the context concurrently if its collaborators support concurrent access.
  *
+ * @param fileLocks the process-owned lock coordinator
  * @param store the campaign store
  * @param sessions starts nested sessions
  * @param workspace stages candidates, prepares prompt author copies and reads or writes the optimization worktree
@@ -51,7 +53,7 @@ import tools.jackson.databind.json.JsonMapper;
  * @param settings the time limits of one bounded driver run (a slice)
  * @param json reads and writes the hook configurations that control trials remove dependents from
  */
-public record DriverContext(CampaignStore store, SessionPort sessions, WorkspacePort workspace,
+public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPort sessions, WorkspacePort workspace,
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
 	TriageProtocol triage, PromptAuthorProtocol promptAuthor, ValuesProtocol values, Deliverer deliverer,
 	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverRuns leftoverRuns, Authority authority,
@@ -61,6 +63,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	/**
 	 * Creates a context.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param store the campaign store
 	 * @param sessions starts nested sessions
 	 * @param workspace stages candidates, prepares prompt author copies and reads or writes the optimization worktree
@@ -90,6 +93,7 @@ public record DriverContext(CampaignStore store, SessionPort sessions, Workspace
 	 */
 	public DriverContext
 	{
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(store, "store").isNotNull();
 		requireThat(sessions, "sessions").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();

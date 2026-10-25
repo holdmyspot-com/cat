@@ -152,13 +152,16 @@ public final class CodexRunnerCliTest
 						throw new AssertionError("The capacity wait did not end");
 					clock.advance(Duration.ofSeconds(1));
 				};
-				HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, second, clock);
+				HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(),
+					root.resolve("locks"), 1, second, clock);
 				String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
 					root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--capacity-wait",
 					"5"};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
-					CodexRunnerCli.serve(args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity);
+					CodexRunnerCli.serve(jvm.fileLocks(),
+						args, new StringReader(""), new StringWriter(), Map.of(),
+						_ -> capacity);
 					throw new AssertionError("The bridge did not give up waiting for capacity");
 				}
 				catch (HarnessCapacityWaitExpiredException _)

@@ -25,6 +25,7 @@ public abstract class AbstractJvmScope implements JvmScope
 	private final Reference<JsonMapper> json = LazyReference.create(this::createJsonMapper);
 	private final Reference<YAMLMapper> yaml = LazyReference.create(this::createYamlMapper);
 	private final Reference<Clock> clock = LazyReference.create(this::createClock);
+	private final Reference<FileLocks> fileLocks = LazyReference.create(this::createFileLocks);
 
 	/**
 	 * Creates a process scope with an explicit temporary directory.
@@ -99,6 +100,13 @@ public abstract class AbstractJvmScope implements JvmScope
 	}
 
 	@Override
+	public FileLocks fileLocks()
+	{
+		ensureOpen();
+		return fileLocks.getValue();
+	}
+
+	@Override
 	public Path temporaryDirectory() throws IOException
 	{
 		ensureOpen();
@@ -147,6 +155,18 @@ public abstract class AbstractJvmScope implements JvmScope
 		if (parent != null)
 			return parent.yaml();
 		return YAMLMapper.builder().build();
+	}
+
+	/**
+	 * Creates this process's lock coordinator or shares the enclosing process's coordinator.
+	 *
+	 * @return the process lock coordinator
+	 */
+	private FileLocks createFileLocks()
+	{
+		if (parent != null)
+			return parent.fileLocks();
+		return new FileLocks();
 	}
 
 	/**

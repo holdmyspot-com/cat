@@ -1832,7 +1832,7 @@ public final class OptimizerCore implements Core
 	 */
 	private Cleanup cleanup() throws CommandRefusedException, IOException
 	{
-		return new Cleanup(scope.projectRoot(), scope.sessionDirectory().campaigns(), scope.forks(),
+		return new Cleanup(scope.fileLocks(), scope.projectRoot(), scope.sessionDirectory().campaigns(), scope.forks(),
 			scope.sessions().runRoots(), scope.json(), scope.fileReplacer());
 	}
 
@@ -2509,7 +2509,8 @@ public final class OptimizerCore implements Core
 			Set.copyOf(scope.loaderConfiguration()));
 		ValuesPrompt values = new ValuesPrompt(scope.json(), schema, valuesDirectory,
 			new SplittableRandom(scope.random().nextLong()));
-		return new DriverContext(store, scope.sessions(), fork.workspace(), scope.interrupts(), scope.clock(),
+		return new DriverContext(scope.fileLocks(), store, scope.sessions(), fork.workspace(), scope.interrupts(),
+			scope.clock(),
 			new FileCandidateOverlays(directory, inventory, fork::version, scope.json(), scope.fileReplacer()), judge, triage,
 			promptAuthor,
 			values,

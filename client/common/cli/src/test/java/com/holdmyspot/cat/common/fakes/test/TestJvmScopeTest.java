@@ -5,6 +5,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.AbstractJvmScope;
 import com.holdmyspot.cat.common.ExecutableFiles;
+import com.holdmyspot.cat.common.ExclusiveFileLock;
+import java.nio.channels.FileChannel;
+import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.WRITE;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
 import java.io.IOException;
@@ -96,5 +100,58 @@ public final class TestJvmScopeTest
 		{
 		}
 		scope.executableFiles();
+	}
+
+	/**
+	 * Repeated service access and child scopes share one reservation until the held lease closes. A controlled
+	 * refusal before opening a second channel makes missing coordination observable without releasing the first lock.
+	 *
+	 * @throws IOException if the owned directory or file lock cannot be used
+	 */
+	@Test
+	public void sharesFileLockReservations() throws IOException
+	{
+		// Requirement: R-T1
+		try (TestJvmScope parent = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories();
+			AbstractJvmScope child = new AbstractJvmScope(parent)
+			{
+			})
+		{
+			Path directory = cleanup.add(Files.createTempDirectory(parent.temporaryDirectory(), "scope-locks-"));
+			Path file = directory.resolve("owned.lock");
+			try (ExclusiveFileLock held = parent.fileLocks().tryLock(file,
+				path -> FileChannel.open(path, CREATE, WRITE)).orElseThrow())
+			{
+				requireThat(parent.fileLocks().tryLock(file, _ ->
+				{
+					throw new IOException("Repeated service access opened a held file");
+				}), "parentReservation").isEmpty();
+				requireThat(child.fileLocks().tryLock(file, _ ->
+				{
+					throw new IOException("Child scope opened a held file");
+				}), "childReservation").isEmpty();
+				requireThat(held.isValid(), "held").isTrue();
+			}
+			try (ExclusiveFileLock reacquired = child.fileLocks().tryLock(file,
+				path -> FileChannel.open(path, CREATE, WRITE)).orElseThrow())
+			{
+				requireThat(reacquired.isValid(), "reacquired").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * A closed scope refuses access to its file-lock coordinator.
+	 */
+	@Test(expectedExceptions = IllegalStateException.class)
+	public void rejectsFileLockAccessAfterClose()
+	{
+		// Requirement: R-T1
+		TestJvmScope scope = new TestJvmScope();
+		try (scope)
+		{
+		}
+		scope.fileLocks();
 	}
 }

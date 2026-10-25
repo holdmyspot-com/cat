@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -81,6 +82,7 @@ public final class SessionRequestBrokerTest
 	@Test(dataProvider = "outcomes", timeOut = 30_000)
 	public void retainsChildEvidence(int exit, String expected) throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		// Requirement: R-I9
 		try (Fixture fixture = new Fixture())
 		{
@@ -99,7 +101,8 @@ public final class SessionRequestBrokerTest
 					requireThat(Files.readString(project.resolve("marker")), "snapshot").isEqualTo("original");
 					if (exit != 75)
 					{
-						HarnessRun run = new HarnessRunManager(Path.of(option(options, "--run-root")), Clock.systemUTC(),
+						HarnessRun run = new HarnessRunManager(fileLocks, Path.of(option(options, "--run-root")),
+							Clock.systemUTC(),
 							Yielding.fileReplacer()).create("claude");
 						Files.writeString(Files.createDirectories(run.sessionTranscripts()).resolve("native.jsonl"), "native");
 						Path transcript = Files.writeString(Path.of(option(options, "--output")), "bridge");
@@ -297,6 +300,7 @@ public final class SessionRequestBrokerTest
 	@Test(dataProvider = "lifecycles", timeOut = 30_000)
 	public void bridgeStopsRequestedSessions(String mode) throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		// Requirement: R-I9
 		try (Fixture fixture = new Fixture();
 			TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
@@ -363,7 +367,8 @@ public final class SessionRequestBrokerTest
 				try
 				{
 					HarnessRunnerBridge.serve(() -> new HarnessRunSession(fixture.run, parent, scope),
-						new HarnessRunManager(fixture.root.resolve("runs"), Clock.systemUTC(), Yielding.fileReplacer()),
+						new HarnessRunManager(fileLocks, fixture.root.resolve("runs"),
+							Clock.systemUTC(), Yielding.fileReplacer()),
 						fixture.options, fixture.json, Yielding.fileReplacer(), input, new StringWriter(), (_, _, _) ->
 						{
 							started.countDown();
@@ -439,7 +444,8 @@ public final class SessionRequestBrokerTest
 			try (TestJvmScope jvm = new TestJvmScope())
 			{
 				root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "broker-"));
-				run = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(), Yielding.fileReplacer()).create("claude");
+				run = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"),
+					Clock.systemUTC(), Yielding.fileReplacer()).create("claude");
 				project = run.directory().resolve("project");
 				denied = Files.createDirectory(root.resolve("denied"));
 				Files.writeString(project.resolve("marker"), "original");

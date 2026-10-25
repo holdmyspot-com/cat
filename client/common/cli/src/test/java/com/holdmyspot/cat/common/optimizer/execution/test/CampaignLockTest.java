@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.execution.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.execution.CampaignLock;
 import com.holdmyspot.cat.common.optimizer.execution.fixture.test.FaultingFileChannel;
@@ -40,17 +41,18 @@ public final class CampaignLockTest
 	@Test
 	public void oneHolderAtATime() throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		// Requirement: R-E9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path file = cleanup.add(Files.createTempDirectory("lock")).resolve("campaigns/campaign-1/lock");
-			Optional<CampaignLock> first = CampaignLock.tryAcquire(file);
+			Optional<CampaignLock> first = CampaignLock.tryAcquire(fileLocks, file);
 			requireThat(first, "first").isPresent();
 			try (CampaignLock _ = first.get())
 			{
-				requireThat(CampaignLock.tryAcquire(file), "second").isEmpty();
+				requireThat(CampaignLock.tryAcquire(fileLocks, file), "second").isEmpty();
 			}
-			Optional<CampaignLock> third = CampaignLock.tryAcquire(file);
+			Optional<CampaignLock> third = CampaignLock.tryAcquire(fileLocks, file);
 			requireThat(third, "third").isPresent();
 			third.get().close();
 		}
@@ -67,6 +69,7 @@ public final class CampaignLockTest
 	@Test
 	public void heldLockFileIsNotOpenedAgain() throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		// Requirement: R-E9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -74,11 +77,11 @@ public final class CampaignLockTest
 			Path directory = Files.createDirectories(root.resolve("campaigns/campaign-1"));
 			Path alias = Files.createSymbolicLink(root.resolve("alias"), directory);
 			List<Path> opened = new CopyOnWriteArrayList<>();
-			try (CampaignLock _ = CampaignLock.tryAcquire(directory.resolve("lock")).orElseThrow())
+			try (CampaignLock _ = CampaignLock.tryAcquire(fileLocks, directory.resolve("lock")).orElseThrow())
 			{
 				for (Path file : List.of(directory.resolve("lock"), alias.resolve("lock")))
 				{
-					Optional<CampaignLock> second = CampaignLock.tryAcquire(file, lockFile ->
+					Optional<CampaignLock> second = CampaignLock.tryAcquire(fileLocks, file, lockFile ->
 					{
 						opened.add(lockFile);
 						return FileChannel.open(lockFile, CREATE, WRITE);
@@ -87,9 +90,9 @@ public final class CampaignLockTest
 				}
 				requireThat(opened, "opened").isEmpty();
 			}
-			try (CampaignLock _ = CampaignLock.tryAcquire(alias.resolve("lock")).orElseThrow())
+			try (CampaignLock _ = CampaignLock.tryAcquire(fileLocks, alias.resolve("lock")).orElseThrow())
 			{
-				requireThat(CampaignLock.tryAcquire(directory.resolve("lock")), "whileHeldThroughAlias").isEmpty();
+				requireThat(CampaignLock.tryAcquire(fileLocks, directory.resolve("lock")), "whileHeldThroughAlias").isEmpty();
 			}
 		}
 	}
@@ -104,13 +107,14 @@ public final class CampaignLockTest
 	@Test(dataProvider = "acquisitionFailures", expectedExceptions = {IOException.class, IllegalStateException.class})
 	public void acquisitionKeepsPrimaryFailure(Exception primary, Exception cleanup) throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories directories = new TemporaryDirectories();
 			FaultingFileChannel channel = new FaultingFileChannel(primary, null, cleanup))
 		{
 			Path file = directories.add(Files.createTempDirectory("lock")).resolve("lock");
 			try
 			{
-				CampaignLock.tryAcquire(file, _ -> channel);
+				CampaignLock.tryAcquire(fileLocks, file, _ -> channel);
 			}
 			catch (IOException | RuntimeException e)
 			{
@@ -147,13 +151,14 @@ public final class CampaignLockTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "release failed")
 	public void releaseKeepsPrimaryFailure() throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		IOException primary = new IOException("release failed");
 		IOException cleanup = new IOException("closing failed");
 		try (TemporaryDirectories directories = new TemporaryDirectories();
 			FaultingFileChannel channel = new FaultingFileChannel(null, primary, cleanup))
 		{
 			Path file = directories.add(Files.createTempDirectory("lock")).resolve("lock");
-			try (CampaignLock _ = CampaignLock.tryAcquire(file, _ -> channel).orElseThrow())
+			try (CampaignLock _ = CampaignLock.tryAcquire(fileLocks, file, _ -> channel).orElseThrow())
 			{
 				// Closing the scope releases the campaign lock before closing its channel.
 			}

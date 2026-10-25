@@ -45,6 +45,14 @@ public interface JvmScope extends AutoCloseable
 	ExecutableFiles executableFiles();
 
 	/**
+	 * Returns the exclusive-file-lock coordinator shared by every lock user in this process.
+	 *
+	 * @return the process lock coordinator
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	FileLocks fileLocks();
+
+	/**
 	 * Returns the absolute, normalized directory for process temporary files, creating it when necessary.
 	 * The process owns its children; closing this scope does not remove the shared directory.
 	 *

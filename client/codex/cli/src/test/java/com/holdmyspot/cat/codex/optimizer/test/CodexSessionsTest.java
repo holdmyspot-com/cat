@@ -836,7 +836,8 @@ public final class CodexSessionsTest
 					"\"secondary\":null,\"rateLimitReachedType\":\"primary\"}}}";
 				List<String> requests = new CopyOnWriteArrayList<>();
 				Instant resetsAt = Instant.ofEpochSecond(1_791_000_000L);
-				HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+				HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(),
+					root.resolve("locks"), 1, () ->
 				{
 					throw new AssertionError("The session must not wait for capacity");
 				}, Clock.fixed(resetsAt.minus(Duration.ofHours(1)), ZoneOffset.UTC));

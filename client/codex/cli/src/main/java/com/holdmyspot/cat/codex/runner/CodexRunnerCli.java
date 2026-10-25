@@ -6,6 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
@@ -61,16 +62,18 @@ public final class CodexRunnerCli
 		}
 		Map<String, String> environment = Platform.current().environment(System.getenv());
 		Path home = Platform.current().homeDirectory(environment);
+		FileLocks fileLocks = new FileLocks();
 		if (isOneShotCommand(args))
 		{
-			run(args, environment, HarnessCapacity.forHome(home, HARNESS_ID, HarnessCapacity.MAXIMUM_CONCURRENCY));
+			run(fileLocks, args, environment,
+				HarnessCapacity.forHome(fileLocks, home, HARNESS_ID, HarnessCapacity.MAXIMUM_CONCURRENCY));
 			return;
 		}
 		try
 		{
-			serve(args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
+			serve(fileLocks, args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
 				new OutputStreamWriter(System.out, UTF_8), environment,
-				maximum -> HarnessCapacity.forHome(home, HARNESS_ID, maximum));
+				maximum -> HarnessCapacity.forHome(fileLocks, home, HARNESS_ID, maximum));
 		}
 		catch (HarnessCapacityWaitExpiredException e)
 		{
@@ -82,16 +85,19 @@ public final class CodexRunnerCli
 	/**
 	 * Executes one prompt through an isolated Codex session.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param args the {@code run} command and its options
 	 * @param environment the host environment
 	 * @param capacity the shared harness capacity. The prompt waits for a permit before it starts Codex.
+	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the prompt, harness, output, or cleanup I/O fails
 	 */
-	public static void run(String[] args, Map<String, String> environment, HarnessCapacity capacity)
+	public static void run(FileLocks fileLocks, String[] args, Map<String, String> environment, HarnessCapacity capacity)
 		throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(capacity, "capacity").isNotNull();
 		String agentName = agentName(args);
 		HarnessOneShotOptions options;
@@ -101,7 +107,7 @@ public final class CodexRunnerCli
 				HarnessTemporaryRoot.from(scope));
 		}
 		CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
-		HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(),
+		HarnessRunManager manager = new HarnessRunManager(fileLocks, options.runRoot(), Clock.systemUTC(),
 			FileReplacer.sleeping());
 		String prompt = options.prompt();
 		try (HarnessCapacity.Permit _ = capacity.acquire())
@@ -125,8 +131,8 @@ public final class CodexRunnerCli
 		Map<String, String> environment = Platform.current().environment(System.getenv());
 		try (ToolScope scope = toolScope(Path.of(""), environment))
 		{
-			HarnessRunnerMaintenance.execute(args, HARNESS_ID, HarnessTemporaryRoot.from(scope), environment,
-				System.out);
+			HarnessRunnerMaintenance.execute(scope.fileLocks(), args, HARNESS_ID, HarnessTemporaryRoot.from(scope),
+				environment, System.out);
 		}
 	}
 
@@ -148,21 +154,24 @@ public final class CodexRunnerCli
 	/**
 	 * Serves one Codex bridge using caller-provided streams and environment.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param args the {@code serve} command and its options
 	 * @param input the bridge input
 	 * @param output the bridge output
 	 * @param environment the host environment
 	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
 	 *   command selected. The bridge waits for a permit before it starts Codex.
+	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
-	public static void serve(String[] args, Reader input, Writer output, Map<String, String> environment,
-		IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
+	public static void serve(FileLocks fileLocks, String[] args, Reader input, Writer output,
+		Map<String, String> environment, IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
 		try (ToolScope scope = toolScope(Path.of(""), environment))
 		{
@@ -177,7 +186,8 @@ public final class CodexRunnerCli
 				options = HarnessRunnerOptions.parse(runnerArgs, "codex", temporaryRoot);
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			FileReplacer replacer = FileReplacer.sleeping();
-			HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(), replacer);
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, options.runRoot(),
+				Clock.systemUTC(), replacer);
 			HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
 			HarnessCapacity.Permit permit;
 			if (options.capacityWait() == null)

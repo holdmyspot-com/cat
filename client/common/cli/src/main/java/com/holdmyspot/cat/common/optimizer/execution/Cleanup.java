@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -51,6 +52,7 @@ import tools.jackson.databind.json.JsonMapper;
 public final class Cleanup
 {
 	private static final String MANIFEST = "run.json";
+	private final FileLocks fileLocks;
 	private final Path base;
 	private final Path campaigns;
 	private final Forks forks;
@@ -62,6 +64,7 @@ public final class Cleanup
 	/**
 	 * Creates a cleanup.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param base the base worktree
 	 * @param campaigns the directory that holds the campaigns that this cleanup removes
 	 * @param forks creates and removes the campaigns' optimization worktrees
@@ -70,10 +73,10 @@ public final class Cleanup
 	 * @param replacer writes the record that a campaign's removal started
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Cleanup(Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json,
+	public Cleanup(FileLocks fileLocks, Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json,
 		FileReplacer replacer)
 	{
-		this(base, campaigns, forks, runRoots, json, replacer, _ ->
+		this(fileLocks, base, campaigns, forks, runRoots, json, replacer, _ ->
 		{
 		});
 	}
@@ -81,6 +84,7 @@ public final class Cleanup
 	/**
 	 * Creates a cleanup that reports each step before it runs.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param base the base worktree
 	 * @param campaigns the directory that holds the campaigns that this cleanup removes
 	 * @param forks creates and removes the campaigns' optimization worktrees
@@ -91,9 +95,10 @@ public final class Cleanup
 	 *   point, as a crash would
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Cleanup(Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json,
+	public Cleanup(FileLocks fileLocks, Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json,
 		FileReplacer replacer, Consumer<Step> beforeStep)
 	{
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(base, "base").isNotNull();
 		requireThat(campaigns, "campaigns").isNotNull();
 		requireThat(forks, "forks").isNotNull();
@@ -101,6 +106,7 @@ public final class Cleanup
 		requireThat(json, "json").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(beforeStep, "beforeStep").isNotNull();
+		this.fileLocks = fileLocks;
 		this.base = base;
 		this.campaigns = campaigns;
 		this.forks = forks;
@@ -252,7 +258,7 @@ public final class Cleanup
 	private boolean remove(String id) throws IOException
 	{
 		Path directory = FileCampaignStore.directory(campaigns, id);
-		Optional<CampaignLock> lock = CampaignLock.tryAcquire(FileCampaignStore.lockFile(campaigns, id));
+		Optional<CampaignLock> lock = CampaignLock.tryAcquire(fileLocks, FileCampaignStore.lockFile(campaigns, id));
 		if (lock.isEmpty())
 			return false;
 		// Deleting the open lock file releases nothing until the lock closes

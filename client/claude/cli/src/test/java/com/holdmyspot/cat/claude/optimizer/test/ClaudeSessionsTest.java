@@ -986,7 +986,8 @@ public final class ClaudeSessionsTest
 					"{\"utilization\":1.0,\"resetsAt\":1790851200}}}}";
 				List<String> requests = new CopyOnWriteArrayList<>();
 				Instant resetsAt = Instant.ofEpochSecond(1_790_851_200L);
-				HarnessCapacity capacity = HarnessCapacity.of(root.resolve("locks"), 1, () ->
+				HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(),
+					root.resolve("locks"), 1, () ->
 				{
 					throw new AssertionError("The session must not wait for capacity");
 				}, Clock.fixed(resetsAt.minus(Duration.ofHours(1)), ZoneOffset.UTC));

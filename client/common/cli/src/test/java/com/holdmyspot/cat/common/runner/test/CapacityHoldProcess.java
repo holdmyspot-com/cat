@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 
@@ -28,7 +29,7 @@ public final class CapacityHoldProcess
 	public static void main(String[] args) throws IOException
 	{
 		ManualClock clock = new ManualClock(Instant.parse(args[1]));
-		HarnessCapacity capacity = HarnessCapacity.of(Path.of(args[0]), 1, () ->
+		HarnessCapacity capacity = HarnessCapacity.of(new FileLocks(), Path.of(args[0]), 1, () ->
 		{
 			throw new AssertionError("The fixture must not wait");
 		}, clock);

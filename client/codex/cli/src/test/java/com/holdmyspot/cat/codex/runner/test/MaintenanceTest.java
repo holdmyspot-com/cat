@@ -41,7 +41,8 @@ public final class MaintenanceTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"maintenance-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			manager.markCompleted(run);
 
@@ -65,7 +66,8 @@ public final class MaintenanceTest
 		{
 			Path temporaryRoot = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporaryRoot, "maintenance-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("codex");
 			Files.writeString(run.directory().resolve("home/cache.txt"), "cache");
 			Path evidence = run.directory().resolve("project/source.txt");

@@ -5,10 +5,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.nio.file.Path;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -16,117 +12,34 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>
  * On some systems, Linux among them, closing any channel on a file releases every lock that the JVM holds on the file,
  * even one taken through another channel, while that lock's {@link FileLock#isValid()} stays {@code true} (see
- * {@link FileLock}). Every lock of this class is therefore recorded in a JVM-wide registry, keyed by the real path of
- * the file's directory and the file's name, and no attempt opens a file that the registry lists. A lock leaves the
- * registry only after its channel has closed.
+ * {@link FileLock}). The process-owned {@link FileLocks} coordinator therefore reserves each file before opening it.
+ * Every lock user in a process must share that coordinator. A lease releases its reservation only after its channel
+ * has closed.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class ExclusiveFileLock implements AutoCloseable
 {
-	/**
-	 * The files that this JVM has locked or is locking, keyed by {@link #keyOf(Path)}.
-	 */
-	private static final Set<Path> HELD = ConcurrentHashMap.newKeySet();
-	private final Path key;
 	private final FileChannel channel;
 	private final FileLock lock;
+	private final Runnable released;
 	private final AtomicBoolean closed = new AtomicBoolean();
 
 	/**
 	 * Creates a held lock.
 	 *
-	 * @param key the file's registry key
 	 * @param channel the open file
 	 * @param lock the lock held on {@code channel}
+	 * @param released releases the reservation after the channel closes
 	 */
-	private ExclusiveFileLock(Path key, FileChannel channel, FileLock lock)
+	ExclusiveFileLock(FileChannel channel, FileLock lock, Runnable released)
 	{
-		this.key = key;
+		requireThat(channel, "channel").isNotNull();
+		requireThat(lock, "lock").isNotNull();
+		requireThat(released, "released").isNotNull();
 		this.channel = channel;
 		this.lock = lock;
-	}
-
-	/**
-	 * Locks a file without waiting.
-	 * <p>
-	 * The file is not opened while this JVM holds or is taking a lock on it. Otherwise the opened channel is closed
-	 * unless the returned lock holds it.
-	 *
-	 * @param file the lock file. Its directory must exist.
-	 * @param opener opens the file
-	 * @return the lock, or empty if this JVM or another process holds a lock on the file
-	 * @throws NullPointerException if {@code file} or {@code opener} are null
-	 * @throws IOException if the file's directory cannot be resolved, or the file cannot be opened, locked or closed
-	 */
-	public static Optional<ExclusiveFileLock> tryLock(Path file, LockFileOpener opener) throws IOException
-	{
-		requireThat(file, "file").isNotNull();
-		requireThat(opener, "opener").isNotNull();
-		Path key = keyOf(file);
-		if (!HELD.add(key))
-			return Optional.empty();
-
-		FileChannel channel;
-		try
-		{
-			channel = opener.open(file);
-		}
-		catch (IOException | RuntimeException e)
-		{
-			HELD.remove(key);
-			throw e;
-		}
-
-		try
-		{
-			FileLock lock = channel.tryLock();
-			if (lock != null)
-				return Optional.of(new ExclusiveFileLock(key, channel, lock));
-		}
-		catch (IOException | RuntimeException e)
-		{
-			try
-			{
-				channel.close();
-			}
-			catch (IOException | RuntimeException suppressed)
-			{
-				e.addSuppressed(suppressed);
-			}
-			finally
-			{
-				HELD.remove(key);
-			}
-			throw e;
-		}
-
-		// Another process holds the lock
-		try
-		{
-			channel.close();
-		}
-		finally
-		{
-			HELD.remove(key);
-		}
-		return Optional.empty();
-	}
-
-	/**
-	 * Returns the registry key of a file: the real path of its directory, resolved against its name.
-	 *
-	 * @param file the file
-	 * @return the key
-	 * @throws IOException if the file's directory cannot be resolved
-	 */
-	private static Path keyOf(Path file) throws IOException
-	{
-		Path absolute = file.toAbsolutePath();
-		Path directory = absolute.getParent();
-		if (directory == null)
-			throw new IOException("The lock file " + file + " has no parent directory");
-		return directory.toRealPath().resolve(absolute.getFileName());
+		this.released = released;
 	}
 
 	/**
@@ -156,7 +69,7 @@ public final class ExclusiveFileLock implements AutoCloseable
 		}
 		finally
 		{
-			HELD.remove(key);
+			released.run();
 		}
 	}
 }

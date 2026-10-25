@@ -179,7 +179,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		FileReplacer replacer)
 	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, heldOut, "", true,
-			environment, configurationDirectory, HarnessCapacity.forHome(home, HARNESS_ID,
+			environment, configurationDirectory, HarnessCapacity.forHome(jvm.fileLocks(), home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY), clock, replacer, Optional.of(ProjectRuleLoader.rulesDirectory(home)),
 			hostProject);
 		return new CodexSessions(settings);

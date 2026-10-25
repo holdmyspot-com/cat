@@ -70,7 +70,8 @@ public final class ClaudeSessionEnvironmentVersionTest
 			Path deniedDirectory = Files.createDirectory(root.resolve("trials"));
 			Path hostProject = Files.createDirectories(root.resolve("project"));
 			Files.writeString(hostProject.resolve("CLAUDE.md"), "Follow the handbook.", UTF_8);
-			HarnessRunManager manager = new HarnessRunManager(hostProject.resolve("runs"), Clock.systemUTC(),
+			HarnessRunManager manager = new HarnessRunManager(scope.fileLocks(), hostProject.resolve("runs"),
+				Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("claude");
 			manager.snapshotProject(run);

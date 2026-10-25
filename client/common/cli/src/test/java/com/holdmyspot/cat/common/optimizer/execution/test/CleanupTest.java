@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.execution.test;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -323,12 +324,13 @@ public final class CleanupTest
 	/**
 	 * A base worktree with a CAT session directory that holds two campaigns and two run roots.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param base the base worktree
 	 * @param campaigns the session's directory that holds the campaigns
 	 * @param runRoots the session's run root and held-out run root
 	 * @param forks the campaigns' optimization worktrees
 	 */
-	private record Fixture(Path base, Path campaigns, List<Path> runRoots, FakeForks forks)
+	private record Fixture(FileLocks fileLocks, Path base, Path campaigns, List<Path> runRoots, FakeForks forks)
 	{
 		/**
 		 * Creates the base worktree, the other campaign with its worktree and runs, and the run roots.
@@ -347,7 +349,7 @@ public final class CleanupTest
 			SessionDirectory session = SessionDirectory.open(base, SESSION_ID, SessionHarnesses.HARNESS_A,
 				root.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
 			Path sessionRuns = Files.createDirectories(session.runRoot("claude"));
-			Fixture fixture = new Fixture(base, session.campaigns(), List.of(sessionRuns,
+			Fixture fixture = new Fixture(new FileLocks(), base, session.campaigns(), List.of(sessionRuns,
 				Files.createDirectories(sessionRuns.resolveSibling("claude-held_out"))), new FakeForks());
 			fixture.store(new Builder().header(fixture.header(OTHER, Lifecycle.ACTIVE)));
 			for (Path runRoot : fixture.runRoots())
@@ -445,7 +447,7 @@ public final class CleanupTest
 		 */
 		Cleanup cleanup(Consumer<Cleanup.Step> beforeStep)
 		{
-			return new Cleanup(base, campaigns, forks, runRoots, JSON, Yielding.fileReplacer(), beforeStep);
+			return new Cleanup(fileLocks, base, campaigns, forks, runRoots, JSON, Yielding.fileReplacer(), beforeStep);
 		}
 
 		/**
@@ -456,7 +458,7 @@ public final class CleanupTest
 		 */
 		Cleanup cleanup(Forks forks)
 		{
-			return new Cleanup(base, campaigns, forks, runRoots, JSON, Yielding.fileReplacer(), NO_HOOK);
+			return new Cleanup(fileLocks, base, campaigns, forks, runRoots, JSON, Yielding.fileReplacer(), NO_HOOK);
 		}
 
 		/**

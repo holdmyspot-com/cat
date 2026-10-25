@@ -41,7 +41,8 @@ public final class MaintenanceTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"maintenance-"));
-			HarnessRunManager manager = new HarnessRunManager(root, Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("claude");
 			manager.markCompleted(run);
 

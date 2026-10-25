@@ -12,6 +12,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.secrets.HarnessRunManagerAccess;
@@ -54,10 +55,10 @@ public final class HarnessRunManager
 			}
 
 			@Override
-			public HarnessRunManager newHarnessRunManager(Path root, Clock clock, FileReplacer replacer,
+			public HarnessRunManager newHarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
 				HarnessProcessLiveness processLiveness)
 			{
-				return new HarnessRunManager(root, clock, replacer, processLiveness);
+				return new HarnessRunManager(fileLocks, root, clock, replacer, processLiveness);
 			}
 		});
 	}
@@ -94,6 +95,7 @@ public final class HarnessRunManager
 		  "finished_at": (?<finishedAt>null|"(?<finishedAtValue>[^\"]+)"),
 		  "diagnostic": "[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"
 		}\\n\\z""");
+	private final FileLocks fileLocks;
 	private final Path root;
 	private final Clock clock;
 	private final FileReplacer replacer;
@@ -102,20 +104,22 @@ public final class HarnessRunManager
 	/**
 	 * Creates a manager rooted at an absolute directory.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param root the absolute owned-run root
 	 * @param clock the clock used for generated identifiers
 	 * @param replacer replaces the runs' manifests and output files
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
-	public HarnessRunManager(Path root, Clock clock, FileReplacer replacer)
+	public HarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer)
 	{
-		this(root, clock, replacer, new ProcessHandleLiveness());
+		this(fileLocks, root, clock, replacer, new ProcessHandleLiveness());
 	}
 
 	/**
 	 * Creates a manager with process liveness support.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param root the absolute owned-run root
 	 * @param clock the clock used for generated identifiers
 	 * @param replacer replaces the runs' manifests and output files
@@ -123,14 +127,17 @@ public final class HarnessRunManager
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
-	HarnessRunManager(Path root, Clock clock, FileReplacer replacer, HarnessProcessLiveness processLiveness)
+	HarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
+		HarnessProcessLiveness processLiveness)
 	{
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(root, "root").isNotNull();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(processLiveness, "processLiveness").isNotNull();
 		if (!root.isAbsolute())
 			throw new IllegalArgumentException("root must be absolute");
+		this.fileLocks = fileLocks;
 		this.root = root.normalize();
 		this.clock = clock;
 		this.replacer = replacer;
@@ -789,7 +796,7 @@ public final class HarnessRunManager
 		Path lock = directory.resolve(".lock");
 		if (!Files.isRegularFile(lock, NOFOLLOW_LINKS))
 			throw new IOException("Run is missing its lock file");
-		return HarnessRunLock.acquire(lock);
+		return HarnessRunLock.acquire(fileLocks, lock);
 	}
 
 	/**

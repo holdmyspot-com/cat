@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.StandardOpenOption.WRITE;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessRunLock;
 import com.holdmyspot.cat.common.secrets.HarnessRunLockSecrets;
@@ -37,17 +38,18 @@ public final class HarnessRunLockTest
 	@Test
 	public void heldLockFileIsNotOpenedAgain() throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-run-lock-"));
 			Path file = Files.createFile(directory.resolve(".lock"));
 			List<Path> opened = new CopyOnWriteArrayList<>();
-			try (HarnessRunLock held = HarnessRunLock.acquire(file))
+			try (HarnessRunLock held = HarnessRunLock.acquire(fileLocks, file))
 			{
 				requireThat(held.isHeld(), "held.isHeld()").isTrue();
 				try
 				{
-					HarnessRunLockSecrets.getHarnessRunLockAccess().acquire(file, lockFile ->
+					HarnessRunLockSecrets.getHarnessRunLockAccess().acquire(fileLocks, file, lockFile ->
 					{
 						opened.add(lockFile);
 						return FileChannel.open(lockFile, WRITE);
@@ -62,7 +64,7 @@ public final class HarnessRunLockTest
 				requireThat(held.isHeld(), "heldAfterSecondAttempt").isTrue();
 			}
 
-			try (HarnessRunLock reacquired = HarnessRunLock.acquire(file))
+			try (HarnessRunLock reacquired = HarnessRunLock.acquire(fileLocks, file))
 			{
 				requireThat(reacquired.isHeld(), "reacquired.isHeld()").isTrue();
 			}

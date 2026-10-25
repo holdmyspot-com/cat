@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.secrets;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -22,14 +23,15 @@ public interface HarnessRunManagerAccess
 	/**
 	 * Creates a manager with process liveness support.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param root the absolute owned-run root
 	 * @param clock the clock used for generated identifiers
 	 * @param replacer replaces the runs' manifests and output files
 	 * @param processLiveness the exact-process liveness service
 	 * @return the manager
-	 * @throws NullPointerException if {@code root}, {@code clock}, or {@code processLiveness} are null
+	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
-	HarnessRunManager newHarnessRunManager(Path root, Clock clock, FileReplacer replacer,
+	HarnessRunManager newHarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
 		HarnessProcessLiveness processLiveness);
 }

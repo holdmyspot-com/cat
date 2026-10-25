@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.LockFileOpener;
 import com.holdmyspot.cat.common.secrets.HarnessRunLockAccess;
@@ -27,9 +28,9 @@ public final class HarnessRunLock implements AutoCloseable
 		HarnessRunLockSecrets.setHarnessRunLockAccess(new HarnessRunLockAccess()
 		{
 			@Override
-			public HarnessRunLock acquire(Path file, LockFileOpener opener) throws IOException
+			public HarnessRunLock acquire(FileLocks fileLocks, Path file, LockFileOpener opener) throws IOException
 			{
-				return HarnessRunLock.acquire(file, opener);
+				return HarnessRunLock.acquire(fileLocks, file, opener);
 			}
 		});
 	}
@@ -49,32 +50,37 @@ public final class HarnessRunLock implements AutoCloseable
 	/**
 	 * Acquires an exclusive lock on an existing run lock file.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param file the regular run lock file
 	 *
 	 * @return the acquired lock
 	 *
+	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the file cannot be locked or is already locked
 	 */
-	public static HarnessRunLock acquire(Path file) throws IOException
+	public static HarnessRunLock acquire(FileLocks fileLocks, Path file) throws IOException
 	{
-		return acquire(file, lockFile -> FileChannel.open(lockFile, WRITE));
+		return acquire(fileLocks, file, lockFile -> FileChannel.open(lockFile, WRITE));
 	}
 
 	/**
 	 * Acquires an exclusive lock on an existing run lock file, opening it through a given opener.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param file the regular run lock file
 	 * @param opener opens the run lock file
 	 *
 	 * @return the acquired lock
 	 *
+	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the file cannot be locked or is already locked
 	 */
-	static HarnessRunLock acquire(Path file, LockFileOpener opener) throws IOException
+	static HarnessRunLock acquire(FileLocks fileLocks, Path file, LockFileOpener opener) throws IOException
 	{
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(file, "file").isNotNull();
 		requireThat(opener, "opener").isNotNull();
-		Optional<ExclusiveFileLock> lock = ExclusiveFileLock.tryLock(file, opener);
+		Optional<ExclusiveFileLock> lock = fileLocks.tryLock(file, opener);
 		if (lock.isEmpty())
 			throw new IOException("Run is already active: " + file.getParent());
 		return new HarnessRunLock(lock.get());

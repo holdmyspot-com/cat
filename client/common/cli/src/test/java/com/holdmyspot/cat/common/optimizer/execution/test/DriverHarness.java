@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.execution.test;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
@@ -108,6 +109,7 @@ public final class DriverHarness
 	 * Fail a test after this many driver steps instead of waiting indefinitely for its stopping condition.
 	 */
 	private static final int STEP_LIMIT = 100_000;
+	private final FileLocks fileLocks = new FileLocks();
 	private final Path directory;
 	private final ManualClock clock = new ManualClock(START);
 	private final InMemoryCampaignStore store = new InMemoryCampaignStore();
@@ -250,7 +252,7 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.REASONING);
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
-		return new DriverContext(crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
+		return new DriverContext(fileLocks, crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
 			judge, triage, promptAuthor, values, deliverer, calibrator, terminator,
 			new LeftoverRuns(sessions, JsonMapper.builder().build()),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,

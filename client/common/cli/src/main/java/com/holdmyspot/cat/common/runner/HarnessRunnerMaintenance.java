@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 
 import java.io.IOException;
@@ -44,6 +45,7 @@ public final class HarnessRunnerMaintenance
 	/**
 	 * Executes one maintenance command for the selected harness.
 	 *
+	 * @param fileLocks the process-owned lock coordinator
 	 * @param args the lifecycle command and its options
 	 * @param harness the non-blank harness identifier used to select owned runs
 	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
@@ -54,10 +56,11 @@ public final class HarnessRunnerMaintenance
 	 *   acts on runs while the command line names no {@code --run-root} outside a harness session
 	 * @throws IOException if run maintenance or dependency-cache verification fails
 	 */
-	public static void execute(String[] args, String harness, HarnessTemporaryRoot temporaryRoot,
+	public static void execute(FileLocks fileLocks, String[] args, String harness, HarnessTemporaryRoot temporaryRoot,
 		Map<String, String> environment,
 		PrintStream out) throws IOException
 	{
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		requireThat(environment, "environment").isNotNull();
@@ -68,7 +71,7 @@ public final class HarnessRunnerMaintenance
 			out.println(HarnessDependencyCache.verifyNpm(environment));
 			return;
 		}
-		HarnessRunManager manager = new HarnessRunManager(options.runRoot(), Clock.systemUTC(),
+		HarnessRunManager manager = new HarnessRunManager(fileLocks, options.runRoot(), Clock.systemUTC(),
 			FileReplacer.sleeping());
 		switch (options.operation())
 		{

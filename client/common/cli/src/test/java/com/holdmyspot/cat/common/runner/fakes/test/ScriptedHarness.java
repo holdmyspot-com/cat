@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.fakes.test;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -98,7 +99,8 @@ public final class ScriptedHarness
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(requests, "requests").isNotNull();
-		HarnessRunManager manager = new HarnessRunManager(runRoot, Clock.systemUTC(), Yielding.fileReplacer());
+		HarnessRunManager manager = new HarnessRunManager(new FileLocks(), runRoot,
+			Clock.systemUTC(), Yielding.fileReplacer());
 		HarnessRunnerBridge.serve(() ->
 		{
 			HarnessRun run = manager.create(harness);

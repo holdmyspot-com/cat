@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.contract.test;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -289,13 +290,14 @@ public abstract class SessionCommandLimitsContract
 	@Test
 	public void childCannotReadParentOrSibling() throws IOException
 	{
+		FileLocks fileLocks = new FileLocks();
 		// Requirement: R-I9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture parent = fixture(cleanup);
 			limits(parent, 2);
 			Path requested = parent.run().directory().resolve("requested-runs");
-			HarnessRunManager manager = new HarnessRunManager(requested.resolve("1"), Clock.systemUTC(),
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, requested.resolve("1"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun childRun = manager.create("harness");
 			manager.snapshotProject(childRun);
@@ -397,7 +399,8 @@ public abstract class SessionCommandLimitsContract
 			for (String variable : SessionCommandLimits.CREDENTIAL_VARIABLES)
 				userEnvironment.put(variable, CREDENTIAL);
 
-			HarnessRunManager manager = new HarnessRunManager(root.resolve("runs"), Clock.systemUTC(),
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+				root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			manager.snapshotProject(run);
