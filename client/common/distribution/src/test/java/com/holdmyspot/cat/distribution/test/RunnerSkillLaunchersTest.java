@@ -12,13 +12,14 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests the launchers and skills through which each plugin runs the other harness's CAT artifact: Claude's
- * {@code codex-runner} skill and Codex's {@code claude-runner} skill. Each plugin finds the other artifact with a
- * launcher of its own harness and runs the runner launcher in the other artifact's {@code bin/}, so neither plugin
- * holds the other harness's classes.
+ * Tests the launchers and skills through which each plugin runs either harness: the {@code claude-runner} and
+ * {@code codex-runner} skills and launchers. Each plugin finds the other harness's artifact with a launcher of its own
+ * harness and runs the runner launcher in that artifact's {@code bin/}, so neither plugin holds the other harness's
+ * classes.
  */
 public final class RunnerSkillLaunchersTest
 {
@@ -106,37 +107,41 @@ public final class RunnerSkillLaunchersTest
 	}
 
 	/**
-	 * Verifies that only the Claude skills hold the {@code codex-runner} skill and that it runs the plugin's
-	 * {@code codex-artifact} and the artifact's {@code codex-runner}.
+	 * Supplies each runner skill with the launcher that selects its artifact.
 	 *
-	 * @throws IOException if a skill cannot be read
+	 * @return the skill's name and its artifact selector
 	 */
-	@Test
-	public void claudeSkillsHoldCodexRunner() throws IOException
+	@DataProvider
+	public Object[][] runnerSkills()
 	{
-		List<URL> skills = resources("skills/codex-runner/first-use.md");
-		requireThat(skills, "skills").size().isEqualTo(1);
-		requireThat(skills.getFirst().toString(), "skill").matches(".*claude[-/]skills.*");
-		requireThat(resources("skills/codex-runner/SKILL.md"), "manifests").size().isEqualTo(1);
-		requireThat(read(skills.getFirst()), "first-use.md").contains("bin/codex-artifact").
-			contains("bin/codex-runner");
+		return new Object[][]{{"claude-runner", "claude-artifact"}, {"codex-runner", "codex-artifact"}};
 	}
 
 	/**
-	 * Verifies that only the Codex skills hold the {@code claude-runner} skill and that it runs the plugin's
-	 * {@code claude-artifact} and the artifact's {@code claude-runner}.
+	 * Verifies that both harnesses hold both runner skills over one shared body, which names the plugin's runner
+	 * launcher, the launcher that selects the artifact, and the use of the launcher inside a run, and holds no shell
+	 * syntax, since Codex runs commands without a shell.
 	 *
+	 * @param skill    the skill's name
+	 * @param selector the launcher that selects the skill's artifact
 	 * @throws IOException if a skill cannot be read
 	 */
-	@Test
-	public void codexSkillsHoldClaudeRunner() throws IOException
+	@Test(dataProvider = "runnerSkills")
+	public void bothHarnessesHoldRunnerSkill(String skill, String selector) throws IOException
 	{
-		List<URL> skills = resources("skills/claude-runner/first-use.md");
-		requireThat(skills, "skills").size().isEqualTo(1);
-		requireThat(skills.getFirst().toString(), "skill").matches(".*codex[-/]skills.*");
-		requireThat(resources("skills/claude-runner/SKILL.md"), "manifests").size().isEqualTo(1);
-		requireThat(read(skills.getFirst()), "first-use.md").contains("bin/claude-artifact").
-			contains("bin/claude-runner");
+		// Requirement: R-I9
+		List<URL> bodies = resources("skills/" + skill + "/first-use.md");
+		requireThat(bodies, "bodies").size().isEqualTo(1);
+		requireThat(bodies.getFirst().toString(), "body").matches(".*common[-/]skills.*");
+		List<String> manifests = new ArrayList<>();
+		for (URL manifest : resources("skills/" + skill + "/SKILL.md"))
+			manifests.add(manifest.toString().replaceAll(".*(claude|codex)[-/]skills.*", "$1"));
+		requireThat(manifests, "manifests").containsExactly(List.of("claude", "codex"));
+		String body = read(bodies.getFirst());
+		requireThat(body, "first-use.md").contains("bin/" + skill).contains("bin/" + selector).
+			contains("CAT_SESSION_REQUESTS").contains("--input").contains("--request-depth").
+			doesNotContain("printf").doesNotContain(" | ").doesNotContain("$(").doesNotContain("```bash").
+			doesNotContain("cannot start a harness");
 	}
 
 	/**
