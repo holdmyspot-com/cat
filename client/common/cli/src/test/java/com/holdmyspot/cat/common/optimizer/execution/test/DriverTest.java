@@ -7,6 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.AttemptResult;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
+import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
@@ -1222,6 +1223,10 @@ public final class DriverTest
 	/**
 	 * The second sequential reservation uses the rewrite approach, including when its prompt author session is resumed.
 	 *
+	 * The resumed author supplies a distinct edit, and the test waits for its persisted diagnosis before checking
+	 * the adopted edit and the complete unchanged reservation map. The initial brief count only stages the restart;
+	 * fresh persisted output proves that the resumed work occurred.
+	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
 	// Requirement: R-D14
@@ -1231,6 +1236,7 @@ public final class DriverTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
+			String rewriteApproach = "Rewrite rather than add:";
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("approach-resume")),
 				authoring().build());
 			harness.trials(_ -> harness.failed());
@@ -1239,18 +1245,38 @@ public final class DriverTest
 				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 2);
 				SessionRequest second = harness.sessions().sessions().getLast().request();
 				requireThat(second.role(), "role").isEqualTo(SessionRole.PROMPT_AUTHOR);
-				requireThat(second.turns().getFirst(), "secondApproach").contains("Rewrite rather than add:");
+				requireThat(second.turns().getFirst(), "secondApproach").contains(rewriteApproach);
 			}
 
+			Map<Integer, String> reservations = harness.campaign().development().round().reservations();
+			requireThat(reservations, "reservedAttempts").isEqualTo(Map.of(1, "safety", 2, "safety"));
+			int resumedAttempt = 2;
+			AtomicReference<SessionRequest> resumedRequest = new AtomicReference<>();
+			AtomicReference<Path> resumedEffects = new AtomicReference<>();
+			harness.promptAuthors(request ->
+			{
+				resumedRequest.set(request);
+				SessionResult.Completed result = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT,
+					"resumed rewrite");
+				resumedEffects.set(result.effects());
+				return result;
+			});
 			try (Driver driver = harness.open())
 			{
-				driver.step();
-				requireThat(harness.promptAuthor().briefs().size(), "resumedPromptAuthor").isEqualTo(3);
-				SessionRequest resumed = harness.sessions().sessions().getLast().request();
+				Campaign campaign = harness.runUntil(driver, state -> state.optimization().promptAuthors().stream().
+					anyMatch(diagnosis -> diagnosis.effects().equals(resumedEffects.get())));
+				SessionRequest resumed = resumedRequest.get();
+				requireThat(resumed, "resumedRequest").isNotNull();
 				requireThat(resumed.role(), "role").isEqualTo(SessionRole.PROMPT_AUTHOR);
-				requireThat(resumed.turns().getFirst(), "resumedApproach").contains("Rewrite rather than add:");
-				requireThat(harness.campaign().development().round().reservations().size(), "reservations").
-					isEqualTo(2);
+				requireThat(resumed.turns().getFirst(), "resumedApproach").contains(rewriteApproach);
+				PromptAuthorDiagnosis diagnosis = campaign.optimization().promptAuthors().stream().
+					filter(value -> value.effects().equals(resumedEffects.get())).findFirst().orElseThrow();
+				requireThat(diagnosis.number(), "resumedAttempt").isEqualTo(resumedAttempt);
+				PromptAuthorAttempt attempt = campaign.development().round().validationAttempts().stream().
+					filter(value -> value.number() == resumedAttempt).findFirst().orElseThrow();
+				Write prompt = (Write) harness.overlays().require(attempt.snapshot()).entries().get(DriverHarness.PROMPT);
+				requireThat(new String(prompt.content().bytes(), UTF_8), "resumedPrompt").isEqualTo("resumed rewrite");
+				requireThat(campaign.development().round().reservations(), "reservations").isEqualTo(reservations);
 			}
 		}
 	}

@@ -1499,6 +1499,9 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that start persists the selected ceiling and supplies it to the concurrency policy.
+	 *
+	 * This test can exceed one second because it starts two complete campaigns through the scripted session port,
+	 * writes their proposal and campaign state, and reopens each file store to verify the saved ceiling.
 	 */
 	@Test
 	public void startPersistsCampaignCeiling() throws IOException, CommandRefusedException
@@ -1579,6 +1582,9 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that a started campaign names the loader configuration files that the project has, or {@code none}
 	 * when it has none of them.
+	 *
+	 * This test can exceed one second because it starts two complete campaigns through the scripted session port
+	 * and reads their persisted identities, with and without a physical loader configuration file.
 	 */
 	@Test
 	public void startRecordsLoaderFiles() throws IOException, CommandRefusedException, InterruptedException
@@ -2969,6 +2975,9 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that {@code start} records the version that each trial plugin's base copy declares in its manifest.
+	 *
+	 * This test can exceed one second because it starts a complete campaign through the scripted session port,
+	 * captures a physical plugin base and reads its version from the persisted measurement identity.
 	 */
 	@Test
 	public void startRecordsPluginVersions() throws Exception
@@ -2997,6 +3006,9 @@ public final class OptimizerCoreTest
 	 * Verifies that {@code start} records the repository that each trial plugin's manifest states, from the build
 	 * output of a plugin that the project builds and from the installed copy of one that it does not, so that a
 	 * plugin is CAT by its repository whatever its name.
+	 *
+	 * This test can exceed one second because it stages built and installed plugin files, starts a complete
+	 * campaign through the scripted session port and reads the persisted plugin repository identities.
 	 */
 	@Test
 	public void startRecordsPluginRepository() throws Exception
