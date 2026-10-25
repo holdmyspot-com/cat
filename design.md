@@ -519,8 +519,8 @@ The failure's diagnosis and impact are retained either way.
 **Candidate generation and promotion.** A prompt author session edits a copy of the working candidate inside the
 confirmed authority ([§4.3](#43-candidates-and-edit-authority)). It receives the failing test cases, each failing
 trial's evidence section ([§6.4](#64-judge)) with its tool calls, their exit statuses and outputs, the judge rationales
-and built-in tool results, the diagnoses and the contract (D56). It also receives the manifests of the lineage's
-earlier attempts with their promotion results, so it can tell which kinds of failure an earlier correction already
+and built-in tool results, the diagnoses and the contract (D56). It also receives a compact table of the lineage's
+earlier attempts with their kinds and results, so it can tell which kinds of failure an earlier correction already
 targeted (D58). The prompt author works as follows:
 
 1. **Group and classify the failures** before editing. Failures whose evidence first departs from the contract at the
@@ -567,8 +567,8 @@ targeted (D58). The prompt author works as follows:
 	contradiction that its own edit or an earlier candidate's edit introduced. Capitals, "important" markers and repeated
 	instructions are not corrections.
 3. **Address every kind.** Each attempt corrects every *routing* and *guidance* kind it receives. No kind waits for a
-	later round because it is rare, looks random or looks like a model limitation (D58). When the earlier manifests
-	show a correction that already targeted a kind, and the kind failed again, the attempt does not restate or
+	later round because it is rare, looks random or looks like a model limitation (D58). When the earlier attempts table
+	shows that an attempt already targeted a kind, and the kind failed again, the attempt does not restate or
 	strengthen that instruction: it explains why the instruction must be followed, by stating, where the model makes
 	the decision, the consequence that violating it has for the result.
 4. **Generalize deliberately.** For each change, name one analogous case that must take the same path and one
@@ -2713,6 +2713,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D104 | Supply `executableFiles()` through `JvmScope`; production scopes retain retry pauses and test scopes do not sleep (user ruling, 2026-10-24). | Consumers need one scope-owned service that tests can control, rather than an inline production instance or a separate constructor argument. | The optimizer, requested runner and both harness runners obtain the service from their scope. |
 | D105 | Retain refusal of symlinks anywhere in a requested-session input path (user ruling, 2026-10-24). | The user chose to preserve the existing restriction. | macOS callers must supply resolved paths when an ancestor such as `/var` is a symlink. |
 | D106 | Refactor lock coordination into an explicitly shared, process-owned object, supplied by scopes to every lock consumer (user ruling, 2026-10-24). | A mutable static registry shares state across independent scopes and tests; opening and closing another channel to a held file can release its POSIX lock. | Each process scope owns its coordinator, child scopes share it, and reservations outlive open channels. Independent coordinators retain independent state; no mutable static lock registry remains. |
+| D108 | Give the prompt author a compact table of earlier attempts’ kinds and results, with no hunks or line ranges (user ruling, 2026-10-25). | Full earlier manifests grow with every attempt and exceeded Codex’s input limit in a campaign with 417 attempts. The recurrence decision needs only which kinds were targeted and how each attempt ended; the campaign edits already hold what CAT kept of promoted hunks. | One row per attempt, oldest first, gives its number, cell, result, whether CAT rejected its manifest, and each kind’s name, classification and failure count. The prompt author no longer sees an earlier hunk’s wording, only that a kind was targeted and how the attempt ended. Full manifests remain in campaign state; no campaign format or measurement identity changes. |
 
 ## 14. Acceptance evidence
 

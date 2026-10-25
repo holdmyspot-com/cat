@@ -10,7 +10,7 @@
 - Address every kind of supplied failure: group the failures by the first action where each failing trial departs from
 	the contract, and correct every kind that a prompt edit can correct. CAT rejects an attempt whose manifest leaves a
 	supplied failure outside every kind or names no hunk for such a kind.
-- When a kind fails again after an earlier attempt's hunk targeted it, make the model weigh the instruction differently
+- When a kind fails again after an earlier attempt targeted it, make the model weigh the instruction differently
 	rather than read it again.
 - Make the smallest evidence-backed correction, supported by analogous and dissimilar cases, and report its manifest.
 	Also report each needed edit outside your authority. CAT checks the manifest against the copy's changes and supplied
@@ -114,17 +114,15 @@ or cite them:
 
 {{ended_attempts}}
 
-The manifests of the earlier prompt author attempts under the confirmed contract, as JSON, oldest first. Each one gives
-the `attempt` number, its `cell`, its `kinds` (each with its `name`, `classification`, number of `failures`, the ids of
-the `hunks` that addressed it and, for a `test_defect` kind, its `fault`), its `hunks` (each with its `id`, `path`, the
-working lines `before_start` to `before_end` that it replaced, the prompt author's lines `after_start` to `after_end`
-that it wrote, and its `analogous` and `dissimilar` cases), the `rejections` that CAT gave it, and its `result`:
-`rejected` when CAT rejected the manifest, `no_candidate` when the attempt changed no prompt file or classified no kind
-`routing` or `guidance`, `not_measured` when no promotion result exists yet, `not_promoted` when its promotion runs did
-not make it the working candidate, and `promoted` when it became the working candidate. The campaign edits above hold
-what CAT kept of each promoted attempt's hunks. The array is empty when no earlier attempt exists:
+The table of earlier prompt author attempts under the confirmed contract, oldest first. Each row gives the attempt
+number, cell, result, whether CAT rejected its manifest, and each kind's name, classification and number of failures.
+The result is `rejected` when CAT rejected the manifest, `no_candidate` when the attempt changed no prompt file or
+classified no kind `routing` or `guidance`, `not_measured` when no promotion result exists yet, `not_promoted` when its
+promotion runs did not make it the working candidate, and `promoted` when it became the working candidate.
+The campaign edits above hold what CAT kept of each promoted attempt's hunks.
+An empty table means no earlier attempt exists:
 
-{{earlier_manifests}}
+{{earlier_attempts}}
 
 ### Your approach
 
@@ -155,10 +153,10 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
 	resolve it.
 	Correct every `routing` and `guidance` kind, not only the most frequent one: a kind left uncorrected keeps failing
 	in every later measurement. Make no prompt edit for a `not_guidance` or `test_defect` kind.
-	When an earlier manifest shows a hunk that targeted the same kind and that kind failed again, the model read the
-	instruction and did not follow it, so stating it again or more strongly will not change the decision. Explain why
-	it must be followed instead of restating the instruction: at the point where the model makes that decision, state
-	what goes wrong for the user when the instruction is violated.
+	When the earlier attempts table shows an attempt that targeted the same kind and that kind failed again, the model
+	read the instruction and did not follow it, so stating it again or more strongly will not change the decision.
+	Explain why it must be followed instead of restating the instruction: at the point where the model makes that
+	decision, state what goes wrong for the user when the instruction is violated.
 2. Make the smallest correction supported by the evidence in the file that owns the decision. When the failing replies
 	violated or misapplied an instruction, correct it in the file that states it, `AGENTS.md` or `CLAUDE.md` included:
 	guidance added elsewhere leaves that instruction in force. When the file that owns the decision ships with CAT,

@@ -41,12 +41,14 @@ import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
@@ -199,8 +201,8 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 	 * {@inheritDoc}
 	 * <p>
 	 * The prompt lists the editable prompt sources, leaving out each one whose path is a link to a file outside the
-	 * project, the edits outside the edit authority that the user declined, and the manifests of the earlier prompt
-	 * author attempts under the confirmed contract with their promotion results.
+	 * project, the edits outside the edit authority that the user declined, and a compact table of earlier prompt
+	 * author attempts under the confirmed contract with their kinds and results.
 	 */
 	@Override
 	public SessionRequest request(PromptAuthorBrief brief, Path copy)
@@ -276,7 +278,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 			Map.entry("failures", pretty(failures)),
 			Map.entry("development_counts", pretty(encodeCounts(brief.developmentCounts()))),
 			Map.entry("ended_attempts", pretty(ended)),
-			Map.entry("earlier_manifests", pretty(encodeEarlierManifests(brief.earlierManifests()))),
+			Map.entry("earlier_attempts", earlierAttemptsTable(brief.earlierManifests())),
 			Map.entry("sound_tests", pretty(encodeSoundTests(brief.soundTests()))),
 			Map.entry("report_schema", reportSchema)));
 		return new SessionRequest(SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT, copy, List.of(turn), List.of(),
@@ -298,55 +300,47 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 	}
 
 	/**
-	 * Writes the manifests of the earlier prompt author attempts under the confirmed contract.
+	 * Renders earlier prompt author attempts as a compact Markdown table without hunk evidence or rejection prose.
 	 *
-	 * @param manifests the earlier manifests in the order CAT retained them
-	 * @return one object per manifest with its {@code attempt} number, {@code cell}, promotion {@code result}, the
-	 *   {@code rejections} that CAT gave it, its {@code kinds} with each kind's {@code name}, {@code classification},
-	 *   number of {@code failures}, the {@code hunks} that address it and, for a test defect, its {@code fault}, and
-	 *   its {@code hunks} with each hunk's
-	 *   {@code id}, {@code path}, line ranges, {@code analogous} case and {@code dissimilar} case
+	 * @param manifests the earlier attempts in retention order
+	 * @return the table header and one row per attempt, oldest first; only the header when there are none
 	 */
-	private ArrayNode encodeEarlierManifests(List<EarlierManifest> manifests)
+	private static String earlierAttemptsTable(List<EarlierManifest> manifests)
 	{
-		ArrayNode nodes = json.createArrayNode();
-		for (EarlierManifest manifest : manifests)
+		StringJoiner table = new StringJoiner("\n");
+		table.add("| Attempt | Cell | Result | Manifest rejected | Kinds (classification, failures) |");
+		table.add("| --- | --- | --- | --- | --- |");
+		List<EarlierManifest> ordered = manifests.stream().
+			sorted(Comparator.comparingInt(manifest -> manifest.diagnosis().number())).toList();
+		for (EarlierManifest manifest : ordered)
 		{
 			PromptAuthorDiagnosis diagnosis = manifest.diagnosis();
-			ObjectNode node = nodes.addObject();
-			node.put("attempt", diagnosis.number());
-			node.put("cell", diagnosis.cell());
-			node.put("result", manifest.result().name().toLowerCase(Locale.ROOT));
-			ArrayNode rejections = node.putArray("rejections");
-			diagnosis.rejections().forEach(rejections::add);
-
-			ArrayNode kinds = node.putArray(KINDS);
+			StringJoiner kinds = new StringJoiner("; ");
 			for (PromptAuthorKind kind : diagnosis.kinds())
 			{
-				ObjectNode kindNode = kinds.addObject();
-				kindNode.put("name", kind.name());
-				kindNode.put("classification", kind.classification().name().toLowerCase(Locale.ROOT));
-				kindNode.put("failures", kind.failures().size());
-				ArrayNode hunks = kindNode.putArray("hunks");
-				kind.hunks().forEach(hunks::add);
-				if (!kind.fault().isEmpty())
-					kindNode.put("fault", kind.fault());
+				kinds.add(tableCell(kind.name()) + " (" + EnumNames.lowerCase(kind.classification()) + ", " +
+					kind.failures().size() + ")");
 			}
-
-			ArrayNode hunks = node.putArray("hunks");
-			for (HunkEvidence hunk : diagnosis.hunks())
-			{
-				hunks.addObject().put("id", hunk.id()).
-					put("path", PortablePaths.text(hunk.path())).
-					put("before_start", hunk.beforeStart()).
-					put("before_end", hunk.beforeEnd()).
-					put("after_start", hunk.afterStart()).
-					put("after_end", hunk.afterEnd()).
-					put("analogous", hunk.analogous()).
-					put("dissimilar", hunk.dissimilar());
-			}
+			String rejected;
+			if (diagnosis.rejections().isEmpty())
+				rejected = "no";
+			else
+				rejected = "yes";
+			table.add("| %d | %s | %s | %s | %s |".formatted(diagnosis.number(), tableCell(diagnosis.cell()),
+				EnumNames.lowerCase(manifest.result()), rejected, kinds));
 		}
-		return nodes;
+		return table.toString();
+	}
+
+	/**
+	 * Escapes text for a single Markdown table cell and keeps it on one line.
+	 *
+	 * @param text the cell's text
+	 * @return the text with backslashes and pipes escaped and line breaks represented by spaces
+	 */
+	private static String tableCell(String text)
+	{
+		return text.replace("\\", "\\\\").replace("|", "\\|").replace("\r", " ").replace("\n", " ");
 	}
 
 	/**

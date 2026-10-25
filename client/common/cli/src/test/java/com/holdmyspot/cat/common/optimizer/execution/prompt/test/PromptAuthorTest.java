@@ -41,6 +41,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -432,7 +433,7 @@ public final class PromptAuthorTest
 		requireThat(turn, "turn").doesNotContain("The held-out rationale.").doesNotContain("The held-out reply.").
 			doesNotContain(heldOut.turns().getFirst());
 		JsonNode ended = json.readTree(section(turn, "certification attempts that have ended",
-			"\n\nThe manifests of the earlier"));
+			"\n\nThe table of earlier"));
 		ObjectNode expected = json.createObjectNode().put("cell", heldOut.cellId()).put("test", heldOut.testId());
 		expected.putArray("failed_assertions").addObject().put("assertion_id", "asks_before_deleting").
 			put("behavior", "deleted_without_asking");
@@ -458,7 +459,7 @@ public final class PromptAuthorTest
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
 		JsonNode ended = json.readTree(section(turn, "certification attempts that have ended",
-			"\n\nThe manifests of the earlier"));
+			"\n\nThe table of earlier"));
 		ObjectNode expected = json.createObjectNode().put("cell", "safety").put("test", "safety").
 			put("assertion_id", TestCase.EXPECTED_OUTCOME).put("pairs", 12).put("candidate_passes", 3).
 			put("control_passes", 11);
@@ -485,7 +486,7 @@ public final class PromptAuthorTest
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
 		JsonNode ended = json.readTree(section(turn, "certification attempts that have ended",
-			"\n\nThe manifests of the earlier"));
+			"\n\nThe table of earlier"));
 		ObjectNode expected = json.createObjectNode().put("cell", "safety").put("test", "safety").
 			put("assertion_id", TestCase.EXPECTED_OUTCOME).put("pairs", 12).put("candidate_passes", 3).
 			put("incumbent_passes", 11);
@@ -760,44 +761,100 @@ public final class PromptAuthorTest
 	}
 
 	/**
-	 * Verifies that the prompt author receives the earlier manifests under the confirmed contract with their promotion
-	 * results, and is told to correct every routing and guidance kind and, for a kind that recurs after an earlier hunk
-	 * targeted it, to state the consequence of violating the instruction rather than restating it.
+	 * Verifies that the prompt author receives kinds and results without earlier hunk evidence, and the rule for a
+	 * kind that fails again after an earlier attempt targeted it.
 	 */
 	@Test
-	public void statesEarlierManifestsAndKindRule()
+	public void statesEarlierAttemptsAndKindRule()
 	{
 		// Requirement: R-D10
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
-		PromptAuthorDiagnosis earlier = new PromptAuthorDiagnosis(4, 1, "safety", Builder.snapshot("candidate-1"),
-			List.of(new PromptAuthorKind("skipped confirmation", List.of("f1", "f2"), FailureKind.GUIDANCE, List.of("h1"),
-			""), new PromptAuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of(), "")),
-			List.of(new HunkEvidence("h1", Path.of("rules/safety.md"), 2, 3, 2, 5, List.of("f1", "f2"), "Overwriting a file",
-			"plain_list")), List.of(), Path.of("/runs/prompt-author-4/transcript.jsonl").toAbsolutePath(),
-			Path.of("/runs/prompt-author-4/effects").toAbsolutePath());
-		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
-			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(),
-			List.of(new PromptAuthorBrief.EarlierManifest(earlier, PromptAuthorBrief.PromotionResult.NOT_PROMOTED)),
-			List.of());
+		PromptAuthorDiagnosis earlier = earlierDiagnosis(4, "Overwriting a file", List.of("manifest rejected"));
+		PromptAuthorBrief brief = historyBrief(List.of(new PromptAuthorBrief.EarlierManifest(earlier,
+			PromptAuthorBrief.PromotionResult.REJECTED)));
 
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
-		requireThat(turn, "turn").doesNotContain("{{earlier_manifests}}").
+		requireThat(turn, "turn").doesNotContain("{{earlier_attempts}}").
 			contains("Correct every `routing` and `guidance` kind").
-			contains("instead of restating the instruction");
-		JsonNode manifests = json.readTree(section(turn, "earlier prompt author attempts", "\n\n### Your approach"));
-		requireThat(manifests.size(), "manifests").isEqualTo(1);
-		JsonNode manifest = manifests.get(0);
-		requireThat(manifest.path("attempt").asInt(), "attempt").isEqualTo(4);
-		requireThat(manifest.path("result").asString(), "result").isEqualTo("not_promoted");
-		requireThat(manifest.path("kinds").get(0).path("name").asString(), "kind").isEqualTo("skipped confirmation");
-		requireThat(manifest.path("kinds").get(0).path("classification").asString(), "classification").
-			isEqualTo("guidance");
-		requireThat(manifest.path("kinds").get(0).path("failures").asInt(), "failures").isEqualTo(2);
-		requireThat(manifest.path("kinds").get(0).path("hunks").get(0).asString(), "kindHunk").isEqualTo("h1");
-		requireThat(manifest.path("hunks").get(0).path("path").asString(), "path").isEqualTo("rules/safety.md");
-		requireThat(manifest.path("hunks").get(0).path("analogous").asString(), "analogous").
-			isEqualTo("Overwriting a file");
+			contains("instead of restating the instruction").
+			contains("| 4 | safety | rejected | yes | skipped \\| confirmation (guidance, 2); " +
+				"judge outage (not_guidance, 1); missing route (routing, 1) |").
+			doesNotContain("rules/earlier-only.md").doesNotContain("earlier-hunk-id").
+			doesNotContain("Overwriting a file").doesNotContain("earlier dissimilar case").
+			doesNotContain("manifest rejected").doesNotContain("9876");
+	}
+
+	/**
+	 * Verifies that 400 earlier attempts add only short rows, regardless of their hunk evidence size, and that an
+	 * empty history still renders.
+	 */
+	@Test
+	public void keepsEarlierAttemptsCompact()
+	{
+		// Requirement: R-D10
+		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(Path.of("CLAUDE.md")), Set.of());
+		String empty = prompt.request(historyBrief(List.of()), COPY).turns().getFirst();
+		List<PromptAuthorBrief.EarlierManifest> earlier = new ArrayList<>();
+		PromptAuthorBrief.PromotionResult[] results = PromptAuthorBrief.PromotionResult.values();
+		for (int number = 1; number <= 400; ++number)
+		{
+			earlier.add(new PromptAuthorBrief.EarlierManifest(earlierDiagnosis(number, "long hunk evidence ".repeat(500),
+				List.of()), results[(number - 1) % results.length]));
+		}
+
+		String turn = prompt.request(historyBrief(earlier.reversed()), COPY).turns().getFirst();
+
+		requireThat(empty, "empty").contains("An empty table means no earlier attempt exists").
+			contains("| Attempt | Cell | Result | Manifest rejected | Kinds (classification, failures) |");
+		requireThat(turn.length() - empty.length(), "historyCharacters").isLessThan(80_000);
+		requireThat(turn.length(), "turnCharacters").isLessThan(1_048_576);
+		requireThat(turn, "turn").doesNotContain("long hunk evidence");
+		int previous = -1;
+		for (int number = 1; number <= 400; ++number)
+		{
+			String result = results[(number - 1) % results.length].name().toLowerCase(Locale.ROOT);
+			String row = "| " + number + " | safety | " + result + " | no | skipped \\| confirmation " +
+				"(guidance, 2); judge outage (not_guidance, 1); missing route (routing, 1) |";
+			requireThat(turn, "turn").contains(row);
+			int position = turn.indexOf(row);
+			requireThat(position, "rowPosition").isGreaterThan(previous);
+			previous = position;
+		}
+	}
+
+	/**
+	 * Creates an earlier attempt with evidence that must not reach the prompt author.
+	 *
+	 * @param number     the attempt number
+	 * @param analogous  the earlier hunk's analogous case
+	 * @param rejections CAT's manifest rejection reasons
+	 * @return the retained diagnosis
+	 */
+	private static PromptAuthorDiagnosis earlierDiagnosis(int number, String analogous, List<String> rejections)
+	{
+		return new PromptAuthorDiagnosis(number, 1, "safety", Builder.snapshot("candidate-1"),
+			List.of(new PromptAuthorKind("skipped | confirmation", List.of("f1", "f2"), FailureKind.GUIDANCE,
+				List.of("earlier-hunk-id"), ""),
+				new PromptAuthorKind("judge outage", List.of("f3"), FailureKind.NOT_GUIDANCE, List.of(), ""),
+				new PromptAuthorKind("missing route", List.of("f4"), FailureKind.ROUTING, List.of("earlier-hunk-id"), "")),
+			List.of(new HunkEvidence("earlier-hunk-id", Path.of("rules/earlier-only.md"), 9876, 9877, 9876, 9878,
+				List.of("f1", "f2", "f4"), analogous, "earlier dissimilar case")), rejections,
+			Path.of("/runs/prompt-author-4/transcript.jsonl").toAbsolutePath(),
+			Path.of("/runs/prompt-author-4/effects").toAbsolutePath());
+	}
+
+	/**
+	 * Creates a brief containing the supplied earlier attempts under the confirmed contract.
+	 *
+	 * @param earlier the earlier attempts in retention order
+	 * @return the brief
+	 */
+	private static PromptAuthorBrief historyBrief(List<PromptAuthorBrief.EarlierManifest> earlier)
+	{
+		return new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), earlier,
+			List.of());
 	}
 
 	/**

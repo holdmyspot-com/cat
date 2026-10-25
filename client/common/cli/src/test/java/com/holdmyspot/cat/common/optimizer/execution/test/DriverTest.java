@@ -4242,7 +4242,7 @@ public final class DriverTest
 				}
 			}
 			String endedSection = turn.substring(turn.indexOf("certification attempts that have ended"),
-				turn.indexOf("\n\nThe manifests of the earlier"));
+				turn.indexOf("\n\nThe table of earlier"));
 			JsonNode ended = JsonMapper.builder().build().readTree(endedSection.substring(endedSection.indexOf('[')));
 			requireThat(ended.size(), "ended.size()").isEqualTo(1);
 			JsonNode failures = ended.get(0).get("failures");
