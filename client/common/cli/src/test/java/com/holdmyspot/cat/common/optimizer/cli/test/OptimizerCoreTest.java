@@ -1416,6 +1416,8 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}));
+			repository.sessions().usage.put(SessionRole.TRIAL, List.of(new TokenUsage(100, 20, 30, 10)));
+			repository.sessions().usage.put(SessionRole.JUDGE, List.of(new TokenUsage(200, 40, 60, 20)));
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 			String id = result.status().campaignId();
 			requireThat(id, "id").matches("20261001T000000Z-[0-9a-f]{6}");
@@ -1438,7 +1440,12 @@ public final class OptimizerCoreTest
 				doesNotContain(SessionRole.JUDGE);
 			requireThat(repository.directory(id).resolve("held_out/proposal.json"), "proposalFile").isRegularFile();
 			requireThat(repository.directory(id).resolve("held_out/pilot.json"), "pilotFile").isRegularFile();
-			requireThat(repository.load(id).isConfirmed(), "confirmed").isFalse();
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.isConfirmed(), "confirmed").isFalse();
+			requireThat(campaign.attempts(), "certificationAttempts").isEmpty();
+			requireThat(campaign.trials(), "countedTrials").isEmpty();
+			requireThat(campaign.development().counts(), "developmentCounts").isEmpty();
+			requireThat(campaign.baseline(), "baseline").isNull();
 		}
 	}
 
