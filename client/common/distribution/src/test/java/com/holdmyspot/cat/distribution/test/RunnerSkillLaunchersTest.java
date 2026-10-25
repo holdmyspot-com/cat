@@ -72,6 +72,27 @@ public final class RunnerSkillLaunchersTest
 	}
 
 	/**
+	 * Verifies that each plugin's {@code bin/} holds both runner launchers, so that a session of either harness, and a
+	 * session that it requests, can run either harness through the same command.
+	 */
+	@Test
+	public void bothPluginsHoldBothRunners()
+	{
+		// Requirement: R-I9
+		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
+		requireThat(access.claudeLaunchers(), "claudeLaunchers").
+			contains(new JlinkImageBuilder.Launcher("codex-runner", CLAUDE_MODULE,
+				"com.holdmyspot.cat.claude.runner.CodexRunnerRelay"));
+		requireThat(access.codexLaunchers(), "codexLaunchers").
+			contains(new JlinkImageBuilder.Launcher("claude-runner", CODEX_MODULE,
+				"com.holdmyspot.cat.codex.runner.ClaudeRunnerRelay"));
+		requireThat(access.claudeAgentLaunchers(), "claudeAgentLaunchers").contains("claude-runner").
+			contains("codex-runner");
+		requireThat(access.codexAgentLaunchers(), "codexAgentLaunchers").contains("claude-runner").
+			contains("codex-runner");
+	}
+
+	/**
 	 * Verifies that each image launches only its own harness's module or the common module.
 	 */
 	@Test

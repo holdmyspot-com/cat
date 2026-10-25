@@ -46,6 +46,20 @@ public record RequestedRunner(JvmScope scope, Path artifact, Path launcher, List
 	 */
 	public static RequestedRunner resolved(JvmScope scope, String result, List<String> prefix) throws IOException
 	{
+		List<Path> locations = locations(result);
+		return new RequestedRunner(scope, locations.get(0), locations.get(1), prefix);
+	}
+
+	/**
+	 * Reads the locations in an artifact resolver's scalar result.
+	 *
+	 * @param result the resolver's {@code artifact=} and {@code runner=} lines
+	 * @return the artifact, then its runner launcher
+	 * @throws NullPointerException if {@code result} is null
+	 * @throws IOException          if either required location is missing
+	 */
+	static List<Path> locations(String result) throws IOException
+	{
 		requireThat(result, "result").isNotNull();
 		Path artifact = null;
 		Path runner = null;
@@ -58,7 +72,7 @@ public record RequestedRunner(JvmScope scope, Path artifact, Path launcher, List
 		}
 		if (artifact == null || runner == null)
 			throw new IOException("Artifact resolver returned no artifact or runner location");
-		return new RequestedRunner(scope, artifact, runner, prefix);
+		return List.of(artifact, runner);
 	}
 
 	/**
