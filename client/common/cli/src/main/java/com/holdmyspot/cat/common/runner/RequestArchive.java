@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.PortableFiles;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -14,6 +15,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -53,6 +55,20 @@ final class RequestArchive
 	 */
 	static void pack(JsonMapper json, Path destination, ObjectNode request) throws IOException
 	{
+		pack(json, destination, request, List.of());
+	}
+
+	/**
+	 * Publishes a request with archive-relative manifest paths, packing prompt texts after the request's prompt files.
+	 *
+	 * @param json        the manifest mapper
+	 * @param destination the final request file
+	 * @param request     the launcher options; receives archive-relative paths
+	 * @param prompts     the prompt texts that follow the request's prompt files, in order
+	 * @throws IOException if an input is linked, special, oversized, or cannot be packed
+	 */
+	static void pack(JsonMapper json, Path destination, ObjectNode request, List<String> prompts) throws IOException
+	{
 		Path temporary = Files.createTempFile(destination.getParent(), ".request-", EXTENSION);
 		try
 		{
@@ -79,6 +95,15 @@ final class RequestArchive
 							packTree(archive, source, name, budget);
 						paths.set(index, json.getNodeFactory().stringNode(name));
 					}
+				}
+				ArrayNode names = request.withArray("prompts");
+				if (names.size() + prompts.size() > 32)
+					throw new IOException("Request accepts at most 32 inputs: prompts");
+				for (String prompt : prompts)
+				{
+					String name = "prompts/" + names.size();
+					packBytes(archive, prompt.getBytes(StandardCharsets.UTF_8), name, MAXIMUM_PROMPT_BYTES, budget);
+					names.add(name);
 				}
 				byte[] manifest = json.writeValueAsBytes(request);
 				budget.add(manifest.length, MAXIMUM_MANIFEST_BYTES);
@@ -178,6 +203,28 @@ final class RequestArchive
 			if (input.read() != -1)
 				throw new IOException("Input grew while packing: " + source);
 		}
+		archive.closeArchiveEntry();
+	}
+
+	/**
+	 * Packs one bounded file from its contents.
+	 *
+	 * @param archive the destination
+	 * @param content the file's contents
+	 * @param name    its archive name
+	 * @param maximum the content bound
+	 * @param budget  cumulative limits
+	 * @throws IOException if the contents exceed a bound or cannot be written
+	 */
+	private static void packBytes(TarArchiveOutputStream archive, byte[] content, String name, long maximum,
+		Budget budget) throws IOException
+	{
+		budget.add(content.length, maximum);
+		TarArchiveEntry entry = new TarArchiveEntry(name);
+		entry.setSize(content.length);
+		entry.setMode(modeBits(FILE_MODE));
+		archive.putArchiveEntry(entry);
+		archive.write(content);
 		archive.closeArchiveEntry();
 	}
 
