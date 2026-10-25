@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.optimizer.execution.Cleanup;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
+import com.holdmyspot.cat.common.optimizer.workspace.test.ForksContract;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
 
 import java.io.IOException;
@@ -66,6 +67,30 @@ public final class CleanupTest
 	 */
 	public CleanupTest()
 	{
+	}
+
+	/**
+	 * Verifies the cleanup fake's physical removal, registration removal and repeated removal through the same
+	 * postconditions as the Git adapter, while preserving another campaign's files and registration.
+	 *
+	 * @throws IOException if the fixture or removal fails
+	 */
+	@Test
+	public void forkRemovalMatchesSharedContract() throws IOException
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Path campaign = fixture.directory(CAMPAIGN);
+			fixture.forks().fork(fixture.base(), campaign);
+			ForksContract contract = new ForksContract(fixture.forks(), fixture.base(), campaign);
+
+			contract.removesWorktree();
+			contract.removesMissingWorktree();
+
+			fixture.requireOtherKept("sharedRemoval", fixture.forks().worktrees());
+		}
 	}
 
 	/**

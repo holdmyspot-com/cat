@@ -287,14 +287,35 @@ public final class ForksContract
 	 */
 	public void removesExistingWorktree() throws IOException
 	{
+		removesWorktree();
+		refusesOpening();
+		removesMissingWorktree();
+	}
+
+	/**
+	 * Verifies that removing a fork deletes its worktree and makes it absent.
+	 *
+	 * @throws IOException if the worktree or its records cannot be removed
+	 */
+	public void removesWorktree() throws IOException
+	{
 		requireThat(forks.exists(campaign), "existsBefore").isTrue();
 
 		forks.remove(base, campaign);
 
 		requireThat(Files.exists(campaign.resolve("worktree")), "worktreeExists").isFalse();
 		requireThat(forks.exists(campaign), "existsAfter").isFalse();
-		refusesOpening();
+	}
+
+	/**
+	 * Verifies that removing an already absent fork keeps it absent.
+	 *
+	 * @throws IOException if the worktree's records cannot be removed
+	 */
+	public void removesMissingWorktree() throws IOException
+	{
 		forks.remove(base, campaign);
+
 		requireThat(forks.exists(campaign), "existsAfterRepeatedRemoval").isFalse();
 	}
 
