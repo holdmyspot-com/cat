@@ -842,7 +842,7 @@ public final class Transitions
 		if (promptAuthor == null || draft.trials.stream().anyMatch(trial -> trial.key().purpose() == Purpose.PROMOTION))
 			throw new IllegalStateException("Minimality needs a completed attempt with no remaining promotion trials");
 		Minimality next = promptAuthor.minimality().advance(promptAuthor.snapshot(), promptAuthor.runs(),
-			Promotion.decide(promptAuthor, draft.regressionSet, draft.testCaseOutcomes));
+			Promotion.decide(promptAuthor, draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes));
 		if (next.testing() == null)
 		{
 			List<String> removed = new ArrayList<>(draft.optimization.removed());

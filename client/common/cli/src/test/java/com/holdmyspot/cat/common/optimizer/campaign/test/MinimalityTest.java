@@ -66,11 +66,13 @@ public final class MinimalityTest
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, testCase, Verdict.PASS);
 		PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
 		requireThat(promptAuthor.runs(), "reductionExtension").size().isEqualTo(3);
-		requireThat(Promotion.decide(promptAuthor, campaign.lineage().regressionSet(),
+		requireThat(Promotion.decide(promptAuthor, campaign.development().working().snapshot(),
+			campaign.lineage().regressionSet(),
 			campaign.development().testCaseOutcomes()), "pendingReduction").
 			isEqualTo(Promotion.Decision.PENDING);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, testCase, Verdict.PASS);
-		requireThat(Promotion.decide(campaign.development().promptAuthor(), campaign.lineage().regressionSet(),
+		requireThat(Promotion.decide(campaign.development().promptAuthor(), campaign.development().working().snapshot(),
+			campaign.lineage().regressionSet(),
 				campaign.development().testCaseOutcomes()),
 			"acceptedReduction").isEqualTo(Promotion.Decision.PROMOTE);
 	}
@@ -114,10 +116,10 @@ public final class MinimalityTest
 		PromptAuthorAttempt lost = new PromptAuthorAttempt(1, "safety", snapshot, List.of(run(logs, Verdict.FAIL),
 			run(logs, Verdict.PASS), run(cache, Verdict.PASS), run(cache, Verdict.PASS)), search);
 		PromptAuthorAttempt kept = new PromptAuthorAttempt(1, "safety", snapshot, accepted, search);
-		requireThat(Promotion.decide(lost, List.of(), List.of(
+		requireThat(Promotion.decide(lost, Builder.snapshot("working"), List.of(), List.of(
 			new TestCaseOutcomes(logs, 0, 4), new TestCaseOutcomes(cache, 0, 4))), "lostFix").
 			isEqualTo(Promotion.Decision.REJECT);
-		requireThat(Promotion.decide(kept, List.of(), List.of(
+		requireThat(Promotion.decide(kept, Builder.snapshot("working"), List.of(), List.of(
 			new TestCaseOutcomes(logs, 0, 4), new TestCaseOutcomes(cache, 0, 4))), "keptFixes").
 			isEqualTo(Promotion.Decision.PROMOTE);
 	}
@@ -170,8 +172,8 @@ public final class MinimalityTest
 			List<PromotionRun> runs = List.of(run(first, firstVerdict), run(first, firstVerdict),
 				run(second, secondVerdict), run(second, secondVerdict));
 			PromptAuthorAttempt attempt = new PromptAuthorAttempt(1, "safety", reduced.identity(), runs, search);
-			search = search.advance(reduced.identity(), runs, Promotion.decide(attempt, List.of(), List.of(
-				new TestCaseOutcomes(first, 0, 4), new TestCaseOutcomes(second, 0, 4))));
+			search = search.advance(reduced.identity(), runs, Promotion.decide(attempt, working.identity(), List.of(),
+				List.of(new TestCaseOutcomes(first, 0, 4), new TestCaseOutcomes(second, 0, 4))));
 		}
 		requireThat(search.testing(), "finished").isNull();
 		requireThat(search.removed(), "removed").isEqualTo(List.of("CLAUDE.md#2", "CLAUDE.md#4"));

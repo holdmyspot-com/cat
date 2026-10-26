@@ -905,7 +905,8 @@ public final class SchedulerTest
 			development(BIG_MEDIUM, 0, 1).failure(failing).round(new Round(Map.of(BIG_MEDIUM, 0))).
 			certificationAttempt(1).failure(tieredFailure(BIG_MEDIUM)).outcome(Outcome.INCONCLUSIVE).build();
 		campaign = TransitionSteps.submit(campaign, BIG_MEDIUM, Builder.snapshot("attempt"), List.of());
-		while (Promotion.decide(campaign.development().promptAuthor(), campaign.lineage().regressionSet(),
+		while (Promotion.decide(campaign.development().promptAuthor(), campaign.development().working().snapshot(),
+			campaign.lineage().regressionSet(),
 			campaign.development().testCaseOutcomes()) == Promotion.Decision.PENDING)
 		{
 			campaign = runNext(campaign, Verdict.PASS);

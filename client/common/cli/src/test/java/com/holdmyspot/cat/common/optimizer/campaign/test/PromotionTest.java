@@ -86,12 +86,14 @@ public final class PromotionTest
 			{
 				PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
 				requireThat(promptAuthor.runs(), "plannedRuns").size().isEqualTo(Math.max(2, completed + 2));
-				requireThat(Promotion.decide(promptAuthor, campaign.lineage().regressionSet(),
+				requireThat(Promotion.decide(promptAuthor, campaign.development().working().snapshot(),
+					campaign.lineage().regressionSet(),
 					campaign.development().testCaseOutcomes()), "decision").
 					isEqualTo(Promotion.Decision.PENDING);
 			}
 		}
-		requireThat(Promotion.decide(campaign.development().promptAuthor(), campaign.lineage().regressionSet(),
+		requireThat(Promotion.decide(campaign.development().promptAuthor(), campaign.development().working().snapshot(),
+			campaign.lineage().regressionSet(),
 			campaign.development().testCaseOutcomes()),
 			"fixed").isEqualTo(Promotion.Decision.PROMOTE);
 	}
@@ -130,7 +132,8 @@ public final class PromotionTest
 		for (int completed = 0; completed < 3; ++completed)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, ATTEMPT, testCase, Verdict.PASS);
 		requireThat(campaign.development().promptAuthor().runs(), "fourthRun").size().isEqualTo(4);
-		requireThat(Promotion.decide(campaign.development().promptAuthor(), campaign.lineage().regressionSet(),
+		requireThat(Promotion.decide(campaign.development().promptAuthor(), campaign.development().working().snapshot(),
+			campaign.lineage().regressionSet(),
 				campaign.development().testCaseOutcomes()),
 			"pending").isEqualTo(Promotion.Decision.PENDING);
 	}
@@ -212,7 +215,7 @@ public final class PromotionTest
 				records.add(new TestCaseOutcomes(run.testCase(), 0, 4));
 			}
 		}
-		return Promotion.decide(attempt, regressions, records);
+		return Promotion.decide(attempt, Builder.snapshot("working"), regressions, records);
 	}
 
 	/**
@@ -375,13 +378,13 @@ public final class PromotionTest
 				formal, Verdict.FAIL);
 			PromptAuthorAttempt pending = campaign.development().round().validationAttempts().stream().
 				filter(candidate -> candidate.number() == attempt.number()).findFirst().orElseThrow();
-			requireThat(Promotion.decide(pending, campaign.lineage().regressionSet(),
+			requireThat(Promotion.decide(pending, working, campaign.lineage().regressionSet(),
 				campaign.development().testCaseOutcomes()), "pendingReference").isEqualTo(Promotion.Decision.PENDING);
 		}
 		campaign = TransitionSteps.complete(campaign, reference, verdict);
 		for (PromptAuthorAttempt attempt : campaign.development().round().validationAttempts())
 		{
-			requireThat(Promotion.decide(attempt, campaign.lineage().regressionSet(),
+			requireThat(Promotion.decide(attempt, working, campaign.lineage().regressionSet(),
 				campaign.development().testCaseOutcomes()), "sharedDecision").isEqualTo(decision);
 			requireThat(AttemptSelection.passingRuns(attempt.runs()), "ownPassingRuns").isEqualTo(2L);
 			requireThat(AttemptSelection.plannedRuns(attempt.runs()), "ownPlannedRuns").isEqualTo(3L);
@@ -419,7 +422,7 @@ public final class PromotionTest
 		for (int completed = 0; completed < Promotion.STARTING_TRIGGERING_RUNS; ++completed)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 2, next, logs, Verdict.PASS);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 2, next, formal, Verdict.FAIL);
-		requireThat(Promotion.decide(campaign.development().promptAuthor(), campaign.lineage().regressionSet(),
+		requireThat(Promotion.decide(campaign.development().promptAuthor(), working, campaign.lineage().regressionSet(),
 			campaign.development().testCaseOutcomes()), "pendingReference").isEqualTo(Promotion.Decision.PENDING);
 		campaign = TransitionSteps.complete(campaign, reference, Verdict.PASS);
 		requireThat(campaign.development().promptAuthor(), "regressingAttempt").isNull();

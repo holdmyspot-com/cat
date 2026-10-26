@@ -36,6 +36,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
+import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.OptimizationEvidence;
@@ -108,6 +109,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryConflict;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
+import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
@@ -1554,6 +1556,113 @@ public final class DriverTest
 			}
 		}
 	}
+
+	/**
+	 * A single necessary edit reaches its minimal candidate without testing the unchanged working snapshot.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void skipsWorkingSnapshotReduction() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = workingReductionHarness(cleanup.add(Files.createTempDirectory("minimality")));
+			Sha256 working = harness.campaign().development().working().snapshot();
+			harness.promptAuthors(request -> harness.edit(request, DriverHarness.PROMPT, "needed"));
+			harness.trials(request -> harness.passed());
+
+			try (Driver driver = harness.open())
+			{
+				Campaign promoted = harness.runUntil(driver, state -> state.development().working().number() == 2 ||
+					state.trials().stream().anyMatch(trial -> trial.key().purpose() == Purpose.PROMOTION &&
+						trial.key().snapshot().equals(working)));
+				requireThat(promoted.trials().stream().filter(trial -> trial.key().purpose() == Purpose.PROMOTION &&
+					trial.key().snapshot().equals(working)).toList(), "unchangedPromotionTrials").isEmpty();
+				requireThat(promoted.development().working().number(), "candidateNumber").isEqualTo(2);
+				requireThat(promoted.development().working().snapshot(), "minimalSnapshot").
+					isEqualTo(harness.candidate("needed").identity());
+				requireThat(promoted.optimization().removed(), "removed").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * A saved reduction equal to the working snapshot settles on restart despite recorded checks and an extension.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void resumesWorkingSnapshotReduction() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = workingReductionHarness(cleanup.add(Files.createTempDirectory("minimality")));
+			Campaign initial = harness.campaign();
+			Sha256 working = initial.development().working().snapshot();
+			Overlay accepted = harness.candidate("needed");
+			harness.overlays().save(accepted);
+			DrawnTestCase testCase = Builder.targeted("safety", "cache");
+			List<PromotionRun> acceptedRuns = new ArrayList<>();
+			for (int sequence = 1; sequence <= 4; ++sequence)
+			{
+				acceptedRuns.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase,
+					new TrialKey(Purpose.PROMOTION, 1, accepted.identity(), "safety", sequence), Verdict.PASS));
+			}
+			List<PromotionRun> stuckRuns = new ArrayList<>();
+			for (int sequence = 1; sequence <= 315; ++sequence)
+			{
+				stuckRuns.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase,
+					new TrialKey(Purpose.PROMOTION, 1, working, "safety", sequence), Verdict.PASS));
+			}
+			stuckRuns.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
+			List<DiagnosticRerun> workingPasses = new ArrayList<>();
+			for (int sequence = 1; sequence <= 332; ++sequence)
+				workingPasses.add(new DiagnosticRerun(Verdict.PASS, "working pass"));
+			FileDelta file = new FileDelta(DriverHarness.PROMPT, new FileContent("candidate-1".getBytes(UTF_8)),
+				new FileContent("needed".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"));
+			Minimality search = new Minimality(List.of(file), List.of("CLAUDE.md#1"), 2, 0, List.of(),
+				accepted.identity(), acceptedRuns);
+			Campaign saved = new Builder().confirmed().working(new Candidate(1, working)).readyBaseline().
+				round(new Round(Map.of("safety", 0))).failure(new Failure(testCase, "working failure", List.of(),
+					null, workingPasses, List.of(), Builder.FILES)).
+				promptAuthor(new PromptAuthorAttempt(1, "safety", working, stuckRuns, search)).build();
+			harness.store().replaceSnapshot(saved);
+
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				Campaign resumed = harness.campaign();
+				requireThat(resumed.header().id(), "campaignIdentity").isEqualTo(saved.header().id());
+				requireThat(resumed.development().working().number(), "candidateNumber").isEqualTo(2);
+				requireThat(resumed.development().working().snapshot(), "minimalSnapshot").
+					isEqualTo(accepted.identity());
+				requireThat(resumed.development().promptAuthor(), "finishedSearch").isNull();
+				requireThat(resumed.trials().stream().filter(trial -> trial.key().purpose() == Purpose.PROMOTION).
+					count(), "promotionTrials").isEqualTo(0L);
+			}
+		}
+	}
+
+	/**
+	 * Creates a failed working candidate with its actual overlay identity so reductions can compare snapshots.
+	 *
+	 * @param directory the owned fixture directory
+	 * @return the fixture with one triggering failure
+	 * @throws IOException if the fixture cannot be used
+	 */
+	private static DriverHarness workingReductionHarness(Path directory) throws IOException
+	{
+		DriverHarness harness = new DriverHarness(directory, new Builder().confirmed().working(1).
+			readyBaseline().build());
+		Sha256 working = harness.overlays().require(Builder.snapshot("candidate-1")).identity();
+		harness.overlays().save(harness.candidate("candidate-1"));
+		harness.store().replaceSnapshot(new Builder().confirmed().working(new Candidate(1, working)).
+			readyBaseline().round(new Round(Map.of("safety", 0))).
+			failure(Builder.targeted("safety", "cache")).build());
+		return harness;
+	}
+
 	/**
 	 * Verifies that an uncited prompt author edit contributes no candidate and the next attempt runs.
 	 *

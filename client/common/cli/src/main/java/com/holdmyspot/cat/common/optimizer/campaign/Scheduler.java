@@ -119,7 +119,7 @@ public final class Scheduler
 			return;
 		}
 		PromptAuthorAttempt promptAuthor = development.promptAuthor();
-		if (promptAuthor != null && Promotion.decide(promptAuthor, campaign.lineage().regressionSet(),
+		if (promptAuthor != null && Promotion.decide(promptAuthor, working, campaign.lineage().regressionSet(),
 			development.testCaseOutcomes()) == Promotion.Decision.PENDING)
 			planPromotion(promptAuthor, working, plan, allocations);
 	}

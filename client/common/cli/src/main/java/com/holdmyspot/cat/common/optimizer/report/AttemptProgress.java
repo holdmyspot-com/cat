@@ -98,7 +98,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 					accepted = false;
 				else
 				{
-					accepted = switch (Promotion.decide(attempt, campaign.lineage().regressionSet(),
+					accepted = switch (Promotion.decide(attempt, working, campaign.lineage().regressionSet(),
 						campaign.development().testCaseOutcomes()))
 					{
 						case PENDING -> null;

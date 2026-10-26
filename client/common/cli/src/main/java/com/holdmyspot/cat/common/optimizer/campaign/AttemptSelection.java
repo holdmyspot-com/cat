@@ -79,7 +79,7 @@ public final class AttemptSelection
 		requireThat(regressionSet, "regressionSet").isNotNull();
 		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
 		return attempts.stream().filter(attempt -> !attempt.snapshot().equals(working) &&
-			Promotion.decide(attempt, regressionSet, workingOutcomes) == Promotion.Decision.PROMOTE).min(
+			Promotion.decide(attempt, working, regressionSet, workingOutcomes) == Promotion.Decision.PROMOTE).min(
 				Comparator.comparingLong((PromptAuthorAttempt attempt) -> passingRuns(attempt.runs())).reversed().
 					thenComparingInt(AttemptSelection::changedLines).thenComparingInt(PromptAuthorAttempt::number));
 	}

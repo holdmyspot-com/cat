@@ -203,19 +203,26 @@ public final class Promotion
 	 * Decides promotion from the adopted runs. An original attempt must fix at least one triggering test case; a
 	 * reduction must retain every fix from its minimality search's last accepted runs. Either rejects a regression
 	 * where the working candidate passes, and waits for all needed outcomes unless rejection is certain.
+	 * A reduction equal to the working snapshot is rejected without further checks because it preserves no edit.
 	 *
-	 * @param attempt the prompt author attempt
-	 * @param regressionSet the lineage's regression set
+	 * @param attempt         the prompt author attempt
+	 * @param working         the working candidate's snapshot
+	 * @param regressionSet   the lineage's regression set
 	 * @param workingOutcomes the working candidate's adopted outcomes, aggregated by test case
 	 * @return the decision
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static Decision decide(PromptAuthorAttempt attempt, List<RegressionTestCase> regressionSet,
+	public static Decision decide(PromptAuthorAttempt attempt, Sha256 working, List<RegressionTestCase> regressionSet,
 		List<TestCaseOutcomes> workingOutcomes)
 	{
 		requireThat(attempt, "attempt").isNotNull();
+		requireThat(working, "working").isNotNull();
 		requireThat(regressionSet, "regressionSet").isNotNull();
 		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
+
+		boolean restoresWorking = attempt.minimality().testing() != null && attempt.snapshot().equals(working);
+		if (restoresWorking)
+			return Decision.REJECT;
 
 		List<DrawnTestCase> triggering = triggeringTestCases(attempt.runs());
 		if (attempt.minimality().testing() != null)
@@ -261,10 +268,10 @@ public final class Promotion
 						pending = true;
 					else if (run.verdict() == Verdict.FAIL)
 					{
-						Verdict working = workingVerdict(run.testCase(), attempt, regressionSet);
-						if (working == Verdict.PASS)
+						Verdict workingVerdict = workingVerdict(run.testCase(), attempt, regressionSet);
+						if (workingVerdict == Verdict.PASS)
 							return Decision.REJECT;
-						if (working == null)
+						if (workingVerdict == null)
 							pending = true;
 					}
 				}

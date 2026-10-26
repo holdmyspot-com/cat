@@ -663,13 +663,13 @@ public final class TrialAdoption
 	 */
 	static void decidePromotion(Draft draft)
 	{
-		if (Promotion.decide(draft.promptAuthor, draft.regressionSet, draft.testCaseOutcomes) ==
+		if (Promotion.decide(draft.promptAuthor, draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes) ==
 			Promotion.Decision.PENDING)
 		{
 			draft.promptAuthor = Promotion.extend(draft.promptAuthor, draft.testCaseOutcomes);
 		}
 		PromptAuthorAttempt promptAuthor = draft.promptAuthor;
-		switch (Promotion.decide(promptAuthor, draft.regressionSet, draft.testCaseOutcomes))
+		switch (Promotion.decide(promptAuthor, draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes))
 		{
 			case PENDING ->
 			{
@@ -700,8 +700,11 @@ public final class TrialAdoption
 	{
 		for (PromptAuthorAttempt attempt : draft.round.validationAttempts())
 		{
-			if (Promotion.decide(attempt, draft.regressionSet, draft.testCaseOutcomes) == Promotion.Decision.PENDING)
+			if (Promotion.decide(attempt, draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes) ==
+				Promotion.Decision.PENDING)
+			{
 				draft.round = draft.round.withAttempt(Promotion.extend(attempt, draft.testCaseOutcomes));
+			}
 		}
 		Round round = draft.round;
 		for (PromptAuthorAttempt attempt : round.validationAttempts())
@@ -709,7 +712,8 @@ public final class TrialAdoption
 			if (attempt.runs().stream().allMatch(run -> run.verdict() != null))
 			{
 				boolean accepted = !attempt.snapshot().equals(draft.working.snapshot()) &&
-					Promotion.decide(attempt, draft.regressionSet, draft.testCaseOutcomes) == Promotion.Decision.PROMOTE;
+					Promotion.decide(attempt, draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes) ==
+						Promotion.Decision.PROMOTE;
 				retainAttempt(draft, attempt, accepted, false);
 			}
 		}
