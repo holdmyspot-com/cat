@@ -105,7 +105,8 @@ public final class CodexSessionEnvironmentVersionTest
 
 				// Windows adds only the choice of sandbox backend that enforces the same profile, so the hash covers the
 				// configuration that other platforms receive
-				CodexConnectionConfiguration.copy(source, destination, caches, temporaryDirectory, 0,
+				CodexConnectionConfiguration.copy(source, destination, run.directory().resolve("project"), caches,
+					temporaryDirectory, 0,
 					Platform.LINUX_X64);
 				String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
 					CodexRunner.sessionDeniedReads(manager, run, List.of(evidence), List.of(deniedFile, hostProject),

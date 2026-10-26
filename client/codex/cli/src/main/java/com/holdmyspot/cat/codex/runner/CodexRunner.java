@@ -198,7 +198,8 @@ public final class CodexRunner
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
 			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, artifact, sessionRequests,
 				Platform.current()).orElse(null);
-			CodexConnectionConfiguration.copy(hostHome.resolve(CONFIGURATION), isolatedConfiguration, caches,
+			CodexConnectionConfiguration.copy(hostHome.resolve(CONFIGURATION), isolatedConfiguration,
+				run.directory().resolve("project"), caches,
 				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current());
 			List<Path> sessionReadOnly = sessionReadOnly(readOnlyEvidence, requestAccess);
 			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,

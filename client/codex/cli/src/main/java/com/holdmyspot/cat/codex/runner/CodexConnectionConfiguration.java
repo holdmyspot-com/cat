@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -100,15 +101,17 @@ public final class CodexConnectionConfiguration
 
 	/**
 	 * Copies supported connection and project instruction settings and disables startup update checks in the isolated
-	 * configuration.
+	 * configuration. On non-Windows platforms, the copied project's own Git directory is writable, except for its
+	 * configuration and hooks; projects without a Git directory receive no Git grant.
 	 *
-	 * @param source the host configuration file
+	 * @param source      the host configuration file
 	 * @param destination the isolated configuration file
+	 * @param project     the copied project that the isolated session runs in
 	 * @throws IOException if configuration I/O fails
 	 */
-	public static void copy(Path source, Path destination) throws IOException
+	public static void copy(Path source, Path destination, Path project) throws IOException
 	{
-		copy(source, destination, HarnessDependencyCaches.NONE, destination.getParent().resolve("tmp"));
+		copy(source, destination, project, HarnessDependencyCaches.NONE, destination.getParent().resolve("tmp"));
 	}
 
 	/**
@@ -121,16 +124,18 @@ public final class CodexConnectionConfiguration
 	 * fail before it reaches the registry. This configuration gives every shell the variables that name the caches and
 	 * grants the caches the matching workspace-write authority.
 	 *
-	 * @param source the host configuration file
-	 * @param destination the isolated configuration file
-	 * @param caches the verified writable dependency caches
+	 * @param source             the host configuration file
+	 * @param destination        the isolated configuration file
+	 * @param project            the copied project that the isolated session runs in
+	 * @param caches             the verified writable dependency caches
 	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
 	 * @throws IOException if configuration I/O fails
 	 */
-	public static void copy(Path source, Path destination, HarnessDependencyCaches caches, Path temporaryDirectory)
+	public static void copy(Path source, Path destination, Path project, HarnessDependencyCaches caches,
+		Path temporaryDirectory)
 		throws IOException
 	{
-		copy(source, destination, caches, temporaryDirectory, 0, Platform.current());
+		copy(source, destination, project, caches, temporaryDirectory, 0, Platform.current());
 	}
 
 	/**
@@ -138,39 +143,43 @@ public final class CodexConnectionConfiguration
 	 * commands and limits each tool output's retained tokens. On Windows, it prefers Codex's MXC sandbox where the
 	 * system offers it.
 	 *
-	 * @param source the host configuration file
-	 * @param destination the isolated configuration file
-	 * @param caches the verified writable dependency caches
-	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
+	 * @param source               the host configuration file
+	 * @param destination          the isolated configuration file
+	 * @param project              the copied project that the isolated session runs in
+	 * @param caches               the verified writable dependency caches
+	 * @param temporaryDirectory   the fresh temporary directory owned by the isolated runner
 	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
 	 *   Codex's default
-	 * @param platform the platform that the session runs on
+	 * @param platform             the platform that the session runs on
 	 * @throws IOException if configuration I/O fails
 	 */
-	public static void copy(Path source, Path destination, HarnessDependencyCaches caches, Path temporaryDirectory,
-		int toolOutputTokenLimit, Platform platform) throws IOException
+	public static void copy(Path source, Path destination, Path project, HarnessDependencyCaches caches,
+		Path temporaryDirectory, int toolOutputTokenLimit, Platform platform) throws IOException
 	{
-		copy(source, destination, caches, temporaryDirectory, toolOutputTokenLimit, null, platform);
+		copy(source, destination, project, caches, temporaryDirectory, toolOutputTokenLimit, null, platform);
 	}
 
 	/**
-	 * Copies the configuration as {@link #copy(Path, Path, HarnessDependencyCaches, Path, int, Platform)} does, except
-	 * that a session that may request sessions can also write the run's requests directory, and its commands receive
+	 * Copies the configuration as {@link #copy(Path, Path, Path, HarnessDependencyCaches, Path, int, Platform)} does,
+	 * except that a session that may request sessions can also write the run's requests directory. Its commands receive
 	 * the variables that name that directory and the {@code request-session} launcher.
 	 *
-	 * @param source the host configuration file
-	 * @param destination the isolated configuration file
-	 * @param caches the verified writable dependency caches
-	 * @param temporaryDirectory the fresh temporary directory owned by the isolated runner
+	 * @param source               the host configuration file
+	 * @param destination          the isolated configuration file
+	 * @param project              the copied project that the isolated session runs in
+	 * @param caches               the verified writable dependency caches
+	 * @param temporaryDirectory   the fresh temporary directory owned by the isolated runner
 	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
 	 *   Codex's default
-	 * @param requestAccess the session's access to requested sessions, or {@code null} if it may request none
-	 * @param platform the platform that the session runs on
+	 * @param requestAccess        the session's access to requested sessions, or {@code null} if it may request none
+	 * @param platform             the platform that the session runs on
 	 * @throws IOException if configuration I/O fails
 	 */
-	public static void copy(Path source, Path destination, HarnessDependencyCaches caches, Path temporaryDirectory,
-		int toolOutputTokenLimit, SessionRequestAccess requestAccess, Platform platform) throws IOException
+	public static void copy(Path source, Path destination, Path project, HarnessDependencyCaches caches,
+		Path temporaryDirectory, int toolOutputTokenLimit, SessionRequestAccess requestAccess, Platform platform)
+		throws IOException
 	{
+		requireThat(project, "project").isNotNull();
 		requireThat(caches, "caches").isNotNull();
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
@@ -243,7 +252,8 @@ public final class CodexConnectionConfiguration
 			copied.append(System.lineSeparator()).append("[features]").append(System.lineSeparator()).
 				append("prefer_mxc = true").append(System.lineSeparator());
 		}
-		appendRunnerProfile(copied, destination.getParent(), writable, temporaryDirectory, networkAccess);
+		appendRunnerProfile(copied, destination.getParent(), writable, temporaryDirectory, networkAccess, project,
+			platform);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
 	}
@@ -255,9 +265,10 @@ public final class CodexConnectionConfiguration
 	 * The harness shell starts from the copied project, while the runner deliberately puts its credentials, session
 	 * state, plugins, and configuration in a sibling isolated home. A workspace-only profile cannot initialize that
 	 * shell because its required home lies outside the workspace. The child profile extends the built-in workspace
-	 * profile and adds only the newly created isolated home, the harness temporary directory, and the shared
-	 * dependency caches. It never extends the host's own permission profiles: they grant the host's Codex home, CAT user
-	 * directory and other workspaces, which a nested session must neither change nor see. Codex's Linux sandbox creates
+	 * profile and adds the newly created isolated home, the harness temporary directory, the shared dependency caches,
+	 * and the copied project's Git permissions. It never extends the host's own permission profiles: they grant the
+	 * host's Codex home, CAT user directory and other workspaces, which a nested session must neither change nor see.
+	 * Codex's Linux sandbox creates
 	 * its process lock and scratch state under the harness temporary directory before a shell command can run, so it
 	 * needs the same temporary-directory authority as the parent workspace-write sandbox. Its temporary directory is
 	 * created inside the runner-owned home beneath CAT work storage, rather than granting global {@code /tmp}; the
@@ -266,16 +277,18 @@ public final class CodexConnectionConfiguration
 	 * A thread that names a profile ignores {@code [sandbox_workspace_write]}, and the built-in workspace profile denies
 	 * network access, so the profile carries the parent's explicit workspace-write network policy.
 	 *
-	 * @param configuration the isolated configuration being assembled
-	 * @param isolatedHome the fresh runtime home that the runner owns
-	 * @param writable the other directories that the session may write: the verified shared dependency caches, and the
-	 *   run's requests directory when the session may request sessions
+	 * @param configuration      the isolated configuration being assembled
+	 * @param isolatedHome       the fresh runtime home that the runner owns
+	 * @param writable           the other directories that the session may write: the verified shared dependency caches,
+	 *                           and the run's requests directory when the session may request sessions
 	 * @param temporaryDirectory the fresh harness temporary directory owned by the runner
-	 * @param networkAccess {@code true} or {@code false} when the parent declares a workspace-write network policy, or
-	 *   {@code null} when it does not
+	 * @param networkAccess      {@code true} or {@code false} when the parent declares a workspace-write network policy,
+	 *                           or {@code null} when it does not
+	 * @param project            the copied project that the isolated session runs in
+	 * @param platform           the platform that the session runs on
 	 */
 	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, List<Path> writable,
-		Path temporaryDirectory, String networkAccess)
+		Path temporaryDirectory, String networkAccess, Path project, Platform platform)
 	{
 		assert configuration != null;
 		assert isolatedHome != null;
@@ -290,10 +303,39 @@ public final class CodexConnectionConfiguration
 			append(System.lineSeparator());
 		for (Path directory : writable)
 			configuration.append('"').append(toml(directory)).append("\" = \"write\"").append(System.lineSeparator());
+		appendProjectGitPermissions(configuration, project, platform);
 		if (networkAccess != null)
 		{
 			configuration.append("[permissions.").append(RUNNER_PERMISSION_PROFILE).append(".network]").
 				append(System.lineSeparator()).append("enabled = ").append(networkAccess).append(System.lineSeparator());
+		}
+	}
+
+	/**
+	 * Grants the copied project's Git metadata write access while protecting configuration and hooks.
+	 *
+	 * @param configuration the isolated configuration, ending in the runner profile's filesystem table
+	 * @param project       the copied project that the isolated session runs in
+	 * @param platform      the platform that the session runs on
+	 */
+	private static void appendProjectGitPermissions(StringBuilder configuration, Path project, Platform platform)
+	{
+		// Windows uses MXC or the native Windows sandbox rather than Linux's read-only mounts. Without verified
+		// protection for config and hooks there, keep Git metadata under the built-in workspace restrictions.
+		if (platform.isWindows())
+			return;
+		Path git = project.resolve(".git");
+		// A linked worktree or symbolic link can point outside the copied project; only its own directory is granted.
+		if (!Files.isDirectory(git, LinkOption.NOFOLLOW_LINKS))
+			return;
+
+		// Configuration and hooks can make a later Git command execute session-written code. Give the session the
+		// refs, objects and index it needs for commits and worktrees, while leaving those execution settings read-only.
+		configuration.append('"').append(toml(git)).append("\" = \"write\"").append(System.lineSeparator());
+		for (String protectedPath : List.of("config", "hooks"))
+		{
+			configuration.append('"').append(toml(git.resolve(protectedPath))).append("\" = \"read\"").
+				append(System.lineSeparator());
 		}
 	}
 
@@ -490,9 +532,9 @@ public final class CodexConnectionConfiguration
 	 * approval whose recorded hash differs from the hook's normalized declaration, so an approval of another version of
 	 * the hook gives it no trust.
 	 *
-	 * @param source the host configuration file
+	 * @param source      the host configuration file
 	 * @param destination the isolated configuration file
-	 * @param plugin the plugin's manifest name
+	 * @param plugin      the plugin's manifest name
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code plugin} is blank
 	 * @throws IOException if configuration I/O fails

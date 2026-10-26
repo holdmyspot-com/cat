@@ -44,6 +44,7 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 		SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.run(), fixture.artifact(),
 			sessionRequests, Platform.current()).orElse(null);
 		CodexConnectionConfiguration.copy(userCodexHome.resolve("config.toml"), configuration,
+			fixture.run().directory().resolve("project"),
 			HarnessDependencyCaches.NONE, Files.createDirectories(runHome.resolve("tmp")), 0, requestAccess,
 			Platform.current());
 		List<Path> readOnly = CodexRunner.sessionReadOnly(List.of(), requestAccess);

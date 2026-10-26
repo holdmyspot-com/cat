@@ -175,3 +175,14 @@ codex execpolicy check --rules ~/.codex/rules/cat.rules \
 It prints `"decision":"allow"`. Restart Codex after you change its rules.
 
 </details>
+
+## Git inside a Codex runner session
+
+The Codex runner gives each session an independent repository in its copied project. On Linux and macOS, the session
+can stage, commit, create branches and child worktrees, and merge. Create child worktrees inside the copied project.
+The repository's `.git/config` and `.git/hooks` remain read-only. Use Git's `-c` command options for per-command settings
+such as commit identity. Windows sessions keep Codex's built-in restrictions on Git
+metadata because CAT has not verified that its Windows sandbox protects configuration and hooks under this grant.
+
+A retained project is session-produced evidence. Treat its Git refs, objects, `info/` and worktree metadata as untrusted
+when running Git on it after the session ends.

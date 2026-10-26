@@ -24,6 +24,97 @@ import tools.jackson.dataformat.toml.TomlMapper;
 public final class CodexConnectionConfigurationTest
 {
 	/**
+	 * Verifies that the runner configuration grants writes only to its copied project's Git metadata, while keeping
+	 * configuration and hooks read-only even through validator and denied-read profiles.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void configuresProjectGitPermissions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-git-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path git = Files.createDirectories(project.resolve(".git"));
+			Path evidence = Files.createDirectories(project.resolve("evidence"));
+			Path secret = Files.writeString(project.resolve("secret"), "private");
+			Path destination = root.resolve("home/config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"),
+				HarnessDependencyCaches.NONE,
+				root.resolve("tmp"), 0, Platform.LINUX_X64);
+			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
+				List.of(secret));
+
+			JsonNode permissions = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("permissions");
+			JsonNode runner = permissions.path("cat-runner").path("filesystem");
+			requireThat(runner.path(git.toString()).asString(), "gitAccess").isEqualTo("write");
+			requireThat(runner.path(git.resolve("config").toString()).asString(), "configAccess").isEqualTo("read");
+			requireThat(runner.path(git.resolve("hooks").toString()).asString(), "hooksAccess").isEqualTo("read");
+			requireThat(runner.has(root.resolve(".git").toString()), "sourceRepositoryGranted").isFalse();
+			requireThat(profile, "sessionProfile").isEqualTo("cat-denied-reads");
+			requireThat(permissions.path(profile).path("extends").asString(), "deniedReadsParent").
+				isEqualTo("cat-validator");
+			requireThat(permissions.path(profile).path("filesystem").path(secret.toRealPath().toString()).asString(),
+				"secretAccess").isEqualTo("deny");
+			requireThat(permissions.path("cat-validator").path("extends").asString(), "validatorParent").
+				isEqualTo("cat-runner");
+			requireThat(permissions.path("cat-validator").path("filesystem").
+				path(evidence.toRealPath().toString()).asString(), "evidenceAccess").isEqualTo("read");
+		}
+	}
+
+	/**
+	 * Returns projects whose Git metadata must not receive additional write authority.
+	 *
+	 * @return the Git entry kind and the session platform
+	 */
+	@DataProvider
+	public Object[][] restrictedProjectGit()
+	{
+		return new Object[][]
+		{
+			{"absent", Platform.LINUX_X64},
+			{"file", Platform.LINUX_X64},
+			{"directory", Platform.WINDOWS_X64}
+		};
+	}
+
+	/**
+	 * Verifies that projects without their own Git directory and Windows sessions receive no Git grant.
+	 *
+	 * @param entryKind the kind of Git entry in the copied project
+	 * @param platform  the platform that the session runs on
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "restrictedProjectGit")
+	public void omitsProjectGitGrant(String entryKind, Platform platform) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-git-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path git = project.resolve(".git");
+			if (entryKind.equals("file"))
+				Files.writeString(git, "gitdir: elsewhere");
+			if (entryKind.equals("directory"))
+				Files.createDirectory(git);
+			Path destination = root.resolve("home/config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, project,
+				HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, platform);
+
+			JsonNode runner = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("permissions").path("cat-runner").path("filesystem");
+			requireThat(runner.has(git.toString()), "gitGranted").isFalse();
+			requireThat(runner.has(git.resolve("config").toString()), "configGranted").isFalse();
+			requireThat(runner.has(git.resolve("hooks").toString()), "hooksGranted").isFalse();
+		}
+	}
+
+	/**
 	 * Returns parent configurations and the instruction values that an isolated session must receive. Null expected
 	 * values mean the corresponding setting is absent.
 	 *
@@ -76,7 +167,7 @@ public final class CodexConnectionConfigurationTest
 			Path source = Files.writeString(root.resolve("host.toml"), configuration);
 			Path destination = root.resolve("isolated/config.toml");
 
-			CodexConnectionConfiguration.copy(source, destination);
+			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"));
 
 			JsonNode result = TomlMapper.builder().build().readTree(Files.readString(destination));
 			requireThat(result.has("project_doc_fallback_filenames"), "fallbacksPresent").isEqualTo(filenames != null);
@@ -108,7 +199,7 @@ public final class CodexConnectionConfigurationTest
 			Path destination = root.resolve("isolated/config.toml");
 
 			IOException failure = expectThrows(IOException.class, () ->
-				CodexConnectionConfiguration.copy(source, destination));
+				CodexConnectionConfiguration.copy(source, destination, root.resolve("project")));
 
 			requireThat(failure.getMessage(), "diagnostic").contains(source.toString());
 			requireThat(failure.getCause(), "cause").isNotNull();
@@ -186,7 +277,7 @@ public final class CodexConnectionConfigurationTest
 					url = "https://example.com/mcp"
 				""");
 
-			CodexConnectionConfiguration.copy(source, destination);
+			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"));
 
 			String result = Files.readString(destination);
 			requireThat(result, "connectionSettings").contains("default_permissions = \"cat-runner\"").
@@ -210,7 +301,7 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-update-check-"));
 			Path destination = root.resolve("isolated/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"));
 
 			requireThat(Files.readString(destination), "configuration").contains(
 				"check_for_update_on_startup = false");
@@ -231,7 +322,8 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-mxc-"));
 			Path destination = root.resolve("isolated/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, HarnessDependencyCaches.NONE,
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"),
+				HarnessDependencyCaches.NONE,
 				root.resolve("tmp"), 0, Platform.WINDOWS_X64);
 
 			List<String> lines = Files.readAllLines(destination);
@@ -255,7 +347,8 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-mxc-"));
 			Path destination = root.resolve("isolated/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, HarnessDependencyCaches.NONE,
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"),
+				HarnessDependencyCaches.NONE,
 				root.resolve("tmp"), 0, Platform.LINUX_X64);
 
 			requireThat(Files.readString(destination), "configuration").doesNotContain("prefer_mxc");
@@ -280,7 +373,7 @@ public final class CodexConnectionConfigurationTest
 				network_access = true
 				""");
 
-			CodexConnectionConfiguration.copy(source, destination);
+			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"));
 
 			requireThat(Files.readString(destination), "configuration").contains("[sandbox_workspace_write]").
 				contains("network_access = true");
@@ -305,7 +398,7 @@ public final class CodexConnectionConfigurationTest
 				network_access = false
 				""");
 
-			CodexConnectionConfiguration.copy(source, destination);
+			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"));
 
 			requireThat(Files.readString(destination), "configuration").contains("network_access = false");
 		}
@@ -331,7 +424,8 @@ public final class CodexConnectionConfigurationTest
 			Path destination = root.resolve("isolated/config.toml");
 			Path temporaryDirectory = root.resolve("isolated/tmp");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, caches, temporaryDirectory);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"),
+				caches, temporaryDirectory);
 
 			String configuration = Files.readString(destination);
 			requireThat(configuration, "configuration").contains("[sandbox_workspace_write]").
@@ -368,9 +462,9 @@ public final class CodexConnectionConfigurationTest
 			Path limited = root.resolve("limited/config.toml");
 			Path unlimited = root.resolve("unlimited/config.toml");
 
-			CodexConnectionConfiguration.copy(source, limited, HarnessDependencyCaches.NONE,
+			CodexConnectionConfiguration.copy(source, limited, root.resolve("project"), HarnessDependencyCaches.NONE,
 				root.resolve("limited/tmp"), 5000, Platform.current());
-			CodexConnectionConfiguration.copy(source, unlimited, HarnessDependencyCaches.NONE,
+			CodexConnectionConfiguration.copy(source, unlimited, root.resolve("project"), HarnessDependencyCaches.NONE,
 				root.resolve("unlimited/tmp"), 0, Platform.current());
 
 			List<String> lines = Files.readAllLines(limited);
@@ -412,7 +506,7 @@ public final class CodexConnectionConfigurationTest
 				"/secret" = "write"
 				""");
 
-			CodexConnectionConfiguration.copy(source, destination);
+			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"));
 
 			requireThat(Files.readString(destination), "configuration").doesNotContain("[permissions.cat]").
 				doesNotContain("[permissions.cat.").doesNotContain("/host/").doesNotContain("[permissions.other]").
@@ -438,7 +532,7 @@ public final class CodexConnectionConfigurationTest
 				""");
 			Path destination = root.resolve("isolated/config.toml");
 
-			CodexConnectionConfiguration.copy(source, destination);
+			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"));
 
 			requireThat(Files.readString(destination), "configuration").
 				contains("[permissions.cat-runner.network]" + System.lineSeparator() + "enabled = true" +
@@ -485,7 +579,7 @@ public final class CodexConnectionConfigurationTest
 			Path destination = root.resolve("isolated/config.toml");
 			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
 			Path trials = Files.createDirectory(root.resolve("trials"));
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"));
 
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(),
 				List.of(snapshot, trials));
@@ -517,7 +611,7 @@ public final class CodexConnectionConfigurationTest
 			Path destination = root.resolve("isolated/config.toml");
 			Path evidence = Files.createDirectories(root.resolve("evidence"));
 			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"));
 
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
 				List.of(snapshot));
@@ -547,7 +641,7 @@ public final class CodexConnectionConfigurationTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-denied-reads-"));
 			Path destination = root.resolve("isolated/config.toml");
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"));
 			String before = Files.readString(destination);
 
 			String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(), List.of());
