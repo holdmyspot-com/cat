@@ -97,6 +97,7 @@ final class OptimizationJson
 			attempt.put("passing_runs", progress.passingRuns());
 			attempt.put("total_runs", progress.totalRuns());
 			attempt.put("accepted", progress.accepted());
+			attempt.put("rejected_early", progress.rejectedEarly());
 			attempt.put("winner", progress.winner());
 		}
 		writeTestRevisions(root.putObject("test_revisions"), report.testRevisions());

@@ -391,10 +391,20 @@ final class Draft
 		}
 		for (PromptAuthorAttempt attempt : round.validationAttempts())
 		{
-			if (attempt.number() != key.series())
-				continue;
-			return attempt.runs().stream().anyMatch(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE &&
-				Promotion.isSameTestCase(run.testCase(), trial.testCase()));
+			if (attempt.number() == key.series() && attempt.runs().stream().anyMatch(run ->
+				run.role() == PromotionRun.Role.WORKING_REFERENCE &&
+					Promotion.isSameTestCase(run.testCase(), trial.testCase())))
+			{
+				return true;
+			}
+		}
+		for (AttemptResult result : optimization.attempts())
+		{
+			if (result.number() == key.series() && result.runs().stream().anyMatch(run ->
+				run.role() == PromotionRun.Role.WORKING_REFERENCE && key.equals(run.trial())))
+			{
+				return true;
+			}
 		}
 		return false;
 	}

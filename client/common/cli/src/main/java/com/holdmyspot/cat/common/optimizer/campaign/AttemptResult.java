@@ -16,7 +16,8 @@ import java.util.List;
  * @param number the prompt author's launch-order attempt number
  * @param cell the representative failing cell
  * @param snapshot the prompt author's original snapshot, equal to working when no edit was made
- * @param runs the original promotion runs, including working reference runs
+ * @param runs the original promotion runs, including the working candidate's reference runs and paired reruns; a
+ *   rejected attempt's runs that never started have no verdict
  * @param changedLines the number of added and removed lines
  * @param accepted indicates whether the promotion rule accepted this edited attempt
  * @param winner indicates whether this attempt was selected for minimality and promotion
@@ -55,7 +56,7 @@ public record AttemptResult(int round, Sha256 working, int number, String cell, 
 	/**
 	 * Returns the passing promotion runs.
 	 *
-	 * @return the attempt's own passes, excluding working reference runs
+	 * @return the attempt's own passes, including its paired reruns and excluding the working candidate's runs
 	 */
 	public long passingRuns()
 	{
@@ -63,12 +64,22 @@ public record AttemptResult(int round, Sha256 working, int number, String cell, 
 	}
 
 	/**
-	 * Returns the planned promotion run count.
+	 * Returns the promotion run count.
 	 *
-	 * @return the attempt's own run count, excluding working reference runs
+	 * @return the attempt's own runs that have an outcome, excluding the working candidate's runs
 	 */
 	public long totalRuns()
 	{
-		return AttemptSelection.plannedRuns(runs);
+		return AttemptSelection.judgedRuns(runs);
+	}
+
+	/**
+	 * Indicates whether the attempt was rejected before all of its planned runs ran.
+	 *
+	 * @return {@code true} if the attempt is rejected and one of its own planned runs has no outcome
+	 */
+	public boolean rejectedEarly()
+	{
+		return !accepted && AttemptSelection.judgedRuns(runs) < AttemptSelection.plannedRuns(runs);
 	}
 }

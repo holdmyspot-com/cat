@@ -453,7 +453,9 @@ final class ReportSummary
 		for (AttemptProgress attempt : report.attempts())
 		{
 			String accepted = "pending";
-			if (attempt.accepted() != null)
+			if (attempt.rejectedEarly())
+				accepted = "false, rejected early";
+			else if (attempt.accepted() != null)
 				accepted = attempt.accepted().toString();
 			lines.add("Round " + attempt.round() + ", Attempt " + attempt.number() + " in cell " + attempt.cell() +
 				": passing promotion runs " + attempt.passingRuns() + "/" + attempt.totalRuns() +

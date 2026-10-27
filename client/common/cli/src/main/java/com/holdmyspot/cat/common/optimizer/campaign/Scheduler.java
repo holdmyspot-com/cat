@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * Plans which trials may start next from the persisted campaign state. An admission either reruns an assigned
@@ -114,30 +115,64 @@ public final class Scheduler
 		Round round = development.round();
 		if (round != null && round.weak() && development.promptAuthor() == null)
 		{
+			List<PromptAuthorAttempt> pending = round.validationAttempts().stream().filter(attempt ->
+				Promotion.decide(attempt, campaign) == Promotion.Decision.PENDING).toList();
 			for (PromptAuthorAttempt attempt : round.validationAttempts())
-				planPromotion(attempt, working, plan, allocations);
+			{
+				if (pending.contains(attempt))
+					planPromotion(attempt, working, plan, allocations, _ -> true);
+				else
+					planPromotion(attempt, working, plan, allocations, run -> isSharedReference(run, pending));
+			}
 			return;
 		}
 		PromptAuthorAttempt promptAuthor = development.promptAuthor();
-		if (promptAuthor != null && Promotion.decide(promptAuthor, working, campaign.lineage().regressionSet(),
-			development.testCaseOutcomes()) == Promotion.Decision.PENDING)
-			planPromotion(promptAuthor, working, plan, allocations);
+		if (promptAuthor != null && Promotion.decide(promptAuthor, campaign) == Promotion.Decision.PENDING)
+			planPromotion(promptAuthor, working, plan, allocations, _ -> true);
 	}
 
 	/**
-	 * Plans every unassigned run of an attempt, including runs after an early weak-contender rejection.
+	 * Indicates whether a decided contender's run is a working reference that an undecided contender still needs.
+	 *
+	 * @param run the decided contender's run
+	 * @param pending the undecided contenders
+	 * @return {@code true} if the run measures the working candidate on a test case of another contender's regression
+	 *   run
+	 */
+	private static boolean isSharedReference(PromotionRun run, List<PromptAuthorAttempt> pending)
+	{
+		if (run.role() != PromotionRun.Role.WORKING_REFERENCE)
+			return false;
+		for (PromptAuthorAttempt attempt : pending)
+		{
+			for (PromotionRun other : attempt.runs())
+			{
+				if (other.role() == PromotionRun.Role.REGRESSION &&
+					Promotion.isSameTestCase(other.testCase(), run.testCase()))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Plans an attempt's unassigned runs that a filter selects. A rejected attempt plans no run of its own, and plans
+	 * only the working candidate's reference runs that an undecided contender shares.
 	 *
 	 * @param promptAuthor the attempt
 	 * @param working the working snapshot
 	 * @param plan the planned admissions
 	 * @param allocations the allocation decisions
+	 * @param due selects the runs to plan
 	 */
 	private static void planPromotion(PromptAuthorAttempt promptAuthor, Sha256 working, List<Admission> plan,
-		Allocations allocations)
+		Allocations allocations, Predicate<PromotionRun> due)
 	{
 		for (PromotionRun run : promptAuthor.runs())
 		{
-			if (run.trial() != null || run.verdict() != null)
+			if (run.trial() != null || run.verdict() != null || !due.test(run))
 				continue;
 			plan.add(new Admission.Assign(Purpose.PROMOTION, promptAuthor.number(), Promotion.snapshot(promptAuthor,
 				run, working), run.testCase().cellId(), run.testCase(), allocations.of(AllocationRule.TARGETED)));

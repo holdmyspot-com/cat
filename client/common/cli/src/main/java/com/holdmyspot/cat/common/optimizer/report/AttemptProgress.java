@@ -25,14 +25,17 @@ import java.util.TreeMap;
  * @param working the starting working snapshot
  * @param cell the representative addressed cell
  * @param snapshot the original prompt author snapshot, or {@code null} before the prompt author submits
- * @param passingRuns the attempt's own passing promotion runs, excluding working reference runs
- * @param totalRuns the attempt's own planned promotion runs, excluding working reference runs
+ * @param passingRuns the attempt's own passing promotion runs, excluding the working candidate's runs
+ * @param totalRuns the attempt's own planned promotion runs while it is pending, or its own runs that ran once it
+ *   is decided, excluding the working candidate's runs
  * @param accepted indicates whether promotion accepted the attempt, or {@code null} while pending
+ * @param rejectedEarly indicates whether the attempt was rejected before all of its planned runs ran
  * @param winner indicates whether this attempt was selected for minimality
  * @param assignment the editing approach and the origin of its round's order
  */
 public record AttemptProgress(int round, int number, Sha256 working, String cell, Sha256 snapshot,
-	long passingRuns, long totalRuns, Boolean accepted, boolean winner, ApproachAssignment assignment)
+	long passingRuns, long totalRuns, Boolean accepted, boolean rejectedEarly, boolean winner,
+	ApproachAssignment assignment)
 {
 	/**
 	 * Creates an attempt's status.
@@ -43,12 +46,14 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 	 * @param cell the addressed cell
 	 * @param snapshot the original snapshot, or {@code null} before submission
 	 * @param passingRuns passing promotion runs
-	 * @param totalRuns planned promotion runs
+	 * @param totalRuns planned or run promotion runs
 	 * @param accepted the promotion decision, or {@code null} while pending
+	 * @param rejectedEarly whether the attempt was rejected before all of its planned runs ran
 	 * @param winner whether this attempt won
 	 * @param assignment the durable editing approach and order origin
 	 * @throws NullPointerException if working or cell is null
-	 * @throws IllegalArgumentException if a position, number or count is invalid, or a winner is not accepted
+	 * @throws IllegalArgumentException if a position, number or count is invalid, a winner is not accepted, or an
+	 *   attempt rejected early is not rejected
 	 */
 	public AttemptProgress
 	{
@@ -61,6 +66,8 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 		requireThat(totalRuns, "totalRuns").isGreaterThanOrEqualTo(passingRuns);
 		if (winner)
 			requireThat(Boolean.TRUE.equals(accepted), "accepted").isTrue();
+		if (rejectedEarly)
+			requireThat(Boolean.FALSE.equals(accepted), "accepted").isTrue();
 	}
 
 	/**
@@ -80,7 +87,8 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 		{
 			progress.put(result.number(), new AttemptProgress(roundPositions.get(result.round()), result.number(),
 				result.working(), result.cell(), result.snapshot(), result.passingRuns(), result.totalRuns(),
-				result.accepted(), result.winner(), campaign.optimization().approach(result.number(), result.cell())));
+				result.accepted(), result.rejectedEarly(), result.winner(),
+				campaign.optimization().approach(result.number(), result.cell())));
 		}
 		Round round = campaign.development().round();
 		if (round != null)
@@ -94,7 +102,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 				if (attempt == null)
 				{
 					progress.put(entry.getKey(), new AttemptProgress(roundPositions.get(round.number()), entry.getKey(),
-						working, entry.getValue(), null, 0, 0, null, false,
+						working, entry.getValue(), null, 0, 0, null, false, false,
 						assignment(campaign, entry.getKey(), entry.getValue())));
 					continue;
 				}
@@ -103,17 +111,21 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 					accepted = false;
 				else
 				{
-					accepted = switch (Promotion.decide(attempt, working, campaign.lineage().regressionSet(),
-						campaign.development().testCaseOutcomes()))
+					accepted = switch (Promotion.decide(attempt, campaign))
 					{
 						case PENDING -> null;
 						case PROMOTE -> true;
 						case REJECT -> false;
 					};
 				}
+				long totalRuns = AttemptSelection.plannedRuns(attempt.runs());
+				if (accepted != null)
+					totalRuns = AttemptSelection.judgedRuns(attempt.runs());
+				boolean rejectedEarly = Boolean.FALSE.equals(accepted) && totalRuns < AttemptSelection.plannedRuns(
+					attempt.runs());
 				progress.put(entry.getKey(), new AttemptProgress(roundPositions.get(round.number()), entry.getKey(), working,
-					entry.getValue(), attempt.snapshot(), AttemptSelection.passingRuns(attempt.runs()),
-					AttemptSelection.plannedRuns(attempt.runs()), accepted, false,
+					entry.getValue(), attempt.snapshot(), AttemptSelection.passingRuns(attempt.runs()), totalRuns,
+					accepted, rejectedEarly, false,
 					assignment(campaign, entry.getKey(), entry.getValue())));
 			}
 		}

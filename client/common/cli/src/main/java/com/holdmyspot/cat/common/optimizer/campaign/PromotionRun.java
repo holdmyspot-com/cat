@@ -28,13 +28,34 @@ public record PromotionRun(Role role, DrawnTestCase testCase, TrialKey trial, Ve
 		 */
 		TRIGGERING,
 		/**
-		 * The attempt replays a previously failing test case; it must not fail where the working candidate passes.
+		 * The attempt replays a previously failing test case once. The runs of one prompt test form a group whose
+		 * failures must not be unlikely for the working candidate.
 		 */
 		REGRESSION,
 		/**
 		 * The working candidate replays a previously failing test case on which it has no outcome yet.
 		 */
-		WORKING_REFERENCE
+		WORKING_REFERENCE,
+		/**
+		 * The attempt replays a regression test case again because its group's failures were neither absent nor
+		 * unlikely for the working candidate.
+		 */
+		REGRESSION_RERUN,
+		/**
+		 * The working candidate replays the test case of the attempt's regression rerun at the same position, so that
+		 * each rerun of the attempt has a paired rerun of the working candidate.
+		 */
+		WORKING_RERUN;
+
+		/**
+		 * Indicates whether a run of this role tests the working candidate rather than the attempt.
+		 *
+		 * @return {@code true} for {@link #WORKING_REFERENCE} and {@link #WORKING_RERUN}
+		 */
+		public boolean measuresWorking()
+		{
+			return this == WORKING_REFERENCE || this == WORKING_RERUN;
+		}
 	}
 
 	/**

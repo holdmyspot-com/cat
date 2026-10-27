@@ -45,9 +45,7 @@ final class MinimalityAdvancement
 		{
 			return campaign;
 		}
-		Promotion.Decision decision = Promotion.decide(promptAuthor, campaign.development().working().snapshot(),
-			campaign.lineage().regressionSet(),
-			campaign.development().testCaseOutcomes());
+		Promotion.Decision decision = Promotion.decide(promptAuthor, campaign);
 		if (decision == Promotion.Decision.PENDING)
 			return campaign;
 		Minimality next = promptAuthor.minimality().advance(promptAuthor.snapshot(), promptAuthor.runs(), decision);

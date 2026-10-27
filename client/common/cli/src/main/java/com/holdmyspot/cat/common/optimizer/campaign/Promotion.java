@@ -16,15 +16,24 @@ import java.util.List;
  * Plans trial runs and decides whether a proposed edit replaces the working candidate.
  * <p>
  * A triggering test case is a failure in the edited cell, the prompt test under a runner profile. The edit
- * starts each triggering test case with two runs and runs each other test case in the regression set once. The working
- * candidate also runs each of those other test cases on which it has no outcome. An edit fixes a triggering test case
- * when every run passes and its passing streak has probability below 10% under the working candidate's smoothed
- * observed pass rate, {@code (passes + 1) / (outcomes + 2)} on the same test case. A passing streak extends one run
- * at a time until it is unlikely, so the more often the working candidate passes a test case, the more runs a fix
- * needs there; the smoothed rate is below 1, so every streak that keeps passing ends in a fix. The edit replaces the
- * working candidate when all needed outcomes are known, it fixes at least one triggering test case and it fails no
- * regression test case that the working candidate passes. A minimality reduction must preserve every triggering fix in
- * the last accepted runs. These runs reuse fixed test cases and never count as representative evidence.
+ * starts each triggering test case with two runs. An edit fixes a triggering test case when every run passes and its
+ * passing streak has probability below 10% under the working candidate's smoothed observed pass rate,
+ * {@code (passes + 1) / (outcomes + 2)} on the same test case. A passing streak extends one run at a time until it is
+ * unlikely, so the more often the working candidate passes a test case, the more runs a fix needs there; the smoothed
+ * rate is below 1, so every streak that keeps passing ends in a fix.
+ * <p>
+ * Once some triggering test case has two passes and no failure, or at once for a minimality reduction, the edit runs
+ * each other test case in the regression set once, and the working candidate runs each of those test cases on which it
+ * has no outcome. The regression runs of each prompt test form a group. A group passes when none of its runs fails;
+ * it regresses when its failures would occur with probability below 5%, {@code 1 / REGRESSION_BAR}, at the working
+ * candidate's smoothed pass rate on the group's test cases. Otherwise the edit and the working candidate run
+ * {@link #RERUN_STEP} paired reruns of the group's test cases, and the group is judged again, until it regresses or
+ * has had {@link #MAXIMUM_RERUNS} paired reruns and passes.
+ * <p>
+ * The edit replaces the working candidate when it fixes at least one triggering test case and every group passes; it
+ * is rejected as soon as every fix is impossible or a group regresses. A minimality reduction must preserve every
+ * triggering fix in the last accepted runs. These runs reuse fixed test cases and never count as representative
+ * evidence.
  */
 public final class Promotion
 {
@@ -44,6 +53,25 @@ public final class Promotion
 	 * The initial number of promotion runs planned for each distinct triggering test case.
 	 */
 	public static final int STARTING_TRIGGERING_RUNS = 2;
+	/**
+	 * The probability below which a group's regression failures show that the edit is worse than the working
+	 * candidate, as a denominator: the bar is {@code 1 / 20}, or 5%. Simulated at a 93% working pass rate, the
+	 * regression check with this bar, {@link #RERUN_STEP} and {@link #MAXIMUM_RERUNS} rejects an equally good edit about
+	 * 2.4% of the time per prompt test and an edit that passes 80% about 38% of the time.
+	 */
+	private static final int REGRESSION_BAR = 20;
+	/**
+	 * The number of paired reruns that a group receives before it is judged again. Simulated at a 93% working pass
+	 * rate, the regression check with this step, {@link #REGRESSION_BAR} and {@link #MAXIMUM_RERUNS} rejects an
+	 * equally good edit about 2.4% of the time per prompt test and an edit that passes 80% about 38% of the time.
+	 */
+	public static final int RERUN_STEP = 5;
+	/**
+	 * The number of paired reruns after which a group that has not regressed passes. Simulated at a 93% working pass
+	 * rate, the regression check with this limit, {@link #REGRESSION_BAR} and {@link #RERUN_STEP} rejects an equally
+	 * good edit about 2.4% of the time per prompt test and an edit that passes 80% about 38% of the time.
+	 */
+	public static final int MAXIMUM_RERUNS = 15;
 
 	/**
 	 * The state of a prompt author attempt's promotion.
@@ -72,39 +100,20 @@ public final class Promotion
 	}
 
 	/**
-	 * Plans the promotion runs of a prompt author attempt.
-	 *
-	 * @param cell the round cell that the attempt addresses
-	 * @param failures the failing test cases that the prompt author received; only those in {@code cell} trigger runs
-	 * @param regressionSet the lineage's regression set
-	 * @param generator the contract's generator, which marks the test cases targeted
-	 * @return the unassigned runs: the triggering runs, then the regression runs, then the working candidate's
-	 *   reference runs
-	 * @throws NullPointerException if any argument is null or either list contains null
-	 */
-	public static List<PromotionRun> plan(String cell, List<DrawnTestCase> failures,
-		List<RegressionTestCase> regressionSet, Generator generator)
-	{
-		return plan(List.of(cell), failures, regressionSet, generator);
-	}
-
-	/**
-	 * Plans promotion runs for all triggering cells of one addressed test.
+	 * Plans the triggering runs of a prompt author attempt for all triggering cells of one addressed test. The
+	 * regression runs follow once {@link #extend} finds them due.
 	 *
 	 * @param cells the triggering cells
-	 * @param failures the received failures
-	 * @param regressionSet the regression set
-	 * @param generator the targeting generator
-	 * @return the same triggering, regression and reference plan used for single-cell attempts
-	 * @throws NullPointerException if any argument is null
+	 * @param failures the failing test cases that the prompt author received; only those in {@code cells} trigger runs
+	 * @param generator the contract's generator, which marks the test cases targeted
+	 * @return the unassigned runs, {@link #STARTING_TRIGGERING_RUNS} for each distinct triggering test case
+	 * @throws NullPointerException if any argument is null or {@code failures} contains null
 	 * @throws IllegalArgumentException if {@code cells} is empty
 	 */
-	public static List<PromotionRun> plan(List<String> cells, List<DrawnTestCase> failures,
-		List<RegressionTestCase> regressionSet, Generator generator)
+	public static List<PromotionRun> plan(List<String> cells, List<DrawnTestCase> failures, Generator generator)
 	{
 		requireThat(cells, "cells").isNotEmpty();
 		requireThat(failures, "failures").isNotNull();
-		requireThat(regressionSet, "regressionSet").isNotNull();
 		requireThat(generator, "generator").isNotNull();
 		List<PromotionRun> triggering = new ArrayList<>();
 		List<DrawnTestCase> triggeringTestCases = new ArrayList<>();
@@ -119,37 +128,31 @@ public final class Promotion
 			for (int run = 0; run < STARTING_TRIGGERING_RUNS; ++run)
 				triggering.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
 		}
-		List<PromotionRun> regressions = new ArrayList<>();
-		List<PromotionRun> references = new ArrayList<>();
-		for (RegressionTestCase regression : regressionSet)
-		{
-			if (containsTestCase(triggeringTestCases, regression.testCase()))
-				continue;
-			regressions.add(new PromotionRun(PromotionRun.Role.REGRESSION, regression.testCase(), null, null));
-			if (regression.working() == null)
-			{
-				references.add(new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, regression.testCase(), null,
-					null));
-			}
-		}
-		List<PromotionRun> runs = new ArrayList<>(triggering);
-		runs.addAll(regressions);
-		runs.addAll(references);
-		return runs;
+		return triggering;
 	}
 
 	/**
-	 * Plans one extra run for each fully passing triggering streak that is still likely.
+	 * Plans the runs that the attempt's adopted outcomes make due: one extra run for each fully passing triggering
+	 * streak that is still likely; the regression runs and the working candidate's missing reference runs once they
+	 * are due and not yet planned; and {@link #RERUN_STEP} paired reruns for each group whose last check neither passed
+	 * nor regressed. A group's reruns cycle through its test cases in regression run order, those the attempt failed
+	 * first, and each rerun of the attempt is followed by the working candidate's rerun of the same test case.
 	 *
 	 * @param attempt the attempt whose adopted outcomes determine extensions
+	 * @param regressionSet the lineage's regression set
 	 * @param workingOutcomes the working candidate's adopted outcomes, aggregated by test case
-	 * @return the attempt with unassigned extensions appended, or the same attempt if none is due
-	 * @throws NullPointerException if an argument or outcome is null
+	 * @param sharedReferences the test cases on which another run already measures the working candidate, so that the
+	 *   attempt plans no reference run of its own there
+	 * @return the attempt with unassigned runs appended, or the same attempt if none is due
+	 * @throws NullPointerException if an argument or element is null
 	 */
-	public static PromptAuthorAttempt extend(PromptAuthorAttempt attempt, List<TestCaseOutcomes> workingOutcomes)
+	public static PromptAuthorAttempt extend(PromptAuthorAttempt attempt, List<RegressionTestCase> regressionSet,
+		List<TestCaseOutcomes> workingOutcomes, List<DrawnTestCase> sharedReferences)
 	{
 		requireThat(attempt, "attempt").isNotNull();
+		requireThat(regressionSet, "regressionSet").isNotNull();
 		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
+		requireThat(sharedReferences, "sharedReferences").isNotNull();
 
 		List<PromotionRun> runs = new ArrayList<>(attempt.runs());
 		for (DrawnTestCase testCase : triggeringTestCases(attempt.runs()))
@@ -162,6 +165,28 @@ public final class Promotion
 				runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
 			}
 		}
+		if (isRegressionUnplanned(attempt))
+		{
+			for (PromotionRun run : regressionRuns(attempt, regressionSet))
+			{
+				if (run.role() == PromotionRun.Role.REGRESSION || !containsTestCase(sharedReferences, run.testCase()))
+					runs.add(run);
+			}
+		}
+		for (String testId : regressionGroups(attempt.runs()))
+		{
+			if (checkGroup(testId, attempt, regressionSet) != GroupCheck.NEEDS_RERUNS)
+				continue;
+			List<DrawnTestCase> order = rerunOrder(testId, attempt.runs());
+			long planned = attempt.runs().stream().filter(run -> run.role() == PromotionRun.Role.REGRESSION_RERUN &&
+				run.testCase().testId().equals(testId)).count();
+			for (long rerun = planned; rerun < planned + RERUN_STEP; ++rerun)
+			{
+				DrawnTestCase testCase = order.get((int) (rerun % order.size()));
+				runs.add(new PromotionRun(PromotionRun.Role.REGRESSION_RERUN, testCase, null, null));
+				runs.add(new PromotionRun(PromotionRun.Role.WORKING_RERUN, testCase, null, null));
+			}
+		}
 		if (runs.size() == attempt.runs().size())
 			return attempt;
 		return new PromptAuthorAttempt(attempt.number(), attempt.cell(), attempt.snapshot(), runs,
@@ -169,7 +194,70 @@ public final class Promotion
 	}
 
 	/**
-	 * Starts a reduction's triggering streaks at two runs and resets regression runs while retaining working references.
+	 * Indicates whether the attempt's regression runs are due but not planned. They are due for a minimality
+	 * reduction, and for an original attempt once some triggering test case has {@link #STARTING_TRIGGERING_RUNS}
+	 * passes and no failure.
+	 *
+	 * @param attempt the attempt
+	 * @return {@code true} if the attempt has no regression run and its regression runs are due
+	 */
+	private static boolean isRegressionUnplanned(PromptAuthorAttempt attempt)
+	{
+		if (attempt.runs().stream().anyMatch(run -> run.role() == PromotionRun.Role.REGRESSION))
+			return false;
+		if (attempt.minimality().testing() != null)
+			return true;
+		for (DrawnTestCase testCase : triggeringTestCases(attempt.runs()))
+		{
+			int passes = 0;
+			boolean failed = false;
+			for (PromotionRun run : attempt.runs())
+			{
+				if (run.role() != PromotionRun.Role.TRIGGERING || !isSameTestCase(testCase, run.testCase()))
+					continue;
+				if (run.verdict() == Verdict.FAIL)
+					failed = true;
+				else if (run.verdict() == Verdict.PASS)
+					++passes;
+			}
+			if (!failed && passes >= STARTING_TRIGGERING_RUNS)
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Returns the regression runs of an attempt: one run of each regression test case that does not trigger the
+	 * attempt, then one reference run of the working candidate on each such test case on which it has no outcome.
+	 *
+	 * @param attempt the attempt
+	 * @param regressionSet the lineage's regression set
+	 * @return the unassigned runs
+	 */
+	private static List<PromotionRun> regressionRuns(PromptAuthorAttempt attempt,
+		List<RegressionTestCase> regressionSet)
+	{
+		List<DrawnTestCase> triggering = triggeringTestCases(attempt.runs());
+		List<PromotionRun> regressions = new ArrayList<>();
+		List<PromotionRun> references = new ArrayList<>();
+		for (RegressionTestCase regression : regressionSet)
+		{
+			if (containsTestCase(triggering, regression.testCase()))
+				continue;
+			regressions.add(new PromotionRun(PromotionRun.Role.REGRESSION, regression.testCase(), null, null));
+			if (regression.working() == null)
+			{
+				references.add(new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, regression.testCase(), null,
+					null));
+			}
+		}
+		regressions.addAll(references);
+		return regressions;
+	}
+
+	/**
+	 * Starts a reduction's triggering streaks at two runs, resets regression runs while retaining working references,
+	 * and drops paired reruns, which each reduction plans again for itself.
 	 *
 	 * @param acceptedRuns the preceding attempt's runs
 	 * @return the unassigned triggering and regression runs, followed by retained working reference runs
@@ -191,7 +279,7 @@ public final class Promotion
 			{
 				case REGRESSION -> runs.add(new PromotionRun(run.role(), run.testCase(), null, null));
 				case WORKING_REFERENCE -> runs.add(run);
-				case TRIGGERING ->
+				case TRIGGERING, REGRESSION_RERUN, WORKING_RERUN ->
 				{
 				}
 			}
@@ -200,10 +288,57 @@ public final class Promotion
 	}
 
 	/**
+	 * Returns the decision on an attempt of a campaign, keeping the recorded decision of a retained original attempt.
+	 *
+	 * @param attempt  the prompt author attempt
+	 * @param campaign the campaign whose working candidate, regression set and retained results apply
+	 * @return the decision
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static Decision decide(PromptAuthorAttempt attempt, Campaign campaign)
+	{
+		requireThat(campaign, "campaign").isNotNull();
+		return decide(attempt, campaign.development().working().snapshot(), campaign.lineage().regressionSet(),
+			campaign.development().testCaseOutcomes(), campaign.optimization().attempts());
+	}
+
+	/**
+	 * Returns the decision on an attempt: the recorded decision of an original attempt whose result is retained, or
+	 * else the decision of the adopted runs. A retained result keeps the decision that was made when it was retained,
+	 * including one made under an earlier promotion rule.
+	 *
+	 * @param attempt         the prompt author attempt
+	 * @param working         the working candidate's snapshot
+	 * @param regressionSet   the lineage's regression set
+	 * @param workingOutcomes the working candidate's adopted outcomes, aggregated by test case
+	 * @param retained        the retained attempt results
+	 * @return the decision
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static Decision decide(PromptAuthorAttempt attempt, Sha256 working, List<RegressionTestCase> regressionSet,
+		List<TestCaseOutcomes> workingOutcomes, List<AttemptResult> retained)
+	{
+		requireThat(attempt, "attempt").isNotNull();
+		requireThat(retained, "retained").isNotNull();
+		if (attempt.minimality().testing() == null && attempt.minimality().acceptedRuns().isEmpty())
+		{
+			for (AttemptResult result : retained)
+			{
+				if (result.number() != attempt.number())
+					continue;
+				if (result.accepted())
+					return Decision.PROMOTE;
+				return Decision.REJECT;
+			}
+		}
+		return decide(attempt, working, regressionSet, workingOutcomes);
+	}
+
+	/**
 	 * Decides promotion from the adopted runs. An original attempt must fix at least one triggering test case; a
-	 * reduction must retain every fix from its minimality search's last accepted runs. Either rejects a regression
-	 * where the working candidate passes, and waits for all needed outcomes unless rejection is certain.
-	 * A reduction equal to the working snapshot is rejected without further checks because it preserves no edit.
+	 * reduction must retain every fix from its minimality search's last accepted runs. Either is rejected as soon as
+	 * a regression group regresses, and waits for all needed outcomes unless rejection is certain. A reduction equal to
+	 * the working snapshot is rejected without further checks because it preserves no edit.
 	 *
 	 * @param attempt         the prompt author attempt
 	 * @param working         the working candidate's snapshot
@@ -255,28 +390,21 @@ public final class Promotion
 		}
 		for (PromotionRun run : attempt.runs())
 		{
-			switch (run.role())
+			if (run.role() == PromotionRun.Role.TRIGGERING && run.verdict() == null)
+				pending = true;
+		}
+		if (isRegressionUnplanned(attempt) && !regressionRuns(attempt, regressionSet).isEmpty())
+			pending = true;
+		for (String testId : regressionGroups(attempt.runs()))
+		{
+			switch (checkGroup(testId, attempt, regressionSet))
 			{
-				case TRIGGERING ->
+				case REGRESSES ->
 				{
-					if (run.verdict() == null)
-						pending = true;
+					return Decision.REJECT;
 				}
-				case REGRESSION ->
-				{
-					if (run.verdict() == null)
-						pending = true;
-					else if (run.verdict() == Verdict.FAIL)
-					{
-						Verdict workingVerdict = workingVerdict(run.testCase(), attempt, regressionSet);
-						if (workingVerdict == Verdict.PASS)
-							return Decision.REJECT;
-						if (workingVerdict == null)
-							pending = true;
-					}
-				}
-				// A reference run matters only through the regression run that it explains
-				case WORKING_REFERENCE ->
+				case WAITS, NEEDS_RERUNS -> pending = true;
+				case PASSES ->
 				{
 				}
 			}
@@ -284,6 +412,193 @@ public final class Promotion
 		if (pending)
 			return Decision.PENDING;
 		return Decision.PROMOTE;
+	}
+
+	/**
+	 * The state of one prompt test's regression runs.
+	 */
+	private enum GroupCheck
+	{
+		/**
+		 * No run failed, or the group had all its paired reruns without regressing.
+		 */
+		PASSES,
+		/**
+		 * The failures are unlikely for the working candidate at the latest check.
+		 */
+		REGRESSES,
+		/**
+		 * A run that the next check needs has no outcome.
+		 */
+		WAITS,
+		/**
+		 * The latest check neither passed nor regressed, and the next check needs reruns that are not planned.
+		 */
+		NEEDS_RERUNS
+	}
+
+	/**
+	 * Returns the prompt tests of the attempt's regression runs, in run order.
+	 *
+	 * @param runs the attempt's runs
+	 * @return the distinct test identifiers
+	 */
+	private static List<String> regressionGroups(List<PromotionRun> runs)
+	{
+		List<String> testIds = new ArrayList<>();
+		for (PromotionRun run : runs)
+		{
+			if (run.role() == PromotionRun.Role.REGRESSION && !testIds.contains(run.testCase().testId()))
+				testIds.add(run.testCase().testId());
+		}
+		return testIds;
+	}
+
+	/**
+	 * Checks one prompt test's regression runs at the end of the first pass and after every {@link #RERUN_STEP}
+	 * paired reruns, up to {@link #MAXIMUM_RERUNS}. The first pass counts the attempt's regression runs and one outcome
+	 * of the working candidate on each of their test cases; each paired rerun adds one run of each.
+	 *
+	 * @param testId the prompt test
+	 * @param attempt the attempt
+	 * @param regressionSet the lineage's regression set
+	 * @return the group's state
+	 */
+	private static GroupCheck checkGroup(String testId, PromptAuthorAttempt attempt,
+		List<RegressionTestCase> regressionSet)
+	{
+		List<PromotionRun> attemptReruns = new ArrayList<>();
+		List<PromotionRun> workingReruns = new ArrayList<>();
+		List<DrawnTestCase> testCases = new ArrayList<>();
+		int runs = 0;
+		int failures = 0;
+		for (PromotionRun run : attempt.runs())
+		{
+			if (!run.testCase().testId().equals(testId))
+				continue;
+			switch (run.role())
+			{
+				case REGRESSION ->
+				{
+					if (run.verdict() == null)
+						return GroupCheck.WAITS;
+					++runs;
+					if (run.verdict() == Verdict.FAIL)
+						++failures;
+					if (!containsTestCase(testCases, run.testCase()))
+						testCases.add(run.testCase());
+				}
+				case REGRESSION_RERUN -> attemptReruns.add(run);
+				case WORKING_RERUN -> workingReruns.add(run);
+				case TRIGGERING, WORKING_REFERENCE ->
+				{
+				}
+			}
+		}
+		if (failures == 0)
+			return GroupCheck.PASSES;
+		int workingPasses = 0;
+		int workingOutcomes = 0;
+		for (DrawnTestCase testCase : testCases)
+		{
+			Verdict verdict = workingVerdict(testCase, attempt, regressionSet);
+			if (verdict == null)
+				return GroupCheck.WAITS;
+			++workingOutcomes;
+			if (verdict == Verdict.PASS)
+				++workingPasses;
+		}
+		for (int reruns = 0; ; reruns += RERUN_STEP)
+		{
+			if (reruns > 0)
+			{
+				if (attemptReruns.size() < reruns || workingReruns.size() < reruns)
+					return GroupCheck.NEEDS_RERUNS;
+				for (int index = reruns - RERUN_STEP; index < reruns; ++index)
+				{
+					Verdict attemptVerdict = attemptReruns.get(index).verdict();
+					Verdict workingVerdict = workingReruns.get(index).verdict();
+					if (attemptVerdict == null || workingVerdict == null)
+						return GroupCheck.WAITS;
+					++runs;
+					if (attemptVerdict == Verdict.FAIL)
+						++failures;
+					++workingOutcomes;
+					if (workingVerdict == Verdict.PASS)
+						++workingPasses;
+				}
+			}
+			if (isRegression(failures, runs, workingPasses, workingOutcomes))
+				return GroupCheck.REGRESSES;
+			if (reruns == MAXIMUM_RERUNS)
+				return GroupCheck.PASSES;
+		}
+	}
+
+	/**
+	 * Returns the order in which a group's reruns cycle through its test cases: the test cases whose regression run
+	 * failed, then the others, each in regression run order.
+	 *
+	 * @param testId the prompt test
+	 * @param runs the attempt's runs
+	 * @return the distinct test cases
+	 */
+	private static List<DrawnTestCase> rerunOrder(String testId, List<PromotionRun> runs)
+	{
+		List<DrawnTestCase> failed = new ArrayList<>();
+		List<DrawnTestCase> passed = new ArrayList<>();
+		for (PromotionRun run : runs)
+		{
+			if (run.role() != PromotionRun.Role.REGRESSION || !run.testCase().testId().equals(testId))
+				continue;
+			if (run.verdict() == Verdict.FAIL)
+			{
+				if (!containsTestCase(failed, run.testCase()))
+					failed.add(run.testCase());
+			}
+			else if (!containsTestCase(passed, run.testCase()))
+				passed.add(run.testCase());
+		}
+		List<DrawnTestCase> order = new ArrayList<>(failed);
+		for (DrawnTestCase testCase : passed)
+		{
+			if (!containsTestCase(order, testCase))
+				order.add(testCase);
+		}
+		return order;
+	}
+
+	/**
+	 * Indicates whether an edit's regression failures are unlikely for the working candidate: the probability of at
+	 * least {@code failures} failures in {@code runs} runs, at the failure rate {@code 1 - p} where
+	 * {@code p = (passes + 1) / (outcomes + 2)}, is below {@code 1 / REGRESSION_BAR}.
+	 *
+	 * @param failures the edit's failed runs
+	 * @param runs the edit's judged runs
+	 * @param passes the working candidate's passes
+	 * @param outcomes the working candidate's outcomes
+	 * @return {@code true} when {@code REGRESSION_BAR * sum(C(runs, k) * a^k * b^(runs - k)) < (outcomes + 2)^runs}
+	 *   over {@code k} from {@code failures} to {@code runs}, with {@code a = outcomes + 1 - passes} and
+	 *   {@code b = passes + 1}, compared exactly
+	 */
+	private static boolean isRegression(int failures, int runs, int passes, int outcomes)
+	{
+		BigInteger failureWeight = BigInteger.valueOf(outcomes + 1 - passes);
+		BigInteger passWeight = BigInteger.valueOf(passes + 1);
+		BigInteger total = BigInteger.valueOf(outcomes + 2);
+		BigInteger tail = BigInteger.ZERO;
+		BigInteger combinations = BigInteger.ONE;
+		for (int k = 0; k <= runs; ++k)
+		{
+			if (k > 0)
+			{
+				combinations = combinations.multiply(BigInteger.valueOf(runs - k + 1)).
+					divide(BigInteger.valueOf(k));
+			}
+			if (k >= failures)
+				tail = tail.add(combinations.multiply(failureWeight.pow(k)).multiply(passWeight.pow(runs - k)));
+		}
+		return tail.multiply(BigInteger.valueOf(REGRESSION_BAR)).compareTo(total.pow(runs)) < 0;
 	}
 
 	/**
@@ -411,11 +726,12 @@ public final class Promotion
 	 * @param attempt the prompt author attempt
 	 * @param run one of its runs
 	 * @param working the working candidate's snapshot
-	 * @return {@code working} for a reference run, otherwise the prompt author attempt's snapshot
+	 * @return {@code working} for a run that measures the working candidate, otherwise the prompt author attempt's
+	 *   snapshot
 	 */
 	static Sha256 snapshot(PromptAuthorAttempt attempt, PromotionRun run, Sha256 working)
 	{
-		if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
+		if (run.role().measuresWorking())
 			return working;
 		return attempt.snapshot();
 	}

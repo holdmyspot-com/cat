@@ -141,8 +141,10 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
  * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
- * round-trip exactly. Version-43 documents are upgraded on read, preserving existing rounds' nine-approach
- * rotation. Other unsupported versions are refused with a message that asks the user to start a new campaign.
+ * round-trip exactly. Version-43 and version-44 documents are upgraded on read: version 43 lacks the saved approach
+ * rotation, so existing rounds keep their nine-approach rotation, and version 44 lacks the paired-rerun roles of
+ * promotion runs, which its runs never use. Other unsupported versions are refused with a message that asks the user
+ * to start a new campaign.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}. Reading ignores a measurement condition that CAT recorded in the current format but no
@@ -155,7 +157,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 44;
+	private static final int FORMAT_VERSION = 45;
 	/**
 	 * The names of measurement conditions that CAT no longer records. A document written while CAT recorded one still
 	 * loads: reading drops the condition.
@@ -2652,6 +2654,12 @@ final class CampaignJson
 		if (version == 43)
 		{
 			upgradeVersion43((ObjectNode) root);
+			return;
+		}
+		// Version 44 differs only by lacking the paired-rerun roles, so its runs read unchanged
+		if (version == 44)
+		{
+			((ObjectNode) root).put(VERSION, FORMAT_VERSION);
 			return;
 		}
 		if (version != FORMAT_VERSION)

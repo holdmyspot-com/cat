@@ -36,6 +36,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.SoundTest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialFiles;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
@@ -616,6 +617,19 @@ public final class Builder
 	{
 		trials.add(trial);
 		sequences.merge(trial.key().sequenceGroup(), trial.key().sequence(), Math::max);
+		return this;
+	}
+
+	/**
+	 * Records that a trial was assigned and has since been adopted, so that later trials of its group receive later
+	 * sequence numbers.
+	 *
+	 * @param key the adopted trial's key
+	 * @return this builder
+	 */
+	public Builder adopted(TrialKey key)
+	{
+		sequences.merge(key.sequenceGroup(), key.sequence(), Math::max);
 		return this;
 	}
 

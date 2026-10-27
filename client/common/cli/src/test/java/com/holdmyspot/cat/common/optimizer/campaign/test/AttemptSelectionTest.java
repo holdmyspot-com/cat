@@ -2,11 +2,13 @@ package com.holdmyspot.cat.common.optimizer.campaign.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.campaign.AttemptResult;
 import com.holdmyspot.cat.common.optimizer.campaign.AttemptSelection;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.DiagnosticRerun;
+import com.holdmyspot.cat.common.optimizer.campaign.EditOrContinue;
 import com.holdmyspot.cat.common.optimizer.campaign.Failure;
 import com.holdmyspot.cat.common.optimizer.campaign.TestCaseOutcomes;
 import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
@@ -160,14 +162,34 @@ public final class AttemptSelectionTest
 	}
 
 	/**
-	 * Verifies that the accepted contender with more passing runs wins.
+	 * Verifies that the accepted contender with more passing runs wins: every contender fixes {@code cache}, and only
+	 * the second also fixes {@code tmp}.
 	 */
 	// Requirement: R-D3
 	@Test
 	public void mostPassingRunsWins()
 	{
 		// Requirement: R-D12
-		Campaign campaign = selection(List.of(1, 1, 1), List.of(Verdict.FAIL, Verdict.PASS, Verdict.FAIL));
+		Campaign campaign = contenders(List.of(1, 1, 1), List.of("cache", "tmp"));
+		for (int attempt = 3; attempt >= 1; --attempt)
+		{
+			Sha256 snapshot = Builder.snapshot("attempt" + attempt);
+			Verdict tmp = Verdict.FAIL;
+			if (attempt == 2)
+				tmp = Verdict.PASS;
+			for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+			{
+				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,
+					Builder.targeted("safety", "cache"), Verdict.PASS);
+			}
+			for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+			{
+				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,
+					Builder.targeted("safety", "tmp"), tmp);
+			}
+			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,
+				Builder.targeted("safety", "logs"), Verdict.PASS);
+		}
 		requireThat(campaign.development().promptAuthor().number(), "winner").isEqualTo(2);
 	}
 
@@ -202,12 +224,72 @@ public final class AttemptSelectionTest
 			attempts.add(new PromptAuthorAttempt(number, "safety", snapshot, runs, Minimality.start(List.of(),
 				snapshot)));
 		}
-		requireThat(AttemptSelection.select(attempts, Builder.snapshot("working"), List.of(), List.of(
-			new TestCaseOutcomes(logs, 0, 4), new TestCaseOutcomes(cache, 0, 4), new TestCaseOutcomes(tmp, 0, 4))).
-			orElseThrow().number(),
-			"winner").isEqualTo(2);
+		List<TestCaseOutcomes> workingOutcomes = List.of(new TestCaseOutcomes(logs, 0, 4),
+			new TestCaseOutcomes(cache, 0, 4), new TestCaseOutcomes(tmp, 0, 4));
+		for (PromptAuthorAttempt attempt : attempts)
+		{
+			requireThat(Promotion.decide(attempt, Builder.snapshot("working"), List.of(), workingOutcomes),
+				"accepted").isEqualTo(Promotion.Decision.PROMOTE);
+		}
+		requireThat(AttemptSelection.select(attempts).orElseThrow().number(), "winner").isEqualTo(2);
 		requireThat(AttemptSelection.passingRuns(attempts.getLast().runs()), "ownPasses").isEqualTo(5L);
 		requireThat(AttemptSelection.plannedRuns(attempts.getLast().runs()), "ownRuns").isEqualTo(7L);
+	}
+
+	/**
+	 * A weak round's winner is ranked without paired reruns: the first attempt fixes one triggering test case, fails its
+	 * regression run and passes 15 paired reruns, so it has more passing runs of its own only because of its reruns;
+	 * the second fixes both triggering test cases and passes its regression run, and wins. The status still counts
+	 * every run the first attempt ran.
+	 */
+	// Requirement: R-D12
+	@Test
+	public void pairedRerunsDoNotRankWinner()
+	{
+		DrawnTestCase logs = Builder.targeted("safety", "logs");
+		DrawnTestCase cache = Builder.targeted("safety", "cache");
+		DrawnTestCase formal = Builder.targeted("formatting", "formal");
+		List<DiagnosticRerun> failed = List.of(new DiagnosticRerun(Verdict.FAIL, "fail"),
+			new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"));
+		Campaign campaign = new Builder().confirmed().working(1).
+			development("safety", 0, EditOrContinue.failureLimit(Contract.DEFAULT_MINIMUM_PASS_RATE) + 1).
+			failure(new Failure(logs, "failure", List.of(), null, failed, List.of(), Builder.FILES)).
+			failure(new Failure(cache, "failure", List.of(), null, failed, List.of(), Builder.FILES)).
+			regression(formal, Verdict.PASS).round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).build();
+		for (int number = 1; number <= 3; ++number)
+			campaign = TransitionSteps.submit(campaign, "safety", Builder.snapshot("attempt" + number), List.of());
+		Sha256 working = campaign.development().working().snapshot();
+
+		Sha256 rerun = Builder.snapshot("attempt1");
+		for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, rerun, logs, Verdict.PASS);
+		for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, rerun, cache, Verdict.FAIL);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, rerun, formal, Verdict.FAIL);
+		for (int pair = 0; pair < Promotion.MAXIMUM_RERUNS; ++pair)
+		{
+			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, rerun, formal, Verdict.PASS);
+			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, working, formal, Verdict.PASS);
+		}
+
+		Sha256 firstPass = Builder.snapshot("attempt2");
+		for (DrawnTestCase testCase : List.of(logs, cache))
+		{
+			for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 2, firstPass, testCase, Verdict.PASS);
+		}
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 2, firstPass, formal, Verdict.PASS);
+
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 3, Builder.snapshot("attempt3"), logs,
+			Verdict.FAIL);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 3, Builder.snapshot("attempt3"), cache,
+			Verdict.FAIL);
+
+		List<AttemptResult> retained = campaign.optimization().attempts();
+		AttemptResult reran = retained.stream().filter(result -> result.number() == 1).findFirst().orElseThrow();
+		requireThat(reran.accepted(), "rerunAccepted").isTrue();
+		requireThat(reran.passingRuns(), "statusPassingRuns").isEqualTo(2L + Promotion.MAXIMUM_RERUNS);
+		requireThat(campaign.development().promptAuthor().number(), "winner").isEqualTo(2);
 	}
 
 	/**
@@ -263,12 +345,9 @@ public final class AttemptSelectionTest
 		Campaign campaign = contenders(List.of(1, 1, 1));
 		for (int attempt = 1; attempt <= 3; ++attempt)
 		{
-			for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
-				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt,
-					Builder.snapshot("attempt" + attempt), Builder.targeted("safety", "cache"),
-					Verdict.FAIL);
+			// The first failure rejects the contender and cancels its queued runs
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt,
-				Builder.snapshot("attempt" + attempt), Builder.targeted("safety", "logs"), Verdict.PASS);
+				Builder.snapshot("attempt" + attempt), Builder.targeted("safety", "cache"), Verdict.FAIL);
 			if (attempt < 3)
 				requireThat(campaign.development().round(), "incompleteRound").isNotNull();
 		}
@@ -305,23 +384,40 @@ public final class AttemptSelectionTest
 	}
 
 	/**
-	 * Creates a weak round with three edited contenders and one previously failing regression test case.
+	 * Creates a weak round with three edited contenders that address {@code cache} and one previously failing
+	 * regression test case.
 	 *
 	 * @param sizes the number of changed source lines in each contender
 	 * @return the campaign awaiting promotion trials
 	 */
 	private static Campaign contenders(List<Integer> sizes)
 	{
+		return contenders(sizes, List.of("cache"));
+	}
+
+	/**
+	 * Creates a weak round with three edited contenders and one previously failing regression test case.
+	 *
+	 * @param sizes the number of changed source lines in each contender
+	 * @param targets the {@code safety} targets that the working candidate failed, which trigger the contenders
+	 * @return the campaign awaiting promotion trials
+	 */
+	private static Campaign contenders(List<Integer> sizes, List<String> targets)
+	{
 		Campaign campaign = new Builder().confirmed().working(1).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
 		DrawnTestCase failure = campaign.development().diagnosis().pending().getFirst();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DIAGNOSTIC, campaign.development().series(),
 			campaign.development().working().snapshot(), failure, Verdict.FAIL);
-		campaign = new Builder().confirmed().working(1).development("safety", 0, 1).
-			failure(new Failure(Builder.targeted("safety", "cache"), "failure", List.of(), null, List.of(
+		Builder builder = new Builder().confirmed().working(1).development("safety", 0, 1);
+		for (String target : targets)
+		{
+			builder.failure(new Failure(Builder.targeted("safety", target), "failure", List.of(), null, List.of(
 				new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"),
-				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of(), Builder.FILES)).
-			regression(Builder.targeted("safety", "logs"), Verdict.FAIL).round(campaign.development().round()).build();
+				new DiagnosticRerun(Verdict.FAIL, "fail")), List.of(), Builder.FILES));
+		}
+		campaign = builder.regression(Builder.targeted("safety", "logs"), Verdict.FAIL).
+			round(campaign.development().round()).build();
 		for (int index = 0; index < sizes.size(); ++index)
 		{
 			String original = "old\n".repeat(sizes.get(index));

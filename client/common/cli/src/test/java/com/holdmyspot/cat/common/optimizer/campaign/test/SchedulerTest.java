@@ -413,7 +413,8 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Verifies that the promotion runs of a prompt author attempt are admitted, each with its snapshot.
+	 * Verifies that the promotion runs of a prompt author attempt are admitted, each with its snapshot, and that its
+	 * regression runs follow once a triggering test case has passed twice.
 	 */
 	@Test
 	public void promotionRunsAreAdmitted()
@@ -428,16 +429,20 @@ public final class SchedulerTest
 		Allocation targeted = allocation(AllocationRule.TARGETED);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(
 			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted),
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted),
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "formatting", formal, targeted),
-			new Admission.Assign(Purpose.PROMOTION, 1, WORKING, "formatting", formal, targeted)));
+			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted)));
 
 		campaign = TransitionSteps.assign(campaign, Purpose.PROMOTION, 1, attempt, logs);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "afterAssign").isEqualTo(List.of(
 			new Admission.Rerun(TransitionSteps.last(campaign)),
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted),
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "formatting", formal, targeted),
-			new Admission.Assign(Purpose.PROMOTION, 1, WORKING, "formatting", formal, targeted)));
+			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted)));
+
+		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.PASS);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, attempt, logs, Verdict.PASS);
+		Allocation adopted = new Allocation(AllocationRule.TARGETED, 2, NOW);
+		requireThat(Scheduler.plan(campaign, NOW, 8), "afterStreak").isEqualTo(List.of(
+			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, adopted),
+			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "formatting", formal, adopted),
+			new Admission.Assign(Purpose.PROMOTION, 1, WORKING, "formatting", formal, adopted)));
 	}
 
 	/**

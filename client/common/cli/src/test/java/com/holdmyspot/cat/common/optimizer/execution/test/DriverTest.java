@@ -42,6 +42,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.OptimizationEvidence;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
+import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
 import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
@@ -1002,11 +1003,15 @@ public final class DriverTest
 				requireThat(attempts.get(1).get("winner").asBoolean(), "secondWinner").isTrue();
 				requireThat(attempts.get(2).get("accepted").asBoolean(), "thirdAccepted").isFalse();
 				requireThat(attempts.get(2).get("winner").asBoolean(), "thirdWinner").isFalse();
+				// The first edit failed the regression test case that the working candidate also fails, so its paired
+				// reruns ran to the last look; the third failed its triggering test case and ran no regression run
+				requireThat(attempts.get(0).get("total_runs").asInt(), "firstRuns").
+					isEqualTo(3 + Promotion.MAXIMUM_RERUNS);
+				requireThat(attempts.get(1).get("total_runs").asInt(), "secondRuns").isEqualTo(3);
+				requireThat(attempts.get(2).get("total_runs").asInt(), "thirdRuns").
+					isLessThanOrEqualTo(Promotion.STARTING_TRIGGERING_RUNS);
 				for (JsonNode attempt : attempts)
-				{
-					requireThat(attempt.get("total_runs").asInt(), "totalPromotionRuns").isEqualTo(3);
 					harness.overlays().require(new Sha256(attempt.get("snapshot").asString()));
-				}
 
 				harness.trials(_ -> harness.passed());
 				harness.runUntil(driver, state -> state.development().count("safety").passes() >= 80 &&
@@ -1076,14 +1081,18 @@ public final class DriverTest
 
 	/**
 	 * All three weak attempts use one working reference's verdict, and that run does not count as their own evidence.
+	 * The reference starts the pooled check of each attempt's failed regression run, whose paired reruns then reject
+	 * every attempt where the working candidate passes and accept every attempt where it fails.
 	 *
 	 * @param referenceVerdict the working candidate's verdict on the regression test case
 	 * @param accepted whether every attempt fixes the failure without introducing a regression
+	 * @param reruns the paired reruns of each attempt
 	 * @throws IOException if the fixture cannot be used
 	 */
 	// Requirement: R-D12
 	@Test(dataProvider = "workingReferenceVerdicts")
-	public void weakRoundSharesWorkingReference(Verdict referenceVerdict, boolean accepted) throws IOException
+	public void weakRoundSharesWorkingReference(Verdict referenceVerdict, boolean accepted, int reruns)
+		throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1092,15 +1101,13 @@ public final class DriverTest
 			try (Driver driver = harness.open())
 			{
 				Campaign planned = harness.runUntil(driver, state ->
-					state.development().round().validationAttempts().size() == 3);
+					state.development().round().validationAttempts().size() == 3 &&
+						state.development().round().validationAttempts().stream().allMatch(attempt ->
+							attempt.runs().stream().anyMatch(run -> run.role() == PromotionRun.Role.REGRESSION)));
 				requireThat(planned.development().round().validationAttempts().stream().
 					flatMap(attempt -> attempt.runs().stream()).
 					filter(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE).count(), "referencePlans").
 					isEqualTo(1);
-				requireThat(harness.sessions().sessions().stream().map(FakeSession::request).
-					filter(request -> request.role() == SessionRole.TRIAL &&
-						harness.snapshot(request).equals(Builder.snapshot("candidate-1")) &&
-						DriverHarness.cell(request).equals("formatting")).count(), "referenceSessions").isEqualTo(1);
 				TrialKey reference = planned.development().round().validationAttempts().stream().
 					flatMap(attempt -> attempt.runs().stream()).
 					filter(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE).
@@ -1119,12 +1126,16 @@ public final class DriverTest
 					return state.development().round() == null;
 				});
 				requireThat(decided.optimization().attempts().size(), "decidedAttempts").isEqualTo(3);
+				long workingReruns = 0;
 				for (AttemptResult attempt : decided.optimization().attempts())
 				{
 					requireThat(attempt.accepted(), "sharedReferenceDecision").isEqualTo(accepted);
 					requireThat(attempt.passingRuns(), "ownPassingRuns").isEqualTo(2);
-					requireThat(attempt.totalRuns(), "ownPlannedRuns").isEqualTo(3);
+					requireThat(attempt.totalRuns(), "ownRuns").isEqualTo(3L + reruns);
+					workingReruns += attempt.runs().stream().filter(run ->
+						run.role() == PromotionRun.Role.WORKING_RERUN && run.verdict() != null).count();
 				}
+				requireThat(workingReruns, "workingReruns").isEqualTo(3L * reruns);
 				requireThat(decided.attempts(), "certificationAllowance").isEmpty();
 			}
 		}
@@ -1133,12 +1144,13 @@ public final class DriverTest
 	/**
 	 * Returns the reference verdicts that reject or accept the same three failed regression runs.
 	 *
-	 * @return the reference verdict and expected acceptance for all attempts
+	 * @return the reference verdict, the expected acceptance for all attempts, and their paired reruns
 	 */
 	@DataProvider
 	public static Object[][] workingReferenceVerdicts()
 	{
-		return new Object[][] {{Verdict.PASS, false}, {Verdict.FAIL, true}};
+		return new Object[][] {{Verdict.PASS, false, Promotion.RERUN_STEP},
+			{Verdict.FAIL, true, Promotion.MAXIMUM_RERUNS}};
 	}
 
 	/**
@@ -1188,7 +1200,7 @@ public final class DriverTest
 				{
 					requireThat(attempt.accepted(), "sharedReferenceDecision").isFalse();
 					requireThat(attempt.passingRuns(), "ownPassingRuns").isEqualTo(2);
-					requireThat(attempt.totalRuns(), "ownPlannedRuns").isEqualTo(3);
+					requireThat(attempt.totalRuns(), "ownRuns").isEqualTo(3L + Promotion.RERUN_STEP);
 				}
 				requireThat(harness.promptAuthor().briefs().size(), "unchangedPromptAuthorAttempts").isEqualTo(3);
 			}
@@ -1467,6 +1479,86 @@ public final class DriverTest
 						PromptAuthorApproach.FIX_LOAD_TRIGGER));
 				requireThat(harness.sessions().sessions().stream().filter(session ->
 					session.request().role() == SessionRole.APPROACH_RANKER).count(), "rankedNewRoundOnly").isEqualTo(1L);
+			}
+		}
+	}
+
+	/**
+	 * A saved version-44 campaign whose attempt had its regression runs planned and judged under the earlier rule
+	 * continues under the pooled regression check: an earlier attempt keeps its recorded rejection, and the attempt in
+	 * progress, which the earlier rule rejected for one regression failure, receives paired reruns and is promoted.
+	 *
+	 * @throws IOException if campaign storage cannot be used
+	 */
+	// Requirement: WI-132
+	// Requirement: R-D3
+	@Test
+	public void version44ContinuesUnderPooledCheck() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pooled-migration"));
+			JsonMapper json = JsonMapper.builder().build();
+			DrawnTestCase logs = Builder.targeted("safety", "logs");
+			DrawnTestCase formal = Builder.targeted("formatting", "formal");
+			Sha256 working = Builder.snapshot("candidate-1");
+			Sha256 earlier = Builder.snapshot("earlier");
+			List<PromotionRun> earlierRuns = List.of(
+				new PromotionRun(PromotionRun.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 1, earlier,
+					"safety", 1), Verdict.PASS),
+				new PromotionRun(PromotionRun.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 1, earlier,
+					"safety", 2), Verdict.PASS),
+				new PromotionRun(PromotionRun.Role.REGRESSION, formal, new TrialKey(Purpose.PROMOTION, 1, earlier,
+					"formatting", 1), Verdict.FAIL));
+			AttemptResult rejected = new AttemptResult(1, working, 1, "safety", earlier, earlierRuns, 0, false, false);
+			DriverHarness harness = new DriverHarness(directory.resolve("driver"), new Builder().confirmed().working(1).
+				readyBaseline().build());
+			Overlay edited = harness.candidate("edited");
+			harness.overlays().save(edited);
+			Sha256 snapshot = edited.identity();
+			List<PromotionRun> runs = List.of(
+				new PromotionRun(PromotionRun.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 2, snapshot,
+					"safety", 1), Verdict.PASS),
+				new PromotionRun(PromotionRun.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 2, snapshot,
+					"safety", 2), Verdict.PASS),
+				new PromotionRun(PromotionRun.Role.REGRESSION, formal, new TrialKey(Purpose.PROMOTION, 2, snapshot,
+					"formatting", 1), Verdict.FAIL));
+			List<DiagnosticRerun> failed = List.of(new DiagnosticRerun(Verdict.FAIL, "fail"),
+				new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"));
+			Builder builder = new Builder();
+			for (PromotionRun run : runs)
+				builder.adopted(run.trial());
+			Campaign original = builder.confirmed().working(1).readyBaseline().
+				failure(new Failure(logs, "failure", List.of(), null, failed, List.of(), Builder.FILES)).
+				regression(logs, Verdict.FAIL).regression(formal, Verdict.PASS).
+				round(new Round(Map.of("safety", 1))).
+				promptAuthor(new PromptAuthorAttempt(2, "safety", snapshot, runs, Minimality.start(List.of(), snapshot))).
+				optimization(new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(), List.of(rejected),
+					Map.of())).build();
+			Path campaigns = directory.resolve("campaigns");
+			FileCampaignStore store = new FileCampaignStore(campaigns, json, Yielding.fileReplacer());
+			store.replaceSnapshot(original);
+			Path saved = FileCampaignStore.heldOutDirectory(campaigns, original.header().id()).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) json.readTree(Files.readString(saved));
+			root.put("format_version", 44);
+			Files.writeString(saved, json.writeValueAsString(root));
+			Campaign loaded = store.load(original.header().id()).orElseThrow();
+			requireThat(loaded.development().promptAuthor(), "attemptInProgress").
+				isEqualTo(original.development().promptAuthor());
+
+			harness.store().replaceSnapshot(loaded);
+			harness.trials(_ -> harness.passed());
+			try (Driver driver = harness.open())
+			{
+				Campaign promoted = harness.runUntil(driver, state -> state.development().working().number() == 2);
+				requireThat(promoted.development().working().snapshot(), "promoted").isEqualTo(snapshot);
+				requireThat(promoted.optimization().attempts().getFirst(), "recordedRejection").isEqualTo(rejected);
+				AttemptResult continued = promoted.optimization().attempts().getLast();
+				requireThat(continued.accepted(), "accepted").isTrue();
+				requireThat(continued.runs().stream().filter(run ->
+					run.role() == PromotionRun.Role.REGRESSION_RERUN).count(), "attemptReruns").isEqualTo(15L);
+				requireThat(continued.runs().stream().filter(run ->
+					run.role() == PromotionRun.Role.WORKING_RERUN).count(), "workingReruns").isEqualTo(15L);
 			}
 		}
 	}

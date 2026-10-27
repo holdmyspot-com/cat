@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.inventory.Hunks;
-import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.statistics.ExploratoryBounds;
 
 import java.util.Comparator;
@@ -63,30 +62,49 @@ public final class AttemptSelection
 	}
 
 	/**
-	 * Selects the accepted edited attempt with the most passes, then fewer changed lines, then earlier launch.
+	 * Selects the attempt with the most passing triggering and first-pass regression runs, then fewer changed lines,
+	 * then earlier launch. Paired reruns are excluded because only an attempt that failed a regression run receives
+	 * them, starting with the test cases it failed, so counting them would favour that attempt.
 	 *
-	 * @param attempts the fully tested contenders
-	 * @param working the unchanged working snapshot
-	 * @param regressionSet the existing working-candidate regression evidence
-	 * @param workingOutcomes the working candidate's adopted records by test case
-	 * @return the winner, or empty when no edited attempt is accepted
+	 * @param accepted the edited contenders that the promotion rule accepted
+	 * @return the winner, or empty when no attempt is accepted
+	 * @throws NullPointerException if {@code accepted} is null
 	 */
-	public static Optional<PromptAuthorAttempt> select(List<PromptAuthorAttempt> attempts, Sha256 working,
-		List<RegressionTestCase> regressionSet, List<TestCaseOutcomes> workingOutcomes)
+	public static Optional<PromptAuthorAttempt> select(List<PromptAuthorAttempt> accepted)
 	{
-		requireThat(attempts, "attempts").isNotNull();
-		requireThat(working, "working").isNotNull();
-		requireThat(regressionSet, "regressionSet").isNotNull();
-		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
-		return attempts.stream().filter(attempt -> !attempt.snapshot().equals(working) &&
-			Promotion.decide(attempt, working, regressionSet, workingOutcomes) == Promotion.Decision.PROMOTE).min(
-				Comparator.comparingLong((PromptAuthorAttempt attempt) -> passingRuns(attempt.runs())).reversed().
+		requireThat(accepted, "accepted").isNotNull();
+		return accepted.stream().min(
+				Comparator.comparingLong((PromptAuthorAttempt attempt) -> rankedPassingRuns(attempt.runs())).reversed().
 					thenComparingInt(AttemptSelection::changedLines).thenComparingInt(PromptAuthorAttempt::number));
 	}
 
 	/**
-	 * Counts an attempt's own passing promotion runs. The working candidate's reference runs measure the working
-	 * candidate, not the attempt, so they are excluded.
+	 * Counts the passing runs that rank a weak round's winner: the attempt's triggering runs and first-pass regression
+	 * runs.
+	 *
+	 * @param runs the attempt's promotion runs
+	 * @return the ranked passing run count
+	 */
+	private static long rankedPassingRuns(List<PromotionRun> runs)
+	{
+		return runs.stream().filter(run -> isRanked(run) && run.verdict() == Verdict.PASS).count();
+	}
+
+	/**
+	 * Indicates whether a promotion run counts toward a weak round's winner ranking.
+	 *
+	 * @param run the run
+	 * @return {@code true} for a triggering run or a first-pass regression run
+	 */
+	private static boolean isRanked(PromotionRun run)
+	{
+		return run.role() == PromotionRun.Role.TRIGGERING || run.role() == PromotionRun.Role.REGRESSION;
+	}
+
+	/**
+	 * Counts an attempt's own passing promotion runs, including its paired reruns, as the status shows them. The working
+	 * candidate's reference runs and paired reruns measure the working candidate, not the attempt, so they are
+	 * excluded.
 	 *
 	 * @param runs the attempt's promotion runs
 	 * @return the passing run count
@@ -99,7 +117,8 @@ public final class AttemptSelection
 	}
 
 	/**
-	 * Counts an attempt's own planned promotion runs, excluding the working candidate's reference runs.
+	 * Counts an attempt's own planned promotion runs, excluding the working candidate's reference runs and paired
+	 * reruns.
 	 *
 	 * @param runs the attempt's promotion runs
 	 * @return the planned run count
@@ -112,14 +131,28 @@ public final class AttemptSelection
 	}
 
 	/**
+	 * Counts an attempt's own promotion runs that have an outcome, excluding the working candidate's reference runs
+	 * and paired reruns.
+	 *
+	 * @param runs the attempt's promotion runs
+	 * @return the judged run count
+	 * @throws NullPointerException if {@code runs} is null
+	 */
+	public static long judgedRuns(List<PromotionRun> runs)
+	{
+		requireThat(runs, "runs").isNotNull();
+		return runs.stream().filter(run -> isOwn(run) && run.verdict() != null).count();
+	}
+
+	/**
 	 * Indicates whether a promotion run measures the attempt rather than the working candidate.
 	 *
 	 * @param run the run
-	 * @return {@code false} for a working reference run
+	 * @return {@code false} for a working reference run or paired rerun
 	 */
 	private static boolean isOwn(PromotionRun run)
 	{
-		return run.role() != PromotionRun.Role.WORKING_REFERENCE;
+		return !run.role().measuresWorking();
 	}
 
 	/**

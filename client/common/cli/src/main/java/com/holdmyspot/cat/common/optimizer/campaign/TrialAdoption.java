@@ -80,9 +80,98 @@ public final class TrialAdoption
 				if (draft.isWorkingReference(trial))
 					yield false;
 				PromptAuthorAttempt promptAuthor = draft.findPromptAuthor(key.series());
-				yield promptAuthor == null || promptAuthor.runs().stream().noneMatch(run -> key.equals(run.trial()));
+				if (promptAuthor == null)
+					yield findRetainedRun(draft, key) < 0;
+				yield promptAuthor.runs().stream().noneMatch(run -> key.equals(run.trial()));
 			}
 		};
+	}
+
+	/**
+	 * Indicates whether a trial is a queued promotion run of a rejected attempt. The decision cannot change, so the
+	 * run is cancelled before it starts; a run that already started finishes, and its outcome is recorded once it is
+	 * judged.
+	 *
+	 * @param draft the state
+	 * @param trial the trial
+	 * @return {@code true} if the trial must not start
+	 */
+	private static boolean isCancelled(Draft draft, LogicalTrial trial)
+	{
+		TrialKey key = trial.key();
+		if (key.purpose() != Purpose.PROMOTION || trial.state() != TrialState.ASSIGNED || draft.isWorkingReference(trial))
+			return false;
+		PromptAuthorAttempt promptAuthor = draft.findPromptAuthor(key.series());
+		if (promptAuthor == null)
+			return findRetainedRun(draft, key) >= 0;
+		return decision(draft, promptAuthor) == Promotion.Decision.REJECT;
+	}
+
+	/**
+	 * Finds a retained attempt result's unjudged run of a trial, which a rejected sequential attempt left running.
+	 *
+	 * @param draft the state
+	 * @param key the trial's key
+	 * @return the index of the result in the retained attempts, or {@code -1} if none has such a run
+	 */
+	private static int findRetainedRun(Draft draft, TrialKey key)
+	{
+		List<AttemptResult> results = draft.optimization.attempts();
+		for (int i = 0; i < results.size(); ++i)
+		{
+			AttemptResult result = results.get(i);
+			if (result.number() == key.series() &&
+				result.runs().stream().anyMatch(run -> key.equals(run.trial()) && run.verdict() == null))
+			{
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Returns the promotion decision on an attempt, keeping the recorded decision of a retained original attempt.
+	 *
+	 * @param draft the state
+	 * @param attempt the attempt
+	 * @return the decision
+	 */
+	static Promotion.Decision decision(Draft draft, PromptAuthorAttempt attempt)
+	{
+		return Promotion.decide(attempt, draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes,
+			draft.optimization.attempts());
+	}
+
+	/**
+	 * Plans the runs that an attempt's adopted outcomes make due, sharing the working candidate's reference runs that
+	 * another trial or weak contender already owns.
+	 *
+	 * @param draft the state
+	 * @param attempt the attempt
+	 * @return the attempt with the due runs appended
+	 */
+	static PromptAuthorAttempt refresh(Draft draft, PromptAuthorAttempt attempt)
+	{
+		List<DrawnTestCase> references = new ArrayList<>();
+		for (LogicalTrial trial : draft.trials)
+		{
+			if (draft.isWorkingReference(trial))
+				references.add(trial.testCase());
+		}
+		if (draft.round.weak())
+		{
+			for (PromptAuthorAttempt other : draft.round.validationAttempts())
+			{
+				if (other.number() == attempt.number())
+					continue;
+				for (PromotionRun run : other.runs())
+				{
+					if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
+						references.add(run.testCase());
+				}
+			}
+		}
+		return Promotion.extend(attempt, draft.regressionSet, draft.testCaseOutcomes, references);
 	}
 
 	/**
@@ -161,7 +250,8 @@ public final class TrialAdoption
 		boolean changed = true;
 		while (changed)
 		{
-			changed = draft.trials.removeIf(trial -> trial.state() != TrialState.RUNNING && isStale(draft, trial));
+			changed = draft.trials.removeIf(trial -> trial.state() != TrialState.RUNNING &&
+				(isStale(draft, trial) || isCancelled(draft, trial)));
 			Optional<LogicalTrial> next = findNextAdoptable(draft);
 			if (next.isPresent())
 			{
@@ -172,6 +262,24 @@ public final class TrialAdoption
 				changed = true;
 			}
 		}
+		reviewPromotion(draft);
+	}
+
+	/**
+	 * Applies the promotion decision of the attempts under validation, so that runs that became due without a new
+	 * outcome are planned, such as paired reruns of an attempt that a campaign saved under an earlier promotion rule
+	 * left undecided. The decision is idempotent, so repeating it changes nothing.
+	 *
+	 * @param draft the state
+	 */
+	private static void reviewPromotion(Draft draft)
+	{
+		if (draft.revisionRequested || draft.round == null)
+			return;
+		if (draft.promptAuthor != null)
+			decidePromotion(draft);
+		else if (draft.round.weak() && !draft.round.validationAttempts().isEmpty())
+			decideWeakRound(draft);
 	}
 
 	/**
@@ -222,7 +330,9 @@ public final class TrialAdoption
 			trial.key().snapshot().equals(draft.working.snapshot()))
 		{
 			draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, trial.testCase(), trial.verdict());
-			recordWorkingVerdict(draft, trial.testCase(), trial.verdict());
+			// A paired rerun extends one group's check; the regression set keeps the outcome that the check started from
+			if (!isWorkingRerun(draft, trial))
+				recordWorkingVerdict(draft, trial.testCase(), trial.verdict());
 		}
 		switch (purpose)
 		{
@@ -408,7 +518,7 @@ public final class TrialAdoption
 		draft.slowStart = SlowStart.INITIAL;
 		if (draft.round.weak())
 		{
-			if (draft.round.isComplete())
+			if (isWeakRoundDecided(draft))
 				endUnproductiveRound(draft);
 		}
 		else
@@ -624,6 +734,32 @@ public final class TrialAdoption
 	}
 
 	/**
+	 * Indicates whether a trial is the working candidate's paired rerun.
+	 *
+	 * @param draft the state
+	 * @param trial the trial
+	 * @return {@code true} if the trial's owner planned it as a paired rerun of the working candidate
+	 */
+	private static boolean isWorkingRerun(Draft draft, LogicalTrial trial)
+	{
+		TrialKey key = trial.key();
+		if (key.purpose() != Purpose.PROMOTION)
+			return false;
+		List<PromotionRun> runs;
+		PromptAuthorAttempt owner = draft.findPromptAuthor(key.series());
+		if (owner != null)
+			runs = owner.runs();
+		else
+		{
+			int retained = findRetainedRun(draft, key);
+			if (retained < 0)
+				return false;
+			runs = draft.optimization.attempts().get(retained).runs();
+		}
+		return runs.stream().anyMatch(run -> run.role() == PromotionRun.Role.WORKING_RERUN && key.equals(run.trial()));
+	}
+
+	/**
 	 * Adopts a promotion run outcome and applies the promotion decision.
 	 *
 	 * @param draft the state
@@ -634,6 +770,9 @@ public final class TrialAdoption
 		PromptAuthorAttempt promptAuthor = draft.findPromptAuthor(trial.key().series());
 		if (promptAuthor == null)
 		{
+			int retained = findRetainedRun(draft, trial.key());
+			if (retained >= 0)
+				recordRetainedOutcome(draft, retained, trial);
 			if (draft.promptAuthor != null)
 				decidePromotion(draft);
 			return;
@@ -657,19 +796,42 @@ public final class TrialAdoption
 	}
 
 	/**
+	 * Records the outcome of a run that was running when its sequential attempt was rejected. The outcome is shown
+	 * with the attempt's result but cannot change the recorded decision.
+	 *
+	 * @param draft the state
+	 * @param index the index of the retained result
+	 * @param trial the judged trial
+	 */
+	private static void recordRetainedOutcome(Draft draft, int index, LogicalTrial trial)
+	{
+		List<AttemptResult> results = new ArrayList<>(draft.optimization.attempts());
+		AttemptResult result = results.get(index);
+		List<PromotionRun> runs = new ArrayList<>(result.runs());
+		for (int i = 0; i < runs.size(); ++i)
+		{
+			PromotionRun run = runs.get(i);
+			if (trial.key().equals(run.trial()))
+				runs.set(i, new PromotionRun(run.role(), run.testCase(), run.trial(), trial.verdict()));
+		}
+		results.set(index, new AttemptResult(result.round(), result.working(), result.number(), result.cell(),
+			result.snapshot(), runs, result.changedLines(), result.accepted(), result.winner()));
+		draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), draft.optimization.removed(),
+			draft.optimization.promptSizes(), draft.optimization.trialInputs(), results, draft.optimization.tokenUsage(),
+			draft.optimization.approaches());
+	}
+
+	/**
 	 * Applies the promotion decision of the prompt author attempt under validation.
 	 *
 	 * @param draft the state
 	 */
 	static void decidePromotion(Draft draft)
 	{
-		if (Promotion.decide(draft.promptAuthor, draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes) ==
-			Promotion.Decision.PENDING)
-		{
-			draft.promptAuthor = Promotion.extend(draft.promptAuthor, draft.testCaseOutcomes);
-		}
+		if (decision(draft, draft.promptAuthor) == Promotion.Decision.PENDING)
+			draft.promptAuthor = refresh(draft, draft.promptAuthor);
 		PromptAuthorAttempt promptAuthor = draft.promptAuthor;
-		switch (Promotion.decide(promptAuthor, draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes))
+		switch (decision(draft, promptAuthor))
 		{
 			case PENDING ->
 			{
@@ -692,7 +854,9 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Retains settled contenders and selects only after every addressed test received all three attempts.
+	 * Retains each contender as soon as it is decided, and selects among the accepted contenders once every addressed
+	 * test received all three attempts and every contender is decided. A rejected contender is retained when it is
+	 * rejected; outcomes of its runs that were already running update its retained runs, never its decision.
 	 *
 	 * @param draft the campaign state
 	 */
@@ -700,27 +864,25 @@ public final class TrialAdoption
 	{
 		for (PromptAuthorAttempt attempt : draft.round.validationAttempts())
 		{
-			if (Promotion.decide(attempt, draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes) ==
-				Promotion.Decision.PENDING)
-			{
-				draft.round = draft.round.withAttempt(Promotion.extend(attempt, draft.testCaseOutcomes));
-			}
+			if (decision(draft, attempt) == Promotion.Decision.PENDING)
+				draft.round = draft.round.withAttempt(refresh(draft, attempt));
 		}
 		Round round = draft.round;
+		List<PromptAuthorAttempt> accepted = new ArrayList<>();
 		for (PromptAuthorAttempt attempt : round.validationAttempts())
 		{
-			if (attempt.runs().stream().allMatch(run -> run.verdict() != null))
-			{
-				boolean accepted = !attempt.snapshot().equals(draft.working.snapshot()) &&
-					Promotion.decide(attempt, draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes) ==
-						Promotion.Decision.PROMOTE;
-				retainAttempt(draft, attempt, accepted, false);
-			}
+			Promotion.Decision decision = decision(draft, attempt);
+			if (decision == Promotion.Decision.PENDING)
+				continue;
+			boolean promotes = !attempt.snapshot().equals(draft.working.snapshot()) &&
+				decision == Promotion.Decision.PROMOTE;
+			retainAttempt(draft, attempt, promotes, false);
+			if (promotes)
+				accepted.add(attempt);
 		}
-		if (!round.isComplete())
+		if (!isWeakRoundDecided(draft))
 			return;
-		Optional<PromptAuthorAttempt> winner = AttemptSelection.select(round.validationAttempts(),
-			draft.working.snapshot(), draft.regressionSet, draft.testCaseOutcomes);
+		Optional<PromptAuthorAttempt> winner = AttemptSelection.select(accepted);
 		if (winner.isPresent())
 		{
 			draft.promptAuthor = winner.get();
@@ -728,6 +890,18 @@ public final class TrialAdoption
 			return;
 		}
 		endUnproductiveRound(draft);
+	}
+
+	/**
+	 * Indicates whether a weak round received all of its attempts and decided each of them.
+	 *
+	 * @param draft the state, whose round is weak
+	 * @return {@code true} if the round can select its winner
+	 */
+	private static boolean isWeakRoundDecided(Draft draft)
+	{
+		return draft.round.isComplete() && draft.round.validationAttempts().stream().
+			allMatch(attempt -> decision(draft, attempt) != Promotion.Decision.PENDING);
 	}
 
 	/**
@@ -807,7 +981,7 @@ public final class TrialAdoption
 		draft.predecessor = predecessor;
 		for (PromotionRun run : promptAuthor.runs())
 		{
-			if (run.role() != PromotionRun.Role.WORKING_REFERENCE && run.verdict() != null)
+			if (!run.role().measuresWorking() && run.verdict() != null)
 				draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, run.testCase(), run.verdict());
 		}
 		draft.slowStart = SlowStart.INITIAL;
@@ -818,21 +992,19 @@ public final class TrialAdoption
 	 *
 	 * @param promptAuthor the promoted prompt author attempt
 	 * @param testCase the test case
-	 * @return the verdict of the attempt's run on the test case, or {@code null} if the attempt did not run it
+	 * @return the verdict of the attempt's latest judged run on the test case, or {@code null} if the attempt did not
+	 *   run it
 	 */
 	private static Verdict promotedVerdict(PromptAuthorAttempt promptAuthor, DrawnTestCase testCase)
 	{
 		Verdict verdict = null;
 		for (PromotionRun run : promptAuthor.runs())
 		{
-			if (run.role() == PromotionRun.Role.WORKING_REFERENCE || run.verdict() == null ||
-				!Promotion.isSameTestCase(run.testCase(), testCase))
+			if (!run.role().measuresWorking() && run.verdict() != null &&
+				Promotion.isSameTestCase(run.testCase(), testCase))
 			{
-				continue;
+				verdict = run.verdict();
 			}
-			if (run.verdict() == Verdict.FAIL)
-				return Verdict.FAIL;
-			verdict = Verdict.PASS;
 		}
 		return verdict;
 	}

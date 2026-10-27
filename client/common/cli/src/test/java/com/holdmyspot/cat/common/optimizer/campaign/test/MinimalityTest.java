@@ -182,4 +182,43 @@ public final class MinimalityTest
 		requireThat(new String(retained.content().bytes(), UTF_8), "minimalPrompt").
 			isEqualTo("needed-a\nx\nb\ny\nneeded-c\nz\nd\n");
 	}
+
+	/**
+	 * A reduction plans its regression runs at once and is judged by the same pooled rule as the attempt it reduces:
+	 * one regression failure that the working candidate's paired reruns show to be likely does not reject it.
+	 */
+	// Requirement: R-D11
+	@Test
+	public void reductionUsesPooledRegressionCheck()
+	{
+		DrawnTestCase logs = Builder.targeted("safety", "logs");
+		DrawnTestCase formal = Builder.targeted("formatting", "formal");
+		Sha256 original = Builder.snapshot("original");
+		Sha256 reduced = Builder.snapshot("reduced");
+		Campaign campaign = TransitionSteps.submit(PromotionTest.regressionRound(formal), "safety", original,
+			List.of(new FileDelta(Path.of("CLAUDE.md"), new FileContent("a\nx\nb\n".getBytes(UTF_8)),
+				new FileContent("c\nx\nd\n".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"))));
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, logs, Verdict.PASS);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, logs, Verdict.PASS);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, formal, Verdict.PASS);
+		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(reduced));
+		requireThat(campaign.development().promptAuthor().runs().stream().map(PromotionRun::role).toList(),
+			"reductionRuns").isEqualTo(List.of(PromotionRun.Role.TRIGGERING, PromotionRun.Role.TRIGGERING,
+				PromotionRun.Role.REGRESSION));
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, formal, Verdict.FAIL);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, logs, Verdict.PASS);
+		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, logs, Verdict.PASS);
+		Sha256 working = campaign.development().working().snapshot();
+		for (int rerun = 1; rerun <= 15; ++rerun)
+		{
+			requireThat(Promotion.decide(campaign.development().promptAuthor(), working,
+				campaign.lineage().regressionSet(), campaign.development().testCaseOutcomes()), "pending" + rerun).
+				isEqualTo(Promotion.Decision.PENDING);
+			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, formal, Verdict.PASS);
+			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, working, formal, Verdict.PASS);
+		}
+		requireThat(Promotion.decide(campaign.development().promptAuthor(), working,
+			campaign.lineage().regressionSet(), campaign.development().testCaseOutcomes()), "acceptedReduction").
+			isEqualTo(Promotion.Decision.PROMOTE);
+	}
 }
