@@ -246,6 +246,9 @@ When writing or changing code that stores a file path in a file, database, or ot
 When designing, changing, or reviewing tests, lazy load `../include/common/testing.md` to keep their observable claims,
 boundaries, and fixtures aligned.
 
+When creating, updating, or debugging a build script, pipeline, or multi-step build, lazy load
+`../include/common/build-workflow.md`.
+
 Before selecting or reporting a command as evidence that a project's build passes, lazy load
 `../include/common/build-verification.md`.
 
