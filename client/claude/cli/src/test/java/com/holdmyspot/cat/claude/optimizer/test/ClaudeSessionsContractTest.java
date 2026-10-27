@@ -350,11 +350,13 @@ public final class ClaudeSessionsContractTest
 				RoleRuleFixtures.write(root);
 				Map<SessionRole, List<String>> events = Map.of(SessionRole.TRIAL, recorded("trial-turn-1.jsonl"),
 					SessionRole.JUDGE, recorded("judge-turn-1.jsonl"), SessionRole.TRIAGE, recorded("triage-turn-1.jsonl"),
+					SessionRole.APPROACH_RANKER, recorded("triage-turn-1.jsonl"),
 					SessionRole.PROMPT_AUTHOR, recorded("prompt-author-turn-1.jsonl"), SessionRole.CONTRACT_AUTHOR,
 					recorded("contract-author-turn-1.jsonl"));
 				// The contract author's recording replies with an interim message before its tool calls and then its result
 				Map<SessionRole, Integer> messages = Map.of(SessionRole.TRIAL, 1, SessionRole.JUDGE, 1,
-					SessionRole.TRIAGE, 1, SessionRole.PROMPT_AUTHOR, 1, SessionRole.CONTRACT_AUTHOR, 2);
+					SessionRole.TRIAGE, 1, SessionRole.APPROACH_RANKER, 1, SessionRole.PROMPT_AUTHOR, 1,
+					SessionRole.CONTRACT_AUTHOR, 2);
 				AtomicInteger next = new AtomicInteger();
 				ClaudeSessions sessions = port(jvm, root, (arguments, input, output) ->
 					new RecordedClaude(List.of(events.get(SessionRole.values()[next.getAndIncrement()]))).

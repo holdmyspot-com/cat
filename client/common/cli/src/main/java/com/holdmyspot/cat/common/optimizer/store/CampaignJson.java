@@ -67,6 +67,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.RegressionTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
+import com.holdmyspot.cat.common.optimizer.campaign.ApproachOrder;
+import com.holdmyspot.cat.common.optimizer.campaign.ApproachAssignment;
+import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
 import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.SequenceGroup;
 import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
@@ -138,8 +141,8 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
  * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
- * round-trip exactly. Only the current format is readable: a document of another format version is refused with a
- * message that asks the user to start a new campaign.
+ * round-trip exactly. Version-43 documents are upgraded on read, preserving existing rounds' nine-approach
+ * rotation. Other unsupported versions are refused with a message that asks the user to start a new campaign.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}. Reading ignores a measurement condition that CAT recorded in the current format but no
@@ -152,7 +155,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 43;
+	private static final int FORMAT_VERSION = 44;
 	/**
 	 * The names of measurement conditions that CAT no longer records. A document written while CAT recorded one still
 	 * loads: reading drops the condition.
@@ -408,6 +411,13 @@ final class CampaignJson
 	private ObjectNode writeOptimization(OptimizationEvidence evidence)
 	{
 		ObjectNode node = json.createObjectNode();
+		ObjectNode approaches = node.putObject("approaches");
+		for (Entry<Integer, ApproachAssignment> entry : new TreeMap<>(evidence.approaches()).entrySet())
+		{
+			ObjectNode assignment = approaches.putObject(entry.getKey().toString());
+			assignment.put("approach", EnumNames.lowerCase(entry.getValue().approach()));
+			assignment.put("source", EnumNames.lowerCase(entry.getValue().source()));
+		}
 		ObjectNode usage = node.putObject(TOKEN_USAGE);
 		for (SessionRole role : SessionRole.values())
 		{
@@ -666,8 +676,15 @@ final class CampaignJson
 				readPromotionRuns(attempt, "runs"), integer(attempt, "changed_lines"), bool(attempt, "accepted"),
 				bool(attempt, "winner")));
 		}
+		Map<Integer, ApproachAssignment> approaches = new TreeMap<>();
+		for (Entry<String, JsonNode> entry : object(node, "approaches").properties())
+		{
+			approaches.put(Integer.parseInt(entry.getKey()), new ApproachAssignment(
+				constant(entry.getValue(), "approach", PromptAuthorApproach.class),
+				constant(entry.getValue(), "source", ApproachAssignment.Source.class)));
+		}
 		return new OptimizationEvidence(promptAuthors, readStrings(node, "removed"), sizes, inputs, results,
-			readRoleUsage(node));
+			readRoleUsage(node), approaches);
 	}
 
 	/**
@@ -1362,6 +1379,20 @@ final class CampaignJson
 	{
 		ObjectNode node = json.createObjectNode();
 		node.put("weak", round.weak());
+		node.put("rank_approaches", round.rankApproaches());
+		node.put("rotation_size", round.rotationSize());
+		ObjectNode orders = node.putObject("approach_orders");
+		for (Entry<String, ApproachOrder> entry : new TreeMap<>(round.approachOrders()).entrySet())
+		{
+			ObjectNode order = orders.putObject(entry.getKey());
+			order.put("fallback", entry.getValue().fallback());
+			ArrayNode approaches = order.putArray("approaches");
+			for (int index = 0; index < entry.getValue().approaches().size(); ++index)
+			{
+				approaches.addObject().put("name", EnumNames.lowerCase(entry.getValue().approaches().get(index))).
+					put("reason", entry.getValue().reasons().get(index));
+			}
+		}
 		ArrayNode attempts = node.putArray("attempts");
 		for (Entry<String, Integer> entry : round.attempts().entrySet())
 		{
@@ -1626,7 +1657,20 @@ final class CampaignJson
 		List<PromptAuthorAttempt> contenders = new ArrayList<>();
 		for (JsonNode contender : elements(node, "contenders"))
 			contenders.add(readPromptAuthorAttempt(contender));
-		return new Round(attempts, bool(node, "weak"), reservations, contenders);
+		Map<String, ApproachOrder> orders = new LinkedHashMap<>();
+		for (Entry<String, JsonNode> entry : object(node, "approach_orders").properties())
+		{
+			List<PromptAuthorApproach> approaches = new ArrayList<>();
+			List<String> reasons = new ArrayList<>();
+			for (JsonNode approach : elements(entry.getValue(), "approaches"))
+			{
+				approaches.add(constant(approach, "name", PromptAuthorApproach.class));
+				reasons.add(text(approach, "reason"));
+			}
+			orders.put(entry.getKey(), new ApproachOrder(approaches, reasons, bool(entry.getValue(), "fallback")));
+		}
+		return new Round(attempts, bool(node, "weak"), reservations, contenders, orders,
+			bool(node, "rank_approaches"), integer(node, "rotation_size"));
 	}
 
 	/**
@@ -2605,11 +2649,64 @@ final class CampaignJson
 	{
 		requireObject(root, "$");
 		int version = integer(root, VERSION);
+		if (version == 43)
+		{
+			upgradeVersion43((ObjectNode) root);
+			return;
+		}
 		if (version != FORMAT_VERSION)
 		{
 			throw new IllegalArgumentException(VERSION + " is " + version + ": this is a version " + version +
 				" campaign file, but this version of CAT reads only version " + FORMAT_VERSION + ". Start a new " +
 				"campaign.");
+		}
+	}
+
+	/**
+	 * Upgrades a saved campaign or trial record before the current reader consumes it. Rounds retain their
+	 * nine-approach rotation; subsequently created rounds rank all available approaches.
+	 *
+	 * @param root the version-43 document, mutated to the current format
+	 */
+	private static void upgradeVersion43(ObjectNode root)
+	{
+		root.put(VERSION, FORMAT_VERSION);
+		JsonNode optimization = root.get("optimization");
+		if (optimization instanceof ObjectNode object)
+			object.putObject("approaches");
+		upgradeDevelopment(root.get("development"));
+	}
+
+	/**
+	 * Upgrades the current development and recursively retained predecessor developments.
+	 *
+	 * @param node the development, or null for a document without development state
+	 */
+	private static void upgradeDevelopment(JsonNode node)
+	{
+		if (!(node instanceof ObjectNode development))
+			return;
+		upgradeRound(development.get("round"));
+		JsonNode predecessor = development.get("predecessor");
+		if (predecessor instanceof ObjectNode previous)
+		{
+			upgradeRound(previous.get("round"));
+			upgradeDevelopment(previous.get("development"));
+		}
+	}
+
+	/**
+	 * Adds the saved rotation policy to a version-43 round.
+	 *
+	 * @param node the saved round, or null
+	 */
+	private static void upgradeRound(JsonNode node)
+	{
+		if (node instanceof ObjectNode round)
+		{
+			round.put("rank_approaches", false);
+			round.put("rotation_size", PromptAuthorApproach.LEGACY_COUNT);
+			round.putObject("approach_orders");
 		}
 	}
 

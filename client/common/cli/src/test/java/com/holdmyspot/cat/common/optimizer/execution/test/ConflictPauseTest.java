@@ -50,7 +50,7 @@ public final class ConflictPauseTest
 				List.of("Exempt r1 from r2", "Drop r2"), 1, "Keep both requirements")));
 			try (Driver driver = harness.open())
 			{
-				driver.step();
+				harness.settle(driver);
 				int running = harness.runningTrials().size();
 				requireThat(running, "inFlightTrials").isPositive();
 				for (FakeSession session : harness.running())
@@ -101,7 +101,7 @@ public final class ConflictPauseTest
 				authoring(working, false));
 			try (Driver driver = harness.open())
 			{
-				driver.step();
+				harness.settle(driver);
 				String edits = harness.promptAuthor().briefs().getFirst().campaignEdits();
 				if (working == 0)
 					requireThat(edits, "incumbentEdits").isEmpty();

@@ -163,7 +163,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		{
 			case TRIAL -> part;
 			case JUDGE -> Part.HELD_OUT;
-			case TRIAGE, PROMPT_AUTHOR, CONTRACT_AUTHOR -> Part.DEVELOPMENT;
+			case TRIAGE, APPROACH_RANKER, PROMPT_AUTHOR, CONTRACT_AUTHOR -> Part.DEVELOPMENT;
 		};
 		if (part != rolePart)
 			throw new IllegalArgumentException("A " + role + " session reads the " + rolePart + " part, not " + part);

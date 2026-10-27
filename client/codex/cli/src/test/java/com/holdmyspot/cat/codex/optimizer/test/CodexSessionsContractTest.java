@@ -347,10 +347,12 @@ public final class CodexSessionsContractTest
 				// A triage session, like a judge session, answers with one JSON object, so it replays the judge's recording
 				Map<SessionRole, List<String>> events = Map.of(SessionRole.TRIAL, recorded("trial-turn-1.jsonl"),
 					SessionRole.JUDGE, recorded("judge-turn-1.jsonl"), SessionRole.TRIAGE, recorded("judge-turn-1.jsonl"),
+					SessionRole.APPROACH_RANKER, recorded("judge-turn-1.jsonl"),
 					SessionRole.PROMPT_AUTHOR, recorded("author-turn-1.jsonl"), SessionRole.CONTRACT_AUTHOR,
 					recorded("deriver-turn-1.jsonl"));
 				Map<SessionRole, Integer> messages = Map.of(SessionRole.TRIAL, 1, SessionRole.JUDGE, 2,
-					SessionRole.TRIAGE, 2, SessionRole.PROMPT_AUTHOR, 3, SessionRole.CONTRACT_AUTHOR, 2);
+					SessionRole.TRIAGE, 2, SessionRole.APPROACH_RANKER, 2, SessionRole.PROMPT_AUTHOR, 3,
+					SessionRole.CONTRACT_AUTHOR, 2);
 				List<RecordedAppServer> servers = Arrays.stream(SessionRole.values()).
 					map(role -> new RecordedAppServer(List.of(events.get(role)))).toList();
 				AtomicInteger next = new AtomicInteger();

@@ -27,7 +27,7 @@ public final class SessionRequestFixtures
 		return switch (role)
 		{
 			case JUDGE -> Part.HELD_OUT;
-			case TRIAL, TRIAGE, PROMPT_AUTHOR, CONTRACT_AUTHOR -> Part.DEVELOPMENT;
+			case TRIAL, TRIAGE, APPROACH_RANKER, PROMPT_AUTHOR, CONTRACT_AUTHOR -> Part.DEVELOPMENT;
 		};
 	}
 }

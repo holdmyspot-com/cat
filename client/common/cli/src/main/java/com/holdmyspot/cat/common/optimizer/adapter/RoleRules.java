@@ -25,6 +25,7 @@ final class RoleRules
 		SessionRole.CONTRACT_AUTHOR, List.of(CONTRACT_DESIGN),
 		SessionRole.JUDGE, List.of(),
 		SessionRole.TRIAGE, List.of(),
+		SessionRole.APPROACH_RANKER, List.of(),
 		SessionRole.TRIAL, List.of());
 	private static final String SECTION = """
 

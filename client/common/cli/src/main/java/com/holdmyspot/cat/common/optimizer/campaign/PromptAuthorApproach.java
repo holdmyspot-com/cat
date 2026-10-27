@@ -1,7 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.campaign;
 
 /**
- * The editing approaches that a cell's prompt author attempts take in turn, in declaration order.
+ * The editing approaches available to a cell's prompt author attempts.
  */
 public enum PromptAuthorApproach
 {
@@ -52,8 +52,24 @@ public enum PromptAuthorApproach
 	 */
 	GIVE_EXACT_TEXT("Give the exact text rather than how to build it: when the failing replies assemble a command, " +
 		"path or value wrongly, state the finished command, path or value instead of the parts or steps that produce " +
-		"it.");
+		"it."),
+	/**
+	 * States how compatible instructions apply together at their meeting point.
+	 */
+	COMBINE_INSTRUCTIONS("State how instructions combine: where two instructions that do not contradict each other " +
+		"apply in the same turn and the failing replies followed only one, state at the point where they meet which " +
+		"one wins, or in what order to apply both."),
+	/**
+	 * Corrects the condition that loads or selects an otherwise correct instruction.
+	 */
+	FIX_LOAD_TRIGGER("Fix the trigger rather than the instruction: when the failing sessions never loaded or " +
+		"applied an instruction that would have been correct, reword the condition that loads or selects it so that " +
+		"it matches what the agent sees in the failing situation.");
 
+	/**
+	 * The declaration-order vocabulary size used by campaigns saved in format 43.
+	 */
+	public static final int LEGACY_COUNT = 9;
 	private final String text;
 
 	/**

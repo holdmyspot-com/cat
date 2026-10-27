@@ -4,6 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Admission;
+import com.holdmyspot.cat.common.optimizer.campaign.ApproachOrder;
+import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
@@ -160,6 +162,8 @@ public final class Driver implements AutoCloseable
 	private Campaign campaign;
 	private long nextToken;
 	private int promptAuthorFailures;
+	private final Map<String, SessionRequest> rankingRequests = new HashMap<>();
+	private final Map<String, Integer> rankingFailures = new HashMap<>();
 	private boolean interrupted;
 	private String infrastructureFailure;
 	private DeliveryReport delivery;
@@ -559,6 +563,7 @@ public final class Driver implements AutoCloseable
 			case InFlight.Trial trial -> trialEnded(trial, result, event.failure(), now);
 			case InFlight.Judge judge -> judgeEnded(judge.judging(), result, event.failure(), now);
 			case InFlight.Triage triage -> triageEnded(triage.triaging(), result, event.failure());
+			case InFlight.Ranking ranking -> rankingEnded(ranking, result, event.failure());
 			case InFlight.PromptAuthor promptAuthor -> promptAuthorEnded(promptAuthor, result, event.failure());
 			case InFlight.Values values -> valuesEnded(values, result, event.failure());
 		}
@@ -611,6 +616,7 @@ public final class Driver implements AutoCloseable
 			case InFlight.Trial _ -> SessionRole.TRIAL;
 			case InFlight.Judge _ -> SessionRole.JUDGE;
 			case InFlight.Triage _ -> SessionRole.TRIAGE;
+			case InFlight.Ranking _ -> SessionRole.APPROACH_RANKER;
 			case InFlight.PromptAuthor _ -> SessionRole.PROMPT_AUTHOR;
 			case InFlight.Values _ -> SessionRole.CONTRACT_AUTHOR;
 		};
@@ -1258,6 +1264,12 @@ public final class Driver implements AutoCloseable
 				break;
 			if (!round.weak() && hasPromptAuthorSession())
 				break;
+			Optional<String> cell = round.nextCell();
+			if (round.rankApproaches() && cell.isPresent() && !round.approachOrders().containsKey(cell.get()))
+			{
+				started = startRanking(cell.get()) || started;
+				break;
+			}
 			Optional<Entry<Integer, String>> reservation = reservePromptAuthor();
 			if (reservation.isEmpty())
 				break;
@@ -1268,6 +1280,104 @@ public final class Driver implements AutoCloseable
 				break;
 		}
 		return started;
+	}
+
+
+	/**
+	 * Starts or retries one cell's ranking while leaving all its prompt author slots unreserved.
+	 *
+	 * @param cell the addressed cell
+	 * @return whether a ranking launch was attempted
+	 * @throws IOException if campaign state or its working overlay cannot be read or written
+	 */
+	private boolean startRanking(String cell) throws IOException
+	{
+		boolean running = inFlight.values().stream().anyMatch(session -> session instanceof InFlight.Ranking ranking &&
+			ranking.cell().equals(cell));
+		if (running)
+			return false;
+		SessionRequest request = rankingRequests.get(cell);
+		if (request == null)
+		{
+			Overlay overlay = context.overlays().require(campaign.development().working().snapshot());
+			PromptAuthorBrief brief = PromptAuthorBrief.of(campaign, cell, PromptAuthorApproach.CORRECT_INSTRUCTION,
+				overlay.fork(), "", Map.of());
+			request = context.ranking().request(brief, campaign.optimization());
+			rankingRequests.put(cell, request);
+		}
+		int attempt = rankingFailures.getOrDefault(cell, 0) + 1;
+		try
+		{
+			SessionHandle handle = context.sessions().start(request);
+			register(new InFlight.Ranking(cell, request, attempt, handle));
+		}
+		catch (IOException e)
+		{
+			rankingFailed(cell, attempt, "The ranking session could not start: " + describe(e));
+		}
+		return true;
+	}
+
+	/**
+	 * Adopts a valid ranking, retries an invalid result, or freezes a fallback after three failures.
+	 *
+	 * @param ranking the session
+	 * @param result  its result, or null if it failed with an exception
+	 * @param failure its exception, or null
+	 * @throws IOException if the decision cannot be persisted
+	 */
+	private void rankingEnded(InFlight.Ranking ranking, SessionResult result, Throwable failure) throws IOException
+	{
+		Round round = campaign.development().round();
+		if (round == null || round.approachOrders().containsKey(ranking.cell()))
+			return;
+		String reason;
+		switch (result)
+		{
+			case SessionResult.Completed completed ->
+			{
+				Optional<ApproachOrder> order = context.ranking().order(completed, ranking.cell(), campaign.optimization());
+				if (order.isPresent())
+				{
+					record(new CampaignEvent.RankApproaches(ranking.cell(), order.get()));
+					rankingRequests.remove(ranking.cell());
+					rankingFailures.remove(ranking.cell());
+					return;
+				}
+				reason = "The ranking output does not match its result schema";
+			}
+			case SessionResult.RateLimited _, SessionResult.Refused _ ->
+			{
+				return;
+			}
+			case SessionResult.Interrupted _ -> reason = "The ranking session was interrupted";
+			case SessionResult.Failed failed -> reason = failed.reason();
+			case null -> reason = "The ranking session failed: " + describe(failure);
+		}
+		rankingFailed(ranking.cell(), ranking.attempt(), reason);
+	}
+
+	/**
+	 * Counts a failed ranking without affecting the campaign's prompt author failure allowance.
+	 *
+	 * @param cell    the addressed cell
+	 * @param attempt the failed attempt, from one
+	 * @param reason  the last failure
+	 * @throws IOException if the fallback cannot be persisted
+	 */
+	private void rankingFailed(String cell, int attempt, String reason) throws IOException
+	{
+		rankingFailures.put(cell, attempt);
+		if (attempt < TRIAGE_ATTEMPTS)
+			return;
+		int before = campaign.development().round().number();
+		if (before == 0)
+			before = Integer.MAX_VALUE;
+		int earlier = campaign.optimization().promptAuthorAttempts(cell, before);
+		record(new CampaignEvent.RankApproaches(cell, ApproachOrder.fallback(earlier,
+			"Ranking failed three times; using declaration-order rotation. Last failure: " + reason)));
+		rankingRequests.remove(cell);
+		rankingFailures.remove(cell);
 	}
 
 	/**
@@ -1900,7 +2010,7 @@ public final class Driver implements AutoCloseable
 				case InFlight.Judge judge -> abandoned.add(judge.judging().key());
 				case InFlight.Triage triage -> abandoned.add(triage.triaging().key());
 				// The prompt author copy is cleaned up by interrupt(); prompt authors have no logical trial to queue.
-				case InFlight.PromptAuthor _, InFlight.Values _ ->
+				case InFlight.PromptAuthor _, InFlight.Values _, InFlight.Ranking _ ->
 				{
 				}
 			}
@@ -1957,7 +2067,7 @@ public final class Driver implements AutoCloseable
 				case InFlight.Trial trial -> trial.key();
 				case InFlight.Judge judge -> judge.judging().key();
 				case InFlight.Triage triage -> triage.triaging().key();
-				case InFlight.PromptAuthor _, InFlight.Values _ -> null;
+				case InFlight.PromptAuthor _, InFlight.Values _, InFlight.Ranking _ -> null;
 			};
 			if (key == null || !isRemoved(key))
 				continue;

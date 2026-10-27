@@ -88,6 +88,8 @@ final class OptimizationJson
 			attempt.put("number", progress.number());
 			attempt.put("working_snapshot", progress.working().hex());
 			attempt.put("cell", progress.cell());
+			attempt.put("approach", EnumNames.lowerCase(progress.assignment().approach()));
+			attempt.put("approach_order_source", EnumNames.lowerCase(progress.assignment().source()));
 			if (progress.snapshot() == null)
 				attempt.putNull("snapshot");
 			else

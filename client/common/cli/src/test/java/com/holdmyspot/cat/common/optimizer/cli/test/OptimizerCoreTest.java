@@ -1183,6 +1183,7 @@ public final class OptimizerCoreTest
 			case TRIAL -> trialResult(request, scratch.resolve("trial-" + trials.incrementAndGet()), transcript);
 			case JUDGE -> new SessionResult.Completed(transcript, List.of(List.of(judgment(request))), effects,
 				initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
+			case APPROACH_RANKER -> new SessionResult.Failed("Ranking unavailable in this fixture", List.of());
 			case TRIAGE -> new SessionResult.Completed(transcript, List.of(List.of(
 				"{\"impact\": \"blocking\", \"rationale\": \"The answer is incomplete.\"}")), effects,
 				initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());

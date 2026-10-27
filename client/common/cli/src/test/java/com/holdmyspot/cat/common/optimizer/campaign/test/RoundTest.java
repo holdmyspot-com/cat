@@ -15,6 +15,18 @@ import org.testng.annotations.Test;
 public final class RoundTest
 {
 	/**
+	 * The approach vocabulary includes combining compatible instructions and correcting their load triggers.
+	 */
+	// Requirement: R-D3
+	@Test
+	public void includesCombinationAndLoadTrigger()
+	{
+		List<String> names = java.util.Arrays.stream(PromptAuthorApproach.values()).map(Enum::name).toList();
+		requireThat(names, "approaches").contains("COMBINE_INSTRUCTIONS");
+		requireThat(names, "approaches").contains("FIX_LOAD_TRIGGER");
+	}
+
+	/**
 	 * Each cell receives its own approach sequence, independent of attempt numbers and other cells' reservations.
 	 */
 	// Requirement: R-D3

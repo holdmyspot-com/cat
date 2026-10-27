@@ -319,6 +319,29 @@ public sealed interface CampaignEvent
 	}
 
 	/**
+	 * Freezes a cell's approach order before the round reserves its attempts.
+	 *
+	 * @param cell  the addressed cell
+	 * @param order the ranked or fallback order
+	 */
+	record RankApproaches(String cell, ApproachOrder order) implements CampaignEvent
+	{
+		/**
+		 * Creates an order event.
+		 *
+		 * @param cell  the addressed cell
+		 * @param order the frozen order
+		 * @throws NullPointerException     if an argument is null
+		 * @throws IllegalArgumentException if {@code cell} is blank
+		 */
+		public RankApproaches
+		{
+			requireThat(cell, "cell").isNotBlank();
+			requireThat(order, "order").isNotNull();
+		}
+	}
+
+	/**
 	 * A prompt author's proposed file changes passed inventory validation, so checks that decide whether to promote
 	 * the snapshot can start.
 	 * <p>

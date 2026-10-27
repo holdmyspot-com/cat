@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.report;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.AttemptResult;
+import com.holdmyspot.cat.common.optimizer.campaign.ApproachAssignment;
 import com.holdmyspot.cat.common.optimizer.campaign.AttemptSelection;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
@@ -28,9 +29,10 @@ import java.util.TreeMap;
  * @param totalRuns the attempt's own planned promotion runs, excluding working reference runs
  * @param accepted indicates whether promotion accepted the attempt, or {@code null} while pending
  * @param winner indicates whether this attempt was selected for minimality
+ * @param assignment the editing approach and the origin of its round's order
  */
 public record AttemptProgress(int round, int number, Sha256 working, String cell, Sha256 snapshot,
-	long passingRuns, long totalRuns, Boolean accepted, boolean winner)
+	long passingRuns, long totalRuns, Boolean accepted, boolean winner, ApproachAssignment assignment)
 {
 	/**
 	 * Creates an attempt's status.
@@ -44,6 +46,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 	 * @param totalRuns planned promotion runs
 	 * @param accepted the promotion decision, or {@code null} while pending
 	 * @param winner whether this attempt won
+	 * @param assignment the durable editing approach and order origin
 	 * @throws NullPointerException if working or cell is null
 	 * @throws IllegalArgumentException if a position, number or count is invalid, or a winner is not accepted
 	 */
@@ -53,6 +56,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 		requireThat(number, "number").isGreaterThanOrEqualTo(round);
 		requireThat(working, "working").isNotNull();
 		requireThat(cell, "cell").isNotBlank();
+		requireThat(assignment, "assignment").isNotNull();
 		requireThat(passingRuns, "passingRuns").isNotNegative();
 		requireThat(totalRuns, "totalRuns").isGreaterThanOrEqualTo(passingRuns);
 		if (winner)
@@ -76,7 +80,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 		{
 			progress.put(result.number(), new AttemptProgress(roundPositions.get(result.round()), result.number(),
 				result.working(), result.cell(), result.snapshot(), result.passingRuns(), result.totalRuns(),
-				result.accepted(), result.winner()));
+				result.accepted(), result.winner(), campaign.optimization().approach(result.number(), result.cell())));
 		}
 		Round round = campaign.development().round();
 		if (round != null)
@@ -90,7 +94,8 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 				if (attempt == null)
 				{
 					progress.put(entry.getKey(), new AttemptProgress(roundPositions.get(round.number()), entry.getKey(),
-						working, entry.getValue(), null, 0, 0, null, false));
+						working, entry.getValue(), null, 0, 0, null, false,
+						assignment(campaign, entry.getKey(), entry.getValue())));
 					continue;
 				}
 				Boolean accepted;
@@ -108,10 +113,29 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 				}
 				progress.put(entry.getKey(), new AttemptProgress(roundPositions.get(round.number()), entry.getKey(), working,
 					entry.getValue(), attempt.snapshot(), AttemptSelection.passingRuns(attempt.runs()),
-					AttemptSelection.plannedRuns(attempt.runs()), accepted, false));
+					AttemptSelection.plannedRuns(attempt.runs()), accepted, false,
+					assignment(campaign, entry.getKey(), entry.getValue())));
 			}
 		}
 		return List.copyOf(progress.values());
+	}
+
+	/**
+	 * Returns the current round's durable assignment, including an unfinished saved rotation.
+	 *
+	 * @param campaign the campaign
+	 * @param number   the reserved attempt
+	 * @param cell     the addressed cell
+	 * @return the assignment and its order's origin
+	 */
+	private static ApproachAssignment assignment(Campaign campaign, int number, String cell)
+	{
+		ApproachAssignment saved = campaign.optimization().approaches().get(number);
+		if (saved != null)
+			return saved;
+		Round round = campaign.development().round();
+		return new ApproachAssignment(round.approach(number,
+			campaign.optimization().promptAuthorAttempts(cell, round.number())), ApproachAssignment.Source.DECLARATION);
 	}
 
 	/**

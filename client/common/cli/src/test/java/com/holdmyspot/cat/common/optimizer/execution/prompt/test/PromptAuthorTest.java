@@ -135,7 +135,15 @@ public final class PromptAuthorTest
 				{PromptAuthorApproach.GIVE_EXACT_TEXT,
 				"Give the exact text rather than how to build it: when the failing " +
 					"replies assemble a command, path or value wrongly, state the finished command, path or value " +
-					"instead of the parts or steps that produce it."}
+					"instead of the parts or steps that produce it."},
+				{PromptAuthorApproach.COMBINE_INSTRUCTIONS,
+					"State how instructions combine: where two instructions that do not contradict each other " +
+					"apply in the same turn and the failing replies followed only one, state at the point where they " +
+					"meet which one wins, or in what order to apply both."},
+				{PromptAuthorApproach.FIX_LOAD_TRIGGER,
+					"Fix the trigger rather than the instruction: when the failing sessions never loaded or applied " +
+					"an instruction that would have been correct, reword the condition that loads or selects it so " +
+					"that it matches what the agent sees in the failing situation."}
 			};
 	}
 

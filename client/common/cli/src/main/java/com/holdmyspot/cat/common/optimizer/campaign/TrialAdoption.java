@@ -782,7 +782,8 @@ public final class TrialAdoption
 			results.add(result);
 		results.sort(Comparator.comparingInt(AttemptResult::number));
 		draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), draft.optimization.removed(),
-			draft.optimization.promptSizes(), draft.optimization.trialInputs(), results, draft.optimization.tokenUsage());
+			draft.optimization.promptSizes(), draft.optimization.trialInputs(), results, draft.optimization.tokenUsage(),
+			draft.optimization.approaches());
 	}
 
 	/**
@@ -848,7 +849,8 @@ public final class TrialAdoption
 		Map<String, Integer> attempts = new LinkedHashMap<>(draft.round.attempts());
 		attempts.put(cell, attempts.get(cell) + 1);
 		draft.round = new Round(attempts, draft.round.weak(), draft.round.reservations(),
-			draft.round.validationAttempts());
+			draft.round.validationAttempts(), draft.round.approachOrders(), draft.round.rankApproaches(),
+			draft.round.rotationSize());
 		if (draft.round.isComplete())
 			endUnproductiveRound(draft);
 	}

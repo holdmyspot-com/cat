@@ -24,9 +24,13 @@ import java.util.Optional;
  * @param weak indicates whether the working candidate was weak when the round started
  * @param reservations the attempt numbers and addressed cells, in launch order
  * @param validationAttempts the received attempts, in launch order; an unchanged snapshot denotes no edit
+ * @param approachOrders     frozen approach orders by addressed cell
+ * @param rankApproaches     indicates whether unranked cells need a ranking session before reservation
+ * @param rotationSize       the declaration-order vocabulary size for saved rounds without ranking
  */
 public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, String> reservations,
-	List<PromptAuthorAttempt> validationAttempts)
+	List<PromptAuthorAttempt> validationAttempts, Map<String, ApproachOrder> approachOrders, boolean rankApproaches,
+	int rotationSize)
 {
 	static
 	{
@@ -59,11 +63,17 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	 * @param weak whether this round uses concurrent attempts
 	 * @param reservations the reserved attempts in launch order
 	 * @param validationAttempts the received attempts
+	 * @param approachOrders     frozen orders by cell
+	 * @param rankApproaches     indicates whether cells need ranking before reservation
+	 * @param rotationSize       number of approaches in a saved declaration-order rotation
 	 * @throws NullPointerException if a required value or element is null
 	 * @throws IllegalArgumentException if a count, reservation or received attempt is invalid
 	 */
 	public Round
 	{
+		approachOrders = Map.copyOf(approachOrders);
+		requireThat(attempts.keySet().containsAll(approachOrders.keySet()), "rankedCells").isTrue();
+		requireThat(rotationSize, "rotationSize").isBetween(1, true, PromptAuthorApproach.values().length, true);
 		requireThat(attempts, "attempts").isNotEmpty();
 		int limit = ATTEMPTS;
 		if (weak)
@@ -103,6 +113,40 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	public Round(Map<String, Integer> attempts)
 	{
 		this(attempts, false, Map.of(), List.of());
+	}
+
+	/**
+	 * Creates a round. A round with no reservations ranks each cell before reserving its attempts; an existing
+	 * reservation without an order retains declaration-order assignment.
+	 *
+	 * @param attempts           completed counts per cell
+	 * @param weak               indicates whether attempts may run concurrently
+	 * @param reservations       reserved attempts in launch order
+	 * @param validationAttempts received attempts
+	 */
+	public Round(Map<String, Integer> attempts, boolean weak, Map<Integer, String> reservations,
+		List<PromptAuthorAttempt> validationAttempts)
+	{
+		this(attempts, weak, reservations, validationAttempts, Map.of(), reservations.isEmpty(),
+			PromptAuthorApproach.values().length);
+	}
+
+	/**
+	 * Freezes one cell's order before any of its attempts are reserved.
+	 *
+	 * @param cell  the addressed cell
+	 * @param order the ranked or fallback order
+	 * @return the updated round
+	 * @throws IllegalArgumentException if the cell is unknown, already ranked or already reserved
+	 */
+	public Round withApproachOrder(String cell, ApproachOrder order)
+	{
+		requireThat(attempts.containsKey(cell), "addressedCell").isTrue();
+		requireThat(approachOrders.containsKey(cell), "alreadyRanked").isFalse();
+		requireThat(reservations.containsValue(cell), "alreadyReserved").isFalse();
+		Map<String, ApproachOrder> updated = new LinkedHashMap<>(approachOrders);
+		updated.put(cell, order);
+		return new Round(attempts, weak, reservations, validationAttempts, updated, rankApproaches, rotationSize);
 	}
 
 	/**
@@ -181,9 +225,9 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	}
 
 	/**
-	 * Returns the editing approach for a reserved attempt. A cell's attempts take the approaches in
-	 * {@link PromptAuthorApproach} order, continuing where its earlier rounds stopped and wrapping to the first
-	 * approach after the last.
+	 * Returns the editing approach for a reserved attempt. A cell's attempts take its frozen order in sequence.
+	 * A saved round without an order continues its declaration-order rotation from earlier rounds, using the
+	 * vocabulary size recorded with that round.
 	 *
 	 * @param number the reserved attempt number
 	 * @param earlier the number of prompt author attempts that addressed the same cell in earlier rounds
@@ -198,7 +242,10 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 		long position = reservations.entrySet().stream().
 			filter(entry -> entry.getKey() <= number && entry.getValue().equals(cell)).count();
 		PromptAuthorApproach[] approaches = PromptAuthorApproach.values();
-		return approaches[Math.toIntExact((earlier + position - 1) % approaches.length)];
+		ApproachOrder order = approachOrders.get(cell);
+		if (order != null)
+			return order.approaches().get(Math.toIntExact(position - 1));
+		return approaches[Math.toIntExact((earlier + position - 1) % rotationSize)];
 	}
 
 	/**
@@ -212,7 +259,7 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 	{
 		Map<Integer, String> updated = new LinkedHashMap<>(reservations);
 		updated.put(number, cell);
-		return new Round(attempts, weak, updated, validationAttempts);
+		return new Round(attempts, weak, updated, validationAttempts, approachOrders, rankApproaches, rotationSize);
 	}
 
 	/**
@@ -230,6 +277,6 @@ public record Round(Map<String, Integer> attempts, boolean weak, Map<Integer, St
 		Map<String, Integer> counts = new LinkedHashMap<>(attempts);
 		if (weak && !received)
 			counts.merge(attempt.cell(), 1, Integer::sum);
-		return new Round(counts, weak, reservations, updated);
+		return new Round(counts, weak, reservations, updated, approachOrders, rankApproaches, rotationSize);
 	}
 }

@@ -18,6 +18,10 @@ public enum SessionRole
 	 */
 	TRIAGE,
 	/**
+	 * Ranks the editing approaches for one cell before its round reserves prompt authors.
+	 */
+	APPROACH_RANKER,
+	/**
 	 * Edits a copy of the working candidate in response to failure evidence.
 	 */
 	PROMPT_AUTHOR,

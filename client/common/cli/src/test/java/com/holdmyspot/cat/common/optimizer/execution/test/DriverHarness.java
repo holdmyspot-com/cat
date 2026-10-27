@@ -21,6 +21,9 @@ import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.execution.Step;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.TriagePrompt;
+import com.holdmyspot.cat.common.optimizer.execution.prompt.ApproachRankingPrompt;
+import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
+import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ValuesPrompt;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
@@ -130,6 +133,7 @@ public final class DriverHarness
 	private Function<SessionRequest, SessionResult> trials = _ -> passed();
 	private Function<SessionRequest, SessionResult> promptAuthors = request -> edit(request, PROMPT);
 	private Function<SessionRequest, SessionResult> judges = this::scriptedJudgment;
+	private Function<SessionRequest, SessionResult> rankings = _ -> ranked();
 	private Function<SessionRequest, SessionResult> triages = _ -> triaged(Impact.SELF_RECOVERING);
 	private Function<SessionRequest, SessionResult> contractAuthors = this::newValues;
 	private final Map<MeasurementCondition, String> environmentChanges = new EnumMap<>(MeasurementCondition.class);
@@ -253,7 +257,8 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
 		return new DriverContext(fileLocks, crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
-			judge, triage, promptAuthor, values, deliverer, calibrator, terminator,
+			judge, triage, new ApproachRankingPrompt(json, directory), promptAuthor, values, deliverer, calibrator,
+			terminator,
 			new LeftoverRuns(sessions, JsonMapper.builder().build()),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json);
@@ -308,6 +313,49 @@ public final class DriverHarness
 	public void triages(Function<SessionRequest, SessionResult> script)
 	{
 		this.triages = script;
+	}
+
+	/**
+	 * Sets the fake session's ranking responses, interpreted by the production ranking parser.
+	 *
+	 * @param script the result supplier
+	 */
+	public void rankings(Function<SessionRequest, SessionResult> script)
+	{
+		rankings = script;
+	}
+
+	/**
+	 * Supplies a complete declaration-ordered ranking using the ranking response contract.
+	 *
+	 * @return a completed fake ranking session
+	 */
+	public SessionResult.Completed ranked()
+	{
+		return ranked(List.of(PromptAuthorApproach.values()), false);
+	}
+
+	/**
+	 * Supplies approaches in the requested fit order using the production result schema.
+	 *
+	 * @param order the approaches in fit order
+	 * @param tied  indicates whether every approach has equal fit
+	 * @return the fake session's structured output
+	 */
+	public SessionResult.Completed ranked(List<PromptAuthorApproach> order, boolean tied)
+	{
+		ArrayNode approaches = json.createArrayNode();
+		int fit = 0;
+		for (PromptAuthorApproach approach : order)
+		{
+			if (tied)
+				fit = 1;
+			else
+				++fit;
+			approaches.addObject().put("name", EnumNames.lowerCase(approach)).put("fit", fit).
+				put("reason", "This approach fits the supplied failures.");
+		}
+		return completed(json.writeValueAsString(json.createObjectNode().set("approaches", approaches)), JUDGE_MODEL);
 	}
 
 	/**
@@ -786,7 +834,7 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Steps a driver and ends only its judge and triage sessions, until none runs, so that every trial session that
+	 * Steps a driver and ends its judge, triage and ranking sessions until none runs, so every trial session that
 	 * the test ended is judged, triaged and adopted.
 	 *
 	 * @param driver the driver
@@ -802,7 +850,7 @@ public final class DriverHarness
 			for (FakeSession session : running())
 			{
 				SessionRole role = session.request().role();
-				if (role == SessionRole.JUDGE || role == SessionRole.TRIAGE)
+				if (role == SessionRole.JUDGE || role == SessionRole.TRIAGE || role == SessionRole.APPROACH_RANKER)
 				{
 					session.end(respond(session.request()));
 					++settled;
@@ -811,7 +859,7 @@ public final class DriverHarness
 			if (settled == 0)
 				return step;
 		}
-		throw new AssertionError("The judges and triages did not settle after " + STEP_LIMIT + " steps");
+		throw new AssertionError("The judges, triages and rankings did not settle after " + STEP_LIMIT + " steps");
 	}
 
 	/**
@@ -845,6 +893,7 @@ public final class DriverHarness
 			case TRIAL -> trials.apply(request);
 			case JUDGE -> judges.apply(request);
 			case TRIAGE -> triages.apply(request);
+			case APPROACH_RANKER -> rankings.apply(request);
 			case PROMPT_AUTHOR -> promptAuthors.apply(request);
 			case CONTRACT_AUTHOR -> contractAuthors.apply(request);
 		};

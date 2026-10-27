@@ -307,7 +307,7 @@ public final class SliceTest
 			BlockingQueue<FakeSession> started = new LinkedBlockingQueue<>();
 			SessionPort sessions = new QueueingSessions(harness.sessions(), started);
 			DriverContext observed = new DriverContext(context.fileLocks(), context.store(), sessions, context.workspace(),
-				context.interrupts(), context.clock(), context.overlays(), context.judge(), context.triage(),
+				context.interrupts(), context.clock(), context.overlays(), context.judge(), context.triage(), context.ranking(),
 				context.promptAuthor(), context.values(), context.deliverer(), context.calibrator(),
 				context.terminator(), context.leftoverRuns(), context.authority(), context.promptSources(),
 				context.environment(), context.lockFile(), context.random(), context.settings(), context.json());

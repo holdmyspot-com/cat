@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
+import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -58,6 +59,19 @@ sealed interface InFlight
 	 * @param handle the session
 	 */
 	record Triage(Triaging triaging, SessionHandle handle) implements InFlight
+	{
+	}
+
+	/**
+	 * A session ranking one cell's approaches before reservation.
+	 *
+	 * @param cell    the addressed cell
+	 * @param request the unchanged request used by every retry
+	 * @param attempt the ranking attempt, starting at one
+	 * @param handle  the session
+	 */
+	record Ranking(String cell, SessionRequest request, int attempt,
+		SessionHandle handle) implements InFlight
 	{
 	}
 

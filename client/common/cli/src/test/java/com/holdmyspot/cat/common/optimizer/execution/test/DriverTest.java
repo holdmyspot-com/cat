@@ -135,6 +135,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
+import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.report.CellReport;
 import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 import com.holdmyspot.cat.common.optimizer.report.OptimizationReport.InputComparison;
@@ -429,6 +430,7 @@ public final class DriverTest
 			DriverContext original = harness.context();
 			DriverContext context = new DriverContext(original.fileLocks(), store, original.sessions(), original.workspace(),
 				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
+				original.ranking(),
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), original.authority(), original.promptSources(), original.environment(),
 				original.lockFile(), original.random(), original.settings(), original.json());
@@ -972,7 +974,7 @@ public final class DriverTest
 
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, state -> state.development().round() != null);
+				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
 				requireThat(harness.promptAuthor().briefs().size(), "concurrentAttempts").isEqualTo(3);
 				requireThat(harness.promptAuthor().briefs().get(1).developmentFailures(), "sameFailures").
 					isEqualTo(harness.promptAuthor().briefs().get(0).developmentFailures());
@@ -1015,7 +1017,8 @@ public final class DriverTest
 						return harness.failed();
 					return harness.passed();
 				});
-				harness.runUntil(driver, state -> state.development().round() != null);
+				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
+				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 4);
 				requireThat(harness.promptAuthor().briefs().size(), "nextRoundAttempts").isEqualTo(4);
 				requireThat(harness.running().stream().filter(session ->
 					session.request().role() == SessionRole.PROMPT_AUTHOR).count(), "strongRoundAuthors").isEqualTo(1);
@@ -1043,7 +1046,7 @@ public final class DriverTest
 			Map<String, CellCounts> counts;
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, state -> state.development().round() != null);
+				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
 				requireThat(harness.promptAuthor().briefs().size(), "attempts").isEqualTo(3);
 				harness.endSessions();
 				driver.step();
@@ -1223,7 +1226,7 @@ public final class DriverTest
 
 
 	/**
-	 * The second sequential reservation uses the rewrite approach, including when its prompt author session is resumed.
+	 * The second sequential reservation uses its ranked combination approach, including after a driver restart.
 	 *
 	 * The resumed author supplies a distinct edit, and the test waits for its persisted diagnosis before checking
 	 * the adopted edit and the complete unchanged reservation map. The initial brief count only stages the restart;
@@ -1238,18 +1241,24 @@ public final class DriverTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			String rewriteApproach = "Rewrite rather than add:";
+			String combinationApproach = PromptAuthorApproach.COMBINE_INSTRUCTIONS.text();
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("approach-resume")),
 				authoring().build());
 			harness.trials(_ -> harness.failed());
+			harness.rankings(_ -> harness.ranked(List.of(PromptAuthorApproach.values()).reversed(), false));
 			try (Driver driver = harness.open())
 			{
 				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 2);
 				SessionRequest second = harness.sessions().sessions().getLast().request();
 				requireThat(second.role(), "role").isEqualTo(SessionRole.PROMPT_AUTHOR);
-				requireThat(second.turns().getFirst(), "secondApproach").contains(rewriteApproach);
+				requireThat(second.turns().getFirst(), "secondApproach").contains(combinationApproach);
 			}
 
+			Path savedCampaigns = cleanup.add(Files.createTempDirectory("ranked-round-store"));
+			FileCampaignStore store = new FileCampaignStore(savedCampaigns, JsonMapper.builder().build(),
+				Yielding.fileReplacer());
+			store.replaceSnapshot(harness.campaign());
+			harness.store().replaceSnapshot(store.load(DriverHarness.CAMPAIGN).orElseThrow());
 			Map<Integer, String> reservations = harness.campaign().development().round().reservations();
 			requireThat(reservations, "reservedAttempts").isEqualTo(Map.of(1, "safety", 2, "safety"));
 			int resumedAttempt = 2;
@@ -1259,7 +1268,7 @@ public final class DriverTest
 			{
 				resumedRequest.set(request);
 				SessionResult.Completed result = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT,
-					"resumed rewrite");
+					"resumed combination");
 				resumedEffects.set(result.effects());
 				return result;
 			});
@@ -1270,22 +1279,23 @@ public final class DriverTest
 				SessionRequest resumed = resumedRequest.get();
 				requireThat(resumed, "resumedRequest").isNotNull();
 				requireThat(resumed.role(), "role").isEqualTo(SessionRole.PROMPT_AUTHOR);
-				requireThat(resumed.turns().getFirst(), "resumedApproach").contains(rewriteApproach);
+				requireThat(resumed.turns().getFirst(), "resumedApproach").contains(combinationApproach);
 				PromptAuthorDiagnosis diagnosis = campaign.optimization().promptAuthors().stream().
 					filter(value -> value.effects().equals(resumedEffects.get())).findFirst().orElseThrow();
 				requireThat(diagnosis.number(), "resumedAttempt").isEqualTo(resumedAttempt);
 				PromptAuthorAttempt attempt = campaign.development().round().validationAttempts().stream().
 					filter(value -> value.number() == resumedAttempt).findFirst().orElseThrow();
 				Write prompt = (Write) harness.overlays().require(attempt.snapshot()).entries().get(DriverHarness.PROMPT);
-				requireThat(new String(prompt.content().bytes(), UTF_8), "resumedPrompt").isEqualTo("resumed rewrite");
+				requireThat(new String(prompt.content().bytes(), UTF_8), "resumedPrompt").isEqualTo("resumed combination");
 				requireThat(campaign.development().round().reservations(), "reservations").isEqualTo(reservations);
+				requireThat(harness.sessions().sessions().stream().filter(session ->
+					session.request().role() == SessionRole.APPROACH_RANKER).count(), "rankingNotRepeated").isEqualTo(1L);
 			}
 		}
 	}
 
 	/**
-	 * A cell whose earlier round made two prompt author attempts gives its next attempt the third approach rather than
-	 * starting the list again.
+	 * A failed ranking continues declaration-order rotation from the cell's two earlier prompt author attempts.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
@@ -1306,11 +1316,157 @@ public final class DriverTest
 				authoring().promptAuthorAttempts(2).
 					optimization(new OptimizationEvidence(earlier, List.of(), Map.of(), Map.of())).build());
 			harness.trials(_ -> harness.failed());
+			harness.rankings(_ -> harness.completed("{}", DriverHarness.JUDGE_MODEL));
 			try (Driver driver = harness.open())
 			{
 				harness.runUntil(driver, _ -> !harness.promptAuthor().briefs().isEmpty());
 				requireThat(harness.promptAuthor().briefs().getFirst().approach(), "approach").
 					isEqualTo(PromptAuthorApproach.values()[2]);
+			}
+		}
+	}
+
+	/**
+	 * A fresh round ranks its approaches before sending the first prompt author brief.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-D3
+	@Test
+	public void ranksBeforePromptAuthor() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("approach-rank")),
+				authoring().build());
+			harness.trials(_ -> harness.failed());
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> !harness.promptAuthor().briefs().isEmpty());
+				List<String> roles = harness.sessions().sessions().stream().map(session -> session.request().role().name()).
+					toList();
+				requireThat(roles, "sessionRoles").contains("APPROACH_RANKER");
+			}
+		}
+	}
+
+	/**
+	 * Invalid ranking output is retried unchanged; exhaustion falls back without stopping prompt author work.
+	 * Successful rankings assign unique approaches in fit order, independent of declaration order.
+	 *
+	 * @param fallback indicates whether every ranking reply is invalid
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-D3
+	@Test(dataProvider = "rankingFailures")
+	public void rankingRetriesAndAssigns(boolean fallback) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("ranking-retry")),
+				authoring().round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).build());
+			List<PromptAuthorApproach> ranked = List.of(PromptAuthorApproach.values()).reversed();
+			AtomicInteger rankings = new AtomicInteger();
+			harness.rankings(_ ->
+			{
+				int attempt = rankings.incrementAndGet();
+				if (fallback || attempt == 1)
+					return harness.completed("{}", DriverHarness.JUDGE_MODEL);
+				return harness.ranked(ranked, false);
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign campaign = harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
+				List<PromptAuthorApproach> expected = ranked.subList(0, 3);
+				String source = "ranking";
+				int expectedRankings = 2;
+				if (fallback)
+				{
+					expected = List.of(PromptAuthorApproach.values()).subList(0, 3);
+					source = "fallback";
+					expectedRankings = Driver.TRIAGE_ATTEMPTS;
+				}
+				requireThat(harness.promptAuthor().briefs().stream().map(PromptAuthorBrief::approach).toList(), "approaches").
+					isEqualTo(expected);
+				requireThat(rankings.get(), "rankingAttempts").isEqualTo(expectedRankings);
+				List<SessionRequest> requests = harness.sessions().sessions().stream().map(FakeSession::request).
+					filter(request -> request.role() == SessionRole.APPROACH_RANKER).toList();
+				for (SessionRequest request : requests)
+					requireThat(request, "unchangedRankingBrief").isEqualTo(requests.getFirst());
+				JsonNode attempts = StatusReport.of(campaign, ReportEvidence.NONE).toJson(JsonMapper.builder().build()).
+					get("prompt_author_attempts");
+				for (int index = 0; index < 3; ++index)
+				{
+					requireThat(attempts.get(index).get("approach").asString(), "reportedApproach").
+						isEqualTo(EnumNames.lowerCase(expected.get(index)));
+					requireThat(attempts.get(index).get("approach_order_source").asString(), "reportedSource").isEqualTo(source);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Supplies successful retry and exhausted retry cases.
+	 *
+	 * @return ranking failure modes
+	 */
+	@DataProvider
+	public Object[][] rankingFailures()
+	{
+		return new Object[][] {{false}, {true}};
+	}
+
+	/**
+	 * A saved version-43 campaign keeps its completed rounds and nine-approach rotation, then ranks its next round.
+	 *
+	 * @throws IOException if campaign storage cannot be used
+	 */
+	// Requirement: R-D3
+	// Requirement: R-D14
+	@Test
+	public void version43ContinuesIntoRankedRound() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("ranking-migration"));
+			JsonMapper json = JsonMapper.builder().build();
+			List<AttemptResult> results = new ArrayList<>();
+			for (int number = 1; number <= 9; ++number)
+			{
+				int round = ((number - 1) / 3) * 3 + 1;
+				results.add(new AttemptResult(round, Builder.snapshot("candidate-1"), number, "safety",
+					Builder.snapshot("candidate-1"), List.of(), 0, false, false));
+			}
+			Campaign original = authoring().promptAuthorAttempts(9).
+				optimization(new OptimizationEvidence(List.of(), List.of(), Map.of(), Map.of(), results, Map.of())).build();
+			Path campaigns = directory.resolve("campaigns");
+			FileCampaignStore store = new FileCampaignStore(campaigns, json, Yielding.fileReplacer());
+			store.replaceSnapshot(original);
+			Path snapshot = FileCampaignStore.heldOutDirectory(campaigns, original.header().id()).resolve("campaign.json");
+			ObjectNode saved = (ObjectNode) json.readTree(Files.readString(snapshot));
+			saved.put("format_version", 43);
+			((ObjectNode) saved.get("optimization")).remove("approaches");
+			ObjectNode round = (ObjectNode) saved.get("development").get("round");
+			round.remove("rank_approaches");
+			round.remove("rotation_size");
+			round.remove("approach_orders");
+			Files.writeString(snapshot, json.writeValueAsString(saved));
+			Campaign loaded = store.load(original.header().id()).orElseThrow();
+			requireThat(loaded.optimization().attempts(), "completedRounds").isEqualTo(results);
+			requireThat(loaded.optimization().promptAuthorAttempts("safety", 10), "oldAttemptCount").isEqualTo(9);
+			store.replaceSnapshot(loaded);
+			loaded = store.load(original.header().id()).orElseThrow();
+			DriverHarness harness = new DriverHarness(directory.resolve("driver"), loaded);
+			harness.trials(_ -> harness.failed());
+			harness.rankings(_ -> harness.ranked(List.of(PromptAuthorApproach.values()).reversed(), false));
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
+				requireThat(harness.promptAuthor().briefs().stream().map(PromptAuthorBrief::approach).toList(), "continued").
+					isEqualTo(List.of(PromptAuthorApproach.CORRECT_INSTRUCTION, PromptAuthorApproach.REWRITE_INSTRUCTIONS,
+						PromptAuthorApproach.FIX_LOAD_TRIGGER));
+				requireThat(harness.sessions().sessions().stream().filter(session ->
+					session.request().role() == SessionRole.APPROACH_RANKER).count(), "rankedNewRoundOnly").isEqualTo(1L);
 			}
 		}
 	}
@@ -2428,7 +2584,8 @@ public final class DriverTest
 			new InMemoryForks(base, Set.of(DriverHarness.PROMPT)), original.json(), Yielding.fileReplacer());
 		return new DriverContext(original.fileLocks(), original.store(), original.sessions(),
 			original.workspace(), original.interrupts(), original.clock(), original.overlays(), original.judge(),
-			original.triage(), original.promptAuthor(), original.values(), deliverer::deliver, original.calibrator(),
+			original.triage(),
+				original.ranking(), original.promptAuthor(), original.values(), deliverer::deliver, original.calibrator(),
 			original.terminator(), original.leftoverRuns(), original.authority(), original.promptSources(),
 			original.environment(), original.lockFile(), original.random(), original.settings(), original.json());
 	}
@@ -5474,7 +5631,7 @@ public final class DriverTest
 					certificationAttempt(2).cell("safety", 10, 1).failure(runningFailure).build());
 			try (Driver driver = harness.open())
 			{
-				driver.step();
+				harness.runUntil(driver, _ -> !harness.promptAuthor().briefs().isEmpty());
 				requireThat(harness.promptAuthor().briefs().size(), "briefs").isEqualTo(1);
 				PromptAuthorBrief brief = harness.promptAuthor().briefs().getFirst();
 				requireThat(brief.developmentFailures(), "developmentFailures").
@@ -5649,13 +5806,14 @@ public final class DriverTest
 			DriverContext original = harness.context();
 			DriverContext failing = new DriverContext(original.fileLocks(), original.store(),
 				rejectInterrupts(original.sessions(), rejectTrials, interrupts), original.workspace(), original.interrupts(),
-				original.clock(), original.overlays(), original.judge(), original.triage(), original.promptAuthor(),
+				original.clock(), original.overlays(), original.judge(), original.triage(),
+				original.ranking(), original.promptAuthor(),
 				original.values(), original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
 				original.authority(), original.promptSources(), original.environment(), original.lockFile(),
 				original.random(), original.settings(), original.json());
 			try (Driver driver = Driver.open(failing, DriverHarness.CAMPAIGN).orElseThrow())
 			{
-				driver.step();
+				harness.settle(driver);
 				requireThat(harness.workspace().authoringCopies().size(), "copies").isEqualTo(1);
 			}
 			catch (IOException e)
@@ -5669,7 +5827,8 @@ public final class DriverTest
 			finally
 			{
 				requireThat(interrupts, "interrupts").contains(SessionRole.PROMPT_AUTHOR).contains(SessionRole.TRIAL);
-				requireThat(interrupts.size(), "interrupts").isEqualTo(harness.sessions().sessions().size());
+				requireThat((long) interrupts.size(), "interrupts").isEqualTo(harness.sessions().sessions().stream().
+					filter(session -> session.request().role() != SessionRole.APPROACH_RANKER).count());
 				requireThat(harness.workspace().authoringCopies(), "authoringCopies").isEmpty();
 				requireThat(trials(harness.campaign(), TrialState.RUNNING), "running").isEmpty();
 				requireThat(trials(harness.campaign(), TrialState.ASSIGNED), "queued").isNotEmpty();
@@ -6022,6 +6181,7 @@ public final class DriverTest
 			DriverContext context = new DriverContext(original.fileLocks(), original.store(), original.sessions(),
 				original.workspace(),
 				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
+				original.ranking(),
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), new Authority(Set.of(DriverHarness.PROMPT, Path.of("docs")), Set.of(), fork),
 				original.promptSources(), original.environment(), original.lockFile(), original.random(),

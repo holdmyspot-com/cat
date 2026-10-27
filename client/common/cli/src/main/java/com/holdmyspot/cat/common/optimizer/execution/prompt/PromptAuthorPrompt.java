@@ -209,6 +209,42 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 	{
 		requireThat(brief, "brief").isNotNull();
 		requireThat(copy, "copy").isNotNull();
+		ObjectNode evidence = failureEvidence(json, brief);
+		JsonNode failures = evidence.get("failures");
+		JsonNode ended = evidence.get("ended_attempts");
+		// The session works in a copy of the project, so it reads a recorded workspace file's file if it needs the content
+		ObjectNode contract = DevelopmentContract.toJson(json, schema, brief.contract());
+		DevelopmentContract.omitRecordedContent(contract);
+		String turn = prompt.fill(Map.ofEntries(
+			Map.entry("hunk_definition", Hunk.DEFINITION),
+			Map.entry("prompt_sources", editableSources(brief.links())),
+			Map.entry("loader_configuration", loaderConfiguration),
+			Map.entry("new_guidance", newGuidance),
+			Map.entry("links", links(brief.links())),
+			Map.entry("declined_edits", declinedEdits(brief.answeredWarnings())),
+			Map.entry("cell", brief.cell()),
+			Map.entry("approach", brief.approach().text()),
+			Map.entry("contract", json.writeValueAsString(contract)),
+			Map.entry("campaign_edits", brief.campaignEdits()),
+			Map.entry("failures", pretty(failures)),
+			Map.entry("development_counts", pretty(encodeCounts(json, brief.developmentCounts()))),
+			Map.entry("ended_attempts", pretty(ended)),
+			Map.entry("earlier_attempts", earlierAttemptsTable(brief.earlierManifests())),
+			Map.entry("sound_tests", pretty(encodeSoundTests(brief.soundTests()))),
+			Map.entry("report_schema", reportSchema)));
+		return new SessionRequest(SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT, copy, List.of(turn), List.of(),
+			TIME_LIMIT, brief.contract().judge().profile());
+	}
+
+	/**
+	 * Writes the failure evidence shared by prompt authors and approach ranking, with sections only when supplied.
+	 *
+	 * @param json  the operation-owned mapper
+	 * @param brief the failure context
+	 * @return development failures and ended certification attempts
+	 */
+	public static ObjectNode failureEvidence(JsonMapper json, PromptAuthorBrief brief)
+	{
 		ArrayNode failures = json.createArrayNode();
 		for (int index = 0; index < brief.developmentFailures().size(); ++index)
 		{
@@ -230,7 +266,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 			ObjectNode node = ended.addObject();
 			node.put("index", attempt.index());
 			node.put("outcome", attempt.outcome().label());
-			node.set("counts", encodeCounts(attempt.counts()));
+			node.set("counts", encodeCounts(json, attempt.counts()));
 			ArrayNode attemptFailures = node.putArray("failures");
 			for (FailureSummary failure : attempt.failures())
 			{
@@ -261,28 +297,10 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 					put("candidate_passes", pairs.candidatePasses()).put("incumbent_passes", pairs.referencePasses());
 			}
 		}
-		// The session works in a copy of the project, so it reads a recorded workspace file's file if it needs the content
-		ObjectNode contract = DevelopmentContract.toJson(json, schema, brief.contract());
-		DevelopmentContract.omitRecordedContent(contract);
-		String turn = prompt.fill(Map.ofEntries(
-			Map.entry("hunk_definition", Hunk.DEFINITION),
-			Map.entry("prompt_sources", editableSources(brief.links())),
-			Map.entry("loader_configuration", loaderConfiguration),
-			Map.entry("new_guidance", newGuidance),
-			Map.entry("links", links(brief.links())),
-			Map.entry("declined_edits", declinedEdits(brief.answeredWarnings())),
-			Map.entry("cell", brief.cell()),
-			Map.entry("approach", brief.approach().text()),
-			Map.entry("contract", json.writeValueAsString(contract)),
-			Map.entry("campaign_edits", brief.campaignEdits()),
-			Map.entry("failures", pretty(failures)),
-			Map.entry("development_counts", pretty(encodeCounts(brief.developmentCounts()))),
-			Map.entry("ended_attempts", pretty(ended)),
-			Map.entry("earlier_attempts", earlierAttemptsTable(brief.earlierManifests())),
-			Map.entry("sound_tests", pretty(encodeSoundTests(brief.soundTests()))),
-			Map.entry("report_schema", reportSchema)));
-		return new SessionRequest(SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT, copy, List.of(turn), List.of(),
-			TIME_LIMIT, brief.contract().judge().profile());
+		ObjectNode evidence = json.createObjectNode();
+		evidence.set("failures", failures);
+		evidence.set("ended_attempts", ended);
+		return evidence;
 	}
 
 	/**
@@ -305,7 +323,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 	 * @param manifests the earlier attempts in retention order
 	 * @return the table header and one row per attempt, oldest first; only the header when there are none
 	 */
-	private static String earlierAttemptsTable(List<EarlierManifest> manifests)
+	public static String earlierAttemptsTable(List<EarlierManifest> manifests)
 	{
 		StringJoiner table = new StringJoiner("\n");
 		table.add("| Attempt | Cell | Result | Manifest rejected | Kinds (classification, failures) |");
@@ -346,10 +364,11 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 	/**
 	 * Writes outcome counts per cell: one prompt test under one trial profile.
 	 *
+	 * @param json   the operation-owned mapper
 	 * @param counts the trial passes and failures to show the prompt author, keyed by cell identifier
 	 * @return an object with one {@code passes}, {@code failures} pair per cell, in cell identifier order
 	 */
-	private ObjectNode encodeCounts(Map<String, CellCounts> counts)
+	private static ObjectNode encodeCounts(JsonMapper json, Map<String, CellCounts> counts)
 	{
 		ObjectNode node = json.createObjectNode();
 		for (Map.Entry<String, CellCounts> entry : new TreeMap<>(counts).entrySet())

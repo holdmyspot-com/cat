@@ -46,8 +46,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  *
  * @param cell                the identifier of the cell (one prompt test under one trial profile) that the prompt
  *                            author attempt targets
- * @param approach            the editing approach that the cell's attempts reach at this reservation, counting its
- *                            earlier rounds' attempts
+ * @param approach            the editing approach assigned by the cell's frozen round order
  * @param contract            the confirmed contract
  * @param developmentFailures the working candidate's development failures, in adoption order
  * @param evidenceSections    the evidence section of each development failure's trial, keyed by the failure's
@@ -207,6 +206,27 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 	static PromptAuthorBrief of(Campaign campaign, int number, FileInventory fork, String campaignEdits,
 		Map<Integer, String> evidenceSections)
 	{
+		Round round = campaign.development().round();
+		String cell = round.reservations().get(number);
+		PromptAuthorApproach approach = round.approach(number, campaign.optimization().promptAuthorAttempts(cell,
+			round.number()));
+		return of(campaign, cell, approach, fork, campaignEdits, evidenceSections);
+	}
+
+	/**
+	 * Builds the shared failure context for an addressed cell before or after reservation.
+	 *
+	 * @param campaign         the confirmed campaign
+	 * @param cell             the addressed cell
+	 * @param approach         the editing approach; ignored by a ranking session
+	 * @param fork             the working overlay's original inventory
+	 * @param campaignEdits    the edits since confirmation
+	 * @param evidenceSections retained trial sections, empty for ranking
+	 * @return the failure context
+	 */
+	static PromptAuthorBrief of(Campaign campaign, String cell, PromptAuthorApproach approach, FileInventory fork,
+		String campaignEdits, Map<Integer, String> evidenceSections)
+	{
 		Development development = campaign.development();
 		Map<String, String> sections = new HashMap<>();
 		for (Map.Entry<Integer, String> entry : evidenceSections.entrySet())
@@ -239,10 +259,6 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 			if (report.lineage() == lineage)
 				sound.add(report);
 		}
-		Round round = development.round();
-		String cell = round.reservations().get(number);
-		PromptAuthorApproach approach = round.approach(number, campaign.optimization().promptAuthorAttempts(cell,
-			round.number()));
 		return new PromptAuthorBrief(cell, approach,
 			campaign.contract(), development.failures(), sections, development.counts(), ended,
 			links, campaignEdits, campaign.answeredWarnings(), earlier, sound);

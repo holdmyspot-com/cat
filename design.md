@@ -658,10 +658,28 @@ attempt that changes fewer lines, then to the earlier attempt. Only the winner g
 become the working candidate; the others are retained with their evidence. The status records each attempt's promotion
 results, so the benefit of several attempts can be measured. All of these runs are targeted and never counted.
 
-**Approaches.** The attempts a prompt test receives in one round each follow a different approach, so that they do not
-repeat one search (user ruling, 2026-10-02). A prompt test's attempts take the approaches below in order. Each round
-continues the list where that prompt test's previous round stopped, and the list wraps to its start after the last
-approach (user ruling, 2026-10-07):
+**Approaches.** Each cell's attempts in one round follow different approaches. Before reserving any attempt for
+that cell, CAT starts one short ranking session under the role profile. It receives the prompt authors' failure
+records without their evidence sections, the compact earlier-attempt table, every approach's name and full instruction,
+and each approach's promotion and attempt counts in this campaign and cell. It returns every approach exactly once,
+from most to least likely to fix the failures, with a one-sentence reason and ascending fit groups that may tie
+(user ruling, 2026-10-27).
+
+CAT rejects incomplete, duplicate, unknown or otherwise schema-invalid rankings. Within each adjacent equal-fit group,
+CAT sorts by the exact share of the cell's earlier attempts with that approach whose result was promoted, best first;
+untried approaches follow positive shares and precede zero shares. Equal promotion records retain the session's order.
+The round's attempts take the resulting order without repeats. Each new round ranks all approaches again from its own
+evidence; it does not continue a successful ranking from an earlier round.
+
+A failed ranking is retried with unchanged input up to three times, like triage. Rate limits and refusals wait for the
+shared admission hold without consuming a retry. After three failures, CAT freezes declaration-order rotation for that
+round and cell, continuing its earlier-attempt count and wrapping after the last approach. Ranking failures never
+consume the prompt author failure allowance or stop the campaign. The round stores its frozen order and reasons before
+reservation; each reservation also retains its approach and the order's origin for status after the round ends.
+A resumed driver uses the saved order. Status names each attempt's approach and whether its round and cell used ranking,
+fallback, or a saved declaration-order policy.
+
+The available approaches are:
 
 1. Correct the instruction where it is stated: edit the file that states the instruction the failing replies violated
 	or misapplied, including `AGENTS.md` or `CLAUDE.md`.
@@ -682,8 +700,17 @@ approach (user ruling, 2026-10-07):
 9. Give the exact text rather than how to build it: when the failing replies assemble a command, path or value
 	wrongly, state the finished command, path or value instead of the parts or steps that produce it.
 
-CAT counts a prompt test's earlier attempts from the manifests and promotion results it retains, so an attempt that left
-neither does not advance the list.
+10. State how instructions combine: where two instructions that do not contradict each other apply in the same turn
+	and the failing replies followed only one, state at the point where they meet which one wins, or in what order
+	to apply both. An actual contradiction remains a `conflict` kind.
+11. Fix the trigger rather than the instruction: when failing sessions never loaded or applied an instruction that
+	would have been correct, reword its loading or selection condition to match what the agent sees. Editing the
+	instruction's own content remains `CORRECT_INSTRUCTION`.
+
+CAT counts each distinct earlier attempt with a retained manifest or promotion result once, including a rejected
+manifest and an attempt that produced no candidate. Format 44 upgrades version-43 campaigns when read: their existing
+rounds keep the original nine-approach declaration-order rotation, including its earlier-attempt count; their next new
+round ranks all eleven approaches. Retained trial records also load from version 43. No campaign restart is required.
 
 **Minimality pass.** Before a promoted attempt becomes the working candidate, CAT removes the parts of it that the
 evidence does not need. It divides the attempt's changed hunks into groups and reduces them by delta debugging:
@@ -812,7 +839,7 @@ snapshot of the chosen attempt.
 
 ### 3.1 Nested sessions
 
-CAT runs five kinds of work in nested sessions, each started through the current harness's existing runner
+CAT runs six kinds of work in nested sessions, each started through the current harness's existing runner
 (`ClaudeRunner` or `CodexRunner`) in a fresh isolated run directory:
 
 | Role | Input | Output |
@@ -821,9 +848,10 @@ CAT runs five kinds of work in nested sessions, each started through the current
 | Trial agent | Staged candidate project or control source with the test case's workspace files, the assigned turn sequence and its cell's trial profile | Transcript, the reply to each turn, project effects |
 | Judge | Frozen rubric, the test case, that trial's evidence section and the assertions it decides | `pass` or `fail` with rationale per assertion, in a strict schema |
 | Triage | A failed development trial's test case, reply, evidence section, built-in tool results and failure record | `blocking` or `self-recovering` with rationale, in a strict schema ([§2.7](#27-development-commit-gate-and-edit-or-continue)) |
+| Approach ranker | The cell’s failure records without evidence sections, compact earlier-attempt table, every approach’s name and full instruction, and per-approach promotion counts | Every approach exactly once in fit order, with fit groups and one-sentence reasons, in a strict schema |
 | Prompt author | Copy of the working candidate and the failure evidence, including each failing trial's evidence section | Edited prompt files in its copy, and the evidence manifest ([§2.7](#27-development-commit-gate-and-edit-or-continue)) |
 
-Each trial session runs under its cell's trial profile ([§6.6](#66-trial-profiles)). The contract author, judge, triage
+Each trial session runs under its cell's trial profile ([§6.6](#66-trial-profiles)). The contract author, judge, triage, approach ranker
 and prompt author sessions run under the harness's **role profile**: the model and effort that the agent definition of
 `optimize-xhigh`, the most capable of CAT's implementation agents, binds in that harness. The contract records the role
 profile as part of the frozen judge. Changing it is a judge change ([§5](#5-measurement-identity-and-applicability)).
@@ -831,11 +859,11 @@ profile as part of the frozen judge. Changing it is a judge change ([§5](#5-mea
 Trial sessions run as the prompt system's users run it: a trial installs the trial plugins that the campaign
 configuration lists for the campaign's harness, and no other plugin, together with the project's own files
 ([§4.4](#44-trial-staging)). A trial runs with CAT only when the configuration lists CAT. The contract author,
-judge, triage and prompt author sessions run without CAT's plugin, so no CAT session rules, hooks or path triggers reach
+judge, triage, approach ranker and prompt author sessions run without CAT's plugin, so no CAT session rules, hooks or path triggers reach
 them, and neither do the user's or the project's rules. Each one's brief carries the complete text of the rules its role
 applies instead, read from the installed CAT artifact: the prompt author receives the clear-writing, failure-prevention,
 contract-design, rule-organization, prompt-file-dependencies and prompt-file-references rules; the contract author
-receives the contract-design rule; the judge and the triage receive none, because their prompts and schemas define their
+receives the contract-design rule; the judge, triage and approach ranker receive none, because their prompts and schemas define their
 decisions. A delivered rule's lazy-load directives name the installed artifact's files. Delivering the rules in the
 brief removes the role's lazy reads, which Codex truncates and the model then repeats (H33).
 
@@ -2735,6 +2763,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D106 | Refactor lock coordination into an explicitly shared, process-owned object, supplied by scopes to every lock consumer (user ruling, 2026-10-24). | A mutable static registry shares state across independent scopes and tests; opening and closing another channel to a held file can release its POSIX lock. | Each process scope owns its coordinator, child scopes share it, and reservations outlive open channels. Independent coordinators retain independent state; no mutable static lock registry remains. |
 | D107 | Let a session launch either harness, its own included, through CAT's runner launchers, which both plugins hold; inside a run whose caller allows requested sessions, the launcher forwards the launch to the run's runner, and `--request-depth` lets requested sessions request sessions to a bounded depth (user rulings, 2026-10-25: implemented directly, forward through the broker, keep the runner split for later). | A session that tests work needing another harness, or a grandchild of its own, needed a different command per harness and could not start any harness from a requested session, whose commands are sandboxed and hold no login. Forwarding keeps the login, capacity, evidence and limits with the runner that already starts requested sessions host-side, so no child needs a sandbox exception, a login copy or a credential in its commands, and the user exempts only the two installed launchers in the top-level session. | Supersedes D99's rule that requested sessions request none of their own. The user configures the top-level sandbox exception and permission; a launch must be one command without a pipe, redirection, `cd` or variable prefix for the exception to match, and Codex's rule names the versioned cache path, so it changes on upgrade. A forwarded launch carries only turns, not steering or interrupts. |
 | D108 | Give the prompt author a compact table of earlier attempts’ kinds and results, with no hunks or line ranges (user ruling, 2026-10-25). | Full earlier manifests grow with every attempt and exceeded Codex’s input limit in a campaign with 417 attempts. The recurrence decision needs only which kinds were targeted and how each attempt ended; the campaign edits already hold what CAT kept of promoted hunks. | One row per attempt, oldest first, gives its number, cell, result, whether CAT rejected its manifest, and each kind’s name, classification and failure count. The prompt author no longer sees an earlier hunk’s wording, only that a kind was targeted and how the attempt ended. Full manifests remain in campaign state; no campaign format or measurement identity changes. |
+| D109 | Rank approaches by fit before each cell's round reserves its prompt authors, break adjacent equal-fit ties by the cell's per-approach promotion share in this campaign, and add compatible-instruction combination and load-trigger correction (user ruling, 2026-10-27). Supersedes the approach-order policy of D34 and D59. | Declaration order is a guess and never examines the failures. A short role session can judge which techniques fit the current evidence; the promotion record resolves ties without overriding fit. Combining compatible instructions differs from resolving a contradiction, and repairing a load trigger differs from editing a correct instruction. | One ranking session per cell and round, with triage-style retries and nonblocking declaration-order fallback. Persisted orders preserve assignments on resume; version-43 campaigns upgrade on read, retain their existing nine-approach rounds and rank their next new round. Status records each attempt's approach and its order's origin. |
 
 ## 14. Acceptance evidence
 

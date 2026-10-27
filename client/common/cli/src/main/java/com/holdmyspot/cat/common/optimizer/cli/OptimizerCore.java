@@ -60,6 +60,7 @@ import com.holdmyspot.cat.common.optimizer.execution.TrialSelection;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.PromptAuthorPrompt;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.TriagePrompt;
+import com.holdmyspot.cat.common.optimizer.execution.prompt.ApproachRankingPrompt;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ValuesPrompt;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
@@ -2512,7 +2513,7 @@ public final class OptimizerCore implements Core
 		return new DriverContext(scope.fileLocks(), store, scope.sessions(), fork.workspace(), scope.interrupts(),
 			scope.clock(),
 			new FileCandidateOverlays(directory, inventory, fork::version, scope.json(), scope.fileReplacer()), judge, triage,
-			promptAuthor,
+			new ApproachRankingPrompt(scope.json(), triageDirectory), promptAuthor,
 			values,
 			new Delivery(store, fork.workspace(), scope.forks(), scope.json(), scope.fileReplacer())::deliver,
 			scope.calibrator(),

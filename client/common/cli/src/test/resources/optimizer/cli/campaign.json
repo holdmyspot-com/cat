@@ -1,5 +1,5 @@
 {
-	"format_version" : 43,
+	"format_version" : 44,
 	"header" : {
 		"id" : "fixture-campaign",
 		"root" : "/project",
@@ -346,6 +346,7 @@
 		"reverts" : [ ]
 	},
 	"optimization" : {
+		"approaches" : { },
 		"token_usage" : { },
 		"prompt_authors" : [ ],
 		"removed" : [ ],

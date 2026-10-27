@@ -78,6 +78,8 @@ public final class Transitions
 				draft.throttle = draft.throttle.hold(hold.until(), hold.backoffs());
 				draft.slowStart = SlowStart.INITIAL;
 			}
+			case CampaignEvent.RankApproaches ranked ->
+				draft.round = draft.round.withApproachOrder(ranked.cell(), ranked.order());
 			case CampaignEvent.StartPromptAuthorAttempt start -> startPromptAuthorAttempt(draft, start.cell());
 			case CampaignEvent.SubmitPromptAuthorAttempt submit -> submitPromptAuthorAttempt(draft, submit);
 			case CampaignEvent.AdvanceMinimality advance -> advanceMinimality(draft, advance.snapshot());
@@ -87,7 +89,7 @@ public final class Transitions
 				sizes.put(measured.snapshot(), measured.size());
 				draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), draft.optimization.removed(),
 					sizes, draft.optimization.trialInputs(), draft.optimization.attempts(),
-					draft.optimization.tokenUsage());
+					draft.optimization.tokenUsage(), draft.optimization.approaches());
 			}
 			case CampaignEvent.RetainPromptAuthorDiagnosis retain ->
 			{
@@ -95,7 +97,7 @@ public final class Transitions
 				promptAuthors.add(retain.diagnosis());
 				draft.optimization = new OptimizationEvidence(promptAuthors, draft.optimization.removed(),
 					draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
-					draft.optimization.tokenUsage());
+					draft.optimization.tokenUsage(), draft.optimization.approaches());
 			}
 			case CampaignEvent.ReproductionValues values -> reproductionValues(draft, values);
 			case CampaignEvent.Commit commit -> commit(draft, campaign, commit);
@@ -741,6 +743,19 @@ public final class Transitions
 		for (AttemptResult result : draft.optimization.attempts())
 			latest = Math.max(latest, result.number());
 		draft.round = round.reserve(latest + 1, cell);
+		int number = latest + 1;
+		PromptAuthorApproach approach = draft.round.approach(number,
+			draft.optimization.promptAuthorAttempts(cell, draft.round.number()));
+		ApproachAssignment.Source source = ApproachAssignment.Source.DECLARATION;
+		ApproachOrder order = round.approachOrders().get(cell);
+		if (order != null)
+		{
+			if (order.fallback())
+				source = ApproachAssignment.Source.FALLBACK;
+			else
+				source = ApproachAssignment.Source.RANKING;
+		}
+		draft.optimization = draft.optimization.withApproach(number, new ApproachAssignment(approach, source));
 	}
 
 	/**
@@ -849,7 +864,7 @@ public final class Transitions
 			removed.addAll(next.removed());
 			draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), removed,
 				draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
-				draft.optimization.tokenUsage());
+				draft.optimization.tokenUsage(), draft.optimization.approaches());
 			TrialAdoption.promote(draft, new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
 				next.accepted(), next.acceptedRuns(), next));
 			return;

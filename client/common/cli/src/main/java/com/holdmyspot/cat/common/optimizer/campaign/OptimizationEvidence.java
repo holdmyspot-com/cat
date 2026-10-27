@@ -25,11 +25,13 @@ import java.util.Set;
  * @param trialInputs completed trial input observations by measurement identity, snapshot and cell
  * @param attempts retained original promotion results in launch order
  * @param tokenUsage reported usage of every finished nested session, by role
+ * @param approaches the editing approach and order origin of each reserved prompt author attempt
  */
 public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
 	Map<Sha256, PromptSize> promptSizes,
 	Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs,
-	List<AttemptResult> attempts, Map<SessionRole, List<TokenUsage>> tokenUsage)
+	List<AttemptResult> attempts, Map<SessionRole, List<TokenUsage>> tokenUsage,
+	Map<Integer, ApproachAssignment> approaches)
 {
 	/**
 	 * No descriptive evidence has been recorded.
@@ -45,10 +47,12 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 	 * @param trialInputs completed trial input observations by measurement identity, snapshot and cell
 	 * @param attempts retained original promotion results in launch order
 	 * @param tokenUsage reported usage of every finished nested session, by role
+	 * @param approaches durable approach assignments by reserved attempt number
 	 * @throws NullPointerException if an argument or element is null
 	 */
 	public OptimizationEvidence
 	{
+		approaches = Map.copyOf(approaches);
 		promptAuthors = List.copyOf(promptAuthors);
 		removed = List.copyOf(removed);
 		promptSizes = Map.copyOf(promptSizes);
@@ -80,7 +84,56 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		Map<Sha256, PromptSize> promptSizes,
 		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs)
 	{
-		this(promptAuthors, removed, promptSizes, trialInputs, List.of(), Map.of());
+		this(promptAuthors, removed, promptSizes, trialInputs, List.of(), Map.of(), Map.of());
+	}
+
+	/**
+	 * Creates evidence without recorded approach assignments.
+	 *
+	 * @param promptAuthors retained diagnoses
+	 * @param removed       removed hunks
+	 * @param promptSizes   target file measurements
+	 * @param trialInputs   trial observations
+	 * @param attempts      promotion results
+	 * @param tokenUsage    usage by session role
+	 */
+	public OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
+		Map<Sha256, PromptSize> promptSizes,
+		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs,
+		List<AttemptResult> attempts, Map<SessionRole, List<TokenUsage>> tokenUsage)
+	{
+		this(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage, Map.of());
+	}
+
+	/**
+	 * Returns a recorded assignment, or derives a saved declaration-order attempt from the original nine approaches.
+	 *
+	 * @param number the attempt number
+	 * @param cell   the addressed cell
+	 * @return the assignment
+	 */
+	public ApproachAssignment approach(int number, String cell)
+	{
+		ApproachAssignment assignment = approaches.get(number);
+		if (assignment != null)
+			return assignment;
+		return new ApproachAssignment(PromptAuthorApproach.values()[promptAuthorAttempts(cell, number) %
+			PromptAuthorApproach.LEGACY_COUNT],
+			ApproachAssignment.Source.DECLARATION);
+	}
+
+	/**
+	 * Records a reservation's approach before its prompt author starts.
+	 *
+	 * @param number     the reserved attempt
+	 * @param assignment its assigned approach and order origin
+	 * @return the updated evidence
+	 */
+	public OptimizationEvidence withApproach(int number, ApproachAssignment assignment)
+	{
+		Map<Integer, ApproachAssignment> updated = new HashMap<>(approaches);
+		updated.put(number, assignment);
+		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage, updated);
 	}
 
 	/**
@@ -129,7 +182,7 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		cells.put(cell, cells.getOrDefault(cell, TrialInputs.EMPTY).add(input));
 		snapshots.put(snapshot, cells);
 		updated.put(identity, snapshots);
-		return new OptimizationEvidence(promptAuthors, removed, promptSizes, updated, attempts, tokenUsage);
+		return new OptimizationEvidence(promptAuthors, removed, promptSizes, updated, attempts, tokenUsage, approaches);
 	}
 
 	/**
@@ -149,6 +202,6 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		List<TokenUsage> sessions = new ArrayList<>(updated.getOrDefault(role, List.of()));
 		sessions.add(usage);
 		updated.put(role, sessions);
-		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, updated);
+		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, updated, approaches);
 	}
 }

@@ -457,7 +457,9 @@ final class ReportSummary
 				accepted = attempt.accepted().toString();
 			lines.add("Round " + attempt.round() + ", Attempt " + attempt.number() + " in cell " + attempt.cell() +
 				": passing promotion runs " + attempt.passingRuns() + "/" + attempt.totalRuns() +
-				"; accepted: " + accepted + "; winner: " + attempt.winner());
+				"; accepted: " + accepted + "; winner: " + attempt.winner() + "; approach: " +
+				EnumNames.lowerCase(attempt.assignment().approach()) + "; approach order: " +
+				EnumNames.lowerCase(attempt.assignment().source()));
 		}
 		testRevisions(lines, report.testRevisions());
 	}
