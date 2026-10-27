@@ -52,3 +52,7 @@ silent fallback. Optional parameters may use documented defaults.
 
 Tests use `requireThat()` assertions rather than TestNG assertion helpers. Use typed validators such as
 `requireThat(path, "path").isRegularFile()` instead of validating a derived boolean.
+
+For reference-identity assertions, use `requireThat(actual, "actual").isReferenceEqualTo(expected, "expected")` instead
+of `requireThat(actual == expected, "sameInstance").isTrue()`. Use `isReferenceNotEqualTo()` for distinct references and
+`isEqualTo()` when comparing values rather than object identity.
