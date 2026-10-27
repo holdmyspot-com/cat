@@ -105,7 +105,7 @@ Let Checkstyle and PMD enforce mechanical formatting. Apply these conventions wh
 	value materially easier to understand. Keep a single-use message or an obvious value inline when a named constant
 	would only move it away from the reader. Before extracting, ask: “Would replacing this name with its value make the
 	surrounding code meaningfully harder to read?” If not, keep the value inline.
-- Prefer the most restrictive visibility and remove unused methods.
+- When choosing member visibility or removing unused methods, lazy load `java-class-design.md`.
 - Use interface types for declarations unless concrete-only operations are required.
 - Use `Duration` for time values; do not pass timeouts as ambiguous numeric units.
 

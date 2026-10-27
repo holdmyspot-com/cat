@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Apply Java-specific type, visibility, source-set, and resource-scope conventions that implement the project's
-	class-design guarantees.
+	class-design guarantees, with method access determined by required callers and the package's module exports.
 
 ## Guidance
 
@@ -31,7 +31,13 @@ consumer; do not promote it merely to make another module's tests compile.
 
 ### Visibility and Dead Code
 
-Use the most restrictive visibility that permits the required callers:
+A class is non-exported when its package is not exported by its module's `module-info.java`, or is exported only to
+that module's own test module. In such a class, make a method `public` when it should be invoked from outside the class,
+and `private` otherwise. Do not use package-private method access. Keep `protected` for a real subclass hook when the
+existing subclass-access rules require it.
+
+For methods in classes whose packages are exported to any other module, and for constructors, fields, and nested types
+in all classes, use the most restrictive visibility that permits the required callers:
 
 | Visibility | Use when |
 |------------|----------|
@@ -40,8 +46,8 @@ Use the most restrictive visibility that permits the required callers:
 | package-private | Only package peers need access |
 | `private` | Only this class needs access |
 
-`protected` is meaningless in a `final` class. Make it `private`, or package-private when package peers call it. After
-reducing visibility, remove methods that have no remaining callers.
+`protected` is meaningless in a `final` class. Choose its replacement using the rules above. After reducing visibility,
+remove methods that have no remaining callers.
 
 ### Declaration Types
 
