@@ -38,6 +38,8 @@ import java.util.Set;
 import java.util.stream.Stream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Creates, records, and deletes the isolated directories used by harness executions.
@@ -1065,6 +1067,10 @@ public final class HarnessRunManager
 				unescape(matcher.group("harnessCommand")), startedAt, Integer.parseInt(matcher.group("turnNumber")),
 				exitCode, finishedAt, "");
 		}
+		catch (JacksonException e)
+		{
+			throw new IOException("Run manifest contains an invalid JSON string: " + file, e);
+		}
 		catch (DateTimeParseException e)
 		{
 			throw new IOException("Run manifest contains an invalid timestamp: " + file, e);
@@ -1202,7 +1208,8 @@ public final class HarnessRunManager
 	private static String escape(String value)
 	{
 		assert value != null;
-		return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+		String quoted = JsonMapper.builder().build().writeValueAsString(value);
+		return quoted.substring(1, quoted.length() - 1);
 	}
 
 	/**
@@ -1214,7 +1221,7 @@ public final class HarnessRunManager
 	private static String unescape(String value)
 	{
 		assert value != null;
-		return value.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
+		return JsonMapper.builder().build().readValue('"' + value + '"', String.class);
 	}
 
 	/**

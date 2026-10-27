@@ -59,7 +59,7 @@ public final class SessionRequestForwarderTest
 		{
 			// Requirement: R-I9
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
-				toRealPath());
+				toRealPath().resolve("parent\\Users"));
 			Path receipt = fixture.root.resolve("evidence/receipt.json");
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
@@ -270,10 +270,11 @@ public final class SessionRequestForwarderTest
 				{
 					Files.writeString(response.resolve("transcript.jsonl"), TRANSCRIPT);
 					Files.writeString(response.resolve("receipt.json"), RECEIPT);
-					Files.writeString(response.resolve("response.json"), "{\"status\":\"" + outcome +
-						"\",\"reason\":\"reason for " + outcome + "\",\"transcript\":\"" +
-						response.resolve("transcript.jsonl") + "\",\"receipt\":\"" + response.resolve("receipt.json") +
-						"\"}");
+					JsonMapper json = JsonMapper.builder().build();
+					json.writeValue(response.resolve("response.json").toFile(), json.createObjectNode().
+						put("status", outcome).put("reason", "reason for " + outcome).
+						put("transcript", response.resolve("transcript.jsonl").toString()).
+						put("receipt", response.resolve("receipt.json").toString()));
 				}
 				else if (pauses[0] > 3)
 					throw new AssertionError("The response was published");

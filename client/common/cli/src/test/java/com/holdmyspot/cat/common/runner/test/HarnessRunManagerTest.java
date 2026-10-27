@@ -558,9 +558,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			Path artifact = cleanup.add(Files.createTempDirectory(
+			Path artifact = Files.createDirectories(cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-artifact-"));
+				"cat-artifact-")).resolve("nested\\new"));
 			Path project = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-project-"));
@@ -568,7 +568,9 @@ public final class HarnessRunManagerTest
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
-			manager.initialize(run, artifact, project, "structured_protocol", List.of("harness", "--api-key", "secret"));
+			manager.initialize(run, artifact, project, "structured_protocol",
+				List.of("harness", "--label", "line\r\nbreak", "--api-key", "secret"));
+			manager.markCompleted(run);
 
 			String manifest = Files.readString(run.directory().resolve("run.json"));
 			JsonNode fields = JsonMapper.builder().build().readTree(manifest);
@@ -576,7 +578,7 @@ public final class HarnessRunManagerTest
 			requireThat(fields.get("project_path").asString(), "projectPath").isEqualTo(project.toString());
 			requireThat(fields.get("transport").asString(), "transport").isEqualTo("structured_protocol");
 			requireThat(fields.get("harness_command").asString(), "harnessCommand").
-				isEqualTo("harness --api-key <redacted>");
+				isEqualTo("harness --label line\r\nbreak --api-key <redacted>");
 			requireThat(manifest, "manifest").doesNotContain("secret");
 		}
 	}
