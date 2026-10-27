@@ -616,9 +616,11 @@ describes, and stop. A resolution becomes revision feedback; the revised proposa
 and a confirmed revision starts a new lineage ([§7](#7-campaign-lifecycle)). A certification attempt that is running
 when the user chooses a resolution ends `not certified: stopped for contract revision`.
 
-CAT validates the attempt's file inventory, then runs the attempt on the triggering test cases twice each and on the
-lineage's regression set once each. The regression set is every development test case that failed in a representative
-development trial of any earlier candidate. These **promotion runs** are targeted and never counted. An attempt
+CAT validates the attempt's file inventory, then runs the attempt on the triggering test cases twice each. Once one
+triggering test case has an unfailed streak of 2 passes, CAT also runs the attempt on the lineage's regression set once
+each (user ruling, 2026-10-27), so an attempt that fails every triggering test case is rejected without any regression
+run. The regression set is every development test case that failed in a representative development trial of any
+earlier candidate. These **promotion runs** are targeted and never counted. An attempt
 **fixes** a triggering test case when every one of its runs there passes and so long a streak would be unlikely for the
 working candidate (user ruling, 2026-10-02). The working candidate's record on the test case is its representative
 failure there, its diagnostic reruns and any other outcome it has on the same test case; with `s` passes in `n` such
@@ -628,10 +630,29 @@ run, with no upper limit (user ruling, 2026-10-20). Since `p` is below 1, a stre
 unlikely; a failing run means the test case is not fixed. For example, a working candidate that passed 0 of 4 outcomes
 on a test case (`p` ≈ 0.17) needs 2 passes, one that passed 1 of 4 (`p` ≈ 0.33) needs 3, one that passed 2 of 4 (`p` =
 0.5) needs 4, one that passed 3 of 4 (`p` ≈ 0.67) needs 6, and one that passed 39 of 41 (`p` ≈ 0.93) needs 32. CAT **promotes** the attempt to working candidate when it
-fixes at least one triggering test case and fails no regression test case that the current working candidate passes
-(user ruling, 2026-10-02). An attempt that fixes some triggering test cases but not others is therefore promoted, and
-the test cases it leaves failing return through the next round. Promotion makes the attempt the next working candidate
-only; certification still requires the commit gate.
+fixes at least one triggering test case and passes the regression check below (user ruling, 2026-10-02; regression check
+revised 2026-10-27). An attempt that fixes some triggering test cases but not others is therefore promoted, and the test
+cases it leaves failing return through the next round. Promotion makes the attempt the next working candidate only;
+certification still requires the commit gate. The new working candidate's outcome on each regression test case is the
+attempt's latest run there.
+
+**Regression check (user ruling, 2026-10-27).** CAT groups an attempt's regression runs by prompt test and judges each
+group on its own. In a group, `f` is the attempt's failed regression runs and `m` its judged regression runs; `s` and `n`
+are the working candidate's passes and outcomes on the same test cases, counting its latest recorded outcome on each,
+its reference runs and its paired reruns, and `p = (s + 1) / (n + 2)` as above. The group **regresses** when the
+probability of at least `f` failures in `m` runs at failure rate `1 − p` is below 5%, computed exactly with integers. The
+check looks at the end of the first pass and then after every 5 paired reruns in the group, up to 15: at most 4 looks.
+A group with no failed run after the first pass passes at once. When a look neither passes the group nor finds a
+regression, CAT plans 5 more **paired reruns**: 5 runs of the attempt in that group, cycling through the group's
+regression test cases in regression run order starting with those the attempt failed, each paired with one run of the
+working candidate on the same test case. A group that has not regressed at the look after 15 reruns passes. The attempt
+is rejected as soon as any group regresses and passes the check once every group has passed. Paired reruns are targeted
+and never counted, and the working candidate's reruns are recorded with their own role so that they are never taken for
+representative evidence. In simulation at a 93% working pass rate, the check rejects an equally good edit about 2.4% of
+the time per prompt test and an edit at 80% about 38% of the time. The former rule, which rejected an attempt on any
+failed regression run where the working candidate's single outcome passed, rejected an equally good edit about 59% of
+the time over the 21 regression runs of a live Codex campaign, where 258 of 398 rejected attempts had fixed a triggering
+test case.
 
 **Revert.** A promoted candidate that does clearly worse than its predecessor is withdrawn (user ruling, 2026-10-02).
 While a promoted candidate has not been edited, CAT checks each cell that the promoting round addressed after every
@@ -646,17 +667,25 @@ that rate carries the predecessor's own sampling error; with non-overlapping int
 rather than 99%. A predecessor with no representative outcome in the cell gives no basis and is never reverted to there.
 A revert goes back one promotion: the restored predecessor is not checked against its own predecessor, because its check
 ended when it was edited (user ruling, 2026-10-02). The working candidate's result on a test case is its latest outcome
-there. When it has none, the promotion runs also run the working candidate on that test case once.
+there. When it has none, the promotion runs also run the working candidate on that test case once, at the same time as
+the attempt's regression runs.
 
 **Several attempts while the candidate is weak.** While the working candidate is weak, a round's prompt author attempts
 run independently and at the same time (user ruling, 2026-10-01). The candidate is weak when, in any development cell of
 a prompt test the round addresses, its development estimate (the exploratory 95% Wilson lower bound) is below 80%, or it
 has no development outcome there. A weak round makes 3 attempts for each failing prompt test; otherwise it makes each
 prompt test's attempts one at a time. Each attempt receives the same evidence and runs through the same promotion runs.
-Among the attempts that the promotion rule accepts, the winner has the most passing promotion runs; a tie goes to the
-attempt that changes fewer lines, then to the earlier attempt. Only the winner goes through the minimality pass and can
-become the working candidate; the others are retained with their evidence. The status records each attempt's promotion
-results, so the benefit of several attempts can be measured. All of these runs are targeted and never counted.
+An attempt is retained as soon as its decision is a rejection (user ruling, 2026-10-27): CAT plans no more runs for it
+and cancels its queued runs that have not started. Runs already running finish and are recorded, but cannot change the
+decision. A working-candidate reference run that another attempt of the round still needs keeps running. The round
+selects its winner only after every attempt is decided. Among the attempts that the promotion rule accepts, the winner
+has the most passing triggering runs and first-pass regression runs; its paired reruns are excluded (user ruling,
+2026-10-27) because only an attempt that failed a regression run receives them, starting with the test cases it
+failed, so counting them would favour that attempt. A tie goes to the attempt that changes fewer lines, then to the
+earlier attempt. Only the winner goes through the minimality pass and can become the working candidate; the others are
+retained with their evidence. The status records each attempt's promotion results, the runs it actually ran, paired
+reruns included, and whether it was rejected early, so the benefit of several attempts can be measured. All of these
+runs are targeted and never counted.
 
 **Approaches.** Each cell's attempts in one round follow different approaches. Before reserving any attempt for
 that cell, CAT starts one short ranking session under the role profile. It receives the prompt authors' failure
@@ -710,16 +739,19 @@ The available approaches are:
 CAT counts each distinct earlier attempt with a retained manifest or promotion result once, including a rejected
 manifest and an attempt that produced no candidate. Format 44 upgrades version-43 campaigns when read: their existing
 rounds keep the original nine-approach declaration-order rotation, including its earlier-attempt count; their next new
-round ranks all eleven approaches. Retained trial records also load from version 43. No campaign restart is required.
+round ranks all eleven approaches. Retained trial records also load from version 43. Format 45 upgrades version-44
+campaigns when read: an attempt in progress is decided by the regression check from the outcomes it already has and plans
+paired reruns only where a group needs them, and completed attempts and rounds keep their recorded decisions. No
+campaign restart is required.
 
 **Minimality pass.** Before a promoted attempt becomes the working candidate, CAT removes the parts of it that the
 evidence does not need. It divides the attempt's changed hunks into groups and reduces them by delta debugging:
 
 1. Start with two groups.
 2. For each group, revert that group's hunks to the working candidate's text.
-3. Run the reduced attempt through the same promotion runs, extended as above. It passes when it fixes every
-	triggering test case that the attempt it reduces fixed and fails no regression test case that the current working
-	candidate passes.
+3. Run the reduced attempt through the same promotion runs, extended as above, with its regression runs from the
+	start rather than after a triggering streak. It passes when it fixes every triggering test case that the attempt
+	it reduces fixed and passes the regression check, paired reruns included.
 4. When a reduced attempt passes, it replaces the attempt and the reduction continues from it. Otherwise, split the
 	groups more finely, down to single hunks.
 
@@ -2764,6 +2796,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D107 | Let a session launch either harness, its own included, through CAT's runner launchers, which both plugins hold; inside a run whose caller allows requested sessions, the launcher forwards the launch to the run's runner, and `--request-depth` lets requested sessions request sessions to a bounded depth (user rulings, 2026-10-25: implemented directly, forward through the broker, keep the runner split for later). | A session that tests work needing another harness, or a grandchild of its own, needed a different command per harness and could not start any harness from a requested session, whose commands are sandboxed and hold no login. Forwarding keeps the login, capacity, evidence and limits with the runner that already starts requested sessions host-side, so no child needs a sandbox exception, a login copy or a credential in its commands, and the user exempts only the two installed launchers in the top-level session. | Supersedes D99's rule that requested sessions request none of their own. The user configures the top-level sandbox exception and permission; a launch must be one command without a pipe, redirection, `cd` or variable prefix for the exception to match, and Codex's rule names the versioned cache path, so it changes on upgrade. A forwarded launch carries only turns, not steering or interrupts. |
 | D108 | Give the prompt author a compact table of earlier attempts’ kinds and results, with no hunks or line ranges (user ruling, 2026-10-25). | Full earlier manifests grow with every attempt and exceeded Codex’s input limit in a campaign with 417 attempts. The recurrence decision needs only which kinds were targeted and how each attempt ended; the campaign edits already hold what CAT kept of promoted hunks. | One row per attempt, oldest first, gives its number, cell, result, whether CAT rejected its manifest, and each kind’s name, classification and failure count. The prompt author no longer sees an earlier hunk’s wording, only that a kind was targeted and how the attempt ended. Full manifests remain in campaign state; no campaign format or measurement identity changes. |
 | D109 | Rank approaches by fit before each cell's round reserves its prompt authors, break adjacent equal-fit ties by the cell's per-approach promotion share in this campaign, and add compatible-instruction combination and load-trigger correction (user ruling, 2026-10-27). Supersedes the approach-order policy of D34 and D59. | Declaration order is a guess and never examines the failures. A short role session can judge which techniques fit the current evidence; the promotion record resolves ties without overriding fit. Combining compatible instructions differs from resolving a contradiction, and repairing a load trigger differs from editing a correct instruction. | One ranking session per cell and round, with triage-style retries and nonblocking declaration-order fallback. Persisted orders preserve assignments on resume; version-43 campaigns upgrade on read, retain their existing nine-approach rounds and rank their next new round. Status records each attempt's approach and its order's origin. |
+| D110 | Judge regression runs per prompt test by an exact pooled check: reject when the attempt's failures in a group would occur less than 5% of the time at the working candidate's smoothed failure rate, looking at the end of the first pass and after every 5 paired reruns of the attempt and the working candidate, up to 15 (user choice B, 2026-10-27). Run regression runs only after a triggering test case has an unfailed streak of 2 passes, except for a minimality reduction, and stop a rejected attempt's runs at once, in weak rounds too, cancelling its queued runs (user ruling, 2026-10-27). Supersedes the regression wording of D33. | In a live Codex campaign of 115 rounds and 464 attempts, promotion runs were 75% of 17,439 trials and rejected attempts held 80% of them. 258 of 398 rejected attempts had fixed a triggering test case and were rejected only because a regression run failed where the working candidate's single outcome passed, 123 on one failed run; at the observed failure rates an equally good edit failed at least one of 21 regression runs about 59% of the time. 3,760 of the rejected attempts' 7,311 judged runs came after the run that decided the rejection, and 1,608 regression runs went to 140 attempts that failed every triggering test case. In simulation at a 93% working pass rate, the pooled check rejects an equally good edit about 2.4% of the time per prompt test and an 80% edit about 38%. | Up to 30 more targeted runs per prompt test with a failed regression run, and paired working-candidate reruns recorded under their own role, which needs format 45; version-44 campaigns upgrade on read and keep their recorded decisions. A weak round's winner is ranked by its passing triggering and first-pass regression runs, excluding paired reruns (user ruling, 2026-10-27), because only an attempt that failed a regression run receives reruns, starting with the test cases it failed, so counting them would favour that attempt. A queued reference run of a rejected attempt that no other attempt needs is not cancelled. |
 
 ## 14. Acceptance evidence
 
