@@ -70,6 +70,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -80,9 +81,10 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link Delivery} against a test-owned base worktree, which is a real Git repository, and a test-owned
- * external directory that holds a read-only external participant. The optimization worktree is the in-memory
- * {@link FakeWorkspacePort}. Git runs only to set up the base, to report the final diff and for the no-commit check.
+ * Tests {@link Delivery} against a test-owned base worktree and a test-owned external directory that holds a read-only
+ * external participant. The optimization worktree is the in-memory {@link FakeWorkspacePort}. The base worktree is a
+ * real Git repository only for the no-commit check; every other test reports the delivered diff through
+ * {@link InMemoryForks}, from a patch that the test supplies for each file that could change.
  * <p>
  * Every test starts from the same fork: the base holds the prompt sources {@code rules/main.md},
  * {@code rules/style.md} and {@code rules/old.md} and the non-prompt file {@code README.md}, and the external directory
@@ -151,7 +153,8 @@ public final class DeliveryTest
 	/**
 	 * A certified candidate is delivered, labelled {@code certified}, while an edit that the user made after the fork to
 	 * a file the candidate does not change survives. The result is
-	 * current because the surviving edit is not a prompt source.
+	 * current because the surviving edit is not a prompt source, and its diff holds the patches of the delivered
+	 * changes but not that of the surviving edit.
 	 *
 	 * @throws IOException if the fixture or delivery fails
 	 */
@@ -161,7 +164,7 @@ public final class DeliveryTest
 		// Requirement: R-W8, R-F3
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.createWithGit(cleanup);
+			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
 			Files.writeString(fixture.base().resolve("README.md"), "readme edited by the user\n", UTF_8);
 
@@ -177,8 +180,8 @@ public final class DeliveryTest
 			requireThat(read(fixture.base().resolve("README.md")), "README.md").
 				isEqualTo("readme edited by the user\n");
 			requireCandidateDelivered(fixture);
-			requireThat(delivered.diff(), "diff").contains("+main v2").contains("new file mode").
-				contains("+new rule").contains("deleted file mode").doesNotContain("README.md");
+			requireThat(patchedPaths(delivered), "patchedPaths").isEqualTo(Set.of(Path.of("rules/main.md"),
+				Path.of("rules/new.md"), Path.of("rules/old.md"), RECORD_FILE)).isEqualTo(targets(delivered));
 		}
 	}
 
@@ -637,7 +640,7 @@ public final class DeliveryTest
 		// Requirement: R-M6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.createWithGit(cleanup);
+			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
 
 			Delivered delivered = requireDelivered(fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
@@ -648,8 +651,7 @@ public final class DeliveryTest
 			requireThat(last, "last").isInstanceOf(Create.class);
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
 			requireThat(history(fixture).records(), "records").isEqualTo(List.of(RECORD));
-			requireThat(delivered.diff(), "diff").contains("+++ b/" + PortablePaths.text(RECORD_FILE)).
-				contains("\"certification_index\"");
+			requireThat(patchedPaths(delivered), "patchedPaths").contains(RECORD_FILE).isEqualTo(targets(delivered));
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
 			requireThat(delivered.applicability().status(), "status").isEqualTo(Applicability.Status.CURRENT);
 		}
@@ -657,8 +659,8 @@ public final class DeliveryTest
 
 	/**
 	 * A certified delivery appends its record to the history that an earlier certification of the same target left:
-	 * the history holds the earlier record unchanged, followed by the delivered one, and the diff adds the new record
-	 * without removing a line of the earlier one.
+	 * the history holds the earlier record unchanged, followed by the delivered one, and the record is in the
+	 * delivered diff.
 	 *
 	 * @throws IOException if the fixture or delivery fails
 	 */
@@ -670,7 +672,7 @@ public final class DeliveryTest
 		{
 			CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
 			byte[] earlier = codec.write(CertificationHistory.EMPTY.appended(record(3)));
-			Fixture fixture = Fixture.createWithGit(cleanup).recordFile(RECORD_FILE, earlier);
+			Fixture fixture = Fixture.create(cleanup).recordFile(RECORD_FILE, earlier);
 			Overlay candidate = fixture.candidate();
 
 			Delivered delivered = requireDelivered(fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
@@ -681,8 +683,7 @@ public final class DeliveryTest
 			requireThat(last, "last").isInstanceOf(Edit.class);
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
 			requireThat(history(fixture).records(), "records").isEqualTo(List.of(record(3), RECORD));
-			requireThat(delivered.diff(), "diff").contains("+++ b/" + PortablePaths.text(RECORD_FILE)).
-				contains("+\t\t\"certification_index\" : 1").doesNotContain("-\t\t\"certification_index\"");
+			requireThat(patchedPaths(delivered), "patchedPaths").contains(RECORD_FILE).isEqualTo(targets(delivered));
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
 		}
 	}
@@ -1396,6 +1397,57 @@ public final class DeliveryTest
 	}
 
 	/**
+	 * Returns a patch for a file, in the form that Git's diff gives each file: a {@code diff --git} header that names
+	 * the path, followed by the change.
+	 *
+	 * @param path the file's path, relative to the base worktree
+	 * @return the patch
+	 */
+	private static String patch(Path path)
+	{
+		String name = PortablePaths.text(path);
+		return """
+			diff --git a/%1$s b/%1$s
+			--- a/%1$s
+			+++ b/%1$s
+			@@ -1 +1 @@
+			-before
+			+after
+			""".formatted(name);
+	}
+
+	/**
+	 * Returns the paths whose patches a delivered diff holds.
+	 *
+	 * @param delivered the delivered result
+	 * @return the path that each {@code diff --git} header names
+	 */
+	private static Set<Path> patchedPaths(Delivered delivered)
+	{
+		Set<Path> paths = new HashSet<>();
+		for (String line : delivered.diff().lines().toList())
+		{
+			if (line.startsWith("diff --git "))
+				paths.add(Path.of(line.substring(line.lastIndexOf(" b/") + " b/".length())));
+		}
+		return paths;
+	}
+
+	/**
+	 * Returns the paths that a delivery changed.
+	 *
+	 * @param delivered the delivered result
+	 * @return the target of each recorded change
+	 */
+	private static Set<Path> targets(Delivered delivered)
+	{
+		Set<Path> paths = new HashSet<>();
+		for (DeliveryChange change : delivered.changes())
+			paths.add(change.target());
+		return paths;
+	}
+
+	/**
 	 * Requires every change of {@link Fixture#candidate()} to be in place.
 	 *
 	 * @param fixture the fixture
@@ -1486,7 +1538,7 @@ public final class DeliveryTest
 		}
 
 		/**
-		 * Creates a Git-backed fixture for assertions about the delivered diff or unchanged Git history and index.
+		 * Creates a Git-backed fixture for assertions about the unchanged Git history and index.
 		 *
 		 * @param cleanup the scope that deletes the fixture
 		 * @return the fixture with its initial files committed
@@ -1518,7 +1570,9 @@ public final class DeliveryTest
 		}
 
 		/**
-		 * Returns the Git adapter for a Git-backed fixture, or the shared in-memory adapter for file outcome checks.
+		 * Returns the Git adapter for a Git-backed fixture, or else the in-memory adapter. The in-memory adapter holds a
+		 * patch for each file that the candidate, a certified delivery or a user's edit changes, so the delivered diff
+		 * shows which of them delivery selected.
 		 *
 		 * @return the forks
 		 */
@@ -1526,7 +1580,13 @@ public final class DeliveryTest
 		{
 			if (Files.isDirectory(base.resolve(".git")))
 				return new GitForks(Yielding.fileReplacer());
-			return new InMemoryForks(base, Set.of());
+			InMemoryForks forks = new InMemoryForks(base, Set.of());
+			for (Path path : List.of(Path.of("rules/main.md"), Path.of("rules/new.md"), Path.of("rules/old.md"),
+				Path.of("README.md"), RECORD_FILE))
+			{
+				forks.supplyPatch(path, patch(path));
+			}
+			return forks;
 		}
 
 		/**

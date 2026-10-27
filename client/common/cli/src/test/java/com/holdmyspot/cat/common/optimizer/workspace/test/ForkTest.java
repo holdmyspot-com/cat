@@ -26,6 +26,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -34,8 +35,9 @@ import org.testng.annotations.Test;
 
 /**
  * Verifies the fork. Creating one runs against a real Git repository that each test owns: the clean-base refusal, the
- * local exclude, the recorded participants and the detached optimization worktree at {@code HEAD}. Changing a fork's
- * participants reads and writes only campaign storage, so those tests store a fork without Git.
+ * local exclude, the recorded participants and the detached optimization worktree at {@code HEAD}. The diff of the
+ * selected paths runs against such a repository too. Changing a fork's participants reads and writes only campaign
+ * storage, so those tests store a fork without Git.
  */
 public final class ForkTest
 {
@@ -662,6 +664,47 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			new ForksContract(new GitForks(Yielding.fileReplacer()), project(root), root.resolve("campaign")).
 				emptySelectionHasNoDiff();
+		}
+	}
+
+	/**
+	 * Verifies that the diff of the selected paths holds a patch for each selected path that differs from
+	 * {@code HEAD}: an edited file, a file that {@code HEAD} lacks and a deleted file. A changed tracked file and an
+	 * untracked file that the selection leaves out have no patch, and reporting the diff leaves the repository's
+	 * index unchanged.
+	 *
+	 * @throws IOException if the fixture cannot be created or Git fails
+	 */
+	@Test
+	public void diffHoldsOnlySelectedChanges() throws IOException
+	{
+		// Requirement: R-W8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Git git = new Git(base);
+			String program = ProgramFixture.name("run");
+			writeFile(base.resolve("prompt.md"), "edited prompt\n", READ_WRITE);
+			writeFile(base.resolve("added.md"), "added rule\n", READ_WRITE);
+			Files.delete(base.resolve(program));
+			writeFile(base.resolve(".gitignore"), "ignored.md\nunselected edit\n", READ_WRITE);
+			writeFile(base.resolve("other.md"), "unselected file\n", READ_WRITE);
+			List<String> statusBefore = git.lines("status", "--porcelain", "--untracked-files=all");
+
+			String diff = new GitForks(Yielding.fileReplacer()).diff(base,
+				List.of(Path.of("prompt.md"), Path.of("added.md"), Path.of(program)));
+
+			// Each file's patch starts with a "diff --git a/<path> b/<path>" header
+			Set<String> patched = diff.lines().filter(line -> line.startsWith("diff --git ")).
+				map(line -> line.substring(line.lastIndexOf(" b/") + " b/".length())).
+				collect(Collectors.toSet());
+			requireThat(patched, "patched").isEqualTo(Set.of("prompt.md", "added.md", program));
+			requireThat(diff, "diff").contains("-prompt").contains("+edited prompt").
+				contains("new file mode").contains("+added rule").contains("deleted file mode").
+				doesNotContain("unselected");
+			requireThat(git.lines("status", "--porcelain", "--untracked-files=all"), "status").
+				isEqualTo(statusBefore);
 		}
 	}
 

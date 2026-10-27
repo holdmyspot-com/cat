@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.cli.test;
 
 import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -28,12 +29,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * {@link Forks} that hold their inventory in memory and run no Git. The fork holds the files that the test names as
  * tracked, plus the participants that the latest selection names; a file that the test does not name is "ignored".
  * A participant that a selection omits keeps its recorded entry, which a later selection restores. A fork that
  * {@code extend} returns becomes current only when it is adopted, and the fork it replaces stays available by identity.
+ * The diff of a selection holds the patches that the test supplied for its paths.
  * <p>
  * <b>Thread Safety:</b> This class is not thread-safe.
  */
@@ -52,6 +55,10 @@ public final class InMemoryForks implements Forks
 	private boolean dirty;
 	private boolean excludeAdded;
 	private boolean removalDenied;
+	/**
+	 * The patch that the test supplied for each changed path, keyed by the path.
+	 */
+	private final Map<Path, String> patches = new HashMap<>();
 
 	/**
 	 * Creates the forks of a project.
@@ -88,6 +95,18 @@ public final class InMemoryForks implements Forks
 	void denyRemoval()
 	{
 		removalDenied = true;
+	}
+
+	/**
+	 * Supplies the patch that a diff holds for a path that differs from {@code HEAD}. A path without a supplied patch
+	 * has no change.
+	 *
+	 * @param path  the path, relative to the project
+	 * @param patch the path's patch, ending with a line terminator
+	 */
+	public void supplyPatch(Path path, String patch)
+	{
+		patches.put(path, patch);
 	}
 
 	/**
@@ -152,12 +171,20 @@ public final class InMemoryForks implements Forks
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The fixture supplies an empty diff as a controlled response. Patch-output checks use the real Git adapter.
+	 * The diff joins the supplied patches of the selected paths in path order, as Git orders its patches. Which patches
+	 * Git produces for a selection is verified by the Git adapter's own test.
 	 */
 	@Override
 	public String diff(Path base, List<Path> paths)
 	{
-		return "";
+		Map<String, String> selected = new TreeMap<>();
+		for (Path path : paths)
+		{
+			String patch = patches.get(path);
+			if (patch != null)
+				selected.put(PortablePaths.text(path), patch);
+		}
+		return String.join("", selected.values());
 	}
 
 	@Override
