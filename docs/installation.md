@@ -114,6 +114,11 @@ starts need no configuration. When you pass `--session-requests <count>`, and `-
 levels, such a session runs the same launchers, which ask the runner that started it to start the session outside its
 sandbox. Without `--session-requests`, it cannot start sessions.
 
+On Linux, `codex-runner` needs bubblewrap (`bwrap`) on your `PATH` to start a session that reads earlier sessions'
+results, such as a prompt optimizer's judge: it lets that session read those results while it hides the rest of your
+project. Without it, the runner refuses such a session before it starts Codex. Install your distribution's
+`bubblewrap` package, for example with `sudo apt install bubblewrap` or `sudo dnf install bubblewrap`.
+
 In the examples, replace `/home/me` with your home directory. On Windows, the launchers end in `.cmd`.
 
 <details>

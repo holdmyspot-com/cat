@@ -363,6 +363,9 @@ public final class CodexRunner
 	 * session's project and home and its requests directory, if any, for writing and the session's read-only evidence
 	 * for reading only. The permission profile then names neither those directories nor the paths under them, so its
 	 * size does not grow with the number of runs or files beside the evidence.
+	 * <p>
+	 * A Linux session whose {@code readOnlyEvidence} lies inside a directory that it is denied, such as the run root,
+	 * cannot start without that bubblewrap, so the method refuses it before it changes the configuration.
 	 *
 	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
 	 * @param manager          the run manager
@@ -376,8 +379,10 @@ public final class CodexRunner
 	 * @param appServer        the command that starts the app-server
 	 * @return the session's sandbox
 	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
-	 * @throws IOException          if an evidence path does not exist, a denied directory cannot be listed, or the
-	 *                              configuration cannot be updated
+	 * @throws IOException          if the session runs on Linux, its {@code readOnlyEvidence} lies inside a directory
+	 *                              that it is denied and the caller's {@code PATH} has no bubblewrap; if an evidence
+	 *                              path does not exist, a denied directory cannot be listed, or the configuration
+	 *                              cannot be updated
 	 */
 	public static SessionSandbox sessionSandbox(Path configuration, HarnessRunManager manager, HarnessRun run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
@@ -406,8 +411,10 @@ public final class CodexRunner
 	 * @param privateTmp       the existing shared temporary directory that the app-server gets a private copy of
 	 * @return the session's sandbox
 	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
-	 * @throws IOException          if an evidence path does not exist, a denied directory cannot be listed, or the
-	 *                              configuration cannot be updated
+	 * @throws IOException          if the session runs on Linux, its {@code readOnlyEvidence} lies inside a directory
+	 *                              that it is denied and the caller's {@code PATH} has no bubblewrap; if an evidence
+	 *                              path does not exist, a denied directory cannot be listed, or the configuration
+	 *                              cannot be updated
 	 */
 	public static SessionSandbox sessionSandbox(Path configuration, HarnessRunManager manager, HarnessRun run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
@@ -415,6 +422,7 @@ public final class CodexRunner
 	{
 		requireThat(appServer, "appServer").isNotEmpty();
 		requireThat(privateTmp, "privateTmp").isNotNull();
+		requireBubblewrapForEvidence(manager, readOnlyEvidence, deniedReads, platform, environment);
 		String profile = addSessionProfile(configuration, manager, run, readOnlyEvidence, deniedReads, platform,
 			environment, requestAccess);
 		Optional<Path> bubblewrap = bubblewrap(environment);
@@ -428,6 +436,45 @@ public final class CodexRunner
 			hiddenDirectories(manager, sessionReadOnly(readOnlyEvidence, requestAccess), deniedReads, platform,
 				environment), writable, sessionReadOnly(readOnlyEvidence, requestAccess), privateTmp);
 		return new SessionSandbox(profile, command);
+	}
+
+	/**
+	 * Refuses a Linux session that reads evidence inside a directory that it is denied when the caller's {@code PATH}
+	 * has no bubblewrap. The Linux sandbox of Codex hides read-only paths inside a denied directory, so only the
+	 * bubblewrap around the app-server can show the session its evidence while it hides the rest of that directory.
+	 * Denying each other path under the directory instead makes the permission profile of a session beside thousands of
+	 * runs too long for Codex's sandbox helper, which then fails to start the session's thread.
+	 *
+	 * @param manager          the run manager
+	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
+	 * @param deniedReads      the files and directories that the caller denies the session reading
+	 * @param platform         the platform that the session runs on
+	 * @param environment      the caller's environment, whose {@code PATH} names bubblewrap
+	 * @throws IOException if the session must be refused
+	 */
+	private static void requireBubblewrapForEvidence(HarnessRunManager manager, List<Path> readOnlyEvidence,
+		List<Path> deniedReads, Platform platform, Map<String, String> environment) throws IOException
+	{
+		requireThat(manager, "manager").isNotNull();
+		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
+		requireThat(deniedReads, "deniedReads").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		if (!platform.isLinux() || bubblewrap(environment).isPresent())
+			return;
+		List<Path> holding = deniedDirectoriesHolding(manager, readOnlyEvidence, deniedReads);
+		if (holding.isEmpty())
+			return;
+		String path = environment.getOrDefault("PATH", "");
+		String searched;
+		if (path.isBlank())
+			searched = "the PATH is empty";
+		else
+			searched = "none of the PATH directories " + path + " holds an executable bwrap file";
+		throw new IOException("On Linux, a Codex session that reads evidence needs bubblewrap (bwrap) to let it read " +
+			readOnlyEvidence + " while it hides the rest of " + holding + ", but " + searched + ". Install your " +
+			"distribution's bubblewrap package, for example with \"sudo apt install bubblewrap\" or \"sudo dnf install " +
+			"bubblewrap\", then start the session again.");
 	}
 
 	/**
@@ -495,8 +542,11 @@ public final class CodexRunner
 	 * session read and write its project and home inside a denied directory, such as the project that holds the run
 	 * root, but the Linux sandbox would also hide read-only evidence there. The result therefore omits each directory
 	 * that {@link #hiddenDirectories(HarnessRunManager, List, List, Platform, Map)} returns, which the app-server's
-	 * bubblewrap hides instead, and the paths under it. A Linux session whose caller's {@code PATH} has no bubblewrap is
-	 * instead denied each other file and directory under a denied directory that holds evidence by its own path.
+	 * bubblewrap hides instead, and the paths under it. Where the caller's {@code PATH} has no bubblewrap, a Linux
+	 * session is instead denied each other file and directory under a denied directory that holds any of
+	 * {@code readOnlyEvidence} by its own path. The runner starts no such session with the caller's evidence, as
+	 * {@link #sessionSandbox(Path, HarnessRunManager, HarnessRun, List, List, Platform, Map, SessionRequestAccess,
+	 * List)} describes, so this listing covers only the run's own responses directory, which lies inside the run root.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
@@ -614,17 +664,34 @@ public final class CodexRunner
 		requireThat(environment, "environment").isNotNull();
 		if (!platform.isLinux() || bubblewrap(environment).isEmpty())
 			return List.of();
-		List<Path> holding = new ArrayList<>();
-		for (Path directory : deniedDirectories(manager, deniedReads))
-		{
-			if (HarnessRunManager.containsAny(directory, readOnlyEvidence))
-				holding.add(directory);
-		}
+		List<Path> holding = deniedDirectoriesHolding(manager, readOnlyEvidence, deniedReads);
 		// Bubblewrap cannot mount over a directory inside one that it already replaced with an empty one
 		return holding.stream().
 			filter(path -> holding.stream().noneMatch(other -> !other.equals(path) && path.startsWith(other))).
 			distinct().
 			toList();
+	}
+
+	/**
+	 * Returns the directories that a session must not read as a whole, as
+	 * {@link #deniedDirectories(HarnessRunManager, List)} lists them, that hold any of its read-only paths.
+	 *
+	 * @param manager     the run manager
+	 * @param readOnly    the files and directories that the session may read but not change
+	 * @param deniedReads the files and directories that the caller denies the session reading
+	 * @return the directories, absolute and normalized, in the order of
+	 *   {@link #deniedDirectories(HarnessRunManager, List)}
+	 */
+	private static List<Path> deniedDirectoriesHolding(HarnessRunManager manager, List<Path> readOnly,
+		List<Path> deniedReads)
+	{
+		List<Path> holding = new ArrayList<>();
+		for (Path directory : deniedDirectories(manager, deniedReads))
+		{
+			if (HarnessRunManager.containsAny(directory, readOnly))
+				holding.add(directory);
+		}
+		return holding;
 	}
 
 	/**

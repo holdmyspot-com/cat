@@ -413,6 +413,144 @@ public final class CodexRunnerTest
 	}
 
 	/**
+	 * Verifies that on Linux a session that may read evidence inside a directory that it is denied, here the run root,
+	 * is refused when the caller's {@code PATH} has no bubblewrap, with a message that names the missing program, why
+	 * the session needs it and how to install it, before the session's configuration receives a permission profile.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void refusesEvidenceWithoutBubblewrapOnLinux() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("codex");
+			manager.snapshotProject(run);
+			HarnessRun trial = manager.create("codex");
+			Path evidence = Files.createDirectories(trial.directory().resolve("artifacts"));
+			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
+			Path configuration = run.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
+				run.directory().resolve("project"));
+			String before = Files.readString(configuration);
+
+			List<String> appServer = CodexRunner.appServerCommand("codex", false);
+			Map<String, String> environment = Map.of("PATH", bin.toString());
+			Path privateTmp = temporary.toRealPath();
+			List<SandboxStart> starts = List.of(
+				() -> CodexRunner.sessionSandbox(configuration, manager, run, List.of(evidence), List.of(),
+					Platform.LINUX_X64, environment, null, appServer),
+				() -> CodexRunner.sessionSandbox(configuration, manager, run, List.of(evidence), List.of(),
+					Platform.LINUX_X64, environment, null, appServer, privateTmp));
+
+			for (SandboxStart start : starts)
+			{
+				try
+				{
+					start.sandbox();
+					throw new AssertionError("The session started without bubblewrap");
+				}
+				catch (IOException e)
+				{
+					requireThat(e.getMessage(), "message").
+						startsWith("On Linux, a Codex session that reads evidence needs bubblewrap (bwrap)").
+						contains(evidence.toString()).contains(root.toAbsolutePath().normalize().toString()).
+						contains(bin.toString()).contains("bubblewrap package");
+				}
+				requireThat(Files.readString(configuration), "configuration").isEqualTo(before);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that on Linux a session that reads no evidence, such as a trial, starts without bubblewrap on the
+	 * caller's {@code PATH}: its app-server command is not wrapped and its permission profile denies the whole run root
+	 * and the paths that the caller denies.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void startsTrialWithoutBubblewrapOnLinux() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("codex");
+			manager.snapshotProject(run);
+			manager.create("codex");
+			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
+			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
+			Path configuration = run.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
+				run.directory().resolve("project"));
+			List<String> appServer = CodexRunner.appServerCommand("codex", false);
+
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(heldOut),
+				Platform.LINUX_X64, Map.of("PATH", bin.toString()), null, appServer);
+
+			requireThat(sandbox.command(), "command").isEqualTo(appServer);
+			JsonNode denied = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+				path("permissions").path(sandbox.profile()).path("filesystem");
+			for (Path path : List.of(root, heldOut))
+			{
+				requireThat(denied.path(path.toRealPath().toString()).stringValue(""), "access(" + path + ")").
+					isEqualTo("deny");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that on macOS and Windows a session that reads evidence under the run root starts without bubblewrap on
+	 * the caller's {@code PATH}, as before: its app-server command is not wrapped, and its permission profile lets it
+	 * read the evidence while it denies the whole run root.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void startsJudgeWithoutBubblewrapOffLinux() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("codex");
+			manager.snapshotProject(run);
+			HarnessRun trial = manager.create("codex");
+			Path evidence = Files.createDirectories(trial.directory().resolve("artifacts"));
+			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
+			List<String> appServer = CodexRunner.appServerCommand("codex", false);
+
+			for (Platform platform : List.of(Platform.MACOS_ARM64, Platform.WINDOWS_X64))
+			{
+				Path configuration = run.directory().resolve("home/config-" + platform.id() + ".toml");
+				CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
+					run.directory().resolve("project"));
+
+				SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(evidence),
+					List.of(), platform, Map.of("PATH", bin.toString()), null, appServer);
+
+				requireThat(sandbox.command(), platform + ".command").isEqualTo(appServer);
+				JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+					path("permissions").path(sandbox.profile()).path("filesystem");
+				requireThat(filesystem.path(root.toRealPath().toString()).stringValue(""), platform + ".root").
+					isEqualTo("deny");
+			}
+		}
+	}
+
+	/**
 	 * Verifies that on Linux a session that reads no evidence under the run root is denied the whole run root as one
 	 * path, besides the Codex session logs and login in its home and the paths that the caller denies. The sandbox
 	 * keeps the session's project and home writable inside the denied root, so the session reads them while every
@@ -680,5 +818,20 @@ public final class CodexRunnerTest
 					run.directory().resolve("home/sessions")));
 			}
 		}
+	}
+
+	/**
+	 * Builds a session's sandbox through one of the runner's entry points.
+	 */
+	@FunctionalInterface
+	private interface SandboxStart
+	{
+		/**
+		 * Builds the sandbox.
+		 *
+		 * @return the session's sandbox
+		 * @throws IOException if the runner refuses the session or the sandbox cannot be built
+		 */
+		SessionSandbox sandbox() throws IOException;
 	}
 }

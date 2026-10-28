@@ -100,7 +100,7 @@ public final class CodexJudgeEvidenceAccessTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			JudgeSandbox sandbox = startJudge(jvm, cleanup, platform, 0);
+			JudgeSandbox sandbox = startJudge(jvm, cleanup, platform, 0, true).sandbox();
 
 			for (Path evidence : sandbox.evidence())
 				requireThat(sandbox.access(evidence), "access(" + evidence + ")").isEqualTo("read");
@@ -134,7 +134,7 @@ public final class CodexJudgeEvidenceAccessTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			JudgeSandbox sandbox = startJudge(jvm, cleanup, platform, 200);
+			JudgeSandbox sandbox = startJudge(jvm, cleanup, platform, 200, true).sandbox();
 
 			int bound = 16 * 1024;
 			requireThat(sandbox.profileBytes(), "profileBytes").isLessThan(bound);
@@ -152,24 +152,51 @@ public final class CodexJudgeEvidenceAccessTest
 	}
 
 	/**
-	 * Starts a judge session for a development trial inside a host project, through a bridge that builds the judge's
-	 * sandbox as the Codex runner does, with bubblewrap on the {@code PATH}. The host project lies in the JVM's
-	 * temporary directory, which the sandbox makes private to the app-server as it does {@code /tmp}, so that the judge
-	 * meets the host project under its private temporary directory, as on a host whose temporary directory is
-	 * {@code /tmp}.
+	 * Verifies that a Codex judge on Linux whose caller's {@code PATH} has no bubblewrap fails before its harness
+	 * starts, and that the optimizer records the runner's message, which names the missing program and how to install
+	 * it.
 	 *
-	 * @param jvm      the JVM scope
-	 * @param cleanup  deletes the fixture's directories
-	 * @param platform the platform that the judge runs on
-	 * @param runs     how many other runs the trial's run root holds besides the trial and one sibling
-	 * @return the judge's sandbox
 	 * @throws IOException          if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
 	 * @throws ExecutionException   if the session cannot determine a result
 	 * @throws TimeoutException     if the session does not finish
 	 */
-	private static JudgeSandbox startJudge(TestJvmScope jvm, TemporaryDirectories cleanup, Platform platform,
-		int runs) throws IOException, InterruptedException, ExecutionException, TimeoutException
+	@Test(timeOut = 120_000)
+	public void judgeWithoutBubblewrapFailsOnLinux()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			JudgeStart start = startJudge(jvm, cleanup, Platform.LINUX_X64, 0, false);
+
+			requireThat(start.result(), "result").isInstanceOf(SessionResult.Failed.class);
+			requireThat(((SessionResult.Failed) start.result()).reason(), "reason").
+				startsWith("On Linux, a Codex session that reads evidence needs bubblewrap (bwrap)").
+				contains("bubblewrap package");
+			requireThat(start.sandbox(), "sandbox").isNull();
+		}
+	}
+
+	/**
+	 * Starts a judge session for a development trial inside a host project, through a bridge that builds the judge's
+	 * sandbox as the Codex runner does and then serves the judge's reply. The host project lies in the JVM's temporary
+	 * directory, which the sandbox makes private to the app-server as it does {@code /tmp}, so that the judge meets
+	 * the host project under its private temporary directory, as on a host whose temporary directory is {@code /tmp}.
+	 *
+	 * @param jvm        the JVM scope
+	 * @param cleanup    deletes the fixture's directories
+	 * @param platform   the platform that the judge runs on
+	 * @param runs       how many other runs the trial's run root holds besides the trial and one sibling
+	 * @param bubblewrap whether the caller's {@code PATH} has bubblewrap
+	 * @return how the session ended, with the judge's sandbox if the session completed
+	 * @throws IOException          if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException   if the session cannot determine a result
+	 * @throws TimeoutException     if the session does not finish
+	 */
+	private static JudgeStart startJudge(TestJvmScope jvm, TemporaryDirectories cleanup, Platform platform,
+		int runs, boolean bubblewrap) throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		Path hostProject = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-host-project-")).
 			toRealPath();
@@ -187,8 +214,11 @@ public final class CodexJudgeEvidenceAccessTest
 		Path trialArtifacts = trial.directory().resolve("artifacts");
 		Path bin = Files.createDirectories(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 			"cat-bin-")));
-		Path bwrap = Files.writeString(bin.resolve("bwrap"), "");
-		requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
+		if (bubblewrap)
+		{
+			Path bwrap = Files.writeString(bin.resolve("bwrap"), "");
+			requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
+		}
 
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, List::of, "", false,
 			Map.of(), hostProject, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer(),
@@ -219,13 +249,26 @@ public final class CodexJudgeEvidenceAccessTest
 			List.of("judge"), List.of(effects, trialArtifacts), LIMIT, TrialProfile.HARNESS_DEFAULT)).
 			completion().toCompletableFuture().get(60, TimeUnit.SECONDS);
 
+		if (sandboxes.isEmpty())
+			return new JudgeStart(result, null);
 		requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 		requireThat(configurations.size(), "configurations.size()").isEqualTo(1);
 		String configuration = Files.readString(configurations.getFirst());
 		JsonNode permissions = TomlMapper.builder().build().readTree(configuration).path("permissions");
 		SessionSandbox sandbox = sandboxes.getFirst();
-		return new JudgeSandbox(permissions, sandbox.profile(), profileBytes(configuration), sandbox.command(),
-			List.of(effects, trialArtifacts), sibling.directory(), instructions, judgeRuns.getFirst());
+		return new JudgeStart(result, new JudgeSandbox(permissions, sandbox.profile(), profileBytes(configuration),
+			sandbox.command(), List.of(effects, trialArtifacts), sibling.directory(), instructions,
+			judgeRuns.getFirst()));
+	}
+
+	/**
+	 * How a judge session ended.
+	 *
+	 * @param result  the session's result
+	 * @param sandbox the sandbox that the judge received, or {@code null} if the runner refused to start it
+	 */
+	private record JudgeStart(SessionResult result, JudgeSandbox sandbox)
+	{
 	}
 
 	/**
