@@ -2,9 +2,11 @@ package com.holdmyspot.cat.codex.optimizer;
 
 import static com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.ROOT_AGENT;
 
+import com.holdmyspot.cat.codex.optimizer.RolloutMessages.RolloutMessage;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Assistant;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.ChildEvent;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Entry;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Hook;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Tool;
@@ -12,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Tool;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -21,6 +24,10 @@ import tools.jackson.databind.JsonNode;
 /**
  * Maps {@link AppServerEvents}' recognized activity into complete, ordered judge evidence. The parser owns access
  * to this mutable mapping.
+ * <p>
+ * The app-server reports each child's start and end, but not what the root received from a child; the root's rollout
+ * records that. Each message that the root received is placed after the root item that completed most recently before
+ * it, so that it appears among the root's activity where the root received it.
  */
 final class AppServerEvidence
 {
@@ -32,13 +39,29 @@ final class AppServerEvidence
 	private final Map<String, Integer> rootTurns = new HashMap<>();
 	private final Map<String, Integer> childTurns = new HashMap<>();
 	private final Map<String, Integer> responsePositions = new HashMap<>();
+	/**
+	 * The thread of each child by the task path that its parent gave it.
+	 */
+	private final Map<String, String> childThreads = new HashMap<>();
+	/**
+	 * The turn of each completed root item and the number of entries when it completed, by the item's identifier.
+	 */
+	private final Map<String, Completion> completions = new HashMap<>();
+	/**
+	 * The messages that each thread received from other agents, by the thread's identifier.
+	 */
+	private final Map<String, List<RolloutMessage>> received;
 	private int currentTurn = 1;
 
 	/**
 	 * Creates an empty activity mapping.
+	 *
+	 * @param received the messages that each thread received from other agents, in the order that it received them,
+	 *                 by the thread's identifier
 	 */
-	AppServerEvidence()
+	AppServerEvidence(Map<String, List<RolloutMessage>> received)
 	{
+		this.received = received;
 	}
 
 	/**
@@ -72,7 +95,7 @@ final class AppServerEvidence
 	}
 
 	/**
-	 * Records an assistant's position or a child's owning turn; prompt and reasoning items contribute no evidence.
+	 * Records an assistant's position or a child's start or end; prompt and reasoning items contribute no evidence.
 	 *
 	 * @param params the activity notification's parameters
 	 * @param rootThread the root identifier
@@ -82,17 +105,47 @@ final class AppServerEvidence
 		JsonNode item = params.path("item");
 		switch (item.path("type").asString(""))
 		{
-			case "subAgentActivity" ->
-			{
-				String child = item.path("agentThreadId").asString("");
-				if (!child.isBlank() && item.path("kind").asString("").equals("started"))
-					childTurns.put(child, resolveTurn(params, rootThread));
-			}
+			case "subAgentActivity" -> readChild(params, rootThread);
 			case "agentMessage" -> readAssistant(params, rootThread);
 			default ->
 			{
 			}
 		}
+	}
+
+	/**
+	 * Records a child's start or end at its original position. Codex records the assignment that a child was started
+	 * with only in encrypted form, so a start holds no assignment text. An interaction, which is the child's message
+	 * to its parent, is recorded where the parent received the message.
+	 *
+	 * @param params the child activity's notification parameters
+	 * @param rootThread the root identifier
+	 */
+	private void readChild(JsonNode params, String rootThread)
+	{
+		JsonNode item = params.path("item");
+		String child = item.path("agentThreadId").asString("");
+		if (child.isBlank())
+			return;
+		String path = item.path("agentPath").asString("");
+		ChildEvent.Kind kind;
+		switch (item.path("kind").asString(""))
+		{
+			case "started" ->
+			{
+				childTurns.put(child, resolveTurn(params, rootThread));
+				if (!path.isBlank())
+					childThreads.put(path, child);
+				kind = ChildEvent.Kind.STARTED;
+			}
+			case "completed" -> kind = ChildEvent.Kind.ENDED;
+			default ->
+			{
+				return;
+			}
+		}
+		entries.put(createKey(params, "item", item.path("id").asString("")), new ChildEvent(
+			resolveTurn(params, rootThread), resolveActor(params, rootThread), child, path, kind, ""));
 	}
 
 	/**
@@ -231,12 +284,57 @@ final class AppServerEvidence
 	}
 
 	/**
-	 * Returns an immutable view of every retained activity, in invocation order.
+	 * Records where a root item completed, so that a message that the root received after it can be placed there.
 	 *
+	 * @param params the completion notification's parameters
+	 * @param rootThread the root identifier, or {@code null} before it is known
+	 */
+	void readCompletion(JsonNode params, String rootThread)
+	{
+		if (rootThread == null || !rootThread.equals(params.path("threadId").asString("")))
+			return;
+		String id = params.path("item").path("id").asString("");
+		if (!id.isBlank())
+			completions.put(id, new Completion(resolveTurn(params, rootThread), entries.size()));
+	}
+
+	/**
+	 * Returns an immutable view of every retained activity, in invocation order, with each message that the root
+	 * received from a child after the root item that completed most recently before it. A message whose item the
+	 * app-server has not reported follows the message before it, so the messages keep the order that the root
+	 * received them in.
+	 *
+	 * @param rootThread the root identifier, or {@code null} before it is known
 	 * @return the recorded trial activity
 	 */
-	SessionEvidence snapshot()
+	SessionEvidence snapshot(String rootThread)
 	{
-		return new SessionEvidence(new ArrayList<>(entries.values()));
+		List<Entry> activity = new ArrayList<>(entries.values());
+		if (rootThread == null)
+			return new SessionEvidence(activity);
+		Completion previous = new Completion(1, 0);
+		int inserted = 0;
+		for (RolloutMessage message : received.getOrDefault(rootThread, List.of()))
+		{
+			Completion anchor = completions.getOrDefault(message.anchor(), previous);
+			if (anchor.entries() < previous.entries())
+				anchor = previous;
+			String child = childThreads.getOrDefault(message.author(), message.author());
+			activity.add(anchor.entries() + inserted, new ChildEvent(anchor.turn(), ROOT_AGENT, child, message.author(),
+				ChildEvent.Kind.RECEIVED, message.text()));
+			inserted += 1;
+			previous = anchor;
+		}
+		return new SessionEvidence(activity);
+	}
+
+	/**
+	 * Where a root item completed.
+	 *
+	 * @param turn    the one-based root turn of the item
+	 * @param entries the number of entries when the item completed
+	 */
+	private record Completion(int turn, int entries)
+	{
 	}
 }

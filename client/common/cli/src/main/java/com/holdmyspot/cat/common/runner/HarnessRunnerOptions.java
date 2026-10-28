@@ -26,6 +26,8 @@ import java.util.List;
  * @param includeUserRules indicates whether CAT copies the parent's personal rules into the isolated harness home
  * @param maximumConcurrency the shared CAT harness capacity ceiling
  * @param deniedReads the files and directories that the harness sandbox denies the session reading
+ * @param readOnlyEvidence the completed evidence files and directories that the session may read but not change, even
+ *   where {@code deniedReads} would deny them
  * @param workspace the optional directory whose files are copied into the project on top of {@code project}, refusing
  *   any path that the project holds already
  * @param plugins the trial plugins, plugin directories that are installed into the isolated harness home under their
@@ -39,8 +41,8 @@ import java.util.List;
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String executable, String model,
 	String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat,
-	boolean includeUserRules, int maximumConcurrency, List<Path> deniedReads, Path workspace, List<Path> plugins,
-	int sessionRequests, Duration capacityWait, int requestDepth, Path input)
+	boolean includeUserRules, int maximumConcurrency, List<Path> deniedReads, List<Path> readOnlyEvidence,
+	Path workspace, List<Path> plugins, int sessionRequests, Duration capacityWait, int requestDepth, Path input)
 {
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -128,6 +130,9 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				index += 2;
 				continue;
 			}
+			if (option.equals("--read-only-evidence") &&
+				(index + 1 >= args.length || args[index + 1].startsWith("--")))
+				throw new IllegalArgumentException("Missing path after --read-only-evidence");
 			if (index + 1 >= args.length)
 				throw new IllegalArgumentException("Missing value for " + option);
 			String value = args[index + 1];
@@ -174,6 +179,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.receipt = Path.of(value);
 			else if (option.equals("--deny-read"))
 				options.deniedReads.add(Path.of(value));
+			else if (option.equals("--read-only-evidence"))
+				options.readOnlyEvidence.add(Path.of(value));
 			else if (option.equals("--workspace"))
 				options.workspace = Path.of(value);
 			else if (option.equals("--plugin"))
@@ -197,8 +204,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
 			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.includeUserRules,
-			options.maximumConcurrency, options.deniedReads, options.workspace, options.plugins, options.sessionRequests,
-			options.capacityWait, options.requestDepth, options.input);
+			options.maximumConcurrency, options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins,
+			options.sessionRequests, options.capacityWait, options.requestDepth, options.input);
 	}
 
 	/**
@@ -235,8 +242,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		return "Usage: " + launcherName + " [--artifact <path>] [--project <path>] [--run-root <path>] " +
 			"[--executable <path>] [--model <name>] [--effort <level>] [--output <path>] [--keep-run] [--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] " +
-			"[--deny-read <path>]... [--workspace <path>] [--plugin <path>]... [--session-requests <count>] " +
-			"[--request-depth <levels>] [--input <file>] [--capacity-wait <seconds>]";
+			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
+			"[--session-requests <count>] [--request-depth <levels>] [--input <file>] [--capacity-wait <seconds>]";
 	}
 
 	/**
@@ -256,6 +263,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param includeUserRules whether CAT copies the parent's personal rules into the isolated harness home
 	 * @param maximumConcurrency the shared CAT harness capacity ceiling
 	 * @param deniedReads the files and directories that the harness sandbox denies the session reading
+	 * @param readOnlyEvidence the completed evidence files and directories that the session may read but not change
 	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
 	 * @param plugins the trial plugins, plugin directories that are installed into the isolated harness home under
 	 *   their manifests' names
@@ -266,9 +274,9 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait} and {@code input}
 	 * @throws IllegalArgumentException if {@code executable} is blank, {@code runRoot} or an element of
-	 *   {@code deniedReads} is not absolute, {@code sessionRequests} or {@code requestDepth} is negative,
-	 *   {@code requestDepth} is positive while {@code sessionRequests} is zero, or {@code capacityWait} is not
-	 *   positive
+	 *   {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
+	 *   {@code requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or
+	 *   {@code capacityWait} is not positive
 	 */
 	public HarnessRunnerOptions
 	{
@@ -287,6 +295,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				throw new IllegalArgumentException("Each denied read must be absolute: " + deniedRead);
 		}
 		deniedReads = List.copyOf(deniedReads);
+		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
+		for (Path evidence : readOnlyEvidence)
+		{
+			if (!evidence.isAbsolute())
+				throw new IllegalArgumentException("Each read-only evidence path must be absolute: " + evidence);
+		}
+		readOnlyEvidence = List.copyOf(readOnlyEvidence);
 		plugins = List.copyOf(plugins);
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		if (capacityWait != null)
@@ -310,6 +325,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private boolean installCat;
 		private boolean includeUserRules = true;
 		private final List<Path> deniedReads = new ArrayList<>();
+		private final List<Path> readOnlyEvidence = new ArrayList<>();
 		private Path workspace;
 		private final List<Path> plugins = new ArrayList<>();
 		private int sessionRequests;

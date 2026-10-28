@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
@@ -127,6 +128,63 @@ public final class CodexRunnerCliTest
 	public void refusesAnInvalidToolOutputTokenLimit(String[] args)
 	{
 		CodexRunnerCli.toolOutputTokenLimit(args);
+	}
+
+	/**
+	 * Verifies that each {@code --read-only-evidence} option of a bridge command names one path that the session may
+	 * read but not change, in order.
+	 */
+	@Test
+	public void parsesReadOnlyEvidence()
+	{
+		Path effects = Path.of("/runs/trial/project").toAbsolutePath();
+		Path artifacts = Path.of("/runs/trial/artifacts").toAbsolutePath();
+		HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
+			Path.of("/artifact").toAbsolutePath().toString(), "--run-root", Path.of("/runs").toAbsolutePath().toString(),
+			"--read-only-evidence", effects.toString(), "--agent", "judge", "--read-only-evidence",
+			artifacts.toString()}, HarnessTemporaryRoot.withoutSession("no session"));
+
+		requireThat(options.readOnlyEvidence(), "readOnlyEvidence").isEqualTo(List.of(effects, artifacts));
+	}
+
+	/**
+	 * Returns bridge commands whose {@code --read-only-evidence} names no path.
+	 *
+	 * @return the bridge commands
+	 */
+	@DataProvider
+	public Object[][] missingEvidence()
+	{
+		String artifact = Path.of("/artifact").toAbsolutePath().toString();
+		String runRoot = Path.of("/runs").toAbsolutePath().toString();
+		return new Object[][]{{new String[]{"serve", "--artifact", artifact, "--run-root", runRoot,
+			"--read-only-evidence"}}, {new String[]{"serve", "--artifact", artifact, "--run-root", runRoot,
+			"--read-only-evidence", "--keep-run"}}};
+	}
+
+	/**
+	 * Verifies that a bridge command whose {@code --read-only-evidence} names no path is refused with the message
+	 * that the Claude runner gives.
+	 *
+	 * @param args the bridge command
+	 */
+	@Test(dataProvider = "missingEvidence", expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = "Missing path after --read-only-evidence")
+	public void refusesMissingEvidencePath(String[] args)
+	{
+		CodexRunnerCli.options(args, HarnessTemporaryRoot.withoutSession("no session"));
+	}
+
+	/**
+	 * Verifies that a relative {@code --read-only-evidence} path is refused, naming the path, because the session
+	 * could resolve it against a directory other than the one that holds the evidence.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*trial/project.*")
+	public void refusesRelativeEvidencePath()
+	{
+		CodexRunnerCli.options(new String[]{"serve", "--artifact", Path.of("/artifact").toAbsolutePath().toString(),
+			"--run-root", Path.of("/runs").toAbsolutePath().toString(), "--read-only-evidence", "trial/project"},
+			HarnessTemporaryRoot.withoutSession("no session"));
 	}
 
 	/**

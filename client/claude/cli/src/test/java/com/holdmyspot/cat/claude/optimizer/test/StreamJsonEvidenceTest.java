@@ -118,16 +118,64 @@ public final class StreamJsonEvidenceTest
 	{
 		// Requirement: R-E21
 		SessionEvidence evidence = parse(recorded("claude-child-tool-calls.jsonl"));
-		requireThat(evidence.entries().size(), "entries.size()").isEqualTo(2);
-		SessionEvidence.Tool root = (SessionEvidence.Tool) evidence.entries().getFirst();
+		List<SessionEvidence.Tool> tools = evidence.entries().stream().filter(SessionEvidence.Tool.class::isInstance).
+			map(SessionEvidence.Tool.class::cast).toList();
+		requireThat(tools.size(), "tools.size()").isEqualTo(2);
+		SessionEvidence.Tool root = tools.getFirst();
 		requireThat(root.agent(), "root.agent").isEqualTo("root");
 		requireThat(root.output(), "root.output").isEqualTo("child done");
-		requireThat(evidence.entries().get(1), "child").isEqualTo(new SessionEvidence.Tool(1,
+		requireThat(tools.get(1), "child").isEqualTo(new SessionEvidence.Tool(1,
 			"toolu_01PLv6dPTkvN3FJipupbgSzv", "Bash", "true", true, null, "(Bash completed with no output)"));
 		String rendered = evidence.render();
 		requireThat(rendered.contains("toolu_01PLv6dPTkvN3FJipupbgSzv"), "childAttribution").isTrue();
 		requireThat(rendered.contains("subagent_tokens"), "childTelemetry").isFalse();
 		requireThat(rendered.contains("totalDurationMs"), "durationTelemetry").isFalse();
+	}
+
+	/**
+	 * Verifies that the record of a root that starts a child and waits for it holds the start with the child's
+	 * identity and assignment, followed by the report that the root received from that child.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void recordsChildStartAndReceivedReport() throws IOException
+	{
+		// Requirement: R-E21
+		String rendered = parse(recorded("claude-child-tool-calls.jsonl")).render();
+		String started = "Actor: root\nStarted child toolu_01PLv6dPTkvN3FJipupbgSzv (Run true via Bash)\n" +
+			"Assignment:\nRun exactly one Bash tool call with the command: true. Do nothing else. Then reply with " +
+			"exactly: child done\n";
+		String received = "Actor: root\nReceived from child toolu_01PLv6dPTkvN3FJipupbgSzv (Run true via Bash):\n" +
+			"child done\n";
+		requireThat(rendered, "rendered").contains(started);
+		requireThat(rendered.substring(rendered.indexOf(started)), "afterStart").contains(received);
+	}
+
+	/**
+	 * Verifies that the record of a root that starts two background children holds what Claude reported when each
+	 * child finished, attributed to that child, and nothing for a background command that is not a child.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void recordsBackgroundChildNotifications() throws IOException
+	{
+		// Requirement: R-E21
+		List<String> lines;
+		try (InputStream stream = StreamJsonEvidenceTest.class.getResourceAsStream(
+			"/runner/turn-boundary/two-children.jsonl"))
+		{
+			requireThat(stream, "resource").isNotNull();
+			lines = new String(stream.readAllBytes(), UTF_8).lines().toList();
+		}
+		String rendered = parse(lines).render();
+		requireThat(rendered, "rendered").
+			contains("Actor: root\nStarted child toolu_01CujbSRcNLWYUfPRb15WtEs\n").
+			contains("Actor: root\nStarted child toolu_015ScoiHLTKwce3esAMpcgZU\n").
+			contains("Actor: root\nChild toolu_01CujbSRcNLWYUfPRb15WtEs finished\nStatus: completed\nSummary: DONE-A\n").
+			contains("Actor: root\nChild toolu_015ScoiHLTKwce3esAMpcgZU finished\nStatus: completed\nSummary: DONE-B\n").
+			doesNotContain("Sleep for 5 seconds");
 	}
 
 	/**
@@ -288,6 +336,8 @@ public final class StreamJsonEvidenceTest
 				"{\"type\":\"text\",\"text\":\"ROOT_NEXT\"}]}}"));
 		requireThat(evidence.entries(), "entries").isEqualTo(List.of(
 			new SessionEvidence.Tool(1, "root", "Agent", "{\"prompt\":\"Run true\"}", false, null, ""),
+			new SessionEvidence.ChildEvent(1, "root", "agent-call", "", SessionEvidence.ChildEvent.Kind.STARTED,
+				"Run true"),
 			new SessionEvidence.Tool(1, "agent-call", "Bash", "true", true, 0, "child stdout"),
 			new SessionEvidence.Assistant(1, "agent-call", 1, "child done"),
 			new SessionEvidence.Assistant(2, "root", 1, "")));

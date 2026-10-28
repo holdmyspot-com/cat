@@ -15,7 +15,7 @@ import java.util.TreeMap;
  * A harness can shorten a tool's output before its model receives it, so the evidence also holds every tool result as
  * the trial's agents received it. A line of a tool's output that appears in no received result never reached an agent.
  *
- * @param entries  the tool calls, hook outcomes and assistant positions recorded by the harness
+ * @param entries  the tool calls, hook outcomes, assistant positions and child events recorded by the harness
  * @param received every tool result as the trial's agents received it, in no particular order. A harness that wraps
  *                 or encodes a result supplies it both as received and decoded.
  */
@@ -204,9 +204,69 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 	}
 
 	/**
+	 * A child agent's start, a message that an agent received from it, or its end, as the harness recorded it.
+	 *
+	 * @param turn  the one-based turn
+	 * @param agent the root name or child identity of the agent that started the child
+	 * @param child the child's identity, which names the child's own entries when the harness records them
+	 * @param name  the name that the agent gave the child, or an empty string when the harness recorded none
+	 * @param kind  the kind of event
+	 * @param text  the assignment of a start, the message of a receipt or what the harness reported of an end; an
+	 *              empty string when the harness recorded no readable text
+	 */
+	public record ChildEvent(int turn, String agent, String child, String name, Kind kind, String text)
+		implements Entry
+	{
+		/**
+		 * Creates a child event.
+		 *
+		 * @param turn  the one-based turn
+		 * @param agent the root name or child identity of the agent that started the child
+		 * @param child the child's identity, which names the child's own entries when the harness records them
+		 * @param name  the name that the agent gave the child, or an empty string when the harness recorded none
+		 * @param kind  the kind of event
+		 * @param text  the assignment of a start, the message of a receipt or what the harness reported of an end; an
+		 *              empty string when the harness recorded no readable text
+		 * @throws NullPointerException     if {@code agent}, {@code child}, {@code name}, {@code kind} or {@code text}
+		 *                                  are null
+		 * @throws IllegalArgumentException if {@code turn} is less than 1, or {@code agent} or {@code child} are blank
+		 */
+		public ChildEvent
+		{
+			requireThat(turn, "turn").isGreaterThanOrEqualTo(1);
+			requireThat(agent, "agent").isNotBlank();
+			requireThat(child, "child").isNotBlank();
+			requireThat(name, "name").isNotNull();
+			requireThat(kind, "kind").isNotNull();
+			requireThat(text, "text").isNotNull();
+		}
+
+		/**
+		 * The kinds of child events.
+		 */
+		public enum Kind
+		{
+			/**
+			 * The agent started the child; the text is the assignment that the agent gave it.
+			 */
+			STARTED,
+			/**
+			 * The agent received a message from the child; the text is the message.
+			 */
+			RECEIVED,
+			/**
+			 * The harness reported that the child ended; the text is what the harness reported.
+			 */
+			ENDED
+		}
+	}
+
+	/**
 	 * Renders every entry by turn without repeating root response text. Each tool output is described by its size
 	 * rather than copied, so that the activity stays short however much a trial prints; for a command, the description
-	 * also says whether the agent received the whole output.
+	 * also says whether the agent received the whole output. The text of a child event is kept whole, as a child's
+	 * response is, because it is a message that an agent wrote or a report that the harness made rather than the
+	 * output of a tool.
 	 *
 	 * @return the trial activity
 	 */
@@ -239,6 +299,7 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 						if (!assistant.agent().equals(ROOT_AGENT) && !assistant.text().isEmpty())
 							appendText(result, assistant.text());
 					}
+					case ChildEvent event -> appendChildEvent(result, event);
 				}
 				result.append('\n');
 			}
@@ -279,6 +340,47 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 				result.append("only part of it");
 		}
 		result.append('\n');
+	}
+
+	/**
+	 * Appends a child event, naming the child by its identity and by the name that it was given.
+	 *
+	 * @param result the destination
+	 * @param event  the event
+	 */
+	private static void appendChildEvent(StringBuilder result, ChildEvent event)
+	{
+		String child = event.child();
+		if (!event.name().isEmpty())
+			child += " (" + event.name() + ")";
+		switch (event.kind())
+		{
+			case STARTED ->
+			{
+				result.append("Started child ").append(child).append('\n');
+				if (event.text().isEmpty())
+					result.append("Assignment: not recorded in readable form\n");
+				else
+				{
+					result.append("Assignment:\n");
+					appendText(result, event.text());
+				}
+			}
+			case RECEIVED ->
+			{
+				result.append("Received from child ").append(child).append(":\n");
+				if (event.text().isEmpty())
+					result.append("(not recorded in readable form)\n");
+				else
+					appendText(result, event.text());
+			}
+			case ENDED ->
+			{
+				result.append("Child ").append(child).append(" finished\n");
+				if (!event.text().isEmpty())
+					appendText(result, event.text());
+			}
+		}
 	}
 
 	/**

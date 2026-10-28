@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.evidence.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Assistant;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.ChildEvent;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Entry;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Hook;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Tool;
@@ -97,6 +98,49 @@ public final class SessionEvidenceTest
 			"\uD83D\uDE00\n"))).render();
 
 		requireThat(rendered, "rendered").contains("Output: 2 characters; the agent received all of it\n");
+	}
+
+	/**
+	 * Verifies that child events name the child by identity and given name, keep the assignment and received text
+	 * whole, and say so when the harness recorded no readable text, instead of leaving the judge to guess.
+	 */
+	@Test
+	public void rendersChildEvents()
+	{
+		// Requirement: R-E21
+		String rendered = new SessionEvidence(List.of(
+			new ChildEvent(1, "root", "child-a", "/root/a", ChildEvent.Kind.STARTED, ""),
+			new ChildEvent(1, "root", "child-b", "", ChildEvent.Kind.STARTED, "Find the capital\nof Japan."),
+			new ChildEvent(1, "root", "child-b", "", ChildEvent.Kind.ENDED, "Status: completed"),
+			new ChildEvent(1, "root", "child-a", "/root/a", ChildEvent.Kind.RECEIVED, "Tokyo is the capital."),
+			new ChildEvent(1, "root", "child-b", "", ChildEvent.Kind.RECEIVED, ""))).render();
+
+		requireThat(rendered, "rendered").isEqualTo("""
+			No tool or hook activity was recorded.
+			Turn 1
+			Actor: root
+			Started child child-a (/root/a)
+			Assignment: not recorded in readable form
+
+			Actor: root
+			Started child child-b
+			Assignment:
+			Find the capital
+			of Japan.
+
+			Actor: root
+			Child child-b finished
+			Status: completed
+
+			Actor: root
+			Received from child child-a (/root/a):
+			Tokyo is the capital.
+
+			Actor: root
+			Received from child child-b:
+			(not recorded in readable form)
+
+			""");
 	}
 
 	/**

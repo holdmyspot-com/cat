@@ -147,7 +147,7 @@ public final class CodexRunner
 	 * @param installCat whether CAT is installed in the isolated home
 	 * @param agent the optional direct CAT agent definition, whose model and effort replace {@code model} and
 	 *   {@code effort}
-	 * @param readOnlyEvidence the optional completed evidence directory
+	 * @param readOnlyEvidence the completed evidence files and directories that the session may read but not change
 	 * @param deniedReads the existing files and directories that the session must not read, besides the records of
 	 *   its own run
 	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
@@ -201,10 +201,8 @@ public final class CodexRunner
 			CodexConnectionConfiguration.copy(hostHome.resolve(CONFIGURATION), isolatedConfiguration,
 				run.directory().resolve("project"), caches,
 				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current());
-			List<Path> sessionReadOnly = sessionReadOnly(readOnlyEvidence, requestAccess);
-			String permissionProfile = CodexConnectionConfiguration.addSessionProfile(isolatedConfiguration,
-				sessionReadOnly, sessionDeniedReads(manager, run, sessionReadOnly, deniedReads, Platform.current(),
-					environment, requestAccess));
+			String permissionProfile = addSessionProfile(isolatedConfiguration, manager, run, readOnlyEvidence,
+				deniedReads, Platform.current(), environment, requestAccess);
 			Map<String, String> isolatedEnvironment = processEnvironment(environment, caches, isolatedHome,
 				run.directory());
 			Path worktree = run.directory().resolve("project");
@@ -350,6 +348,35 @@ public final class CodexRunner
 		if (!agentInstructions.isEmpty())
 			instructions.add(agentInstructions);
 		return instructions.toString();
+	}
+
+	/**
+	 * Adds to a session's configuration the permission profile that its thread runs under: the session may read but
+	 * not change {@code readOnlyEvidence}, as {@link #sessionReadOnly(List, SessionRequestAccess)} extends it, and may
+	 * not read the paths that {@link #sessionDeniedReads(HarnessRunManager, HarnessRun, List, List, Platform, Map,
+	 * SessionRequestAccess)} returns.
+	 *
+	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
+	 * @param manager          the run manager
+	 * @param run              the session's run
+	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
+	 * @param deniedReads      the files and directories that the caller denies the session reading
+	 * @param platform         the platform that the session runs on
+	 * @param environment      the caller's environment, which names the user's home and harness directories
+	 * @param requestAccess    the session's access to requested sessions, or {@code null} if it may request none
+	 * @return the profile that the thread names, or an empty string if the thread uses the workspace-write sandbox
+	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
+	 * @throws IOException          if an evidence path does not exist, a denied directory cannot be listed, or the
+	 *                              configuration cannot be updated
+	 */
+	public static String addSessionProfile(Path configuration, HarnessRunManager manager, HarnessRun run,
+		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
+		SessionRequestAccess requestAccess) throws IOException
+	{
+		requireThat(configuration, "configuration").isNotNull();
+		List<Path> sessionReadOnly = sessionReadOnly(readOnlyEvidence, requestAccess);
+		return CodexConnectionConfiguration.addSessionProfile(configuration, sessionReadOnly,
+			sessionDeniedReads(manager, run, sessionReadOnly, deniedReads, platform, environment, requestAccess));
 	}
 
 	/**

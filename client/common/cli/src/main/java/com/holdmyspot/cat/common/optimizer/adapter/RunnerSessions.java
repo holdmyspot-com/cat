@@ -157,7 +157,7 @@ public abstract class RunnerSessions implements SessionPort
 	{
 		requireThat(transcript, "transcript").isNotNull();
 		JsonMapper json = JsonMapper.builder().build();
-		HarnessEvents events = newEvents(json);
+		HarnessEvents events = newTranscriptEvents(transcript, json);
 		try (BufferedReader reader = Files.newBufferedReader(transcript))
 		{
 			String line = reader.readLine();
@@ -168,6 +168,23 @@ public abstract class RunnerSessions implements SessionPort
 			}
 		}
 		return readReceived(events.evidence(), transcript, json);
+	}
+
+	/**
+	 * Creates the parser of a finished session's harness events, which can draw on the other records that the runner
+	 * kept beside the transcript.
+	 * <p>
+	 * This implementation returns {@link #newEvents(JsonMapper)}. A harness whose events omit activity that those
+	 * records hold overrides this method.
+	 *
+	 * @param transcript the file that holds the harness events
+	 * @param json       the JSON mapper
+	 * @return a parser that has seen no events
+	 * @throws IOException if a record that the parser needs cannot be read
+	 */
+	protected HarnessEvents newTranscriptEvents(Path transcript, JsonMapper json) throws IOException
+	{
+		return newEvents(json);
 	}
 
 	/**

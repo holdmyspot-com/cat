@@ -47,6 +47,11 @@ public final class ClaudeJudgeVersionTest
 	 * The recorded harness events whose evidence section the hash covers.
 	 */
 	private static final Path EVENTS = Path.of("src/test/resources/optimizer/claude-tool-calls.jsonl");
+	/**
+	 * The recorded harness events of a root that started a child and waited for its report, whose rendered activity
+	 * the hash also covers.
+	 */
+	private static final Path CHILD = Path.of("src/test/resources/optimizer/claude-child-tool-calls.jsonl");
 
 	/**
 	 * Creates the test.
@@ -58,7 +63,8 @@ public final class ClaudeJudgeVersionTest
 	/**
 	 * Verifies that the declared judge version is registered with the hash of the judge profile, built from the
 	 * packaged role profile with a fixed rubric and decision rule, and of the evidence section rendered for recorded
-	 * harness events, so that changing either requires a decision about the version.
+	 * harness events and the activity rendered for a recorded root that started a child, so that changing any of them
+	 * requires a decision about the version.
 	 *
 	 * @throws IOException if the fixtures, the role profile or the registry cannot be read
 	 */
@@ -90,8 +96,9 @@ public final class ClaudeJudgeVersionTest
 				TrialProfile role = new ClaudeProfileInventory(ARTIFACT.toAbsolutePath().normalize()).roleProfile();
 				JudgeProfile judge = new JudgeTemplate(JsonMapper.builder().build(), role).profile("The reply is brief.",
 					"Pass only if every rubric item holds.");
+				String child = sessions.readEvidence(CHILD).render();
 				VersionRegistry.requireRegistered(REGISTRY, "judge", sessions.judgeVersion(),
-					VersionRegistry.hash(JudgeVersionContent.of(judge, section)));
+					VersionRegistry.hash(JudgeVersionContent.of(judge, section + child)));
 			}
 		}
 	}

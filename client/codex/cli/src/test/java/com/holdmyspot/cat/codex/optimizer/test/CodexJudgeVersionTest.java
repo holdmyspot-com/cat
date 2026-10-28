@@ -46,6 +46,11 @@ public final class CodexJudgeVersionTest
 	 * The recorded harness events whose evidence section the hash covers.
 	 */
 	private static final Path EVENTS = Path.of("src/test/resources/optimizer/codex-tool-calls.jsonl");
+	/**
+	 * The recorded run artifacts of a trial whose root started two children and received their findings, whose
+	 * rendered activity the hash also covers.
+	 */
+	private static final Path CHILDREN = Path.of("src/test/resources/optimizer/two-children/transcript.jsonl");
 
 	/**
 	 * Creates the test.
@@ -57,7 +62,8 @@ public final class CodexJudgeVersionTest
 	/**
 	 * Verifies that the declared judge version is registered with the hash of the judge profile, built from the
 	 * packaged role profile with a fixed rubric and decision rule, and of the evidence section rendered for recorded
-	 * harness events, so that changing either requires a decision about the version.
+	 * harness events and the activity rendered for a recorded trial with two children, so that changing any of them
+	 * requires a decision about the version.
 	 *
 	 * @throws IOException if the fixtures, the role profile or the registry cannot be read
 	 */
@@ -96,8 +102,9 @@ public final class CodexJudgeVersionTest
 					});
 				JudgeProfile judge = new JudgeTemplate(JsonMapper.builder().build(), inventory.roleProfile()).
 					profile("The reply is brief.", "Pass only if every rubric item holds.");
+				String children = sessions.readEvidence(CHILDREN).render();
 				VersionRegistry.requireRegistered(REGISTRY, "judge", sessions.judgeVersion(),
-					VersionRegistry.hash(JudgeVersionContent.of(judge, section)));
+					VersionRegistry.hash(JudgeVersionContent.of(judge, section + children)));
 			}
 		}
 	}

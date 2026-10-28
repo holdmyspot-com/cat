@@ -207,13 +207,7 @@ public final class CodexRunnerCli
 		{
 			String agentName = agentName(args);
 			int toolOutputTokenLimit = toolOutputTokenLimit(args);
-			String[] runnerArgs = withoutOptions(args, Set.of("--agent", TOOL_OUTPUT_TOKEN_LIMIT));
-			HarnessTemporaryRoot temporaryRoot = HarnessTemporaryRoot.from(scope);
-			HarnessRunnerOptions options;
-			if (runnerArgs.length > 0 && runnerArgs[0].equals("serve"))
-				options = HarnessRunnerOptions.parseServe(runnerArgs, "codex", temporaryRoot);
-			else
-				options = HarnessRunnerOptions.parse(runnerArgs, "codex", temporaryRoot);
+			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			FileReplacer replacer = FileReplacer.sleeping();
 			HarnessRunManager manager = new HarnessRunManager(fileLocks, options.runRoot(),
@@ -229,7 +223,8 @@ public final class CodexRunnerCli
 				HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(),
 					options.project(),
 					options.workspace(), options.plugins(), manager, options.executable(), environment, options.model(),
-					options.effort(), options.installCat(), agent, List.of(), options.deniedReads(), toolOutputTokenLimit,
+					options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
+					toolOutputTokenLimit,
 					options.sessionTranscripts(), options.sessionRequests()),
 					manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
 			{
@@ -251,6 +246,28 @@ public final class CodexRunnerCli
 			});
 			}
 		}
+	}
+
+	/**
+	 * Parses the options of a bridge command, other than the Codex-only {@code --agent} and
+	 * {@code --tool-output-token-limit}.
+	 *
+	 * @param args          the bridge command and its options, optionally starting with {@code serve}
+	 * @param temporaryRoot where the runs are kept when the command names no {@code --run-root}
+	 * @return the parsed options
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if an option is unknown, has no value or has an invalid value, such as a
+	 *                                  relative path after {@code --deny-read} or {@code --read-only-evidence}, or if
+	 *                                  the command names no {@code --run-root} outside a harness session
+	 */
+	public static HarnessRunnerOptions options(String[] args, HarnessTemporaryRoot temporaryRoot)
+	{
+		requireThat(args, "args").isNotNull();
+		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
+		String[] runnerArgs = withoutOptions(args, Set.of("--agent", TOOL_OUTPUT_TOKEN_LIMIT));
+		if (runnerArgs.length > 0 && runnerArgs[0].equals("serve"))
+			return HarnessRunnerOptions.parseServe(runnerArgs, "codex", temporaryRoot);
+		return HarnessRunnerOptions.parse(runnerArgs, "codex", temporaryRoot);
 	}
 
 	/**

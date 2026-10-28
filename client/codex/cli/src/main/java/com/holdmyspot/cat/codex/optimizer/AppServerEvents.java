@@ -1,5 +1,8 @@
 package com.holdmyspot.cat.codex.optimizer;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+import com.holdmyspot.cat.codex.optimizer.RolloutMessages.RolloutMessage;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
@@ -35,6 +38,11 @@ import tools.jackson.databind.json.JsonMapper;
  *   reported in that order;</li>
  *   <li>{@code item/started} records an activity's position, and {@code item/completed} updates that same item;
  *   root and child tools retain their complete input and output, while root-call accounting excludes child calls;</li>
+ *   <li>a {@code subAgentActivity} item of kind {@code started} or {@code completed} reports that the thread named by
+ *   its {@code agentThreadId} started or ended, under the task path named by its {@code agentPath}. Codex 0.160.0
+ *   reports neither the child's assignment nor what the child sent: a {@code wait} item has empty
+ *   {@code receiverThreadIds} and {@code agentsStates}, and the messages that the root received come from the root's
+ *   rollout instead;</li>
  *   <li>hook notifications retain only their status, and root assistant items retain only response positions;</li>
  *   <li>model output in a turn is a reasoning, reply or tool item, an {@code item/agentMessage/delta}, or reported
  *   token usage. A user-message item, a rate-limit update and a thread or turn status are not output. A
@@ -80,18 +88,33 @@ public final class AppServerEvents extends HarnessEvents
 		"imageGeneration");
 	private final Map<String, TokenUsage> totals = new HashMap<>();
 	private final Map<String, ToolCall> calls = new LinkedHashMap<>();
-	private final AppServerEvidence evidence = new AppServerEvidence();
+	private final AppServerEvidence evidence;
 	private String rootThread;
 
 	/**
-	 * Creates a parser that has seen no events.
+	 * Creates a parser that has seen no events and knows of no message that a thread received from another agent.
 	 *
 	 * @param json the JSON mapper
 	 * @throws NullPointerException if {@code json} is null
 	 */
 	AppServerEvents(JsonMapper json)
 	{
+		this(json, Map.of());
+	}
+
+	/**
+	 * Creates a parser that has seen no events.
+	 *
+	 * @param json     the JSON mapper
+	 * @param received the messages that each thread received from other agents, in the order that it received them,
+	 *                 by the thread's identifier
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	AppServerEvents(JsonMapper json, Map<String, List<RolloutMessage>> received)
+	{
 		super(json);
+		requireThat(received, "received").isNotNull();
+		this.evidence = new AppServerEvidence(received);
 	}
 
 	@Override
@@ -107,13 +130,19 @@ public final class AppServerEvents extends HarnessEvents
 			case "turn/started" -> readTurnStarted(params);
 			case "turn/completed" -> readTurnCompleted(params);
 			case "error" -> readError(params);
-			case "item/started", "item/completed" -> readItem(params);
+			case "item/started" -> readItem(params);
+			case "item/completed" ->
+			{
+				readItem(params);
+				evidence.readCompletion(params, rootThread);
+				setEvidence(evidence.snapshot(rootThread));
+			}
 			case "item/agentMessage/delta" -> setOutputProduced();
 			case "hook/started", "hook/completed" ->
 			{
 				readHookRunning(event.path("method").asString("").equals("hook/started"), params.path("run"));
 				evidence.readHook(params, rootThread);
-				setEvidence(evidence.snapshot());
+				setEvidence(evidence.snapshot(rootThread));
 			}
 			default ->
 			{
@@ -155,12 +184,12 @@ public final class AppServerEvents extends HarnessEvents
 		};
 		if (call == null)
 		{
-			setEvidence(evidence.snapshot());
+			setEvidence(evidence.snapshot(rootThread));
 			return;
 		}
 
 		evidence.readTool(params, rootThread, call);
-		setEvidence(evidence.snapshot());
+		setEvidence(evidence.snapshot(rootThread));
 		if (params.path("threadId").asString("").equals(rootThread))
 		{
 			calls.put(id, call);

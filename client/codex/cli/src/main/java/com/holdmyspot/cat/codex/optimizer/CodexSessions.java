@@ -40,8 +40,8 @@ import tools.jackson.dataformat.toml.TomlMapper;
  * The runner's bridge sends the request's model as {@code thread/start}'s {@code model} and its reasoning effort as
  * {@code turn/start}'s {@code effort}.
  * <p>
- * The Codex runner has no option for read-only evidence, so {@link SessionRequest#readOnly()}
- * is not passed to it. A judge reads the evidence by path, and only file permissions protect it.
+ * The runner receives each path of {@link SessionRequest#readOnly()} as {@code --read-only-evidence}, so that a judge
+ * may read its trial's evidence, but not change it, although every other file of the host project stays denied.
  * <p>
  * Codex can shorten a tool's output before its model receives it. A trial asks the runner for session transcripts, so
  * that it keeps each thread's rollout, which records what the thread's model received, in the
@@ -80,7 +80,7 @@ public final class CodexSessions extends RunnerSessions
 	 * profile, prompt, rubric, decision rule or result schema, or the evidence section rendered for the same harness
 	 * events, and register the new version with the hash of the judge profile and the rendered evidence section.
 	 */
-	private static final int JUDGE_VERSION = 10;
+	private static final int JUDGE_VERSION = 11;
 
 	/**
 	 * Creates a port that runs sessions through the real Codex runner.
@@ -164,6 +164,21 @@ public final class CodexSessions extends RunnerSessions
 	protected HarnessEvents newEvents(JsonMapper json)
 	{
 		return new AppServerEvents(json);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The app-server does not report what a thread received from another agent, so the parser also takes those
+	 * messages from the rollouts that the runner kept beside the transcript.
+	 */
+	@Override
+	protected HarnessEvents newTranscriptEvents(Path transcript, JsonMapper json) throws IOException
+	{
+		requireThat(transcript, "transcript").isNotNull();
+		requireThat(json, "json").isNotNull();
+		return new AppServerEvents(json,
+			RolloutMessages.read(transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS), json));
 	}
 
 	/**
@@ -369,7 +384,10 @@ public final class CodexSessions extends RunnerSessions
 	@Override
 	protected List<String> readOnlyArguments(List<Path> evidence)
 	{
-		return List.of();
+		List<String> arguments = new ArrayList<>();
+		for (Path path : evidence)
+			arguments.addAll(List.of("--read-only-evidence", path.toString()));
+		return arguments;
 	}
 
 	@Override

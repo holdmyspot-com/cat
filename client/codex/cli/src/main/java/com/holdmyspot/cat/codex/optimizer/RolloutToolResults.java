@@ -62,15 +62,8 @@ final class RolloutToolResults
 	{
 		requireThat(directory, "directory").isNotNull();
 		requireThat(json, "json").isNotNull();
-		if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS))
-			throw new IOException("The session's rollouts were not retained: " + directory + " is not a directory");
-		List<Path> rollouts;
-		try (Stream<Path> files = Files.list(directory))
-		{
-			rollouts = files.filter(file -> file.getFileName().toString().endsWith(".jsonl")).sorted().toList();
-		}
 		List<String> results = new ArrayList<>();
-		for (Path rollout : rollouts)
+		for (Path rollout : list(directory))
 		{
 			try (BufferedReader reader = Files.newBufferedReader(rollout))
 			{
@@ -84,6 +77,23 @@ final class RolloutToolResults
 			}
 		}
 		return results;
+	}
+
+	/**
+	 * Lists a session's rollouts: the files of a directory whose names end with {@code .jsonl}.
+	 *
+	 * @param directory the directory that holds the session's rollouts
+	 * @return the rollouts, in the order of their names
+	 * @throws IOException if {@code directory} is not a directory or cannot be listed
+	 */
+	static List<Path> list(Path directory) throws IOException
+	{
+		if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS))
+			throw new IOException("The session's rollouts were not retained: " + directory + " is not a directory");
+		try (Stream<Path> files = Files.list(directory))
+		{
+			return files.filter(file -> file.getFileName().toString().endsWith(".jsonl")).sorted().toList();
+		}
 	}
 
 	/**

@@ -44,6 +44,12 @@ import tools.jackson.databind.json.JsonMapper;
  *   result's {@code tool_use_result} starts with {@code Error: Exit code N} when the command ran. A background
  *   command, an interrupted command, or an error in any other form, such as a command that Claude never ran, has no
  *   exit status;</li>
+ *   <li>a root {@code Agent} call starts a child whose records name the call as their {@code parent_tool_use_id};
+ *   its {@code input} holds the child's {@code description} and the {@code prompt} that it was assigned. Claude Code
+ *   2.1.287 answers a call that waited for its child with a {@code tool_use_result} whose {@code status} is
+ *   {@code completed} and whose {@code content} is the child's report. When a child that runs in the background ends,
+ *   Claude Code 2.1.286 emits a {@code task_notification} record that names the call as its {@code tool_use_id}, with
+ *   the child's {@code status} and a {@code summary};</li>
  *   <li>model output in a turn is an {@code assistant} record, a {@code stream_event} record, or a {@code result}
  *   record that reports usage. A {@code user} record, a {@code rate_limit_event} record and a {@code system} record
  *   other than a hook are not output. A {@code hook_started} record marks a hook as running until its
@@ -79,6 +85,11 @@ public final class StreamJsonEvents extends HarnessEvents
 	 */
 	private final List<String> received = new ArrayList<>();
 	private final Map<String, Integer> toolEntries = new HashMap<>();
+	/**
+	 * The start of each child, by the identifier of the {@code Agent} call that started it, which is also the child's
+	 * identity.
+	 */
+	private final Map<String, SessionEvidence.ChildEvent> childStarts = new HashMap<>();
 	private final Map<String, Integer> hookEntries = new HashMap<>();
 	private final Map<String, Integer> messageEntries = new HashMap<>();
 	private final Map<String, String> messageTexts = new HashMap<>();
@@ -111,6 +122,7 @@ public final class StreamJsonEvents extends HarnessEvents
 				{
 					case "init" -> readInit(event);
 					case "hook_started", "hook_response" -> readHook(event);
+					case "task_notification" -> readChildEnd(event);
 					default ->
 					{
 					}
@@ -196,6 +208,14 @@ public final class StreamJsonEvents extends HarnessEvents
 			arguments = contentText(input);
 		toolEntries.put(id, entries.size());
 		entries.add(new SessionEvidence.Tool(eventTurn, agent, tool, arguments, command != null, null, ""));
+		if (tool.equals("Agent"))
+		{
+			SessionEvidence.ChildEvent start = new SessionEvidence.ChildEvent(eventTurn, agent, id,
+				input.path("description").asString(""), SessionEvidence.ChildEvent.Kind.STARTED,
+				input.path("prompt").asString(""));
+			childStarts.put(id, start);
+			entries.add(start);
+		}
 	}
 
 	/**
@@ -231,8 +251,49 @@ public final class StreamJsonEvents extends HarnessEvents
 			ToolCall call = calls.get(id);
 			if (call != null && call.command() != null && call.exitStatus() == null && status != null)
 				calls.put(id, new ToolCall(call.tool(), call.command(), status));
+			readChildReport(id, result);
 		}
 		setToolCalls(calls.values().stream().toList());
+		setEvidence(new SessionEvidence(entries, received));
+	}
+
+	/**
+	 * Records the report that an agent received from a child that it waited for.
+	 *
+	 * @param id     the identifier of the {@code Agent} call that the result answers
+	 * @param result the record's structured result
+	 */
+	private void readChildReport(String id, JsonNode result)
+	{
+		SessionEvidence.ChildEvent start = childStarts.get(id);
+		boolean waitedFor = result.path("status").asString("").equals("completed") && result.has("content");
+		if (start == null || !waitedFor)
+			return;
+		entries.add(new SessionEvidence.ChildEvent(start.turn(), start.agent(), id, start.name(),
+			SessionEvidence.ChildEvent.Kind.RECEIVED, contentText(result.path("content"))));
+	}
+
+	/**
+	 * Records what Claude reported when a child that runs in the background ended, at the parent's current turn. A
+	 * notification about a task that is not a child, such as a background command, is ignored.
+	 *
+	 * @param event the {@code task_notification} record
+	 */
+	private void readChildEnd(JsonNode event)
+	{
+		String id = event.path("tool_use_id").asString("");
+		SessionEvidence.ChildEvent start = childStarts.get(id);
+		if (start == null)
+			return;
+		StringJoiner report = new StringJoiner("\n");
+		String status = event.path("status").asString("");
+		if (!status.isBlank())
+			report.add("Status: " + status);
+		String summary = event.path("summary").asString("");
+		if (!summary.isBlank())
+			report.add("Summary: " + summary);
+		entries.add(new SessionEvidence.ChildEvent(turnFor(start.agent()), start.agent(), id, start.name(),
+			SessionEvidence.ChildEvent.Kind.ENDED, report.toString()));
 		setEvidence(new SessionEvidence(entries, received));
 	}
 
