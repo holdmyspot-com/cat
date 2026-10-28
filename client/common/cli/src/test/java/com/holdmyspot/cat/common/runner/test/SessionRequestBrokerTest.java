@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.RequestLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
@@ -254,10 +255,9 @@ public final class SessionRequestBrokerTest
 	/**
 	 * Verifies that hostile inputs produce refusals and never reach the child starter.
 	 * <p>
-	 * The entry-count, cumulative-size and whole-archive-size cases must cross actual bounds. The first two decode
-	 * limit-crossing archives; the third streams an oversized input into the broker's private copy until refusal.
-	 * Constructing and processing these fixtures can exceed one second; an input below the corresponding bound would
-	 * not prove its refusal.
+	 * The entry-count, cumulative-size and whole-archive-size cases cross the bounds that {@link #limits(String)}
+	 * gives the broker, which are small enough for a few small entries to cross; the other cases use the bounds of
+	 * every request.
 	 *
 	 * @param kind the invalid input category
 	 * @throws IOException if fixture or broker I/O fails
@@ -270,7 +270,7 @@ public final class SessionRequestBrokerTest
 			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
 			{
 				throw new AssertionError("Invalid inputs cannot start a child");
-			}))
+			}, limits(kind)))
 		{
 			ObjectNode request = fixture.request("bad");
 			switch (kind)
@@ -297,6 +297,25 @@ public final class SessionRequestBrokerTest
 				requireThat(response.path("reason").asString(), "sizeRefusal").contains("bounds");
 			requireThat(Files.exists(fixture.responses.resolve(".temporary")), "temporaryResponse").isFalse();
 		}
+	}
+
+	/**
+	 * Returns the bounds that a broker applies to a hostile input.
+	 *
+	 * @param kind the invalid input category
+	 * @return 10 entries for {@code too_many}, 1,000 content bytes for {@code total_size}, 100,000 archive bytes for
+	 *   {@code oversized}, and the bounds of every request otherwise
+	 */
+	private static RequestLimits limits(String kind)
+	{
+		RequestLimits limits = RequestLimits.DEFAULT;
+		return switch (kind)
+		{
+			case "too_many" -> new RequestLimits(10, limits.totalBytes(), limits.archiveBytes());
+			case "total_size" -> new RequestLimits(limits.entries(), 1000, limits.archiveBytes());
+			case "oversized" -> new RequestLimits(limits.entries(), limits.totalBytes(), 100_000);
+			default -> limits;
+		};
 	}
 
 	/**
@@ -658,7 +677,7 @@ public final class SessionRequestBrokerTest
 					}
 					case "too_many" ->
 					{
-						for (int index = 0; index < 10_001; ++index)
+						for (int index = 0; index < limits(kind).entries(); ++index)
 							entry(archive, "project/file" + index, new byte[0]);
 					}
 					default ->
@@ -700,19 +719,12 @@ public final class SessionRequestBrokerTest
 			}
 			if (kind.equals("total_size"))
 			{
-				try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE,
-					StandardOpenOption.TRUNCATE_EXISTING))
+				// Each entry is within the per-entry bound, but together they exceed the total
+				try (OutputStream bytes = Files.newOutputStream(file);
+					TarArchiveOutputStream archive = new TarArchiveOutputStream(bytes))
 				{
-					for (int index = 0; index < 5; ++index)
-					{
-						TarArchiveEntry entry = new TarArchiveEntry("project/large" + index);
-						entry.setSize(67_108_864);
-						byte[] header = new byte[512];
-						entry.writeEntryHeader(header);
-						channel.write(ByteBuffer.wrap(header));
-						if (index < 4)
-							channel.position(channel.position() + entry.getSize());
-					}
+					for (int index = 0; index < 2; ++index)
+						entry(archive, "project/large" + index, new byte[600]);
 				}
 			}
 
@@ -728,7 +740,7 @@ public final class SessionRequestBrokerTest
 			{
 				try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE))
 				{
-					channel.position(300_000_000);
+					channel.position(limits(kind).archiveBytes());
 					channel.write(ByteBuffer.wrap(new byte[]{0}));
 				}
 			}
