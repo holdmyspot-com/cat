@@ -140,7 +140,7 @@ public final class SessionRequestForwarder
 
 		String id = UUID.randomUUID().toString();
 		RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request, prompts,
-			RequestArchive.NULL_DEVICE);
+			RequestArchive.NULL_DEVICE, RequestLimits.DEFAULT);
 		Path directory = requests.toAbsolutePath().getParent().resolve("responses").resolve(id);
 		JsonNode response;
 		if (transcript == null)

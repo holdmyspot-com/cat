@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.test;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.RequestLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -143,7 +144,7 @@ public final class SessionRequestCliTest
 				Path prompt = Files.writeString(root.resolve("prompt"), "prompt bytes");
 				ManualClock time = new ManualClock(Instant.EPOCH);
 				SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
-					"--prompt", prompt.toString()}, requests, nullDevice, time,
+					"--prompt", prompt.toString()}, requests, nullDevice, RequestLimits.DEFAULT, time,
 					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
 				Map<String, String> entries = new HashMap<>();
 				try (Stream<Path> files = Files.list(requests);

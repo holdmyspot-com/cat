@@ -35,13 +35,7 @@ final class RequestArchive
 	static final int VERSION = 2;
 	static final int MAXIMUM_MANIFEST_BYTES = 65_536;
 	static final int MAXIMUM_PROMPT_BYTES = 1_048_576;
-	static final int MAXIMUM_ENTRIES = 10_000;
 	static final long MAXIMUM_ENTRY_BYTES = 67_108_864;
-	static final long MAXIMUM_TOTAL_BYTES = 268_435_456;
-	/**
-	 * Includes tar headers, padding and PAX metadata in addition to the accepted payload.
-	 */
-	static final long MAXIMUM_ARCHIVE_BYTES = 300_000_000;
 	/**
 	 * The device that a sandbox mounts over each file that a session may not read.
 	 */
@@ -58,10 +52,11 @@ final class RequestArchive
 	 * @param prompts     the prompt texts that follow the request's prompt files, in order
 	 * @param nullDevice  the null device, which a sandbox mounts over each file that the session may not read; the
 	 *                    request leaves those files out of the trees that it carries
+	 * @param limits      the bounds that the archive must stay within
 	 * @throws IOException if an input is linked, special, oversized, or cannot be packed
 	 */
-	static void pack(JsonMapper json, Path destination, ObjectNode request, List<String> prompts, Path nullDevice)
-		throws IOException
+	static void pack(JsonMapper json, Path destination, ObjectNode request, List<String> prompts, Path nullDevice,
+		RequestLimits limits) throws IOException
 	{
 		Path temporary = Files.createTempFile(destination.getParent(), ".request-", EXTENSION);
 		try
@@ -70,7 +65,7 @@ final class RequestArchive
 				TarArchiveOutputStream archive = new TarArchiveOutputStream(bytes))
 			{
 				archive.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU);
-				Budget budget = new Budget();
+				Budget budget = new Budget(limits);
 				Path project = Path.of(request.path("project").asString());
 				packTree(archive, project, "project", budget, nullDevice);
 				request.put("project", "project");
@@ -107,10 +102,10 @@ final class RequestArchive
 				archive.write(manifest);
 				archive.closeArchiveEntry();
 			}
-			if (Files.size(temporary) > MAXIMUM_ARCHIVE_BYTES)
-				throw new IOException("Request archive exceeds " + MAXIMUM_ARCHIVE_BYTES + " bytes");
+			if (Files.size(temporary) > limits.archiveBytes())
+				throw new IOException("Request archive exceeds " + limits.archiveBytes() + " bytes");
 			try (InputStream bytes = Files.newInputStream(temporary);
-				TarArchiveInputStream archive = new BoundedTarInput(bytes))
+				TarArchiveInputStream archive = new BoundedTarInput(bytes, limits))
 			{
 				Set<Path> seen = new HashSet<>();
 				for (TarArchiveEntry entry = archive.getNextEntry(); entry != null; entry = archive.getNextEntry())
@@ -248,14 +243,15 @@ final class RequestArchive
 	 *
 	 * @param source the private archive
 	 * @param target the private empty destination
+	 * @param limits the bounds that the archive must stay within
 	 * @throws IOException if an entry is malformed, unsafe or exceeds request limits
 	 */
-	static void unpack(Path source, Path target) throws IOException
+	static void unpack(Path source, Path target, RequestLimits limits) throws IOException
 	{
-		Budget budget = new Budget();
+		Budget budget = new Budget(limits);
 		Set<Path> seen = new HashSet<>();
 		try (InputStream bytes = Files.newInputStream(source);
-			TarArchiveInputStream archive = new BoundedTarInput(bytes))
+			TarArchiveInputStream archive = new BoundedTarInput(bytes, limits))
 		{
 			for (TarArchiveEntry entry = archive.getNextEntry(); entry != null; entry = archive.getNextEntry())
 			{
@@ -359,17 +355,19 @@ final class RequestArchive
 	 */
 	private static final class BoundedTarInput extends TarArchiveInputStream
 	{
-		private final Budget budget = new Budget();
+		private final Budget budget;
 		private boolean longName;
 
 		/**
 		 * Wraps a private archive stream.
 		 *
-		 * @param input the bounded archive bytes
+		 * @param input  the bounded archive bytes
+		 * @param limits the bounds that the archive must stay within
 		 */
-		private BoundedTarInput(InputStream input)
+		private BoundedTarInput(InputStream input, RequestLimits limits)
 		{
 			super(input);
+			this.budget = new Budget(limits);
 		}
 
 		@Override
@@ -398,8 +396,19 @@ final class RequestArchive
 	 */
 	private static final class Budget
 	{
+		private final RequestLimits limits;
 		private int entries;
 		private long bytes;
+
+		/**
+		 * Creates an empty account.
+		 *
+		 * @param limits the request's entry-count and total-size bounds
+		 */
+		private Budget(RequestLimits limits)
+		{
+			this.limits = limits;
+		}
 
 		/**
 		 * Accounts for one entry before reading or writing its content.
@@ -411,7 +420,7 @@ final class RequestArchive
 		private void add(long size, long maximum) throws IOException
 		{
 			entries += 1;
-			if (entries > MAXIMUM_ENTRIES || size < 0 || size > maximum || size > MAXIMUM_TOTAL_BYTES - bytes)
+			if (entries > limits.entries() || size < 0 || size > maximum || size > limits.totalBytes() - bytes)
 				throw new IOException("Request exceeds entry count, per-entry or total size bounds: " + size + " bytes");
 			bytes += size;
 		}

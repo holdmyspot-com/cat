@@ -26,17 +26,18 @@ final class ArchiveSource
 	 *
 	 * @param source      the request file in the runner-owned requests directory
 	 * @param destination the new private copy
+	 * @param maximum     the most bytes that the archive may hold
 	 * @throws IOException if opening, validation or bounded copying fails
 	 */
-	static void copy(Path source, Path destination) throws IOException
+	static void copy(Path source, Path destination, long maximum) throws IOException
 	{
 		try (Arena arena = Arena.ofConfined();
 			OutputStream output = Files.newOutputStream(destination))
 		{
 			if (Platform.current().isWindows())
-				copyWindows(arena, source, output);
+				copyWindows(arena, source, output, maximum);
 			else
-				copyUnix(arena, source, output);
+				copyUnix(arena, source, output, maximum);
 		}
 	}
 
@@ -44,12 +45,13 @@ final class ArchiveSource
 	 * Opens a Unix file without following links or blocking on a FIFO, then uses descriptor attributes and reads.
 	 * Linux statx has one layout on both supported architectures; Darwin uses its 64-bit-inode stat ABI.
 	 *
-	 * @param arena  native memory owner
-	 * @param source the archive
-	 * @param output the private copy
+	 * @param arena   native memory owner
+	 * @param source  the archive
+	 * @param output  the private copy
+	 * @param maximum the most bytes that the archive may hold
 	 * @throws IOException if the native operations fail or the file is unsafe
 	 */
-	private static void copyUnix(Arena arena, Path source, OutputStream output) throws IOException
+	private static void copyUnix(Arena arena, Path source, OutputStream output, long maximum) throws IOException
 	{
 		Platform platform = Platform.current();
 		boolean linux = platform.isLinux();
@@ -99,8 +101,8 @@ final class ArchiveSource
 				if (count == 0)
 					break;
 				total += count;
-				if (total > RequestArchive.MAXIMUM_ARCHIVE_BYTES)
-					throw new IOException("Request archive exceeds " + RequestArchive.MAXIMUM_ARCHIVE_BYTES + " bytes");
+				if (total > maximum)
+					throw new IOException("Request archive exceeds " + maximum + " bytes");
 				output.write(buffer.asSlice(0, count).toArray(ValueLayout.JAVA_BYTE));
 			}
 		}
@@ -185,14 +187,15 @@ final class ArchiveSource
 	 * Uses a Windows handle that neither follows reparse points nor permits concurrent writes or renames.
 	 * BY_HANDLE_FILE_INFORMATION supplies the hard-link count omitted by Java's DOS attributes.
 	 *
-	 * @param arena  native memory owner
-	 * @param source the archive
-	 * @param output the private copy
+	 * @param arena   native memory owner
+	 * @param source  the archive
+	 * @param output  the private copy
+	 * @param maximum the most bytes that the archive may hold
 	 * @throws IOException if the handle is unsafe or native I/O fails
 	 */
 	// Native access is required to inspect and read the same file handle.
 	@SuppressWarnings("restricted")
-	private static void copyWindows(Arena arena, Path source, OutputStream output) throws IOException
+	private static void copyWindows(Arena arena, Path source, OutputStream output, long maximum) throws IOException
 	{
 		SymbolLookup symbols = SymbolLookup.libraryLookup("kernel32", arena);
 		MethodHandle open = function(symbols, "CreateFileW", FunctionDescriptor.of(ValueLayout.ADDRESS,
@@ -258,8 +261,8 @@ final class ArchiveSource
 				if (count == 0)
 					break;
 				total += count;
-				if (total > RequestArchive.MAXIMUM_ARCHIVE_BYTES)
-					throw new IOException("Request archive exceeds " + RequestArchive.MAXIMUM_ARCHIVE_BYTES + " bytes");
+				if (total > maximum)
+					throw new IOException("Request archive exceeds " + maximum + " bytes");
 				output.write(buffer.asSlice(0, count).toArray(ValueLayout.JAVA_BYTE));
 			}
 		}

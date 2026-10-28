@@ -36,6 +36,7 @@ public final class SessionRequestBroker implements Closeable
 	private final HarnessRun run;
 	private final HarnessRunnerOptions options;
 	private final RequestedSessionStarter starter;
+	private final RequestLimits limits;
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ExecutorService children = Executors.newVirtualThreadPerTaskExecutor();
 	/**
@@ -59,12 +60,28 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	public SessionRequestBroker(HarnessRun run, HarnessRunnerOptions options, RequestedSessionStarter starter)
 	{
+		this(run, options, starter, RequestLimits.DEFAULT);
+	}
+
+	/**
+	 * Creates a broker for an already prepared run whose request archives must stay within the given bounds.
+	 *
+	 * @param run     the requesting run
+	 * @param options the requesting runner's options
+	 * @param starter resolves and starts child runners
+	 * @param limits  the bounds that each request's archive must stay within
+	 */
+	public SessionRequestBroker(HarnessRun run, HarnessRunnerOptions options, RequestedSessionStarter starter,
+		RequestLimits limits)
+	{
 		requireThat(run, "run").isNotNull();
 		requireThat(options, "options").isNotNull();
 		requireThat(starter, "starter").isNotNull();
+		requireThat(limits, "limits").isNotNull();
 		this.run = run;
 		this.options = options;
 		this.starter = starter;
+		this.limits = limits;
 	}
 
 	/**
@@ -173,8 +190,8 @@ public final class SessionRequestBroker implements Closeable
 		Path inputs = Files.createDirectory(directory.resolve("inputs"));
 		try
 		{
-			ArchiveSource.copy(file, copy);
-			RequestArchive.unpack(copy, inputs);
+			ArchiveSource.copy(file, copy, limits.archiveBytes());
+			RequestArchive.unpack(copy, inputs, limits);
 		}
 		finally
 		{

@@ -67,7 +67,7 @@ public final class SessionRequestCli
 	public static int execute(String[] args, Path requests, Clock clock, Pause pause, PrintWriter output)
 		throws IOException
 	{
-		return execute(args, requests, RequestArchive.NULL_DEVICE, clock, pause, output);
+		return execute(args, requests, RequestArchive.NULL_DEVICE, RequestLimits.DEFAULT, clock, pause, output);
 	}
 
 	/**
@@ -78,19 +78,21 @@ public final class SessionRequestCli
 	 * @param requests   the owning run's requests directory
 	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read; the
 	 *                   request leaves those files out of the trees that it carries
+	 * @param limits     the bounds that the request's archive must stay within
 	 * @param clock      measures the wait bound
 	 * @param pause      paces response checks
 	 * @param output     receives response paths or timeout instructions
 	 * @return 0 for completed, 1 for another response status, or 3 after the wait bound (default 300 seconds)
 	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
-	 * @throws IOException              if request or response I/O fails
+	 * @throws IOException              if request or response I/O fails, or the request exceeds {@code limits}
 	 */
-	public static int execute(String[] args, Path requests, Path nullDevice, Clock clock, Pause pause,
-		PrintWriter output) throws IOException
+	public static int execute(String[] args, Path requests, Path nullDevice, RequestLimits limits, Clock clock,
+		Pause pause, PrintWriter output) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(requests, "requests").isDirectory();
 		requireThat(nullDevice, "nullDevice").isNotNull();
+		requireThat(limits, "limits").isNotNull();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		requireThat(output, "output").isNotNull();
@@ -146,7 +148,7 @@ public final class SessionRequestCli
 			// Packing here makes the sandbox refuse that read; the broker opens only one file in requests, with no
 			// session-controlled directory along its path.
 			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
-				List.of(), nullDevice);
+				List.of(), nullDevice, limits);
 		}
 		else
 		{
