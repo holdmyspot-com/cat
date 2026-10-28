@@ -326,8 +326,9 @@ public final class CodexRunnerTest
 	/**
 	 * Verifies that the app-server's bubblewrap replaces each hidden directory with an empty, read-only one and mounts
 	 * back inside it, after the paths that contain them, the paths that the session writes and then those that it
-	 * only reads, so that a read-only path inside a writable one stays read-only. A path outside every hidden
-	 * directory is left as it is.
+	 * only reads, so that a read-only path inside a writable one stays read-only. A path that the private temporary
+	 * directory would hide, outside the run directory, is mounted back too, so that the session still reaches evidence
+	 * in the shared temporary directory. Here the test's own temporary directory stands in for {@code /tmp}.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -343,13 +344,17 @@ public final class CodexRunnerTest
 			Path responses = Files.createDirectories(home.resolve("responses"));
 			Path evidence = Files.createDirectories(hidden.resolve("runs/trial/artifacts"));
 			Path outside = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-outside-")).toRealPath();
+			Path privateTmp = jvm.temporaryDirectory().toRealPath();
+			Path run = project.getParent();
 			Path bwrap = Path.of("/usr/bin/bwrap").toAbsolutePath();
 			List<String> command = CodexRunner.appServerCommand("codex", false);
 
-			requireThat(CodexRunner.withPrivateTmp(command, bwrap, project.getParent(), List.of(hidden),
-				List.of(project, home), List.of(responses, evidence, outside)), "command").isEqualTo(List.of(
-				bwrap.toString(), "--dev-bind", "/", "/", "--tmpfs", Path.of("/tmp").toString(),
+			requireThat(CodexRunner.withPrivateTmp(command, bwrap, run, List.of(hidden), List.of(project, home),
+				List.of(responses, evidence, outside), privateTmp), "command").isEqualTo(List.of(
+				bwrap.toString(), "--dev-bind", "/", "/", "--tmpfs", privateTmp.toString(),
+				"--bind", run.toString(), run.toString(),
 				"--tmpfs", hidden.toString(),
+				"--ro-bind", outside.toString(), outside.toString(),
 				"--bind", home.toString(), home.toString(),
 				"--bind", project.toString(), project.toString(),
 				"--ro-bind", evidence.toString(), evidence.toString(),
@@ -389,11 +394,14 @@ public final class CodexRunnerTest
 			List<String> appServer = CodexRunner.appServerCommand("codex", false);
 			Map<String, String> environment = Map.of("PATH", bin.toString());
 
+			// The test's temporary directory, which holds the run root, stands in for /tmp
+			Path privateTmp = temporary.toRealPath();
+
 			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(heldOut),
-				Platform.LINUX_X64, environment, null, appServer);
+				Platform.LINUX_X64, environment, null, appServer, privateTmp);
 
 			requireThat(sandbox.command(), "command").isEqualTo(CodexRunner.withPrivateTmp(appServer, bwrap,
-				run.directory()));
+				run.directory(), privateTmp));
 			JsonNode denied = TomlMapper.builder().build().readTree(Files.readString(configuration)).
 				path("permissions").path(sandbox.profile()).path("filesystem");
 			for (Path path : List.of(root, heldOut))
