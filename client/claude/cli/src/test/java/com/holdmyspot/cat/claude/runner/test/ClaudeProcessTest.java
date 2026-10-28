@@ -100,6 +100,26 @@ public final class ClaudeProcessTest
 		"\"content\":[{\"type\":\"text\",\"text\":\"TWO\"}]},\"parent_tool_use_id\":null,\"session_id\":\"s\"}";
 	private static final String SECOND_RESULT = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false," +
 		"\"result\":\"TWO\",\"session_id\":\"s\"}";
+	/**
+	 * The text of the error result that Claude Code 2.1.310 printed when it could not reach the model service.
+	 */
+	private static final String CONNECTION_REFUSED = "API Error: Connection refused — a firewall or proxy may be " +
+		"blocking it (ECONNREFUSED)";
+	/**
+	 * The root's reply that Claude Code 2.1.310 printed after its retries of an unreachable model service ran out,
+	 * trimmed from a recorded 2026-10-28 runner transcript. Claude prints its own error text as the reply, so the
+	 * text alone does not reveal that the model never ran.
+	 */
+	private static final String ERROR_REPLY = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\"," +
+		"\"content\":[{\"type\":\"text\",\"text\":\"" + CONNECTION_REFUSED + "\"}]},\"parent_tool_use_id\":null," +
+		"\"session_id\":\"s\"}";
+	/**
+	 * The root's error result that followed {@link #ERROR_REPLY} in the same recording; Claude then reported that it
+	 * was idle.
+	 */
+	private static final String ERROR_RESULT = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true," +
+		"\"api_error_status\":null,\"terminal_reason\":\"api_error\",\"num_turns\":1,\"result\":\"" +
+		CONNECTION_REFUSED + "\",\"result_index\":0,\"session_id\":\"s\"}";
 
 	/**
 	 * Creates the test fixture.
@@ -499,6 +519,74 @@ public final class ClaudeProcessTest
 			requireThat(result.standardError(), "standardError").contains("2.1.286").
 				contains("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS");
 			requireThat(relayed, "relayed").isEqualTo(List.of(lines.getFirst()));
+		}
+	}
+
+	/**
+	 * Verifies that a turn whose root result is an error, as when Claude could not reach the model service and then
+	 * reported that it was idle, fails with a reason that names Claude's error result, its API status, its terminal
+	 * reason and its text, instead of completing with the error text as the reply.
+	 *
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000, expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		"Claude reported an error result \\(api_error_status=none, terminal_reason=api_error\\): " +
+			"API Error: Connection refused .*")
+	public void failsTurnAtErrorResult() throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, ERROR_REPLY, ERROR_RESULT, STATE_IDLE);
+
+			process.sendTurn("Reply LAUNCHED.");
+		}
+	}
+
+	/**
+	 * Returns timelines whose root result is not an error: one that says so, one that omits {@code is_error}, and one
+	 * in which only a child agent's result is an error.
+	 *
+	 * @return each timeline and the reply that its turn completes with
+	 */
+	@DataProvider
+	public static Object[][] rootResultsWithoutError()
+	{
+		String childError = ERROR_RESULT.replace("\"session_id\":\"s\"}",
+			"\"parent_tool_use_id\":\"toolu_root\",\"session_id\":\"s\"}");
+		return new Object[][]{
+			{List.of(STATE_RUNNING, INIT, ERROR_REPLY, ERROR_RESULT.replace("\"is_error\":true", "\"is_error\":false"),
+				STATE_IDLE), CONNECTION_REFUSED},
+			{List.of(STATE_RUNNING, INIT, ROOT_REPLY, ROOT_RESULT.replace("\"is_error\":false,", ""), STATE_IDLE),
+				"LAUNCHED"},
+			{List.of(STATE_RUNNING, INIT, CHILD_LAUNCH, childError, ROOT_REPLY, ROOT_RESULT, STATE_IDLE), "LAUNCHED"}};
+	}
+
+	/**
+	 * Verifies that a turn whose root result is not an error completes as before, with the root's reply, even when the
+	 * timeline is otherwise that of an error result or a child agent's result is an error.
+	 *
+	 * @param timeline the lines Claude prints for the turn
+	 * @param reply    the reply that the turn completes with
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000, dataProvider = "rootResultsWithoutError")
+	public void completesTurnWithoutRootErrorResult(List<String> timeline, String reply) throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(timeline.toArray(String[]::new));
+
+			HarnessProcessResult result = process.sendTurn("Reply LAUNCHED.");
+
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.exitCode(), "exitCode").isEqualTo(0);
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo(reply);
 		}
 	}
 

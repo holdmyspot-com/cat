@@ -166,10 +166,13 @@ public final class ClaudeProcess implements HarnessProcess
 	 * When the turn's output begins with a follow-up reply that Claude finished for an earlier turn, the turn relays
 	 * that reply's lines but does not end there or take its text as the turn's reply, and its result reports the late
 	 * follow-up in {@link HarnessProcessResult#standardError()}.
+	 * <p>
+	 * When the turn's last root result reports an error, as when Claude could not reach the model service, the turn
+	 * fails instead of completing with Claude's error text as its reply.
 	 *
 	 * @param request the non-blank user prompt
 	 * @return the captured event stream for the turn
-	 * @throws IOException if input or output fails
+	 * @throws IOException if input or output fails, or if the turn's last root result reports an error
 	 */
 	@Override
 	public HarnessProcessResult sendTurn(String request) throws IOException
@@ -214,6 +217,9 @@ public final class ClaudeProcess implements HarnessProcess
 				{
 					case TURN_ENDS ->
 					{
+						Optional<String> error = boundary.errorResult();
+						if (error.isPresent())
+							throw new IOException(error.get());
 						return completedTurn(events.toString(), events.substring(replyStart), diagnostics.toString());
 					}
 					case EARLIER_FOLLOW_UP_ENDS ->
@@ -522,6 +528,10 @@ public final class ClaudeProcess implements HarnessProcess
 		 * The session identifier in the latest {@code system/init} line, or an empty string if there was none.
 		 */
 		private String sessionId = "";
+		/**
+		 * The latest root result for a reply to a user message in this turn, or {@code null} if there was none.
+		 */
+		private JsonNode rootResult;
 
 		/**
 		 * Creates the state of a turn that has just been sent.
@@ -567,6 +577,28 @@ public final class ClaudeProcess implements HarnessProcess
 		}
 
 		/**
+		 * Describes the error that the latest root result for a reply to a user message in this turn reports. The
+		 * description has the same form as the optimizer's for an error result, followed by Claude's text.
+		 *
+		 * @return the description, or none if there was no such result or it does not report an error
+		 */
+		Optional<String> errorResult()
+		{
+			if (rootResult == null || !rootResult.path("is_error").asBoolean(false))
+				return Optional.empty();
+			JsonNode status = rootResult.path("api_error_status");
+			String statusText = "none";
+			if (!status.isNull() && !status.isMissingNode())
+				statusText = status.asString("none");
+			String error = "Claude reported an error result (api_error_status=" + statusText + ", terminal_reason=" +
+				rootResult.path("terminal_reason").asString("none") + ")";
+			String text = rootResult.path("result").asString("");
+			if (!text.isBlank())
+				error += ": " + text;
+			return Optional.of(error);
+		}
+
+		/**
 		 * Records one output line.
 		 *
 		 * @param line a line of Claude's output
@@ -605,6 +637,9 @@ public final class ClaudeProcess implements HarnessProcess
 			if (!answered && event.path("origin").path("kind").asString("").equals("task-notification"))
 				return LineEffect.EARLIER_FOLLOW_UP_ENDS;
 			answered = true;
+			// A child agent's result belongs to the child session rather than the root's reply.
+			if (!event.path("parent_tool_use_id").isString())
+				rootResult = event;
 			return LineEffect.NONE;
 		}
 
