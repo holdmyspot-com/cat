@@ -86,6 +86,32 @@ public final class CodexSubagentStartHookTest
 	}
 
 	/**
+	 * Verifies that the bundled Codex rules that SubagentStart writes state the project directory that the hook
+	 * resolved, and the session temporary directory that the subagent's {@code agent_id} names in it, as literal paths,
+	 * even when the hook process runs in a subdirectory of the project.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void statesProjectDirectoryInSubagentRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-subagent-start-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			CodexSessionStartHookTest.copyBundledRules(plugin);
+			Path module = Files.createDirectories(project.resolve("module"));
+
+			HookResult result = invoke(event(project, "cat:worker"), Map.of("PLUGIN_ROOT", plugin.toString()), module);
+
+			requireThat(result.error(), "error").isEmpty();
+			Path rulesFile = project.resolve(".cat/sessions").resolve(AGENT_ID).resolve("rules.md");
+			CodexSessionStartHookTest.assertStatesProjectDirectories(Files.readString(rulesFile, UTF_8), project, AGENT_ID,
+				module);
+		}
+	}
+
+	/**
 	 * Verifies that a subagent receives the guidance on reading a file whole followed by a pointer to a rules file in the
 	 * CAT session directory of its {@code agent_id}, which tells it not to read the rules file of the agent that started
 	 * it, since that file states the other agent's {@code CAT_TEMP}.

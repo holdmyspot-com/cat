@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -581,6 +582,100 @@ public final class ClaudeSessionStartHookTest
 			requireThat(error, "sessionEndError").isEmpty();
 			requireThat(Files.exists(context), "contextExists").isFalse();
 		}
+	}
+
+	/**
+	 * Verifies that the bundled Claude rules that SessionStart writes state the directory Claude started in, and that
+	 * directory's session temporary directory, as literal paths, even when the hook runs in a subdirectory that the
+	 * agent changed into, so the agent never takes either directory from its own working directory.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void statesLaunchDirectoryInSessionRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			Path module = Files.createDirectories(project.resolve("module"));
+
+			HookResult result = invoke("{\"cwd\":" + jsonString(module) + ",\"session_id\":\"" + SESSION_ID + "\"}",
+				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(), "CLAUDE_PROJECT_DIR", project.toString()), module);
+
+			requireThat(result.error(), "error").isEmpty();
+			assertStatesProjectDirectories(Files.readString(referencedFile(context(result))), project, module);
+		}
+	}
+
+	/**
+	 * Verifies that the bundled Claude rules that SubagentStart writes state the directory Claude started in, and that
+	 * directory's session temporary directory, as literal paths, even when the hook runs in a subdirectory that the
+	 * agent changed into.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void statesLaunchDirectoryInSubagentRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			Path module = Files.createDirectories(project.resolve("module"));
+
+			HookResult result = invokeSubagent("{\"cwd\":" + jsonString(module) + ",\"session_id\":\"" + SESSION_ID +
+				"\",\"agent_id\":\"a1b2c3\"}", Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(), "CLAUDE_PROJECT_DIR",
+				project.toString()), module);
+
+			requireThat(result.error(), "error").isEmpty();
+			assertStatesProjectDirectories(Files.readString(referencedFile(context(result))), project, module);
+		}
+	}
+
+	/**
+	 * Copies the Claude rules that CAT bundles into a plugin directory.
+	 *
+	 * @param plugin the plugin directory
+	 * @throws IOException if the rules cannot be copied
+	 */
+	private static void copyBundledRules(Path plugin) throws IOException
+	{
+		Path source = Path.of("../rules/src/main/resources/rules/claude");
+		Path target = plugin.resolve("rules/claude");
+		try (Stream<Path> files = Files.walk(source))
+		{
+			for (Path file : files.toList())
+			{
+				Path copy = target.resolve(source.relativize(file).toString());
+				if (Files.isDirectory(file))
+					Files.createDirectories(copy);
+				else
+					Files.copy(file, copy);
+			}
+		}
+	}
+
+	/**
+	 * Requires that rules state a project directory and its session temporary directory as literal paths, that the
+	 * temporary directory exists, and that the rules neither define the project directory as the agent's working
+	 * directory nor name the subdirectory that the hook ran in.
+	 *
+	 * @param rules the rendered rules
+	 * @param project the project directory that the hook resolved
+	 * @param module the subdirectory that the hook ran in
+	 * @throws IOException if the temporary directory cannot be inspected
+	 */
+	private static void assertStatesProjectDirectories(String rules, Path project, Path module) throws IOException
+	{
+		Path temp = project.resolve(".cat/sessions").resolve(SESSION_ID).resolve("temp");
+		requireThat(rules, "rules").contains("`CAT_PROJECT_ROOT` is `" + project + "`").
+			contains("`CAT_TEMP` is `" + temp + "`").
+			doesNotContain("working directory that your environment information states").
+			doesNotContain(module.toString());
+		requireThat(temp, "temp").isDirectory();
 	}
 
 	/**

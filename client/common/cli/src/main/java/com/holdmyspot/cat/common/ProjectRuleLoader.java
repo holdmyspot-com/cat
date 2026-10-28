@@ -32,8 +32,10 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  * <p>
  * In the context of a bundled rule, each {@link #PLUGIN_ROOT_DIRECTIVE} becomes the absolute, normalized CAT
  * installation directory that the caller supplied, and each {@link #POSIX_PLUGIN_PATH_DIRECTIVE} or
- * {@link #POWERSHELL_PLUGIN_PATH_DIRECTIVE} becomes a path below it, quoted for its shell. The harness skill
- * environment, which states that directory, precedes every other rule.
+ * {@link #POWERSHELL_PLUGIN_PATH_DIRECTIVE} becomes a path below it, quoted for its shell. In the context of a bundled
+ * rule that the loader injects for a project, each {@link #PROJECT_ROOT_DIRECTIVE} becomes the absolute, normalized
+ * project directory that the caller supplied. The harness skill environment, which states those directories, precedes
+ * every other rule.
  */
 public final class ProjectRuleLoader
 {
@@ -56,6 +58,15 @@ public final class ProjectRuleLoader
 	 * PowerShell passes it unchanged whatever characters, such as a {@code '} or a space, the directory's path holds.
 	 */
 	public static final String POWERSHELL_PLUGIN_PATH_DIRECTIVE = "<!-- cat:plugin-root powershell -->";
+	/**
+	 * The directive that a bundled rule writes where the injected context must state the project directory whose rules
+	 * the loader injects, so that the agent need not derive that directory from its own working directory, which can
+	 * change during a session.
+	 * <p>
+	 * The loader replaces it in the injected context of the plugin's rules. Project and user rules, and a rule that
+	 * {@link #loadRule(Path, Path)} renders without a project, receive it unchanged.
+	 */
+	public static final String PROJECT_ROOT_DIRECTIVE = "<!-- cat:project-root -->";
 
 	/**
 	 * The notation that path-routing context writes for the project directory. The injected CAT environment rule
@@ -531,6 +542,9 @@ public final class ProjectRuleLoader
 		loadDirectory(pluginRoot, pluginRules.resolve("common"), pluginRules, RuleRoot.PLUGIN, audience,
 			rules);
 		loadDirectory(pluginRoot, pluginRules.resolve(harness), pluginRules, RuleRoot.PLUGIN, audience, rules);
+		String project = projectRoot.toAbsolutePath().normalize().toString();
+		rules.replaceAll(rule -> new Rule(rule.path(), rule.displayPath(), rule.file(), rule.root(), rule.direct(),
+			rule.dependencies(), rule.context().replace(PROJECT_ROOT_DIRECTIVE, project)));
 		if (userRulesRoot != null)
 		{
 			loadDirectory(userRulesRoot, userRulesRoot.resolve("common"), userRulesRoot, RuleRoot.USER,

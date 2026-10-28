@@ -584,6 +584,35 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies that a bundled rule states the project directory that the caller supplied wherever it writes the
+	 * project-root directive, while project and user rules receive the directive unchanged.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void statesProjectRootInBundledRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			write(plugin, "rules/harnessa/cat-env.md", "project: " + ProjectRuleLoader.PROJECT_ROOT_DIRECTIVE +
+				"/.cat/sessions\n");
+			write(userRules, "common/user.md", "user: " + ProjectRuleLoader.PROJECT_ROOT_DIRECTIVE);
+			write(project, ".cat/rules/common/project.md", "own: " + ProjectRuleLoader.PROJECT_ROOT_DIRECTIVE);
+			Files.createDirectories(project.resolve("module"));
+
+			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, userRules,
+				project.resolve("module/.."), "harnessa");
+
+			requireThat(context, "context").contains("project: " + project + "/.cat/sessions\n").
+				contains("user: " + ProjectRuleLoader.PROJECT_ROOT_DIRECTIVE).
+				contains("own: " + ProjectRuleLoader.PROJECT_ROOT_DIRECTIVE);
+		}
+	}
+
+	/**
 	 * Verifies project and user rules receive the plugin-root directive unchanged, because the plugin root is not
 	 * theirs to state.
 	 */

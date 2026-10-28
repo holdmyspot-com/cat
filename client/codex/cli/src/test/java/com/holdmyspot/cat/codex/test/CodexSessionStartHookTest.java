@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -418,6 +419,75 @@ public final class CodexSessionStartHookTest
 
 			requireThat(rules, "rules").contains("harness project").doesNotContain("configured project");
 		}
+	}
+
+	/**
+	 * Verifies that the bundled Codex rules that SessionStart writes state the project directory that the hook resolved,
+	 * and that directory's session temporary directory, as literal paths, even when the hook process runs in a
+	 * subdirectory of the project, so the agent never takes either directory from its own working directory.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void statesProjectDirectoryInSessionRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			Path module = Files.createDirectories(project.resolve("module"));
+
+			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), module);
+
+			requireThat(result.error(), "error").isEmpty();
+			assertStatesProjectDirectories(sessionRules(result), project, sessionId(), module);
+		}
+	}
+
+	/**
+	 * Copies the Codex rules that CAT bundles into a plugin directory.
+	 *
+	 * @param plugin the plugin directory
+	 * @throws IOException if the rules cannot be copied
+	 */
+	static void copyBundledRules(Path plugin) throws IOException
+	{
+		Path source = Path.of("../rules/src/main/resources/rules/codex");
+		Path target = plugin.resolve("rules/codex");
+		try (Stream<Path> files = Files.walk(source))
+		{
+			for (Path file : files.toList())
+			{
+				Path copy = target.resolve(source.relativize(file).toString());
+				if (Files.isDirectory(file))
+					Files.createDirectories(copy);
+				else
+					Files.copy(file, copy);
+			}
+		}
+	}
+
+	/**
+	 * Requires that rules state a project directory and a session's temporary directory in it as literal paths, that
+	 * the temporary directory exists, and that the rules neither define the project directory through the agent's
+	 * environment context nor name the directory that the hook process ran in.
+	 *
+	 * @param rules the rendered rules
+	 * @param project the project directory that the hook resolved
+	 * @param sessionId the ID that names the session's CAT session directory
+	 * @param module the directory that the hook process ran in
+	 * @throws IOException if the temporary directory cannot be inspected
+	 */
+	static void assertStatesProjectDirectories(String rules, Path project, String sessionId, Path module)
+		throws IOException
+	{
+		Path temp = project.resolve(".cat/sessions").resolve(sessionId).resolve("temp");
+		requireThat(rules, "rules").contains("`CAT_PROJECT_ROOT` is `" + project + "`").
+			contains("`CAT_TEMP` is `" + temp + "`").
+			doesNotContain("`<cwd>` element").
+			doesNotContain(module.toString());
+		requireThat(temp, "temp").isDirectory();
 	}
 
 	/**
