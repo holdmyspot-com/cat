@@ -17,13 +17,13 @@ import java.util.regex.Pattern;
  * kept separately.
  * <p>
  * Field declarations are found by tracking braces. A brace opens a type body when the code before it declares a class,
- * interface, enum or record. Anonymous class bodies are not type bodies, so their fields are not reported.
+ * interface, enum or record. Anonymous class bodies are not type bodies, so their fields are not reported. Only the
+ * field checks need them, so they are found on request rather than when the file is parsed.
  *
  * @param code     the source with comments and literal contents replaced by spaces
  * @param literals the string and text block literals, in source order
- * @param fields   the field declarations in class, enum and record bodies, in source order
  */
-record JavaSource(String code, List<Literal> literals, List<Field> fields)
+record JavaSource(String code, List<Literal> literals)
 {
 	/**
 	 * Matches a keyword that declares a class, interface or enum, unless it follows a dot as in {@code Foo.class}.
@@ -51,13 +51,11 @@ record JavaSource(String code, List<Literal> literals, List<Field> fields)
 	 *
 	 * @param code     the source with comments and literal contents replaced by spaces
 	 * @param literals the string and text block literals, in source order
-	 * @param fields   the field declarations in class, enum and record bodies, in source order
 	 */
 	JavaSource
 	{
 		requireThat(code, "code").isNotNull();
 		literals = List.copyOf(literals);
-		fields = List.copyOf(fields);
 	}
 
 	/**
@@ -70,7 +68,17 @@ record JavaSource(String code, List<Literal> literals, List<Field> fields)
 	{
 		List<Literal> literals = new ArrayList<>();
 		String code = blankCommentsAndLiterals(text, literals);
-		return new JavaSource(code, literals, findFields(code));
+		return new JavaSource(code, literals);
+	}
+
+	/**
+	 * Returns the field declarations in class, enum and record bodies.
+	 *
+	 * @return the fields, in source order
+	 */
+	List<Field> fields()
+	{
+		return findFields(code);
 	}
 
 	/**

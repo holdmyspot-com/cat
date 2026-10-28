@@ -78,10 +78,10 @@ public final class TestabilityAuditTest
 	 */
 	private static final Set<String> HOME_LITERALS = Set.of("HOME", "user.home");
 	/**
-	 * Matches a reference to a Claude or Codex package.
+	 * Matches a reference to a Claude or Codex package. Like {@link #GETENV}, it starts with a literal.
 	 */
 	private static final Pattern HARNESS_PACKAGE = Pattern.compile(
-		"(?<![\\w$.])com\\s*\\.\\s*holdmyspot\\s*\\.\\s*cat\\s*\\.\\s*(claude|codex)(?![\\w$])");
+		"com(?<![\\w$.]com)\\s*\\.\\s*holdmyspot\\s*\\.\\s*cat\\s*\\.\\s*(claude|codex)(?![\\w$])");
 	/**
 	 * Matches a qualified type name: lowercase package segments followed by a capitalized type name.
 	 */
@@ -177,9 +177,6 @@ public final class TestabilityAuditTest
 	/**
 	 * Verifies that only {@code main} classes and harness production scopes read the home directory or the process
 	 * environment.
-	 * <p>
-	 * This audit needs the current source inventory of all three modules. Building that shared inventory on first
-	 * use, or waiting for another audit to finish building it, can take more than one second in a parallel build.
 	 */
 	@Test
 	public void onlyMainReadsEnvironment()
@@ -197,9 +194,6 @@ public final class TestabilityAuditTest
 
 	/**
 	 * Verifies that the harness-neutral core references no harness package.
-	 * <p>
-	 * The first audit using the shared inventory also reads and parses the three modules' Java sources. With that
-	 * setup, this check can exceed one second during a parallel build.
 	 */
 	@Test
 	public void coreReferencesNoHarness()
@@ -213,9 +207,6 @@ public final class TestabilityAuditTest
 
 	/**
 	 * Verifies that production sources reference no type from a test source tree.
-	 * <p>
-	 * The check needs both the current source inventory and the names of every test type in the three modules.
-	 * Initializing that shared inventory, or waiting for its initialization, can exceed one second in a parallel build.
 	 */
 	@Test
 	public void productionReferencesNoTestSupport()
@@ -229,9 +220,6 @@ public final class TestabilityAuditTest
 
 	/**
 	 * Verifies that no production source other than the fork adapter constructs {@code Git}.
-	 * <p>
-	 * The check reads every source in the audited scope. Its first use of the shared three-module source inventory,
-	 * or a wait for another audit to initialize that inventory, can exceed one second in a parallel build.
 	 */
 	@Test
 	public void onlyForkAdapterConstructsGit()
@@ -660,8 +648,12 @@ public final class TestabilityAuditTest
 	 */
 	private static List<String> findSleeps(SourceFile file)
 	{
+		String code = file.source().code();
+		// Every match contains the literal, which a plain search finds faster than the expression
+		if (!code.contains("sleep"))
+			return List.of();
 		List<String> violations = new ArrayList<>();
-		Matcher matcher = SLEEP.matcher(file.source().code());
+		Matcher matcher = SLEEP.matcher(code);
 		while (matcher.find())
 			violations.add(file.describe(matcher.start(), "sleeps: " + matcher.group().replaceAll("\\s+", "")));
 		return violations;
