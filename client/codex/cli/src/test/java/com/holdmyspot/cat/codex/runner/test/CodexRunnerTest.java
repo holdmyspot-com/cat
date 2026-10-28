@@ -5,7 +5,9 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
+import com.holdmyspot.cat.codex.runner.CodexRunner.SessionSandbox;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -24,6 +26,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
  * Tests {@link CodexRunner}.
@@ -316,6 +320,87 @@ public final class CodexRunnerTest
 			requireThat(CodexRunner.bubblewrap(Map.of("PATH", path)), "found").isEqualTo(Optional.of(bwrap));
 			requireThat(CodexRunner.bubblewrap(Map.of("PATH", empty.toString())), "absent").isEmpty();
 			requireThat(CodexRunner.bubblewrap(Map.of()), "withoutPath").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that the app-server's bubblewrap replaces each hidden directory with an empty, read-only one and mounts
+	 * back inside it, after the paths that contain them, the paths that the session writes and then those that it
+	 * only reads, so that a read-only path inside a writable one stays read-only. A path outside every hidden
+	 * directory is left as it is.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void hidesDirectoriesAroundSessionPaths() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path hidden = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-hidden-")).toRealPath();
+			Path project = Files.createDirectories(hidden.resolve("runs/run/project"));
+			Path home = Files.createDirectories(hidden.resolve("runs/run/home"));
+			Path responses = Files.createDirectories(home.resolve("responses"));
+			Path evidence = Files.createDirectories(hidden.resolve("runs/trial/artifacts"));
+			Path outside = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-outside-")).toRealPath();
+			Path bwrap = Path.of("/usr/bin/bwrap").toAbsolutePath();
+			List<String> command = CodexRunner.appServerCommand("codex", false);
+
+			requireThat(CodexRunner.withPrivateTmp(command, bwrap, project.getParent(), List.of(hidden),
+				List.of(project, home), List.of(responses, evidence, outside)), "command").isEqualTo(List.of(
+				bwrap.toString(), "--dev-bind", "/", "/", "--tmpfs", Path.of("/tmp").toString(),
+				"--tmpfs", hidden.toString(),
+				"--bind", home.toString(), home.toString(),
+				"--bind", project.toString(), project.toString(),
+				"--ro-bind", evidence.toString(), evidence.toString(),
+				"--ro-bind", responses.toString(), responses.toString(),
+				"--remount-ro", hidden.toString(),
+				"--die-with-parent", "--", "codex", "app-server", "--stdio", "--disable", "plugins"));
+		}
+	}
+
+	/**
+	 * Verifies that a trial session, which reads no evidence, keeps the sandbox that it had before judges could read
+	 * evidence, with bubblewrap on the {@code PATH}: its app-server runs under bubblewrap with only a private
+	 * {@code /tmp}, and its permission profile denies the whole run root and the paths that the caller denies.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void trialSandboxHidesNothingMore() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("codex");
+			manager.snapshotProject(run);
+			manager.create("codex");
+			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
+			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
+			Path bwrap = Files.writeString(bin.resolve("bwrap"), "");
+			requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
+			Path configuration = run.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
+				run.directory().resolve("project"));
+			List<String> appServer = CodexRunner.appServerCommand("codex", false);
+			Map<String, String> environment = Map.of("PATH", bin.toString());
+
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(heldOut),
+				Platform.LINUX_X64, environment, null, appServer);
+
+			requireThat(sandbox.command(), "command").isEqualTo(CodexRunner.withPrivateTmp(appServer, bwrap,
+				run.directory()));
+			JsonNode denied = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+				path("permissions").path(sandbox.profile()).path("filesystem");
+			for (Path path : List.of(root, heldOut))
+			{
+				requireThat(denied.path(path.toRealPath().toString()).stringValue(""), "access(" + path + ")").
+					isEqualTo("deny");
+			}
 		}
 	}
 

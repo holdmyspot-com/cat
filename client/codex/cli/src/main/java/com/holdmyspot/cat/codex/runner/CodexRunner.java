@@ -33,13 +33,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.TreeMap;
 
 /**
  * Creates an isolated Codex configuration and starts one persistent Codex CLI process, optionally with CAT.
@@ -201,18 +204,16 @@ public final class CodexRunner
 			CodexConnectionConfiguration.copy(hostHome.resolve(CONFIGURATION), isolatedConfiguration,
 				run.directory().resolve("project"), caches,
 				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current());
-			String permissionProfile = addSessionProfile(isolatedConfiguration, manager, run, readOnlyEvidence,
-				deniedReads, Platform.current(), environment, requestAccess);
+			List<String> appServer = appServerCommand(executable, installCat || !trialPlugins.isEmpty());
+			SessionSandbox sandbox = sessionSandbox(isolatedConfiguration, manager, run, readOnlyEvidence, deniedReads,
+				Platform.current(), environment, requestAccess, appServer);
 			Map<String, String> isolatedEnvironment = processEnvironment(environment, caches, isolatedHome,
 				run.directory());
 			Path worktree = run.directory().resolve("project");
 			installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome, isolatedEnvironment,
 				executables, (setup, step) -> HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables,
 					manager, run, step));
-			List<String> appServer = appServerCommand(executable, installCat || !trialPlugins.isEmpty());
-			List<String> command = bubblewrap(environment).
-				map(bubblewrap -> withPrivateTmp(appServer, bubblewrap, run.directory())).
-				orElse(appServer);
+			List<String> command = sandbox.command();
 			manager.initialize(run, artifact, project, "codex_app_server", command);
 			lock = manager.acquireLock(run);
 			HarnessSessionTranscripts transcripts = null;
@@ -236,7 +237,7 @@ public final class CodexRunner
 				if (requestAccess != null)
 					requestLauncher = requestAccess.launcher();
 				process.initialize(worktree, selectedModel, developerInstructions(manager.root().toRealPath(), worktree,
-					isolatedHome, agentInstructions, requestLauncher, sessionRequests), selectedEffort, permissionProfile);
+					isolatedHome, agentInstructions, requestLauncher, sessionRequests), selectedEffort, sandbox.profile());
 				return new HarnessRunSession(run, process, scope, lock);
 			}
 			catch (IOException e)
@@ -351,6 +352,54 @@ public final class CodexRunner
 	}
 
 	/**
+	 * Adds to a session's configuration the permission profile that its thread runs under, as
+	 * {@link #addSessionProfile(Path, HarnessRunManager, HarnessRun, List, List, Platform, Map, SessionRequestAccess)}
+	 * does, and returns it with the command that starts the session's app-server: under bubblewrap with a private
+	 * {@code /tmp}, as {@link #withPrivateTmp(List, Path, Path)} describes, when the caller's {@code PATH} has
+	 * bubblewrap, or else the app-server command itself.
+	 * <p>
+	 * That bubblewrap also hides from the app-server each directory that
+	 * {@link #hiddenDirectories(HarnessRunManager, List, List, Platform, Map)} returns, and reopens inside it the
+	 * session's project and home and its requests directory, if any, for writing and the session's read-only evidence
+	 * for reading only. The permission profile then names neither those directories nor the paths under them, so its
+	 * size does not grow with the number of runs or files beside the evidence.
+	 *
+	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
+	 * @param manager          the run manager
+	 * @param run              the session's run
+	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
+	 * @param deniedReads      the files and directories that the caller denies the session reading
+	 * @param platform         the platform that the session runs on
+	 * @param environment      the caller's environment, which names the user's home, harness directories and
+	 *                         {@code PATH}
+	 * @param requestAccess    the session's access to requested sessions, or {@code null} if it may request none
+	 * @param appServer        the command that starts the app-server
+	 * @return the session's sandbox
+	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
+	 * @throws IOException          if an evidence path does not exist, a denied directory cannot be listed, or the
+	 *                              configuration cannot be updated
+	 */
+	public static SessionSandbox sessionSandbox(Path configuration, HarnessRunManager manager, HarnessRun run,
+		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
+		SessionRequestAccess requestAccess, List<String> appServer) throws IOException
+	{
+		requireThat(appServer, "appServer").isNotEmpty();
+		String profile = addSessionProfile(configuration, manager, run, readOnlyEvidence, deniedReads, platform,
+			environment, requestAccess);
+		Optional<Path> bubblewrap = bubblewrap(environment);
+		if (bubblewrap.isEmpty())
+			return new SessionSandbox(profile, appServer);
+		List<Path> writable = new ArrayList<>(List.of(run.directory().resolve("project"),
+			run.directory().resolve("home")));
+		if (requestAccess != null)
+			writable.add(requestAccess.requests());
+		List<String> command = withPrivateTmp(appServer, bubblewrap.get(), run.directory(),
+			hiddenDirectories(manager, sessionReadOnly(readOnlyEvidence, requestAccess), deniedReads, platform,
+				environment), writable, sessionReadOnly(readOnlyEvidence, requestAccess));
+		return new SessionSandbox(profile, command);
+	}
+
+	/**
 	 * Adds to a session's configuration the permission profile that its thread runs under: the session may read but
 	 * not change {@code readOnlyEvidence}, as {@link #sessionReadOnly(List, SessionRequestAccess)} extends it, and may
 	 * not read the paths that {@link #sessionDeniedReads(HarnessRunManager, HarnessRun, List, List, Platform, Map,
@@ -413,8 +462,10 @@ public final class CodexRunner
 	 * also denies the runs that start after the session. It omits a path inside another directory that it names, except
 	 * the session log directory and the login inside the session's home. Every platform's sandbox still lets the
 	 * session read and write its project and home inside a denied directory, such as the project that holds the run
-	 * root, but the Linux sandbox would also hide read-only evidence there, so a Linux session with evidence under a
-	 * denied directory is denied each other file and directory under it by its own path instead.
+	 * root, but the Linux sandbox would also hide read-only evidence there. The result therefore omits each directory
+	 * that {@link #hiddenDirectories(HarnessRunManager, List, List, Platform, Map)} returns, which the app-server's
+	 * bubblewrap hides instead, and the paths under it. A Linux session whose caller's {@code PATH} has no bubblewrap is
+	 * instead denied each other file and directory under a denied directory that holds evidence by its own path.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
@@ -468,11 +519,11 @@ public final class CodexRunner
 		if (requestAccess != null)
 			accessible.add(requestAccess.requests());
 		Set<Path> result = new LinkedHashSet<>();
-		List<Path> directories = new ArrayList<>(deniedReads);
-		directories.add(manager.root());
-		for (Path denied : directories)
+		List<Path> hidden = hiddenDirectories(manager, readOnlyEvidence, deniedReads, platform, environment);
+		for (Path directory : deniedDirectories(manager, deniedReads))
 		{
-			Path directory = denied.toAbsolutePath().normalize();
+			if (hidden.stream().anyMatch(directory::startsWith))
+				continue;
 			if (platform.isLinux() && HarnessRunManager.containsAny(directory, readOnlyEvidence))
 				result.addAll(HarnessRunManager.deniedReads(directory, accessible));
 			else
@@ -503,6 +554,63 @@ public final class CodexRunner
 				result.add(file);
 		}
 		return List.copyOf(result);
+	}
+
+	/**
+	 * Returns the directories that the bubblewrap around a Linux session's app-server hides: each directory that the
+	 * caller denies, and the run root, that holds read-only evidence, except one inside another. The Linux sandbox of
+	 * Codex hides read-only paths inside a directory that a permission profile denies, so such a directory cannot be
+	 * denied in the profile. Denying each other path under it instead made the profile of a judge that ran beside
+	 * thousands of runs too long for Codex to pass to its sandbox helper, which then failed to start the judge's
+	 * thread.
+	 *
+	 * @param manager          the run manager
+	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
+	 * @param deniedReads      the files and directories that the caller denies the session reading
+	 * @param platform         the platform that the session runs on
+	 * @param environment      the caller's environment, whose {@code PATH} names bubblewrap
+	 * @return the directories, absolute and normalized, or none if the session does not run on Linux or the
+	 *   {@code PATH} has no bubblewrap
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static List<Path> hiddenDirectories(HarnessRunManager manager, List<Path> readOnlyEvidence,
+		List<Path> deniedReads, Platform platform, Map<String, String> environment)
+	{
+		requireThat(manager, "manager").isNotNull();
+		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
+		requireThat(deniedReads, "deniedReads").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		if (!platform.isLinux() || bubblewrap(environment).isEmpty())
+			return List.of();
+		List<Path> holding = new ArrayList<>();
+		for (Path directory : deniedDirectories(manager, deniedReads))
+		{
+			if (HarnessRunManager.containsAny(directory, readOnlyEvidence))
+				holding.add(directory);
+		}
+		// Bubblewrap cannot mount over a directory inside one that it already replaced with an empty one
+		return holding.stream().
+			filter(path -> holding.stream().noneMatch(other -> !other.equals(path) && path.startsWith(other))).
+			distinct().
+			toList();
+	}
+
+	/**
+	 * Returns the directories that a session must not read as a whole: those that the caller denies, followed by the
+	 * run root.
+	 *
+	 * @param manager     the run manager
+	 * @param deniedReads the files and directories that the caller denies the session reading
+	 * @return the directories, absolute and normalized
+	 */
+	private static List<Path> deniedDirectories(HarnessRunManager manager, List<Path> deniedReads)
+	{
+		List<Path> directories = new ArrayList<>();
+		for (Path denied : deniedReads)
+			directories.add(denied.toAbsolutePath().normalize());
+		directories.add(manager.root().toAbsolutePath().normalize());
+		return directories;
 	}
 
 	/**
@@ -614,6 +722,63 @@ public final class CodexRunner
 	}
 
 	/**
+	 * Returns a command that runs another command under bubblewrap with a private, empty {@code /tmp}, as
+	 * {@link #withPrivateTmp(List, Path, Path)} does, that also replaces each of several directories with an empty one
+	 * and mounts back inside it each path that the command may write or read. The command then sees nothing else of
+	 * those directories, however many files they hold.
+	 *
+	 * @param command      the command to run
+	 * @param bubblewrap   the bubblewrap executable
+	 * @param runDirectory the run's directory, which stays visible when it is below {@code /tmp}
+	 * @param hidden       the existing directories to replace with empty ones, none inside another
+	 * @param writable     the existing paths that the command may read and write; those outside every hidden directory
+	 *                     are left as they are
+	 * @param readOnly     the existing paths that the command may read but not change; those outside every hidden
+	 *                     directory are left as they are
+	 * @return the command that runs {@code command}
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the real path of a hidden directory or of a path inside one cannot be read
+	 */
+	public static List<String> withPrivateTmp(List<String> command, Path bubblewrap, Path runDirectory,
+		List<Path> hidden, List<Path> writable, List<Path> readOnly) throws IOException
+	{
+		requireThat(hidden, "hidden").isNotNull();
+		requireThat(writable, "writable").isNotNull();
+		requireThat(readOnly, "readOnly").isNotNull();
+		List<String> wrapped = new ArrayList<>(withPrivateTmp(command, bubblewrap, runDirectory));
+		if (hidden.isEmpty())
+			return wrapped;
+		List<String> mounts = new ArrayList<>();
+		List<Path> hiddenReal = new ArrayList<>();
+		for (Path directory : hidden)
+		{
+			Path real = directory.toRealPath();
+			hiddenReal.add(real);
+			mounts.addAll(List.of("--tmpfs", real.toString()));
+		}
+		// A path is mounted after the paths that contain it, so that a read-only path inside a writable one stays
+		// read-only
+		Map<Path, String> reopened = new TreeMap<>(Comparator.comparingInt(Path::getNameCount).
+			thenComparing(Comparator.naturalOrder()));
+		for (Path path : writable)
+			reopened.put(path.toRealPath(), "--bind");
+		for (Path path : readOnly)
+			reopened.put(path.toRealPath(), "--ro-bind");
+		for (Entry<Path, String> path : reopened.entrySet())
+		{
+			if (hiddenReal.stream().noneMatch(path.getKey()::startsWith))
+				continue;
+			String name = path.getKey().toString();
+			mounts.addAll(List.of(path.getValue(), name, name));
+		}
+		// The command would otherwise write files into the empty directories, which vanish when it ends
+		for (Path directory : hiddenReal)
+			mounts.addAll(List.of("--remount-ro", directory.toString()));
+		wrapped.addAll(wrapped.indexOf("--die-with-parent"), mounts);
+		return wrapped;
+	}
+
+	/**
 	 * Returns the first executable {@code bwrap} file in the directories of the caller's {@code PATH}.
 	 *
 	 * @param environment the caller's environment
@@ -715,5 +880,32 @@ public final class CodexRunner
 		requireThat(environment, "environment").isNotNull();
 		return AUTHENTICATION_VARIABLES.stream().map(environment::get).noneMatch(value ->
 			value != null && !value.isBlank());
+	}
+
+	/**
+	 * The sandbox of a session: the permission profile that its thread names and the command that starts its
+	 * app-server.
+	 *
+	 * @param profile the profile that the thread names, or an empty string if the thread uses the workspace-write
+	 *                sandbox
+	 * @param command the command that starts the app-server
+	 */
+	public record SessionSandbox(String profile, List<String> command)
+	{
+		/**
+		 * Creates a session's sandbox.
+		 *
+		 * @param profile the profile that the thread names, or an empty string if the thread uses the workspace-write
+		 *                sandbox
+		 * @param command the command that starts the app-server
+		 * @throws NullPointerException     if any of the arguments are null
+		 * @throws IllegalArgumentException if {@code command} is empty
+		 */
+		public SessionSandbox
+		{
+			requireThat(profile, "profile").isNotNull();
+			requireThat(command, "command").isNotEmpty();
+			command = List.copyOf(command);
+		}
 	}
 }
