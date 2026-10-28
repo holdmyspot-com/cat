@@ -271,8 +271,9 @@ public final class CodexRunnerTest
 		Path bwrap = Path.of("/usr/bin/bwrap").toAbsolutePath();
 
 		requireThat(CodexRunner.withPrivateTmp(command, bwrap, Path.of("/work/run").toAbsolutePath()), "command").
-			isEqualTo(List.of(bwrap.toString(), "--dev-bind", "/", "/", "--tmpfs", Path.of("/tmp").toString(),
-				"--die-with-parent", "--", "codex", "app-server", "--stdio", "--disable", "plugins"));
+			isEqualTo(List.of(bwrap.toString(), "--dev-bind", "/", "/", "--tmpfs",
+				Path.of("/tmp").toAbsolutePath().toString(), "--die-with-parent", "--", "codex", "app-server", "--stdio",
+				"--disable", "plugins"));
 	}
 
 	/**
@@ -286,8 +287,8 @@ public final class CodexRunnerTest
 		Path run = Path.of("/tmp/runs/run").toAbsolutePath();
 
 		requireThat(CodexRunner.withPrivateTmp(command, bwrap, run), "command").isEqualTo(List.of(bwrap.toString(),
-			"--dev-bind", "/", "/", "--tmpfs", Path.of("/tmp").toString(), "--bind", run.toString(), run.toString(),
-			"--die-with-parent", "--", "codex", "app-server", "--stdio", "--enable", "hooks"));
+			"--dev-bind", "/", "/", "--tmpfs", Path.of("/tmp").toAbsolutePath().toString(), "--bind", run.toString(),
+			run.toString(), "--die-with-parent", "--", "codex", "app-server", "--stdio", "--enable", "hooks"));
 	}
 
 	/**
@@ -394,14 +395,15 @@ public final class CodexRunnerTest
 			List<String> appServer = CodexRunner.appServerCommand("codex", false);
 			Map<String, String> environment = Map.of("PATH", bin.toString());
 
-			// The test's temporary directory, which holds the run root, stands in for /tmp
+			// The test's temporary directory, which holds the run root, stands in for /tmp. Its path can lead through a
+			// symbolic link or a short name, so the run directory is expected in its real form.
 			Path privateTmp = temporary.toRealPath();
 
 			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(heldOut),
 				Platform.LINUX_X64, environment, null, appServer, privateTmp);
 
 			requireThat(sandbox.command(), "command").isEqualTo(CodexRunner.withPrivateTmp(appServer, bwrap,
-				run.directory(), privateTmp));
+				run.directory().toRealPath(), privateTmp));
 			JsonNode denied = TomlMapper.builder().build().readTree(Files.readString(configuration)).
 				path("permissions").path(sandbox.profile()).path("filesystem");
 			for (Path path : List.of(root, heldOut))
@@ -409,6 +411,46 @@ public final class CodexRunnerTest
 				requireThat(denied.path(path.toRealPath().toString()).stringValue(""), "access(" + path + ")").
 					isEqualTo("deny");
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a trial session whose run root is reached through a symbolic link into the shared temporary
+	 * directory, as {@code /var} leads into {@code /private/var} on macOS, keeps its run directory visible inside the
+	 * private temporary directory and gets no other mount: its paths lie inside its run directory however they are
+	 * written. Here a directory of the test's own stands in for {@code /tmp}.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void trialSandboxFollowsLinkedRunRoot() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path fixture = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-linked-root-")).
+				toRealPath();
+			Path privateTmp = Files.createDirectory(fixture.resolve("tmp"));
+			Path link = Files.createSymbolicLink(fixture.resolve("link"), privateTmp);
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), link.resolve("root"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("codex");
+			manager.snapshotProject(run);
+			Path bin = Files.createDirectory(fixture.resolve("bin"));
+			Path bwrap = Files.writeString(bin.resolve("bwrap"), "");
+			requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
+			Path configuration = run.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
+				run.directory().resolve("project"));
+			List<String> appServer = CodexRunner.appServerCommand("codex", false);
+			Path realRun = run.directory().toRealPath();
+
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(),
+				Platform.LINUX_X64, Map.of("PATH", bin.toString()), null, appServer, privateTmp);
+
+			requireThat(sandbox.command(), "command").isEqualTo(List.of(bwrap.toString(), "--dev-bind", "/", "/",
+				"--tmpfs", privateTmp.toString(), "--bind", realRun.toString(), realRun.toString(), "--die-with-parent",
+				"--", "codex", "app-server", "--stdio", "--disable", "plugins"));
 		}
 	}
 

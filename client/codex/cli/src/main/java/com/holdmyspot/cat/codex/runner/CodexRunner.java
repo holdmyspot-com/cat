@@ -854,7 +854,8 @@ public final class CodexRunner
 	 *                     directory and outside {@code /tmp}, or inside {@code runDirectory}, are left as they are
 	 * @return the command that runs {@code command}
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the real path of a hidden directory or of a path inside one cannot be read
+	 * @throws IOException          if the real path of {@code runDirectory}, of a hidden directory or of a path inside
+	 *                              one cannot be read
 	 */
 	public static List<String> withPrivateTmp(List<String> command, Path bubblewrap, Path runDirectory,
 		List<Path> hidden, List<Path> writable, List<Path> readOnly) throws IOException
@@ -879,7 +880,8 @@ public final class CodexRunner
 	 * @param privateTmp   the shared temporary directory that the command gets a private copy of
 	 * @return the command that runs {@code command}
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the real path of a hidden directory or of a path inside one cannot be read
+	 * @throws IOException          if the real path of {@code runDirectory}, of a hidden directory or of a path inside
+	 *                              one cannot be read
 	 */
 	public static List<String> withPrivateTmp(List<String> command, Path bubblewrap, Path runDirectory,
 		List<Path> hidden, List<Path> writable, List<Path> readOnly, Path privateTmp) throws IOException
@@ -887,9 +889,19 @@ public final class CodexRunner
 		requireThat(hidden, "hidden").isNotNull();
 		requireThat(writable, "writable").isNotNull();
 		requireThat(readOnly, "readOnly").isNotNull();
-		List<String> wrapped = new ArrayList<>(withPrivateTmp(command, bubblewrap, runDirectory, privateTmp));
-		Path absoluteTmp = privateTmp.toAbsolutePath().normalize();
-		Path absoluteRun = runDirectory.toAbsolutePath().normalize();
+		requireThat(runDirectory, "runDirectory").isNotNull();
+		requireThat(privateTmp, "privateTmp").isNotNull();
+
+		// The session's paths below are compared in their real form, so the run directory and the temporary
+		// directory are too. A run directory reached through a symbolic link, such as /var/folders/... on macOS,
+		// which leads to /private/var/folders/..., would otherwise not seem to lie in the real temporary directory
+		// nor to contain the session's real paths: it would stay hidden while its project and home were mounted
+		// back one by one. A temporary directory that does not exist, such as /tmp on Windows, holds no path.
+		Path realRun = runDirectory.toRealPath();
+		Path realTmp = privateTmp.toAbsolutePath().normalize();
+		if (Files.exists(realTmp))
+			realTmp = realTmp.toRealPath();
+		List<String> wrapped = new ArrayList<>(withPrivateTmp(command, bubblewrap, realRun, realTmp));
 		List<String> mounts = new ArrayList<>();
 		List<Path> hiddenReal = new ArrayList<>();
 		for (Path directory : hidden)
@@ -910,7 +922,7 @@ public final class CodexRunner
 		{
 			// The private temporary directory would also hide a path of the session's that lies in the shared one
 			// outside the run directory, which stays visible, such as the evidence of a host project there
-			boolean inPrivateTmp = path.getKey().startsWith(absoluteTmp) && !path.getKey().startsWith(absoluteRun);
+			boolean inPrivateTmp = path.getKey().startsWith(realTmp) && !path.getKey().startsWith(realRun);
 			if (!inPrivateTmp && hiddenReal.stream().noneMatch(path.getKey()::startsWith))
 				continue;
 			String name = path.getKey().toString();
