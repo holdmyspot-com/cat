@@ -637,20 +637,25 @@ public final class DriverHarness
 	public SessionResult.Completed completed(String response, String model, String promptSources)
 	{
 		++trialResults;
-		Path evidence = directory.resolve("trial-evidence").resolve(String.valueOf(trialResults));
-		Path effects = evidence.resolve("project");
-		Path initialProject = evidence.resolve("initial-project");
+		// Campaigns complete hundreds of trials, and every trial's evidence is rendered from its two directories. They
+		// sit side by side in one parent, so each trial creates two directories rather than three.
+		Path evidence = directory.resolve("trial-evidence");
+		Path effects = evidence.resolve("project-" + trialResults);
+		Path initialProject = evidence.resolve("initial-project-" + trialResults);
 		try
 		{
-			Files.createDirectories(effects);
-			Files.createDirectories(initialProject);
+			if (trialResults == 1)
+				Files.createDirectories(evidence);
+			Files.createDirectory(effects);
+			Files.createDirectory(initialProject);
 		}
 		catch (IOException e)
 		{
 			throw new UncheckedIOException(e);
 		}
 		judgments.put(effects, Verdict.PASS);
-		return new SessionResult.Completed(evidence.resolve("artifacts/transcript"), List.of(List.of(response)),
+		return new SessionResult.Completed(evidence.resolve("artifacts").resolve("transcript-" + trialResults),
+			List.of(List.of(response)),
 			effects, initialProject, model, "reasoning-1", null, List.of(), promptSources, List.of());
 	}
 
