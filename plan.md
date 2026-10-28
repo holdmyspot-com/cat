@@ -306,6 +306,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-129 | `optimize-medium` | Changes only the prompt author’s earlier-attempt input and its recurrence instruction; an error hides a targeted kind or result, or keeps unbounded hunk evidence in the turn. |
 | WI-131 | `optimize-high` | Adds ranking before reservations, exact promotion-share tie breaks, persisted assignments and version-43 migration; an error repeats approaches, changes a resumed assignment, stops a campaign on ranking failure, or prevents a paused campaign from continuing. |
 | WI-132 | `optimize-high` | Changes the promotion rule, the scheduling of promotion runs, weak-round selection and the campaign format; an error promotes a regressing edit, rejects equally good edits, keeps spending runs on a rejected attempt, or prevents a paused version-44 campaign from continuing. |
+| WI-133 | `optimize-xhigh` | Adds a lazily loaded bundled rule and a skill in both harnesses that test changed workflow commands on remote runners through an Upterm session; an error starts sessions for read-only inspection or local builds, lets changed commands run before the agent is connected, abandons a failed worker for a new run, or teaches one provider's mechanism as if every provider had it. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -531,6 +532,7 @@ requirement names.
 | WI-129 | Done: prompt author receives the compact earlier-attempt table with kinds and results, oldest first, without earlier hunk evidence. Behavioral red checks demonstrated the old JSON input and reversed ordering; all 177 focused checks pass. Full offline build passes: 3,259 tests, zero failures/errors, 11 skipped. Stored manifests, campaign format and measurement identity are unchanged; no template version-registry update applies. |
 | WI-131 | Done 2026-10-27 (Codex; integrated as `86654e5847`, pushed and released in v1.0 at the user's request). Ranked assignment, promotion-share ties, retry then declaration-order fallback, file-backed restart and version-43 continuation are checked; the Claude and Codex session contract tests replay an `APPROACH_RANKER` session. Full clean build 3,318 tests, 0 failures, 11 skipped; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 5.60 s and `[6]` 1.11 s, `SessionRequestBrokerTest.refusesHostileInputs[10]` 1.20 s, `LogLinesTest.timestampsIncreaseWithin2025` 1.17 s, `MarkdownSectionsTest` two cases 1.07 to 1.12 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.06 s. The user installed the Codex build on the host (2026-10-27T16:08Z) and E5 resumed on it, with the user's ruling to treat the new build as equivalent. WI-130 remains reserved. |
 | WI-132 | Implemented 2026-10-27 on branch `promotion-efficiency` (Claude `optimize-high`), not yet integrated. Pooled per-prompt-test regression check with paired reruns, triggering-first regression runs, early stop and cancellation of a rejected attempt's unstarted runs, and format 45 with version-44 upgrade on read. Build evidence is in the delegation report. |
+| WI-133 | Implemented 2026-10-27 on branch `upterm-skill` (Claude, user request and choices of 2026-10-27), not yet integrated. Bundled rule `rules/include/common/remote-runner-testing.md`, lazily routed from the default rules beside the CI-debugging route, and the `remote-runner-session` skill in both harnesses over one shared body; organic scenarios for the rule (GitLab change tested through a session, Windows failure retried on the same worker, read-only pipeline question, changed CI script run locally) and the skill (incomplete Jenkins integration repaired first, Windows prompt wait, file transfer losing input). Certification is deferred (D111). Build evidence is in the delegation report. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). A bundled rule loads when an agent creates, updates or debugs a build workflow: find the cause, keep valid outputs, resume from the failed step, and pass end to end incrementally before a clean run; build verification now requires that clean full run of the same revision. Full clean build 3,318 tests, 0 failures, 11 skipped; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 5.96 s and `[6]` 1.79 s, `SessionRequestBrokerTest.refusesHostileInputs` `[18]` 3.75 s, `[10]` 1.50 s and `[23]` 1.44 s, four `DriverTest` cases 1.14 to 2.07 s, `TestabilityAuditTest.coreReferencesNoHarness` 1.00 s. |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). `ForkTest.diffHoldsOnlySelectedChanges` is the one owner of a non-empty diff through Git: added, edited and deleted selected files appear, unselected changes do not, and the index is unchanged; breaking the path filter failed it. `InMemoryForks.diff` returns supplied patches, and three delivery tests use it; `noCommitCreatedInBase` stays on Git because no other test shows that delivery leaves the base history and index unchanged. This closes the G9 source-audit gap "each Git operation has exactly one owning test". Full clean build 3,319 tests, 0 failures, 11 skipped; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs` `[5]` 6.27 s and `[6]` 1.40 s, `SessionRequestBrokerTest.refusesHostileInputs[10]` 1.77 s and `[18]` 1.02 s, `OptimizerCoreTest.startReportsAddedExclude` 1.35 s and `statusCombinesSliceUsage` 1.21 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.04 s. |
 | Final gates (§9), interim audit on `c64f57c9b3` | Gate 3: source inventory (374 test sources, 23 POMs) and a process trace found no real Codex/Claude/model launch and no native group/profile; retained processes exercise packaged boundaries or controlled shell, Git and Java fixtures. The traced run is process-audit evidence only: ptrace caused two 30-second request-input tests to time out, while the subsequent untraced focused run passed all nine checks. No timeout or security restriction was relaxed. Audit source hashes and complete execution evidence are retained in orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/java-harness-audit-obirnizd/`. Gate 2: class-level inventory has 136 requirements, 134 tagged, with R-I1 and R-I6 untagged and no unknown tags. Passing class reports do not establish exact tagged-method/data-provider execution; live E receipts are not reconciled. Gate 2 remains unmet. Current G9 execution is recorded under WI-127. Gates 4, 5, 7 and 8 remain unmet. |
@@ -3481,6 +3483,27 @@ including mappings of one source into several plugins; the old two-plugin refusa
 - **Why one item:** the regression rule, the run planning that feeds it and the persisted roles of its runs form one
 	contract that a saved campaign must continue under.
 
+### WI-133 — Remote-runner testing rule and Upterm skill (user request, 2026-10-27)
+
+- **Problem:** another project's rule and skill hold hard-won lessons about testing workflow changes on remote runners
+	through Upterm (detached sessions, cleanup order, prompt waits, terminal sequences, transfer sizes, key-refusal
+	wording), but they name GitHub Actions' files and APIs, and the plugin has no guidance for this task.
+- **Scope:** `client/common/rules/`, `client/common/skills/`, `client/claude/skills/`, `client/codex/skills/`, the
+	distribution's rule audience test, `docs/default-rules.md`, this design and plan.
+- **Change:** by backward design, add a bundled rule, lazily loaded from the default rules when a CI or hosted workflow
+	runs changed commands on a remote runner to test them, that requires a verified Upterm session before those commands
+	run, retries on the same worker and observed cleanup, and refers to the CI-debugging and build-workflow rules where
+	they meet. Add the `remote-runner-session` skill in both harnesses, whose shared body states the requirements that
+	any provider's integration must meet, has the agent inspect and repair the project's own integration, and keeps the
+	provider-independent Upterm lessons. No per-provider reference files (D111).
+- **Tests:** organic prompt tests for the rule (`gitlab_change_tested_through_session`,
+	`windows_failure_retried_on_same_worker`, `read_only_pipeline_question`, `changed_ci_script_run_locally`) and the
+	skill (`incomplete_integration_repaired_first`, `windows_prompt_wait_times_out`, `file_transfer_loses_input`); the
+	rule audience test covers the route.
+- **Exit:** the full clean build passes with the rule and skill packaged in both harnesses. Certification of the rule
+	and skill runs later with the other certifications and is not part of this item. Closes D111.
+- **Why one item:** the rule names the skill for its procedure, and both share one set of scenarios and one decision.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -3609,6 +3632,7 @@ blocks only the part of a work item that it names.
 | WI-129 | WI-58 |
 | WI-131 | WI-26, WI-58, WI-129 |
 | WI-132 | WI-18, WI-20, WI-26, WI-131 |
+| WI-133 | — |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
