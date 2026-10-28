@@ -61,6 +61,14 @@ public final class ClaudeConnectionSettings
 	 * inside the project and nowhere else.
 	 */
 	private static final List<String> PERMISSION_GRANTS = List.of("Skill", "Edit(./**)");
+	/**
+	 * The permission rule that lets the isolated instance run every Bash command without asking the user, which a
+	 * nested instance has no user to answer. Removing credentials from commands also turns off Claude Code's
+	 * {@code sandbox.autoAllowBashIfSandboxed}, which otherwise runs the commands that the sandbox confines without
+	 * asking, so this rule takes its place where the settings require that sandbox. The parent's rules that deny a
+	 * command or ask before running it still take precedence over it.
+	 */
+	private static final String SANDBOXED_COMMAND_GRANT = "Bash";
 	private static final Set<String> CONNECTION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN");
 
@@ -110,10 +118,11 @@ public final class ClaudeConnectionSettings
 	 * as its allow rules, added directories and default permission mode, so the isolated instance cannot use them to
 	 * reach the parent's directories. It allows the {@code Skill} tool instead, which the isolated instance has no
 	 * user to approve.
-	 * Outside Windows, it requires a sandbox and forbids commands outside it, whatever the parent's settings say. On
-	 * Windows, it retains the parent's other sandbox settings instead and requires no sandbox. Host settings must not
-	 * control other isolated-instance behavior. It also denies the instance reading each of
-	 * {@code deniedReads}: the sandbox denies its commands through {@code sandbox.filesystem.denyRead}, and a
+	 * Outside Windows, it requires a sandbox and forbids commands outside it, whatever the parent's settings say, and
+	 * lets the instance run its commands, which that sandbox confines, without approval. On Windows, it retains the
+	 * parent's other sandbox settings instead, requires no sandbox and adds no rule that runs every command without
+	 * approval. Host settings must not control other isolated-instance behavior. It also denies the instance reading
+	 * each of {@code deniedReads}: the sandbox denies its commands through {@code sandbox.filesystem.denyRead}, and a
 	 * {@code Read} rule in {@code permissions.deny} denies its file tools, which the sandbox does not confine. When
 	 * {@code deniedReads} is not empty, the host's {@code sandbox.filesystem.allowRead} is not retained, because it
 	 * would re-allow the reads that the sandbox denies.
@@ -262,6 +271,9 @@ public final class ClaudeConnectionSettings
 				grants.add("Bash(" + runner + ":*)");
 			grants.add("Read(/" + rulePath(requestAccess.responses()) + "/**)");
 		}
+		// Claude Code has no sandbox to confine commands on Windows
+		if (!platform.isWindows())
+			grants.add(SANDBOXED_COMMAND_GRANT);
 		List<String> writablePaths = new ArrayList<>();
 		writablePaths.add(claudeHome.toString());
 		for (Path cache : dependencyCaches)

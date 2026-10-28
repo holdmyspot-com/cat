@@ -25,8 +25,8 @@ import tools.jackson.databind.JsonNode;
 public final class ClaudeConnectionSettingsTest
 {
 	/**
-	 * Verifies that requested sessions grant only the literal launcher commands, the request launcher and both runner
-	 * launchers beside it, and no command grant otherwise.
+	 * Verifies that requested sessions grant the literal launcher commands, the request launcher and both runner
+	 * launchers beside it, and no launcher grant otherwise, beside the grant of the commands that the sandbox confines.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -46,7 +46,7 @@ public final class ClaudeConnectionSettingsTest
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, Platform.LINUX_X64);
 			JsonNode allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
-			requireThat(allow.size(), "grantCount").isEqualTo(6);
+			requireThat(allow.size(), "grantCount").isEqualTo(7);
 			requireThat(allow.path(2).asString(), "launcherGrant").isEqualTo("Bash(" + launcher + ":*)");
 			requireThat(allow.path(3).asString(), "claudeRunnerGrant").isEqualTo("Bash(" +
 				launcher.resolveSibling("claude-runner") + ":*)");
@@ -56,7 +56,7 @@ public final class ClaudeConnectionSettingsTest
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, Platform.LINUX_X64);
 			allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
-			requireThat(allow.size(), "defaultGrantCount").isEqualTo(2);
+			requireThat(allow.size(), "defaultGrantCount").isEqualTo(3);
 			requireThat(allow.path(0).asString(), "skillGrant").isEqualTo("Skill");
 			requireThat(allow.path(1).asString(), "editGrant").isEqualTo("Edit(./**)");
 		}
@@ -93,7 +93,7 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(grants, "grants").isEqualTo(List.of("Skill", "Edit(./**)", "Bash(" + launcher + ":*)",
 				"Bash(" + launcher.resolveSibling("claude-runner") + ":*)",
 				"Bash(" + launcher.resolveSibling("codex-runner") + ":*)",
-				"Read(/" + ClaudeConnectionSettings.rulePath(responses) + "/**)"));
+				"Read(/" + ClaudeConnectionSettings.rulePath(responses) + "/**)", "Bash"));
 			requireThat(settings.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
 			List<String> writablePaths = new ArrayList<>();
 			for (JsonNode path : settings.path("sandbox").path("filesystem").path("allowWrite"))
@@ -177,9 +177,9 @@ public final class ClaudeConnectionSettingsTest
 	 * parent's grants: its allow rules, its added directories and its default permission mode, which would let the
 	 * isolated instance read and write the parent's directories, such as the project whose prompts CAT measures. They
 	 * allow the {@code Skill} tool, which a nested instance has no user to approve, and edits inside the project, which
-	 * the permission mode no longer grants once Claude removes credentials from commands. They do not retain the parent's
-	 * writable paths, such as its Claude and CAT directories, and allow writes only to the instance's home and the
-	 * shared dependency caches.
+	 * the permission mode no longer grants once Claude removes credentials from commands, and the commands that the
+	 * sandbox confines. They do not retain the parent's writable paths, such as its Claude and CAT directories, and
+	 * allow writes only to the instance's home and the shared dependency caches.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -239,7 +239,7 @@ public final class ClaudeConnectionSettingsTest
 				isEqualTo(List.of("Read(//secrets/**)"));
 			requireThat(strings(result.path("permissions").path("ask")), "ask").isEqualTo(List.of("Bash(rm *)"));
 			requireThat(strings(result.path("permissions").path("allow")), "allow").
-				isEqualTo(List.of("Skill", "Edit(./**)"));
+				isEqualTo(List.of("Skill", "Edit(./**)", "Bash"));
 			requireThat(result.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
 			requireThat(result.path("permissions").has("defaultMode"), "defaultMode").isFalse();
 			requireThat(result.path("env").path("DISABLE_AUTOUPDATER").asString(), "autoUpdater").isEqualTo("1");
@@ -355,6 +355,88 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(sandbox.has("enabled"), "sandboxEnabled").isFalse();
 			requireThat(sandbox.has("failIfUnavailable"), "failIfUnavailable").isFalse();
 			requireThat(sandbox.has("allowUnsandboxedCommands"), "unsandboxedCommands").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that on Linux, a session's commands that the sandbox confines run without approval, which nobody can
+	 * give to a nested instance, while the settings still forbid every command outside the sandbox and keep each
+	 * denial: the parent's rules that deny a tool or ask before using it, the listed reads, and writes beyond the
+	 * instance's home.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void sandboxedCommandsRunWithoutApproval() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-sandboxed-commands-"));
+			Path source = root.resolve("settings.json");
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+			Path claudeHome = claudeTemporaryDirectory.resolve("home");
+			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
+			Files.writeString(source, """
+				{
+				  "sandbox": {
+				    "autoAllowBashIfSandboxed": false,
+				    "excludedCommands": ["docker *"],
+				    "filesystem": {"allowWrite": ["/workspace"], "denyRead": ["/secrets"]}
+				  },
+				  "permissions": {
+				    "ask": ["Bash(git push *)"],
+				    "deny": ["Bash(curl *)", "Read(//secrets/**)"]
+				  }
+				}
+				""");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
+				claudeHome, List.of(), claudeTemporaryDirectory, List.of(snapshot), Platform.LINUX_X64);
+
+			JsonNode result = scope.json().readTree(Files.readString(destination));
+			JsonNode sandbox = result.path("sandbox");
+			requireThat(strings(result.path("permissions").path("allow")), "allow").contains("Bash");
+			requireThat(sandbox.path("autoAllowBashIfSandboxed").asBoolean(true), "autoAllowBash").isTrue();
+			requireThat(sandbox.path("enabled").asBoolean(), "sandboxEnabled").isTrue();
+			requireThat(sandbox.path("failIfUnavailable").asBoolean(), "failIfUnavailable").isTrue();
+			requireThat(sandbox.path("allowUnsandboxedCommands").asBoolean(), "unsandboxedCommands").isFalse();
+			requireThat(sandbox.has("excludedCommands"), "excludedCommands").isFalse();
+			requireThat(strings(result.path("permissions").path("ask")), "ask").
+				isEqualTo(List.of("Bash(git push *)"));
+			requireThat(strings(result.path("permissions").path("deny")), "deny").isEqualTo(List.of("Bash(curl *)",
+				"Read(//secrets/**)", "Read(/" + ClaudeConnectionSettings.rulePath(snapshot) + ")"));
+			requireThat(strings(sandbox.path("filesystem").path("denyRead")), "denyRead").
+				isEqualTo(List.of("/secrets", snapshot.toString()));
+			requireThat(strings(sandbox.path("filesystem").path("allowWrite")), "allowWrite").
+				isEqualTo(List.of(claudeHome.toString()));
+		}
+	}
+
+	/**
+	 * Verifies that on Windows, where Claude Code has no sandbox to confine commands, isolated settings do not let a
+	 * command run without approval.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void unconfinedCommandsNeedApprovalOnWindows() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-commands-"));
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory,
+				List.of(), Platform.WINDOWS_X64);
+
+			JsonNode result = scope.json().readTree(Files.readString(destination));
+			requireThat(strings(result.path("permissions").path("allow")), "allow").
+				isEqualTo(List.of("Skill", "Edit(./**)"));
 		}
 	}
 

@@ -71,7 +71,7 @@ public final class ClaudeSessions extends RunnerSessions
 	 * session's model receives or how its actions take effect, and register the new version with the hash of the
 	 * settings that the runner generates.
 	 */
-	private static final int SESSION_ENVIRONMENT_VERSION = 11;
+	private static final int SESSION_ENVIRONMENT_VERSION = 12;
 	/**
 	 * The CAT release that introduced {@link #SESSION_ENVIRONMENT_VERSION}. Set it to the release that ships a new
 	 * version whenever the version changes.
