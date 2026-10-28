@@ -2474,6 +2474,13 @@ because a session's installed plugins link to files there. On Windows, where Cla
 sandbox, the read limits bind only Claude's file tools. A harness that a command starts directly therefore cannot
 reach the model provider; a session that needs another session requests one instead (D98).
 
+No one can answer a nested session's approval prompt, so a session's own commands run without one. Outside Windows the
+Claude runner allows Bash for the session and relies on the sandbox it requires, which forbids unsandboxed commands:
+the credential scrub turns off Claude Code's own `sandbox.autoAllowBashIfSandboxed` and its `acceptEdits` mode, so
+without that grant every command but the launcher waited for an approval, and a session could not even create a
+directory in its project. The user's deny and ask rules still apply first. On Windows, where nothing confines the
+commands, the runner adds no such grant.
+
 **Requested sessions (user rulings, 2026-10-23):** a caller that passes `--session-requests <count>` lets the session
 request up to that many sessions over the run; the default, `0`, allows none, and the optimizer allows none in its
 trials. The session requests one by running the `request-session` launcher that the runner names in its environment,
