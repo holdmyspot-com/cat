@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -53,9 +54,9 @@ public final class CodexRunnerCli
 	private static final String TOOL_OUTPUT_TOKEN_LIMIT = "--tool-output-token-limit";
 
 	/**
-	 * Prints the usage, runs a lifecycle-only command or one prompt, or serves JSONL turns through one persistent
-	 * isolated Codex process, as the arguments select. A bridge command that names no {@code --artifact} runs the
-	 * artifact that holds this launcher.
+	 * Prints the usage, verifies an artifact, runs a lifecycle-only command or one prompt, or serves JSONL turns
+	 * through one persistent isolated Codex process, as the arguments select. A bridge command that names no
+	 * {@code --artifact} runs the artifact that holds this launcher.
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, a bridge launch becomes a session request instead:
 	 * the run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
@@ -70,6 +71,11 @@ public final class CodexRunnerCli
 		if (args.length == 1 && args[0].equals("--help"))
 		{
 			System.out.println(HarnessRunnerOptions.usage("codex-runner"));
+			return;
+		}
+		if (args.length == 2 && args[0].equals("--verify-artifact"))
+		{
+			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".codex-plugin/plugin.json")));
 			return;
 		}
 		if (HarnessRunnerMaintenance.isMaintenanceCommand(args))

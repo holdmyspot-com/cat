@@ -113,6 +113,49 @@ public final class HarnessArtifact
 	}
 
 	/**
+	 * Validates a complete unpacked plugin directory, built for a platform, that holds a runner launcher, and returns
+	 * that launcher.
+	 *
+	 * @param root the unpacked plugin directory
+	 *
+	 * @param manifestPath the plugin manifest path relative to {@code root}
+	 *
+	 * @param runner the runner launcher's name in the artifact's {@code bin} directory, without the {@code .cmd}
+	 *   extension that it has on Windows
+	 *
+	 * @param platform the platform that the artifact was built for and runs on
+	 *
+	 * @return the runner launcher's path in the normalized plugin directory
+	 *
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code runner} is blank
+	 * @throws IOException if the artifact does not satisfy {@link #validate(Path, Path, Platform)} or lacks the
+	 *   executable runner launcher. The message names the artifact directory.
+	 */
+	public static Path runnerLauncher(Path root, Path manifestPath, String runner, Platform platform)
+		throws IOException
+	{
+		requireThat(root, "root").isNotNull();
+		requireThat(runner, "runner").isNotBlank();
+		Path normalized;
+		try
+		{
+			normalized = validate(root, manifestPath, platform);
+		}
+		catch (IOException e)
+		{
+			throw new IOException(e.getMessage() + ": " + root.toAbsolutePath().normalize(), e);
+		}
+		String launcher = runner;
+		if (platform.isWindows())
+			launcher += ".cmd";
+		Path runnerPath = normalized.resolve("bin").resolve(launcher);
+		if (!Files.isRegularFile(runnerPath, NOFOLLOW_LINKS) || !Files.isExecutable(runnerPath))
+			throw new IOException("The artifact lacks the executable runner launcher " + runnerPath);
+		return runnerPath;
+	}
+
+	/**
 	 * Prevents construction of utility class instances.
 	 */
 	private HarnessArtifact()

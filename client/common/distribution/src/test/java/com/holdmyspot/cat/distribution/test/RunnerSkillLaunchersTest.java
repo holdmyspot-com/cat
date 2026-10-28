@@ -8,10 +8,21 @@ import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -26,6 +37,11 @@ public final class RunnerSkillLaunchersTest
 	private static final String CLAUDE_MODULE = "com.holdmyspot.cat.claude.cli";
 	private static final String CODEX_MODULE = "com.holdmyspot.cat.codex.cli";
 	private static final String COMMON_MODULE = "com.holdmyspot.cat.common.cli";
+	/**
+	 * A launcher that a skill names in its plugin's {@code bin/}, whose first group is the launcher's name.
+	 */
+	private static final Pattern BIN_LAUNCHER = Pattern.compile(
+		"(?<![A-Za-z0-9_.>/-])bin/([A-Za-z0-9][A-Za-z0-9._-]*)");
 
 	/** Creates a test instance. */
 	public RunnerSkillLaunchersTest()
@@ -91,6 +107,133 @@ public final class RunnerSkillLaunchersTest
 			contains("codex-runner");
 		requireThat(access.codexAgentLaunchers(), "codexAgentLaunchers").contains("claude-runner").
 			contains("codex-runner");
+	}
+
+	/**
+	 * Supplies each plugin's harness with the launchers that the plugin holds in {@code bin/} and the launchers of
+	 * its image.
+	 *
+	 * @return the harness's name, its plugin's launchers' names in {@code bin/}, and its image's launchers
+	 */
+	@DataProvider
+	public Object[][] plugins()
+	{
+		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
+		return new Object[][]{{"claude", access.claudeAgentLaunchers(), access.claudeLaunchers()},
+			{"codex", access.codexAgentLaunchers(), access.codexLaunchers()}};
+	}
+
+	/**
+	 * Verifies that following any skill that a plugin holds can run every launcher that it names: each
+	 * {@code bin/<launcher>} named in the skill's manifest or in its shared body is in that plugin's {@code bin/}.
+	 *
+	 * @param harness        the harness whose plugin to check
+	 * @param agentLaunchers the launchers in the plugin's {@code bin/}
+	 * @param imageLaunchers the launchers of the plugin's image
+	 * @throws IOException        if a skill cannot be read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test(dataProvider = "plugins")
+	public void pluginHoldsEveryLauncherItsSkillsName(String harness, Set<String> agentLaunchers,
+		List<JlinkImageBuilder.Launcher> imageLaunchers) throws IOException, URISyntaxException
+	{
+		Set<String> imageNames = new TreeSet<>();
+		for (JlinkImageBuilder.Launcher launcher : imageLaunchers)
+			imageNames.add(launcher.name());
+		List<String> missing = new ArrayList<>();
+		List<String> skills = new ArrayList<>();
+		forEachSkillTree(harness, harnessSkills ->
+		{
+			try (Stream<Path> entries = Files.list(harnessSkills))
+			{
+				// A directory's name in a JAR file system ends with "/"
+				for (Path skill : entries.filter(Files::isDirectory).toList())
+					skills.add(skill.getFileName().toString().replace("/", ""));
+			}
+		});
+		requireThat(skills, "skills").isNotEmpty();
+		for (String skill : skills)
+		{
+			Set<String> named = new TreeSet<>();
+			forEachSkillTree(harness, tree -> collectLaunchers(tree.resolve(skill), named));
+			forEachSkillTree("common", tree -> collectLaunchers(tree.resolve(skill), named));
+			for (String launcher : named)
+			{
+				if (!agentLaunchers.contains(launcher) || !imageNames.contains(launcher))
+					missing.add(skill + " names bin/" + launcher);
+			}
+		}
+		requireThat(missing, "missing").withContext(harness, "harness").isEmpty();
+	}
+
+	/**
+	 * Adds the launchers that the Markdown files of one skill name in {@code bin/}.
+	 *
+	 * @param skill the skill's directory, which need not exist
+	 * @param named receives the launchers' names
+	 * @throws IOException if a file cannot be read
+	 */
+	private static void collectLaunchers(Path skill, Set<String> named) throws IOException
+	{
+		if (!Files.isDirectory(skill))
+			return;
+		try (Stream<Path> files = Files.walk(skill))
+		{
+			for (Path file : files.filter(path -> path.toString().endsWith(".md")).toList())
+			{
+				Matcher matcher = BIN_LAUNCHER.matcher(Files.readString(file));
+				while (matcher.find())
+					named.add(matcher.group(1));
+			}
+		}
+	}
+
+	/**
+	 * Visits a module's {@code skills} tree on the class path.
+	 */
+	@FunctionalInterface
+	private interface SkillTreeVisitor
+	{
+		/**
+		 * Visits the tree.
+		 *
+		 * @param skills the {@code skills} directory
+		 * @throws IOException if the tree cannot be read
+		 */
+		void visit(Path skills) throws IOException;
+	}
+
+	/**
+	 * Visits the {@code skills} tree of one skill module on the class path, whether a directory or a JAR.
+	 *
+	 * @param module  the module's harness, {@code claude}, {@code codex} or {@code common}
+	 * @param visitor the visitor
+	 * @throws IOException        if the tree cannot be read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	private static void forEachSkillTree(String module, SkillTreeVisitor visitor) throws IOException,
+		URISyntaxException
+	{
+		int visited = 0;
+		for (URL url : resources("skills"))
+		{
+			if (!url.toString().matches(".*" + module + "[-/]skills.*"))
+				continue;
+			++visited;
+			URI root = url.toURI();
+			if (!root.getScheme().equals("jar"))
+			{
+				visitor.visit(Path.of(root));
+				continue;
+			}
+			String location = root.getSchemeSpecificPart();
+			Path jar = Path.of(new URI(location.substring(0, location.indexOf("!/"))));
+			try (FileSystem contents = FileSystems.newFileSystem(jar))
+			{
+				visitor.visit(contents.getPath("/skills"));
+			}
+		}
+		requireThat(visited, "visited").withContext(module, "module").isEqualTo(1);
 	}
 
 	/**
