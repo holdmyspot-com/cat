@@ -49,6 +49,7 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
@@ -2483,6 +2484,99 @@ public final class OptimizerCoreTest
 			requireThat(Files.readString(repository.directory(id).resolve("held_out/proposal.json")), "stored").
 				contains("Revision number 1 limit.");
 		}
+	}
+
+	/**
+	 * Verifies that {@code revise} keeps every test case that the user reviewed in the part that the proposal showed,
+	 * under the same salt, when the revision adds test cases, and that the confirmed contract assigns each of them
+	 * to that part.
+	 * <p>
+	 * Starting the proposal runs its guard pilot, and the proposal, the revision and the confirmation each persist the
+	 * campaign, so the test can exceed one second during a parallel build.
+	 */
+	@Test
+	public void reviseKeepsTestCasesInTheirParts() throws Exception
+	{
+		// Requirement: R-I2
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count -> derivation(output ->
+			{
+				if (count == 0)
+					return;
+				ObjectNode formatting = (ObjectNode) output.get("tests").get(0);
+				ArrayNode testCases = (ArrayNode) formatting.get("test_cases");
+				for (String tone : List.of("a playful", "a stern", "a warm", "a blunt"))
+				{
+					ObjectNode testCase = testCases.addObject();
+					ArrayNode values = testCase.putArray("values");
+					values.addObject().put("variable", "tone").put("text", tone);
+					values.addObject().put("variable", "audience").put("text", "an expert");
+					testCase.put("expected_outcome", tone + " summary shortened for an expert reader");
+				}
+			}));
+			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
+			String id = started.status().campaignId();
+			Path stored = repository.directory(id).resolve("held_out/proposal.json");
+			long saltBefore = JSON.readTree(Files.readString(stored)).get("salt").asLong();
+			Map<String, Part> before = partsShown(started.proposal());
+			requireThat(before.values(), "partsBefore").contains(Part.DEVELOPMENT).contains(Part.HELD_OUT);
+
+			CommandResult revised = repository.core().revise(id, "cover more tones");
+
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "contractAuthors").
+				isEqualTo(2);
+			Map<String, Part> after = partsShown(revised.proposal());
+			requireThat(after.size(), "casesAfter").isGreaterThan(before.size());
+			requireThat(after.get("a playful summary shortened for an expert reader"), "newCase").isNotNull();
+			for (Map.Entry<String, Part> testCase : before.entrySet())
+			{
+				requireThat(after.get(testCase.getKey()), "partAfter").withContext(testCase.getKey(), "testCase").
+					isEqualTo(testCase.getValue());
+			}
+			requireThat(JSON.readTree(Files.readString(stored)).get("salt").asLong(), "storedSalt").
+				isEqualTo(saltBefore);
+
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+
+			Contract contract = repository.load(id).contract();
+			requireThat(contract.salt(), "confirmedSalt").isEqualTo(saltBefore);
+			Map<String, Part> confirmed = new HashMap<>();
+			for (PromptTest test : contract.tests())
+			{
+				for (TestCase testCase : test.allTestCases())
+				{
+					confirmed.put(testCase.expectedOutcome(), contract.split().partOf(test, testCase));
+				}
+			}
+			requireThat(confirmed, "confirmedParts").isEqualTo(after);
+			for (Map.Entry<String, Part> testCase : before.entrySet())
+			{
+				requireThat(confirmed.get(testCase.getKey()), "confirmedPart").withContext(testCase.getKey(), "testCase").
+					isEqualTo(testCase.getValue());
+			}
+		}
+	}
+
+	/**
+	 * Returns the part that a presented proposal shows for each test case.
+	 *
+	 * @param proposal the presented proposal
+	 * @return the part, by the test case's expected outcome
+	 */
+	private static Map<String, Part> partsShown(String proposal)
+	{
+		Map<String, Part> parts = new HashMap<>();
+		Matcher matcher = Pattern.compile("expected outcome \"([^\"]*)\"; (development|held-out) part").
+			matcher(proposal);
+		while (matcher.find())
+		{
+			Part part = Part.DEVELOPMENT;
+			if (matcher.group(2).equals("held-out"))
+				part = Part.HELD_OUT;
+			parts.put(matcher.group(1), part);
+		}
+		return parts;
 	}
 
 	/**
