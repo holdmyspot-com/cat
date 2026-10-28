@@ -1,0 +1,10 @@
+# Opens a key-restricted Upterm session in the job's workspace before the job's script runs.
+.remote-session:
+  variables:
+    UPTERM_VERSION: "v0.14.3"
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 60m
+  before_script:
+    - ci/start-session.sh
+  after_script:
+    - ci/hold-worker.sh
+    - rm -rf "$CI_PROJECT_DIR/.remote-session"

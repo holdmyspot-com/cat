@@ -1,0 +1,9 @@
+# Opens an Upterm session when the pipeline variable REMOTE_SESSION_PUBLIC_KEY is set, and keeps the job's worker until
+# the remote shell exits.
+.remote-session:
+  variables:
+    UPTERM_VERSION: v0.14.3
+  before_script:
+    - ci/start-session.sh
+  after_script:
+    - ci/hold-worker.sh

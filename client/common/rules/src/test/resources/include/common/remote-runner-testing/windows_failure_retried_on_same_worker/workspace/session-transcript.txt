@@ -1,0 +1,11 @@
+# Remote session to the windows-release agent, job "release"
+$ ls .remote-session
+authorized_keys  client-ready  host.log
+$ ls {{output_dir}}
+app.exe
+$ tail -n 4 buildkite-step.log
+--- Compile finished in {{minutes}}m
+--- Running pwsh -File scripts/package.ps1
+Exception: Cannot find path 'dist/win-x64/app.exe' because it does not exist.
+--- Step failed with exit status 1; waiting for the remote session to end before cleanup
+$

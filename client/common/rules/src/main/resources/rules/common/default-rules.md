@@ -195,6 +195,9 @@ authoritative evidence and keep any workaround narrow and removable.
 When debugging a failed CI or hosted-workflow step, lazy load `../include/common/ci-debugging.md` to choose the
 authoritative local or hosted reproduction boundary before retrying.
 
+When running a CI or hosted workflow on a remote runner to test changed commands that it runs there, lazy load
+`../include/common/remote-runner-testing.md` before dispatching the run.
+
 When analyzing a reported or newly observed unexpected failure, discovering that an earlier action violated the
 user-authorized scope, diagnosing why an agent ignored or misapplied an instruction, or designing a prevention, lazy
 load `../include/common/failure-prevention.md` to classify its cause, isolate the earliest controllable decision or

@@ -1,0 +1,30 @@
+trigger:
+  branches:
+    include: [main]
+
+parameters:
+  - name: remoteSessionPublicKey
+    displayName: Public key for a remote session (leave empty for a normal run)
+    type: string
+    default: ''
+
+variables:
+  UPTERM_VERSION: v0.14.3
+  REMOTE_SESSION_PUBLIC_KEY: ${{ parameters.remoteSessionPublicKey }}
+
+jobs:
+  - job: ui_tests
+    pool:
+      vmImage: macos-14
+    timeoutInMinutes: 120
+    steps:
+      - checkout: self
+      - script: ci/start-session.sh
+        displayName: Start remote session
+      - script: ci/wait-for-client.sh
+        displayName: Wait for client
+      - script: xcodebuild test -scheme App -destination 'platform=iOS Simulator,name=iPhone 15'
+        displayName: UI tests
+      - script: ci/hold-worker.sh
+        displayName: Hold worker
+        condition: always()

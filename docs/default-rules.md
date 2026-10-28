@@ -1,8 +1,9 @@
 # CAT Default Rules
 
 CAT supplies these bundled common rules for every supported coding harness. Most are injected directly at session start;
-backward-design and design-quality guidance is loaded when design or implementation work needs it. Add project rules
-only for decisions that are specific to your codebase or workflow.
+backward-design and design-quality guidance is loaded when design or implementation work needs it, and remote-runner
+testing guidance when a task tests changed commands on a remote runner. Add project rules only for decisions that are
+specific to your codebase or workflow.
 
 | Rule | What it provides |
 | --- | --- |
@@ -24,6 +25,7 @@ only for decisions that are specific to your codebase or workflow.
 | Limitations and workarounds | Evaluate feasible paths before declaring a limitation or choosing a workaround. |
 | Prompt-file references | Concise, authoritative references between prompts, files, and tools. |
 | Prompt-file dependencies | Dependency ordering and term definitions across rendered direct rules. |
+| Remote runner testing | A live, authenticated Upterm session to the worker before changed commands run there, retries on the same worker, and observed cleanup, on any runner provider.<br>Loaded when a CI or hosted workflow runs changed commands on a remote runner to test them; the `remote-runner-session` skill supplies the procedure. |
 | Reusable values | One authoritative definition for values reused across coupled locations. |
 | Test-driven development | Focused tests before implementation for testable changes. |
 | Testing focus and isolation | Observable, isolated tests that avoid validating implementation mechanics. |

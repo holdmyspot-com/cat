@@ -52,6 +52,7 @@ public final class BundledRuleAudienceTest
 				requireThat(subagent, harness + "Subagent").contains("# Default Rule Routing").
 					contains("include/common/design-quality.md`").doesNotContain("# Design Quality").
 					contains("include/common/build-workflow.md`").doesNotContain("# Build Workflow Development").
+					contains("include/common/remote-runner-testing.md`").doesNotContain("# Remote Runner Testing").
 					contains("lazy load `").contains("# Request Execution").
 					contains("A subagent does not load this rule").
 					doesNotContain("# User Request Scheduling").doesNotContain("# File Links");
@@ -60,6 +61,7 @@ public final class BundledRuleAudienceTest
 				requireThat(main, harness + "Main").contains("# Default Rule Routing").
 					contains("# Request Execution").contains("# User Request Scheduling").contains("# File Links").
 					contains("include/common/build-workflow.md`").doesNotContain("# Build Workflow Development").
+					contains("include/common/remote-runner-testing.md`").doesNotContain("# Remote Runner Testing").
 					doesNotContain("# Design Quality");
 			}
 		}

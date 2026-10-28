@@ -1,0 +1,23 @@
+stages:
+  - build
+  - test
+
+include:
+  - local: ci/remote-session.yml
+
+build:
+  stage: build
+  tags: [{{runner_tag}}]
+  script:
+    - make build
+  artifacts:
+    paths: [build/]
+
+integration:
+  stage: test
+  tags: [{{runner_tag}}]
+  needs: [build]
+  extends: .remote-session
+  script:
+    - ci/wait-for-client.sh
+    - {{command}}

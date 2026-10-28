@@ -1,0 +1,42 @@
+pipeline {
+	agent { label '{{agent_label}}' }
+	parameters {
+		string(name: 'REMOTE_SESSION_PUBLIC_KEY', defaultValue: '',
+			description: 'Public key that may join a remote session; leave empty for a normal build')
+	}
+	environment {
+		UPTERM_VERSION = 'v0.14.3'
+	}
+	options {
+		timeout(time: 3, unit: 'HOURS')
+	}
+	stages {
+		stage('Build') {
+			steps {
+				sh 'make build'
+			}
+		}
+		stage('Remote session') {
+			when { expression { params.REMOTE_SESSION_PUBLIC_KEY } }
+			steps {
+				sh 'ci/start-session.sh'
+			}
+		}
+		stage('Integration') {
+			steps {
+				sh 'scripts/integration.sh'
+			}
+		}
+		stage('Cleanup') {
+			steps {
+				sh 'rm -rf .remote-session'
+			}
+		}
+		stage('Hold worker') {
+			when { expression { params.REMOTE_SESSION_PUBLIC_KEY } }
+			steps {
+				sh 'ci/hold-worker.sh'
+			}
+		}
+	}
+}

@@ -1,0 +1,10 @@
+include:
+  - local: ci/remote-session.yml
+
+docs:
+  stage: test
+  extends: .remote-session
+  image: alpine:3.20
+  script:
+    - ci/wait-for-client.sh
+    - ci/check-docs.sh

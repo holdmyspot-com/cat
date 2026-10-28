@@ -1,0 +1,17 @@
+agents:
+  queue: windows-release
+
+env:
+  UPTERM_VERSION: v0.14.3
+
+steps:
+  - label: ":windows: release"
+    key: release
+    timeout_in_minutes: 180
+    plugins:
+      - ./.buildkite/plugins/remote-session:
+          public-key: "${REMOTE_SESSION_PUBLIC_KEY}"
+    commands:
+      - pwsh -File scripts/wait-for-client.ps1
+      - pwsh -File scripts/compile.ps1 -Output "{{output_dir}}"
+      - pwsh -File scripts/package.ps1
