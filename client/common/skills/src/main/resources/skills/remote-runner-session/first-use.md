@@ -8,6 +8,10 @@
 	finds a missing piece by inspecting that integration and repairs it before the remote test.
 - A failure is diagnosed and retried on the same worker and workspace, keeping valid completed outputs and the original
 	failure's evidence, and every file sent through the shell matches its original before it is used.
+- A session left idle ends by itself: one that nobody joins within the idle limit, 30 minutes unless the task states
+	another, and a joined one after that long without input from a guest, without ending a command that is still
+	running. The worker's cleanup then runs, and the agent keeps the session from idling out while it still needs the
+	worker.
 - The session ends deliberately after the required verification, the agent observes the worker's cleanup, and it
 	removes the client-side keys and files it created only after their last user has finished.
 
@@ -42,8 +46,17 @@ the worker, and find where each of these is supplied. Read their current values 
 6. **Cleanup waits for the session.** Removing the workspace and the files that hold the key runs after the remote
 	wait, even on failure. A cleanup step that the workflow places after a detached session runs too early; register
 	cleanup with the provider's lifecycle so that it runs after the wait.
-7. **Upterm's version and its limits are fixed.** The integration installs a pinned Upterm version, and states how
-	long a session waits for its first connection and the job's timeout. Know both before you start.
+7. **An idle session ends.** The idle limit is 30 minutes unless the task states another. A session that nobody joins
+	within the limit ends, for example through Upterm's `--join-timeout` option. Once a guest has joined, Upterm never
+	ends the session by itself, even after the guest disconnects without exiting the shell, so the hosted command must
+	end itself after the limit passes without input from a guest, without ending a command that is still running. For
+	example, host a bash, zsh or ksh shell that sets its own `TMOUT` variable to the limit in seconds and makes it
+	read-only, for example in a startup file: such a shell exits after waiting that long at its prompt for a command,
+	but not while a command runs. Do not export `TMOUT`, because bash scripts that the commands start would then stop
+	waiting for input after that long. When the session ends this way, the remote wait ends too, and cleanup runs after
+	it.
+8. **Upterm's version and the job's timeout are fixed.** The integration installs a pinned Upterm version that
+	supports the idle limit's options, and states the job's timeout. Know both, and the idle limit, before you start.
 
 Reuse what the provider and the integration already supply, and add only what is missing. An integration that works on
 one provider does not show that its lifecycle holds on another; check each provider that the test uses. If a piece is
@@ -85,6 +98,11 @@ not show that you can run commands.
 If only your client fails while the worker is still available, reconnect to the same session and verify the
 workspace's state before you continue.
 
+Keep the session from idling out while you still need the worker. A command that runs in the foreground keeps it open,
+but time spent waiting at the prompt counts toward the idle limit, including a long analysis between commands and time
+with no client connected. Before the limit passes, send a short command through the session, such as listing the
+directory that the job owns.
+
 ### 4. Send files through the shell
 
 Ordinary short commands need no special handling. To send a file through the interactive shell, encode its bytes as
@@ -115,14 +133,17 @@ as caches, and use the smallest replacement run that can reproduce the failure.
 
 When you are done, exit the remote shell, wait for the SSH process to end, and observe the provider's terminal job
 result and its cleanup. Do not cancel a running build merely to close the session. Remove the keys and temporary files
-that you own only after their last user has finished. If a session expires before anyone connects, report that outcome
-with the original logs, not a passing test.
+that you own only after their last user has finished. If a session expires before anyone connects, or ends because it
+was left idle, report that outcome with the original logs, not a passing test. The worker's cleanup has run by then,
+so a further test needs a new run.
 
 ### Testing a change to the remote-access integration
 
 When the task changes the integration itself, test it with the cheapest run that exercises it, without rebuilding an
 unchanged product: connect first, create some state, fail on purpose, verify that state over the still-open connection,
 append a retry's result, exit, and verify the retained result after the remote wait. Keep the deliberate failure visible
-in the job's result. Also verify that a key other than yours is refused, and check each provider and platform whose
-lifecycle the change affects. Upterm refuses an unauthorized key with `session ... refused your key`; that is an
-authentication refusal even when SSH does not print `Permission denied (publickey)`.
+in the job's result. Also verify that a key other than yours is refused, and that, with an idle limit of a minute or
+two, a session that nobody joins ends, a joined session ends after that long at its prompt, a command that runs longer
+than the limit is not ended, and cleanup runs after each. Check each provider and platform whose lifecycle the change
+affects. Upterm refuses an unauthorized key with `session ... refused your key`; that is an authentication refusal even
+when SSH does not print `Permission denied (publickey)`.

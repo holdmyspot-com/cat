@@ -1,0 +1,36 @@
+name: Integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      remote_session_public_key:
+        description: Public key that may join a remote session; leave empty for a normal run
+        required: false
+        default: ''
+
+jobs:
+  integration:
+    runs-on: {{runner}}
+    timeout-minutes: 180
+    env:
+      UPTERM_VERSION: v0.40.0
+      REMOTE_SESSION_PUBLIC_KEY: ${{ inputs.remote_session_public_key }}
+      REMOTE_SESSION_DIR: ${{ runner.temp }}/remote-session
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make build
+      - name: Start remote session
+        if: inputs.remote_session_public_key != ''
+        run: ci/remote-session/start.sh
+      - name: Wait for readiness
+        if: inputs.remote_session_public_key != ''
+        run: ci/remote-session/wait-ready.sh
+      - name: Integration
+        run: scripts/integration.sh
+      - name: Hold worker
+        if: always() && inputs.remote_session_public_key != ''
+        run: ci/remote-session/hold.sh
+      - name: Clean up
+        if: always()
+        run: rm -rf "$REMOTE_SESSION_DIR"
