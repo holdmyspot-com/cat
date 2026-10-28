@@ -176,9 +176,8 @@ public final class SessionRequestCliTest
 	 * Verifies that packing rejects links anywhere in an input path and special files other than the null device, and
 	 * enforces prompt and tree-file bounds.
 	 * <p>
-	 * The entry-count case creates 10,001 directories, and the total-size case packs files until it crosses the
-	 * cumulative byte limit. Creating, reading and removing these fixtures can take several seconds; inputs below
-	 * those limits would not exercise the corresponding refusals.
+	 * The entry-count and total-size cases pack under bounds of 10 entries and 1,000 bytes, so that a few small files
+	 * cross them; the per-file and prompt cases use the bounds of every request.
 	 *
 	 * @param kind the unsafe input category
 	 * @throws IOException          if fixture I/O fails or packing rejects the input
@@ -237,29 +236,28 @@ public final class SessionRequestCliTest
 						}
 					}
 				}
+				RequestLimits limits = RequestLimits.DEFAULT;
 				if (kind.equals("entry_count"))
 				{
-					for (int index = 0; index < 10_001; ++index)
+					limits = new RequestLimits(10, limits.totalBytes(), limits.archiveBytes());
+					// With the project directory itself, the tree holds one entry more than the bound
+					for (int index = 0; index < limits.entries(); ++index)
 						Files.createDirectory(project.resolve("empty" + index));
 				}
 				if (kind.equals("total_size"))
 				{
-					for (int index = 0; index < 5; ++index)
-					{
-						try (FileChannel channel = FileChannel.open(project.resolve("large" + index),
-							StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))
-						{
-							channel.position(67_108_863);
-							channel.write(ByteBuffer.wrap(new byte[]{0}));
-						}
-					}
+					limits = new RequestLimits(limits.entries(), 1000, limits.archiveBytes());
+					// Each file is within the per-file bound, but together they exceed the total
+					for (int index = 0; index < 2; ++index)
+						Files.write(project.resolve("large" + index), new byte[600]);
 				}
 
 				try
 				{
+					// The null device is the one a sandbox mounts over each file that the session may not read
 					SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
-						"--prompt", prompt.toString()}, requests, new ManualClock(Instant.EPOCH), Thread::yield,
-						new PrintWriter(new StringWriter()));
+						"--prompt", prompt.toString()}, requests, Path.of("/dev/null"), limits,
+						new ManualClock(Instant.EPOCH), Thread::yield, new PrintWriter(new StringWriter()));
 				}
 				finally
 				{
