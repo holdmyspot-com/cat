@@ -31,7 +31,7 @@ clearly and consistently.
 When a CAT workflow creates, retains, hands off, or cleans up uncommitted state or evidence, lazy load
 `../include/workflow-temporary-resources.md` to assign its location, consumers, handoff, and cleanup ownership.
 
-When defining or changing a skill's frontmatter `description`, lazy load `skill-routing.md`.
+When defining or changing a skill's frontmatter `description`, lazy load `../include/skill-routing.md`.
 
 When defining, parsing, reading, or processing JSON or YAML that this project owns, naming a regression scenario or
 its assertions, or handling independently handleable unbounded record or binary input, lazy load
@@ -41,7 +41,7 @@ When writing, parsing, or displaying a date or time, including in a name or iden
 `../include/dates-and-times.md`.
 
 When changing a plugin installer that migrates persisted plugin data or a runtime assumption about that data, lazy load
-`plugin-data-migration.md`.
+`../include/plugin-data-migration.md`.
 
 Before rebuilding, reinstalling, refreshing, or validating a plugin distribution or cache, lazy load
 `plugin-artifacts.md` to distinguish repository-only project guidance from a changed packaged artifact.
