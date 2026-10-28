@@ -179,7 +179,8 @@ public final class CodexRunnerCliTest
 	 * Verifies that a relative {@code --read-only-evidence} path is refused, naming the path, because the session
 	 * could resolve it against a directory other than the one that holds the evidence.
 	 */
-	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*trial/project.*")
+	@Test(expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*trial[/\\\\]project.*")
 	public void refusesRelativeEvidencePath()
 	{
 		CodexRunnerCli.options(new String[]{"serve", "--artifact", Path.of("/artifact").toAbsolutePath().toString(),
