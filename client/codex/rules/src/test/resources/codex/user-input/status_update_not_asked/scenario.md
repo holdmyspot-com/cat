@@ -2,8 +2,8 @@
 
 ## Design Goals
 
-- Prove that an agent working through a task that leaves the user nothing to decide reports its progress as commentary,
-	not through a user-input tool.
+- Prove that an agent working through a task that leaves the user nothing to decide does not send its progress through
+	a user-input tool.
 
 ## Variables
 
@@ -22,8 +22,7 @@ files changed.
 - **kind**: effect
 - **description**: No user-input tool call, such as `request_user_input` or `request_user_input_async`, carries a
 	status or progress report, such as that the work is continuing or that no decision is needed. Codex records such a
-	call as an agent message that carries `questions`. Updates about the work reach the user only as commentary or in
-	the final response.
+	call as an agent message that carries `questions`.
 
 ### rename_completed
 

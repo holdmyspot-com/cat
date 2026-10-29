@@ -2,8 +2,8 @@
 
 ## Design Goals
 
-- Prove that an agent whose request already states the option to use and the permission to go ahead acts on them, and
-	does not ask the user to confirm either one.
+- Prove that an agent whose request already states the option to use and the permission to go ahead does not call a
+	user-input tool to ask the user to confirm either one.
 
 ## Variables
 
@@ -20,8 +20,8 @@ all of them, so go ahead and change them without checking with me first.
 
 - **kind**: effect
 - **description**: No user-input tool call, such as `request_user_input` or `request_user_input_async`, asks the user
-	to confirm the indentation width, which files to change, or whether to proceed, and the final response does not ask
-	for that confirmation either. Codex records a user-input tool call as an agent message that carries `questions`.
+	to confirm the indentation width, which files to change, or whether to proceed. Codex records a user-input tool call
+	as an agent message that carries `questions`.
 
 ### indentation_converted
 

@@ -6,28 +6,28 @@
 				"old_name": "calc_total",
 				"new_name": "compute_total"
 			},
-			"expected_outcome": "Every use of calc_total under src/ is renamed to compute_total and the changed files are listed, with progress reported only as commentary"
+			"expected_outcome": "Every use of calc_total under src/ is renamed to compute_total and the changed files are listed, without a user-input tool call that carries progress"
 		},
 		{
 			"values": {
 				"old_name": "get_sum",
 				"new_name": "line_total"
 			},
-			"expected_outcome": "Every use of get_sum under src/ is renamed to line_total and the changed files are listed, with progress reported only as commentary"
+			"expected_outcome": "Every use of get_sum under src/ is renamed to line_total and the changed files are listed, without a user-input tool call that carries progress"
 		},
 		{
 			"values": {
 				"old_name": "price_with_tax",
 				"new_name": "taxed_total"
 			},
-			"expected_outcome": "Every use of price_with_tax under src/ is renamed to taxed_total and the changed files are listed, with progress reported only as commentary"
+			"expected_outcome": "Every use of price_with_tax under src/ is renamed to taxed_total and the changed files are listed, without a user-input tool call that carries progress"
 		},
 		{
 			"values": {
 				"old_name": "total_amount",
 				"new_name": "order_total"
 			},
-			"expected_outcome": "Every use of total_amount under src/ is renamed to order_total and the changed files are listed, with progress reported only as commentary"
+			"expected_outcome": "Every use of total_amount under src/ is renamed to order_total and the changed files are listed, without a user-input tool call that carries progress"
 		}
 	]
 }
