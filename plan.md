@@ -309,6 +309,9 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-133 | `optimize-xhigh` | Adds a lazily loaded bundled rule and a skill in both harnesses that test changed workflow commands on remote runners through an Upterm session; an error starts sessions for read-only inspection or local builds, lets changed commands run before the agent is connected, abandons a failed worker for a new run, or teaches one provider's mechanism as if every provider had it. |
 | WI-134 | `optimize-high` | Changes what the judge's evidence section holds for every Codex and Claude trial and both harnesses' judge versions; an error hides a child's start, assignment or message from the judge, invents one the trial never showed, misplaces a message among the root's responses, makes a resumed campaign miss its judge change, or lets a Codex judge read another trial or the host project, or change its evidence. |
 | WI-135 | `optimize-high` | Changes when a certification attempt ends; an error ends an attempt that could still certify, keeps one running that cannot, certifies a cell that did not cross its threshold, or makes a resumed attempt decide differently from the attempt that recorded its outcomes. |
+| WI-136 | `optimize-high` | Adds an always-injected Codex rule; an error makes agents wait on commands that already ended, abandon a running command, or rely on partial output. |
+| WI-137 | `optimize-high` | Changes what the Codex trial record shows for a command and the Codex judge version; an error hides what the agent actually received, invents output it never saw, or makes a resumed campaign miss its judge change. |
+| WI-138 | `optimize-xhigh` | Changes how a trial session's environment starts; an error weakens a session's isolation or sandbox, or changes measurements without raising the session environment version. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -537,6 +540,9 @@ requirement names.
 | WI-133 | Done 2026-10-28 except certification (Claude, user request and choices of 2026-10-27; integrated as `1f32d9d555`, released in v1.0). Bundled rule `rules/include/common/remote-runner-testing.md`, lazily routed from the default rules beside the CI-debugging route, and the `remote-runner-session` skill in both harnesses over one shared body; organic scenarios for the rule (GitLab change tested through a session, Windows failure retried on the same worker, read-only pipeline question, changed CI script run locally) and the skill (incomplete Jenkins integration repaired first, Windows prompt wait, file transfer losing input). Certification is deferred (D111). Build evidence is in the delegation report. |
 | WI-134 | Done 2026-10-28 (Claude `optimize-high`; integrated as `e0f4536a65`, released in v1.0). Full clean build of `85ce653c46`: 3,339 tests, 0 failures, 11 skipped; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 6.17 s and `[6]` 1.47 s, `SessionRequestBrokerTest.refusesHostileInputs[10]` 1.56 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.11 s. Both harnesses' trial records hold child starts with their assignments, messages received from children with their senders and text, and child ends; Codex messages come from the root's session rollout, and Codex assignments are recorded as unreadable because Codex encrypts them. Judge version 11 for both harnesses. A Codex judge reads its trial's evidence read-only through the runner's new `--read-only-evidence` option (user ruling, 2026-10-27, option 1); judge version 11 also covers this, because the release that introduced it has not shipped. Build evidence is in the delegation report. Live defect after release (E5, 2026-10-28T12:00Z): every Codex judge failed to start with "failed to load AGENTS.md instructions … Argument list too long (os error 7)", because its profile denied each of the 20,522 sibling trial runs one by one (about 3.1 MB) and Codex passes the policy to `codex-linux-sandbox` as one argument (limit 128 KiB). Fixed on branch `codex-judge-e2big`: on Linux with bubblewrap, the app-server's bubblewrap wrapper hides the denied directory and mounts back the session's own paths and its evidence read-only, so the profile no longer lists sibling runs; trial sessions are unchanged; the judge and session environment versions stay 11 (registered hash unchanged). The first republish (run 40715863186) failed on hosted Linux: the private `/tmp` also hid evidence that lies under `/tmp` outside the judge's run directory; fixed in `4201fa35c8` (such session paths are mounted back, the rest of `/tmp` stays private). Linux without bubblewrap: by the user's ruling of 2026-10-28, a Linux session with read-only evidence refuses to start when bubblewrap is not on its `PATH`, with install instructions (`3a54e51459`; judge and session environment versions stay 11; `docs/installation.md` lists bubblewrap; clean build 3,351 tests, 0 failures, 11 skipped; at least 1 s: `DriverTest.version44ContinuesUnderPooledCheck` 1.16 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.08 s). The second republish (run 40718886796, `c59fa616a1`) failed on macOS and Windows: the mount-back compared real session paths with a run directory reached through a symbolic link or short name (`/var/folders` to `/private/var/folders`, `RUNNER~1`), so it hid the run directory and mounted its home and project back one by one; fixed in `c860d1da87` (run and temporary directories compared in real form; versions unchanged; clean build 3,352 tests, 0 failures, 11 skipped, none at least 1 s). Released in v1.0 `598cfbed13` and installed on the host 2026-10-28T16:59Z; E5 resumed (continue34) and its judges start and complete (first three `mvsd5tz6-2yd0c7fldm`, `mvsd5tz5-2yd0c789yf`, `mvsd5sz9-2yczqtxa7r`). |
 | WI-135 | Open (user request, 2026-10-29). |
+| WI-136 | Open (user request, 2026-10-29). |
+| WI-137 | Open (user request, 2026-10-29). |
+| WI-138 | Open (user request, 2026-10-29). |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). A bundled rule loads when an agent creates, updates or debugs a build workflow: find the cause, keep valid outputs, resume from the failed step, and pass end to end incrementally before a clean run; build verification now requires that clean full run of the same revision. Full clean build 3,318 tests, 0 failures, 11 skipped; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 5.96 s and `[6]` 1.79 s, `SessionRequestBrokerTest.refusesHostileInputs` `[18]` 3.75 s, `[10]` 1.50 s and `[23]` 1.44 s, four `DriverTest` cases 1.14 to 2.07 s, `TestabilityAuditTest.coreReferencesNoHarness` 1.00 s. |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). `ForkTest.diffHoldsOnlySelectedChanges` is the one owner of a non-empty diff through Git: added, edited and deleted selected files appear, unselected changes do not, and the index is unchanged; breaking the path filter failed it. `InMemoryForks.diff` returns supplied patches, and three delivery tests use it; `noCommitCreatedInBase` stays on Git because no other test shows that delivery leaves the base history and index unchanged. This closes the G9 source-audit gap "each Git operation has exactly one owning test". Full clean build 3,319 tests, 0 failures, 11 skipped; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs` `[5]` 6.27 s and `[6]` 1.40 s, `SessionRequestBrokerTest.refusesHostileInputs[10]` 1.77 s and `[18]` 1.02 s, `OptimizerCoreTest.startReportsAddedExclude` 1.35 s and `statusCombinesSliceUsage` 1.21 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.04 s. |
 | Final gates (§9), interim audit on `c64f57c9b3` | Gate 3: source inventory (374 test sources, 23 POMs) and a process trace found no real Codex/Claude/model launch and no native group/profile; retained processes exercise packaged boundaries or controlled shell, Git and Java fixtures. The traced run is process-audit evidence only: ptrace caused two 30-second request-input tests to time out, while the subsequent untraced focused run passed all nine checks. No timeout or security restriction was relaxed. Audit source hashes and complete execution evidence are retained in orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/java-harness-audit-obirnizd/`. Gate 2: class-level inventory has 136 requirements, 134 tagged, with R-I1 and R-I6 untagged and no unknown tags. Passing class reports do not establish exact tagged-method/data-provider execution; live E receipts are not reconciled. Gate 2 remains unmet. Current G9 execution is recorded under WI-127. Gates 4, 5, 7 and 8 remain unmet. |
@@ -805,6 +811,10 @@ Changes made to `design.md` and this plan during implementation, apart from this
 - `design.md` §2.3, §2.4, §2.8, the outcome table and D113: a certification attempt ends `not certified: inconclusive`
 	as soon as a cell is out of reach instead of when it reaches its cap; R-F2 reworded and WI-135 added with §1.1, §2
 	and §6 (user request, 2026-10-29, after the `mixed_pair` cell of E5's attempt 1 could no longer certify).
+- `design.md` §6.4, D114, D115 and D116: a Codex rule to wait for a command still running, the trial record showing
+	what the agent received before a command ended, and a prompt first command in trial sessions; WI-136, WI-137 and
+	WI-138 added with §1.1, §2 and §6 (user request, 2026-10-29, after E5's `mixed_pair` failures were traced to empty
+	results of slow first commands).
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -3586,6 +3596,53 @@ including mappings of one source into several plugins; the old two-plugin refusa
 - **Exit:** the acceptance tests and the clean build pass on the committed revision; design and plan match the behavior.
 	Closes D113 and its part of R-F2.
 
+### WI-136 — Codex agents wait for a running command (user request, 2026-10-29)
+
+- **Problem:** Codex returns a command's output to the agent once its yield time (10 seconds by default) passes, even
+	when the command has not ended; the result then has no exit status and may be empty. In E5 a child agent took such
+	an empty result of `cat docs/facts.md` to mean the file held no supporting sentence, and every matched formal
+	failure of the `mixed_pair` cell followed such a read.
+- **Scope:** `client/codex/rules/`, this design and plan.
+- **Change:** a new always-injected Codex rule (`design.md` D114): a command result without an exit status means the
+	command is still running and its output so far may be empty or partial; wait for it to end (poll the running
+	session or wait for its completion) before relying on its output, and never conclude from such a result that a file
+	is empty or that a command printed nothing. Follow the house rule format, with design goals, and add organic
+	regression scenarios: one where the first read of a reference returns no exit status and no output, and a guard
+	where a command that ended with exit status 0 and empty output is taken as empty.
+- **Verification:** the rule-assembly and scenario-format tests pass; the rule appears in rendered Codex session and
+	subagent rules on POSIX and Windows. Certification runs with the other rules' at the end.
+- **Exit:** the tests and the clean build pass on the committed revision. Closes D114.
+
+### WI-137 — The trial record shows a command still running when the agent received its output (user request, 2026-10-29)
+
+- **Problem:** the Codex trial record renders each command from its completion event, so the judge and prompt authors
+	saw `cat docs/facts.md` return the file's content while the agent had received an empty result after 10.2 seconds.
+- **Scope:** `client/codex/`, `client/common/cli/` (trial record rendering), this design and plan.
+- **Change:** for each command whose output the agent received before the command ended, the record shows what the
+	agent received and that the command was still running, then the command's end with its exit status and complete
+	output, in the harness's order (`design.md` §6.4, D115). Built-in tool verdicts that read a command's output use what
+	the command produced, as today. Raise the Codex judge version.
+- **Verification:** requirement-level tests on a recorded Codex trial whose child received an empty result after the
+	yield time while the command later completed with content: the record shows both, in order; a command that ended
+	before the agent received its output renders as today. Prove test power by reverting the fix, then run the clean full
+	offline build and report every test taking at least one second.
+- **Exit:** the acceptance tests and the clean build pass on the committed revision. Closes D115.
+
+### WI-138 — A trial session's first command starts promptly (user request, 2026-10-29)
+
+- **Problem:** in E5, 222 of 935 first commands of Codex trial sessions took 10 seconds or more against 7 of 664 later
+	commands; a child's `cat docs/facts.md` took 17.2 seconds while its sibling's took 2.5.
+- **Scope:** `client/codex/`, `client/common/cli/` (session environment and runner), this design and plan.
+- **Change:** find which part of a trial session's setup delays its first command (`design.md` D116), measuring on this
+	machine with the installed Codex outside any campaign, and remove the delay or prepare that part before the agent's
+	turn starts. Keep every isolation and sandbox guarantee. Raise the session environment version if the change can
+	alter a trial's behaviour.
+- **Verification:** a measurement, before and after, of first-command and later-command durations over at least 40
+	sessions at concurrency 8 with a trivial prompt, reported with the method; requirement-level tests for the changed
+	setup with fakes. Then run the clean full offline build and report every test taking at least one second.
+- **Exit:** first commands no longer take 10 seconds or more more often than later ones, beyond noise; tests and the
+	clean build pass on the committed revision. Closes D116.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -3717,6 +3774,9 @@ blocks only the part of a work item that it names.
 | WI-133 | — |
 | WI-134 | WI-28, WI-121 |
 | WI-135 | WI-3, WI-65, WI-77 |
+| WI-136 | WI-124 |
+| WI-137 | WI-134 |
+| WI-138 | WI-122 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
