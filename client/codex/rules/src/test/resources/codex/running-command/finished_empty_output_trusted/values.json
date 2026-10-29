@@ -1,0 +1,26 @@
+{
+	"format_version": 1,
+	"test_cases": [
+		{
+			"values": {
+				"service": "billing",
+				"table": "invoices"
+			},
+			"expected_outcome": "No billing migrations are pending, answered from the empty output of a finished command"
+		},
+		{
+			"values": {
+				"service": "inventory",
+				"table": "stock_levels"
+			},
+			"expected_outcome": "No inventory migrations are pending, answered from the empty output of a finished command"
+		},
+		{
+			"values": {
+				"service": "shipping",
+				"table": "parcels"
+			},
+			"expected_outcome": "No shipping migrations are pending, answered from the empty output of a finished command"
+		}
+	]
+}

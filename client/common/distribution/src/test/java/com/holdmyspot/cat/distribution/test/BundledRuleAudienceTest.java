@@ -108,6 +108,38 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies Codex agents receive the rule on commands that are still running at startup, both in a session's rules
+	 * and in a subagent's, on POSIX and Windows, while Claude agents, which the rule's Codex tool results do not
+	 * describe, do not receive it.
+	 *
+	 * @throws IOException if the bundled rules cannot be copied, routed, or loaded
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void codexAgentsGetRunningCommandRule() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+
+			for (Platform platform : List.of(Platform.LINUX_X64, Platform.WINDOWS_X64))
+			{
+				ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml(), platform);
+				for (String codex : List.of(loader.loadSessionForMainAgent(plugin, null, project, "codex").rules(),
+					loader.loadForSubagent(plugin, project, "codex", "cat:reviewer")))
+				{
+					requireThat(codex, platform + "Codex").contains("# Commands Still Running");
+				}
+				requireThat(loader.loadForMainAgent(plugin, project, "claude"), platform + "Claude").
+					doesNotContain("# Commands Still Running");
+			}
+		}
+	}
+
+	/**
 	 * Verifies packaged path routes render installed rule paths and the current project's matching boundary.
 	 */
 	@Test

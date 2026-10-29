@@ -1,0 +1,13 @@
+{
+	"codex": {
+		"plugins": [
+			{
+				"name": "cat",
+				"build": {
+					"command": ["client/mvnw", "-f", "client/pom.xml", "-B", "package", "-DskipTests"],
+					"output": "client/common/distribution/target/runtime/codex"
+				}
+			}
+		]
+	}
+}
