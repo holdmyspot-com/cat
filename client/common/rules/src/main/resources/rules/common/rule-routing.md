@@ -11,6 +11,8 @@ agents: ["main", "subagents"]
 - Route an input-preservation decision from the stated contract before project inspection or candidate selection can
 	commit to a transformation that might discard the needed distinction.
 - Make each required route read complete before the task action it governs, without prescribing how the file is read.
+- Keep always loaded only the routes whose decision can arise before any decision-area trigger is recognizable, and
+	reach every other focused rule through one lazily loaded area index whose trigger covers that rule's trigger.
 
 ## Guidance
 
@@ -38,12 +40,12 @@ trigger above is true and the contract permits the representations to be treated
 neither read applies. Reading only the first file leaves the paired-input route incomplete; do not read another rule,
 inspect the project, or take any other task action after that read.
 
-Treat every required read in this routing file as one route action: after choosing its condition, complete all of its
-reads in the stated order before any other task action. A successful first read is neither a completed route nor
-authority to discover its remainder; do not use it to infer, search for, or try another filename. Use the filenames in
-the route as literal route targets. If any required read fails, stop and report the routing failure instead of
-inspecting the project or choosing an alternative. The route, rather than the task's source language, topic, or a
-remembered rule label, selects the required files.
+Treat every required read in this routing file, or in an area index that it routes to, as one route action: after
+choosing its condition, complete all of its reads in the stated order before any other task action. A successful first
+read is neither a completed route nor authority to discover its remainder; do not use it to infer, search for, or try
+another filename. Use the filenames in the route as literal route targets. If any required read fails, stop and report
+the routing failure instead of inspecting the project or choosing an alternative. The route, rather than the task's
+source language, topic, or a remembered rule label, selects the required files.
 
 A task-specific response that states an intended inspection, plan, implementation, test, or conclusion is task-bearing
 for this route. Before the required reads, do not announce such work; either perform the required reads first or give no
@@ -56,58 +58,10 @@ collapse. This includes treating an absent configuration field differently from 
 case, and distinguishing an omitted timestamp offset from an explicit one. Do not load this rule when the contract
 expressly permits the forms to be treated alike.
 
-Before defining or changing a method that represents, accepts, returns, validates, converts, or calculates money—
-including a price, charge, balance, fee, payment, tax, or discount—first lazy load `../include/common/money.md`. Do
-not choose its representation, signature, or implementation until that rule is available.
-
-Before choosing the numeric representation of a calculation, or of a numeric parameter or result, that is not money,
-lazy load `../include/common/numeric-precision.md`.
-
-When writing or changing a boolean expression that contains a negation, or that compares a boolean test with a
-boolean literal such as `true` or `false`, lazy load `../include/common/boolean-negation.md`.
-
-When writing or changing an expression that combines two different binary or ternary operators without
-parentheses between them, lazy load `../include/common/operator-precedence.md`.
-
-When writing or changing a condition that combines two or more tests, or that tests a value whose meaning the
-expression does not state, such as a date offset, a threshold, or a business rule, or writing or changing a log,
-exception, or user-facing error message that a branch emits about its condition, lazy load
-`../include/common/named-conditions.md`.
-
-When defining, changing, reviewing, or auditing type, function, or method names, or the names of variables declared
-outside a function body, or changing a type's responsibility without renaming it, lazy load
-`../include/common/identifier-naming.md`.
-
 When defining, changing, or auditing terminology used for a shared concept across source code, configuration,
 documentation, commands, or rules, lazy load `../include/common/consistent-terminology.md`. This includes naming a
 shared concept while designing a format, interface, workflow, or proposal, and noticing during any other work that two
 terms may denote one shared concept.
-
-When defining, changing, or reviewing parameter validation for a caller-facing operation, lazy load
-`../include/common/parameter-validation.md`.
-
-When defining a function, method, constructor, or command, or changing its parameters, while an overload or another
-operation of the same API takes some of the same inputs, even in another type or representation, lazy load
-`../include/common/consistent-parameters.md`.
-
-When defining a function, method, constructor, or command whose parameters specify a range, such as a pair of indexes,
-offsets, positions, or times, or changing such parameters, lazy load `../include/common/range-parameters.md`.
-
-When writing or editing a product, legal, or user-facing workflow document, an overview, release notes, or a
-changelog, lazy load `../include/documentation/standalone-documents.md`.
-
-When writing or editing the documentation of a module, type, method, function, constructor, script, command, or
-configuration entry, including API documentation and command help text, lazy load
-`../include/documentation/interface-contracts.md`.
-
-When declaring a variable outside a function body, such as a field, constant, or module-level variable, or changing the
-value or contents of an existing one, lazy load `../include/documentation/declared-values.md`.
-
-When writing or editing a source comment, including a comment in a prompt or rule file, lazy load
-`../include/documentation/source-comments.md`.
-
-When applying a skill would cause you to ask for permission or confirmation, pause, leave requested work unfinished, or
-diverge from the user's intent, lazy load `../include/common/skill-interruption-reporting.md` before taking that action.
 
 Before writing or editing a reader-facing update whose new evidence requires an actor to correct, narrow, or otherwise
 change an action, read `../include/common/write-clearly/unexpected-result.md`.
@@ -128,131 +82,58 @@ command, test, or investigation as completed, failed, or unavailable, read `../i
 Otherwise read only `../include/common/write-clearly.md`. Do not load either route merely because a task mentions prose
 that the reader will not receive.
 
-When applying documentation conventions across existing code or documentation, lazy load
-`../include/common/actionable-documentation.md`.
-
-When selecting a Java platform or available project API, lazy load `../include/java/standard-apis.md`.
-
-When editing the layout of a method chain, lazy load `../include/common/method-chain-layout.md`.
-
-When declaring an object's field, or writing or editing a constructor that assigns one, lazy load
-`../include/common/field-initialization.md`.
-
-When writing or changing code that passes a resource it created to a constructor, or a constructor that receives or
-creates a resource that must be released, lazy load `../include/common/construction-failure-cleanup.md`.
-
 Before recommending, designing, implementing, or reviewing a change to code, configuration, a prompt, a workflow, or a
 plan, lazy load `../include/common/backward-design.md`, then `../include/common/design-quality.md`. A local rename,
 formatting edit, or other mechanical change that preserves the existing design does not need them.
 
-Before creating, reviewing, or revising an implementation plan for AI agents to execute, lazy load
-`../include/common/implementation-planning.md`. A checklist of steps you are about to perform yourself in the current
-task is not such a plan.
+When writing, changing, reviewing, or auditing source code or configuration, including a command-line option, launch or
+build setting, manifest entry, or module declaration, or accessing environment-dependent state, lazy load
+`../include/common/rule-routing/code.md`.
 
-Before designing or changing a component, API, collaborator, integration boundary, construction path, or test-support
-boundary, lazy load `../include/class-design.md`.
+Before designing, implementing, defining, changing, reviewing, auditing, removing, replacing, renaming, or ending
+compatibility for a component, class, API, collaborator, integration or test-support boundary, construction path,
+function, method, constructor, command, externally visible operation, feature, workflow, or other supported contract,
+including its parameters and their validation; when adding a call that passes a method the same value as its other
+calls, or noticing that calls pass a method equal values; or when selecting a platform or available project API, lazy
+load `../include/common/rule-routing/interfaces.md`.
 
-When defining or changing a method's parameters, adding a call that passes a method the same value as its other calls,
-reviewing or auditing a class, or noticing that every call made on an instance passes a method parameter equal values,
-lazy load `../include/class-design/constructor-parameters.md`.
+Before defining or changing code that handles money or choosing a numeric representation; when declaring a variable
+outside a function body or an object's field, changing such a variable's value or contents, or writing or editing a
+constructor that assigns a field; when a repeated value represents one shared concept; or when writing or changing code
+that stores a file path in a durable record, lazy load `../include/common/rule-routing/values.md`.
 
-When creating, moving, or renaming a top-level implementation or test type, lazy load
-`../include/common/type-organization.md`.
+When writing or editing a document, release notes, a changelog, the documentation of code, a script, a command, or a
+configuration entry, or a source comment, or applying documentation conventions across existing code or documentation,
+lazy load `../include/common/rule-routing/documentation.md`.
 
-Before designing or implementing a feature that promises a reliable, complete, automatic, general, or deterministic
-result, or a workflow that chooses, stops, or changes strategy based on a predicted cost, duration, probability,
-benefit, or other future outcome, lazy load `../include/common/design-feasibility.md`.
+Before changing testable production behavior or selecting or reporting a command as evidence that a project's build
+passes, and when creating, designing, changing, reviewing, or debugging tests, a build script, pipeline, or multi-step
+build, or a CI or hosted workflow, or running such a workflow on a remote runner, lazy load
+`../include/common/rule-routing/testing-and-builds.md`.
 
-Before delegating work to a subagent, or when designing, updating, or executing a prompt-driven workflow that delegates
-work, lazy load `../include/common/delegation.md`.
+When a failure, a compiler, linter, or static-analysis warning or finding, a scope violation, a misapplied instruction,
+an apparently absent condition or apparent limitation, or an incorrect or unavailable workflow dependency arises or is
+reported; when an external defect makes you consider a workaround; when adding, catching, translating, reporting,
+analyzing, preventing, suppressing, or working around one, or disabling, excluding, or relaxing a check; or before
+invoking an operation that can modify multiple artifacts or whose actual write set is unproven, lazy load
+`../include/common/rule-routing/failures.md`.
 
-Before sending a task, result, correction request, or other information to another agent, or when designing a
-workflow whose agents exchange information, lazy load `../include/common/agent-handoffs.md`.
+Before creating, reviewing, or revising an implementation plan for AI agents, delegating work, or sending information to
+another agent, and when designing, updating, or executing a workflow that delegates work, exchanges information between
+agents, or hands off, retries, or resumes progress; when applying a skill would cause you to ask for permission or
+confirmation, pause, leave requested work unfinished, or diverge from the user's intent; when creating, using, or
+handing off temporary files or directories; or when a task is expected to run for multiple minutes or needs a state
+change that something else produces, lazy load `../include/common/rule-routing/workflows.md`.
 
-When accessing environment-dependent state, lazy load `../include/common/environment.md`.
+When locating or selecting a Git commit, file history, or change to amend, backport, or replay, or creating or revising
+a Git commit message, lazy load `../include/common/rule-routing/git.md`.
 
-When adding, catching, translating, or reporting a failure, lazy load `../include/common/error-handling.md`.
-
-When adding or widening a command-line option, launch or build setting, manifest entry, or module declaration that
-grants code a permission or access, or that adds modules to a runtime or image, lazy load
-`../include/common/minimal-grants.md`.
-
-When considering a workaround for an external defect, lazy load `../include/common/external-workarounds.md`.
-
-When debugging a failed CI or hosted-workflow step, lazy load `../include/common/ci-debugging.md` before retrying.
-
-When running a CI or hosted workflow on a remote runner to test changed commands that it runs there, lazy load
-`../include/common/remote-runner-testing.md` before dispatching the run.
-
-When analyzing a reported or newly observed unexpected failure, discovering that an earlier action violated the
-user-authorized scope, diagnosing why an agent ignored or misapplied an instruction, or designing a prevention, lazy
-load `../include/common/failure-prevention.md`.
-
-When the Failure Prevention analysis confirms a reproducible failure involving prompt, rule, or workflow guidance and
-the affected guidance is user-owned, lazy load `../include/common/failure-regression-promotion.md` before resuming
-dependent work. The first qualifying failure is the trigger.
-User-owned guidance is under the current project's `.cat/rules/` tree or the current user's `${HOME}/.cat/rules/` tree,
-or is other guidance that a project rule declares user-owned. Do not load this rule for installed/cache, third-party,
-or unknown-owner guidance. A subagent does not load this rule or edit that guidance: it reports the confirmed failure,
-the affected guidance and the attribution evidence to the agent that delegated its work, then continues only work that
-does not depend on the correction.
-
-Before invoking an operation that can modify multiple artifacts or whose actual write set is unproven, lazy load
-`../include/common/failure-prevention.md`.
-
-When a compiler, linter, or static-analysis check reports a warning or finding, lazy load
-`../include/common/diagnostic-suppression.md` before choosing how to resolve it, including before searching the project
-for how it handled the same finding. Also lazy load it before suppressing any other diagnostic, or before disabling,
-excluding, or relaxing a check.
-
-When editing source code or configuration, lazy load `../include/common/semantic-blank-lines.md`.
-
-When assessing an apparently absent condition, a helper's apparent limitation, or a proposed workaround, lazy load
-`../include/common/limitations-and-workarounds.md`.
-
-When locating or selecting a Git commit, file history, or change to amend, backport, or replay, lazy load
-`../include/common/git-history-scope.md`.
-
-When creating or revising a Git commit message, lazy load `../include/common/commit-messages.md`.
-
-When removing, replacing, renaming, or ending compatibility for a supported contract, lazy load
-`../include/common/contract-retirement.md`.
-
-When a repeated value represents one shared concept, lazy load `../include/common/constants.md`.
-
-Before changing testable production behavior, lazy load `../include/common/tdd.md`.
-
-When creating, using, or handing off temporary files or directories, lazy load
-`../include/common/temporary-resources.md`.
-
-When writing or changing code that stores a file path in a file, database, or other durable record, lazy load
-`../include/common/persisted-paths.md`.
-
-When designing, changing, or reviewing tests, lazy load `../include/common/testing.md`.
-
-When creating, updating, or debugging a build script, pipeline, or multi-step build, lazy load
-`../include/common/build-workflow.md`.
-
-Before selecting or reporting a command as evidence that a project's build passes, lazy load
-`../include/common/build-verification.md`.
-
-When a task is expected to run for multiple minutes, lazy load `../include/common/progress-reporting.md`.
+When creating, regenerating, revising, reviewing, auditing, adding, moving, splitting, merging, or reorganizing a
+prompt, rule, skill, command, workflow, or another artifact with declared goals or contracts, or when a project-owned
+callable tool must enforce a workflow requirement, lazy load `../include/common/rule-routing/prompts.md`.
 
 When starting, waiting for, or resuming an external command, harness, or tool session, lazy load
 `../include/common/execution-lifecycle.md`.
-
-When a task needs a state change that something else produces, such as a hosted build finishing, a background process
-exiting or a subagent returning, lazy load `../include/common/external-waits.md` before you check that state or continue
-other work.
-
-When creating, regenerating, materially revising, reviewing, or auditing a prompt, rule, or another artifact with
-declared goals or contracts, lazy load `../include/common/contract-design.md`.
-
-When adding, moving, splitting, merging, or otherwise reorganizing a rule, prompt, skill, command, or workflow, lazy
-load `../include/common/rule-organization.md`.
-
-When a project-owned CLI, API, validator, generator, or other callable tool must enforce a workflow requirement, lazy
-load `../include/common/rules-own-tool-requirements.md`.
 
 When a recommendation, procedure, or workflow relies on an input, authority, handoff, or deferred action, lazy load
 `../include/common/check-assumptions.md`.
@@ -265,12 +146,3 @@ reader-facing status-update route above, lazy load `../include/common/check-assu
 
 When answering a user question whose relevant research, authoritative source, or supported probe remains inconclusive,
 lazy load `../include/common/check-assumptions.md` before drafting the answer.
-
-When defining or changing a workflow with progress handoff, retry, or resumption, lazy load
-`../include/common/monotonic-progress.md`.
-
-When defining or changing an externally visible operation that declares idempotency or can create an externally durable
-effect before a caller can observe its result, lazy load `../include/common/idempotency.md`.
-
-When executing a maintained instruction, prompt, skill, rule, or workflow exposes an incorrect or unavailable
-dependency, lazy load `../include/common/workflow-error-reporting.md` before handoff.

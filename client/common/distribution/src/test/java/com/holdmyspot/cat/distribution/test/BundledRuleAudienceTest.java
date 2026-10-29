@@ -30,7 +30,8 @@ public final class BundledRuleAudienceTest
 	 * Verifies a subagent receives CAT's rule routing and request-execution rule in both harnesses, so it can
 	 * lazy load engineering rules such as design quality, TDD and testing and decide which gaps to escalate, while the
 	 * rules about interacting with the user stay with the main agent. Neither agent receives the design-quality rule
-	 * itself at startup.
+	 * itself at startup, nor the decision-area indexes that route to rules such as build workflow and failure
+	 * regression promotion; both receive the routes to those indexes.
 	 * <p>
 	 * Copying and routing the complete bundled rule trees, then loading all four audience/harness combinations, can take
 	 * over one second. A smaller synthetic tree would miss regressions in shipped audience metadata and dependencies.
@@ -51,19 +52,22 @@ public final class BundledRuleAudienceTest
 				String subagent = loader.loadForSubagent(plugin, project, harness, "cat:reviewer");
 				requireThat(subagent, harness + "Subagent").contains("# CAT Rule Routing").
 					contains("include/common/design-quality.md`").doesNotContain("# Design Quality").
-					contains("include/common/build-workflow.md`").doesNotContain("# Build Workflow Development").
-					contains("include/common/remote-runner-testing.md`").doesNotContain("# Remote Runner Testing").
+					contains("include/common/rule-routing/testing-and-builds.md`").
+					doesNotContain("# Testing and Build Rule Routing").
+					contains("include/common/rule-routing/failures.md`").
+					doesNotContain("# Failure and Workaround Rule Routing").
 					contains("lazy load `").contains("# Request Execution").
-					contains("A subagent does not load this rule").
 					doesNotContain("# User Request Scheduling").doesNotContain("# File Links");
 
 				String main = loader.loadForMainAgent(plugin, project, harness);
 				requireThat(main, harness + "Main").contains("# CAT Rule Routing").
 					contains("# Request Execution").contains("# User Request Scheduling").contains("# File Links").
-					contains("include/common/build-workflow.md`").doesNotContain("# Build Workflow Development").
-					contains("include/common/remote-runner-testing.md`").doesNotContain("# Remote Runner Testing").
-					doesNotContain("# Design Quality");
+					contains("include/common/rule-routing/testing-and-builds.md`").
+					doesNotContain("# Testing and Build Rule Routing").doesNotContain("# Build Workflow Development").
+					doesNotContain("# Remote Runner Testing").doesNotContain("# Design Quality");
 			}
+			requireThat(Files.readString(plugin.resolve("rules/include/common/rule-routing/failures.md")),
+				"failureIndex").contains("A subagent does not load this rule");
 		}
 	}
 
@@ -142,8 +146,8 @@ public final class BundledRuleAudienceTest
 	/**
 	 * Verifies a session receives the bundled Java and Bash routes only through instructions to load their routing
 	 * files when it reads or edits a matching file, so a session that never touches such a file does not carry them,
-	 * while the route for choosing a Java API, which arises while designing before any Java file exists, stays in the
-	 * always-loaded routing.
+	 * while the route for choosing a Java API, which arises while designing before any Java file exists, stays
+	 * reachable from the always-loaded routing through the interface-design area index.
 	 *
 	 * @throws IOException if the bundled rules cannot be copied, routed, or loaded
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -158,17 +162,25 @@ public final class BundledRuleAudienceTest
 			BundledRules.copy(plugin.resolve("rules"));
 			RuleArtifactRouter.route(plugin, scope.yaml());
 			Path include = plugin.toAbsolutePath().normalize().resolve("rules/include/common");
+			Path interfaces = include.resolve("rule-routing/interfaces.md");
 
 			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "claude");
 
 			requireThat(context, "context").
 				contains("Load `" + include.resolve("java.md") + "` only when you read or edit a file").
 				contains("Load `" + include.resolve("bash.md") + "` only when you read or edit a file").
-				contains("When selecting a Java platform or available project API, lazy load").
+				contains("when selecting a platform or available project API").
+				contains("include/common/rule-routing/interfaces.md`").
+				doesNotContain("When selecting a Java platform or available project API, lazy load").
 				doesNotContain("When handling Java exceptions").doesNotContain("Before writing or editing Javadoc").
 				doesNotContain("PipedInputStream").doesNotContain("When writing or reviewing Java control flow").
 				doesNotContain("When defining Java POSIX permission values").
 				doesNotContain("When documenting Bash functions");
+			requireThat(Files.readString(interfaces), "interfaceIndex").
+				contains("When selecting a Java platform or available project API, lazy load " +
+					"`../../java/standard-apis.md`.");
+			requireThat(Files.isRegularFile(interfaces.resolveSibling("../../java/standard-apis.md").normalize()),
+				"standardApisExists").isTrue();
 		}
 	}
 

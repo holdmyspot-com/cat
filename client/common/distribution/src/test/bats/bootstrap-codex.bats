@@ -250,8 +250,8 @@ platform=${expected_platform}" ]
 	[[ "${output}" == *'"hookSpecificOutput"'* ]]
 	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*rules for this session are in `\([^`]*\)`.*/\1/p')
 	grep -F "CAT Rule Routing" "${context_file}"
-	grep -F "When selecting a Java platform or available project API, lazy load" "${context_file}"
-	grep -F "/rules/include/java/standard-apis.md" "${context_file}"
+	grep -F "when selecting a platform or available project API" "${context_file}"
+	grep -F "/rules/include/common/rule-routing/interfaces.md" "${context_file}"
 	grep -F "project session rule" "${context_file}"
 }
 

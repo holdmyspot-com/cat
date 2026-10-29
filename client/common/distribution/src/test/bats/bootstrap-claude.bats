@@ -146,7 +146,8 @@ platform=${expected_platform}" ]
 	[[ "${output}" == *'"hookEventName":"SessionStart"'* ]]
 	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*Read the whole file `\([^`]*\)`.*/\1/p')
 	grep -F "CAT Rule Routing" "${context_file}"
-	grep -F "When selecting a Java platform or available project API, lazy load" "${context_file}"
+	grep -F "when selecting a platform or available project API" "${context_file}"
+	grep -F "/rules/include/common/rule-routing/interfaces.md" "${context_file}"
 	grep -F "project session rule" "${context_file}"
 }
 
