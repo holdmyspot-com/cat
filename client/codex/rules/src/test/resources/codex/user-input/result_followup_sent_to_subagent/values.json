@@ -1,0 +1,41 @@
+{
+	"format_version": 1,
+	"test_cases": [
+		{
+			"values": {
+				"version": "3.4.0",
+				"date": "2026-09-14",
+				"previous_version": "3.3.2",
+				"previous_date": "2026-08-02"
+			},
+			"expected_outcome": "The subagent is asked the follow-up through a collaboration tool, and the reply says 3.4.0 was released on 2026-09-14 and 3.3.2, released on 2026-08-02, came out just before it"
+		},
+		{
+			"values": {
+				"version": "3.3.2",
+				"date": "2026-08-02",
+				"previous_version": "3.3.1",
+				"previous_date": "2026-07-19"
+			},
+			"expected_outcome": "The subagent is asked the follow-up through a collaboration tool, and the reply says 3.3.2 was released on 2026-08-02 and 3.3.1, released on 2026-07-19, came out just before it"
+		},
+		{
+			"values": {
+				"version": "3.3.1",
+				"date": "2026-07-19",
+				"previous_version": "3.3.0",
+				"previous_date": "2026-06-27"
+			},
+			"expected_outcome": "The subagent is asked the follow-up through a collaboration tool, and the reply says 3.3.1 was released on 2026-07-19 and 3.3.0, released on 2026-06-27, came out just before it"
+		},
+		{
+			"values": {
+				"version": "3.3.0",
+				"date": "2026-06-27",
+				"previous_version": "3.2.0",
+				"previous_date": "2026-05-08"
+			},
+			"expected_outcome": "The subagent is asked the follow-up through a collaboration tool, and the reply says 3.3.0 was released on 2026-06-27 and 3.2.0, released on 2026-05-08, came out just before it"
+		}
+	]
+}

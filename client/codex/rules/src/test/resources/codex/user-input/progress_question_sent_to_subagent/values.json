@@ -1,0 +1,23 @@
+{
+	"format_version": 1,
+	"test_cases": [
+		{
+			"values": {
+				"interval": "20"
+			},
+			"expected_outcome": "The subagent is asked for its progress through a collaboration tool after a wait that ends early, and the reply says monday, tuesday, thursday and friday were verified and wednesday was damaged"
+		},
+		{
+			"values": {
+				"interval": "30"
+			},
+			"expected_outcome": "The subagent is asked for its progress through a collaboration tool after a wait that ends early, and the reply says monday, tuesday, thursday and friday were verified and wednesday was damaged"
+		},
+		{
+			"values": {
+				"interval": "45"
+			},
+			"expected_outcome": "The subagent is asked for its progress through a collaboration tool after a wait that ends early, and the reply says monday, tuesday, thursday and friday were verified and wednesday was damaged"
+		}
+	]
+}
