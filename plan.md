@@ -3578,20 +3578,21 @@ including mappings of one source into several plugins; the old two-plugin refusa
 	design and plan.
 - **Change:** a cell is out of reach when its minimum-pass-rate part is undecided and no all-pass continuation within
 	the cap certifies it, or when an undecided control or incumbent comparison does not pass within the cap's remaining
-	pairs even if both trials of every further pair pass (`design.md` §2.3, D113). An out-of-reach cell ends the attempt
+	pairs even if only the candidate trial of every further pair passes (`design.md` §2.3, D113). An out-of-reach cell ends the attempt
 	`not certified: inconclusive` at once, through the same path as a cell at its cap: admissions stop, in-flight trials
 	drain as post-decision observations, failure groups are reproduced before development, and `keep improvement` is
 	offered when the attempt's evidence qualifies. Clearly below, below control and below incumbent keep precedence at
 	the same adoption. The decision is a pure function of the frozen boundaries and the adopted counts, so it uses the
 	existing boundary tables and the same reachability rule that the minimum remaining trials already report, with one
 	owner for both. No campaign format change: an attempt resumed on the new build that is already out of reach ends at
-	its next adoption. The status report and certification record say that the cell was out of reach, with its counts,
-	rather than at its cap.
+	the first campaign event after loading, since no further adoption may come for it. The status report says that the
+	cell was out of reach, with its counts, rather than at its cap; a certification record describes only a certified
+	delivery.
 - **Verification:** requirement-level tests with fakes: a cell whose failures put certification out of reach before the
 	cap ends the attempt `inconclusive` at that adoption and admits no further candidate trial; one passing outcome short
 	of that point keeps it running; a comparison that cannot pass within the remaining pairs ends it; a cell that is
 	clearly below at the same adoption ends it `below minimum`; an attempt loaded from a snapshot already out of reach
-	ends on its next adoption; the reported outcome names the out-of-reach cell. Prove test power by reverting the fix,
+	ends at the first event after loading; the reported outcome names the out-of-reach cell. Prove test power by reverting the fix,
 	then run the clean full offline build and report every test taking at least one second.
 - **Exit:** the acceptance tests and the clean build pass on the committed revision; design and plan match the behavior.
 	Closes D113 and its part of R-F2.
