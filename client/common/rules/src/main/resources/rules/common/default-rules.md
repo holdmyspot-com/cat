@@ -189,6 +189,10 @@ testable boundary.
 When adding, catching, translating, or reporting a failure, lazy load `../include/common/error-handling.md` to retain
 precise failure semantics and actionable diagnostics.
 
+When adding or widening a command-line option, launch or build setting, manifest entry, or module declaration that
+grants code a permission or access, or that adds modules to a runtime or image, lazy load
+`../include/common/minimal-grants.md`.
+
 When considering a workaround for an external defect, lazy load `../include/common/external-workarounds.md` to require
 authoritative evidence and keep any workaround narrow and removable.
 
