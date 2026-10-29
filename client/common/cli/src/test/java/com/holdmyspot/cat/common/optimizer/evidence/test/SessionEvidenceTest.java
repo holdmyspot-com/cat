@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Assistant;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.ChildEvent;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.CommandEnd;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Entry;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Hook;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Tool;
@@ -139,6 +140,55 @@ public final class SessionEvidenceTest
 			Actor: root
 			Received from child child-b:
 			(not recorded in readable form)
+
+			""");
+	}
+
+	/**
+	 * Verifies that a command whose agent received results from it while it was still running is shown with each such
+	 * result whole, in order, and without an exit status or output, and that its end is shown where it ended with its
+	 * exit status and the size of its complete output, without claiming what the agent received of it.
+	 */
+	@Test
+	public void rendersCommandReceivedWhileRunning()
+	{
+		// Requirement: R-E21
+		String output = "line 1\nline 2\n";
+		String rendered = new SessionEvidence(List.of(
+			new Tool(1, "child-a", "commandExecution", "sleep 20; cat facts.md", true, 0, output,
+				List.of("Wall time 10.0 seconds\nOutput:\n", "")),
+			new Assistant(1, "child-a", 1, "The file is empty."),
+			new CommandEnd(1, "child-a", "sleep 20; cat facts.md", 0, output),
+			new CommandEnd(1, "child-a", "true", null, "")), List.of(output)).render();
+
+		requireThat(rendered, "rendered").isEqualTo("""
+			Turn 1
+			Actor: child child-a
+			Tool: commandExecution
+			Input:
+			sleep 20; cat facts.md
+			Received while the command was still running:
+			Wall time 10.0 seconds
+			Output:
+			(an empty result)
+
+			Actor: child child-a
+			Assistant response position: 1
+			The file is empty.
+
+			Actor: child child-a
+			Command ended
+			Input:
+			sleep 20; cat facts.md
+			Exit status: 0
+			Output: 14 characters
+
+			Actor: child child-a
+			Command ended
+			Input:
+			true
+			Exit status: not reported
+			Output: none
 
 			""");
 	}

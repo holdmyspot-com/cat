@@ -99,7 +99,7 @@ public final class AppServerEvents extends HarnessEvents
 	 */
 	AppServerEvents(JsonMapper json)
 	{
-		this(json, Map.of());
+		this(json, Map.of(), Map.of());
 	}
 
 	/**
@@ -108,13 +108,16 @@ public final class AppServerEvents extends HarnessEvents
 	 * @param json     the JSON mapper
 	 * @param received the messages that each thread received from other agents, in the order that it received them,
 	 *                 by the thread's identifier
+	 * @param running  the results that each agent received from a command that was still running, in the order that
+	 *                 it received them, by the identifier of the command's item
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	AppServerEvents(JsonMapper json, Map<String, List<RolloutMessage>> received)
+	AppServerEvents(JsonMapper json, Map<String, List<RolloutMessage>> received, Map<String, List<String>> running)
 	{
 		super(json);
 		requireThat(received, "received").isNotNull();
-		this.evidence = new AppServerEvidence(received);
+		requireThat(running, "running").isNotNull();
+		this.evidence = new AppServerEvidence(received, running);
 	}
 
 	@Override

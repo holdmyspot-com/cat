@@ -110,6 +110,9 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 	/**
 	 * A tool call with its entire recorded input and output. The output is the harness's record of what the tool
 	 * printed, which can be longer than the result that the agent received.
+	 * <p>
+	 * A command can still be running when its agent receives a result from it. Each such result is retained whole, in
+	 * the order that the agent received them, and the command's end is a separate {@link CommandEnd} where it ended.
 	 *
 	 * @param turn the one-based turn
 	 * @param agent the root name or child identity
@@ -118,9 +121,11 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 	 * @param command {@code true} if the call ran {@code input} as a shell command
 	 * @param exitStatus the reported exit status, or {@code null} when absent
 	 * @param output the complete output
+	 * @param running each result that the agent received while the command was still running, in the order that it
+	 *                received them; empty if the agent received none
 	 */
 	public record Tool(int turn, String agent, String tool, String input, boolean command, Integer exitStatus,
-		String output) implements Entry
+		String output, List<String> running) implements Entry
 	{
 		/**
 		 * Creates a tool call.
@@ -132,7 +137,10 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 		 * @param command {@code true} if the call ran {@code input} as a shell command
 		 * @param exitStatus the reported exit status, or {@code null} when absent
 		 * @param output the complete output
-		 * @throws NullPointerException if {@code agent}, {@code tool}, {@code input} or {@code output} are null
+		 * @param running each result that the agent received while the command was still running, in the order that
+		 *                it received them; empty if the agent received none
+		 * @throws NullPointerException if {@code agent}, {@code tool}, {@code input}, {@code output} or
+		 *                              {@code running} are null, or {@code running} contains null
 		 * @throws IllegalArgumentException if {@code turn} is less than 1, or {@code agent} or {@code tool} are blank
 		 */
 		public Tool
@@ -140,6 +148,58 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 			requireThat(turn, "turn").isGreaterThanOrEqualTo(1);
 			requireThat(agent, "agent").isNotBlank();
 			requireThat(tool, "tool").isNotBlank();
+			requireThat(input, "input").isNotNull();
+			requireThat(output, "output").isNotNull();
+			requireThat(running, "running").isNotNull();
+			running = List.copyOf(running);
+		}
+
+		/**
+		 * Creates a tool call whose agent received no result from it while it was still running.
+		 *
+		 * @param turn the one-based turn
+		 * @param agent the root name or child identity
+		 * @param tool the tool name
+		 * @param input the command or tool arguments
+		 * @param command {@code true} if the call ran {@code input} as a shell command
+		 * @param exitStatus the reported exit status, or {@code null} when absent
+		 * @param output the complete output
+		 * @throws NullPointerException if {@code agent}, {@code tool}, {@code input} or {@code output} are null
+		 * @throws IllegalArgumentException if {@code turn} is less than 1, or {@code agent} or {@code tool} are blank
+		 */
+		public Tool(int turn, String agent, String tool, String input, boolean command, Integer exitStatus,
+			String output)
+		{
+			this(turn, agent, tool, input, command, exitStatus, output, List.of());
+		}
+	}
+
+	/**
+	 * The end of a command whose agent received a result from it while it was still running.
+	 *
+	 * @param turn the one-based turn
+	 * @param agent the root name or child identity
+	 * @param input the command
+	 * @param exitStatus the reported exit status, or {@code null} when absent
+	 * @param output the complete output
+	 */
+	public record CommandEnd(int turn, String agent, String input, Integer exitStatus, String output) implements Entry
+	{
+		/**
+		 * Creates a command's end.
+		 *
+		 * @param turn the one-based turn
+		 * @param agent the root name or child identity
+		 * @param input the command
+		 * @param exitStatus the reported exit status, or {@code null} when absent
+		 * @param output the complete output
+		 * @throws NullPointerException if {@code agent}, {@code input} or {@code output} are null
+		 * @throws IllegalArgumentException if {@code turn} is less than 1, or {@code agent} is blank
+		 */
+		public CommandEnd
+		{
+			requireThat(turn, "turn").isGreaterThanOrEqualTo(1);
+			requireThat(agent, "agent").isNotBlank();
 			requireThat(input, "input").isNotNull();
 			requireThat(output, "output").isNotNull();
 		}
@@ -264,7 +324,9 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 	/**
 	 * Renders every entry by turn without repeating root response text. Each tool output is described by its size
 	 * rather than copied, so that the activity stays short however much a trial prints; for a command, the description
-	 * also says whether the agent received the whole output. The text of a child event is kept whole, as a child's
+	 * also says whether the agent received the whole output. A command whose agent received a result from it while it
+	 * was still running is shown instead with each such result whole, and its end with its exit status and the size of
+	 * its output where it ended. The text of a child event is kept whole, as a child's
 	 * response is, because it is a message that an agent wrote or a report that the harness made rather than the
 	 * output of a tool.
 	 *
@@ -291,6 +353,7 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 				switch (entry)
 				{
 					case Tool tool -> appendTool(result, tool, receivedLines);
+					case CommandEnd end -> appendCommandEnd(result, end);
 					case Hook hook -> result.append("Hook: ").append(hook.hook()).append("; status: ").
 						append(hook.status()).append('\n');
 					case Assistant assistant ->
@@ -308,7 +371,8 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 	}
 
 	/**
-	 * Appends a tool call's name, input and exit status, and the size of its output.
+	 * Appends a tool call's name and input, followed either by what its agent received while it was still running or
+	 * by its exit status and the size of its output.
 	 *
 	 * @param result        the destination
 	 * @param tool          the call
@@ -318,19 +382,27 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 	{
 		result.append("Tool: ").append(tool.tool()).append("\nInput:\n");
 		appendText(result, tool.input());
-		result.append("Exit status: ");
-		if (tool.exitStatus() == null)
-			result.append("not reported");
-		else
-			result.append(tool.exitStatus());
-		result.append("\nOutput: ");
+		if (!tool.running().isEmpty())
+		{
+			result.append("Received while the command was still running:\n");
+			for (String text : tool.running())
+			{
+				if (text.isEmpty())
+					result.append("(an empty result)\n");
+				else
+					appendText(result, text);
+			}
+			return;
+		}
+		appendExitStatus(result, tool.exitStatus());
 		String output = tool.output();
 		if (output.isBlank())
 		{
-			result.append("none\n");
+			result.append("Output: none\n");
 			return;
 		}
-		result.append(output.codePointCount(0, output.length())).append(" characters");
+		result.append("Output: ");
+		appendSize(result, output);
 		if (tool.command())
 		{
 			result.append("; the agent received ");
@@ -340,6 +412,52 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 				result.append("only part of it");
 		}
 		result.append('\n');
+	}
+
+	/**
+	 * Appends the end of a command whose agent received a result from it while it was still running.
+	 *
+	 * @param result the destination
+	 * @param end    the command's end
+	 */
+	private static void appendCommandEnd(StringBuilder result, CommandEnd end)
+	{
+		result.append("Command ended\nInput:\n");
+		appendText(result, end.input());
+		appendExitStatus(result, end.exitStatus());
+		result.append("Output: ");
+		if (end.output().isBlank())
+			result.append("none");
+		else
+			appendSize(result, end.output());
+		result.append('\n');
+	}
+
+	/**
+	 * Appends a reported exit status.
+	 *
+	 * @param result     the destination
+	 * @param exitStatus the reported exit status, or {@code null} when absent
+	 */
+	private static void appendExitStatus(StringBuilder result, Integer exitStatus)
+	{
+		result.append("Exit status: ");
+		if (exitStatus == null)
+			result.append("not reported");
+		else
+			result.append(exitStatus);
+		result.append('\n');
+	}
+
+	/**
+	 * Appends the number of characters of an output.
+	 *
+	 * @param result the destination
+	 * @param output the output
+	 */
+	private static void appendSize(StringBuilder result, String output)
+	{
+		result.append(output.codePointCount(0, output.length())).append(" characters");
 	}
 
 	/**

@@ -116,7 +116,17 @@ final class RolloutToolResults
 		}
 		if (!item.path("type").asString("").equals("response_item"))
 			return List.of();
-		JsonNode payload = item.path("payload");
+		return outputTexts(item.path("payload"));
+	}
+
+	/**
+	 * Returns the texts of a rollout item's tool result.
+	 *
+	 * @param payload the payload of a {@code response_item}
+	 * @return the texts, in their recorded order; empty if the payload does not hold a tool result
+	 */
+	static List<String> outputTexts(JsonNode payload)
+	{
 		if (!RESULT_TYPES.contains(payload.path("type").asString("")))
 			return List.of();
 		JsonNode output = payload.path("output");

@@ -39,6 +39,10 @@ public final class CodexTrialRecordTest
 	 */
 	private static final String SANDBOX_ERROR = "error building bubblewrap command: app-server socket directory must " +
 		"be a user-owned directory with mode 0700\n";
+	/**
+	 * The recorded run artifacts of a trial whose child received a result from a command that was still running.
+	 */
+	private static final Path RUNNING = Path.of("src/test/resources/optimizer/running-command/transcript.jsonl");
 
 	/**
 	 * Creates the test.
@@ -169,6 +173,43 @@ public final class CodexTrialRecordTest
 				doesNotContain("all of it");
 			requireThat(decide("read-in-full error.log", new Recorded(wholeEvidence, initial)), "wholeRead").isTrue();
 			requireThat(decide("read-in-full error.log", new Recorded(cutEvidence, initial)), "cutRead").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that when an agent received a result from a command that was still running, the checks still decide
+	 * from what the command produced: its exit status and its complete output.
+	 *
+	 * @throws IOException if the trial cannot be read
+	 * @throws UndecidableToolException if a check lacks evidence
+	 */
+	@Test
+	public void checksReadWhatRunningCommandProduced() throws IOException, UndecidableToolException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trial-record-"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = new CodexSessions(settings);
+			String facts = "# Acme facts\n\nAcme ships orders from Ghent.\n";
+			Recorded record = new Recorded(sessions.readEvidence(RUNNING), Map.of("docs/facts.md", facts));
+
+			List<SessionEvidence.Tool> commands = new ArrayList<>();
+			for (SessionEvidence.Tool tool : record.tools())
+			{
+				if (tool.command())
+					commands.add(tool);
+			}
+			requireThat(commands.size(), "commandCount").isEqualTo(3);
+			for (SessionEvidence.Tool command : commands)
+			{
+				requireThat(command.exitStatus(), command.agent() + ".exitStatus").isEqualTo(0);
+				requireThat(command.output(), command.agent() + ".output").isEqualTo(facts);
+			}
+			requireThat(decide("exit-status \"cat docs/facts.md\" 0", record), "succeeded").isTrue();
+			requireThat(decide("read-in-full docs/facts.md", record), "read").isTrue();
 		}
 	}
 

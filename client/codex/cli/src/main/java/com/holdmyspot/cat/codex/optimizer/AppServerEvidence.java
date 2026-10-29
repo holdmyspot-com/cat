@@ -7,11 +7,13 @@ import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Assistant;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.ChildEvent;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.CommandEnd;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Entry;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Hook;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Tool;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,6 +30,10 @@ import tools.jackson.databind.JsonNode;
  * The app-server reports each child's start and end, but not what the root received from a child; the root's rollout
  * records that. Each message that the root received is placed after the root item that completed most recently before
  * it, so that it appears among the root's activity where the root received it.
+ * <p>
+ * The app-server reports a command when it starts and when it ends, but an agent can receive a result from the command
+ * before it ends; the agent's rollout records that. Such a command is shown where it started with each result that its
+ * agent received while it was running, and its end is shown where the app-server reported it.
  */
 final class AppServerEvidence
 {
@@ -51,6 +57,15 @@ final class AppServerEvidence
 	 * The messages that each thread received from other agents, by the thread's identifier.
 	 */
 	private final Map<String, List<RolloutMessage>> received;
+	/**
+	 * The results that each agent received from a command that was still running, by the command's item identifier.
+	 */
+	private final Map<String, List<String>> running;
+	/**
+	 * The end of each command whose agent received a result from it while it was still running, with the number of
+	 * entries when it ended, by the command's entry key.
+	 */
+	private final Map<String, Placed> ends = new LinkedHashMap<>();
 	private int currentTurn = 1;
 
 	/**
@@ -58,10 +73,13 @@ final class AppServerEvidence
 	 *
 	 * @param received the messages that each thread received from other agents, in the order that it received them,
 	 *                 by the thread's identifier
+	 * @param running  the results that each agent received from a command that was still running, in the order that
+	 *                 it received them, by the identifier of the command's item
 	 */
-	AppServerEvidence(Map<String, List<RolloutMessage>> received)
+	AppServerEvidence(Map<String, List<RolloutMessage>> received, Map<String, List<String>> running)
 	{
 		this.received = received;
+		this.running = running;
 	}
 
 	/**
@@ -210,13 +228,20 @@ final class AppServerEvidence
 			default -> selectFields(item, false);
 		};
 		String output;
+		List<String> receivedWhileRunning;
 		if (type.equals("commandExecution"))
+		{
 			output = renderValue(item.path("aggregatedOutput"));
+			receivedWhileRunning = running.getOrDefault(item.path("id").asString(""), List.of());
+		}
 		else
+		{
 			output = selectFields(item, true);
+			receivedWhileRunning = List.of();
+		}
 		entries.put(createKey(params, "item", item.path("id").asString("")),
 			new Tool(resolveTurn(params, rootThread), resolveActor(params, rootThread), call.tool(), input,
-				type.equals("commandExecution"), call.exitStatus(), output));
+				type.equals("commandExecution"), call.exitStatus(), output, receivedWhileRunning));
 	}
 
 	/**
@@ -284,23 +309,34 @@ final class AppServerEvidence
 	}
 
 	/**
-	 * Records where a root item completed, so that a message that the root received after it can be placed there.
+	 * Records where a root item completed, so that a message that the root received after it can be placed there, and
+	 * where a command whose agent received a result from it while it was still running ended.
 	 *
 	 * @param params the completion notification's parameters
 	 * @param rootThread the root identifier, or {@code null} before it is known
 	 */
 	void readCompletion(JsonNode params, String rootThread)
 	{
-		if (rootThread == null || !rootThread.equals(params.path("threadId").asString("")))
+		if (rootThread == null)
 			return;
 		String id = params.path("item").path("id").asString("");
-		if (!id.isBlank())
+		if (id.isBlank())
+			return;
+		String key = createKey(params, "item", id);
+		if (entries.get(key) instanceof Tool tool && tool.command() && !tool.running().isEmpty() &&
+			!ends.containsKey(key))
+		{
+			ends.put(key, new Placed(entries.size(), new CommandEnd(tool.turn(), tool.agent(), tool.input(),
+				tool.exitStatus(), tool.output())));
+		}
+		if (rootThread.equals(params.path("threadId").asString("")))
 			completions.put(id, new Completion(resolveTurn(params, rootThread), entries.size()));
 	}
 
 	/**
-	 * Returns an immutable view of every retained activity, in invocation order, with each message that the root
-	 * received from a child after the root item that completed most recently before it. A message whose item the
+	 * Returns an immutable view of every retained activity, in invocation order, with the end of each command whose
+	 * agent received a result from it while it was still running where the command ended, and each message that the
+	 * root received from a child after the root item that completed most recently before it. A message whose item the
 	 * app-server has not reported follows the message before it, so the messages keep the order that the root
 	 * received them in.
 	 *
@@ -309,21 +345,30 @@ final class AppServerEvidence
 	 */
 	SessionEvidence snapshot(String rootThread)
 	{
-		List<Entry> activity = new ArrayList<>(entries.values());
-		if (rootThread == null)
-			return new SessionEvidence(activity);
-		Completion previous = new Completion(1, 0);
-		int inserted = 0;
-		for (RolloutMessage message : received.getOrDefault(rootThread, List.of()))
+		List<Placed> insertions = new ArrayList<>(ends.values());
+		if (rootThread != null)
 		{
-			Completion anchor = completions.getOrDefault(message.anchor(), previous);
-			if (anchor.entries() < previous.entries())
-				anchor = previous;
-			String child = childThreads.getOrDefault(message.author(), message.author());
-			activity.add(anchor.entries() + inserted, new ChildEvent(anchor.turn(), ROOT_AGENT, child, message.author(),
-				ChildEvent.Kind.RECEIVED, message.text()));
+			Completion previous = new Completion(1, 0);
+			for (RolloutMessage message : received.getOrDefault(rootThread, List.of()))
+			{
+				Completion anchor = completions.getOrDefault(message.anchor(), previous);
+				if (anchor.entries() < previous.entries())
+					anchor = previous;
+				String child = childThreads.getOrDefault(message.author(), message.author());
+				insertions.add(new Placed(anchor.entries(), new ChildEvent(anchor.turn(), ROOT_AGENT, child,
+					message.author(), ChildEvent.Kind.RECEIVED, message.text())));
+				previous = anchor;
+			}
+		}
+		// A stable sort keeps a command's end before a message placed at the same position, since the command ended
+		// before the item that the message follows completed, and keeps the messages in the order received
+		insertions.sort(Comparator.comparingInt(Placed::entries));
+		List<Entry> activity = new ArrayList<>(entries.values());
+		int inserted = 0;
+		for (Placed placed : insertions)
+		{
+			activity.add(placed.entries() + inserted, placed.entry());
 			inserted += 1;
-			previous = anchor;
 		}
 		return new SessionEvidence(activity);
 	}
@@ -335,6 +380,16 @@ final class AppServerEvidence
 	 * @param entries the number of entries when the item completed
 	 */
 	private record Completion(int turn, int entries)
+	{
+	}
+
+	/**
+	 * An entry that the app-server did not report as an item of its own, with where it belongs.
+	 *
+	 * @param entries the number of entries that precede it
+	 * @param entry   the entry
+	 */
+	private record Placed(int entries, Entry entry)
 	{
 	}
 }

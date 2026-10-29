@@ -80,7 +80,7 @@ public final class CodexSessions extends RunnerSessions
 	 * profile, prompt, rubric, decision rule or result schema, or the evidence section rendered for the same harness
 	 * events, and register the new version with the hash of the judge profile and the rendered evidence section.
 	 */
-	private static final int JUDGE_VERSION = 11;
+	private static final int JUDGE_VERSION = 12;
 
 	/**
 	 * Creates a port that runs sessions through the real Codex runner.
@@ -169,16 +169,18 @@ public final class CodexSessions extends RunnerSessions
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The app-server does not report what a thread received from another agent, so the parser also takes those
-	 * messages from the rollouts that the runner kept beside the transcript.
+	 * The app-server does not report what a thread received from another agent, or what an agent received from a
+	 * command that was still running, so the parser also takes those from the rollouts that the runner kept beside the
+	 * transcript.
 	 */
 	@Override
 	protected HarnessEvents newTranscriptEvents(Path transcript, JsonMapper json) throws IOException
 	{
 		requireThat(transcript, "transcript").isNotNull();
 		requireThat(json, "json").isNotNull();
-		return new AppServerEvents(json,
-			RolloutMessages.read(transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS), json));
+		Path rollouts = transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS);
+		return new AppServerEvents(json, RolloutMessages.read(rollouts, json),
+			RolloutRunningCommands.read(rollouts, json));
 	}
 
 	/**
