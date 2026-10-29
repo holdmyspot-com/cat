@@ -1,0 +1,5 @@
+region,revenue
+north,48210
+south,{{south_revenue}}
+east,39900
+west,51340
