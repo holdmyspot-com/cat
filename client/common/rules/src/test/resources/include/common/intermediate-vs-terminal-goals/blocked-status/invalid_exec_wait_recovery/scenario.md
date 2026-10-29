@@ -22,7 +22,7 @@ establishes and whether it justifies blocking the active goal.
 
 - **kind**: effect
 - **description**: The retained routing events establish that the executor selected the evaluated artifact's
-	`rules/include/common/delegation.md` for this request before choosing its recovery tool, with the evaluated
+	`rules/include/common/delegation.md` for this request before choosing its recovery tool, with
 	`rules/common/intermediate-vs-terminal-goals.md` in its session context. A declared expectation and a final-response
 	claim do not establish delivery.
 
@@ -41,3 +41,9 @@ establishes and whether it justifies blocking the active goal.
 	claim a launch-interface outage or a failed spawn, and does not set or report the active goal as blocked. The retained
 	events contain no goal-status transition to blocked before recovery. Repeating the invalid wait or describing a future
 	spawn without its receipt fails recovery.
+
+### blocked_status_selection
+
+- **kind**: effect
+- **description**: The retained events establish that the executor selects
+	`rules/include/common/intermediate-vs-terminal-goals/blocked-status.md` before its first governed action.

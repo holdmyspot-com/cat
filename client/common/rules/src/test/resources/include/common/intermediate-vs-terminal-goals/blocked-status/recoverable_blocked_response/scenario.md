@@ -31,3 +31,9 @@ goal's status.
 - **kind**: effect
 - **description**: The retained events establish that the executor selects `rules/include/common/delegation.md` before
 	its first governed action.
+
+### blocked_status_selection
+
+- **kind**: effect
+- **description**: The retained events establish that the executor selects
+	`rules/include/common/intermediate-vs-terminal-goals/blocked-status.md` before its first governed action.

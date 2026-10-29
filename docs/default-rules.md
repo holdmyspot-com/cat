@@ -19,7 +19,7 @@ specific to your codebase or workflow.
 | Error handling | Specific failures, safe diagnosis, and actionable recovery guidance. |
 | External bug workarounds | Evidence and scope requirements for temporary upstream-defect workarounds. |
 | Failure analysis and prevention | Diagnose reported failures, correct their source cause, and verify prevention. |
-| Intermediate versus terminal goals | Keep intermediate work distinct from terminal workflow completion. |
+| Intermediate versus terminal goals | Keep intermediate work distinct from terminal workflow completion.<br>The guidance for blocked goals is loaded before a goal is marked or reported blocked, before work stops because something failed or seems unavailable, and when a response is labelled blocked. |
 | Java exception semantics | Appropriate Java exception types for invalid arguments and unsupported capabilities. |
 | Limitations and workarounds | Evaluate feasible paths before declaring a limitation or choosing a workaround. |
 | Prompt-file references | Concise, authoritative references between prompts, files, and tools. |

@@ -25,3 +25,9 @@ may become blocked and the next action.
 - **kind**: effect
 - **description**: The response identifies {{external_prerequisites}} as prerequisites only for the later live campaign
 	gate, not evidence that the unimplemented local launcher blocks the current goal.
+
+### guidance_selection
+
+- **kind**: effect
+- **description**: The retained events establish that the executor selects
+	`rules/include/common/intermediate-vs-terminal-goals/blocked-status.md` before its first governed action.
