@@ -67,20 +67,18 @@ Before writing or editing a reader-facing update whose new evidence requires an 
 change an action, read `../include/common/write-clearly/unexpected-result.md`.
 
 This includes a failed test, review, or observed result that requires a corrective action even when the task never
-states an earlier plan. Do this after the task gives the update's facts and before drafting it; do not load the
-companion merely because a task mentions prose that the reader will not receive. This is the complete route for that
-update: do not add a general reporting or failure-analysis rule merely because the update names a failure. Add a
-failure-analysis route only when the task also asks to investigate its cause, determine why it occurred, or design its
-prevention; otherwise the focused companion is the complete route. Do not replace it with the later general one-file
-Clear Writing route.
+states an earlier plan. Do this after the task gives the update's facts and before drafting it. This is the complete
+route for that update: do not add a general reporting or failure-analysis rule merely because the update names a
+failure. Add a failure-analysis route only when the task also asks to investigate its cause, determine why it occurred,
+or design its prevention. Do not replace it with the later general one-file Clear Writing route.
 
 Before writing or editing another user response, prompt or rule file, source comment or Javadoc, command help text, or
 error message whose new evidence does not change the action the author planned to take, select its route after the task
 gives the reader-facing content and before drafting it. If that reader-facing update reports a tool, skill, subagent,
 command, test, or investigation as completed, failed, or unavailable, read `../include/common/write-clearly.md`, then
 `../include/common/check-assumptions.md` in that order as one route. A task-supplied result is still a reported claim.
-Otherwise read only `../include/common/write-clearly.md`. Do not load either route merely because a task mentions prose
-that the reader will not receive.
+Otherwise read only `../include/common/write-clearly.md`. Do not load this route or the one above merely because a task
+mentions prose that the reader will not receive.
 
 Before recommending, designing, implementing, or reviewing a change to code, configuration, a prompt, a workflow, or a
 plan, lazy load `../include/common/backward-design.md`, then `../include/common/design-quality.md`. A local rename,

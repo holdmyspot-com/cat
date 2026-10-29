@@ -42,30 +42,25 @@ availability gate. It cannot pass a behavior or outcome gate. For those gates, r
 execution boundary that the required behavior ran and produced its required effect. When availability itself is the
 terminal outcome, record availability as that gate's claim.
 
-When new work arises, classify it before acting. It supports the current terminal goal unless the user explicitly
-replaces or expands that goal. Record its own completion evidence separately. After it completes, re-evaluate the
-unchanged terminal conditions and continue from the next unmet condition. Do not report completion, return control as
-complete, or discard required follow-up work on intermediate evidence.
-
-Treat a user instruction as a goal change only when it explicitly replaces or expands the requested terminal outcome. A
-discovered prerequisite, failure, repair, workaround, or implementation detail does not change that outcome merely
-because completing it is necessary to proceed.
+When new work arises, such as a user instruction or a discovered prerequisite, failure, repair, workaround, or
+implementation detail, classify it before acting. It supports the current terminal goal unless the user explicitly
+replaces or expands the requested terminal outcome; being necessary to proceed does not make work a goal change. Record
+its own completion evidence separately. After it completes, re-evaluate the unchanged terminal conditions and continue
+from the next unmet condition. Do not report completion, return control as complete, or discard required follow-up work
+on intermediate evidence.
 
 Do not mark a goal blocked because the current executor reaches a turn, token, context, polling, tool-wait, or estimated
 duration limit. Those limits constrain the current attempt, not the user-authorized outcome: record the last verified
 state and the next required action, then resume it in a later attempt. Treat such a limit as a blocking condition only
 when the user explicitly made that limit a constraint of the goal. Otherwise, mark a goal blocked only for a required
-external input, authority, or state change that is unavailable; record that prerequisite, the evidence of its
-unavailability, and the actor or action that can restore progress.
+external input, authority, or state change that is unavailable.
 
 Before changing a goal to blocked, identify its next unmet terminal gate and classify each prerequisite at its owning
 boundary. A request, policy, receipt, manifest, fixture, schedule, process tree, or other artifact that a named local
 owner can create is local work, even when a later gate will sign it or send it to an external service. Keep the goal
-active and perform its next local implementation or focused acceptance gate while any such work remains. A blocked-goal
-record must instead name the next gate's required external authority, credential, live service result, or immutable
-fact; its observed unavailability; the restoring actor or action; and why no remaining local path can advance that
-gate. A prior `blocked` label, a delegate response, an unrun test, or uncertainty about a later live execution is not
-that evidence.
+active and perform its next local implementation or focused acceptance gate while any such work remains. A prior
+`blocked` label, a delegate response, an unrun test, or uncertainty about a later live execution is not evidence that a
+prerequisite is unavailable.
 
 Treat `BLOCKED`, `blocked`, and `BLOCKED_*` in a delegate, executor, validator, or tool response as that response's
 local outcome, not as authority to change the active goal's status. Classify the response at its owning workflow
@@ -74,12 +69,13 @@ receipt, or unavailable internal workflow capability remains recoverable work un
 fact that a required external prerequisite is unavailable and has recorded the actor or action that can restore it.
 Only that goal-level evidence may justify a blocked active goal.
 
-Before changing an active goal to blocked, record one blocker decision that identifies the unmet terminal condition,
-the required external prerequisite, evidence that the prerequisite is unavailable, and the actor or action that can
-restore it. Also identify the supported in-scope recovery actions considered and the evidence that none can make
-progress. A failed tool call, delegate launch, handoff, validator, or local check does not establish that record by
-itself: inspect the owning interface and take its smallest safe recovery action. If any part of the record is missing,
-leave the goal active, record the local failure separately, and continue with the next recovery action.
+Before changing an active goal to blocked, record one blocker decision that identifies the next unmet terminal gate; its
+required external prerequisite, such as an authority, credential, live service result, or immutable fact; evidence of
+that prerequisite's observed unavailability; and the actor or action that can restore it. Also identify the supported
+in-scope recovery actions considered and the evidence that none of them, and no remaining local path, can advance that
+gate. A failed tool call, delegate launch, handoff, validator, or local check does not establish that record by itself:
+inspect the owning interface and take its smallest safe recovery action. If any part of the record is missing, leave the
+goal active, record the local failure separately, and continue with the next recovery action.
 
 Before classifying a missing input as external, trace the workflow that consumes it. If that workflow provides a
 reachable command or callable operation that can generate the input from available local state, run or resume that

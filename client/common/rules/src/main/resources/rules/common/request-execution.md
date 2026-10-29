@@ -38,11 +38,9 @@ evidence from the governing contract, then classify the gap:
 - An **optional improvement** is not required to satisfy the governing contract. Keep it outside the authorized scope
 	and do not let it block required work.
 
-Do not classify a decision as product policy merely because the contract omits an internal mechanism, a reviewer
-prefers another design, or the implementation needs a new internal artifact or command option. When the contract fixes
-the observable result or acceptance evidence, resolve the missing mechanism as implementation or internal design.
-While a genuine product-policy choice remains unresolved, pause only work whose behavior depends on it and continue
-independent authorized work.
+Do not classify a decision as product policy merely because the contract omits an internal mechanism, a reviewer prefers
+another design, or the implementation needs a new internal artifact or command option. While a genuine product-policy
+choice remains unresolved, pause only work whose behavior depends on it and continue independent authorized work.
 
 Before re-answering a question, repeating an investigation, or redoing an action whose subject appeared earlier in the
 conversation, identify the prior result, the decision it answered, and the facts on which it depended. Reuse that result
