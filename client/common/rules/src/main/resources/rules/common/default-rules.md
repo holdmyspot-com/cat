@@ -63,8 +63,8 @@ not choose its representation, signature, or implementation until that rule is a
 Before choosing the numeric representation of a calculation, or of a numeric parameter or result, that is not money,
 lazy load `../include/common/numeric-precision.md`.
 
-When writing or changing a boolean expression that contains a negation, such as an `instanceof` test compared with
-`false`, lazy load `../include/common/boolean-negation.md`.
+When writing or changing a boolean expression that contains a negation, or that compares a boolean test with a
+boolean literal such as `true` or `false`, lazy load `../include/common/boolean-negation.md`.
 
 When writing or changing an expression that combines two different binary or ternary operators without
 parentheses between them, lazy load `../include/common/operator-precedence.md`.
