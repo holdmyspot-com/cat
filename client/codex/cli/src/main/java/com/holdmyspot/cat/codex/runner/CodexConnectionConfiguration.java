@@ -101,8 +101,9 @@ public final class CodexConnectionConfiguration
 
 	/**
 	 * Copies supported connection and project instruction settings and disables startup update checks in the isolated
-	 * configuration. On non-Windows platforms, the copied project's own Git directory is writable, except for its
-	 * configuration and hooks; projects without a Git directory receive no Git grant.
+	 * configuration, which also makes each session's working directory its project root, so that Codex looks for no
+	 * root marker above it. On non-Windows platforms, the copied project's own Git directory is writable, except for
+	 * its configuration and hooks; projects without a Git directory receive no Git grant.
 	 *
 	 * @param source      the host configuration file
 	 * @param destination the isolated configuration file
@@ -184,9 +185,13 @@ public final class CodexConnectionConfiguration
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
+		// The session's working directory, the copied project, holds its own Git repository and is therefore its
+		// project root anyway. Looking for a root marker in each directory above it costs one sandboxed helper process
+		// per directory whenever a thread starts, and under concurrent sessions that delayed each thread's first
+		// command by many seconds.
 		StringBuilder copied = new StringBuilder(256).append(STARTUP_UPDATE_CHECK).append(System.lineSeparator()).
 			append("default_permissions = \"").append(RUNNER_PERMISSION_PROFILE).append('"').
-			append(System.lineSeparator());
+			append(System.lineSeparator()).append("project_root_markers = []").append(System.lineSeparator());
 		// A top-level key must precede every table
 		if (toolOutputTokenLimit > 0)
 			copied.append("tool_output_token_limit = ").append(toolOutputTokenLimit).append(System.lineSeparator());

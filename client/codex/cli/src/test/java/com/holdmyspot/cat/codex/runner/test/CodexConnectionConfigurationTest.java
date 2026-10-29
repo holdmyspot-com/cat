@@ -309,6 +309,35 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
+	 * Verifies that a session takes its working directory, the copied project, as its project root, so that Codex
+	 * looks for no root marker in the directories above the project when it creates a thread, even when the host
+	 * configuration names markers of its own.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void projectIsItsOwnRoot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-project-root-"));
+			Path source = Files.writeString(root.resolve("host.toml"), """
+				project_root_markers = [".git", ".hg"]
+				model = "gpt-6-sol"
+				""");
+			Path destination = root.resolve("isolated/config.toml");
+
+			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"),
+				HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, Platform.LINUX_X64);
+
+			JsonNode markers = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("project_root_markers");
+			requireThat(markers.isArray(), "markersListed").isTrue();
+			requireThat(markers.size(), "markers").isEqualTo(0);
+		}
+	}
+
+	/**
 	 * Verifies that a Windows session prefers Codex's MXC sandbox, which enforces a profile that denies reads without an
 	 * administrator's setup.
 	 *
