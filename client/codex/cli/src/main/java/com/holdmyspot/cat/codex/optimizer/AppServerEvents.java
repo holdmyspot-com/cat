@@ -43,7 +43,13 @@ import tools.jackson.databind.json.JsonMapper;
  *   reports neither the child's assignment nor what the child sent: a {@code wait} item has empty
  *   {@code receiverThreadIds} and {@code agentsStates}, and the messages that the root received come from the root's
  *   rollout instead;</li>
- *   <li>hook notifications retain only their status, and root assistant items retain only response positions;</li>
+ *   <li>a {@code subAgentActivity} item of kind {@code interacted} reports that its thread sent a message through a
+ *   collaboration tool, such as {@code send_message} or {@code followup_task}, to the thread named by its
+ *   {@code agentThreadId}. When that thread is a started child, the message is retained without its text, which
+ *   Codex records only in encrypted form; otherwise it is the child's message to its parent, which the parent's
+ *   rollout supplies;</li>
+ *   <li>hook notifications retain only their status, and root assistant items retain only response positions and
+ *   the {@code questions} with which a user-input tool call asked the user for input;</li>
  *   <li>model output in a turn is a reasoning, reply or tool item, an {@code item/agentMessage/delta}, or reported
  *   token usage. A user-message item, a rate-limit update and a thread or turn status are not output. A
  *   {@code hook/started} notification marks a hook as running until its {@code hook/completed} notification;</li>

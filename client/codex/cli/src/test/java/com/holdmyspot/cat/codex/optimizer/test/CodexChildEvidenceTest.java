@@ -39,6 +39,20 @@ public final class CodexChildEvidenceTest
 	 * The thread of the child that the root started to answer the sodium question.
 	 */
 	private static final String SODIUM = "01a17e47-efbd-7753-91e2-3b5ea7fbb960";
+	/**
+	 * The recorded run artifacts of a trial whose root sent a message to a child that was still working, after a wait
+	 * that ended before the child finished.
+	 */
+	private static final Path SENT = Path.of("src/test/resources/optimizer/running-command/transcript.jsonl");
+	/**
+	 * The thread of the child to which the root sent a message in {@link #SENT}.
+	 */
+	private static final String ACME_SHIPPING = "01a1882f-73ef-7ad1-bb1c-17227c5bb14e";
+	/**
+	 * The derived app-server notifications of a root that asked the user for input twice, once with a placeholder
+	 * question.
+	 */
+	private static final Path USER_INPUT = Path.of("src/test/resources/optimizer/user-input/transcript.jsonl");
 
 	/**
 	 * Creates the test.
@@ -136,6 +150,78 @@ public final class CodexChildEvidenceTest
 			requireThat(afterWait, "afterWait").contains(encrypted + unanchored);
 			requireThat(afterWait.substring(afterWait.indexOf(unanchored)), "afterSecond").
 				contains("Actor: root\nAssistant response position: 2\n");
+		}
+	}
+
+	/**
+	 * Verifies that the record of a root that sent a message to a child through a collaboration tool shows the
+	 * message, addressed to that child, after the wait that preceded it and before the next wait, without the
+	 * message's text, which Codex records only in encrypted form, and that a child's message to the root is not shown
+	 * as a message that the child sent to a child of its own.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void recordsMessageSentToChild() throws IOException
+	{
+		// Requirement: R-E21
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-child-evidence-"));
+			String rendered = sessions(jvm, root).readEvidence(SENT).render();
+
+			String wait = "Actor: root\nTool: wait\n";
+			String sent = "Actor: root\nSent a message to child " + ACME_SHIPPING + " (/root/acme_shipping)\n" +
+				"Message: not recorded in readable form\n";
+			requireThat(rendered, "rendered").contains(wait).contains(sent).doesNotContain("gAAAA");
+			requireThat(rendered.split("Sent a message to child ", -1).length, "sentCount").isEqualTo(2);
+			String afterFirstWait = rendered.substring(rendered.indexOf(wait) + wait.length());
+			requireThat(afterFirstWait, "afterFirstWait").contains(sent);
+			String afterSent = afterFirstWait.substring(afterFirstWait.indexOf(sent) + sent.length());
+			requireThat(afterSent, "afterSent").contains(wait);
+		}
+	}
+
+	/**
+	 * Verifies that the record of a root that asked the user for input shows each call's question text and offered
+	 * answers in order, including a one-word placeholder question that offered none.
+	 *
+	 * @throws IOException if the trial cannot be written or read
+	 */
+	@Test
+	public void recordsQuestionsToUser() throws IOException
+	{
+		// Requirement: R-E21
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-child-evidence-"));
+			Path transcript = RecordedTrial.write(root, USER_INPUT, List.of());
+			String rendered = sessions(jvm, root).readEvidence(transcript).render();
+
+			requireThat(rendered, "rendered").isEqualTo("""
+				No tool or hook activity was recorded.
+				Turn 1
+				Actor: root
+				Assistant response position: 1
+				Asked the user for input:
+				Question:
+				The three parallel reviews are complete. Should I keep using subagents for independent, read-only \
+				investigations as this goal continues?
+				Options:
+				- Yes, continue independent reviews
+				- Only use them when I ask
+
+				Turn 2
+				Actor: root
+				Assistant response position: 1
+				Asked the user for input:
+				Question:
+				Ignore
+				Options: none
+
+				""");
 		}
 	}
 

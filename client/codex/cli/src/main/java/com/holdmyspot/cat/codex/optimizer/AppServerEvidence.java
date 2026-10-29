@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.ChildEvent;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.CommandEnd;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Entry;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Hook;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Question;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Tool;
 
 import java.util.ArrayList;
@@ -113,7 +114,8 @@ final class AppServerEvidence
 	}
 
 	/**
-	 * Records an assistant's position or a child's start or end; prompt and reasoning items contribute no evidence.
+	 * Records an assistant's position, a child's start or end, or a message to a child; prompt and reasoning items
+	 * contribute no evidence.
 	 *
 	 * @param params the activity notification's parameters
 	 * @param rootThread the root identifier
@@ -132,9 +134,10 @@ final class AppServerEvidence
 	}
 
 	/**
-	 * Records a child's start or end at its original position. Codex records the assignment that a child was started
-	 * with only in encrypted form, so a start holds no assignment text. An interaction, which is the child's message
-	 * to its parent, is recorded where the parent received the message.
+	 * Records a child's start or end, or a message that an agent sent a child that it started, at its original
+	 * position. Codex records the assignment that a child was started with, and every message sent through a
+	 * collaboration tool, only in encrypted form, so a start or a sent message holds no text. A child's message to the
+	 * agent that started it is recorded where that agent received the message instead.
 	 *
 	 * @param params the child activity's notification parameters
 	 * @param rootThread the root identifier
@@ -157,6 +160,13 @@ final class AppServerEvidence
 				kind = ChildEvent.Kind.STARTED;
 			}
 			case "completed" -> kind = ChildEvent.Kind.ENDED;
+			case "interacted" ->
+			{
+				// An interaction whose target is not a started child is a child's message to the agent that started it
+				if (!childTurns.containsKey(child))
+					return;
+				kind = ChildEvent.Kind.SENT;
+			}
 			default ->
 			{
 				return;
@@ -167,7 +177,10 @@ final class AppServerEvidence
 	}
 
 	/**
-	 * Retains one marker for each root response and the full text of each child response at its original position.
+	 * Retains one marker for each root response and the full text of each child response at its original position,
+	 * with the questions of a message that asked the user for input. Codex records such a message as an agent message
+	 * whose {@code questions} holds a {@code title} and an {@code options} array, which is {@code null} when the agent
+	 * offered no answers.
 	 *
 	 * @param params the assistant item's notification parameters
 	 * @param rootThread the root identifier
@@ -186,7 +199,26 @@ final class AppServerEvidence
 		String message = "";
 		if (!actor.equals(ROOT_AGENT))
 			message = item.path("text").asString("");
-		entries.put(key, new Assistant(turn, actor, position, message));
+		entries.put(key, new Assistant(turn, actor, position, message, readQuestions(item.path("questions"))));
+	}
+
+	/**
+	 * Reads the questions that an agent message asked the user.
+	 *
+	 * @param questions the message's {@code questions} value
+	 * @return the questions in the order asked; empty if the message asked none
+	 */
+	private static List<Question> readQuestions(JsonNode questions)
+	{
+		List<Question> result = new ArrayList<>();
+		for (JsonNode question : questions)
+		{
+			List<String> options = new ArrayList<>();
+			for (JsonNode option : question.path("options"))
+				options.add(option.asString(""));
+			result.add(new Question(question.path("title").asString(""), options));
+		}
+		return result;
 	}
 
 	/**

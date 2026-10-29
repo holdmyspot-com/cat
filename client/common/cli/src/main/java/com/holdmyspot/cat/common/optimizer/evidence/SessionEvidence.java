@@ -235,23 +235,28 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 	}
 
 	/**
-	 * An assistant message's position, with child text retained because it is not supplied among root responses.
+	 * An assistant message's position, with child text retained because it is not supplied among root responses, and
+	 * the questions of a message that asked the user for input.
 	 *
-	 * @param turn the one-based turn
-	 * @param agent the root name or child identity
-	 * @param position the one-based response position within the actor's turn
-	 * @param text the child text, or an empty string for a root response marker
+	 * @param turn      the one-based turn
+	 * @param agent     the root name or child identity
+	 * @param position  the one-based response position within the actor's turn
+	 * @param text      the child text, or an empty string for a root response marker
+	 * @param questions the questions that the message asked the user, in the order asked; empty if it asked none
 	 */
-	public record Assistant(int turn, String agent, int position, String text) implements Entry
+	public record Assistant(int turn, String agent, int position, String text, List<Question> questions)
+		implements Entry
 	{
 		/**
 		 * Creates an assistant position.
 		 *
-		 * @param turn the one-based turn
-		 * @param agent the root name or child identity
-		 * @param position the one-based response position within the actor's turn
-		 * @param text the child text, or an empty string for a root response marker
-		 * @throws NullPointerException if {@code agent} or {@code text} are null
+		 * @param turn      the one-based turn
+		 * @param agent     the root name or child identity
+		 * @param position  the one-based response position within the actor's turn
+		 * @param text      the child text, or an empty string for a root response marker
+		 * @param questions the questions that the message asked the user, in the order asked; empty if it asked none
+		 * @throws NullPointerException     if {@code agent}, {@code text} or {@code questions} are null, or
+		 *                                  {@code questions} contains null
 		 * @throws IllegalArgumentException if {@code turn} or {@code position} are less than 1, or {@code agent} is blank
 		 */
 		public Assistant
@@ -260,19 +265,61 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 			requireThat(agent, "agent").isNotBlank();
 			requireThat(position, "position").isGreaterThanOrEqualTo(1);
 			requireThat(text, "text").isNotNull();
+			requireThat(questions, "questions").isNotNull();
+			questions = List.copyOf(questions);
+		}
+
+		/**
+		 * Creates the position of a message that asked the user nothing.
+		 *
+		 * @param turn     the one-based turn
+		 * @param agent    the root name or child identity
+		 * @param position the one-based response position within the actor's turn
+		 * @param text     the child text, or an empty string for a root response marker
+		 * @throws NullPointerException     if {@code agent} or {@code text} are null
+		 * @throws IllegalArgumentException if {@code turn} or {@code position} are less than 1, or {@code agent} is blank
+		 */
+		public Assistant(int turn, String agent, int position, String text)
+		{
+			this(turn, agent, position, text, List.of());
 		}
 	}
 
 	/**
-	 * A child agent's start, a message that an agent received from it, or its end, as the harness recorded it.
+	 * A question that an assistant message asked the user, as the agent wrote it.
+	 *
+	 * @param title   the question's text, which can be empty
+	 * @param options the answers that the agent offered, in order; empty if it offered none
+	 */
+	public record Question(String title, List<String> options)
+	{
+		/**
+		 * Creates a question.
+		 *
+		 * @param title   the question's text, which can be empty
+		 * @param options the answers that the agent offered, in order; empty if it offered none
+		 * @throws NullPointerException if any of the arguments are null, or {@code options} contains null
+		 */
+		public Question
+		{
+			requireThat(title, "title").isNotNull();
+			requireThat(options, "options").isNotNull();
+			options = List.copyOf(options);
+		}
+	}
+
+	/**
+	 * A child agent's start, a message that an agent sent it or received from it, or its end, as the harness recorded
+	 * it.
 	 *
 	 * @param turn  the one-based turn
-	 * @param agent the root name or child identity of the agent that started the child
+	 * @param agent the root name or child identity of the agent that started the child, sent it a message or received
+	 *              its message
 	 * @param child the child's identity, which names the child's own entries when the harness records them
 	 * @param name  the name that the agent gave the child, or an empty string when the harness recorded none
 	 * @param kind  the kind of event
-	 * @param text  the assignment of a start, the message of a receipt or what the harness reported of an end; an
-	 *              empty string when the harness recorded no readable text
+	 * @param text  the assignment of a start, the message of a sending or a receipt, or what the harness reported of
+	 *              an end; an empty string when the harness recorded no readable text
 	 */
 	public record ChildEvent(int turn, String agent, String child, String name, Kind kind, String text)
 		implements Entry
@@ -281,12 +328,13 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 		 * Creates a child event.
 		 *
 		 * @param turn  the one-based turn
-		 * @param agent the root name or child identity of the agent that started the child
+		 * @param agent the root name or child identity of the agent that started the child, sent it a message or
+		 *              received its message
 		 * @param child the child's identity, which names the child's own entries when the harness records them
 		 * @param name  the name that the agent gave the child, or an empty string when the harness recorded none
 		 * @param kind  the kind of event
-		 * @param text  the assignment of a start, the message of a receipt or what the harness reported of an end; an
-		 *              empty string when the harness recorded no readable text
+		 * @param text  the assignment of a start, the message of a sending or a receipt, or what the harness reported
+		 *              of an end; an empty string when the harness recorded no readable text
 		 * @throws NullPointerException     if {@code agent}, {@code child}, {@code name}, {@code kind} or {@code text}
 		 *                                  are null
 		 * @throws IllegalArgumentException if {@code turn} is less than 1, or {@code agent} or {@code child} are blank
@@ -311,6 +359,10 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 			 */
 			STARTED,
 			/**
+			 * The agent sent the child a message; the text is the message.
+			 */
+			SENT,
+			/**
 			 * The agent received a message from the child; the text is the message.
 			 */
 			RECEIVED,
@@ -322,7 +374,8 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 	}
 
 	/**
-	 * Renders every entry by turn without repeating root response text. Each tool output is described by its size
+	 * Renders every entry by turn without repeating root response text, but with the questions of each message that
+	 * asked the user for input. Each tool output is described by its size
 	 * rather than copied, so that the activity stays short however much a trial prints; for a command, the description
 	 * also says whether the agent received the whole output. A command whose agent received a result from it while it
 	 * was still running is shown instead with each such result whole, and its end with its exit status and the size of
@@ -361,6 +414,7 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 						result.append("Assistant response position: ").append(assistant.position()).append('\n');
 						if (!assistant.agent().equals(ROOT_AGENT) && !assistant.text().isEmpty())
 							appendText(result, assistant.text());
+						appendQuestions(result, assistant.questions());
 					}
 					case ChildEvent event -> appendChildEvent(result, event);
 				}
@@ -368,6 +422,38 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 			}
 		}
 		return result.toString();
+	}
+
+	/**
+	 * Appends the questions that a message asked the user, each with the answers that the agent offered, saying so
+	 * when a question's text is empty or it offered no answers.
+	 *
+	 * @param result    the destination
+	 * @param questions the questions; nothing is appended if it is empty
+	 */
+	private static void appendQuestions(StringBuilder result, List<Question> questions)
+	{
+		if (questions.isEmpty())
+			return;
+		result.append("Asked the user for input:\n");
+		for (Question question : questions)
+		{
+			if (question.title().isEmpty())
+				result.append("Question: empty\n");
+			else
+			{
+				result.append("Question:\n");
+				appendText(result, question.title());
+			}
+			if (question.options().isEmpty())
+				result.append("Options: none\n");
+			else
+			{
+				result.append("Options:\n");
+				for (String option : question.options())
+					appendText(result, "- " + option);
+			}
+		}
 	}
 
 	/**
@@ -481,6 +567,17 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 				else
 				{
 					result.append("Assignment:\n");
+					appendText(result, event.text());
+				}
+			}
+			case SENT ->
+			{
+				result.append("Sent a message to child ").append(child).append('\n');
+				if (event.text().isEmpty())
+					result.append("Message: not recorded in readable form\n");
+				else
+				{
+					result.append("Message:\n");
 					appendText(result, event.text());
 				}
 			}

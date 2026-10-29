@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.ChildEvent;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.CommandEnd;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Entry;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Hook;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Question;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Tool;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 
@@ -140,6 +141,79 @@ public final class SessionEvidenceTest
 			Actor: root
 			Received from child child-b:
 			(not recorded in readable form)
+
+			""");
+	}
+
+	/**
+	 * Verifies that a message that an agent sent a child names the child by identity and given name where it was sent,
+	 * and says so when the harness recorded the message only in unreadable form instead of showing what it recorded.
+	 */
+	@Test
+	public void rendersSentMessages()
+	{
+		// Requirement: R-E21
+		String rendered = new SessionEvidence(List.of(
+			new ChildEvent(1, "root", "child-a", "/root/a", ChildEvent.Kind.STARTED, ""),
+			new ChildEvent(1, "root", "child-a", "/root/a", ChildEvent.Kind.SENT, ""),
+			new ChildEvent(1, "child-a", "child-b", "", ChildEvent.Kind.SENT, "Check the second file."))).render();
+
+		requireThat(rendered, "rendered").isEqualTo("""
+			No tool or hook activity was recorded.
+			Turn 1
+			Actor: root
+			Started child child-a (/root/a)
+			Assignment: not recorded in readable form
+
+			Actor: root
+			Sent a message to child child-a (/root/a)
+			Message: not recorded in readable form
+
+			Actor: child child-a
+			Sent a message to child child-b
+			Message:
+			Check the second file.
+
+			""");
+	}
+
+	/**
+	 * Verifies that a message that asked the user for input shows each question's text and offered answers, and says
+	 * so when a question's text is empty or it offered no answers, while root response text stays out.
+	 */
+	@Test
+	public void rendersQuestionsToUser()
+	{
+		// Requirement: R-E21
+		String rendered = new SessionEvidence(List.of(
+			new Assistant(1, "root", 1, "", List.of(new Question("Ignore", List.of()))),
+			new Assistant(1, "root", 2, "", List.of(new Question("", List.of()),
+				new Question("Push the branch?", List.of("Yes, push it", "Keep it local")))),
+			new Assistant(1, "root", 3, "Root response is already supplied."))).render();
+
+		requireThat(rendered, "rendered").isEqualTo("""
+			No tool or hook activity was recorded.
+			Turn 1
+			Actor: root
+			Assistant response position: 1
+			Asked the user for input:
+			Question:
+			Ignore
+			Options: none
+
+			Actor: root
+			Assistant response position: 2
+			Asked the user for input:
+			Question: empty
+			Options: none
+			Question:
+			Push the branch?
+			Options:
+			- Yes, push it
+			- Keep it local
+
+			Actor: root
+			Assistant response position: 3
 
 			""");
 	}
