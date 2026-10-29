@@ -4,6 +4,10 @@
 
 - A boolean expression states its condition with the fewest negations among the forms that are equivalent for every
 	value its operands can take, so a reader learns when it is true without cancelling negations mentally.
+<!-- Counting negations does not choose between `!(x instanceof Y)` and `(x instanceof Y) == false`, which hold one
+each, so this goal names the form. -->
+- A negated `instanceof` test applies the logical not operator to the test rather than comparing the test with a boolean
+	literal, so a reader recognizes every negated type test in the same form.
 - A rewrite that removes a negation preserves the expression's result for every operand value and the surrounding
 	statement's structure, so readability never changes behavior.
 
@@ -21,6 +25,11 @@ that form. For example:
 	rather than `!(count > 0)` when `count` is an integer.
 - Use the positive predicate when one exists: write `isEmpty(list)` rather than `!isNotEmpty(list)`.
 - Distribute a negation when that removes negations: write `a && b` rather than `!(!a || !b)`.
+
+Negate an `instanceof` test, in any language that has the operator, by applying the logical not operator to the
+parenthesized test rather than comparing the test with a boolean literal. For example, write
+`!(value instanceof Duration)` rather than `(value instanceof Duration) == false`,
+`(value instanceof Duration) === false` or `(value instanceof Duration) != true`.
 
 Rewrite only when both forms give the same result for every value the operands can take. Keep the negated form when
 they differ. For example, when a floating-point operand can be NaN, `!(ratio > 0.5)` is true for NaN while
