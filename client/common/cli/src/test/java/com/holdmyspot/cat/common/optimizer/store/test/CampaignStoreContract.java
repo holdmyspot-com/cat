@@ -627,7 +627,7 @@ public abstract class CampaignStoreContract
 			Instant resetsAt = Instant.parse("2026-10-01T15:00:00Z");
 			List<TrialSession> sessions = List.of(
 				new TrialSession(Instant.parse("2026-10-01T10:00:00Z"), Instant.parse("2026-10-01T10:04:30.125Z"), 3,
-					new Throttle(resetsAt, 1, 2),
+					new Throttle(resetsAt, 1, 2, 1),
 					List.of(new RateLimitWindow(0.97, resetsAt), new RateLimitWindow(0.25, null)),
 					HostLogin.SUBSCRIPTION, new TokenUsage(100, 20, 30, 10)),
 				new TrialSession(Instant.parse("2026-10-01T10:05:00Z"), Instant.parse("2026-10-01T10:05:00Z"), 1,
@@ -1210,7 +1210,7 @@ public abstract class CampaignStoreContract
 				List.of(), null)).
 			evidenceRevision(41).
 			slowStart(new SlowStart(4, 3)).
-			throttle(new Throttle(Instant.parse("2026-10-01T12:34:56.789Z"), 2, 3)).
+			throttle(new Throttle(Instant.parse("2026-10-01T12:34:56.789Z"), 2, 3, 6)).
 			pending(new PendingDecision.MeasurementChanged(new MeasurementIdentity(otherModel),
 				List.of(MeasurementCondition.MODEL, MeasurementCondition.SESSION_ENVIRONMENT_VERSION))).
 			pending(new PendingDecision.UnownedChange("CLAUDE.md changed outside CAT")).

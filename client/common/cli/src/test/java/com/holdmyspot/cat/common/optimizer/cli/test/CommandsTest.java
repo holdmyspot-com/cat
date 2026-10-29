@@ -451,7 +451,7 @@ public final class CommandsTest
 	{
 		FakeCore core = new FakeCore();
 		StatusReport held = StatusReport.of(new Builder().confirmed().
-			throttle(new Throttle(Instant.parse("2026-10-09T21:13:08Z"), 2, 1)).build(), ReportEvidence.NONE);
+			throttle(new Throttle(Instant.parse("2026-10-09T21:13:08Z"), 2, 1, 2)).build(), ReportEvidence.NONE);
 		core.result = CommandResult.of(held, Harness.CLAUDE);
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		int exit;

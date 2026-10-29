@@ -189,7 +189,7 @@ public final class StatusReportTest
 	public void summaryShowsHoldInUserTimeZone()
 	{
 		Instant holdUntil = Instant.parse("2026-10-09T21:13:08.789Z");
-		StatusReport report = StatusReport.of(new Builder().throttle(new Throttle(holdUntil, 2, 3)).build(),
+		StatusReport report = StatusReport.of(new Builder().throttle(new Throttle(holdUntil, 2, 3, 2)).build(),
 			ReportEvidence.NONE);
 		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
 
@@ -237,7 +237,7 @@ public final class StatusReportTest
 	public void summaryShowsZeroSecondsOfHold()
 	{
 		Instant holdUntil = Instant.parse("2026-01-15T05:00:00Z");
-		StatusReport report = StatusReport.of(new Builder().throttle(new Throttle(holdUntil, 1, 1)).build(),
+		StatusReport report = StatusReport.of(new Builder().throttle(new Throttle(holdUntil, 1, 1, 1)).build(),
 			ReportEvidence.NONE);
 
 		requireThat(report.summary(ZoneId.of("America/Toronto")), "summary").

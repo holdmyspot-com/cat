@@ -51,6 +51,12 @@ import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.optimizer.store.TrialSession;
+import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
+import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
+import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
+import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 
 import java.io.IOException;
@@ -1202,10 +1208,66 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(45);
+					"recordVersion").isEqualTo(46);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(45);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(46);
+		}
+	}
+
+	/**
+	 * Verifies that a version-45 snapshot whose throttle holds the window cap at 1 without a rejection loads with the
+	 * campaign's ceiling as the level to regrow to, so slow start can raise its window again while utilization stays at
+	 * 80% or more; that one whose throttle counts a rejection's backoffs keeps the window at 1; and that a version-45
+	 * trial session's throttle keeps its window cap as its peak window.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void version45ThrottleRegrowsAfterUpgrade() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-45-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Instant expired = Instant.parse("2026-10-28T10:22:05Z");
+			Campaign original = new Builder().header(header(ID)).confirmed().working(1).
+				development("formatting", 200, 0).development("safety", 160, 1).slowStart(new SlowStart(16, 8)).
+				ceiling(8).throttle(new Throttle(expired, 1, 0, 1)).build();
+			LogicalTrial trial = trial(1, TrialState.ASSIGNED);
+			store.writeAssignment(ID, trial);
+			store.writeTrialSession(ID, trial.key(), new TrialSession(expired, expired.plusSeconds(40), 8,
+				new Throttle(expired, 1, 0, 1), List.of(new RateLimitWindow(0.80, null)), HostLogin.API_KEY, null));
+			store.replaceSnapshot(original);
+
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 45);
+			((ObjectNode) root.get("throttle")).remove("peak_window");
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+			try (Stream<Path> files = Files.list(heldOutDirectory(campaigns).resolve("trials")))
+			{
+				Path record = files.findFirst().orElseThrow();
+				ObjectNode recordRoot = (ObjectNode) JSON.readTree(Files.readString(record, UTF_8));
+				recordRoot.put("format_version", 45);
+				for (JsonNode session : recordRoot.get("sessions"))
+					((ObjectNode) session.get("throttle")).remove("peak_window");
+				Files.writeString(record, JSON.writeValueAsString(recordRoot), UTF_8);
+			}
+
+			FileCampaignStore restarted = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Campaign loaded = restarted.load(ID).orElseThrow();
+			requireThat(loaded.throttle(), "throttle").isEqualTo(new Throttle(expired, 1, 0, 8));
+			Campaign observed = Transitions.apply(loaded, new CampaignEvent.ObserveRateLimit(
+				List.of(new RateLimitWindow(0.92, null)), expired.plusSeconds(60)));
+			requireThat(ConcurrencyPolicy.window(observed), "window").isEqualTo(8);
+			requireThat(restarted.readRecord(ID, trial.key()).orElseThrow().sessions().getFirst().throttle(),
+				"sessionThrottle").isEqualTo(new Throttle(expired, 1, 0, 1));
+
+			((ObjectNode) root.get("throttle")).put("backoffs", 2);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+			Campaign rejected = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
+			requireThat(rejected.throttle(), "rejectedThrottle").isEqualTo(new Throttle(expired, 1, 2, 1));
 		}
 	}
 
@@ -1613,7 +1675,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 46);
+			root.put("format_version", 47);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);

@@ -3284,7 +3284,7 @@ public final class DriverTest
 				driver.step();
 
 				// The 85% window stops the concurrency window from growing beyond the 2 trials that are running
-				Throttle frozen = new Throttle(Instant.EPOCH, 2, 0);
+				Throttle frozen = new Throttle(Instant.EPOCH, 2, 0, 2);
 				requireThat(recordedSessions(harness), "sessions").isEqualTo(List.of(new TrialSession(
 					DriverHarness.START, DriverHarness.START.plus(Duration.ofMinutes(3)), 2, frozen, windows,
 					HostLogin.SUBSCRIPTION, usage)));
@@ -3319,7 +3319,7 @@ public final class DriverTest
 
 				requireThat(recordedSessions(harness), "sessions").isEqualTo(List.of(new TrialSession(
 					DriverHarness.START, DriverHarness.START.plus(Duration.ofMinutes(1)), 1,
-					new Throttle(resetsAt, 1, 0), windows, HostLogin.API_KEY, null)));
+					new Throttle(resetsAt, 1, 0, 1), windows, HostLogin.API_KEY, null)));
 			}
 		}
 	}

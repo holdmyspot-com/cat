@@ -104,7 +104,7 @@ public final class ConcurrencyPolicyTest
 		requireThat(ConcurrencyPolicy.window(100, 0, new SlowStart(4, 0), 16, Throttle.NONE), "slowStartBound").
 			isEqualTo(4);
 		requireThat(ConcurrencyPolicy.window(100, 0, sixteen, 3, Throttle.NONE), "ceilingBound").isEqualTo(3);
-		requireThat(ConcurrencyPolicy.window(100, 0, sixteen, 16, new Throttle(Instant.EPOCH, 2, 0)),
+		requireThat(ConcurrencyPolicy.window(100, 0, sixteen, 16, new Throttle(Instant.EPOCH, 2, 0, 2)),
 			"throttleBound").isEqualTo(2);
 	}
 

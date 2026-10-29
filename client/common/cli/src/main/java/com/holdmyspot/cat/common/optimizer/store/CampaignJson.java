@@ -141,10 +141,13 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
  * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
- * round-trip exactly. Version-43 and version-44 documents are upgraded on read: version 43 lacks the saved approach
- * rotation, so existing rounds keep their nine-approach rotation, and version 44 lacks the paired-rerun roles of
- * promotion runs, which its runs never use. Other unsupported versions are refused with a message that asks the user
- * to start a new campaign.
+ * round-trip exactly. Version-43 to version-45 documents are upgraded on read: version 43 lacks the saved approach
+ * rotation, so existing rounds keep their nine-approach rotation; version 44 lacks the paired-rerun roles of promotion
+ * runs, which its runs never use; and versions 43 to 45 lack the throttle's peak window. An upgraded snapshot's peak
+ * window is 1 while a rejection's backoffs are counted, and otherwise the campaign's ceiling, because its window cap
+ * may hold a window that a slow-start reset had just lowered. An upgraded trial session's peak window is its window
+ * cap, the level at which that throttle stopped growth. Other unsupported versions are refused with a message that asks
+ * the user to start a new campaign.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}. Reading ignores a measurement condition that CAT recorded in the current format but no
@@ -157,7 +160,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 45;
+	private static final int FORMAT_VERSION = 46;
 	/**
 	 * The names of measurement conditions that CAT no longer records. A document written while CAT recorded one still
 	 * loads: reading drops the condition.
@@ -914,6 +917,7 @@ final class CampaignJson
 		node.put("hold_until", throttle.holdUntil().toString());
 		node.put("window_cap", throttle.windowCap());
 		node.put("backoffs", throttle.backoffs());
+		node.put("peak_window", throttle.peakWindow());
 		return node;
 	}
 
@@ -925,7 +929,8 @@ final class CampaignJson
 	 */
 	private static Throttle readThrottle(JsonNode node)
 	{
-		return new Throttle(instant(node, "hold_until"), integer(node, "window_cap"), integer(node, "backoffs"));
+		return new Throttle(instant(node, "hold_until"), integer(node, "window_cap"), integer(node, "backoffs"),
+			integer(node, "peak_window"));
 	}
 
 	/**
@@ -2652,14 +2657,12 @@ final class CampaignJson
 		requireObject(root, "$");
 		int version = integer(root, VERSION);
 		if (version == 43)
-		{
 			upgradeVersion43((ObjectNode) root);
-			return;
-		}
-		// Version 44 differs only by lacking the paired-rerun roles, so its runs read unchanged
-		if (version == 44)
+		// Version 44 differs from version 45 only by lacking the paired-rerun roles, so its runs read unchanged
+		boolean lacksPeakWindow = version >= 43 && version <= 45;
+		if (lacksPeakWindow)
 		{
-			((ObjectNode) root).put(VERSION, FORMAT_VERSION);
+			upgradeVersion45((ObjectNode) root);
 			return;
 		}
 		if (version != FORMAT_VERSION)
@@ -2674,15 +2677,47 @@ final class CampaignJson
 	 * Upgrades a saved campaign or trial record before the current reader consumes it. Rounds retain their
 	 * nine-approach rotation; subsequently created rounds rank all available approaches.
 	 *
-	 * @param root the version-43 document, mutated to the current format
+	 * @param root the version-43 document, mutated to the version-45 format
 	 */
 	private static void upgradeVersion43(ObjectNode root)
 	{
-		root.put(VERSION, FORMAT_VERSION);
 		JsonNode optimization = root.get("optimization");
 		if (optimization instanceof ObjectNode object)
 			object.putObject("approaches");
 		upgradeDevelopment(root.get("development"));
+	}
+
+	/**
+	 * Adds the peak window to the throttle states of a saved campaign or trial record. A snapshot whose throttle counts
+	 * backoffs was last changed by a rejection that no completed trial followed, so its peak window becomes 1, as the
+	 * rejection would have set it. Otherwise its peak window becomes the campaign's ceiling: its window cap may hold
+	 * the window that a slow-start reset had just lowered when utilization reached the freeze level, and no saved value
+	 * records the window that the campaign had reached. Slow start, the risk ceiling and the next rejection still limit
+	 * the window, and a hold in progress still holds admissions until it ends. A trial session's peak window becomes
+	 * its window cap, the level at which that historical throttle stopped growth.
+	 *
+	 * @param root the version-43 to version-45 document, mutated to the current format
+	 */
+	private static void upgradeVersion45(ObjectNode root)
+	{
+		root.put(VERSION, FORMAT_VERSION);
+		if (root.get("throttle") instanceof ObjectNode throttle)
+		{
+			int peak = Campaign.DEFAULT_CEILING;
+			if (root.has("ceiling"))
+				peak = integer(root, "ceiling");
+			if (integer(throttle, "backoffs") > 0)
+				peak = 1;
+			throttle.put("peak_window", peak);
+		}
+		if (root.get("sessions") instanceof ArrayNode sessions)
+		{
+			for (JsonNode session : sessions)
+			{
+				if (session.get("throttle") instanceof ObjectNode throttle)
+					throttle.put("peak_window", integer(throttle, "window_cap"));
+			}
+		}
 	}
 
 	/**

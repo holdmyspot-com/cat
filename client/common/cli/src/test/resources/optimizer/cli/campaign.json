@@ -1,5 +1,5 @@
 {
-	"format_version" : 45,
+	"format_version" : 46,
 	"header" : {
 		"id" : "fixture-campaign",
 		"root" : "/project",
@@ -386,7 +386,8 @@
 	"throttle" : {
 		"hold_until" : "1970-01-01T00:00:00Z",
 		"window_cap" : 0,
-		"backoffs" : 0
+		"backoffs" : 0,
+		"peak_window" : 0
 	},
 	"pending_decisions" : [ ],
 	"revision_requested" : false,
