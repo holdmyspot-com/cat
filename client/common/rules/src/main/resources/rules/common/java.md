@@ -38,3 +38,6 @@ When a Java test needs direct access to non-public production behavior to avoid 
 When adding or changing a public or protected declaration in a package that a `module-info.java` exports, changing a
 module's `exports` or `requires transitive` directives, or resolving a warning that a type is not exported from a
 module, lazy load `../include/java/module-exports.md`.
+
+When writing or editing a Java constructor or instance initializer that assigns a field, lazy load
+`../include/java/field-assignment.md`.
