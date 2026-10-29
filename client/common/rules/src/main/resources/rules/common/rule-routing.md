@@ -11,6 +11,8 @@ agents: ["main", "subagents"]
 - Route an input-preservation decision from the stated contract before project inspection or candidate selection can
 	commit to a transformation that might discard the needed distinction.
 - Make each required route read complete before the task action it governs, without prescribing how the file is read.
+- Ensure every agent resolves task-determined companion guidance before accessing the artifact or performing the
+	operation that guidance governs, rather than treating an initial routing-index read as complete.
 - Keep always loaded only the routes whose decision can arise before any decision-area trigger is recognizable, and
 	reach every other focused rule through one lazily loaded area index whose trigger covers that rule's trigger.
 
@@ -30,11 +32,17 @@ that it gives for that contract. This trigger includes a standard-format parser 
 cryptography, scheduling, and decimal arithmetic. When the trigger is false, this read does not apply.
 
 Treat every required read in this routing file, or in an area index that it routes to, as one route action: after
-choosing its condition, complete all of its reads in the stated order before any other task action. A successful first
-read is neither a completed route nor authority to discover its remainder; do not use it to infer, search for, or try
-another filename. Use the filenames in the route as literal route targets. If any required read fails, stop and report
-the routing failure instead of inspecting the project or choosing an alternative. The route, rather than the task's
-source language, topic, or a remembered rule label, selects the required files.
+choosing its condition, complete all of its reads in the stated order before any other task action. When a selected
+routing rule, including one loaded this way, contains conditional lazy-load directives, evaluate each directive against
+the task's declared artifact paths and operations before accessing an artifact or performing an operation the directive
+governs. Load every matching companion, then repeat this evaluation for each newly loaded rule until no task-determined
+directive remains. Record the selected path or operation, the directive, and each successful read. A successful first
+read or index read is neither a completed route nor authority to discover its remainder, and it does not authorize the
+governed access while an applicable companion remains unread; do not use it to infer, search for, or try another
+filename. Use the filenames in the route as literal route targets. Do not load a companion whose condition is absent
+merely because its parent index was selected. If any required read fails, stop and report the routing failure instead
+of inspecting the project, performing the governed access or operation, or choosing an alternative. The route, rather
+than the task's source language, topic, or a remembered rule label, selects the required files.
 
 A task-specific response that states an intended inspection, plan, implementation, test, or conclusion is task-bearing
 for this route. Before the required reads, do not announce such work; either perform the required reads first or give no
@@ -126,14 +134,9 @@ log, identifier, or commit message, including a timestamp that a tool, log, API,
 When starting, waiting for, or resuming an external command, harness, or tool session, lazy load
 `../include/common/execution-lifecycle.md`.
 
-When a recommendation, procedure, or workflow relies on an input, authority, handoff, or deferred action, lazy load
-`../include/common/check-assumptions.md`.
-
-Before running a search across a directory tree, or a command that prints files or records whose size you have not
-established, such as generated, minified, or dependency data, lazy load `../include/common/check-assumptions.md`.
-
-When claiming that a tool, skill, subagent, command, test, or investigation has run or is unavailable outside the
-reader-facing status-update route above, lazy load `../include/common/check-assumptions.md`.
-
-When answering a user question whose relevant research, authoritative source, or supported probe remains inconclusive,
-lazy load `../include/common/check-assumptions.md` before drafting the answer.
+When a recommendation, procedure, or workflow relies on an input, authority, handoff, or deferred action; before
+running a search across a directory tree, or a command that prints files or records whose size you have not
+established, such as generated, minified, or dependency data; when claiming that a tool, skill, subagent, command, test,
+or investigation has run or is unavailable outside the reader-facing status-update route above; and before drafting an
+answer to a user question whose relevant research, authoritative source, or supported probe remains inconclusive, lazy
+load `../include/common/check-assumptions.md`.
