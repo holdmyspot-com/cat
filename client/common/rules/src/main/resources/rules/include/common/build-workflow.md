@@ -13,5 +13,4 @@ remain valid after the fix. Apply the focused fix and resume incrementally from 
 an earlier step's outputs, resume from that earliest affected step and rebuild its dependent outputs.
 
 Do not restart from a clean state on each attempt. First get the workflow to pass end to end incrementally, reusing
-valid outputs. Then, before verifying that same revision from a clean start, lazy load `build-verification.md` for the
-evidence required to claim the build passes.
+valid outputs. Then, before verifying that same revision from a clean start, lazy load `build-verification.md`.

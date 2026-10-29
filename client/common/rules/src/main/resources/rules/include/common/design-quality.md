@@ -41,7 +41,7 @@ A design must:
 - Define externally observable behavior before implementation details, including normal results, failure behavior,
 	lifecycle effects, and boundary conditions.
 - Provide tests that establish each required observable outcome and meaningful failure path. When designing or reviewing
-	those tests, first lazy load `testing.md` for the canonical test-boundary, isolation, and artifact guidance.
+	those tests, first lazy load `testing.md`.
 
 Before accepting a costly guarantee or its enforcement, distinguish the user-requested outcome from any stronger
 promise introduced by the design. Trace the stronger promise to explicit user authority or a necessary consequence of
@@ -66,7 +66,7 @@ component's design before handoff. A selected use-case does not establish comple
 verified components do not establish compatible handoffs.
 
 When designing or executing a multi-responsibility refactoring, lazy load
-`design-quality/refactoring.md` for its dependency-closure, parallel-work, integration, and wave-verification procedure.
+`design-quality/refactoring.md`.
 
 ## Shared Review
 

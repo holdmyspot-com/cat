@@ -7,7 +7,7 @@
 
 ## Guidance
 
-Before applying this rule, lazy load `./java-modules.md` for the shared-secrets and reflection policy.
+Before applying this rule, lazy load `./java-modules.md`.
 
 Treat `client/common/` and `.cat/rules/common/` as common locations. They may use coding-harness-neutral concepts and
 data, including a harness identifier, generic contracts, and caller-provided values. They must not discover, name,

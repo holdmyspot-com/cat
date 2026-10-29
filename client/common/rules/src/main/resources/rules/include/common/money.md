@@ -14,8 +14,7 @@
 
 ## Guidance
 
-Before applying this rule's representation-selection guidance, lazy load `./prefer-reuse.md` to evaluate
-existing facilities and dependencies before custom monetary arithmetic.
+Before applying this rule's representation-selection guidance, lazy load `./prefer-reuse.md`.
 
 Before selecting a representation or implementing a monetary operation, define its caller-visible contract: the unit and
 currency scope of each amount, the unit and allowed range of each rate, the accepted input format, the order in which

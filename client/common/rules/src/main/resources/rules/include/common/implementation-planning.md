@@ -117,7 +117,7 @@ outcomes, hidden prerequisites, or an ambiguous ready handoff.
 Choose ownership separately from decomposition. Account for shared decisions and writes, context reconstruction,
 handoffs, review, and integration when deciding whether independent assignments justify more agents. Keep a small
 cohesive task with one owner when splitting supplies no independent work or distinct verification benefit. When the plan
-assigns work to subagents, lazy load `delegation.md` for assignment, isolation, readiness, and integration requirements;
+assigns work to subagents, lazy load `delegation.md`;
 do not substitute this planning rule for that execution contract.
 
 When selecting verification work, lazy load `testing.md`.

@@ -39,7 +39,7 @@ merge only passages that make the same decision under the same condition. A stat
 that guidance is a different artifact and does not satisfy the request. For example, “simplify the loaded route” means
 reduce redundant instructions in the files that route loads, not shorten the explanation of those files. A request that
 explicitly names a sentence, report, or message remains a request about that named prose. Before changing maintained
-guidance, lazy load the canonical contract-design rule for its preservation and compaction procedure.
+guidance, lazy load the canonical contract-design rule.
 
 For each passage in a route being simplified, also record the first reader decision and observable state that require
 it. Compare the reported route with a later branch whose condition is not yet known and a route that never reaches that
