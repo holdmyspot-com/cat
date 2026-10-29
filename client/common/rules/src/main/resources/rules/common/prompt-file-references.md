@@ -20,8 +20,11 @@ and use its values at execution time. Treat every path-shaped reference as exter
 source, data, and Markdown files.
 
 When a prompt routes to another prompt file, state the observable request, artifact, or state that tells the reader when
-to load it, then name the target. Keep the route limited to that trigger and target instruction. Do not use the target's
-desired result as the trigger or summarize its guidance there; put outcomes and procedures in the target rule.
+to load it, then name the target. Keep the route limited to that trigger and target instruction, plus any read order or
+condition that the reader needs to decide whether or when to load it, such as "then `b.md` in that order" or "before
+dispatching the run". Do not use the target's desired result as the trigger, and do not state what the target does or
+achieves: a route has no purpose clause, such as "to preserve …" or "for its … procedure", after the target. Put
+outcomes and procedures in the target rule.
 
 When a prompt references another prompt file, tool, or CLI, describe only what the caller needs to decide whether or
 when to use it and to use it correctly: its observable capability and invocation outcome, plus required inputs, side

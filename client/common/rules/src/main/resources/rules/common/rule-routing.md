@@ -162,7 +162,7 @@ Before creating, reviewing, or revising an implementation plan for AI agents to 
 task is not such a plan.
 
 Before designing or changing a component, API, collaborator, integration boundary, construction path, or test-support
-boundary, lazy load `../include/class-design.md` to preserve its caller-visible guarantees and focused responsibilities.
+boundary, lazy load `../include/class-design.md`.
 
 When defining or changing a method's parameters, adding a call that passes a method the same value as its other calls,
 reviewing or auditing a class, or noticing that every call made on an instance passes a method parameter equal values,
@@ -173,43 +173,36 @@ When creating, moving, or renaming a top-level implementation or test type, lazy
 
 Before designing or implementing a feature that promises a reliable, complete, automatic, general, or deterministic
 result, or a workflow that chooses, stops, or changes strategy based on a predicted cost, duration, probability,
-benefit, or other future outcome, lazy load `../include/common/design-feasibility.md` to test whether the stated inputs
-and authority can determine every required decision.
+benefit, or other future outcome, lazy load `../include/common/design-feasibility.md`.
 
 Before delegating work to a subagent, or when designing, updating, or executing a prompt-driven workflow that delegates
-work, lazy load `../include/common/delegation.md` to assign deterministic, bounded-review, and high-judgment work to the
-appropriate authority and isolate write-capable recipients.
+work, lazy load `../include/common/delegation.md`.
 
 Before sending a task, result, correction request, or other information to another agent, or when designing a
 workflow whose agents exchange information, lazy load `../include/common/agent-handoffs.md`.
 
-When accessing environment-dependent state, lazy load `../include/common/environment.md` to preserve an explicit,
-testable boundary.
+When accessing environment-dependent state, lazy load `../include/common/environment.md`.
 
-When adding, catching, translating, or reporting a failure, lazy load `../include/common/error-handling.md` to retain
-precise failure semantics and actionable diagnostics.
+When adding, catching, translating, or reporting a failure, lazy load `../include/common/error-handling.md`.
 
 When adding or widening a command-line option, launch or build setting, manifest entry, or module declaration that
 grants code a permission or access, or that adds modules to a runtime or image, lazy load
 `../include/common/minimal-grants.md`.
 
-When considering a workaround for an external defect, lazy load `../include/common/external-workarounds.md` to require
-authoritative evidence and keep any workaround narrow and removable.
+When considering a workaround for an external defect, lazy load `../include/common/external-workarounds.md`.
 
-When debugging a failed CI or hosted-workflow step, lazy load `../include/common/ci-debugging.md` to choose the
-authoritative local or hosted reproduction boundary before retrying.
+When debugging a failed CI or hosted-workflow step, lazy load `../include/common/ci-debugging.md` before retrying.
 
 When running a CI or hosted workflow on a remote runner to test changed commands that it runs there, lazy load
 `../include/common/remote-runner-testing.md` before dispatching the run.
 
 When analyzing a reported or newly observed unexpected failure, discovering that an earlier action violated the
 user-authorized scope, diagnosing why an agent ignored or misapplied an instruction, or designing a prevention, lazy
-load `../include/common/failure-prevention.md` to classify its cause, isolate the earliest controllable decision or
-delivery boundary, and verify the prevention.
+load `../include/common/failure-prevention.md`.
 
 When the Failure Prevention analysis confirms a reproducible failure involving prompt, rule, or workflow guidance and
-the affected guidance is user-owned, lazy load `../include/common/failure-regression-promotion.md` and apply its
-correction and regression procedure before resuming dependent work. The first qualifying failure is the trigger.
+the affected guidance is user-owned, lazy load `../include/common/failure-regression-promotion.md` before resuming
+dependent work. The first qualifying failure is the trigger.
 User-owned guidance is under the current project's `.cat/rules/` tree or the current user's `${HOME}/.cat/rules/` tree,
 or is other guidance that a project rule declares user-owned. Do not load this rule for installed/cache, third-party,
 or unknown-owner guidance. A subagent does not load this rule or edit that guidance: it reports the confirmed failure,
@@ -217,19 +210,17 @@ the affected guidance and the attribution evidence to the agent that delegated i
 does not depend on the correction.
 
 Before invoking an operation that can modify multiple artifacts or whose actual write set is unproven, lazy load
-`../include/common/failure-prevention.md` to use its transactional snapshot, scope-validation, conditional-rollback,
-and acceptance procedure.
+`../include/common/failure-prevention.md`.
 
 When a compiler, linter, or static-analysis check reports a warning or finding, lazy load
 `../include/common/diagnostic-suppression.md` before choosing how to resolve it, including before searching the project
 for how it handled the same finding. Also lazy load it before suppressing any other diagnostic, or before disabling,
 excluding, or relaxing a check.
 
-When editing source code or configuration, lazy load `../include/common/semantic-blank-lines.md` to make independently
-nameable stages and groups easy to scan.
+When editing source code or configuration, lazy load `../include/common/semantic-blank-lines.md`.
 
 When assessing an apparently absent condition, a helper's apparent limitation, or a proposed workaround, lazy load
-`../include/common/limitations-and-workarounds.md` to evaluate the owning workflow and compare feasible paths.
+`../include/common/limitations-and-workarounds.md`.
 
 When locating or selecting a Git commit, file history, or change to amend, backport, or replay, lazy load
 `../include/common/git-history-scope.md`.
@@ -237,21 +228,19 @@ When locating or selecting a Git commit, file history, or change to amend, backp
 When creating or revising a Git commit message, lazy load `../include/common/commit-messages.md`.
 
 When removing, replacing, renaming, or ending compatibility for a supported contract, lazy load
-`../include/common/contract-retirement.md` to classify affected contracts and verify complete retirement.
+`../include/common/contract-retirement.md`.
 
-When a repeated value represents one shared concept, lazy load `../include/common/constants.md` to give it one
-authoritative definition at the narrowest common layer.
+When a repeated value represents one shared concept, lazy load `../include/common/constants.md`.
 
-Before changing testable production behavior, lazy load `../include/common/tdd.md` to establish the red-test gate.
+Before changing testable production behavior, lazy load `../include/common/tdd.md`.
 
 When creating, using, or handing off temporary files or directories, lazy load
-`../include/common/temporary-resources.md` to assign and verify cleanup ownership.
+`../include/common/temporary-resources.md`.
 
 When writing or changing code that stores a file path in a file, database, or other durable record, lazy load
 `../include/common/persisted-paths.md`.
 
-When designing, changing, or reviewing tests, lazy load `../include/common/testing.md` to keep their observable claims,
-boundaries, and fixtures aligned.
+When designing, changing, or reviewing tests, lazy load `../include/common/testing.md`.
 
 When creating, updating, or debugging a build script, pipeline, or multi-step build, lazy load
 `../include/common/build-workflow.md`.
@@ -259,51 +248,45 @@ When creating, updating, or debugging a build script, pipeline, or multi-step bu
 Before selecting or reporting a command as evidence that a project's build passes, lazy load
 `../include/common/build-verification.md`.
 
-When handling Java exceptions, lazy load `../include/java/exceptions.md` to choose precise exception semantics.
+When handling Java exceptions, lazy load `../include/java/exceptions.md`.
 
-When defining Java POSIX permission values, lazy load `../include/java/constants.md` to keep the readable
-permission value authoritative.
+When defining Java POSIX permission values, lazy load `../include/java/constants.md`.
 
-When a task is expected to run for multiple minutes, lazy load `../include/common/progress-reporting.md` to report
-observable progress and calibrate estimates from current-task history.
+When a task is expected to run for multiple minutes, lazy load `../include/common/progress-reporting.md`.
 
 When starting, waiting for, or resuming an external command, harness, or tool session, lazy load
-`../include/common/execution-lifecycle.md` to retain its terminal outcome.
+`../include/common/execution-lifecycle.md`.
 
 When a task needs a state change that something else produces, such as a hosted build finishing, a background process
 exiting or a subagent returning, lazy load `../include/common/external-waits.md` before you check that state or continue
 other work.
 
 When creating, regenerating, materially revising, reviewing, or auditing a prompt, rule, or another artifact with
-declared goals or contracts, lazy load `../include/common/contract-design.md` to preserve, reconcile, cover, and compact
-its obligations.
+declared goals or contracts, lazy load `../include/common/contract-design.md`.
 
 When adding, moving, splitting, merging, or otherwise reorganizing a rule, prompt, skill, command, or workflow, lazy
-load `../include/common/rule-organization.md` to select its governing prompt file and focused routing.
+load `../include/common/rule-organization.md`.
 
 When a project-owned CLI, API, validator, generator, or other callable tool must enforce a workflow requirement, lazy
-load `../include/common/rules-own-tool-requirements.md` to verify its reachable enforcement boundary.
+load `../include/common/rules-own-tool-requirements.md`.
 
 When a recommendation, procedure, or workflow relies on an input, authority, handoff, or deferred action, lazy load
-`../include/common/check-assumptions.md` to make every prerequisite available and verifiable.
+`../include/common/check-assumptions.md`.
 
 Before running a search across a directory tree, or a command that prints files or records whose size you have not
-established, such as generated, minified, or dependency data, lazy load `../include/common/check-assumptions.md` to
-request only the output that the next decision needs.
+established, such as generated, minified, or dependency data, lazy load `../include/common/check-assumptions.md`.
 
 When claiming that a tool, skill, subagent, command, test, or investigation has run or is unavailable outside the
-reader-facing status-update route above, lazy load `../include/common/check-assumptions.md` to establish the claim from
-its invocation evidence.
+reader-facing status-update route above, lazy load `../include/common/check-assumptions.md`.
 
 When answering a user question whose relevant research, authoritative source, or supported probe remains inconclusive,
 lazy load `../include/common/check-assumptions.md` before drafting the answer.
 
 When defining or changing a workflow with progress handoff, retry, or resumption, lazy load
-`../include/common/monotonic-progress.md` to preserve verified state across transitions.
+`../include/common/monotonic-progress.md`.
 
 When defining or changing an externally visible operation that declares idempotency or can create an externally durable
-effect before a caller can observe its result, lazy load `../include/common/idempotency.md` to preserve one logical
-operation across retries.
+effect before a caller can observe its result, lazy load `../include/common/idempotency.md`.
 
 When executing a maintained instruction, prompt, skill, rule, or workflow exposes an incorrect or unavailable
 dependency, lazy load `../include/common/workflow-error-reporting.md` before handoff.

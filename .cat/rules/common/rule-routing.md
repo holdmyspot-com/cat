@@ -21,18 +21,16 @@ When applying a rule, convention, policy, migration, or systematic correction ac
 `../include/rule-coverage.md`.
 
 When a proposed prevention, rule revision, or prompt-file change itself creates or preserves the wrong prevention for a
-reported failure, lazy load `../include/mistake-learning.md` to identify the meta-level cause, owning artifact, and
-evidence for a corrected prevention. Analyze the reported operational failure first through the bundled Failure
-Prevention rule.
+reported failure, lazy load `../include/mistake-learning.md`. Analyze the reported operational failure first through the
+bundled Failure Prevention rule.
 
 When deciding whether guidance that a confirmed failure involves is user-owned, treat CAT plugin source in this
 repository as user-owned guidance, because its user is that plugin's developer.
 
-When creating or revising a Git commit message, lazy load `../include/commit-messages.md` to state the observable change
-clearly and consistently.
+When creating or revising a Git commit message, lazy load `../include/commit-messages.md`.
 
 When a CAT workflow creates, retains, hands off, or cleans up uncommitted state or evidence, lazy load
-`../include/workflow-temporary-resources.md` to assign its location, consumers, handoff, and cleanup ownership.
+`../include/workflow-temporary-resources.md`.
 
 When defining or changing a skill's frontmatter `description`, lazy load `../include/skill-routing.md`.
 
@@ -47,7 +45,7 @@ When changing a plugin installer that migrates persisted plugin data or a runtim
 `../include/plugin-data-migration.md`.
 
 Before rebuilding, reinstalling, refreshing, or validating a plugin distribution or cache, lazy load
-`plugin-artifacts.md` to distinguish repository-only project guidance from a changed packaged artifact.
+`plugin-artifacts.md`.
 
 When evaluating or adopting a newly available Codex model, or changing CAT's Codex supported-model configuration or
 Codex-facing prompts or rules, lazy load `../codex/model-guidance-review.md`.
