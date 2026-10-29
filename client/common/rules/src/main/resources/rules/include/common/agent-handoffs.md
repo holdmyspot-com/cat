@@ -12,6 +12,12 @@ re-reading it in one command returned output trimmed to a fraction of its size, 
 	recipient can read, and the recipient reads only the parts it needs.
 - Let an agent revise a large artifact without rewriting or re-reading all of it, and let it recover the artifact
 	after its context is compacted or reset.
+<!--
+Agents that meant to notify a subagent called a user-input tool with placeholder titles such as "Ignore" or
+"STOP" right after reading this rule; the message never reached the subagent and the user received an empty question.
+-->
+- Deliver every message meant for another agent to that agent, so that none reaches only the user as a request for
+	input.
 
 ## Guidance
 
@@ -25,6 +31,9 @@ message to another session, choose how it crosses the boundary:
 	recipient's tool-output limit, will be revised across rounds, or will be read by more than one recipient. Confirm
 	that the recipient can read the path: a remote session, another machine, or a sandbox that denies the path cannot.
 	When it cannot, use a store that both can reach, or send the content inline in parts that each fit.
+
+Send that message or path through the tool that delivers to the recipient agent, such as a collaboration or messaging
+tool; a tool that asks the user for input never reaches another agent.
 
 When designing a workflow or protocol whose agents exchange such content, make the artifact the exchange: the producer
 writes or edits the file, and the consumer reads the file rather than parsing the producer's final message. Do not
