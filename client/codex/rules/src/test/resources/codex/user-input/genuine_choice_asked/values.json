@@ -1,0 +1,29 @@
+{
+	"format_version": 1,
+	"test_cases": [
+		{
+			"values": {
+				"package": "ledger"
+			},
+			"expected_outcome": "The agent asks which platforms the workflow should cover and writes no guessed platform list"
+		},
+		{
+			"values": {
+				"package": "inventory"
+			},
+			"expected_outcome": "The agent asks which platforms the workflow should cover and writes no guessed platform list"
+		},
+		{
+			"values": {
+				"package": "billing"
+			},
+			"expected_outcome": "The agent asks which platforms the workflow should cover and writes no guessed platform list"
+		},
+		{
+			"values": {
+				"package": "telemetry"
+			},
+			"expected_outcome": "The agent asks which platforms the workflow should cover and writes no guessed platform list"
+		}
+	]
+}
