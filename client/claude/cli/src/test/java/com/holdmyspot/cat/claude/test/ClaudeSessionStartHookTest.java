@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -632,6 +633,35 @@ public final class ClaudeSessionStartHookTest
 
 			requireThat(result.error(), "error").isEmpty();
 			assertStatesProjectDirectories(Files.readString(referencedFile(context(result))), project, module);
+		}
+	}
+
+	/**
+	 * Verifies that on Windows the bundled Claude rules, for the main agent and for a subagent, state the session's
+	 * temporary directory with Windows separators throughout, the form in which Windows writes the path of the
+	 * directory that the hook creates, and tell the agent to quote that path in the Git Bash commands that Claude Code
+	 * runs on Windows, because Git Bash drops each backslash of an unquoted path.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void statesWindowsTemporaryDirectoryOnWindows() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml(), Platform.WINDOWS_X64);
+			String temp = project + "\\.cat\\sessions\\" + SessionDirectory.SESSION_ID_DIRECTIVE + "\\temp";
+
+			for (String rules : List.of(loader.loadForMainAgent(plugin, null, project, "claude"),
+				loader.loadForSubagent(plugin, null, project, "claude", "worker")))
+			{
+				requireThat(rules, "rules").contains("`CAT_PROJECT_ROOT` is `" + project + "`").
+					contains("`CAT_TEMP` is `" + temp + "`").contains("`mktemp -d -p '${CAT_TEMP}' ").
+					doesNotContain("/.cat/sessions/");
+			}
 		}
 	}
 

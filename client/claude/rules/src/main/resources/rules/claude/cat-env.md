@@ -22,12 +22,7 @@ environment.
 `CAT_PROJECT_ROOT` is `<!-- cat:project-root -->`, this session's project directory. Wherever a rule or skill writes
 `${CAT_PROJECT_ROOT}`, write that directory in its place; never expand `${CAT_PROJECT_ROOT}` from the environment.
 
-`CAT_TEMP` is `<!-- cat:project-root -->/.cat/sessions/<!-- cat:session-id -->/temp`, this session's temporary directory, and
-the directory exists. Wherever a rule or skill writes `${CAT_TEMP}`, write that directory in its place; never expand
-`${CAT_TEMP}` from the environment. Create a temporary directory there with
-`mktemp -d -p ${CAT_TEMP} <workflow-name>-XXXXXX`, which prints the new directory's absolute path; use that output as
-the directory. Remove it with `rm -rf -- <directory>` once nothing needs it, or move it with
-`mv -- <directory> <new-path>` to hand it to a later owner.
+<!-- cat:include platform/{platform}/cat-env/temporary-directory.md -->
 
 Write files only inside `${CAT_PROJECT_ROOT}` unless the user names a location outside it. Put a scratch file, probe
 input, or saved command output in a temporary directory under `${CAT_TEMP}`, not in `/tmp`, the home directory, or
