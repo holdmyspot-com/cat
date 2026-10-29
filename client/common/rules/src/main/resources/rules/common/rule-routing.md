@@ -25,20 +25,9 @@ When the task does ask for that decision, choose the route from the decision its
 
 When a task requests parsing, serializing, validating, or otherwise implementing a named standardized format or another
 externally defined capability, choose its complete initial route from the stated task contract before any project
-inspection, candidate search, probe, or implementation. This trigger includes a standard-format parser or serializer,
-protocol handling, cryptography, scheduling, and decimal arithmetic.
-
-For a task that met the standardized-capability trigger above, choose its route as follows. If it accepts one written
-form and rejects another because of how it is written, rather than only because of the value ordinary processing
-returns, read `../include/common/prefer-reuse.md`, then `../include/common/preserve-required-distinctions.md` in this
-exact order. This includes a canonical spelling that must be accepted while another spelling of the same external
-identifier, timestamp, number, or configuration value must be rejected; the task need not first prove that the chosen
-API will collapse the forms.
-
-Otherwise, read only `../include/common/prefer-reuse.md`. This alternative applies only after the standardized-capability
-trigger above is true and the contract permits the representations to be treated alike. When that trigger is false,
-neither read applies. Reading only the first file leaves the paired-input route incomplete; do not read another rule,
-inspect the project, or take any other task action after that read.
+inspection, candidate search, probe, or implementation: read `../include/common/prefer-reuse.md` and complete the route
+that it gives for that contract. This trigger includes a standard-format parser or serializer, protocol handling,
+cryptography, scheduling, and decimal arithmetic. When the trigger is false, this read does not apply.
 
 Treat every required read in this routing file, or in an area index that it routes to, as one route action: after
 choosing its condition, complete all of its reads in the stated order before any other task action. A successful first

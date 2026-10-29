@@ -12,8 +12,18 @@
 	block only after direct acquisition supplies an explicit prohibition or diagnostic, while a completed, evidenced
 	search of every task-permitted source that finds no verified suitable option permits a custom implementation with its
 	contract made explicit.
+- Route a written-form distinction that the task contract requires to its preservation guidance before reuse-search can
+	select a transformation that discards it.
 
 ## Guidance
+
+Before any other action in this rule, choose its route from the stated task contract. If the task accepts one written
+form and rejects another because of how it is written, rather than only because of the value ordinary processing
+returns, read `preserve-required-distinctions.md` next. This includes a canonical spelling that must be accepted while
+another spelling of the same external identifier, timestamp, number, or configuration value must be rejected; the task
+need not first prove that the chosen API will collapse the forms. Until that read completes, this file alone leaves the
+route incomplete: do not read another rule, inspect the project, or take any other task action. When the contract
+permits the representations to be treated alike, that read does not apply.
 
 For a task that names a standardized format or another capability defined outside the current operation, enter
 reuse-search before a task-specific inspection, plan, test, source edit, or conclusion. Until the project, platform, and
