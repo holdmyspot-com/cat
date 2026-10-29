@@ -43,8 +43,7 @@ When writing or editing a Java constructor or instance initializer that assigns 
 `../include/java/field-assignment.md`.
 
 Before writing or editing Javadoc, Javadoc links/imports, or Java API documentation, lazy load
-`../include/common/write-clearly.md`, then `../include/java/javadoc.md` in that order. Do not compose or patch Javadoc
-until both rules are available.
+`../include/common/write-clearly.md`, then `../include/java/javadoc.md` in that order.
 
 When creating or closing a `PipedInputStream` or waiting for a reader that uses one, lazy load
 `../include/java/piped-input-stream.md`.
