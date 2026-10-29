@@ -7,69 +7,19 @@
 ## Scenario
 
 Handle each of the following independent requests. Answer them in order and label each answer with its request number.
+The classes are in `src/main/java/com/example/plugin/`.
 
-**Request 1.** Tidy up the control flow of this Java method so that it follows our conventions, and show the revised
-class. `PERSISTED_SETTINGS` is used nowhere else.
+**Request 1.** Tidy up the control flow of `PluginSettings.validate` in `PluginSettings.java` so that it follows our
+conventions, and show the revised class. `PERSISTED_SETTINGS` is used nowhere else.
 
-```java
-final class PluginSettings
-{
-	private static final Set<String> PERSISTED_SETTINGS = Set.of("queue", "user", "product", "{{setting}}");
+**Request 2.** Tidy up the control flow of `CommandAliases.isAlias` in `CommandAliases.java` in the same way, and show
+the revised class.
 
-	static void validate(Map<String, String> settings)
-	{
-		for (Map.Entry<String, String> entry : settings.entrySet())
-		{
-			if (!PERSISTED_SETTINGS.contains(entry.getKey()))
-				throw new IllegalArgumentException("Unknown plugin setting: " + entry.getKey());
-		}
-	}
-}
-```
+**Request 3.** Tidy up the control flow of `Secrets.isSecret` in `Secrets.java` in the same way, and show the revised
+method.
 
-**Request 2.** Tidy up the control flow of this Java method in the same way, and show the revised class.
-
-```java
-final class CommandAliases
-{
-	private static final Map<String, String> ALIASES = Map.of("ls", "list", "rm", "remove", "mv", "move");
-
-	static boolean isAlias(String name)
-	{
-		if (name == null)
-			return false;
-		return ALIASES.containsKey(name);
-	}
-}
-```
-
-**Request 3.** Tidy up the control flow of this Java method in the same way, and show the revised method.
-
-```java
-static boolean isSecret(String key)
-{
-	return key.equals("token") || key.equals("password") || key.equals("{{setting}}_key");
-}
-```
-
-**Request 4.** Tidy up the control flow of `isSupported` in the same way, and show the revised class.
-
-```java
-final class ExportFormats
-{
-	private static final Set<String> FORMATS = Set.of("csv", "json", "{{setting}}");
-
-	static String usage()
-	{
-		return "Supported formats: " + String.join(", ", new TreeSet<>(FORMATS));
-	}
-
-	static boolean isSupported(String format)
-	{
-		return format.equals("csv") || format.equals("json") || format.equals("{{setting}}");
-	}
-}
-```
+**Request 4.** Tidy up the control flow of `ExportFormats.isSupported` in `ExportFormats.java` in the same way, and show
+the revised class.
 
 ## Assertions
 

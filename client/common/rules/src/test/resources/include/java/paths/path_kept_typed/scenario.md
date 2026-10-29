@@ -13,25 +13,7 @@
 ## Scenario
 
 Handle each of the following independent requests. Answer them in order and label each answer with its request number.
-
-The project contains this class:
-
-```java
-public final class ReportWriter
-{
-	private final ReportStore store;
-
-	public ReportWriter(ReportStore store)
-	{
-		this.store = store;
-	}
-
-	public void write(Report report)
-	{
-		store.save(report);
-	}
-}
-```
+Both concern `ReportWriter` in `src/main/java/com/example/reports/ReportWriter.java`.
 
 1. Add a constructor parameter and a field named `{{directory_field}}` that holds the directory, on the local disk, where
 	`write()` saves each report as `<report id>.json`, and change `write()` to compute that file's location. Show the new

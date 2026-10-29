@@ -14,57 +14,12 @@
 
 Handle each of the following independent requests. Answer them in order and label each answer with its request number.
 
-In this project, `Session` implements `AutoCloseable`, and its `close()` declares no checked exception. These methods
-exist:
+In this project, `Session` implements `AutoCloseable`, and its `close()` declares no checked exception.
+`src/main/java/com/example/reports/Reports.java` declares `open`, `summarize`, `export` and `denied`; `open` and
+`export` throw `{{exception}}`, a checked exception.
 
-```java
-static Session open(Account account) throws {{exception}}
-static Report summarize(Session session)
-static Report export(Session session) throws {{exception}}
-static Report denied(Account account, {{exception}} failure)
-```
-
-1. Simplify this method's exception handling without changing its behavior:
-
-	```java
-	static Report summary(Account account)
-	{
-		Session session;
-		try
-		{
-			session = open(account);
-		}
-		catch ({{exception}} failure)
-		{
-			return denied(account, failure);
-		}
-		try (session)
-		{
-			return summarize(session);
-		}
-	}
-	```
-
-2. Simplify this method's exception handling without changing its behavior:
-
-	```java
-	static Report exported(Account account) throws {{exception}}
-	{
-		Session session;
-		try
-		{
-			session = open(account);
-		}
-		catch ({{exception}} failure)
-		{
-			return denied(account, failure);
-		}
-		try (session)
-		{
-			return export(session);
-		}
-	}
-	```
+1. Simplify the exception handling of `Reports.summary` without changing its behavior.
+2. Simplify the exception handling of `Reports.exported` without changing its behavior.
 
 ## Assertions
 

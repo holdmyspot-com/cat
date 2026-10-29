@@ -12,30 +12,7 @@
 ## Scenario
 
 Handle each of the following independent requests. Answer them in order and label each answer with its request number.
-
-The project contains this class:
-
-```java
-public final class ReportSender
-{
-	private final ReportStore store;
-
-	public ReportSender(ReportStore store)
-	{
-		this.store = store;
-	}
-
-	public Optional<Report> find(String id)
-	{
-		return store.lookup(id);
-	}
-
-	public void send(Report report)
-	{
-		store.upload(report);
-	}
-}
-```
+Both concern `ReportSender` in `src/main/java/com/example/reports/ReportSender.java`.
 
 1. Add a parameter named `{{host_parameter}}` to `send()`, holding the host name of a proxy to upload through. Most
 	callers have no proxy. Show the new signature and how a caller with no proxy calls it.

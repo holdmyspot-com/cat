@@ -13,42 +13,13 @@
 ## Scenario
 
 Handle each of the following independent requests. Answer them in order and label each answer with its request number.
+Both types are in `src/main/java/com/example/members/`.
 
-**Request 1.** The project contains this record:
+**Request 1.** Change the compact constructor of the record `Member` in `Member.java` so that it also collapses each run
+of whitespace inside `{{component}}` into one space. Show the complete record.
 
-```java
-public record Member(String {{component}}, int age)
-{
-	public Member
-	{
-		{{component}} = {{component}}.strip();
-	}
-}
-```
-
-Change the compact constructor so that it also collapses each run of whitespace inside `{{component}}` into one space.
-Show the complete record.
-
-**Request 2.** The project contains this class:
-
-```java
-public final class Limits
-{
-	private static final int MAXIMUM_UPLOAD;
-
-	static
-	{
-		MAXIMUM_UPLOAD = Integer.getInteger("upload.maximum", 10);
-	}
-
-	private Limits()
-	{
-	}
-}
-```
-
-Change the static initializer so that it rejects a configured value below 1 with an `IllegalStateException`, and
-otherwise keeps the configured value. Show the complete class.
+**Request 2.** Change the static initializer of `Limits` in `Limits.java` so that it rejects a configured value below 1
+with an `IllegalStateException`, and otherwise keeps the configured value. Show the complete class.
 
 ## Assertions
 

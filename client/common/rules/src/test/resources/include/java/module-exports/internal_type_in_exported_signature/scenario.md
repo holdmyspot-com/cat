@@ -9,69 +9,18 @@
 
 Handle each of the following independent requests. Answer them in order and label each answer with its request number.
 
-The project has two Java modules:
+The project has two Java modules: `com.example.usage` in `usage/`, which exports `com.example.usage.api` and declares
+the interface `ReportQueue` there, and `com.example.usage.test` in `usage-test/`. Package `com.example.usage.internal`
+of module `com.example.usage.test`, which that module does not export, contains the public classes `{{queue_class}}`,
+which implements `ReportQueue`, and `SigningKeys`, which holds the private keys that sign usage reports.
 
-```java
-module com.example.usage
-{
-	exports com.example.usage.api;
-}
+**Request 1.** The IDE reports `Class '{{queue_class}}' is not exported from module 'com.example.usage.test'` on
+`UsageFixture` in `usage-test/src/main/java/com/example/usage/test/UsageFixture.java`. Tests in other modules call only
+`drain()` and `size()` on the returned queue. Fix the warning and show the changed code.
 
-module com.example.usage.test
-{
-	requires transitive com.example.usage;
-	exports com.example.usage.test;
-}
-```
-
-Package `com.example.usage.api` contains this interface:
-
-```java
-public interface ReportQueue
-{
-	List<Report> drain();
-	int size();
-}
-```
-
-Package `com.example.usage.internal` of module `com.example.usage.test` contains two public classes:
-
-```java
-public final class {{queue_class}} implements ReportQueue
-{
-	public {{queue_class}}(Path file, SigningKeys keys) { ... }
-	public List<Report> drain() { ... }
-	public int size() { ... }
-	public void overwrite(Path file) { ... }
-}
-
-/** Holds the private keys that sign usage reports before upload. */
-public final class SigningKeys
-{
-	public PrivateKey currentKey() { ... }
-}
-```
-
-**Request 1.** The IDE reports `Class '{{queue_class}}' is not exported from module 'com.example.usage.test'` on this
-public class in package `com.example.usage.test`. Tests in other modules call only `drain()` and `size()` on the
-returned queue. Fix the warning and show the changed code.
-
-```java
-public final class UsageFixture
-{
-	public {{queue_class}} reports() { ... }
-}
-```
-
-**Request 2.** Review this new public class in package `com.example.usage.internal` before it is merged and report any
-module or API concerns.
-
-```java
-public final class ReportSpooler
-{
-	public {{queue_class}} spool(Path directory) { ... }
-}
-```
+**Request 2.** Review the new public class `ReportSpooler` in
+`usage-test/src/main/java/com/example/usage/internal/ReportSpooler.java` before it is merged and report any module or
+API concerns.
 
 ## Assertions
 

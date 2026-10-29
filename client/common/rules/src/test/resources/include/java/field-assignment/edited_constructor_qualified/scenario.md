@@ -11,43 +11,9 @@
 
 ## Scenario
 
-The project contains this class:
-
-```java
-public final class Basket
-{
-	private final String owner;
-	private final int {{limit_field}};
-	private final List<String> items;
-	private int remaining;
-
-	public Basket(String owner, int {{limit_field}})
-	{
-		requireThat(owner, "owner").isNotBlank();
-		this.owner = owner;
-		this.{{limit_field}} = {{limit_field}};
-		items = new ArrayList<>({{limit_field}});
-		remaining = {{limit_field}};
-	}
-
-	public void clear()
-	{
-		items.clear();
-		remaining = {{limit_field}};
-	}
-
-	public void add(String item)
-	{
-		if (remaining == 0)
-			throw new IllegalStateException("The basket of " + owner + " is full");
-		items.add(item);
-		--remaining;
-	}
-}
-```
-
-Change the constructor so that it also rejects a `{{limit_field}}` that is less than 1, with
-`requireThat({{limit_field}}, "{{limit_field}}").isPositive();`. Show the complete class.
+Change the constructor of `Basket` in `src/main/java/com/example/shop/Basket.java` so that it also rejects a
+`{{limit_field}}` that is less than 1, with `requireThat({{limit_field}}, "{{limit_field}}").isPositive();`. Show the
+complete class.
 
 ## Assertions
 
