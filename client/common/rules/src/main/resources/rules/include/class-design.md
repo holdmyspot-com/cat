@@ -8,6 +8,10 @@ depends-on:
 
 - Make each component's responsibility, lifecycle, ownership, safety, and concurrency guarantees explicit, and keep its
 	API and collaboration boundaries compatible with them.
+- Before a behavior is added to a component or a new component is designed, find the responsibilities involved by
+	naming a likely change to each and checking what else that change would force a reader to read or edit; give
+	responsibilities that change independently focused components and keep together those that one invariant couples,
+	without splitting a component for its number of collaborators or a method for its number of steps.
 - Make components replaceable and testable only where a supported variation or external integration needs a boundary,
 	without exposing unsafe convenience paths, test-only production responsibilities, or trivial indirection.
 - Keep public contracts faithful to their domain constraints so callers cannot supply values the domain excludes.
@@ -15,14 +19,27 @@ depends-on:
 ## Guidance
 
 When designing or changing a component, API, collaborator, variation point, integration boundary, construction path, or
-test-support boundary, first identify the guarantees each participant needs: caller-visible results and failures,
+test-support boundary, and the change adds a behavior to a component or designs a new one, first identify the
+responsibilities involved: policies, external interactions, persistence operations, and lifecycle decisions. A bug fix
+or mechanical change inside one existing responsibility skips this step. For each responsibility, name a likely
+concrete change and check which other responsibilities that change would force you to read or edit. Put
+responsibilities that change independently in focused components, and keep together those that must change together to
+preserve an invariant. When callers need one operation, keep a coordinator that offers it and delegates each distinct
+responsibility. A component whose job is to assemble and own several collaborators has that one responsibility: neither
+the number of its collaborators nor the number of steps in a method justifies a split. For example, adding polling of
+a device-login endpoint to an account component should not require reading the code that authorizes offline use of a
+product from a stored license, and changing how a report queue finds the workers it delivers to should not require
+changing how it stores delivered reports; a scope object that builds, owns, and closes several services stays whole when
+it gains another. Then identify the guarantees each participant needs: caller-visible results and failures,
 ownership and lifecycle, safety, concurrency, and the supported variations. State each of them in that participant's
 contract, where its callers can read it. Then compare each affected type's name with the responsibility you identified,
 using the identifier-naming route. Evaluate only the conditions that can prevent those guarantees: one component owns
 unrelated outcomes; a supported variant requires changing stable policy; an implementation weakens a contract; a
 consumer receives operations it does not need; or policy depends directly on integration mechanics. Restore a failed
 guarantee with the smallest boundary or contract that makes it verifiable. Do not add an abstraction when no independent
-variation, external integration, or testable boundary needs one.
+variation, external integration, or testable boundary needs one. Before reporting the change complete, compare the
+component's actual members and callers with the responsibility boundaries you identified, and move any member that
+crosses one.
 
 When supported variants differ in behavior, put that behavior behind a narrow contract and add an implementation rather
 than repeatedly extending a central conditional. Every implementation must preserve its contract's caller-visible
