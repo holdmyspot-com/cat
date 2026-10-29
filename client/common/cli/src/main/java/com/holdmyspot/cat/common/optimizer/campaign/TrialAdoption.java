@@ -240,13 +240,19 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Discards stale trials that are not running and adopts every judged trial whose turn has come, until nothing
-	 * changes. Each adoption advances the campaign's evidence revision.
+	 * Applies the running attempt's decision, discards stale trials that are not running and adopts every judged trial
+	 * whose turn has come, until nothing changes. Each adoption advances the campaign's evidence revision.
+	 * <p>
+	 * Applying the decision before any adoption ends an attempt that an earlier rule left running although its
+	 * adopted counts already decide it, such as a cell that can no longer certify within its cap, at the first event
+	 * after it is loaded.
 	 *
 	 * @param draft the state
 	 */
 	static void settle(Draft draft)
 	{
+		if (draft.header.lifecycle() == Lifecycle.ACTIVE)
+			draft.runningAttempt().ifPresent(attempt -> applyDecision(draft, attempt));
 		boolean changed = true;
 		while (changed)
 		{

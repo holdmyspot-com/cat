@@ -105,7 +105,7 @@ public record CertificationStatus(List<Latest> latest, List<CertificationRecord>
 			lines.add("Latest certification in " + record.harness().orElse("an unrecorded harness") + ": scope " +
 				scope.id() + " (" + scope.summary() + ")");
 			ReportSummary.attempt(lines, AttemptSummary.of(record.certificationIndex(), Outcome.CERTIFIED.label(),
-				entry.applicability()));
+				entry.applicability(), List.of()));
 			lines.add("");
 			lines.addAll(CertifiedEnvironment.of(record, entry.applicability().unchecked()).lines());
 		}

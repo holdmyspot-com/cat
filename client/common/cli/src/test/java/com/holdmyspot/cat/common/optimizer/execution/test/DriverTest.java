@@ -2886,8 +2886,9 @@ public final class DriverTest
 			// The safety test has 4 outcomes left before its cap, so exactly 4 trials are admitted
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
-					slowStart(new SlowStart(4, 0)).certificationAttempt(1).boundaries(neutralBoundaries()).
-					cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 292, 4).build());
+					slowStart(new SlowStart(4, 0)).certificationAttempt(1).
+					boundaries(Boundaries.reachableAtFourFailures(neutralBoundaries(), 5)).cell("formatting", 100, 0).
+					cell("plain_list", 100, 0).cell("safety", 292, 4).build());
 			try (Driver driver = harness.open())
 			{
 				driver.step();
@@ -3173,7 +3174,7 @@ public final class DriverTest
 
 	/**
 	 * A certification attempt reaches its cap without a decision, ends inconclusive, and the campaign returns
-	 * to development.
+	 * to development. The cell can still certify until its last outcome before the cap fails.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -3184,7 +3185,8 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing().certificationAttempt(1).boundaries(neutralBoundaries()).cell("formatting", 295, 4).
+				developing().certificationAttempt(1).
+					boundaries(Boundaries.reachableAtFourFailures(neutralBoundaries(), 6)).cell("formatting", 295, 4).
 					cell("plain_list", 100, 0).cell("safety", 100, 0).build());
 			try (Driver driver = harness.open())
 			{
@@ -3192,15 +3194,57 @@ public final class DriverTest
 				List<FakeSession> trials = harness.runningTrials();
 				requireThat(trials.size(), "trials").isEqualTo(1);
 				requireThat(DriverHarness.cell(trials.getFirst().request()), "test").isEqualTo("formatting");
-				trials.getFirst().end(harness.passed());
+				trials.getFirst().end(harness.failed());
 				harness.settle(driver);
 
 				Campaign campaign = harness.campaign();
 				requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.INCONCLUSIVE);
 				requireThat(campaign.runningAttempt().isEmpty(), "running").isTrue();
 				harness.runUntil(driver, state -> !state.trials().isEmpty());
+				// The failure that reached the cap is reproduced in development before development continues
 				for (LogicalTrial trial : harness.campaign().trials())
-					requireThat(trial.key().purpose(), "purpose").isEqualTo(Purpose.DEVELOPMENT);
+				{
+					requireThat(Set.of(Purpose.REPRODUCTION, Purpose.DEVELOPMENT), "developmentPurposes").
+						contains(trial.key().purpose());
+				}
+			}
+		}
+	}
+
+	/**
+	 * A campaign stored while its certification attempt kept running although a cell could no longer certify within
+	 * its cap ends the attempt inconclusive once loaded, before any further candidate formal trial runs, and the
+	 * status names the cell with its counts.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void loadedOutOfReachAttemptEnds() throws IOException
+	{
+		// Requirement: R-F2
+		// With 4 failures, 297 passes would be needed, beyond the 296 passes left within the cap of 300
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing().certificationAttempt(1).boundaries(neutralBoundaries()).cell("formatting", 120, 4).
+					cell("plain_list", 100, 0).cell("safety", 100, 0).build());
+			Set<Purpose> purposes = ConcurrentHashMap.newKeySet();
+			harness.trials(request ->
+			{
+				purposes.add(runningTrial(harness, request).key().purpose());
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign campaign = harness.runUntil(driver, state -> !state.attempt(1).isRunning());
+				CertificationAttempt attempt = campaign.attempt(1);
+				requireThat(attempt.outcome(), "outcome").isEqualTo(Outcome.INCONCLUSIVE);
+				requireThat(attempt.count("formatting").passes(), "passes").isEqualTo(120);
+				requireThat(attempt.count("formatting").failures(), "failures").isEqualTo(4);
+				requireThat(purposes, "purposes").doesNotContain(Purpose.FORMAL);
+				requireThat(StatusReport.of(campaign, ReportEvidence.NONE).summary(ZoneOffset.UTC), "summary").
+					contains("Attempt 1: not certified: inconclusive (formatting out of reach with 120 passes and 4 " +
+						"failures)");
 			}
 		}
 	}
@@ -3700,14 +3744,14 @@ public final class DriverTest
 	}
 
 	/**
-	 * A certification attempt reaches its cap with one test proven better and the other certified.
-	 * The campaign pauses with {@code keep improvement}, {@code optimize further} and {@code stop}; the choice is
-	 * still pending after a restart, and keeping the improvement delivers the attempt's candidate labelled
-	 * {@code improved, not certified}.
+	 * A certification attempt ends inconclusive with one test proven better and the other certified, once a formal
+	 * failure leaves the proven-better test unable to certify within its cap. The campaign pauses with
+	 * {@code keep improvement}, {@code optimize further} and {@code stop}; the choice is still pending after a restart,
+	 * and keeping the improvement delivers the attempt's candidate labelled {@code improved, not certified}.
 	 * <p>
-	 * The fixture seeds development, baseline and formal counts immediately before the cap. The remaining formal
-	 * outcome, persisted pending decision, restart and delivery are required to prove the public choice flow; their
-	 * filesystem work can exceed one second during a parallel build.
+	 * The fixture seeds development, baseline and formal counts one failure before the test is out of reach. The
+	 * remaining formal outcome, persisted pending decision, restart and delivery are required to prove the public
+	 * choice flow; their filesystem work can exceed one second during a parallel build.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -3728,8 +3772,9 @@ public final class DriverTest
 			harness.overlays().put(candidate.snapshot(), selected);
 			harness.workspace().materialize(selected);
 			harness.store().replaceSnapshot(new Builder().confirmed().working(candidate).readyDevelopment().
-				readyBaseline().certificationAttempt(1).candidate(candidate).cell("formatting", 295, 4).
-				cell("safety", 100, 0).build());
+				readyBaseline().certificationAttempt(1).candidate(candidate).cell("formatting", 230, 3).
+				cell("plain_list", 100, 0).cell("safety", 100, 0).build());
+			harness.trials(_ -> harness.failed());
 			try (Driver driver = harness.open())
 			{
 				SliceResult result = harness.runSlice(driver);
@@ -3979,8 +4024,9 @@ public final class DriverTest
 		// Requirement: R-E17
 		Builder start = twoProfileStart();
 		Contract contract = ContractFixtures.twoCellContract();
-		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size(),
-			Boundaries.PAIRED_MINIMUM_PASS_RATE);
+		// The failing cells stay within reach until their fifth failure makes them clearly below
+		DecisionBoundaries boundaries = Boundaries.reachableAtFourFailures(Boundaries.standard(
+			contract.cellIds().size(), Boundaries.PAIRED_MINIMUM_PASS_RATE), 5);
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : List.of(ContractFixtures.SMALL_CELL, ContractFixtures.PLAIN_SMALL_CELL, "safety"))
 			oneControlPairShort(running, boundaries, contract, cell);
@@ -4465,14 +4511,17 @@ public final class DriverTest
 	{
 		// Requirement: R-E23
 		Contract contract = TierFixtures.tieredContract();
+		Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline().
+			development(TierFixtures.SMALL_HIGH, 200, 0).development(TierFixtures.SAFETY, 200, 0);
+		// The failing cell stays within reach until its fifth failure makes it clearly below
+		DecisionBoundaries boundaries = Boundaries.reachableAtFourFailures(Boundaries.standard(
+			CellTier.scopeCellIds(start.build().contract()).size()), 5);
 		TrialProfile weakest = new TrialProfile("small", "high");
 		Set<String> formalCells = ConcurrentHashMap.newKeySet();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new Builder().confirmed(contract, 1).working(1).readyBaseline().
-					development(TierFixtures.SMALL_HIGH, 200, 0).development(TierFixtures.SAFETY, 200, 0).
-					certificationAttempt(1).build());
+				start.certificationAttempt(1).boundaries(boundaries).build());
 			harness.trials(request ->
 			{
 				LogicalTrial trial = runningTrial(harness, request);

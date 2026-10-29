@@ -137,6 +137,21 @@ public record DecisionBoundaries(SignificanceLevel level, BigDecimal minimumPass
 	}
 
 	/**
+	 * Indicates whether some state with a number of failures certifies within the cap. More failures only lower
+	 * {@code E_up}, so a cell with these failures can still certify exactly when every further outcome passing would
+	 * certify it before the cap.
+	 *
+	 * @param failures the cell's adopted failures in the attempt
+	 * @return {@code true} if a state {@code (S, failures)} with {@code S + failures} at most the cap certifies
+	 * @throws IllegalArgumentException if {@code failures} is negative or exceeds {@code cap}
+	 */
+	public boolean canCertifyWith(int failures)
+	{
+		BoundaryLists.requireState(0, failures, cap);
+		return minimumCertifyingPasses.get(failures) <= cap - failures;
+	}
+
+	/**
 	 * Indicates whether a cell state is clearly below the minimum pass rate.
 	 *
 	 * @param passes   the cell's adopted passes in the attempt

@@ -390,7 +390,8 @@ public final class RemainingWorkTest
 		// Requirement: R-E12
 		// Requirement: R-F7
 		// Cap 100. formatting: S = 100, F = 0 -> certified minimum-pass-rate part. Both comparisons have 10 pairs in
-		// which both passed, and pass after 95 more at alpha_1 = 1/50, but only 90 pairs remain within the cap.
+		// which both passed, and pass after 95 more at alpha_1 = 1/50, but only 90 pairs remain within the cap. Pairs
+		// that only the candidate passes could still pass them within the cap.
 		List<ComparisonBoundaries> neutral = Collections.nCopies(3,
 			Boundaries.comparison(100, 60, 40, 4, Boundaries.PAIRED_MINIMUM_PASS_RATE));
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
@@ -406,7 +407,54 @@ public final class RemainingWorkTest
 		requireThat(work.total(), "total").isNull();
 		requireThat(work.unavailable(), "unavailable").isNotNull();
 		requireThat(work.entries(), "entries").isEqualTo(List.of(new Entry("formatting", Kind.CONTROL, null,
-			"The control comparison of uses_requested_tone cannot pass within the cap of 100 pairs.")));
+			"The control comparison of uses_requested_tone cannot pass within the cap of 100 pairs if every further " +
+				"trial passes; it may still pass if control trials fail, so the attempt continues.")));
+	}
+
+	/**
+	 * Verifies that a cell whose undecided control comparison cannot pass within its cap if every further trial
+	 * passes, but can if control trials fail, has no minimum, with a reason that says the attempt continues, and that
+	 * the reason says only that the comparison cannot pass once no continuation within the cap passes it.
+	 */
+	@Test
+	public void controlFailuresMayStillPass()
+	{
+		// Requirement: R-E12
+		// Requirement: R-F2
+		// Cap 300. formatting: certified minimum-pass-rate part, every formal outcome paired. uses_requested_tone has
+		// 37 pairs in which both passed and 5 that only the control passed at alpha_1:
+		// 259 more pairs in which both pass would be needed of the 258 left, but 17 that only the candidate passes
+		// suffice. With 20 of 273 pairs that only the control passed, 28 such pairs would be needed of the 27 left.
+		RemainingWork passable = RemainingWork.of(controlComparison(new PairCounts(37, 0, 5, 0), 42));
+		requireThat(passable.total(), "total").isNull();
+		requireThat(passable.entries(), "passable").isEqualTo(List.of(new Entry("formatting", Kind.CONTROL, null,
+			"The control comparison of uses_requested_tone cannot pass within the cap of 300 pairs if every further " +
+				"trial passes; it may still pass if control trials fail, so the attempt continues.")));
+
+		RemainingWork unreachable = RemainingWork.of(controlComparison(new PairCounts(253, 0, 20, 0), 273));
+		requireThat(unreachable.total(), "unreachableTotal").isNull();
+		requireThat(unreachable.entries(), "unreachable").isEqualTo(List.of(new Entry("formatting", Kind.CONTROL, null,
+			"The control comparison of uses_requested_tone cannot pass within the cap of 300 pairs.")));
+	}
+
+	/**
+	 * Returns a campaign whose certification attempt compares the formatting cell's assertions with control trials,
+	 * with one undecided comparison and a passed {@value TestCase#EXPECTED_OUTCOME} comparison. The candidate is the
+	 * incumbent, so the cell needs no incumbent trials.
+	 *
+	 * @param undecided the pairs of {@code uses_requested_tone}
+	 * @param passes the formatting cell's passes, each paired
+	 * @return the campaign
+	 */
+	private static Campaign controlComparison(PairCounts undecided, int passes)
+	{
+		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
+		comparisons.put("uses_requested_tone", undecided);
+		comparisons.put(TestCase.EXPECTED_OUTCOME, new PairCounts(0, passes, 0, 0));
+		return new Builder().confirmed().readyDevelopment().readyBaseline().certificationAttempt(1).
+			boundaries(ReportBoundaries.paired()).cell("formatting", Math.max(100, passes), 0).
+			controlPairing("formatting", new Pairing(List.of(), comparisons)).
+			cell("plain_list", 100, 0).cell("safety", 100, 0).build();
 	}
 
 	/**
@@ -450,7 +498,8 @@ public final class RemainingWorkTest
 		// Requirement: R-F7
 		// Cap 100. formatting: S = 100, F = 0 -> certified minimum-pass-rate part. Its control comparisons have 10
 		// pairs that only the candidate passed and passed. Both incumbent comparisons have 10 pairs in which both
-		// passed, and pass after 95 more at alpha_1 = 1/50, but only 90 pairs remain within the cap.
+		// passed, and pass after 95 more at alpha_1 = 1/50, but only 90 pairs remain within the cap. Pairs that only
+		// the candidate passes could still pass them within the cap.
 		List<ComparisonBoundaries> neutral = Collections.nCopies(3,
 			Boundaries.comparison(100, 60, 40, 4, Boundaries.PAIRED_MINIMUM_PASS_RATE));
 		Map<String, PairCounts> control = new LinkedHashMap<>();
@@ -471,7 +520,8 @@ public final class RemainingWorkTest
 		requireThat(work.unavailable(), "unavailable").isNotNull();
 		requireThat(work.entries(), "entries").isEqualTo(List.of(new Entry("formatting", Kind.CONTROL, 0, null),
 			new Entry("formatting", Kind.INCUMBENT, null,
-				"The incumbent comparison of uses_requested_tone cannot pass within the cap of 100 pairs.")));
+				"The incumbent comparison of uses_requested_tone cannot pass within the cap of 100 pairs if every " +
+					"further trial passes; it may still pass if incumbent trials fail, so the attempt continues.")));
 	}
 
 	/**

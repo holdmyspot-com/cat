@@ -316,9 +316,10 @@ public final class KeepImprovementTest
 	{
 		// Requirement: R-F6, R-D9
 		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
-			boundaries(boundaries()).cell("formatting", 60, 0).cell("plain_list", 100, 0).cell("safety", 94, 5).build();
+			boundaries(boundaries()).cell("formatting", 60, 0).cell("plain_list", 100, 0).cell("safety", 96, 3).build();
+		// The fourth failure leaves safety unable to certify within the cap at its 100th outcome
 		campaign = TransitionSteps.adopt(campaign, Purpose.FORMAL, "safety", Verdict.FAIL);
-		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
+		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.INCONCLUSIVE);
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.ImprovementProven(1));
 		requireThat(campaign.choices(), "choices").containsExactly(List.of(Choice.KEEP_IMPROVEMENT,
 			Choice.OPTIMIZE_FURTHER, Choice.STOP));

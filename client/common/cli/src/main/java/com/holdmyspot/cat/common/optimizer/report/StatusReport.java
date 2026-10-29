@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.Comparability;
+import com.holdmyspot.cat.common.optimizer.campaign.DecisionTable;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureGroup;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
@@ -645,9 +646,39 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			String outcome = null;
 			if (attempt.outcome() != null)
 				outcome = attempt.outcome().label();
-			summaries.add(AttemptSummary.of(attempt.index(), outcome, applicability));
+			summaries.add(AttemptSummary.of(attempt.index(), outcome, applicability, undecided(attempt)));
 		}
 		return summaries;
+	}
+
+	/**
+	 * Describes the cells that ended an inconclusive attempt: each cell that was out of reach or reached its cap, with
+	 * its adopted counts.
+	 *
+	 * @param attempt the attempt
+	 * @return the descriptions, in cell order, or empty unless the attempt ended inconclusive
+	 */
+	private static List<String> undecided(CertificationAttempt attempt)
+	{
+		if (attempt.outcome() != Outcome.INCONCLUSIVE)
+			return List.of();
+		List<String> undecided = new ArrayList<>();
+		for (String cell : attempt.procedure().cells())
+		{
+			String reason = switch (DecisionTable.cellDecision(attempt, cell))
+			{
+				case OUT_OF_REACH -> "out of reach";
+				case CAP_REACHED -> "at its cap";
+				case UNDECIDED, CERTIFIED, CLEARLY_BELOW, BELOW_CONTROL, BELOW_INCUMBENT -> null;
+			};
+			if (reason != null)
+			{
+				CellCounts counts = attempt.count(cell);
+				undecided.add(cell + " " + reason + " with " + counts.passes() + " passes and " + counts.failures() +
+					" failures");
+			}
+		}
+		return undecided;
 	}
 
 	/**

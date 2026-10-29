@@ -453,6 +453,28 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * An inconclusive attempt names each cell that ended it, out of reach or at its cap, with its counts, and a cell
+	 * that certified is not named.
+	 */
+	@Test
+	public void inconclusiveAttemptNamesUndecidedCells()
+	{
+		// Requirement: R-F2
+		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+			cell("formatting", 120, 4).cell("plain_list", 100, 0).cell("safety", 296, 4).
+			outcome(Outcome.INCONCLUSIVE).campaign().build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode undecided = report.toJson(JsonMapper.builder().build()).get("attempts").get(0).get("undecided");
+		requireThat(undecided.size(), "undecided").isEqualTo(2);
+		requireThat(undecided.get(0).asString(), "outOfReach").
+			isEqualTo("formatting out of reach with 120 passes and 4 failures");
+		requireThat(undecided.get(1).asString(), "capReached").
+			isEqualTo("safety at its cap with 296 passes and 4 failures");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Attempt 1: not certified: inconclusive " +
+			"(formatting out of reach with 120 passes and 4 failures; safety at its cap with 296 passes and 4 failures)");
+	}
+
+	/**
 	 * A reserved attempt appears before its prompt author returns, with acceptance still pending.
 	 */
 	@Test

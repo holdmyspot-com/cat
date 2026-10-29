@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.campaign.test;
 import static com.holdmyspot.cat.common.optimizer.campaign.test.Builder.counts;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.campaign.Admission;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
@@ -26,6 +27,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Reference;
+import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
@@ -37,6 +39,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.secrets.CertificationAttemptSecrets;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -93,9 +96,11 @@ public final class DecisionTableTest
 				{100, 0, CellDecision.CERTIFIED},
 				{149, 1, CellDecision.UNDECIDED},
 				{150, 1, CellDecision.CERTIFIED},
-				{0, 4, CellDecision.UNDECIDED},
+				{0, 3, CellDecision.UNDECIDED},
+				{0, 4, CellDecision.OUT_OF_REACH},
 				{0, 5, CellDecision.CLEARLY_BELOW},
-				{295, 4, CellDecision.UNDECIDED},
+				{249, 3, CellDecision.UNDECIDED},
+				{295, 4, CellDecision.OUT_OF_REACH},
 				{296, 4, CellDecision.CAP_REACHED}
 			};
 	}
@@ -130,7 +135,9 @@ public final class DecisionTableTest
 				{100, 0, 0, 5, AttemptDecision.BELOW_MINIMUM},
 				{100, 0, 296, 4, AttemptDecision.INCONCLUSIVE},
 				{296, 4, 0, 5, AttemptDecision.BELOW_MINIMUM},
-				{50, 0, 296, 4, AttemptDecision.INCONCLUSIVE}
+				{50, 0, 296, 4, AttemptDecision.INCONCLUSIVE},
+				{100, 0, 20, 4, AttemptDecision.INCONCLUSIVE},
+				{20, 4, 0, 5, AttemptDecision.BELOW_MINIMUM}
 			};
 	}
 
@@ -362,7 +369,8 @@ public final class DecisionTableTest
 	{
 		// Requirement: R-F2, R-D9, R-D3
 		Campaign campaign = new Builder().confirmed().working(1).development("safety", 100, 0).
-			development("formatting", 100, 0).certificationAttempt(1).cell("formatting", 30, 0).
+			development("formatting", 100, 0).certificationAttempt(1).
+			boundaries(Boundaries.reachableAtFourFailures(Boundaries.standard(3), 5)).cell("formatting", 30, 0).
 			cell("safety", 20, 4).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
@@ -392,8 +400,10 @@ public final class DecisionTableTest
 	public void endedAttemptNeverReopens()
 	{
 		// Requirement: R-F2
+		// With 4 failures, 296 passes certify, so the cell stays within reach until its last outcome before the cap
 		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
-			cell("formatting", 100, 0).cell("safety", 295, 4).build();
+			boundaries(Boundaries.reachableAtFourFailures(Boundaries.standard(3), 6)).cell("formatting", 100, 0).
+			cell("safety", 295, 4).build();
 		DecisionBoundaries frozen = campaign.attempt(1).procedure().boundaries();
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		TrialKey first = TransitionSteps.last(campaign);
@@ -403,16 +413,76 @@ public final class DecisionTableTest
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(second));
 
 		// The first outcome reaches the cap of 300 undecided
-		campaign = TransitionSteps.complete(campaign, first, Verdict.PASS);
+		campaign = TransitionSteps.complete(campaign, first, Verdict.FAIL);
 		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.INCONCLUSIVE);
 		requireThat(campaign.runningAttempt().isEmpty(), "runningAttempt.isEmpty()").isTrue();
 
 		// The in-flight trial finishes after the end and never reopens the attempt
 		campaign = TransitionSteps.complete(campaign, second, Verdict.PASS);
 		requireThat(campaign.attempt(1).outcome(), "lateOutcome").isEqualTo(Outcome.INCONCLUSIVE);
-		requireThat(campaign.attempt(1).count("safety"), "counts").isEqualTo(counts(296, 4));
+		requireThat(campaign.attempt(1).count("safety").passes(), "passes").isEqualTo(295);
+		requireThat(campaign.attempt(1).count("safety").failures(), "failures").isEqualTo(5);
 		requireThat(campaign.attempt(1).procedure().boundaries(), "boundaries").isEqualTo(frozen);
 		requireThat(campaign.trials(), "trials").isEmpty();
+	}
+
+	/**
+	 * Verifies that a formal failure after which no all-pass continuation within the cap certifies the cell ends the
+	 * attempt inconclusive at that adoption, long before the cell reaches its cap, and admits no further candidate
+	 * formal trial, while the attempt keeps running and admitting candidate formal trials one outcome earlier.
+	 */
+	@Test
+	public void outOfReachEndsAttemptBeforeCap()
+	{
+		// Requirement: R-F2
+		// With 3 failures, 250 passes certify within the cap of 300; with 4 failures, 300 passes would be needed
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().certificationAttempt(1).
+			cell("formatting", 30, 0).cell("plain_list", 100, 0).cell("safety", 199, 3).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
+		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.PASS);
+		requireThat(campaign.attempt(1).count("safety").passes(), "reachablePasses").isEqualTo(200);
+		requireThat(campaign.attempt(1).outcome(), "reachableOutcome").isNull();
+		requireThat(formalAdmissions(campaign), "reachableAdmissions").isNotEmpty();
+
+		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
+		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.FAIL);
+		requireThat(campaign.attempt(1).count("safety").failures(), "failures").isEqualTo(4);
+		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.INCONCLUSIVE);
+		requireThat(campaign.runningAttempt().isEmpty(), "runningAttempt.isEmpty()").isTrue();
+		requireThat(formalAdmissions(campaign), "admissions").isEmpty();
+	}
+
+	/**
+	 * Verifies that a formal failure that both puts a cell out of reach and makes it clearly below ends the attempt
+	 * below the minimum pass rate rather than inconclusive.
+	 */
+	@Test
+	public void clearlyBelowPrecedesOutOfReach()
+	{
+		// Requirement: R-F2
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().certificationAttempt(1).
+			boundaries(Boundaries.reachableAtFourFailures(Boundaries.standard(3), 5)).cell("formatting", 30, 0).
+			cell("plain_list", 100, 0).cell("safety", 40, 4).build();
+		requireThat(DecisionTable.minimumDecision(campaign.attempt(1).procedure().boundaries(),
+			campaign.attempt(1).count("safety")), "reachable").isEqualTo(CellDecision.UNDECIDED);
+
+		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
+		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.FAIL);
+		requireThat(campaign.attempt(1).count("safety").failures(), "failures").isEqualTo(5);
+		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
+	}
+
+	/**
+	 * Returns the candidate formal, control and incumbent trials that the scheduler would admit now.
+	 *
+	 * @param campaign the campaign
+	 * @return the admissions
+	 */
+	private static List<Admission> formalAdmissions(Campaign campaign)
+	{
+		return Scheduler.plan(campaign, Instant.parse("2026-10-01T12:00:00Z"), 8).stream().filter(admission ->
+			admission instanceof Admission.Assign assign && (assign.purpose() == Purpose.FORMAL ||
+				assign.purpose() == Purpose.CONTROL || assign.purpose() == Purpose.INCUMBENT)).toList();
 	}
 
 	/**
@@ -691,6 +761,69 @@ public final class DecisionTableTest
 		requireThat(campaign.pending(), "pending").isNull();
 		requireThat(campaign.attempt(1).failures(), "failures").isEmpty();
 		requireThat(CellTier.developmentCellIds(campaign), "developmentCells").contains("safety");
+	}
+
+	/**
+	 * Returns a campaign at a minimum pass rate below 0.95 whose {@code safety} cell certified its minimum-pass-rate
+	 * part, at 150 passes or more with 1 failure, and has one candidate formal trial, which failed every assertion,
+	 * waiting for its control trial. Every
+	 * other adopted control pair either passed both trials or only the control trial.
+	 *
+	 * @param referenceAhead the adopted pairs in which only the control trial passed
+	 * @param even the adopted pairs in which both trials passed
+	 * @return the campaign
+	 */
+	private static Campaign waitingForControl(int referenceAhead, int even)
+	{
+		PairCounts pairs = new PairCounts(even, 0, referenceAhead, 0);
+		UnpairedTrial waiting = new UnpairedTrial(Builder.testCase("safety", "logs"), Set.of());
+		Map<String, PairCounts> comparisons = new LinkedHashMap<>(comparing(pairs, pairs).comparisons());
+		return new Builder().confirmed().working(1).readyDevelopment().certificationAttempt(1).boundaries(PAIRED).
+			cell("formatting", 30, 0).cell("plain_list", 100, 0).cell("safety", Math.max(150, referenceAhead + even), 1).
+			controlPairing("safety", new Pairing(List.of(waiting), comparisons)).build();
+	}
+
+	/**
+	 * Verifies that a control trial after which no continuation within the cap can pass a control comparison, even if
+	 * only the candidate trial of every further pair passes, ends the attempt inconclusive at that adoption and admits
+	 * no further candidate, control or incumbent trial, while one such pair earlier the attempt keeps running.
+	 */
+	@Test
+	public void comparisonOutOfReachEndsAttempt()
+	{
+		// Requirement: R-F2
+		// With 19 of 272 pairs favouring the control, 27 candidate-only pairs of the 28 left pass the comparison; with
+		// 20 of 273, 28 such pairs would be needed and only 27 are left
+		Campaign campaign = waitingForControl(19, 253);
+		CertificationAttempt reachable = campaign.attempt(1);
+		requireThat(DecisionTable.cellDecision(reachable, "safety"), "reachable").isEqualTo(CellDecision.UNDECIDED);
+		requireThat(formalAdmissions(campaign), "reachableAdmissions").isNotEmpty();
+
+		campaign = TransitionSteps.adoptReference(campaign, Reference.CONTROL, "safety", Verdict.PASS, List.of());
+		requireThat(campaign.attempt(1).pairing(Reference.CONTROL, "safety").pairs(), "pairs").isEqualTo(273);
+		requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.INCONCLUSIVE);
+		requireThat(campaign.runningAttempt().isEmpty(), "runningAttempt.isEmpty()").isTrue();
+		requireThat(formalAdmissions(campaign), "admissions").isEmpty();
+	}
+
+	/**
+	 * Verifies that a control comparison that no number of further pairs in which both trials pass can pass within the
+	 * cap, but that pairs in which only the candidate trial passes still can, keeps the attempt running.
+	 */
+	@Test
+	public void candidateOnlyPairsKeepComparisonInReach()
+	{
+		// Requirement: R-F2
+		// With 5 of 42 pairs favouring the control, 259 even pairs would be needed of the 258 left, but 17 pairs that
+		// only the candidate passes suffice
+		Campaign campaign = TransitionSteps.adoptReference(waitingForControl(4, 37), Reference.CONTROL, "safety",
+			Verdict.PASS, List.of());
+		CertificationAttempt attempt = campaign.attempt(1);
+		requireThat(attempt.pairing(Reference.CONTROL, "safety").comparisons().get(TestCase.EXPECTED_OUTCOME),
+			"pairs").isEqualTo(new PairCounts(37, 0, 5, 0));
+		requireThat(DecisionTable.cellDecision(attempt, "safety"), "decision").isEqualTo(CellDecision.UNDECIDED);
+		requireThat(attempt.outcome(), "outcome").isNull();
+		requireThat(formalAdmissions(campaign), "admissions").isNotEmpty();
 	}
 
 	/**

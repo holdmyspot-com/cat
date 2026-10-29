@@ -37,6 +37,12 @@ public final class DecisionTable
 		 */
 		CAP_REACHED,
 		/**
+		 * No continuation within the cell's outcome cap can certify it: its minimum-pass-rate part is undecided and no
+		 * state with its failures certifies within the cap, or an undecided control or incumbent comparison cannot pass
+		 * within the cap's remaining pairs even if only the candidate trial of every further pair passes.
+		 */
+		OUT_OF_REACH,
+		/**
 		 * The cell's minimum-pass-rate part certified, but the candidate passes one of its assertions less often than
 		 * the control.
 		 */
@@ -79,8 +85,8 @@ public final class DecisionTable
 		 */
 		BELOW_INCUMBENT,
 		/**
-		 * At least one cell reached its outcome cap undecided, and none is clearly below the minimum pass rate, below
-		 * control or below incumbent.
+		 * At least one cell reached its outcome cap undecided or is out of reach, and none is clearly below the minimum
+		 * pass rate, below control or below incumbent.
 		 */
 		INCONCLUSIVE
 	}
@@ -123,8 +129,10 @@ public final class DecisionTable
 	}
 
 	/**
-	 * Decides the minimum-pass-rate part of one cell from its adopted formal counts. The result never is
-	 * {@link CellDecision#BELOW_CONTROL} or {@link CellDecision#BELOW_INCUMBENT}.
+	 * Decides the minimum-pass-rate part of one cell from its adopted formal counts. A cell that neither certifies nor
+	 * is clearly below reaches its cap once its outcomes reach the cap, and is out of reach before that once no state
+	 * with its failures certifies within the cap. The result never is {@link CellDecision#BELOW_CONTROL} or
+	 * {@link CellDecision#BELOW_INCUMBENT}.
 	 *
 	 * @param boundaries the attempt's boundaries
 	 * @param counts the cell's adopted formal counts
@@ -142,6 +150,8 @@ public final class DecisionTable
 			return CellDecision.CLEARLY_BELOW;
 		if (counts.outcomes() >= boundaries.cap())
 			return CellDecision.CAP_REACHED;
+		if (!boundaries.canCertifyWith(counts.failures()))
+			return CellDecision.OUT_OF_REACH;
 		return CellDecision.UNDECIDED;
 	}
 
@@ -151,8 +161,10 @@ public final class DecisionTable
 	 * then is below control once any assertion's control comparison is, and otherwise below incumbent once any
 	 * assertion's incumbent comparison is. It certifies once every assertion's control and incumbent comparisons
 	 * passed, and reaches its cap once its formal outcomes reach the cap and each has its trial of every kind whose
-	 * comparisons have not all passed. A cell has no incumbent comparisons when the candidate is the incumbent. When
-	 * the attempt's minimum pass rate implies the comparisons, the cell's decision is its minimum-pass-rate part's.
+	 * comparisons have not all passed. Before that, it is out of reach once some undecided comparison cannot pass
+	 * within the cap's remaining pairs (see {@link #pairsToPass}). A cell has no incumbent comparisons when the
+	 * candidate is the incumbent. When the attempt's minimum pass rate implies the comparisons, the cell's decision is
+	 * its minimum-pass-rate part's.
 	 *
 	 * @param attempt the attempt
 	 * @param cell the identifier of the cell
@@ -195,7 +207,76 @@ public final class DecisionTable
 		{
 			return CellDecision.CAP_REACHED;
 		}
+		if (!canPass(control, boundaries) || !canPass(incumbent, boundaries))
+			return CellDecision.OUT_OF_REACH;
 		return CellDecision.UNDECIDED;
+	}
+
+	/**
+	 * Returns the fewest further pairs after which every comparison of a pairing passes, if only the candidate trial
+	 * of each further pair passes. No other continuation passes a comparison sooner, so a pairing whose result exceeds
+	 * the pairs that the cap still allows cannot pass within the cap.
+	 *
+	 * @param pairing the cell's pairing with one kind of reference trial
+	 * @param boundaries the attempt's boundaries
+	 * @return the pairs, 0 if every comparison passed or the pairing compares nothing, or one more than the pairs that
+	 *   the cap still allows if some comparison cannot pass within them
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static int pairsToPass(Pairing pairing, DecisionBoundaries boundaries)
+	{
+		requireThat(pairing, "pairing").isNotNull();
+		requireThat(boundaries, "boundaries").isNotNull();
+		int remaining = remainingPairs(pairing, boundaries);
+		int needed = 0;
+		for (PairCounts comparison : pairing.comparisons().values())
+			needed = Math.max(needed, pairsToPass(comparison, remaining, boundaries));
+		return needed;
+	}
+
+	/**
+	 * Returns the fewest further pairs after which one comparison passes, if only the candidate trial of each further
+	 * pair passes. No other continuation passes the comparison sooner, so a comparison whose result exceeds the pairs
+	 * that the cap still allows cannot pass within the cap.
+	 *
+	 * @param comparison the adopted pairs of one assertion's comparison
+	 * @param remaining the further pairs that the cell's cap still allows
+	 * @param boundaries the attempt's boundaries
+	 * @return the pairs, 0 if the comparison passed, or {@code remaining + 1} if it cannot pass within them
+	 * @throws NullPointerException if {@code comparison} or {@code boundaries} are null
+	 * @throws IllegalArgumentException if {@code remaining} is negative
+	 */
+	public static int pairsToPass(PairCounts comparison, int remaining, DecisionBoundaries boundaries)
+	{
+		requireThat(comparison, "comparison").isNotNull();
+		requireThat(boundaries, "boundaries").isNotNull();
+		return PairedComparison.fewestCandidateAheadPairsToPass(comparison.tally(), boundaries.level(), remaining);
+	}
+
+	/**
+	 * Returns the further pairs that a cell's cap still allows a pairing.
+	 *
+	 * @param pairing the cell's pairing with one kind of reference trial
+	 * @param boundaries the attempt's boundaries
+	 * @return the cap minus the adopted pairs, or 0 if none remain
+	 */
+	public static int remainingPairs(Pairing pairing, DecisionBoundaries boundaries)
+	{
+		requireThat(pairing, "pairing").isNotNull();
+		requireThat(boundaries, "boundaries").isNotNull();
+		return Math.max(0, boundaries.cap() - pairing.pairs());
+	}
+
+	/**
+	 * Indicates whether every comparison of a pairing can still pass within the cap's remaining pairs.
+	 *
+	 * @param pairing the cell's pairing with one kind of reference trial
+	 * @param boundaries the attempt's boundaries
+	 * @return {@code true} if some continuation within the cap passes every comparison
+	 */
+	private static boolean canPass(Pairing pairing, DecisionBoundaries boundaries)
+	{
+		return pairsToPass(pairing, boundaries) <= remainingPairs(pairing, boundaries);
 	}
 
 	/**
@@ -242,7 +323,7 @@ public final class DecisionTable
 	public static AttemptDecision attemptDecision(CertificationAttempt attempt)
 	{
 		requireThat(attempt, "attempt").isNotNull();
-		boolean capReached = false;
+		boolean inconclusive = false;
 		boolean belowIncumbent = false;
 		boolean allCertified = true;
 		boolean provenWorse = false;
@@ -265,9 +346,9 @@ public final class DecisionTable
 					belowIncumbent = true;
 					allCertified = false;
 				}
-				case CAP_REACHED ->
+				case CAP_REACHED, OUT_OF_REACH ->
 				{
-					capReached = true;
+					inconclusive = true;
 					allCertified = false;
 				}
 				case UNDECIDED -> allCertified = false;
@@ -280,7 +361,7 @@ public final class DecisionTable
 		}
 		if (belowIncumbent)
 			return AttemptDecision.BELOW_INCUMBENT;
-		if (capReached)
+		if (inconclusive)
 			return AttemptDecision.INCONCLUSIVE;
 		if (!allCertified)
 			return AttemptDecision.UNDECIDED;

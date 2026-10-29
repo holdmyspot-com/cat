@@ -217,7 +217,7 @@ final class CellReports
 		{
 			case CERTIFIED -> "certified";
 			case CLEARLY_BELOW -> "clearly below";
-			case CAP_REACHED, UNDECIDED -> UNDECIDED;
+			case CAP_REACHED, OUT_OF_REACH, UNDECIDED -> UNDECIDED;
 			case BELOW_CONTROL, BELOW_INCUMBENT -> throw new AssertionError("The minimum pass rate part cannot be " +
 				"below control or below incumbent");
 		};
@@ -227,7 +227,7 @@ final class CellReports
 			case CLEARLY_BELOW -> "clearly below";
 			case BELOW_CONTROL -> "below control";
 			case BELOW_INCUMBENT -> "below incumbent";
-			case CAP_REACHED -> "inconclusive";
+			case CAP_REACHED, OUT_OF_REACH -> "inconclusive";
 			case UNDECIDED -> UNDECIDED;
 		};
 		CellReport.Threshold comparison = new CellReport.Threshold(state, boundaries.minimumPassRate(), null,

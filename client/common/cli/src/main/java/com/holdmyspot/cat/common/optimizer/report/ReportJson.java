@@ -97,6 +97,7 @@ final class ReportJson
 			ArrayNode unchecked = node.putArray("unchecked");
 			for (MeasurementCondition condition : attempt.unchecked())
 				unchecked.add(EnumNames.lowerCase(condition));
+			strings(node.putArray("undecided"), attempt.undecided());
 		}
 		keepOffers(root.putArray("keep_offers"), report);
 		putText(root, "claim", report.claim());

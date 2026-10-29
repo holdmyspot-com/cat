@@ -201,6 +201,8 @@ final class ReportSummary
 			text.append("running");
 		else
 			text.append(attempt.outcome());
+		if (!attempt.undecided().isEmpty())
+			text.append(" (").append(String.join("; ", attempt.undecided())).append(')');
 		if (attempt.historical())
 			text.append(" (historical; changed: ").append(String.join(", ", attempt.changed())).append(')');
 		lines.add(text.toString());

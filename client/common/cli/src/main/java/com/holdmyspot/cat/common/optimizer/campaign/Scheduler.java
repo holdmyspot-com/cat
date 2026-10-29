@@ -8,10 +8,8 @@ import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.statistics.ConfidenceBounds;
-import com.holdmyspot.cat.common.optimizer.statistics.PairedComparison;
 import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.ExploratoryBounds;
-import com.holdmyspot.cat.common.optimizer.statistics.PairTally;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.time.Instant;
@@ -357,18 +355,8 @@ public final class Scheduler
 	{
 		Pairing pairing = attempt.pairing(reference, cell);
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
-		int remaining = Math.max(0, boundaries.cap() - pairing.pairs());
-		int needed = 0;
-		for (PairCounts comparison : pairing.comparisons().values())
-		{
-			PairTally tally = comparison.tally();
-			if (!PairedComparison.passes(tally, boundaries.level()))
-			{
-				needed = Math.max(needed, PairedComparison.fewestCandidateAheadPairsToPass(tally, boundaries.level(),
-					remaining));
-			}
-		}
-		return Math.min(needed, Math.max(1, remaining));
+		int needed = DecisionTable.pairsToPass(pairing, boundaries);
+		return Math.min(needed, Math.max(1, DecisionTable.remainingPairs(pairing, boundaries)));
 	}
 
 	/**

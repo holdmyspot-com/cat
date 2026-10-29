@@ -20,9 +20,11 @@ import java.util.List;
  * @param changed the names of the changed conditions, including {@code PROMPT_CONTENT} if the snapshot differs,
  *   followed by the names of the certification parameters whose recorded value does not imply their current value
  * @param unchecked the conditions that the attempt recorded but the current conditions do not
+ * @param undecided the cells that ended an inconclusive attempt, each out of reach or at its cap with its counts,
+ *   empty for any other attempt
  */
 public record AttemptSummary(int index, String outcome, boolean historical, List<String> changed,
-	List<MeasurementCondition> unchecked)
+	List<MeasurementCondition> unchecked, List<String> undecided)
 {
 	/**
 	 * Creates a summary.
@@ -32,7 +34,9 @@ public record AttemptSummary(int index, String outcome, boolean historical, List
 	 * @param historical {@code true} if CAT knows of a material change since the attempt measured its candidate
 	 * @param changed the names of the changed conditions and certification parameters
 	 * @param unchecked the conditions that the attempt recorded but the current conditions do not
-	 * @throws NullPointerException if {@code changed} or {@code unchecked} are null
+	 * @param undecided the cells that ended an inconclusive attempt, each out of reach or at its cap with its counts,
+	 *   empty for any other attempt
+	 * @throws NullPointerException if {@code changed}, {@code unchecked} or {@code undecided} are null
 	 * @throws IllegalArgumentException if {@code index} is not positive
 	 */
 	public AttemptSummary
@@ -40,8 +44,10 @@ public record AttemptSummary(int index, String outcome, boolean historical, List
 		requireThat(index, "index").isPositive();
 		requireThat(changed, "changed").isNotNull();
 		requireThat(unchecked, "unchecked").isNotNull();
+		requireThat(undecided, "undecided").isNotNull();
 		changed = List.copyOf(changed);
 		unchecked = List.copyOf(unchecked);
+		undecided = List.copyOf(undecided);
 	}
 
 	/**
@@ -50,11 +56,13 @@ public record AttemptSummary(int index, String outcome, boolean historical, List
 	 * @param index the certification index
 	 * @param outcome the attempt's outcome label, or {@code null} while it runs
 	 * @param applicability whether the attempt applies to the current prompt system and conditions
+	 * @param undecided the cells that ended an inconclusive attempt, each out of reach or at its cap with its counts,
+	 *   empty for any other attempt
 	 * @return the summary
-	 * @throws NullPointerException if {@code applicability} is null
+	 * @throws NullPointerException if {@code applicability} or {@code undecided} are null
 	 * @throws IllegalArgumentException if {@code index} is not positive
 	 */
-	public static AttemptSummary of(int index, String outcome, Applicability applicability)
+	public static AttemptSummary of(int index, String outcome, Applicability applicability, List<String> undecided)
 	{
 		requireThat(applicability, "applicability").isNotNull();
 		List<String> changed = new ArrayList<>();
@@ -65,6 +73,6 @@ public record AttemptSummary(int index, String outcome, boolean historical, List
 		for (CertificationParameter parameter : applicability.parameters())
 			changed.add(EnumNames.lowerCase(parameter));
 		return new AttemptSummary(index, outcome, applicability.status() == Applicability.Status.HISTORICAL, changed,
-			applicability.unchecked());
+			applicability.unchecked(), undecided);
 	}
 }

@@ -272,11 +272,13 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 		boolean available = true;
 		for (String cell : attempt.procedure().cells())
 		{
-			if (DecisionTable.cellDecision(attempt, cell) != DecisionTable.CellDecision.UNDECIDED)
+			DecisionTable.CellDecision decision = DecisionTable.cellDecision(attempt, cell);
+			if (decision != DecisionTable.CellDecision.UNDECIDED && decision != DecisionTable.CellDecision.OUT_OF_REACH)
 				continue;
 			CellCounts counts = attempt.count(cell);
 			int certification = 0;
-			if (DecisionTable.minimumDecision(boundaries, counts) == DecisionTable.CellDecision.UNDECIDED)
+			DecisionTable.CellDecision minimum = DecisionTable.minimumDecision(boundaries, counts);
+			if (minimum == DecisionTable.CellDecision.UNDECIDED || minimum == DecisionTable.CellDecision.OUT_OF_REACH)
 			{
 				Entry entry = certification(boundaries, cell, counts);
 				entries.add(entry);
@@ -322,19 +324,42 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	 *
 	 * @param boundaries the attempt's boundaries
 	 * @param cell the cell's identifier
-	 * @param counts the cell's adopted counts, whose minimum-pass-rate part is undecided
+	 * @param counts the cell's adopted counts, whose minimum-pass-rate part is undecided or out of reach
 	 * @return the entry
 	 */
 	private static Entry certification(DecisionBoundaries boundaries, String cell, CellCounts counts)
 	{
-		int minimum = boundaries.minimumCertifyingPasses().get(counts.failures());
-		if (minimum > boundaries.cap() - counts.failures())
+		if (!boundaries.canCertifyWith(counts.failures()))
 		{
 			return new Entry(cell, Kind.CERTIFICATION, null,
 				"No state with " + counts.failures() + " failures certifies within the cap of " + boundaries.cap() +
 					" outcomes.");
 		}
+		int minimum = boundaries.minimumCertifyingPasses().get(counts.failures());
 		return new Entry(cell, Kind.CERTIFICATION, minimum - counts.passes(), null);
+	}
+
+	/**
+	 * Explains why a comparison has no minimum: no further pairs in which both trials pass can pass it within the cap.
+	 * The explanation says that the comparison cannot pass within the cap only when no continuation passes it, which
+	 * puts the cell out of reach; otherwise pairs in which the reference trial fails may still pass it, and the
+	 * attempt continues.
+	 *
+	 * @param subject the comparison or comparisons, starting with a capital letter
+	 * @param reference the kind of reference trial, in lower case
+	 * @param comparison the adopted pairs of the comparison
+	 * @param further the further pairs that the cap still allows
+	 * @param boundaries the attempt's boundaries
+	 * @return the explanation
+	 */
+	private static String cannotPass(String subject, String reference, PairCounts comparison, int further,
+		DecisionBoundaries boundaries)
+	{
+		String withinCap = subject + " cannot pass within the cap of " + boundaries.cap() + " pairs";
+		if (DecisionTable.pairsToPass(comparison, further, boundaries) > further)
+			return withinCap + ".";
+		return withinCap + " if every further trial passes; it may still pass if " + reference +
+			" trials fail, so the attempt continues.";
 	}
 
 	/**
@@ -373,8 +398,8 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 			int needed = PairedComparison.fewestEvenPairsToPass(PairCounts.EMPTY.tally(), level, further);
 			if (needed > further)
 			{
-				return new PairsNeeded(0, 0, "The " + name + " comparisons cannot pass within the cap of " +
-					boundaries.cap() + " pairs.");
+				return new PairsNeeded(0, 0, cannotPass("The " + name + " comparisons", name, PairCounts.EMPTY,
+					further, boundaries));
 			}
 			// Every formal outcome, including those that the minimum-pass-rate part still requires, pairs with a
 			// reference trial once the comparisons start
@@ -391,8 +416,8 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 			int needed = PairedComparison.fewestEvenPairsToPass(tally, level, further);
 			if (needed > further)
 			{
-				return new PairsNeeded(0, 0, "The " + name + " comparison of " + comparison.getKey() +
-					" cannot pass within the cap of " + boundaries.cap() + " pairs.");
+				return new PairsNeeded(0, 0, cannotPass("The " + name + " comparison of " + comparison.getKey(), name,
+					comparison.getValue(), further, boundaries));
 			}
 			pairs = Math.max(pairs, needed);
 		}

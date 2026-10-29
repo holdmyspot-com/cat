@@ -69,6 +69,22 @@ public final class Boundaries
 	}
 
 	/**
+	 * Returns boundaries that certify at {@code 100 + 49 * failures} passes when reachable within the cap of
+	 * {@value #STANDARD_CAP}, with another table's comparisons and minimum pass rate. Unlike the standard boundaries,
+	 * 4 failures still leave certification within reach, at 296 passes, and a fifth failure puts it out of reach.
+	 *
+	 * @param comparisons the boundaries whose comparisons and minimum pass rate to use
+	 * @param belowFailures the minimum failures for a clearly-below decision when passes are below the certifying
+	 *   minimum
+	 * @return the boundaries
+	 */
+	public static DecisionBoundaries reachableAtFourFailures(DecisionBoundaries comparisons, int belowFailures)
+	{
+		return decision(STANDARD_CAP, 100, 49, belowFailures, comparisons.comparisons(),
+			comparisons.minimumPassRate());
+	}
+
+	/**
 	 * Returns decision boundaries.
 	 *
 	 * @param cap the maximum number of outcomes per cell

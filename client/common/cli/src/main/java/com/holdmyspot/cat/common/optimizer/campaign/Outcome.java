@@ -29,7 +29,8 @@ public enum Outcome
 	 */
 	BELOW_INCUMBENT("not certified: below incumbent"),
 	/**
-	 * A cell reached its trial cap without certifying or being proven below the minimum pass rate.
+	 * A cell reached its trial cap, or could no longer certify within it, without certifying or being proven below the
+	 * minimum pass rate.
 	 */
 	INCONCLUSIVE("not certified: inconclusive"),
 	/**
