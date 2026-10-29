@@ -37,7 +37,7 @@
 
 ## Guidance
 
-Apply the foundational Backward Design guidance injected by the default rule to derive the earliest controllable
+Apply the foundational Backward Design guidance that CAT Rule Routing routes design work to, to derive the earliest controllable
 prevention.
 
 Use the Backward Design and Iterative Generalization rule to derive the outcome, acceptance evidence, conditions, and

@@ -1187,13 +1187,13 @@ public final class ProposalTest
 	public void showsPluginSourcesByPlugin() throws InvalidProposalException
 	{
 		Path base = Path.of("/campaign/plugins/base-a").toAbsolutePath();
-		Path defaultRules = base.resolve("rules/common/default-rules.md");
+		Path ruleRouting = base.resolve("rules/common/rule-routing.md");
 		Path lazy = base.resolve("rules/include/lazy.md");
 		// A directory whose name extends the base's name lies outside the base
 		Path sibling = Path.of("/campaign/plugins/base-ab/rules/other.md").toAbsolutePath();
 		List<DerivedSource> sources = List.of(
-			new DerivedSource(defaultRules.toString(), "CAT injects this rule into every session"),
-			new DerivedSource(lazy.toString(), "`" + defaultRules + "` tells the agent to load this file"),
+			new DerivedSource(ruleRouting.toString(), "CAT injects this rule into every session"),
+			new DerivedSource(lazy.toString(), "`" + ruleRouting + "` tells the agent to load this file"),
 			new DerivedSource(".cat/rules/common/project.md", "CAT injects this rule into every session"),
 			new DerivedSource(sibling.toString(), "`" + sibling + "` includes this file, which CAT injects with it"));
 		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
@@ -1205,10 +1205,10 @@ public final class ProposalTest
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), check).render();
 
 		requireThat(text, "text").
-			contains("\n- trial plugin `cat`: `rules/common/default-rules.md`: CAT injects this rule into every " +
+			contains("\n- trial plugin `cat`: `rules/common/rule-routing.md`: CAT injects this rule into every " +
 				"session\n").
 			contains("\n- trial plugin `cat`: `rules/include/lazy.md`: trial plugin `cat`: " +
-				"`rules/common/default-rules.md` tells the agent to load this file\n").
+				"`rules/common/rule-routing.md` tells the agent to load this file\n").
 			contains("\n- .cat/rules/common/project.md: CAT injects this rule into every session\n").
 			contains("\n- " + sibling + ": `" + sibling + "` includes this file, which CAT injects with it\n").
 			doesNotContain(base + File.separator);

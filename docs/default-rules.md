@@ -13,7 +13,6 @@ specific to your codebase or workflow.
 | Configuration readability | Blank-line grouping for supported configuration files. |
 | Commit messages | Observable, typed Git commit messages. |
 | Contract retirement | Complete retirement of supported contracts while preserving retained contracts. |
-| Default rules | Routing to focused guidance when a task needs it. |
 | Design quality | Focused responsibilities and behavior-focused tests.<br>Loaded before recommending, designing, implementing, or reviewing a change. |
 | Documentation precision | Precise documentation for behavior, order, replacement, and destructive effects. |
 | Environment access | Resolve environment values at process boundaries and inject them into application code. |
@@ -27,6 +26,7 @@ specific to your codebase or workflow.
 | Prompt-file dependencies | Dependency ordering and term definitions across rendered direct rules. |
 | Remote runner testing | A live, authenticated Upterm session to the worker before changed commands run there, retries on the same worker, and observed cleanup, on any runner provider.<br>Loaded when a CI or hosted workflow runs changed commands on a remote runner to test them; the `remote-runner-session` skill supplies the procedure. |
 | Reusable values | One authoritative definition for values reused across coupled locations. |
+| Rule routing | Routing to focused guidance when a task needs it. |
 | Test-driven development | Focused tests before implementation for testable changes. |
 | Testing focus and isolation | Observable, isolated tests that avoid validating implementation mechanics. |
 | User request scheduling | Acknowledge and prioritize arriving user requests predictably. |

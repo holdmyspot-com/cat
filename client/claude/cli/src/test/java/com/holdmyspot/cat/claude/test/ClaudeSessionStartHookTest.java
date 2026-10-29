@@ -302,7 +302,7 @@ public final class ClaudeSessionStartHookTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path lazyRule = plugin.resolve("rules/include/java/javadoc.md");
-			write(plugin, "rules/common/default-rules.md", "Before editing Java, lazy load `../include/java/javadoc.md`.\n");
+			write(plugin, "rules/common/rule-routing.md", "Before editing Java, lazy load `../include/java/javadoc.md`.\n");
 			write(plugin, "rules/include/java/javadoc.md", "Javadoc guidance\n");
 
 			String context = completeContext(invoke(cwdInput(project),

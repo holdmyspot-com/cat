@@ -33,7 +33,7 @@ rule, the build turns the list into an injected instruction to lazy load each pr
 the prerequisites only by following that instruction.
 
 This rule governs authoring injector metadata, not reader-facing workflow behavior. Keep it path-scoped to rule source
-files and do not route it from an eager default rule. The injector consumes a rule's `depends-on` frontmatter while it
+files and do not route it from an eagerly injected rule. The injector consumes a rule's `depends-on` frontmatter while it
 assembles session context; it is not part of the context that the rule's reader receives.
 
 Declare a dependency when a direct rule needs a term, contract, or instruction defined by another direct rule. A

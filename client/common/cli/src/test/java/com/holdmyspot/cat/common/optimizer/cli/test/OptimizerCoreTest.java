@@ -3292,7 +3292,7 @@ public final class OptimizerCoreTest
 			Path root = repository.root();
 			writeBuildProgram(root);
 			configure(root, buildConfiguration("cat", 0, "out"));
-			Path rule = Path.of("rules/common/default-rules.md");
+			Path rule = Path.of("rules/common/rule-routing.md");
 			repository.sessions().setPluginSources(List.of(rule));
 			repository.sessions().setProductionOnlySources(List.of(new DerivedSource("/home/user/.cat/rules/own.md",
 				"CAT injects this rule into every session")));
@@ -3329,9 +3329,9 @@ public final class OptimizerCoreTest
 			Path root = repository.root();
 			writeBuildProgram(root);
 			configure(root, buildConfiguration("cat", 0, "out"));
-			Path rule = Path.of("rules/common/default-rules.md");
+			Path rule = Path.of("rules/common/rule-routing.md");
 			repository.sessions().setPluginSources(List.of(rule));
-			String shown = "\n- trial plugin `cat`: `rules/common/default-rules.md`: CAT injects this rule into every " +
+			String shown = "\n- trial plugin `cat`: `rules/common/rule-routing.md`: CAT injects this rule into every " +
 				"session\n";
 
 			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));

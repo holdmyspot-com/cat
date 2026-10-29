@@ -1,7 +1,7 @@
 ---
 agents: ["main", "subagents"]
 ---
-# Default Rule Routing
+# CAT Rule Routing
 
 ## Design Goals
 

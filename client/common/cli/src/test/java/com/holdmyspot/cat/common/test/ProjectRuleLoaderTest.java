@@ -160,14 +160,14 @@ public final class ProjectRuleLoaderTest
 	 * Verifies direct lazy-rule routes precede other common guidance.
 	 */
 	@Test
-	public void loadsDefaultRoutesFirst() throws IOException
+	public void loadsRuleRoutingFirst() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			write(plugin, "rules/common/write-clearly.md", "# Write clearly\n\nWrite-clearly guidance\n");
-			write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
+			write(plugin, "rules/common/rule-routing.md", "# Routes\n\nRoute guidance\n");
 
 			String context;
 			try (ToolScope scope = new TestToolScope())
@@ -176,6 +176,32 @@ public final class ProjectRuleLoaderTest
 			}
 
 			requireThat(context.indexOf("# Routes"), "routeIndex").isLessThan(context.indexOf("# Write clearly"));
+		}
+	}
+
+	/**
+	 * Verifies a user's or project's routing index that still has its former name, {@code default-rules.md}, keeps
+	 * preceding the other rules of its directory, so existing rule trees need no change.
+	 */
+	@Test
+	public void loadsFormerRoutingIndexFirst() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(userRules, "common/build.md", "# User build\n\nUser build guidance\n");
+			write(userRules, "common/default-rules.md", "# User routes\n\nUser route guidance\n");
+			write(project, ".cat/rules/common/build.md", "# Project build\n\nProject build guidance\n");
+			write(project, ".cat/rules/common/default-rules.md", "# Project routes\n\nProject route guidance\n");
+
+			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, userRules, project, "harnessa");
+
+			requireThat(context.indexOf("# User routes"), "userRouteIndex").
+				isLessThan(context.indexOf("# User build"));
+			requireThat(context.indexOf("# Project routes"), "projectRouteIndex").
+				isLessThan(context.indexOf("# Project build"));
 		}
 	}
 
@@ -190,7 +216,7 @@ public final class ProjectRuleLoaderTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
-			write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
+			write(plugin, "rules/common/rule-routing.md", "# Routes\n\nRoute guidance\n");
 			write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\nPlugin directory guidance\n");
 			write(project, ".cat/rules/common/project.md", "# Project\n\nProject guidance\n");
 
@@ -216,7 +242,7 @@ public final class ProjectRuleLoaderTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
-			write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
+			write(plugin, "rules/common/rule-routing.md", "# Routes\n\nRoute guidance\n");
 			write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\nPlugin directory guidance\n");
 			write(plugin, "rules/harnessa/a-rendering.md", "# Rendering\n\nRendering guidance\n");
 			write(plugin, "rules/harnessa/read-file.md", "# Reading files\n\nRead guidance\n");
@@ -246,7 +272,7 @@ public final class ProjectRuleLoaderTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
-			write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
+			write(plugin, "rules/common/rule-routing.md", "# Routes\n\nRoute guidance\n");
 			write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\nPlugin directory guidance\n");
 			write(plugin, "rules/harnessa/read-file.md", "# Reading files\n\nRun `" +
 				ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE + "/bin/run-part`\n");
@@ -373,7 +399,7 @@ public final class ProjectRuleLoaderTest
 	 */
 	private static void writeHarnessRules(Path plugin) throws IOException
 	{
-		write(plugin, "rules/common/default-rules.md", "# Routes\n\nRoute guidance\n");
+		write(plugin, "rules/common/rule-routing.md", "# Routes\n\nRoute guidance\n");
 		write(plugin, "rules/harnessa/cat-env.md", "# CAT environment\n\n" +
 			"<!-- cat:include platform/{platform}/cat-env/temp.md -->\n\nShared guidance\n");
 		write(plugin, "rules/harnessa/read-file.md", "# Reading files\n\n" +
@@ -467,7 +493,7 @@ public final class ProjectRuleLoaderTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			Path lazyRule = plugin.resolve("rules/include/java/javadoc.md");
-			write(plugin, "rules/common/default-rules.md", "Before editing Java, lazy load `../include/java/javadoc.md`.\n");
+			write(plugin, "rules/common/rule-routing.md", "Before editing Java, lazy load `../include/java/javadoc.md`.\n");
 			write(plugin, "rules/include/java/javadoc.md", "Javadoc guidance\n");
 
 			String context;
@@ -777,7 +803,7 @@ public final class ProjectRuleLoaderTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
 			Path userLazyRule = userRules.resolve("include/common/terms.md");
 			write(plugin, "rules/common/rule.md", "bundled rule");
-			write(userRules, "common/default-rules.md", "user rule: lazy load `../include/common/terms.md`");
+			write(userRules, "common/rule-routing.md", "user rule: lazy load `../include/common/terms.md`");
 			write(userRules, "include/common/terms.md", "user terms");
 			write(project, ".cat/rules/common/rule.md", "project rule");
 

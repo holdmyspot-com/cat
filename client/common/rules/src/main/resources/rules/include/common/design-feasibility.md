@@ -25,7 +25,7 @@ consumed, so this goal requires checking the consumer-side evidence before a des
 
 ## Guidance
 
-Apply the foundational Backward Design rule injected by the default rule.
+Apply the foundational Backward Design rule that CAT Rule Routing routes design work to.
 
 Before designing a feature that promises a reliable, complete, automatic, general, or deterministic result, work
 backward from the terminal acceptance evidence. Name every decision the feature must make, the authoritative source that

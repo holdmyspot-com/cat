@@ -377,7 +377,7 @@ public final class PluginArtifactBuilderTest
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-lazy-rule-artifact-"));
 			Path common = Files.createDirectories(artifact.resolve("rules/common"));
 			Path include = Files.createDirectories(artifact.resolve("rules/include/java"));
-			Files.writeString(common.resolve("default-rules.md"), "Default rules\n");
+			Files.writeString(common.resolve("rule-routing.md"), "Rule routing\n");
 			Files.writeString(include.resolve("javadoc.md"), "---\ndepends-on: [\"../documentation/general.md\"]\n---\n" +
 				"Javadoc rules\n");
 			Files.createDirectories(artifact.resolve("rules/include/documentation"));
@@ -475,7 +475,7 @@ public final class PluginArtifactBuilderTest
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-lazy-rule-artifact-"));
 			Path common = Files.createDirectories(artifact.resolve("rules/common"));
 			Path include = Files.createDirectories(artifact.resolve("rules/include/java"));
-			Files.writeString(common.resolve("default-rules.md"), "Default rules\n");
+			Files.writeString(common.resolve("rule-routing.md"), "Rule routing\n");
 			Files.writeString(include.resolve("javadoc.md"), "---\ndepends_on: [\"../documentation/general.md\"]\n" +
 				"---\nJavadoc rules\n");
 			Files.createDirectories(artifact.resolve("rules/include/documentation"));

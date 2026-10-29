@@ -176,7 +176,7 @@ public final class CodexSessionStartHookTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			writeReadingGuidance(plugin);
 			Path lazyRule = plugin.resolve("rules/include/java/javadoc.md");
-			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("default-rules.md"),
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule-routing.md"),
 				"Before editing Java, lazy load `../include/java/javadoc.md`.\n");
 			Files.createDirectories(lazyRule.getParent());
 			Files.writeString(lazyRule, "Javadoc guidance\n");

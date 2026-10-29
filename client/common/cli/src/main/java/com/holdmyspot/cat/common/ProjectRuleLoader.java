@@ -94,6 +94,11 @@ public final class ProjectRuleLoader
 	 * platform, where a harness runs commands in a POSIX shell.
 	 */
 	private static final String POSIX_FRAGMENTS = "posix";
+	/**
+	 * The filenames of a rule source's routing index, which is injected before the other rules of its directory. The
+	 * second is the index's former name, which existing user and project rule trees still use.
+	 */
+	private static final Set<String> ROUTING_RULE_FILENAMES = Set.of("rule-routing.md", "default-rules.md");
 	static final int MAXIMUM_RULE_BYTES = 1_048_576;
 	private static final Pattern LAZY_RULE_REFERENCE = Pattern.compile("`([^`]+\\.md)`");
 	/**
@@ -722,7 +727,7 @@ public final class ProjectRuleLoader
 	}
 
 	/**
-	 * Orders the direct-routing rule before supporting guidance so lazy routes are visible before a harness plans work.
+	 * Orders the routing index before supporting guidance so lazy routes are visible before a harness plans work.
 	 *
 	 * @param path a direct rule path
 	 * @return the rule's stable sort key
@@ -730,7 +735,7 @@ public final class ProjectRuleLoader
 	private String ruleOrder(Path path)
 	{
 		assert path != null;
-		if (path.getFileName().toString().equals("default-rules.md"))
+		if (ROUTING_RULE_FILENAMES.contains(path.getFileName().toString()))
 			return "";
 		return path.getFileName().toString();
 	}

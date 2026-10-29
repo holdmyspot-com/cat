@@ -27,7 +27,7 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
-	 * Verifies a subagent receives CAT's default rule routing and request-execution rule in both harnesses, so it can
+	 * Verifies a subagent receives CAT's rule routing and request-execution rule in both harnesses, so it can
 	 * lazy load engineering rules such as design quality, TDD and testing and decide which gaps to escalate, while the
 	 * rules about interacting with the user stay with the main agent. Neither agent receives the design-quality rule
 	 * itself at startup.
@@ -49,7 +49,7 @@ public final class BundledRuleAudienceTest
 			for (String harness : List.of("claude", "codex"))
 			{
 				String subagent = loader.loadForSubagent(plugin, project, harness, "cat:reviewer");
-				requireThat(subagent, harness + "Subagent").contains("# Default Rule Routing").
+				requireThat(subagent, harness + "Subagent").contains("# CAT Rule Routing").
 					contains("include/common/design-quality.md`").doesNotContain("# Design Quality").
 					contains("include/common/build-workflow.md`").doesNotContain("# Build Workflow Development").
 					contains("include/common/remote-runner-testing.md`").doesNotContain("# Remote Runner Testing").
@@ -58,7 +58,7 @@ public final class BundledRuleAudienceTest
 					doesNotContain("# User Request Scheduling").doesNotContain("# File Links");
 
 				String main = loader.loadForMainAgent(plugin, project, harness);
-				requireThat(main, harness + "Main").contains("# Default Rule Routing").
+				requireThat(main, harness + "Main").contains("# CAT Rule Routing").
 					contains("# Request Execution").contains("# User Request Scheduling").contains("# File Links").
 					contains("include/common/build-workflow.md`").doesNotContain("# Build Workflow Development").
 					contains("include/common/remote-runner-testing.md`").doesNotContain("# Remote Runner Testing").

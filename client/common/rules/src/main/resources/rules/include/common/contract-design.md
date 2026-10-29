@@ -26,7 +26,7 @@
 
 ## Guidance
 
-Apply the foundational Backward Design rule injected by the default rule, including its terminal-outcome derivation and
+Apply the foundational Backward Design rule that CAT Rule Routing routes design work to, including its terminal-outcome derivation and
 iterative generalization.
 
 Before choosing a normative edit or its governing prompt file, record a design checkpoint in the task evidence: the
