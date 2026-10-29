@@ -46,8 +46,7 @@ or seems unavailable; and when a delegate, executor, validator, or tool response
 `BLOCKED_*`, lazy load `../include/common/intermediate-vs-terminal-goals/blocked-status.md`.
 
 With an active goal, do not stop because of turn length, context, task size, or a dirty worktree. Before yielding, take
-the next in-scope read, check, or edit. A dirty worktree is state to preserve, not a blocker. Report a blocker only for
-an unavailable required external prerequisite, with evidence.
+the next in-scope read, check, or edit. A dirty worktree is state to preserve, not a blocker.
 
 Before an irreversible action that represents completion—such as committing, finalizing, publishing, or declaring a
 workflow complete—record the user-authorized scope and compare it with terminal acceptance evidence. Every scoped item

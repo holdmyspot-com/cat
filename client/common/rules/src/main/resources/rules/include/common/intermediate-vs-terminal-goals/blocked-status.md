@@ -20,7 +20,8 @@
 ## Guidance
 
 Except for an executor limit that the user explicitly made a constraint of the goal, mark a goal blocked only for a
-required external input, authority, or state change that is unavailable.
+required external input, authority, or state change that is unavailable. Report a blocker only for an unavailable
+required external prerequisite, with evidence.
 
 Before changing a goal to blocked, identify its next unmet terminal gate and classify each prerequisite at its owning
 boundary. A request, policy, receipt, manifest, fixture, schedule, process tree, or other artifact that a named local
