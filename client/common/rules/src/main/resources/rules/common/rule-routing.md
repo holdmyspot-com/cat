@@ -128,14 +128,8 @@ command, test, or investigation as completed, failed, or unavailable, read `../i
 Otherwise read only `../include/common/write-clearly.md`. Do not load either route merely because a task mentions prose
 that the reader will not receive.
 
-When documenting Bash functions, Bats tests, or Bash source code, lazy load `../include/bash/documentation.md`.
-
 When applying documentation conventions across existing code or documentation, lazy load
 `../include/common/actionable-documentation.md`.
-
-Before writing or editing Javadoc, Javadoc links/imports, or Java API documentation, lazy load
-`../include/common/write-clearly.md`, then `../include/java/javadoc.md` in that order. Do not compose or patch Javadoc
-until both rules are available.
 
 When selecting a Java platform or available project API, lazy load `../include/java/standard-apis.md`.
 
@@ -146,12 +140,6 @@ When declaring an object's field, or writing or editing a constructor that assig
 
 When writing or changing code that passes a resource it created to a constructor, or a constructor that receives or
 creates a resource that must be released, lazy load `../include/common/construction-failure-cleanup.md`.
-
-When creating or closing a `PipedInputStream` or waiting for a reader that uses one, lazy load
-`../include/java/piped-input-stream.md`.
-
-When writing or reviewing Java control flow that classifies a value against named alternatives, lazy load
-`../include/java/control-flow.md`.
 
 Before recommending, designing, implementing, or reviewing a change to code, configuration, a prompt, a workflow, or a
 plan, lazy load `../include/common/backward-design.md`, then `../include/common/design-quality.md`. A local rename,
@@ -247,10 +235,6 @@ When creating, updating, or debugging a build script, pipeline, or multi-step bu
 
 Before selecting or reporting a command as evidence that a project's build passes, lazy load
 `../include/common/build-verification.md`.
-
-When handling Java exceptions, lazy load `../include/java/exceptions.md`.
-
-When defining Java POSIX permission values, lazy load `../include/java/constants.md`.
 
 When a task is expected to run for multiple minutes, lazy load `../include/common/progress-reporting.md`.
 

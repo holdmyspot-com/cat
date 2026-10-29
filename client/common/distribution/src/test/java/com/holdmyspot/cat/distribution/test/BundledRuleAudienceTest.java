@@ -140,6 +140,39 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies a session receives the bundled Java and Bash routes only through instructions to load their routing
+	 * files when it reads or edits a matching file, so a session that never touches such a file does not carry them,
+	 * while the route for choosing a Java API, which arises while designing before any Java file exists, stays in the
+	 * always-loaded routing.
+	 *
+	 * @throws IOException if the bundled rules cannot be copied, routed, or loaded
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void languageRoutesLoadWithMatchingFiles() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.toAbsolutePath().normalize().resolve("rules/include/common");
+
+			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "claude");
+
+			requireThat(context, "context").
+				contains("Load `" + include.resolve("java.md") + "` only when you read or edit a file").
+				contains("Load `" + include.resolve("bash.md") + "` only when you read or edit a file").
+				contains("When selecting a Java platform or available project API, lazy load").
+				doesNotContain("When handling Java exceptions").doesNotContain("Before writing or editing Javadoc").
+				doesNotContain("PipedInputStream").doesNotContain("When writing or reviewing Java control flow").
+				doesNotContain("When defining Java POSIX permission values").
+				doesNotContain("When documenting Bash functions");
+		}
+	}
+
+	/**
 	 * Verifies packaged path routes render installed rule paths and the current project's matching boundary.
 	 */
 	@Test

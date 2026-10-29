@@ -41,3 +41,17 @@ module, lazy load `../include/java/module-exports.md`.
 
 When writing or editing a Java constructor or instance initializer that assigns a field, lazy load
 `../include/java/field-assignment.md`.
+
+Before writing or editing Javadoc, Javadoc links/imports, or Java API documentation, lazy load
+`../include/common/write-clearly.md`, then `../include/java/javadoc.md` in that order. Do not compose or patch Javadoc
+until both rules are available.
+
+When creating or closing a `PipedInputStream` or waiting for a reader that uses one, lazy load
+`../include/java/piped-input-stream.md`.
+
+When writing or reviewing Java control flow that classifies a value against named alternatives, lazy load
+`../include/java/control-flow.md`.
+
+When handling Java exceptions, lazy load `../include/java/exceptions.md`.
+
+When defining Java POSIX permission values, lazy load `../include/java/constants.md`.
