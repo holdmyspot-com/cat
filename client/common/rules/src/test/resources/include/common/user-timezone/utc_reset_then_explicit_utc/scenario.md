@@ -54,3 +54,9 @@ Give me that reset time in UTC.
 - **kind**: effect
 - **description**: The turn 2 response states the reset in UTC, as `{{reset_utc}}` or the same date and time followed by
 	`UTC`, because the user explicitly asked for UTC. It names the zone and does not substitute the local time.
+
+### guidance_selection
+
+- **kind**: effect
+- **description**: The retained events establish that the executor selects `rules/include/common/user-timezone.md`
+	before it writes the first time.

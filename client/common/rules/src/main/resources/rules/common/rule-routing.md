@@ -119,6 +119,10 @@ When creating, regenerating, revising, reviewing, auditing, adding, moving, spli
 prompt, rule, skill, command, workflow, or another artifact with declared goals or contracts, or when a project-owned
 callable tool must enforce a workflow requirement, lazy load `../include/common/rule-routing/prompts.md`.
 
+Before writing a time or date in a response, report, or other text for the user, or in a file, command, data format,
+log, identifier, or commit message, including a timestamp that a tool, log, API, or command returned, lazy load
+`../include/common/user-timezone.md`.
+
 When starting, waiting for, or resuming an external command, harness, or tool session, lazy load
 `../include/common/execution-lifecycle.md`.
 
