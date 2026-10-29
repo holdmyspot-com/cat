@@ -372,6 +372,30 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
+	 * Verifies that an archive whose artifact lacks the harness's runner launcher is rejected and leaves no copy.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void archiveWithoutRunnerLeavesNoCopy() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-no-runner-"));
+			Path release = root.resolve("release");
+			Path source = artifact(root.resolve("source"), PluginInfo.CAT_VERSION);
+			Files.delete(runner(source));
+			FakeRelease.publish(release, bundleName(), source);
+			Path bundlesDirectory = root.resolve("bundles");
+
+			IOException failure = expectFailure(bundles(bundlesDirectory, release), root);
+
+			requireThat(failure.getMessage(), "message").contains("runner launcher");
+			requireThat(entries(bundlesDirectory), "bundles").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that an archive entry that names a path outside the archive's directory is rejected, writes nothing
 	 * outside it and leaves no copy.
 	 *

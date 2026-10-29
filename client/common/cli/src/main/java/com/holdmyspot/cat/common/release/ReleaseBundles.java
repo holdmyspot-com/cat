@@ -286,22 +286,8 @@ public final class ReleaseBundles
 	private RunnerArtifact verify(Path artifact, Path manifest, String runner, RunnerArtifact.Source source)
 		throws IOException
 	{
-		Path root;
-		try
-		{
-			root = HarnessArtifact.validate(artifact, manifest, platform);
-		}
-		catch (IOException e)
-		{
-			throw new IOException(e.getMessage() + ": " + artifact, e);
-		}
-		String launcher = runner;
-		if (platform.isWindows())
-			launcher += ".cmd";
-		Path runnerPath = root.resolve("bin").resolve(launcher);
-		if (!Files.isRegularFile(runnerPath, NOFOLLOW_LINKS) || !Files.isExecutable(runnerPath))
-			throw new IOException("The artifact lacks the executable runner launcher " + runnerPath);
-		return new RunnerArtifact(root, runnerPath, source);
+		Path runnerPath = HarnessArtifact.runnerLauncher(artifact, manifest, runner, platform);
+		return new RunnerArtifact(runnerPath.getParent().getParent(), runnerPath, source);
 	}
 
 	/**
