@@ -308,6 +308,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-132 | `optimize-high` | Changes the promotion rule, the scheduling of promotion runs, weak-round selection and the campaign format; an error promotes a regressing edit, rejects equally good edits, keeps spending runs on a rejected attempt, or prevents a paused version-44 campaign from continuing. |
 | WI-133 | `optimize-xhigh` | Adds a lazily loaded bundled rule and a skill in both harnesses that test changed workflow commands on remote runners through an Upterm session; an error starts sessions for read-only inspection or local builds, lets changed commands run before the agent is connected, abandons a failed worker for a new run, or teaches one provider's mechanism as if every provider had it. |
 | WI-134 | `optimize-high` | Changes what the judge's evidence section holds for every Codex and Claude trial and both harnesses' judge versions; an error hides a child's start, assignment or message from the judge, invents one the trial never showed, misplaces a message among the root's responses, makes a resumed campaign miss its judge change, or lets a Codex judge read another trial or the host project, or change its evidence. |
+| WI-135 | `optimize-high` | Changes when a certification attempt ends; an error ends an attempt that could still certify, keeps one running that cannot, certifies a cell that did not cross its threshold, or makes a resumed attempt decide differently from the attempt that recorded its outcomes. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -535,6 +536,7 @@ requirement names.
 | WI-132 | Done 2026-10-28 (Claude `optimize-high`; integrated as `8354d91120`, released in v1.0). A weak round's winner is ranked by passing triggering and first-pass regression runs, excluding paired reruns (user ruling, 2026-10-27). Pooled per-prompt-test regression check with paired reruns, triggering-first regression runs, early stop and cancellation of a rejected attempt's unstarted runs, and format 45 with version-44 upgrade on read. Build evidence is in the delegation report. |
 | WI-133 | Done 2026-10-28 except certification (Claude, user request and choices of 2026-10-27; integrated as `1f32d9d555`, released in v1.0). Bundled rule `rules/include/common/remote-runner-testing.md`, lazily routed from the default rules beside the CI-debugging route, and the `remote-runner-session` skill in both harnesses over one shared body; organic scenarios for the rule (GitLab change tested through a session, Windows failure retried on the same worker, read-only pipeline question, changed CI script run locally) and the skill (incomplete Jenkins integration repaired first, Windows prompt wait, file transfer losing input). Certification is deferred (D111). Build evidence is in the delegation report. |
 | WI-134 | Done 2026-10-28 (Claude `optimize-high`; integrated as `e0f4536a65`, released in v1.0). Full clean build of `85ce653c46`: 3,339 tests, 0 failures, 11 skipped; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 6.17 s and `[6]` 1.47 s, `SessionRequestBrokerTest.refusesHostileInputs[10]` 1.56 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.11 s. Both harnesses' trial records hold child starts with their assignments, messages received from children with their senders and text, and child ends; Codex messages come from the root's session rollout, and Codex assignments are recorded as unreadable because Codex encrypts them. Judge version 11 for both harnesses. A Codex judge reads its trial's evidence read-only through the runner's new `--read-only-evidence` option (user ruling, 2026-10-27, option 1); judge version 11 also covers this, because the release that introduced it has not shipped. Build evidence is in the delegation report. Live defect after release (E5, 2026-10-28T12:00Z): every Codex judge failed to start with "failed to load AGENTS.md instructions … Argument list too long (os error 7)", because its profile denied each of the 20,522 sibling trial runs one by one (about 3.1 MB) and Codex passes the policy to `codex-linux-sandbox` as one argument (limit 128 KiB). Fixed on branch `codex-judge-e2big`: on Linux with bubblewrap, the app-server's bubblewrap wrapper hides the denied directory and mounts back the session's own paths and its evidence read-only, so the profile no longer lists sibling runs; trial sessions are unchanged; the judge and session environment versions stay 11 (registered hash unchanged). The first republish (run 40715863186) failed on hosted Linux: the private `/tmp` also hid evidence that lies under `/tmp` outside the judge's run directory; fixed in `4201fa35c8` (such session paths are mounted back, the rest of `/tmp` stays private). Linux without bubblewrap: by the user's ruling of 2026-10-28, a Linux session with read-only evidence refuses to start when bubblewrap is not on its `PATH`, with install instructions (`3a54e51459`; judge and session environment versions stay 11; `docs/installation.md` lists bubblewrap; clean build 3,351 tests, 0 failures, 11 skipped; at least 1 s: `DriverTest.version44ContinuesUnderPooledCheck` 1.16 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.08 s). The second republish (run 40718886796, `c59fa616a1`) failed on macOS and Windows: the mount-back compared real session paths with a run directory reached through a symbolic link or short name (`/var/folders` to `/private/var/folders`, `RUNNER~1`), so it hid the run directory and mounted its home and project back one by one; fixed in `c860d1da87` (run and temporary directories compared in real form; versions unchanged; clean build 3,352 tests, 0 failures, 11 skipped, none at least 1 s). Released in v1.0 `598cfbed13` and installed on the host 2026-10-28T16:59Z; E5 resumed (continue34) and its judges start and complete (first three `mvsd5tz6-2yd0c7fldm`, `mvsd5tz5-2yd0c789yf`, `mvsd5sz9-2yczqtxa7r`). |
+| WI-135 | Open (user request, 2026-10-29). |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). A bundled rule loads when an agent creates, updates or debugs a build workflow: find the cause, keep valid outputs, resume from the failed step, and pass end to end incrementally before a clean run; build verification now requires that clean full run of the same revision. Full clean build 3,318 tests, 0 failures, 11 skipped; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 5.96 s and `[6]` 1.79 s, `SessionRequestBrokerTest.refusesHostileInputs` `[18]` 3.75 s, `[10]` 1.50 s and `[23]` 1.44 s, four `DriverTest` cases 1.14 to 2.07 s, `TestabilityAuditTest.coreReferencesNoHarness` 1.00 s. |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). `ForkTest.diffHoldsOnlySelectedChanges` is the one owner of a non-empty diff through Git: added, edited and deleted selected files appear, unselected changes do not, and the index is unchanged; breaking the path filter failed it. `InMemoryForks.diff` returns supplied patches, and three delivery tests use it; `noCommitCreatedInBase` stays on Git because no other test shows that delivery leaves the base history and index unchanged. This closes the G9 source-audit gap "each Git operation has exactly one owning test". Full clean build 3,319 tests, 0 failures, 11 skipped; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs` `[5]` 6.27 s and `[6]` 1.40 s, `SessionRequestBrokerTest.refusesHostileInputs[10]` 1.77 s and `[18]` 1.02 s, `OptimizerCoreTest.startReportsAddedExclude` 1.35 s and `statusCombinesSliceUsage` 1.21 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.04 s. |
 | Final gates (§9), interim audit on `c64f57c9b3` | Gate 3: source inventory (374 test sources, 23 POMs) and a process trace found no real Codex/Claude/model launch and no native group/profile; retained processes exercise packaged boundaries or controlled shell, Git and Java fixtures. The traced run is process-audit evidence only: ptrace caused two 30-second request-input tests to time out, while the subsequent untraced focused run passed all nine checks. No timeout or security restriction was relaxed. Audit source hashes and complete execution evidence are retained in orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/java-harness-audit-obirnizd/`. Gate 2: class-level inventory has 136 requirements, 134 tagged, with R-I1 and R-I6 untagged and no unknown tags. Passing class reports do not establish exact tagged-method/data-provider execution; live E receipts are not reconciled. Gate 2 remains unmet. Current G9 execution is recorded under WI-127. Gates 4, 5, 7 and 8 remain unmet. |
@@ -800,6 +802,9 @@ Changes made to `design.md` and this plan during implementation, apart from this
 	WI-134 added with §1.1, §2 and §6 (user ruling, 2026-10-27). D112, §6.4 and H23: a Codex judge reads its trial's
 	evidence read-only; WI-134's change, verification and status extended, and R-P2 traced to WI-134 (user ruling,
 	2026-10-27, option 1).
+- `design.md` §2.3, §2.4, §2.8, the outcome table and D113: a certification attempt ends `not certified: inconclusive`
+	as soon as a cell is out of reach instead of when it reaches its cap; R-F2 reworded and WI-135 added with §1.1, §2
+	and §6 (user request, 2026-10-29, after the `mixed_pair` cell of E5's attempt 1 could no longer certify).
 
 Update a row only from current evidence: its exit check passing on the current tree. Reopen a row when an input its
 evidence depended on changes.
@@ -855,7 +860,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | ID | Requirement | Design | Owner | Proof |
 |---|---|---|---|---|
 | R-F1 | A commit freezes the candidate, `α_i`, `β_i`, `UI(k)`, `LI(k)`, bets, cap and allocation policy before the first formal draw. The formal stream starts only after the freeze. | §2.4, §6.3 | WI-3 | U: `CommitTest` |
-| R-F2 | Per-cell certified, clearly-below and cap decisions map to attempt outcomes and to the actions in §2.8. A frozen cap is never raised and an ended attempt never reopens. | §2.4, §2.8 | WI-3 | U: `DecisionTableTest` (every row) |
+| R-F2 | Per-cell certified, clearly-below, out-of-reach and cap decisions map to attempt outcomes and to the actions in §2.8; an out-of-reach cell ends the attempt `inconclusive` at once. A frozen cap is never raised and an ended attempt never reopens. | §2.3, §2.4, §2.8 | WI-3, WI-135 | U: `DecisionTableTest` (every row) |
 | R-F3 | Certified and not worse leads to automatic delivery. Worse needs an explicit trade-off. Uncertified acceptance is explicit and labelled. | §2.8 | WI-3, WI-11 | U: `DecisionTableTest`; E: E1, E3 |
 | R-F4 | Formal outcomes never revise the same candidate. An edit needs a new attempt. | §2.6 | WI-3 | U: `CommitTest` |
 | R-F5 | An unavailable condition discovered after a commit ends the attempt, keeps outcomes and allowance, and survives restart. | §6.5 | WI-3 | U: `CampaignTransitionsTest` |
@@ -3553,6 +3558,34 @@ including mappings of one source into several plugins; the old two-plugin refusa
 - **Why one item:** both harnesses feed one shared trial record and one judge-version rule, so their evidence changes
 	together.
 
+### WI-135 — End an attempt once a cell is out of reach (user request, 2026-10-29)
+
+- **Problem:** in the live Codex campaign E5, certification attempt 1 of candidate 60 had the `mixed_pair` cell at 96
+	passes in 102 outcomes on 2026-10-29: with 6 failures no state within the cap of 262 certifies, and the status
+	already said that no minimum remaining trial count exists, yet the attempt keeps admitting trials until the cell
+	reaches its cap, about 160 more trials of shared quota, to end with the same `not certified: inconclusive`.
+- **Scope:** `client/common/cli/` (the decision table, its callers and the status and certification record), this
+	design and plan.
+- **Change:** a cell is out of reach when its minimum-pass-rate part is undecided and no all-pass continuation within
+	the cap certifies it, or when an undecided control or incumbent comparison does not pass within the cap's remaining
+	pairs even if both trials of every further pair pass (`design.md` §2.3, D113). An out-of-reach cell ends the attempt
+	`not certified: inconclusive` at once, through the same path as a cell at its cap: admissions stop, in-flight trials
+	drain as post-decision observations, failure groups are reproduced before development, and `keep improvement` is
+	offered when the attempt's evidence qualifies. Clearly below, below control and below incumbent keep precedence at
+	the same adoption. The decision is a pure function of the frozen boundaries and the adopted counts, so it uses the
+	existing boundary tables and the same reachability rule that the minimum remaining trials already report, with one
+	owner for both. No campaign format change: an attempt resumed on the new build that is already out of reach ends at
+	its next adoption. The status report and certification record say that the cell was out of reach, with its counts,
+	rather than at its cap.
+- **Verification:** requirement-level tests with fakes: a cell whose failures put certification out of reach before the
+	cap ends the attempt `inconclusive` at that adoption and admits no further candidate trial; one passing outcome short
+	of that point keeps it running; a comparison that cannot pass within the remaining pairs ends it; a cell that is
+	clearly below at the same adoption ends it `below minimum`; an attempt loaded from a snapshot already out of reach
+	ends on its next adoption; the reported outcome names the out-of-reach cell. Prove test power by reverting the fix,
+	then run the clean full offline build and report every test taking at least one second.
+- **Exit:** the acceptance tests and the clean build pass on the committed revision; design and plan match the behavior.
+	Closes D113 and its part of R-F2.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -3683,6 +3716,7 @@ blocks only the part of a work item that it names.
 | WI-132 | WI-18, WI-20, WI-26, WI-131 |
 | WI-133 | — |
 | WI-134 | WI-28, WI-121 |
+| WI-135 | WI-3, WI-65, WI-77 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
