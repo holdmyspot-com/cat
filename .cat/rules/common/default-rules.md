@@ -25,6 +25,9 @@ reported failure, lazy load `../include/mistake-learning.md` to identify the met
 evidence for a corrected prevention. Analyze the reported operational failure first through the bundled Failure
 Prevention rule.
 
+When deciding whether guidance that a confirmed failure involves is user-owned, treat CAT plugin source in this
+repository as user-owned guidance, because its user is that plugin's developer.
+
 When creating or revising a Git commit message, lazy load `../include/commit-messages.md` to state the observable change
 clearly and consistently.
 

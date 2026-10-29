@@ -211,10 +211,10 @@ When the Failure Prevention analysis confirms a reproducible failure involving p
 the affected guidance is user-owned, lazy load `../include/common/failure-regression-promotion.md` and apply its
 correction and regression procedure before resuming dependent work. The first qualifying failure is the trigger.
 User-owned guidance is under the current project's `.cat/rules/` tree or the current user's `${HOME}/.cat/rules/` tree,
-or is CAT plugin source while the user is that plugin's developer. Do not load this rule for installed/cache,
-third-party, or unknown-owner guidance. A subagent does not load this rule or edit that guidance: it reports the
-confirmed failure, the affected guidance and the attribution evidence to the agent that delegated its work, then
-continues only work that does not depend on the correction.
+or is other guidance that a project rule declares user-owned. Do not load this rule for installed/cache, third-party,
+or unknown-owner guidance. A subagent does not load this rule or edit that guidance: it reports the confirmed failure,
+the affected guidance and the attribution evidence to the agent that delegated its work, then continues only work that
+does not depend on the correction.
 
 Before invoking an operation that can modify multiple artifacts or whose actual write set is unproven, lazy load
 `../include/common/failure-prevention.md` to use its transactional snapshot, scope-validation, conditional-rollback,
