@@ -12,7 +12,8 @@ depends-on:
 	command, or configuration entry, including its inputs, results, state changes, and failures, without reading its
 	implementation.
 - Let a caller learn from a callable's documentation every result it can receive, what each means and when it occurs,
-	without reading the implementation.
+	without reading the implementation, and find the exact condition of each result it must act on, whichever value
+	that is.
 - Let a caller find the failures that its own invalid input causes before the failures that valid input can still meet.
 
 ## Guidance
@@ -28,8 +29,25 @@ document existing code, do not add a constructor, method, field, or other execut
 another documentation target.
 
 Describe each result a caller can receive that has a different meaning, such as an empty, null, sentinel, or boundary
-value besides the ordinary result, with the condition that produces it. For a boolean result, the condition that makes
-it `true` is enough.
+value besides the ordinary result, with the condition that produces it. Write each result's description for a caller
+deciding what to do with that value. When the result reports what the callable did, decide from the callable's meaning
+which values the caller must act on, such as a failure to handle, a missing match, or a change that needs a follow-up
+action. For a boolean, that can be `true`, `false`, or both. Name a value that needs no action briefly, such as “`true`
+on success”. For each value the caller must act on, state the condition that produces it directly, not as the negation
+of another value's condition. Leave out details that do not change what the caller does, such as where processing
+stopped. When a value leaves state that the caller must handle, such as the records stored before a failure, describe
+that state in the callable's description with its other state changes.
+
+When a boolean result answers a question about state rather than reporting what the callable did, such as whether a
+token has expired, both values are answers: the condition that makes it `true` is enough, and neither value is a success
+or a failure.
+
+For example, a method that indexes records documents its result as “`true` on success, or `false` when different
+records have the same UUID,” not “`true` when repeated UUIDs have identical records, or `false` at the first
+conflicting record.” A method that releases one holder of a shared resource documents “`true` if no holder remains, or
+`false` otherwise,” because the caller that receives `true` must free the resource. A method that tries to hold seats
+documents both values: “`true` if the seats are now held for the booking until it is confirmed or canceled, or `false`
+if fewer seats than requested are free, in which case nothing is held.”
 
 Document every deterministic, externally observable failure that a caller can trigger through documented inputs or
 required state. When documentation lists the exceptions or errors that a callable raises, list every entry for invalid
