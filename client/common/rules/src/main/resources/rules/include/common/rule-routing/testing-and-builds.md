@@ -15,6 +15,8 @@ Before changing testable production behavior, lazy load `../tdd.md`.
 
 When designing, changing, or reviewing tests, lazy load `../testing.md`.
 
+When a test creates or shares a fixture, lazy load `../temporary-resources.md`.
+
 When creating, updating, or debugging a build script, pipeline, or multi-step build, lazy load `../build-workflow.md`.
 
 Before selecting or reporting a command as evidence that a project's build passes, lazy load `../build-verification.md`.

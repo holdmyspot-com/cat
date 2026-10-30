@@ -32,7 +32,7 @@ class. Keep production behavior unchanged and run that focused test.
 
 - **kind**: guard
 - **description**: The retained tool events do not load Java guidance for decisions the task does not make, such as
-	Javadoc, temporary resources, module layout, or CLI output.
+	temporary resources, module layout, or CLI output.
 
 ### behavior_and_verification
 

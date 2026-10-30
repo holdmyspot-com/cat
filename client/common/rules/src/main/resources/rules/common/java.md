@@ -1,6 +1,7 @@
 ---
 paths:
   - "*.java"
+  - "**/*.java"
   - "pom.xml"
   - "**/pom.xml"
 ---
@@ -20,8 +21,8 @@ When writing or reviewing a Maven POM or Maven configuration that refers to a pr
 
 When writing or reviewing SLF4J logging calls, lazy load `../include/java/slf4j.md`.
 
-When writing or reviewing a Java test whose assertion depends on elapsed time, lazy load
-`../include/java/test-time.md`.
+When writing or reviewing Java code whose decision depends on the current time, or a Java test whose assertion depends
+on elapsed time, lazy load `../include/java/test-time.md`.
 
 When writing or reviewing Java code, including tests, that starts an external process or relies on behavior that
 can differ between operating systems, lazy load `../include/java/portability.md`.
@@ -42,7 +43,8 @@ module, lazy load `../include/java/module-exports.md`.
 When writing or editing a Java constructor or instance initializer that assigns a field, lazy load
 `../include/java/field-assignment.md`.
 
-Before writing or editing Javadoc, Javadoc links/imports, or Java API documentation, lazy load
+Before declaring a Java class, record, interface, enum, constructor, or method, changing the signature of one, or
+writing or editing Javadoc, Javadoc links/imports, or Java API documentation, lazy load
 `../include/common/write-clearly.md`, then `../include/java/javadoc.md` in that order.
 
 When creating or closing a `PipedInputStream` or waiting for a reader that uses one, lazy load
@@ -51,6 +53,9 @@ When creating or closing a `PipedInputStream` or waiting for a reader that uses 
 When writing or reviewing Java control flow that classifies a value against named alternatives, lazy load
 `../include/java/control-flow.md`.
 
-When handling Java exceptions, lazy load `../include/java/exceptions.md`.
+When handling Java exceptions or writing Java code that throws one, lazy load `../include/java/exceptions.md`.
 
 When defining Java POSIX permission values, lazy load `../include/java/constants.md`.
+
+When writing or changing Java code that performs a general-purpose operation, such as a null check or a collection,
+path, string, time, numeric, or concurrency operation, lazy load `../include/java/standard-apis.md`.

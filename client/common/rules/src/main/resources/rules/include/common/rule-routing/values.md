@@ -7,8 +7,9 @@
 
 ## Guidance
 
-Before defining or changing a method that represents, accepts, returns, validates, converts, or calculates money—
-including a price, charge, balance, fee, payment, tax, or discount—first lazy load `../money.md`.
+Before defining or changing a method, field, variable, or other code that represents, accepts, returns, validates,
+converts, or calculates money—including a price, charge, balance, fee, payment, tax, or discount—first lazy load
+`../money.md`.
 
 Before choosing the numeric representation of a calculation, or of a numeric parameter or result, that is not money,
 lazy load `../numeric-precision.md`.

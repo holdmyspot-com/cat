@@ -10,8 +10,8 @@
 When creating, regenerating, materially revising, reviewing, or auditing a prompt, rule, or another artifact with
 declared goals or contracts, lazy load `../contract-design.md`.
 
-When adding, moving, splitting, merging, or otherwise reorganizing a rule, prompt, skill, command, or workflow, lazy
-load `../rule-organization.md`.
+When adding, amending, moving, splitting, merging, or otherwise reorganizing a rule, prompt, skill, command, or
+workflow, lazy load `../rule-organization.md`.
 
 When a project-owned CLI, API, validator, generator, or other callable tool must enforce a workflow requirement, lazy
 load `../rules-own-tool-requirements.md`.

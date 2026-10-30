@@ -9,7 +9,8 @@
 
 When adding, catching, translating, or reporting a failure, lazy load `../error-handling.md`.
 
-When considering a workaround for an external defect, lazy load `../external-workarounds.md`.
+Before classifying a failure or other behavior as an external or upstream defect, and when considering a workaround for
+an external defect, lazy load `../external-workarounds.md`.
 
 When analyzing a reported or newly observed unexpected failure, discovering that an earlier action violated the
 user-authorized scope, diagnosing why an agent ignored or misapplied an instruction, or designing a prevention, and
@@ -32,4 +33,5 @@ When assessing an apparently absent condition, a helper's apparent limitation, o
 `../limitations-and-workarounds.md`.
 
 When executing a maintained instruction, prompt, skill, rule, or workflow exposes an incorrect or unavailable
-dependency, lazy load `../workflow-error-reporting.md` before handoff.
+dependency, when a validator, capture, review, or other workflow gate rejects generated output, or when a required
+gate is skipped, substituted, or weakened, lazy load `../workflow-error-reporting.md` before handoff.

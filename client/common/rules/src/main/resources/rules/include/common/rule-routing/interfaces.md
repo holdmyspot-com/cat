@@ -7,8 +7,8 @@
 
 ## Guidance
 
-When defining, changing, or reviewing parameter validation for a caller-facing operation, lazy load
-`../parameter-validation.md`.
+When defining or changing a constructor, factory, or other operation that constructs a type, or defining, changing, or
+reviewing parameter validation for a caller-facing operation, lazy load `../parameter-validation.md`.
 
 When defining a function, method, constructor, or command, or changing its parameters, while an overload or another
 operation of the same API takes some of the same inputs, even in another type or representation, or while one of its
@@ -35,4 +35,5 @@ When removing, replacing, renaming, or ending compatibility for a supported cont
 `../contract-retirement.md`.
 
 When defining or changing an externally visible operation that declares idempotency or can create an externally durable
-effect before a caller can observe its result, lazy load `../idempotency.md`.
+effect before a caller can observe its result, or writing or changing code that sends or retries such an operation, lazy
+load `../idempotency.md`.

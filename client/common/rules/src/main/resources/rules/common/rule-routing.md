@@ -97,9 +97,10 @@ outside a function body or an object's field, changing such a variable's value o
 constructor that assigns a field; when a repeated value represents one shared concept; or when writing or changing code
 that stores a file path in a durable record, lazy load `../include/common/rule-routing/values.md`.
 
-When writing or editing a document, release notes, a changelog, the documentation of code, a script, a command, or a
-configuration entry, or a source comment, or applying documentation conventions across existing code or documentation,
-lazy load `../include/common/rule-routing/documentation.md`.
+When declaring a type, function, method, or constructor, creating a script, command, or configuration entry, or
+changing the signature of one; when writing or editing a document, release notes, a changelog, the documentation of
+code, a script, a command, or a configuration entry, or a source comment; or when applying documentation conventions
+across existing code or documentation, lazy load `../include/common/rule-routing/documentation.md`.
 
 Before changing testable production behavior or selecting or reporting a command as evidence that a project's build
 passes, and when creating, designing, changing, reviewing, or debugging tests, a build script, pipeline, or multi-step

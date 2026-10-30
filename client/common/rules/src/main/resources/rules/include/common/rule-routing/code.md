@@ -21,7 +21,7 @@ user-facing error message that a branch emits about its condition, lazy load `..
 When defining, changing, reviewing, or auditing type, function, or method names, or the names of variables declared
 outside a function body, or changing a type's responsibility without renaming it, lazy load `../identifier-naming.md`.
 
-When editing the layout of a method chain, lazy load `../method-chain-layout.md`.
+When writing or editing a method chain or its layout, lazy load `../method-chain-layout.md`.
 
 When writing or editing the declaration of a local variable in Java, C#, C++ or another language where the author writes
 either its type or an inference keyword such as `var` or `auto`, lazy load `../local-variable-types.md`.
@@ -31,7 +31,8 @@ creates a resource that must be released, lazy load `../construction-failure-cle
 
 When creating, moving, or renaming a top-level implementation or test type, lazy load `../type-organization.md`.
 
-When accessing environment-dependent state, lazy load `../environment.md`.
+When accessing environment-dependent state, or writing an absolute path inside a user's home directory into code,
+configuration, or tests, lazy load `../environment.md`.
 
 When adding or widening a command-line option, launch or build setting, manifest entry, or module declaration that
 grants code a permission or access, or that adds modules to a runtime or image, lazy load `../minimal-grants.md`.
