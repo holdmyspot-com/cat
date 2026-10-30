@@ -31,7 +31,7 @@ public abstract class CandidateOverlaysContract
 	/**
 	 * The mode of an ordinary prompt file.
 	 */
-	protected static final Set<PosixFilePermission> READ_WRITE = PosixFilePermissions.fromString("rw-r--r--");
+	protected static final Set<PosixFilePermission> READ_WRITE = Set.copyOf(PosixFilePermissions.fromString("rw-r--r--"));
 
 	/**
 	 * Creates the contract tests.

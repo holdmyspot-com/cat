@@ -107,7 +107,7 @@ public final class DriverHarness
 	/**
 	 * The permissions of every prompt file.
 	 */
-	private static final Set<PosixFilePermission> PERMISSIONS = PosixFilePermissions.fromString("rw-r--r--");
+	private static final Set<PosixFilePermission> PERMISSIONS = Set.copyOf(PosixFilePermissions.fromString("rw-r--r--"));
 	/**
 	 * Fail a test after this many driver steps instead of waiting indefinitely for its stopping condition.
 	 */

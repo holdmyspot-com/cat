@@ -28,11 +28,11 @@ final class Inventories
 	/**
 	 * The permissions of an ordinary non-executable file.
 	 */
-	static final Set<PosixFilePermission> READ_WRITE = PosixFilePermissions.fromString("rw-r--r--");
+	static final Set<PosixFilePermission> READ_WRITE = Set.copyOf(PosixFilePermissions.fromString("rw-r--r--"));
 	/**
 	 * The permissions of an executable file.
 	 */
-	static final Set<PosixFilePermission> EXECUTABLE = PosixFilePermissions.fromString("rwxr-xr-x");
+	static final Set<PosixFilePermission> EXECUTABLE = Set.copyOf(PosixFilePermissions.fromString("rwxr-xr-x"));
 
 	/**
 	 * Prevents instantiation.

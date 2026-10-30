@@ -28,8 +28,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongFunction;
 import java.util.stream.Stream;
 
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -50,38 +48,10 @@ public final class CodexProcessTest
 	 */
 	private static final LongFunction<List<String>> NO_ANSWER = _ -> List.of();
 	/**
-	 * The directory that holds each runner process's Codex home and rollouts directory.
-	 */
-	private Path temporary;
-
-	/**
 	 * Creates the test fixture.
 	 */
 	public CodexProcessTest()
 	{
-	}
-
-	/**
-	 * Creates the directory that holds each runner process's Codex home and rollouts directory.
-	 *
-	 * @throws IOException if the directory cannot be created
-	 */
-	@BeforeClass
-	public void createTemporary() throws IOException
-	{
-		temporary = Files.createTempDirectory("codex-process-test-");
-	}
-
-	/**
-	 * Deletes the directory that holds each runner process's Codex home and rollouts directory.
-	 *
-	 * @throws IOException if the directory cannot be deleted
-	 */
-	@AfterClass(alwaysRun = true)
-	public void deleteTemporary() throws IOException
-	{
-		if (temporary != null)
-			TemporaryDirectories.deleteRecursively(temporary);
 	}
 
 	/**
@@ -94,24 +64,27 @@ public final class CodexProcessTest
 	public void closeKeepsRollouts() throws IOException
 	{
 		// Requirement: R-I7
-		Path directory = Files.createTempDirectory(temporary, "rollouts-");
-		Path day = Files.createDirectories(directory.resolve("home/sessions/2026/10/15"));
-		Files.writeString(day.resolve("rollout-2026-10-15T10-00-00-root.jsonl"), "{\"root\":true}\n", UTF_8);
-		Files.writeString(day.resolve("notes.txt"), "not a rollout\n", UTF_8);
-		Files.writeString(directory.resolve("home/sessions/rollout-child.jsonl"), "{\"child\":true}\n", UTF_8);
-
-		new AppServer(NO_ANSWER, NO_ANSWER).start(directory).close();
-
-		Path rollouts = directory.resolve("rollouts");
-		try (Stream<Path> files = Files.list(rollouts))
+		try (TemporaryDirectories directories = new TemporaryDirectories())
 		{
-			requireThat(files.map(file -> file.getFileName().toString()).sorted().toList(), "rollouts").
-				isEqualTo(List.of("rollout-2026-10-15T10-00-00-root.jsonl", "rollout-child.jsonl"));
+			Path directory = directories.add(Files.createTempDirectory("codex-process-rollouts-"));
+			Path day = Files.createDirectories(directory.resolve("home/sessions/2026/10/15"));
+			Files.writeString(day.resolve("rollout-2026-10-15T10-00-00-root.jsonl"), "{\"root\":true}\n", UTF_8);
+			Files.writeString(day.resolve("notes.txt"), "not a rollout\n", UTF_8);
+			Files.writeString(directory.resolve("home/sessions/rollout-child.jsonl"), "{\"child\":true}\n", UTF_8);
+
+			new AppServer(NO_ANSWER, NO_ANSWER).start(directory).close();
+
+			Path rollouts = directory.resolve("rollouts");
+			try (Stream<Path> files = Files.list(rollouts))
+			{
+				requireThat(files.map(file -> file.getFileName().toString()).sorted().toList(), "rollouts").
+					isEqualTo(List.of("rollout-2026-10-15T10-00-00-root.jsonl", "rollout-child.jsonl"));
+			}
+			requireThat(Files.readString(rollouts.resolve("rollout-2026-10-15T10-00-00-root.jsonl"), UTF_8), "root").
+				isEqualTo("{\"root\":true}\n");
+			requireThat(Files.readString(rollouts.resolve("rollout-child.jsonl"), UTF_8), "child").
+				isEqualTo("{\"child\":true}\n");
 		}
-		requireThat(Files.readString(rollouts.resolve("rollout-2026-10-15T10-00-00-root.jsonl"), UTF_8), "root").
-			isEqualTo("{\"root\":true}\n");
-		requireThat(Files.readString(rollouts.resolve("rollout-child.jsonl"), UTF_8), "child").
-			isEqualTo("{\"child\":true}\n");
 	}
 
 	/**
@@ -124,13 +97,16 @@ public final class CodexProcessTest
 	public void closeWithoutSessionsCreatesRollouts() throws IOException
 	{
 		// Requirement: R-I7
-		Path directory = Files.createTempDirectory(temporary, "rollouts-");
-
-		new AppServer(NO_ANSWER, NO_ANSWER).start(directory).close();
-
-		try (Stream<Path> files = Files.list(directory.resolve("rollouts")))
+		try (TemporaryDirectories directories = new TemporaryDirectories())
 		{
-			requireThat(files.toList(), "rollouts").isEmpty();
+			Path directory = directories.add(Files.createTempDirectory("codex-process-rollouts-"));
+
+			new AppServer(NO_ANSWER, NO_ANSWER).start(directory).close();
+
+			try (Stream<Path> files = Files.list(directory.resolve("rollouts")))
+			{
+				requireThat(files.toList(), "rollouts").isEmpty();
+			}
 		}
 	}
 
@@ -145,29 +121,32 @@ public final class CodexProcessTest
 	public void keepsNoRolloutUnlessAsked() throws IOException
 	{
 		// Requirement: R-I7
-		Path directory = Files.createTempDirectory(temporary, "ephemeral-");
-		Files.createDirectories(directory.resolve("home/sessions"));
-		Files.writeString(directory.resolve("home/sessions/rollout-root.jsonl"), "{}\n", UTF_8);
-		AppServer ephemeral = new AppServer(NO_ANSWER, NO_ANSWER);
-
-		try (CodexProcess process = ephemeral.start(directory, "", "", false))
+		try (TemporaryDirectories directories = new TemporaryDirectories())
 		{
-			requireThat(process.sessionTranscript().isPresent(), "named").isFalse();
+			Path directory = directories.add(Files.createTempDirectory("codex-process-ephemeral-"));
+			Files.createDirectories(directory.resolve("home/sessions"));
+			Files.writeString(directory.resolve("home/sessions/rollout-root.jsonl"), "{}\n", UTF_8);
+			AppServer ephemeral = new AppServer(NO_ANSWER, NO_ANSWER);
+
+			try (CodexProcess process = ephemeral.start(directory, "", "", false))
+			{
+				requireThat(process.sessionTranscript().isPresent(), "named").isFalse();
+			}
+
+			requireThat(ephemeral.requests("thread/start").getFirst().path("ephemeral").asBoolean(false), "ephemeral").
+				isTrue();
+			requireThat(Files.exists(directory.resolve("rollouts")), "copied").isFalse();
+			AppServer persistent = new AppServer(NO_ANSWER, NO_ANSWER);
+
+			try (CodexProcess process = persistent.start(directory, "", "", true))
+			{
+				requireThat(process.sessionTranscript().orElseThrow(), "rollout").
+					isEqualTo(Path.of("/codex-home/sessions/rollout-root.jsonl"));
+			}
+
+			requireThat(persistent.requests("thread/start").getFirst().has("ephemeral"), "ephemeral").isFalse();
+			requireThat(Files.exists(directory.resolve("rollouts/rollout-root.jsonl")), "copied").isTrue();
 		}
-
-		requireThat(ephemeral.requests("thread/start").getFirst().path("ephemeral").asBoolean(false), "ephemeral").
-			isTrue();
-		requireThat(Files.exists(directory.resolve("rollouts")), "copied").isFalse();
-		AppServer persistent = new AppServer(NO_ANSWER, NO_ANSWER);
-
-		try (CodexProcess process = persistent.start(directory, "", "", true))
-		{
-			requireThat(process.sessionTranscript().orElseThrow(), "rollout").
-				isEqualTo(Path.of("/codex-home/sessions/rollout-root.jsonl"));
-		}
-
-		requireThat(persistent.requests("thread/start").getFirst().has("ephemeral"), "ephemeral").isFalse();
-		requireThat(Files.exists(directory.resolve("rollouts/rollout-root.jsonl")), "copied").isTrue();
 	}
 
 	/**
@@ -188,7 +167,8 @@ public final class CodexProcessTest
 			agentMessage(CHILD_THREAD, "Child afterthought."),
 			turnCompleted(CHILD_THREAD, "turn-child", "completed"),
 			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
-		try (CodexProcess process = server.start())
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			CodexProcess process = server.start(directories))
 		{
 			HarnessProcessResult result = process.sendTurn("Judge the evidence.");
 
@@ -216,7 +196,8 @@ public final class CodexProcessTest
 			agentMessage(ROOT_THREAD, "final"),
 			agentMessage(ROOT_THREAD, " \t\n"),
 			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
-		try (CodexProcess process = server.start())
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			CodexProcess process = server.start(directories))
 		{
 			HarnessProcessResult result = process.sendTurn("Run the blank-message task.");
 
@@ -243,7 +224,8 @@ public final class CodexProcessTest
 				replace("019fe761-29ef-7180-895a-1c731e998e6d", ROOT_TURN);
 		}
 		AppServer server = new AppServer(id -> List.of(turnStarted(id), recording), NO_ANSWER);
-		try (CodexProcess process = server.start())
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			CodexProcess process = server.start(directories))
 		{
 			HarnessProcessResult result = process.sendTurn("Implement the calculator.");
 
@@ -271,7 +253,8 @@ public final class CodexProcessTest
 		AppServer server = new AppServer(id -> List.of(turnStarted(id),
 			agentMessage(ROOT_THREAD, "done"),
 			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
-		try (CodexProcess process = server.start("gpt-5.5", "xhigh"))
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			CodexProcess process = server.start(directories, "gpt-5.5", "xhigh"))
 		{
 			process.sendTurn("Run the trial.");
 
@@ -294,7 +277,10 @@ public final class CodexProcessTest
 	{
 		AppServer server = new AppServer(NO_ANSWER, NO_ANSWER).
 			refusingThreadStart("error creating thread: fs sandbox helper failed");
-		server.start().close();
+		try (TemporaryDirectories directories = new TemporaryDirectories())
+		{
+			server.start(directories).close();
+		}
 	}
 
 	/**
@@ -310,7 +296,10 @@ public final class CodexProcessTest
 	{
 		AppServer server = new AppServer(NO_ANSWER, NO_ANSWER).
 			endingAtStartup("'node' is not recognized as an internal or external command.\r\n");
-		server.start().close();
+		try (TemporaryDirectories directories = new TemporaryDirectories())
+		{
+			server.start(directories).close();
+		}
 	}
 
 	/**
@@ -331,7 +320,8 @@ public final class CodexProcessTest
 			turnRequests.add(id);
 			return turnLines.apply(id);
 		}, NO_ANSWER).notifyingThreadStarted();
-		try (CodexProcess process = server.start("gpt-5.5", ""))
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			CodexProcess process = server.start(directories, "gpt-5.5", ""))
 		{
 			List<String> firstEvents = new ArrayList<>();
 			HarnessProcessResult first = process.sendTurn("First task.", firstEvents::add);
@@ -379,8 +369,9 @@ public final class CodexProcessTest
 		AppServer server = new AppServer(id -> List.of(turnStarted(id), agentMessage(ROOT_THREAD, "Working on it.")),
 			id -> List.of(response(id), turnCompleted(ROOT_THREAD, ROOT_TURN, "interrupted")));
 		CountDownLatch working = new CountDownLatch(1);
-		try (ExecutorService turnThread = Executors.newSingleThreadExecutor();
-			CodexProcess process = server.start())
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			ExecutorService turnThread = Executors.newSingleThreadExecutor();
+			CodexProcess process = server.start(directories))
 		{
 			Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Do the task.", line ->
 			{
@@ -416,8 +407,9 @@ public final class CodexProcessTest
 		// Requirement: R-E10
 		AppServer server = new AppServer(NO_ANSWER,
 			id -> List.of(response(id), turnCompleted(ROOT_THREAD, ROOT_TURN, "interrupted")));
-		try (ExecutorService turnThread = Executors.newSingleThreadExecutor();
-			CodexProcess process = server.start())
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			ExecutorService turnThread = Executors.newSingleThreadExecutor();
+			CodexProcess process = server.start(directories))
 		{
 			Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Do the task."));
 			long turnRequest = server.awaitTurnRequest();
@@ -449,7 +441,8 @@ public final class CodexProcessTest
 		AppServer server = new AppServer(id -> List.of(turnStarted(id),
 			agentMessage(ROOT_THREAD, replies.get(nextReply.getAndIncrement())),
 			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
-		try (CodexProcess process = server.start())
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			CodexProcess process = server.start(directories))
 		{
 			process.sendTurn("First task.");
 
@@ -473,7 +466,8 @@ public final class CodexProcessTest
 	{
 		// Requirement: R-E13
 		AppServer server = new AppServer(id -> List.of(turnStarted(id)), NO_ANSWER).closingOutputAfterTurnStart();
-		try (CodexProcess process = server.start())
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			CodexProcess process = server.start(directories))
 		{
 			HarnessProcessResult result = process.sendTurn("Judge the evidence.");
 
@@ -495,7 +489,8 @@ public final class CodexProcessTest
 		AppServer server = new AppServer(id -> List.of("{\"error\":{\"code\":-32602,\"data\":{\"input_error_code\":" +
 			"\"input_too_large\",\"max_chars\":1048576,\"actual_chars\":1098863},\"message\":\"Input exceeds the " +
 			"maximum length of 1048576 characters.\"},\"id\":" + id + "}"), NO_ANSWER);
-		try (CodexProcess process = server.start())
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			CodexProcess process = server.start(directories))
 		{
 			HarnessProcessResult result = process.sendTurn("Judge the evidence.");
 
@@ -658,27 +653,31 @@ public final class CodexProcessTest
 		}
 
 		/**
-		 * Starts a runner process over this app-server and creates its root thread.
+		 * Starts a runner process over this app-server, whose Codex home and rollouts directory lie in a new temporary
+		 * directory, and creates its root thread.
 		 *
+		 * @param directories removes the new directory when it closes
 		 * @return the initialized runner process
 		 * @throws IOException if initialization fails
 		 */
-		private CodexProcess start() throws IOException
+		private CodexProcess start(TemporaryDirectories directories) throws IOException
 		{
-			return start("", "");
+			return start(directories, "", "");
 		}
 
 		/**
-		 * Starts a runner process over this app-server under a profile and creates its root thread.
+		 * Starts a runner process over this app-server under a profile, whose Codex home and rollouts directory lie in a
+		 * new temporary directory, and creates its root thread.
 		 *
+		 * @param directories removes the new directory when it closes
 		 * @param model the model to select, or empty for Codex's default
 		 * @param effort the reasoning effort to select, or empty for Codex's default
 		 * @return the initialized runner process
 		 * @throws IOException if initialization fails
 		 */
-		private CodexProcess start(String model, String effort) throws IOException
+		private CodexProcess start(TemporaryDirectories directories, String model, String effort) throws IOException
 		{
-			return start(Files.createTempDirectory(temporary, "process-"), model, effort);
+			return start(directories.add(Files.createTempDirectory("codex-process-")), model, effort);
 		}
 
 		/**

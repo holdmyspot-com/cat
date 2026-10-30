@@ -100,7 +100,7 @@ public final class DeliveryTest
 	 */
 	private static final FileTime COMPLETED_WRITE_MARKER = FileTime.fromMillis(0);
 	private static final String CAMPAIGN = "campaign-1";
-	private static final Set<PosixFilePermission> READ_WRITE = PosixFilePermissions.fromString("rw-r--r--");
+	private static final Set<PosixFilePermission> READ_WRITE = Set.copyOf(PosixFilePermissions.fromString("rw-r--r--"));
 	private static final Consumer<DeliveryChange> NO_HOOK = _ ->
 	{
 	};

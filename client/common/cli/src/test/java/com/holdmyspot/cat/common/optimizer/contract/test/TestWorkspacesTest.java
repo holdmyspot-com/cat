@@ -52,10 +52,6 @@ public final class TestWorkspacesTest
 		- **kind**: guard
 		- **description**: The reply states {{expected_outcome}}.
 		""";
-	/**
-	 * Bytes that are not valid UTF-8 and contain a placeholder's spelling.
-	 */
-	private static final byte[] BINARY = {(byte) 0xFF, (byte) 0xFE, '{', '{', 'n', 'o', 't', 'e', 's', '}', '}', 0};
 	private final JsonMapper json = JsonMapper.builder().build();
 
 	/**
@@ -85,7 +81,7 @@ public final class TestWorkspacesTest
 				Release 4.2 was published on {{expected_outcome}}.
 				Deploy with ${{ github.token }} and {{undeclared}}.
 				""");
-			Files.write(directory.resolve("workspace/logo.png"), BINARY);
+			Files.write(directory.resolve("workspace/logo.png"), binary());
 			return directory;
 		}
 	}
@@ -131,6 +127,16 @@ public final class TestWorkspacesTest
 			return Set.copyOf(paths.filter(Files::isRegularFile).
 				map(path -> root.relativize(path).toString().replace('\\', '/')).toList());
 		}
+	}
+
+	/**
+	 * Returns bytes that are not valid UTF-8 and contain a placeholder's spelling.
+	 *
+	 * @return a new array that the caller owns
+	 */
+	private static byte[] binary()
+	{
+		return new byte[]{(byte) 0xFF, (byte) 0xFE, '{', '{', 'n', 'o', 't', 'e', 's', '}', '}', 0};
 	}
 
 	/**
@@ -185,7 +191,7 @@ public final class TestWorkspacesTest
 					Release 4.2 was published on 2025-03-04.
 					Deploy with ${{ github.token }} and {{undeclared}}.
 					""");
-				requireThat(Files.readAllBytes(workspace.resolve("logo.png")), "logo").isEqualTo(BINARY);
+				requireThat(Files.readAllBytes(workspace.resolve("logo.png")), "logo").isEqualTo(binary());
 			}
 		}
 	}

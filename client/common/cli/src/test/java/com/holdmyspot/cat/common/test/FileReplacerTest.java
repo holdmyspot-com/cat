@@ -27,8 +27,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class FileReplacerTest
 {
-	private static final Set<PosixFilePermission> READ_ONLY_DIRECTORY = PosixFilePermissions.fromString("r-xr-xr-x");
-	private static final Set<PosixFilePermission> WRITABLE_DIRECTORY = PosixFilePermissions.fromString("rwxr-xr-x");
+	private static final Set<PosixFilePermission> READ_ONLY_DIRECTORY =
+		Set.copyOf(PosixFilePermissions.fromString("r-xr-xr-x"));
+	private static final Set<PosixFilePermission> WRITABLE_DIRECTORY =
+		Set.copyOf(PosixFilePermissions.fromString("rwxr-xr-x"));
 
 	/**
 	 * Creates the test fixture.
