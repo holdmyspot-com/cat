@@ -35,8 +35,12 @@ on `getMessages()`:
 ```java
 ValidationFailures messageCountFailures = checkIf(messageCount, "messageCount").
 	isEqualTo(chain.size(), "chain.size()").elseGetFailures();
+
 if (!messageCountFailures.isEmpty())
-	return failureAt(markerIndex, String.join("\n", messageCountFailures.getMessages()));
+{
+	String reason = String.join("\n", messageCountFailures.getMessages());
+	return failureAt(markerIndex, reason);
+}
 ```
 
 rather than:
