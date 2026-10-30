@@ -3,7 +3,7 @@ paths:
   - ".cat/rules/**"
   - "client/**/rules/**"
   - "client/**/skills/**"
-  - "client/distribution/**"
+  - "client/*/distribution/**"
 ---
 # CAT Rule Maintenance
 

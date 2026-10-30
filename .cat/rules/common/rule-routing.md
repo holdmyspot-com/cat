@@ -11,11 +11,19 @@ agents: ["main", "subagents"]
 
 ## Guidance
 
-When changing an API, configuration entry, file format, data structure, command, or documented procedure, lazy load
-`../include/contract-maintenance.md`.
+When changing an API, configuration entry, file format, data structure, command, or documented procedure, or writing
+documentation or a code comment that describes an earlier contract, lazy load `../include/contract-maintenance.md`.
 
-When writing or editing documentation for a function or method, command, configuration entry, or user-facing workflow, lazy
-load `../include/documentation.md`.
+When writing or editing documentation for a function or method, command, configuration entry, or user-facing workflow,
+or writing or changing Bash source code, including a function, a Bats test, or a Bats file, lazy load
+`../include/documentation.md`.
+
+Before constructing or running a Maven command in this project, lazy load `../include/build.md`, then
+`../include/maven.md`.
+
+When writing or changing a file under `client/common/` or `.cat/rules/common/`, adding or changing functionality for
+one harness, designing common or harness-specific modules, or deciding whether code should be shared, lazy load
+`../include/architecture.md`.
 
 When applying a rule, convention, policy, migration, or systematic correction across existing artifacts, lazy load
 `../include/rule-coverage.md`.
@@ -34,9 +42,9 @@ When a CAT workflow creates, retains, hands off, or cleans up uncommitted state 
 
 When defining or changing a skill's frontmatter `description`, lazy load `../include/skill-routing.md`.
 
-When defining, parsing, reading, or processing JSON or YAML that this project owns, naming a regression scenario or
-its assertions, or handling independently handleable unbounded record or binary input, lazy load
-`../include/data.md`.
+When defining, writing, parsing, reading, or processing JSON, JSONL, or YAML that this project owns, including Markdown
+frontmatter, writing a key-value pair in project-owned Markdown, naming a regression scenario or its assertions, or
+handling independently handleable unbounded record or binary input, lazy load `../include/data.md`.
 
 When writing, parsing, or displaying a date or time, including in a name or identifier, lazy load
 `../include/dates-and-times.md`.
@@ -44,8 +52,8 @@ When writing, parsing, or displaying a date or time, including in a name or iden
 When changing a plugin installer that migrates persisted plugin data or a runtime assumption about that data, lazy load
 `../include/plugin-data-migration.md`.
 
-Before rebuilding, reinstalling, refreshing, or validating a plugin distribution or cache, lazy load
-`plugin-artifacts.md`.
+Before rebuilding, reinstalling, refreshing, or validating a plugin distribution or cache, or when a task needs a CAT
+helper CLI, lazy load `plugin-artifacts.md`.
 
 When evaluating or adopting a newly available Codex model, or changing CAT's Codex supported-model configuration or
 Codex-facing prompts or rules, lazy load `../codex/model-guidance-review.md`.

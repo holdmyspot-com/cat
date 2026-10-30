@@ -1,7 +1,7 @@
 ---
 paths:
   - "client/**/skills/**"
-  - "client/distribution/**"
+  - "client/*/distribution/**"
 ---
 # Skill Assembly
 
