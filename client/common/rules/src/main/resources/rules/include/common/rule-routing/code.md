@@ -3,7 +3,8 @@
 ## Design Goals
 
 - Route each decision made while writing or changing source code or configuration, such as an expression, a name, a
-	layout, a resource, an environment access, or a grant, to its focused rule before the reader makes it.
+	layout, a declared type, a resource, an environment access, or a grant, to its focused rule before the reader makes
+	it.
 
 ## Guidance
 
@@ -21,6 +22,9 @@ When defining, changing, reviewing, or auditing type, function, or method names,
 outside a function body, or changing a type's responsibility without renaming it, lazy load `../identifier-naming.md`.
 
 When editing the layout of a method chain, lazy load `../method-chain-layout.md`.
+
+When writing or editing the declaration of a local variable in Java, C#, C++ or another language where the author writes
+either its type or an inference keyword such as `var` or `auto`, lazy load `../local-variable-types.md`.
 
 When writing or changing code that passes a resource it created to a constructor, or a constructor that receives or
 creates a resource that must be released, lazy load `../construction-failure-cleanup.md`.

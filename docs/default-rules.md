@@ -22,6 +22,7 @@ specific to your codebase or workflow.
 | Intermediate versus terminal goals | Keep intermediate work distinct from terminal workflow completion.<br>The guidance for blocked goals is loaded before a goal is marked or reported blocked, before work stops because something failed or seems unavailable, and when a response is labelled blocked. |
 | Java exception semantics | Appropriate Java exception types for invalid arguments and unsupported capabilities. |
 | Limitations and workarounds | Evaluate feasible paths before declaring a limitation or choosing a workaround. |
+| Local variable types | Explicit types for local variables in Java, C# and C++, with `var` or `auto` only for a nested generic type whose meaning the variable's name and initializer show.<br>Loaded when a local variable is declared in one of those languages. |
 | Prompt-file references | Concise, authoritative references between prompts, files, and tools. |
 | Prompt-file dependencies | Dependency ordering and term definitions across rendered direct rules. |
 | Remote runner testing | A live, authenticated Upterm session to the worker before changed commands run there, retries on the same worker, and observed cleanup, on any runner provider.<br>Loaded when a CI or hosted workflow runs changed commands on a remote runner to test them; the `remote-runner-session` skill supplies the procedure. |
