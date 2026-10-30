@@ -510,6 +510,8 @@ public final class HarnessCapacityTest
 	 * the second JVM can acquire at expiry. Two instances in one JVM could share an in-memory hold and miss a failure
 	 * to persist it. One child JVM records the hold; the test JVM's existing pool must then honour it. This process
 	 * boundary uses a controlled clock, starts no harness or model and does not sleep.
+	 * <p>
+	 * Starting the child JVM and loading its classes can take one second or longer, especially during a parallel build.
 	 *
 	 * @throws IOException if the fixture cannot run or its files cannot be used
 	 * @throws InterruptedException if waiting for a fixture is interrupted

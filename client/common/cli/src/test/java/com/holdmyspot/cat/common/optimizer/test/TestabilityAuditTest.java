@@ -44,6 +44,9 @@ import java.util.stream.Stream;
  *   <li>no production source other than the fork adapter constructs {@code Git}.</li>
  * </ul>
  * This class does not check statistical thresholds, caps or probabilities.
+ * <p>
+ * Whichever test of this class first reads the scanned sources can take one second or longer, because it waits for
+ * the scan that {@code Scan} describes.
  */
 public final class TestabilityAuditTest
 {
@@ -1262,6 +1265,11 @@ public final class TestabilityAuditTest
 	 * The sources in the audit's scope, parsed once for every test of the class because parsing them dominates each
 	 * check's runtime. The holder is initialized on first use, so a failure to read the sources fails only the tests
 	 * that need them.
+	 * <p>
+	 * The scan reads and parses every source of the Java modules, about 1,100 files and 10 MB, and finds their fields.
+	 * During a parallel build this can take one second or longer, and the time counts against whichever test first
+	 * reads the holder, so any test that reads it can exceed one second. The checks cover every source in their scope,
+	 * so scanning fewer sources would let a violation in an unscanned source pass.
 	 */
 	private static final class Scan
 	{
