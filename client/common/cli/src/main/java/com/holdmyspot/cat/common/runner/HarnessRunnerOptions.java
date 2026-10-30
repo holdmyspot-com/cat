@@ -235,6 +235,66 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	}
 
 	/**
+	 * Refuses a launch that selects a CAT agent definition with {@code --agent} and also names {@code --model} or
+	 * {@code --effort}, because the agent definition supplies the model and the effort.
+	 *
+	 * @param args the launch's options
+	 * @throws NullPointerException     if {@code args} is null
+	 * @throws IllegalArgumentException if {@code args} names {@code --model} or {@code --effort}
+	 */
+	public static void requireNoProfileBesideAgent(String[] args)
+	{
+		requireThat(args, "args").isNotNull();
+		for (String arg : args)
+		{
+			if (arg.equals("--model") || arg.equals("--effort"))
+			{
+				throw new IllegalArgumentException("--agent cannot be combined with --model or --effort: the CAT agent " +
+					"definition supplies the model and the effort.");
+			}
+		}
+	}
+
+	/**
+	 * Returns the artifact that a launch names.
+	 *
+	 * @param args the launch's options
+	 * @return the path after {@code --artifact}, or {@code null} if the launch names none
+	 * @throws NullPointerException if {@code args} is null
+	 */
+	public static Path artifactOption(String[] args)
+	{
+		requireThat(args, "args").isNotNull();
+		for (int index = 0; index + 1 < args.length; ++index)
+		{
+			if (args[index].equals("--artifact"))
+				return Path.of(args[index + 1]);
+		}
+		return null;
+	}
+
+	/**
+	 * Returns a launch's options with the model and effort that its CAT agent definition names.
+	 *
+	 * @param args   the launch's options, without {@code --agent}, {@code --model} and {@code --effort}
+	 * @param model  the agent definition's model
+	 * @param effort the agent definition's reasoning effort
+	 * @return {@code args} followed by {@code --model <model> --effort <effort>}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code args} names {@code --model} or {@code --effort}, or {@code model}
+	 *                                  or {@code effort} are blank
+	 */
+	public static String[] withAgentProfile(String[] args, String model, String effort)
+	{
+		requireNoProfileBesideAgent(args);
+		requireThat(model, "model").isNotBlank();
+		requireThat(effort, "effort").isNotBlank();
+		List<String> result = new ArrayList<>(Arrays.asList(args));
+		result.addAll(List.of("--model", model, "--effort", effort));
+		return result.toArray(String[]::new);
+	}
+
+	/**
 	 * Refuses a launch that names no model or no reasoning effort, before it takes a capacity slot or starts a harness.
 	 * Neither CAT nor the runner chooses either one for the caller.
 	 *

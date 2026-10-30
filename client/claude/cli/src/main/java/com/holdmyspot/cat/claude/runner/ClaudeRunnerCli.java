@@ -155,8 +155,7 @@ public final class ClaudeRunnerCli
 		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(),
 			process.waiting()))
 		{
-			HarnessRunnerOptions options = HarnessRunnerOptions.parse(withoutClaudeOptions(args), "claude",
-				HarnessTemporaryRoot.from(scope));
+			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
 			ClaudeAgentDefinition agent = loadAgent(options.artifact(), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			String instructionFilesMode = instructionFilesMode(args);
@@ -291,6 +290,41 @@ public final class ClaudeRunnerCli
 		assert model != null;
 		assert effort != null;
 		return "harness=" + HARNESS_ID + "\nowner=" + owner + "\nmodel=" + model + "\neffort=" + effort + "\n";
+	}
+
+	/**
+	 * Parses the options of a bridge command, other than the Claude-only {@code --read-only-evidence} and
+	 * {@code --instruction-files}. A command that selects a CAT agent definition with {@code --agent} runs under the
+	 * model and effort that the definition names.
+	 *
+	 * @param args          the bridge command's options
+	 * @param temporaryRoot where the runs are kept when the command names no {@code --run-root}
+	 * @return the parsed options
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if an option is unknown, has no value or has an invalid value, if the command
+	 *                                  names {@code --agent} together with {@code --model} or {@code --effort}, or if
+	 *                                  it names neither {@code --agent} nor both {@code --model} and {@code --effort}
+	 * @throws IOException              if the selected agent definition is absent or does not name both a model and
+	 *                                  an effort
+	 */
+	public static HarnessRunnerOptions options(String[] args, HarnessTemporaryRoot temporaryRoot)
+		throws IOException
+	{
+		requireThat(args, "args").isNotNull();
+		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
+		String[] runnerArgs = withoutClaudeOptions(args);
+		String agentName = agentName(args);
+		if (!agentName.isBlank())
+		{
+			HarnessRunnerOptions.requireNoProfileBesideAgent(runnerArgs);
+			Path artifact = HarnessRunnerOptions.artifactOption(runnerArgs);
+			if (artifact != null)
+			{
+				ClaudeAgentDefinition agent = ClaudeAgentDefinition.load(artifact, agentName);
+				runnerArgs = HarnessRunnerOptions.withAgentProfile(runnerArgs, agent.model(), agent.effort());
+			}
+		}
+		return HarnessRunnerOptions.parse(runnerArgs, "claude", temporaryRoot);
 	}
 
 	/**

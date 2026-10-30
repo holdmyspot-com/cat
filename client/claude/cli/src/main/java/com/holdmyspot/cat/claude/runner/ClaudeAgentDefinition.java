@@ -46,7 +46,8 @@ public record ClaudeAgentDefinition(String name, String model, String effort)
 		if (!frontmatter.find())
 			throw new IOException("CAT Claude agent has no frontmatter: " + definition);
 		String metadata = frontmatter.group(1);
-		return new ClaudeAgentDefinition(agent, value(MODEL, metadata, definition), value(EFFORT, metadata, definition));
+		return new ClaudeAgentDefinition(agent, value(MODEL, "model", metadata, definition),
+			value(EFFORT, "effort", metadata, definition));
 	}
 
 	/**
@@ -65,19 +66,21 @@ public record ClaudeAgentDefinition(String name, String model, String effort)
 	 * Returns one required non-blank metadata value.
 	 *
 	 * @param pattern the field pattern
+	 * @param name the field's name, for the error message
 	 * @param content the frontmatter content
 	 * @param definition the source file
 	 * @return the field value
 	 * @throws IOException if the value is absent or blank
 	 */
-	private static String value(Pattern pattern, String content, Path definition) throws IOException
+	private static String value(Pattern pattern, String name, String content, Path definition)
+		throws IOException
 	{
 		assert pattern != null;
 		assert content != null;
 		assert definition != null;
 		Matcher matcher = pattern.matcher(content);
 		if (!matcher.find() || matcher.group(1).isBlank())
-			throw new IOException("CAT Claude agent has no required field in " + definition);
+			throw new IOException("CAT Claude agent has no " + name + " in " + definition);
 		return matcher.group(1);
 	}
 }

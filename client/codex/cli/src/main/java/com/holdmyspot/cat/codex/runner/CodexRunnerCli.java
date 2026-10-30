@@ -145,8 +145,8 @@ public final class CodexRunnerCli
 		HarnessOneShotOptions options;
 		try (ToolScope scope = toolScope(workingDirectory, environment, process.waiting()))
 		{
-			options = HarnessOneShotOptions.parse(withoutOptions(args, Set.of("--agent")), "codex",
-				HarnessTemporaryRoot.from(scope));
+			options = HarnessOneShotOptions.parse(withAgentProfile(withoutOptions(args, Set.of("--agent")),
+				agentName), "codex", HarnessTemporaryRoot.from(scope));
 		}
 		CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 		HarnessRunManager manager = new HarnessRunManager(process.fileLocks(), options.runRoot(), Clock.systemUTC(),
@@ -266,8 +266,9 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Parses the options of a bridge command, other than the Codex-only {@code --agent} and
-	 * {@code --tool-output-token-limit}.
+	 * Parses the options of a bridge command, other than the Codex-only {@code --tool-output-token-limit}. A command
+	 * that selects a CAT agent definition with {@code --agent} runs under the model and effort that the definition
+	 * names.
 	 *
 	 * @param args          the bridge command and its options, optionally starting with {@code serve}
 	 * @param temporaryRoot where the runs are kept when the command names no {@code --run-root}
@@ -275,13 +276,19 @@ public final class CodexRunnerCli
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if an option is unknown, has no value or has an invalid value, such as a
 	 *                                  relative path after {@code --deny-read} or {@code --read-only-evidence}, or if
-	 *                                  the command names no {@code --run-root} outside a harness session
+	 *                                  the command names no {@code --run-root} outside a harness session, if it names
+	 *                                  {@code --agent} together with {@code --model} or {@code --effort}, or if it
+	 *                                  names neither {@code --agent} nor both {@code --model} and {@code --effort}
+	 * @throws IOException              if the selected agent definition is absent or does not name both a model and
+	 *                                  an effort
 	 */
 	public static HarnessRunnerOptions options(String[] args, HarnessTemporaryRoot temporaryRoot)
+		throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
-		String[] runnerArgs = withoutOptions(args, Set.of("--agent", TOOL_OUTPUT_TOKEN_LIMIT));
+		String[] runnerArgs = withAgentProfile(withoutOptions(args, Set.of("--agent", TOOL_OUTPUT_TOKEN_LIMIT)),
+			agentName(args));
 		if (runnerArgs.length > 0 && runnerArgs[0].equals("serve"))
 			return HarnessRunnerOptions.parseServe(runnerArgs, "codex", temporaryRoot);
 		return HarnessRunnerOptions.parse(runnerArgs, "codex", temporaryRoot);
@@ -361,6 +368,31 @@ public final class CodexRunnerCli
 			return tokens;
 		}
 		return 0;
+	}
+
+	/**
+	 * Gives a launch that selects a CAT agent definition the model and effort that the definition names.
+	 *
+	 * @param runnerArgs the launch's options without {@code --agent}
+	 * @param agentName  the selected agent's name, or an empty string if the launch selects none
+	 * @return {@code runnerArgs}, followed by the agent's {@code --model} and {@code --effort} if the launch selects an
+	 *   agent and names an artifact
+	 * @throws IllegalArgumentException if the launch selects an agent and names {@code --model} or {@code --effort}
+	 * @throws IOException              if the selected agent definition is absent or does not name both a model and
+	 *                                  an effort
+	 */
+	private static String[] withAgentProfile(String[] runnerArgs, String agentName) throws IOException
+	{
+		assert runnerArgs != null;
+		assert agentName != null;
+		if (agentName.isBlank())
+			return runnerArgs;
+		HarnessRunnerOptions.requireNoProfileBesideAgent(runnerArgs);
+		Path artifact = HarnessRunnerOptions.artifactOption(runnerArgs);
+		if (artifact == null)
+			return runnerArgs;
+		CodexAgentDefinition agent = CodexAgentDefinition.load(artifact, agentName);
+		return HarnessRunnerOptions.withAgentProfile(runnerArgs, agent.model(), agent.effort());
 	}
 
 	/**

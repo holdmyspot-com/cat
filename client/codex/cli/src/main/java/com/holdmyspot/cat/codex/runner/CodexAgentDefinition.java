@@ -44,8 +44,9 @@ public record CodexAgentDefinition(String model, String effort, String developer
 		if (!definition.startsWith(directory) || !Files.isRegularFile(definition, NOFOLLOW_LINKS))
 			throw new IOException("CAT Codex agent does not exist: " + agent);
 		String content = Files.readString(definition);
-		return new CodexAgentDefinition(value(MODEL, content, definition), value(EFFORT, content, definition),
-			value(INSTRUCTIONS, content, definition));
+		return new CodexAgentDefinition(value(MODEL, "model", content, definition),
+			value(EFFORT, "model_reasoning_effort", content, definition),
+			value(INSTRUCTIONS, "developer_instructions", content, definition));
 	}
 
 	/**
@@ -64,19 +65,21 @@ public record CodexAgentDefinition(String model, String effort, String developer
 	 * Returns one required TOML value.
 	 *
 	 * @param pattern the field pattern
+	 * @param name the field's name, for the error message
 	 * @param content the definition content
 	 * @param definition the source file
 	 * @return the captured non-blank value
 	 * @throws IOException if the value is absent or blank
 	 */
-	private static String value(Pattern pattern, String content, Path definition) throws IOException
+	private static String value(Pattern pattern, String name, String content, Path definition)
+		throws IOException
 	{
 		assert pattern != null;
 		assert content != null;
 		assert definition != null;
 		Matcher matcher = pattern.matcher(content);
 		if (!matcher.find() || matcher.group(1).isBlank())
-			throw new IOException("CAT Codex agent has no required field in " + definition);
+			throw new IOException("CAT Codex agent has no " + name + " in " + definition);
 		return matcher.group(1);
 	}
 }
