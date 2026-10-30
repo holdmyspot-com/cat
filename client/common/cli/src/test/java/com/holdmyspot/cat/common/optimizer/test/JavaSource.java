@@ -445,8 +445,12 @@ record JavaSource(String code, List<Literal> literals)
 			return;
 		int initializer = initializerOffset(declaration);
 		String head = declaration;
+		String value = "";
 		if (initializer >= 0)
+		{
 			head = declaration.substring(0, initializer);
+			value = declaration.substring(initializer + 1).strip().replaceAll("\\s+", " ");
+		}
 		// An abstract or native method has parameters before any initializer
 		if (head.indexOf('(') >= 0)
 			return;
@@ -454,8 +458,8 @@ record JavaSource(String code, List<Literal> literals)
 		int offset = start;
 		while (Character.isWhitespace(declaration.charAt(offset - start)))
 			++offset;
-		fields.add(new Field(head.strip().replaceAll("\\s+", " "), offset, isTopLevel, STATIC.matcher(head).find(),
-			FINAL.matcher(head).find()));
+		fields.add(new Field(head.strip().replaceAll("\\s+", " "), value, offset, isTopLevel,
+			STATIC.matcher(head).find(), FINAL.matcher(head).find()));
 	}
 
 	/**
@@ -472,12 +476,15 @@ record JavaSource(String code, List<Literal> literals)
 	 * A field declaration in a class, enum or record body.
 	 *
 	 * @param declaration the declaration's modifiers, type and names, without annotations or initializer
+	 * @param initializer the initializer's code, with comments and literal contents blanked and runs of whitespace
+	 *                    replaced by one space, or an empty string if the field has none
 	 * @param offset      the offset where the declaration starts
 	 * @param isTopLevel  {@code true} if the field belongs to a top-level type rather than a nested or local one
 	 * @param isStatic    {@code true} if the field is static
 	 * @param isFinal     {@code true} if the field is final
 	 */
-	record Field(String declaration, int offset, boolean isTopLevel, boolean isStatic, boolean isFinal)
+	record Field(String declaration, String initializer, int offset, boolean isTopLevel, boolean isStatic,
+		boolean isFinal)
 	{
 	}
 

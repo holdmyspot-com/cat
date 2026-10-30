@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -33,14 +34,34 @@ import org.testng.annotations.Test;
 public final class CodexWindowsInstallerTest
 {
 	/**
-	 * The folder that holds the Codex installation scripts.
+	 * The folder that holds the Codex installation scripts, found from this module's {@code target/test-classes}
+	 * folder.
 	 */
-	private static final Path INSTALL = Path.of("..", "..", "codex", "lifecycle", "src", "main", "resources",
-		"install").toAbsolutePath().normalize();
+	private static final Path INSTALL = installFolder();
 	/**
 	 * The name of the Windows release archive of the Codex plugin, without its extension.
 	 */
 	private static final String RELEASE_NAME = "cat-codex-v1.0-windows-x64";
+
+	/**
+	 * Returns the folder that holds the Codex installation scripts.
+	 *
+	 * @return the folder
+	 */
+	private static Path installFolder()
+	{
+		try
+		{
+			Path classes = Path.of(CodexWindowsInstallerTest.class.getProtectionDomain().getCodeSource().getLocation().
+				toURI());
+			// target/test-classes is two levels below the module, which is two levels below the client directory
+			return classes.resolve("../../../../codex/lifecycle/src/main/resources/install").normalize();
+		}
+		catch (URISyntaxException e)
+		{
+			throw new AssertionError(e);
+		}
+	}
 
 	/** Creates a test instance. */
 	public CodexWindowsInstallerTest()

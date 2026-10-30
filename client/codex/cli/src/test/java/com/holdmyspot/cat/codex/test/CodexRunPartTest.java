@@ -314,14 +314,16 @@ public final class CodexRunPartTest
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-")).toAbsolutePath();
 			Path caller = Files.createDirectories(temporary.resolve("caller"));
 			Files.writeString(caller.resolve("rg.cmd"), "@echo %*\r\n@echo b\r\n@echo c\r\n@exit /b 1\r\n");
-			Map<String, String> environment = new HashMap<>(System.getenv());
-			String path = "";
-			for (String name : List.copyOf(environment.keySet()))
+			// The caller's rg.cmd runs in cmd.exe, which Windows finds through the system folders
+			Map<String, String> environment = new HashMap<>();
+			for (String name : List.of("SystemRoot", "ComSpec"))
 			{
-				if (name.equalsIgnoreCase("PATH"))
-					path = environment.remove(name);
+				String value = System.getenv(name);
+				if (value != null)
+					environment.put(name, value);
 			}
-			environment.put("PATH", caller + File.pathSeparator + path);
+			environment.put("PATH", caller + File.pathSeparator + System.getenv("PATH"));
+			environment.put("PATHEXT", ".COM;.EXE;.BAT;.CMD");
 			environment.put("TMPDIR", temporary.toString());
 
 			environment.put("CAT_RG_LINE_LIMIT", "3");

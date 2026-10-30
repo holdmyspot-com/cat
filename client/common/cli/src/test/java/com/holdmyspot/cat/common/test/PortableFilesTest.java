@@ -19,9 +19,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class PortableFilesTest
 {
-	private static final Set<PosixFilePermission> WRITABLE = PosixFilePermissions.fromString("rw-r--r--");
-	private static final Set<PosixFilePermission> READ_ONLY = PosixFilePermissions.fromString("r--r--r--");
-	private static final Set<PosixFilePermission> EXECUTABLE = PosixFilePermissions.fromString("rwxr-xr-x");
+	private static final Set<PosixFilePermission> WRITABLE = Set.copyOf(PosixFilePermissions.fromString("rw-r--r--"));
+	private static final Set<PosixFilePermission> READ_ONLY = Set.copyOf(PosixFilePermissions.fromString("r--r--r--"));
+	private static final Set<PosixFilePermission> EXECUTABLE = Set.copyOf(PosixFilePermissions.fromString("rwxr-xr-x"));
 
 	/**
 	 * Creates the test fixture.
