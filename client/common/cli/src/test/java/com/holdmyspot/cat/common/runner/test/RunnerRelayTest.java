@@ -54,7 +54,7 @@ public final class RunnerRelayTest
 	@Test
 	public void runsSelectedArtifactRunner() throws IOException
 	{
-		// Requirement: R-I9
+		// Requirement: R-I9, R-I11
 		Path artifact = Path.of("/other-artifact").toAbsolutePath();
 		Path runner = artifact.resolve("bin/harness-b-runner");
 		List<List<String>> commands = new ArrayList<>();
@@ -81,7 +81,7 @@ public final class RunnerRelayTest
 	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*--artifact.*")
 	public void refusesNamedArtifact() throws IOException
 	{
-		// Requirement: R-I9
+		// Requirement: R-I9, R-I11
 		RunnerRelay.relay("harness-b", new String[]{"--artifact", "elsewhere"}, Map.of(), () ->
 			{
 				throw new AssertionError("No artifact is selected");
@@ -103,7 +103,7 @@ public final class RunnerRelayTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			// Requirement: R-I9
+			// Requirement: R-I9, R-I11
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "relay-")).toRealPath();
 			Path requests = Files.createDirectories(root.resolve("run/requests"));
 			Path project = Files.createDirectory(root.resolve("project"));

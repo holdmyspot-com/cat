@@ -1490,7 +1490,6 @@ public final class DriverTest
 	 *
 	 * @throws IOException if campaign storage cannot be used
 	 */
-	// Requirement: WI-132
 	// Requirement: R-D3
 	@Test
 	public void version44ContinuesUnderPooledCheck() throws IOException

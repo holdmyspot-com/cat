@@ -44,7 +44,7 @@ public final class SessionRequestInstructionsTest
 	@Test
 	public void namesRunnerLaunchers()
 	{
-		// Requirement: R-I9
+		// Requirement: R-I9, R-I11
 		Path launcher = Path.of("/artifact/bin/request-session").toAbsolutePath();
 		String text = SessionRequestInstructions.text(2, launcher, false);
 

@@ -157,7 +157,7 @@ public abstract class SessionCommandLimitsContract
 	@Test
 	public void commandsReceiveNoCredential() throws IOException
 	{
-		// Requirement: R-I8
+		// Requirement: R-I8, R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Limits limits = limits(fixture(cleanup), 0);
@@ -177,7 +177,7 @@ public abstract class SessionCommandLimitsContract
 	@Test
 	public void commandsCannotReadHarnessFiles() throws IOException
 	{
-		// Requirement: R-I8
+		// Requirement: R-I8, R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = fixture(cleanup);
@@ -322,7 +322,7 @@ public abstract class SessionCommandLimitsContract
 	@Test
 	public void noRequestsByDefault() throws IOException
 	{
-		// Requirement: R-I9
+		// Requirement: R-I9, R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = fixture(cleanup);

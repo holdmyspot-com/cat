@@ -271,7 +271,7 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void parsesSessionRequests()
 	{
-		// Requirement: R-I9
+		// Requirement: R-I9, R-I11
 		HarnessRunnerOptions requested = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
 			"--session-requests", "3"}, "harness", SESSION);
 		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
@@ -307,6 +307,7 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void parsesRequestDepth()
 	{
+		// Requirement: R-I11
 		HarnessRunnerOptions nested = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
 			"--session-requests", "2", "--request-depth", "1"}, "harness", SESSION);
 		HarnessRunnerOptions flat = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
@@ -323,6 +324,7 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void requiresSessionRequestsForRequestDepth()
 	{
+		// Requirement: R-I11
 		try
 		{
 			HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--request-depth", "1"},
@@ -342,6 +344,7 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void parsesInputFile()
 	{
+		// Requirement: R-I11
 		HarnessRunnerOptions file = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
 			"--input", absolute("turns.jsonl")}, "harness", SESSION);
 		HarnessRunnerOptions standard = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},

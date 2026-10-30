@@ -170,6 +170,7 @@ public final class SessionRequestBrokerTest
 	@Test(dataProvider = "requestDepths", timeOut = 30_000)
 	public void passesRequestDepthDown(int depth, int expected) throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture("--session-requests", "1", "--request-depth", String.valueOf(depth)))
 		{
 			AtomicReference<List<String>> arguments = new AtomicReference<>();

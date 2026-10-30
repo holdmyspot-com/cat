@@ -57,7 +57,7 @@ public final class SessionRequestForwarderTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			// Requirement: R-I9
+			// Requirement: R-I9, R-I11
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
 				toRealPath().resolve("parent\\Users"));
 			Path receipt = fixture.root.resolve("evidence/receipt.json");
@@ -91,7 +91,7 @@ public final class SessionRequestForwarderTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			// Requirement: R-I9
+			// Requirement: R-I9, R-I11
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
 				toRealPath());
 			Path input = Files.writeString(fixture.root.resolve("records.jsonl"), RECORDS);
@@ -169,7 +169,7 @@ public final class SessionRequestForwarderTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			// Requirement: R-I9
+			// Requirement: R-I9, R-I11
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
 				toRealPath());
 			List<String> arguments = new ArrayList<>(List.of("--project", fixture.project.toString()));

@@ -55,7 +55,7 @@ public final class RunnerSkillLaunchersTest
 	@Test
 	public void claudePluginHoldsRunnerLaunchers()
 	{
-		// Requirement: R-I9
+		// Requirement: R-I9, R-I11
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 		requireThat(access.claudeLaunchers(), "claudeLaunchers").
 			contains(new JlinkImageBuilder.Launcher("codex-artifact", CLAUDE_MODULE,
@@ -75,7 +75,7 @@ public final class RunnerSkillLaunchersTest
 	@Test
 	public void codexPluginHoldsRunnerLaunchers()
 	{
-		// Requirement: R-I9
+		// Requirement: R-I9, R-I11
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 		requireThat(access.codexLaunchers(), "codexLaunchers").
 			contains(new JlinkImageBuilder.Launcher("claude-artifact", CODEX_MODULE,
@@ -95,7 +95,7 @@ public final class RunnerSkillLaunchersTest
 	@Test
 	public void bothPluginsHoldBothRunners()
 	{
-		// Requirement: R-I9
+		// Requirement: R-I9, R-I11
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 		requireThat(access.claudeLaunchers(), "claudeLaunchers").
 			contains(new JlinkImageBuilder.Launcher("codex-runner", CLAUDE_MODULE,
@@ -272,7 +272,7 @@ public final class RunnerSkillLaunchersTest
 	@Test(dataProvider = "runnerSkills")
 	public void bothHarnessesHoldRunnerSkill(String skill, String selector) throws IOException
 	{
-		// Requirement: R-I9
+		// Requirement: R-I9, R-I11
 		List<URL> bodies = resources("skills/" + skill + "/first-use.md");
 		requireThat(bodies, "bodies").size().isEqualTo(1);
 		requireThat(bodies.getFirst().toString(), "body").matches(".*common[-/]skills.*");

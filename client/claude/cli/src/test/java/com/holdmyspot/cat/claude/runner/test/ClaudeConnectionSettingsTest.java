@@ -33,7 +33,7 @@ public final class ClaudeConnectionSettingsTest
 	@Test
 	public void permitsSessionRequestLauncher() throws IOException
 	{
-		// Requirement: R-I9
+		// Requirement: R-I9, R-I11
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -369,6 +369,7 @@ public final class ClaudeConnectionSettingsTest
 	@Test
 	public void sandboxedCommandsRunWithoutApproval() throws IOException
 	{
+		// Requirement: R-I11
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
