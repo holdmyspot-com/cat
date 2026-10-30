@@ -2291,6 +2291,11 @@ model accepts:
 - **Claude:** the CLI has no model catalog. CAT ships the inventory as a plugin resource: the documented model aliases
 	and the efforts each one accepts, with the documentation it came from (premise P12).
 
+A model that its harness lists without any reasoning effort is in the inventory once, with the effort `none`, which the
+runner passes as the harness's explicit setting for no reasoning (§8, D120). No profile has an empty effort or model, so
+no trial session runs under a harness default. A stored proposal or campaign whose inventory, cell or judge profile has
+an empty effort loads that effort as `none`.
+
 The proposal names the inventory's source. Confirmation freezes the profile set, so a later model release does not
 change a running campaign.
 
@@ -2301,8 +2306,10 @@ change a running campaign.
 
 `CLAUDE.md`, `AGENTS.md`, rules and Codex skills cannot bind a profile. A file that binds only its model or only its
 effort fixes that dimension and leaves the other open. A binding to a value outside the inventory is used as written,
-and the proposal says so, except that CAT refuses a proposal in which a Codex prompt file binds a model below version 6,
-naming the file and the model, and refuses a Codex role profile that binds such a model (D41).
+and the proposal says so. When no inventory profile matches such a binding and the files leave the other dimension open,
+CAT refuses the proposal, naming the test and its open dimension, because a trial profile names both. CAT also refuses
+a proposal in which a Codex prompt file binds a model below version 6, naming the file and the model, and refuses a
+Codex role profile that binds such a model (D41).
 
 **Profile set.** CAT computes each prompt test's profile set from the requirements that the proposal maps to its
 assertions, excluding the expected-outcome assertion, which comes from CAT and not from a file:
@@ -2469,6 +2476,28 @@ refusal names each missing option and where to list the supported values: `claud
 configured model or effort without the caller choosing it. When the user names no model or effort, the runner skills
 have the agent ask the user which to use, naming the supported values when the harness lists them, and never choose
 one itself. The optimizer passes every session's profile (D119).
+
+**No reasoning (user ruling, 2026-10-30):** `--effort none` selects no reasoning, for every model, in both runner
+launchers, and the runner passes it as the harness's explicit setting for it, never leaving the effort unset (D120):
+
+- **Claude:** the runner starts Claude Code with `--thinking disabled` and no `--effort`. Claude Code 2.1.312's
+	`--effort` accepts only `low`, `medium`, `high`, `xhigh` and `max`; `claude --effort none` warns "Unknown --effort
+	value 'none' — ignoring it and using the default effort", so `none` cannot pass through. Its `--thinking` option
+	(`enabled`, `adaptive` or `disabled`, not listed by `--help`) turns extended thinking off. Claude Code gives a model
+	whose catalog entry has no effort capability no effort at all, and caps the effort of a model that keeps effort
+	without thinking at `high`. A model whose catalog marks it as rejecting disabled thinking (in 2.1.312: the 5.5
+	models and Fable) runs with adaptive thinking instead, which Claude Code decides, not CAT.
+- **Codex:** the runner sends `"effort":"none"` in each `turn/start`. codex-cli 0.160.0's reasoning effort type has
+	the variant `None`, written `none`, beside `minimal` through `ultra`; the app-server passes a turn's effort to the
+	model request without checking it against the model's listed levels. `codex debug models` lists no model without
+	reasoning levels and none that lists `none`, so a model that does not accept `none` fails its first turn with the
+	model service's error rather than running at a default.
+
+**Agent profile (user ruling, 2026-10-30):** `--agent <name>` selects a CAT agent definition by name from the runner's
+artifact, which supplies the session's model and effort, in the Claude runner's bridge and the Codex runner's `serve`
+and `run`. A launch that names `--agent` together with `--model` or `--effort` is refused, and so is an agent definition
+that does not name both a model and an effort. Inside a run, a session request cannot name `--agent`. `claude-runner
+--resolve-profile --artifact <path> --agent <name>` prints the agent's model and effort.
 
 **Remote-runner testing (user rulings, 2026-10-27):** the plugin's common rules include
 `rules/include/common/remote-runner-testing.md`, which the default rules load lazily, beside the CI-debugging route,
@@ -2869,6 +2898,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D117 | Have the skill commit the prompt test configuration that it writes, alone and with a short message, tell the user the commit, and run `start` again; CAT still never commits delivered changes (user ruling, 2026-10-30). | The design had the skill write the file and run `start` again while the user committed it. A live Claude run of the skill on 2026-10-30 showed that the second `start` is refused, because the new file is untracked and a new campaign needs a clean base, so the user had to stop and commit by hand. Exempting the file from the clean-base check would let every later campaign read a configuration that no commit holds, which another clone or worktree of the project lacks. Leaving the commit to the user keeps the history in the user's hands but stops every first campaign of a target. | The skill makes a commit on the user's current branch; a user who wants it elsewhere moves or amends it. A pathspec-limited commit leaves whatever else the user staged uncommitted. A commit hook that refuses the commit stops the skill before `start` runs again. |
 | D118 | Treat an untracked or ignored entry that is a character device as absent: the clean-base check does not count it, the fork neither copies nor records it, and no inventory holds it; an empty regular file still counts (user ruling, 2026-10-30). | The same 2026-10-30 run showed that inside a sandboxed Claude Code session, Claude Code lays a `/dev/null` character device over each path it protects (`.bashrc`, `.gitconfig`, `.mcp.json`, `.github`, `.idea`, `.vscode`, `scripts` and more), and Git lists them as untracked, so `start` refused to fork any project there. The session cannot remove them. Ignoring those names would hide a real file the user forgot to commit, and the list changes with Claude Code's versions. Ignoring every special file would also hide a named pipe or socket that the user made. Ignoring empty regular files would hide real ones on the host. | A character device that the user makes in the project is invisible to the clean-base check and to every inventory. Trials never received one, since copying already skipped it. |
 | D119 | A run requires `--model` and `--effort` in both runner launchers, outside a run and in a requested session; a launch without either is refused before any capacity slot or harness, naming the missing option and how to list the supported values, and the runner skills ask the user rather than choose (user ruling, 2026-10-30: "make model and effort mandatory"). | Asked why a Claude run without `--model` ran on the user's Claude Code default (both live runs of 2026-10-30 ran on `claude-opus-5-5`) while the `claude-runner` skill and `claude-runner --resolve-profile` named CAT's initial profile, `haiku` at `medium`, the user chose to make both options mandatory. CAT's default profile: a CAT-chosen model silently decides cost and compliance for the user, and goes stale as the harness's models change; the skill and the runner already disagreed about it. The harness's configured default: the run's profile then depends on the user's harness configuration, which the caller does not see, and the evidence cannot say which profile a run was asked for. | Every caller names both options; a script or habit that omitted them now fails until it names them. The skills ask the user once per run whose profile the user did not name. `claude-runner --resolve-profile` no longer reports a default profile. |
+| D120 | `--effort none` selects no reasoning for every model in both runners, and each runner passes the harness's explicit setting for it: Claude Code gets `--thinking disabled` and no `--effort`, Codex gets `"effort":"none"` in each turn. The profile inventories list a model without reasoning efforts with the effort `none`, every trial and role profile names both a model and an effort, and a stored profile with an empty effort loads as `none` (user ruling, 2026-10-30: "Accept a \"none\" effort and translate it to the harness-specific value. Meaning, I still want you to pass a reasoning/effort value to the harness. Do not let it use the default value."). `--agent <name>` takes the model and effort from the CAT agent definition, which must name both, and cannot be combined with `--model` or `--effort` (user ruling, 2026-10-30: "Agent supplies them"). | The inventories listed a model without effort levels with an empty effort, and the optimizer then started its sessions without `--effort`, which D119 refuses; dropping the effort lets the harness's configured default decide it. Passing `none` through to Claude Code: Claude Code 2.1.312 warns "Unknown --effort value 'none' — ignoring it and using the default effort". Claude Code's `CLAUDE_CODE_EFFORT_LEVEL=unset`: it sends no effort, so the model service's default applies, and it leaves thinking on. Refusing `none` for Codex: codex-cli 0.160.0 accepts `none` as a reasoning effort and sends it to the model service. For `--agent`, letting `--model` or `--effort` override the definition: the session would then run a profile that the definition does not name. | A Claude model that rejects disabled thinking (the 5.5 models and Fable in Claude Code 2.1.312) runs with adaptive thinking under `none`, and a model that keeps effort without thinking runs at its default effort, capped at `high`; both are Claude Code's choice. A Codex model that does not accept `none` fails its first turn. A proposal whose binding names one dimension outside the inventory is refused until the other dimension is bound. |
 
 ## 14. Acceptance evidence
 
