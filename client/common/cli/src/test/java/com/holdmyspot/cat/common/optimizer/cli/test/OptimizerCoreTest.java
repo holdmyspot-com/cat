@@ -3406,6 +3406,12 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that a resumed campaign presents the derived sources that the session port listed when the contract
 	 * author finished, as the stored proposal keeps them, instead of listing them again.
+	 * <p>
+	 * This test can take one second or longer during a parallel build: the claim concerns a resumed campaign, so it
+	 * starts a campaign through the public command, which forks the project, runs the scripted contract author session
+	 * on a copy of the project, stores its proposal and runs the guard pilot, and then starts the command again, which
+	 * loads that stored proposal and presents it. Showing that the second presentation keeps the first one's sources
+	 * takes both passes and the file work of each.
 	 */
 	@Test
 	public void resumeKeepsDerivedSources() throws Exception
@@ -3452,6 +3458,12 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that resuming a campaign whose stored proposal no longer validates derives a new proposal and tells
 	 * the user why, instead of failing on every later {@code start}.
+	 * <p>
+	 * This test can take one second or longer during a parallel build: it starts a campaign through the public command
+	 * and rewrites its stored proposal, then starts the command again, which runs a second contract author session on
+	 * a copy of the project and stores and presents the new proposal with its guard pilot, and then confirms the
+	 * campaign. Only that confirmation shows that the new proposal validates, so the claim needs all three commands and
+	 * the file work of each.
 	 *
 	 * @throws Exception if the owned repository or store fails
 	 */
