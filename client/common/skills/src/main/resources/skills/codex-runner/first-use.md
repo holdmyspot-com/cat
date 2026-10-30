@@ -4,7 +4,8 @@
 
 - Run an authorized task through the Codex CAT artifact of this CAT version while preserving the runner's retained
 	evidence.
-- Prevent a runner invocation from selecting an arbitrary artifact, executable, or model profile.
+- Prevent a runner invocation from selecting an arbitrary artifact or executable, or a model or effort that the user
+	did not choose.
 - Let a session that a runner started run Codex through the same launcher, without a login or a sandbox exception.
 
 ## Launcher
@@ -15,6 +16,11 @@ path. Both CAT plugins hold it and take the same options. Give it the run's reco
 line. Write the file with a file-writing tool, and run the launcher as one command with no pipe or redirection. Use
 a command timeout of 600000 milliseconds and keep waiting while the run writes `waiting` records, which it repeats
 every 30 seconds while a turn writes nothing else.
+
+Every run takes `--model <model>` and `--effort <effort>`, outside a run and inside one, and the launcher refuses a run
+without either. Pass the model and the effort that the user names. When the user names no model or no effort, ask the
+user which to use before starting the run, naming the models and efforts that `codex debug models` lists when that
+command is available, and never choose one yourself.
 
 First check whether the command environment defines `CAT_SESSION_REQUESTS`.
 
@@ -46,10 +52,8 @@ takes this argument list, wrapped here to fit:
 
 ```text
 --project <project> --run-root <run-root> --input <records> --install-cat --keep-run
---output <transcript> --receipt <receipt>
+--model <model> --effort <effort> --output <transcript> --receipt <receipt>
 ```
-
-Pass `--model <model>` and `--effort <effort>` only when the user names them; otherwise Codex uses its configured model.
 
 Pass `--session-transcripts` with `--keep-run` only when the user asks for the session's own transcript. The
 runner then copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in the
@@ -76,7 +80,7 @@ launch counts against the sessions that this session may request. The parent run
 and the limits, so pass only these options:
 
 ```text
---project <project> --input <records> [--plugin <plugin>]... [--model <name>] [--effort <level>]
+--project <project> --input <records> --model <model> --effort <effort> [--plugin <plugin>]...
 [--install-cat] [--session-transcripts] [--output <transcript>] [--receipt <receipt>]
 ```
 

@@ -106,7 +106,9 @@ custom agents with the plugin.
 CAT's `claude-runner` and `codex-runner` start an isolated Claude Code or Codex session with your login. Both
 plugins hold both launchers, so a session in either harness can run either harness. A session runs a launcher as one
 command, by its absolute path, with no pipe, redirection, `cd` or environment-variable prefix, and gives it its records
-with `--input <file>`.
+with `--input <file>`. Every run names its model with `--model <name>` and its reasoning effort with `--effort <level>`;
+the launcher refuses a run without either before it starts a session, and CAT's runner skills ask you which to use when
+you name none.
 
 Your harness's sandbox does not let a command start a harness with your login, so it refuses the launchers until
 you exempt them. Exempt only these two launchers, so that every other command stays sandboxed. Sessions that a runner
