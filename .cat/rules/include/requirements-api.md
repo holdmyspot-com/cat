@@ -12,7 +12,27 @@ Before deciding whether a parameter requires validation, lazy load the bundled
 `rules/include/common/parameter-validation.md` rule. When deciding whether an explicit Java null check is unnecessary,
 lazy load `rules/include/java/unnecessary-null-checks.md`.
 
-Use Requirements.java instead of handwritten validation when its validator expresses the needed constraint.
+Use Requirements.java instead of handwritten validation when its validator expresses the needed constraint, unless the
+validator's message is inadequate for the person who reads the failure (see below).
+
+When the failure is read by a user who must correct their input, such as command-line arguments, a configuration entry,
+or a request field, and the validator's generated message would state only a mechanical constraint (a length, a count,
+or a comparison) that does not say what the value means or what to supply, write the check by hand. Throw, or return,
+a message that names the expected input in the reader's terms. Keep `requireThat()` or `assert that(...)` for an
+internal invariant or programmer error, where the message naming the variable and its actual value is the most useful.
+Adding context to a validator with `withContext()` is not a substitute: the message still begins with the mechanical
+constraint.
+
+```java
+if (args.length < 2)
+	throw new IllegalArgumentException("Expected an account operation, product, and optional login ID");
+```
+
+rather than:
+
+```java
+requireThat(args, "args").length().isGreaterThanOrEqualTo(2);
+```
 
 Static imports are appropriate for Requirements.java validator entry points. Do not extract a helper that only validates
 an argument and forwards one call; inline it.
@@ -25,12 +45,12 @@ an argument and forwards one call; inline it.
 
 When every condition being checked can be expressed with a Requirements.java validator and the code returns an error
 message on failure (for example in a returned failure or result, a reason string, or a collected list) instead of
-throwing, take the message from the validator. Keep the `ValidationFailures` that `elseGetFailures()` returns, name the
-variable after the checked value plus `Failures`, branch on `isEmpty()`, and read `getMessages()`. A chain with several
-constraints reports every failed constraint in that one `ValidationFailures`. To combine the failures of several chains,
-pass each later chain's `ValidationFailures` to the first one's `addAll()`. Do not repeat the constraint as a
-handwritten `if` condition that guards the `checkIf()` call, hand-format the message from the compared values, or branch
-on `getMessages()`:
+throwing, take the message from the validator, unless it is inadequate for its reader as described above. Keep the
+`ValidationFailures` that `elseGetFailures()` returns, name the variable after the checked value plus `Failures`, branch
+on `isEmpty()`, and read `getMessages()`. A chain with several constraints reports every failed constraint in that one
+`ValidationFailures`. To combine the failures of several chains, pass each later chain's `ValidationFailures` to the
+first one's `addAll()`. Do not repeat the constraint as a handwritten `if` condition that guards the `checkIf()` call,
+hand-format the message from the compared values, or branch on `getMessages()`:
 
 ```java
 ValidationFailures messageCountFailures = checkIf(messageCount, "messageCount").
