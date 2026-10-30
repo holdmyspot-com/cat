@@ -7,6 +7,7 @@ import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.writeFile;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.Git;
@@ -127,7 +128,8 @@ public final class ForkTest
 				{"staged deletion"},
 				{"unstaged modification"},
 				{"unstaged deletion"},
-				{"untracked file"}
+				{"untracked file"},
+				{"empty untracked file"}
 			};
 	}
 
@@ -164,12 +166,45 @@ public final class ForkTest
 				case "unstaged modification" -> writeFile(base.resolve("prompt.md"), "unstaged edit", READ_WRITE);
 				case "unstaged deletion" -> Files.delete(base.resolve("prompt.md"));
 				case "untracked file" -> writeFile(base.resolve("untracked.md"), "untracked", READ_WRITE);
+				// An empty regular file on the host is a change, unlike the device that a sandbox lays over a path
+				case "empty untracked file" -> writeFile(base.resolve(".bashrc"), "", READ_WRITE);
 				default -> throw new AssertionError("Unknown change: " + change);
 			}
 			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
 
 			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).refusesDirtyBase();
 			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
+		}
+	}
+
+	/**
+	 * Verifies that a base whose only untracked entries are character devices, as a sandboxed Claude Code session lays
+	 * over the paths it protects, forks without them: neither the fork's files nor the optimization worktree hold them.
+	 * An unprivileged test cannot create a device, so empty files stand in for the devices and a classifier names them
+	 * as devices.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void forksBaseWhoseUntrackedEntriesAreDevices() throws IOException
+	{
+		// Requirement: R-W2
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Set<Path> devices = Set.of(base.resolve(".bashrc"), base.resolve(".vscode"));
+			for (Path device : devices)
+				writeFile(device, "", READ_WRITE);
+
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(),
+				(file, _) -> devices.contains(file));
+
+			Path worktreeDirectory = base.resolve(CAMPAIGNS + "/c1/worktree");
+			requireThat(fork.inventory().entries().keySet(), "forkFiles").
+				doesNotContain(Path.of(".bashrc")).doesNotContain(Path.of(".vscode"));
+			requireThat(Files.exists(worktreeDirectory.resolve(".bashrc"), NOFOLLOW_LINKS), "worktreeBashrc").isFalse();
+			requireThat(Files.exists(worktreeDirectory.resolve(".vscode"), NOFOLLOW_LINKS), "worktreeVscode").isFalse();
 		}
 	}
 

@@ -10,7 +10,9 @@ import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.Git;
+import com.holdmyspot.cat.common.optimizer.inventory.CharacterDevices;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
+import com.holdmyspot.cat.common.optimizer.inventory.FileSystemCharacterDevices;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -18,7 +20,9 @@ import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -40,6 +44,10 @@ public final class Fork implements ForkView
 	private static final String[] CHECK_IGNORE = {"check-ignore", "--quiet", "--no-index",
 		SessionDirectory.ROOT + "/probe"};
 	private static final String CLEAN_PATHSPEC_EXCLUDING_SESSIONS = ":(exclude)" + SessionDirectory.ROOT;
+	/**
+	 * The start of a {@code git status --porcelain} entry for an untracked path, which the path follows.
+	 */
+	private static final String UNTRACKED_STATUS = "?? ";
 	/**
 	 * The mode that a Git index records for a symbolic link.
 	 */
@@ -76,7 +84,8 @@ public final class Fork implements ForkView
 	/**
 	 * Forks a base worktree.
 	 * <p>
-	 * The base must have no staged, unstaged or untracked changes outside CAT's session directories. Otherwise this
+	 * The base must have no staged, unstaged or untracked changes outside CAT's session directories. An untracked
+	 * character device counts as absent: it is no change, and the fork neither copies nor records it. Otherwise this
 	 * method stops before it creates anything, including the local exclude line.
 	 *
 	 * @param base the base worktree, which is the top-level directory of its repository
@@ -95,15 +104,40 @@ public final class Fork implements ForkView
 	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer)
 		throws IOException
 	{
+		return create(base, campaign, participants, replacer, new FileSystemCharacterDevices());
+	}
+
+	/**
+	 * Forks a base worktree, as {@link #create(Path, Path, Set, FileReplacer)} does, treating the untracked files that
+	 * a classifier names as character devices as absent.
+	 *
+	 * @param base         the base worktree, which is the top-level directory of its repository
+	 * @param campaign     the campaign storage directory
+	 * @param participants ignored paths and ignored files relative to {@code base}, and absolute paths outside it, that
+	 *                     take part in the campaign; tracked files, and the existing targets outside {@code base} that
+	 *                     recorded links reach, always take part
+	 * @param replacer     replaces the fork's stored participant selection
+	 * @param devices      tells which files are character devices
+	 * @return the fork
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code base} is not the top-level directory of its repository, or a
+	 *                                  participant is not a valid path (see {@link ForkTree#record(Path, Path, Set)})
+	 * @throws WorkspaceException       if the base has uncommitted changes or a participant does not exist
+	 * @throws IOException              if Git fails or the files cannot be copied
+	 */
+	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer,
+		CharacterDevices devices) throws IOException
+	{
 		requireThat(base, "base").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(participants, "participants").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
+		requireThat(devices, "devices").isNotNull();
 		Path normalizedBase = base.toAbsolutePath().normalize();
 		Path normalizedCampaign = campaign.toAbsolutePath().normalize();
 		Git git = new Git(normalizedBase);
 		Path exclude = requireTopLevel(git, normalizedBase);
-		requireClean(git, normalizedBase);
+		requireClean(git, normalizedBase, devices);
 		boolean excludeAdded = ensureSessionDirectoriesIgnored(git, exclude);
 
 		Set<Path> paths = new HashSet<>(participants);
@@ -374,22 +408,64 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Requires that the base has no staged, unstaged or untracked changes, ignoring CAT's session directories.
+	 * Requires that the base has no staged, unstaged or untracked changes, ignoring CAT's session directories and the
+	 * untracked character devices, which count as absent.
 	 *
 	 * @param git the base's Git
 	 * @param base the base worktree
+	 * @param devices tells which files are character devices
 	 * @throws WorkspaceException if the base has changes
-	 * @throws IOException if Git fails
+	 * @throws IOException if Git fails or an untracked file's type cannot be read
 	 */
-	private static void requireClean(Git git, Path base) throws IOException
+	private static void requireClean(Git git, Path base, CharacterDevices devices) throws IOException
 	{
-		List<String> changes = git.lines("status", "--porcelain", "--untracked-files=all", "--", ".",
+		// With -z, Git quotes no path, ends each entry with NUL and follows a rename's entry with its source path
+		String status = git.run("status", "--porcelain", "-z", "--untracked-files=all", "--", ".",
 			CLEAN_PATHSPEC_EXCLUDING_SESSIONS);
+		List<String> changes = new ArrayList<>();
+		String[] fields = status.split("\0");
+		for (int i = 0; i < fields.length; ++i)
+		{
+			String entry = fields[i];
+			if (entry.isEmpty())
+				continue;
+			char staged = entry.charAt(0);
+			boolean sourcePathFollows = staged == 'R' || staged == 'C';
+			if (sourcePathFollows)
+				i += 1;
+			boolean untracked = entry.startsWith(UNTRACKED_STATUS);
+			if (untracked && isCharacterDevice(base.resolve(entry.substring(UNTRACKED_STATUS.length())), devices))
+				continue;
+			changes.add(entry);
+		}
 		if (changes.isEmpty())
 			return;
 		throw new WorkspaceException("The base worktree " + base + " has staged, unstaged or untracked changes, so " +
 			"CAT cannot fork it: commit, stash or remove the changes, then start the campaign again. CAT stopped " +
 			"before it created anything. Changes:\n" + String.join("\n", changes));
+	}
+
+	/**
+	 * Indicates whether a file is a character device.
+	 *
+	 * @param file the file
+	 * @param devices tells which files are character devices
+	 * @return {@code true} if {@code file} is a character device; {@code false} if it is another kind of file or no
+	 *   longer exists
+	 * @throws IOException if the file's type cannot be read
+	 */
+	private static boolean isCharacterDevice(Path file, CharacterDevices devices) throws IOException
+	{
+		BasicFileAttributes attributes;
+		try
+		{
+			attributes = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+		}
+		catch (NoSuchFileException _)
+		{
+			return false;
+		}
+		return devices.isCharacterDevice(file, attributes);
 	}
 
 	/**

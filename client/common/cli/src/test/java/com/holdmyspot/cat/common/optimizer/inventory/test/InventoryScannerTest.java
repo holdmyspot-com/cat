@@ -9,6 +9,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.Git;
+import com.holdmyspot.cat.common.optimizer.inventory.CharacterDevices;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
@@ -77,6 +78,35 @@ public final class InventoryScannerTest
 				Path.of("docs"), new SymbolicLink(Path.of("sub")),
 				Path.of("outside.md"), new SymbolicLink(shared),
 				shared, file("shared")));
+		}
+	}
+
+	/**
+	 * Verifies that a scan and a read of one entry leave out a character device, such as the {@code /dev/null} that a
+	 * sandboxed Claude Code session lays over a path it protects, and keep an empty regular file. An unprivileged test
+	 * cannot create a device, so empty files stand in for the devices and a classifier names them as devices.
+	 *
+	 * @throws IOException if the fixture cannot be created or scanned
+	 */
+	@Test
+	public void leavesOutCharacterDevices() throws IOException
+	{
+		// Requirement: R-W7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-inventory-project-"));
+			writeFile(project.resolve("prompt.md"), "prompt", READ_WRITE);
+			writeFile(project.resolve("empty.md"), "", READ_WRITE);
+			Set<Path> devices = Set.of(writeFile(project.resolve(".bashrc"), "", READ_WRITE),
+				writeFile(project.resolve(".idea"), "", READ_WRITE));
+			CharacterDevices classifier = (file, _) -> devices.contains(file);
+
+			FileInventory inventory = InventoryScanner.scan(project, Set.of(), classifier);
+
+			requireThat(inventory.entries(), "entries").isEqualTo(Map.of(
+				Path.of("prompt.md"), file("prompt"),
+				Path.of("empty.md"), file("")));
+			requireThat(InventoryScanner.entry(project, Path.of(".bashrc"), classifier), "deviceEntry").isEmpty();
 		}
 	}
 
