@@ -3,6 +3,8 @@
 ## Design Goals
 
 - Express meaningful Java input and result contracts consistently with Requirements.java.
+- When a Requirements.java validator decides a check whose failure is returned as an error message, the message comes
+	from that validator, so the check and its message cannot disagree.
 
 ## Guidance
 
@@ -19,7 +21,38 @@ an argument and forwards one call; inline it.
 |---------|------------|
 | API boundary | `requireThat(value, "name")` |
 | Internal method or invariant | `assert that(value, "name").constraint().elseThrow()` |
-| Collected failures | `checkIf()` |
+| Failure returned as an error message | `checkIf(value, "name").constraint().elseGetFailures()` |
+
+When every condition being checked can be expressed with a Requirements.java validator and the code returns an error
+message on failure (for example in a returned failure or result, a reason string, or a collected list) instead of
+throwing, take the message from the validator. Keep the `ValidationFailures` that `elseGetFailures()` returns, name the
+variable after the checked value plus `Failures`, branch on `isEmpty()`, and read `getMessages()`. A chain with several
+constraints reports every failed constraint in that one `ValidationFailures`. To combine the failures of several chains,
+pass each later chain's `ValidationFailures` to the first one's `addAll()`. Do not repeat the constraint as a
+handwritten `if` condition that guards the `checkIf()` call, hand-format the message from the compared values, or branch
+on `getMessages()`:
+
+```java
+ValidationFailures messageCountFailures = checkIf(messageCount, "messageCount").
+	isEqualTo(chain.size(), "chain.size()").elseGetFailures();
+if (!messageCountFailures.isEmpty())
+	return failureAt(markerIndex, String.join("\n", messageCountFailures.getMessages()));
+```
+
+rather than:
+
+```java
+if (messageCount != chain.size())
+{
+	List<String> messages = checkIf(messageCount, "messageCount").isEqualTo(chain.size(), "chain.size()").
+		elseGetFailures().getMessages();
+	return failureAt(markerIndex, String.join("\n", messages));
+}
+```
+
+This does not apply when a condition has no Requirements.java validator (write plain code), when a failure throws
+(use `requireThat()` or `assert that(...).elseThrow()` as in the table), or when the code needs only a boolean and no
+message (do not call `elseGetFailures()` merely to branch).
 
 When a constraint applies to a parameter after normalization, assign the normalized value back to the parameter and
 validate that parameter with `requireThat()` when Requirements.java supports the constraint. Do not keep a separate
