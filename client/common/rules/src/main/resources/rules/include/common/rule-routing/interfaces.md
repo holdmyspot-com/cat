@@ -11,8 +11,9 @@ When defining, changing, or reviewing parameter validation for a caller-facing o
 `../parameter-validation.md`.
 
 When defining a function, method, constructor, or command, or changing its parameters, while an overload or another
-operation of the same API takes some of the same inputs, even in another type or representation, lazy load
-`../consistent-parameters.md`.
+operation of the same API takes some of the same inputs, even in another type or representation, or while one of its
+parameters describes another, such as its index, position, unit, or length, or it takes the bounds of more than one
+range, lazy load `../consistent-parameters.md`.
 
 When defining a function, method, constructor, or command whose parameters specify a range, such as a pair of indexes,
 offsets, positions, or times, or changing such parameters, lazy load `../range-parameters.md`.
