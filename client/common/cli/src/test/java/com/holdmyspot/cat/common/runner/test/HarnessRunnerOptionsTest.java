@@ -63,7 +63,7 @@ public final class HarnessRunnerOptionsTest
 	{
 		requireThat(HarnessRunnerOptions.usage("harness-runner"), "usage").startsWith("Usage: harness-runner ").
 			contains("--artifact <path>").
-			contains(" --model <name> --effort <level> ").
+			contains(" (--model <name> --effort <level> | --agent <name>) ").
 			contains("--max-concurrency <1..16>").
 			contains("--deny-read <path>").
 			contains("--workspace <path>").

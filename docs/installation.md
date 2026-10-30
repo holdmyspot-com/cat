@@ -108,7 +108,14 @@ plugins hold both launchers, so a session in either harness can run either harne
 command, by its absolute path, with no pipe, redirection, `cd` or environment-variable prefix, and gives it its records
 with `--input <file>`. Every run names its model with `--model <name>` and its reasoning effort with `--effort <level>`;
 the launcher refuses a run without either before it starts a session, and CAT's runner skills ask you which to use when
-you name none.
+you name none. The effort `none` runs the model without reasoning: `claude-runner` turns Claude Code's thinking off, and
+`codex-runner` asks Codex for no reasoning.
+
+Instead of `--model` and `--effort`, a run started outside a runner session may name `--agent <name>` with
+`--install-cat`, in both launchers. It selects the CAT agent definition of that name in the launcher's CAT artifact, and
+the session runs under the model and the reasoning effort that the definition names. The launcher refuses `--agent`
+together with `--model` or `--effort`, and an agent definition that does not name both a model and an effort. A session
+that a runner started cannot pass `--agent`.
 
 Your harness's sandbox does not let a command start a harness with your login, so it refuses the launchers until
 you exempt them. Exempt only these two launchers, so that every other command stays sandboxed. Sessions that a runner

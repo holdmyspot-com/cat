@@ -65,7 +65,8 @@ public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile
 		{
 			throw new IllegalArgumentException(
 				"Usage: <runner> run --artifact <path> --prompt-file <path> --output <path> [--project <path>] " +
-					"--model <name> --effort <level> [--run-root <path>] [--executable <path>] [--keep-run] " +
+					"(--model <name> --effort <level> | --agent <name>) [--run-root <path>] [--executable <path>] " +
+					"[--keep-run] " +
 					"[--install-cat]");
 		}
 		Map<String, String> values = new HashMap<>();

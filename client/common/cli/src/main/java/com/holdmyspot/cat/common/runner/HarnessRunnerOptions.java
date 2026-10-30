@@ -339,7 +339,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	{
 		requireThat(launcherName, "launcherName").isNotBlank();
 		return "Usage: " + launcherName + " [--artifact <path>] [--project <path>] [--run-root <path>] " +
-			"[--executable <path>] --model <name> --effort <level> [--output <path>] [--keep-run] [--receipt <path>] " +
+			"[--executable <path>] (--model <name> --effort <level> | --agent <name>) [--output <path>] [--keep-run] " +
+			"[--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
 			"[--session-requests <count>] [--request-depth <levels>] [--input <file>] [--capacity-wait <seconds>]";

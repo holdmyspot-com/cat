@@ -17,10 +17,11 @@ line. Write the file with a file-writing tool, and run the launcher as one comma
 a command timeout of 600000 milliseconds and keep waiting while the run writes `waiting` records, which it repeats
 every 30 seconds while a turn writes nothing else.
 
-Every run takes `--model <model>` and `--effort <effort>`, outside a run and inside one, and the launcher refuses a run
-without either. Pass the model and the effort that the user names. When the user names no model or no effort, ask the
-user which to use before starting the run, naming the models and efforts that `codex debug models` lists when that
-command is available, and never choose one yourself.
+Every run takes `--model <model>` and `--effort <effort>`, or outside a run `--agent <name>` instead, and the launcher
+refuses a run without them. Pass the model and the effort that the user names. The effort `none` runs the model without
+reasoning, and is the only effort of a model that lists none. When the user names no model or no effort, ask the user
+which to use before starting the run, naming the models and efforts that `codex debug models` lists, and `none`, when
+that command is available, and never choose one yourself.
 
 First check whether the command environment defines `CAT_SESSION_REQUESTS`.
 
@@ -55,6 +56,11 @@ takes this argument list, wrapped here to fit:
 --model <model> --effort <effort> --output <transcript> --receipt <receipt>
 ```
 
+When the user names a CAT agent to run instead of a model and an effort, pass `--agent <name>` with `--install-cat` and
+without `--model` and `--effort`. The launcher selects the CAT agent definition of that name in the artifact, and the
+session runs under the model and the effort that the definition names. The launcher refuses `--agent` together with
+`--model` or `--effort`, and a definition that does not name both a model and an effort.
+
 Pass `--session-transcripts` with `--keep-run` only when the user asks for the session's own transcript. The
 runner then copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in the
 run directory, writes a `session_transcript` record with its path, and lists the copies in the receipt.
@@ -77,7 +83,7 @@ artifact selection and the prerequisites above, and run the `codex-runner` launc
 instructions name, which this session may run, instead of the plugin's. The launcher does not start Codex itself, but
 asks the runner that started this session to start it outside this session's sandbox, and waits until it ends. Each
 launch counts against the sessions that this session may request. The parent runner chooses the run root, the artifact
-and the limits, so pass only these options:
+and the limits, so pass only these options, which do not include `--agent`:
 
 ```text
 --project <project> --input <records> --model <model> --effort <effort> [--plugin <plugin>]...
