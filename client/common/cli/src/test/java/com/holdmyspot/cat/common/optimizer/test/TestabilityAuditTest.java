@@ -874,7 +874,7 @@ public final class TestabilityAuditTest
 	private static List<String> findMutableStaticFields(SourceFile file)
 	{
 		List<String> violations = new ArrayList<>();
-		for (JavaSource.Field field : file.source().fields())
+		for (JavaSource.Field field : file.fields())
 		{
 			if (field.isStatic() && !field.isFinal())
 				violations.add(file.describe(field.offset(), "static field is not final: " + field.declaration()));
@@ -893,7 +893,7 @@ public final class TestabilityAuditTest
 		if (file.isProduction() || !file.path().getFileName().toString().endsWith("Test.java"))
 			return List.of();
 		List<String> violations = new ArrayList<>();
-		for (JavaSource.Field field : file.source().fields())
+		for (JavaSource.Field field : file.fields())
 		{
 			if (field.isTopLevel() && !field.isFinal())
 				violations.add(file.describe(field.offset(), "test class field is not final: " + field.declaration()));
@@ -914,7 +914,7 @@ public final class TestabilityAuditTest
 			return List.of();
 		boolean isTestClass = file.path().getFileName().toString().endsWith("Test.java");
 		List<String> violations = new ArrayList<>();
-		for (JavaSource.Field field : file.source().fields())
+		for (JavaSource.Field field : file.fields())
 		{
 			boolean isShared = field.isStatic() || (isTestClass && field.isTopLevel());
 			boolean isMutable = field.declaration().contains("[]") ||
@@ -1303,14 +1303,32 @@ public final class TestabilityAuditTest
 
 	/**
 	 * A scanned source file.
+	 * <p>
+	 * Its fields are found once, when it is created, because three checks read them and finding them in every source
+	 * of the Java modules once per check took more than a second.
 	 *
 	 * @param path         the file's path
 	 * @param isProduction {@code true} if the file is in a production source tree
 	 * @param isCore       {@code true} if the file belongs to the harness-neutral core
 	 * @param source       the parsed contents
+	 * @param fields       the field declarations of {@code source}, in source order
 	 */
-	private record SourceFile(Path path, boolean isProduction, boolean isCore, JavaSource source)
+	private record SourceFile(Path path, boolean isProduction, boolean isCore, JavaSource source,
+		List<JavaSource.Field> fields)
 	{
+		/**
+		 * Creates a scanned source file and finds its fields.
+		 *
+		 * @param path         the file's path
+		 * @param isProduction {@code true} if the file is in a production source tree
+		 * @param isCore       {@code true} if the file belongs to the harness-neutral core
+		 * @param source       the parsed contents
+		 */
+		SourceFile(Path path, boolean isProduction, boolean isCore, JavaSource source)
+		{
+			this(path, isProduction, isCore, source, source.fields());
+		}
+
 		/**
 		 * Describes a violation in this file.
 		 *
