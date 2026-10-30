@@ -2486,6 +2486,12 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that {@code revise} regenerates the complete proposal from the feedback and stores it.
+	 * <p>
+	 * This test can take one second or longer during a parallel build: it starts a campaign through the public command,
+	 * which derives, validates and presents the proposal and runs its guard pilot of 20 judged trial sessions, and then
+	 * revises it, which runs a second contract author session and stores the new proposal. The revision request must
+	 * report that pilot's results and the revision must reuse its trials, so the claim needs both commands and the
+	 * pilot.
 	 */
 	@Test
 	public void reviseRegeneratesProposal() throws Exception
