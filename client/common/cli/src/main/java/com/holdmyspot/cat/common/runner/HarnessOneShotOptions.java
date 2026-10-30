@@ -19,15 +19,16 @@ import java.util.Map;
  * @param artifact the complete harness artifact
  * @param project the source project
  * @param promptFile the prompt file
- * @param model the requested model, or an empty string to use the harness default
+ * @param model the requested model
+ * @param effort the requested reasoning effort
  * @param output the durable output file
  * @param runRoot the absolute owned-run root
  * @param executable the harness executable
  * @param keepRun indicates whether to retain a successful run for investigation
  * @param installCat indicates whether CAT is installed in the isolated harness home
  */
-public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile, String model, Path output,
-	Path runRoot, String executable, boolean keepRun, boolean installCat)
+public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile, String model, String effort,
+	Path output, Path runRoot, String executable, boolean keepRun, boolean installCat)
 {
 	static
 	{
@@ -51,8 +52,8 @@ public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile
 	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
 	 * @return parsed one-shot options
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if the arguments are incomplete or invalid, or if they name no
-	 *   {@code --run-root} outside a harness session
+	 * @throws IllegalArgumentException if the arguments are incomplete or invalid, if they name no {@code --model} or
+	 *   no {@code --effort}, or if they name no {@code --run-root} outside a harness session
 	 */
 	public static HarnessOneShotOptions parse(String[] args, String defaultExecutable,
 		HarnessTemporaryRoot temporaryRoot)
@@ -64,7 +65,8 @@ public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile
 		{
 			throw new IllegalArgumentException(
 				"Usage: <runner> run --artifact <path> --prompt-file <path> --output <path> [--project <path>] " +
-					"[--run-root <path>] [--executable <path>] [--model <name>] [--keep-run] [--install-cat]");
+					"--model <name> --effort <level> [--run-root <path>] [--executable <path>] [--keep-run] " +
+					"[--install-cat]");
 		}
 		Map<String, String> values = new HashMap<>();
 		boolean keepRun = false;
@@ -87,8 +89,8 @@ public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile
 			if (index + 1 >= args.length)
 				throw new IllegalArgumentException("Missing value for " + option);
 			if (!option.equals("--artifact") && !option.equals("--project") && !option.equals("--prompt-file") &&
-				!option.equals("--model") && !option.equals("--output") && !option.equals("--run-root") &&
-				!option.equals("--executable"))
+				!option.equals("--model") && !option.equals("--effort") && !option.equals("--output") &&
+				!option.equals("--run-root") && !option.equals("--executable"))
 				throw new IllegalArgumentException("Unsupported option: " + option);
 			String value = args[index + 1];
 			values.put(option, value);
@@ -98,15 +100,16 @@ public record HarnessOneShotOptions(Path artifact, Path project, Path promptFile
 		Path project = Path.of(values.getOrDefault("--project", "")).toAbsolutePath().normalize();
 		Path promptFile = path(values, "--prompt-file");
 		String model = values.getOrDefault("--model", "");
+		String effort = values.getOrDefault("--effort", "");
+		HarnessRunnerOptions.requireProfile(defaultExecutable, model, effort);
 		Path output = path(values, "--output");
 		Path runRoot = temporaryRoot.runRoot(values.get("--run-root"));
 		String executable = values.getOrDefault("--executable", defaultExecutable);
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(promptFile, "promptFile").isNotNull();
-		requireThat(model, "model").isNotNull();
 		requireThat(output, "output").isNotNull();
-		return new HarnessOneShotOptions(artifact, project, promptFile, model, output, runRoot, executable, keepRun,
-			installCat);
+		return new HarnessOneShotOptions(artifact, project, promptFile, model, effort, output, runRoot, executable,
+			keepRun, installCat);
 	}
 
 	/**

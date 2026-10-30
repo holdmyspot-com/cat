@@ -91,43 +91,6 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Starts one persistent Claude stream-json process in an owned run directory.
-	 *
-	 * @param artifact the complete Claude artifact
-	 * @param project the source project to copy
-	 * @param manager the run manager
-	 * @param executable the Claude executable
-	 * @param environment the scrubbed isolated environment
-	 * @return the live owned Claude run session
-	 * @throws IOException if validation, copying, or process startup fails
-	 */
-	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
-		Map<String, String> environment) throws IOException
-	{
-		return start(artifact, project, manager, executable, environment, "", false);
-	}
-
-	/**
-	 * Starts one persistent Claude stream-json process in an owned run directory.
-	 *
-	 * @param artifact the complete Claude artifact
-	 * @param project the source project to copy
-	 * @param manager the run manager
-	 * @param executable the Claude executable
-	 * @param environment the scrubbed isolated environment
-	 * @param model the optional Claude model name
-	 * @param installCat whether CAT is installed in the isolated home
-	 * @return the live owned Claude run session
-	 * @throws IOException if validation, copying, or process startup fails
-	 */
-	public HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
-		Map<String, String> environment, String model, boolean installCat) throws IOException
-	{
-		return start(artifact, project, null, List.of(), manager, executable, environment, model, "", null, installCat,
-			true, List.of(), List.of(), "", false, 0);
-	}
-
-	/**
 	 * Starts a validator with completed executor evidence mounted outside its writable workspace.
 	 *
 	 * @param artifact the complete Claude artifact
@@ -166,8 +129,8 @@ public final class ClaudeRunner
 		requireThat(manager, "manager").isNotNull();
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(environment, "environment").isNotNull();
-		requireThat(model, "model").isNotNull();
-		requireThat(effort, "effort").isNotNull();
+		requireThat(model, "model").isNotBlank();
+		requireThat(effort, "effort").isNotBlank();
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
@@ -520,39 +483,6 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Builds a Claude command with immutable evidence directories.
-	 *
-	 * @param executable the Claude executable
-	 * @param model the requested model
-	 * @param marketplace the optional marketplace
-	 * @param installCat whether CAT is installed
-	 * @param hookResults the hook context directory
-	 * @return the complete harness command
-	 */
-	public static List<String> command(String executable, String model, Path marketplace, boolean installCat,
-		Path hookResults)
-	{
-		return command(executable, model, "", "", marketplace, installCat, hookResults, List.of());
-	}
-
-	/**
-	 * Builds a Claude command with immutable evidence directories.
-	 *
-	 * @param executable the Claude executable
-	 * @param model the requested model
-	 * @param marketplace the optional marketplace
-	 * @param installCat whether CAT is installed
-	 * @param hookResults the hook context directory
-	 * @param readOnlyEvidence executor evidence exposed through added directories
-	 * @return the complete harness command
-	 */
-	public static List<String> command(String executable, String model, Path marketplace, boolean installCat,
-		Path hookResults, List<Path> readOnlyEvidence)
-	{
-		return command(executable, model, "", "", marketplace, installCat, hookResults, readOnlyEvidence);
-	}
-
-	/**
 	 * Builds a Claude command with an explicit profile, optional direct agent, and immutable evidence directories.
 	 *
 	 * @param executable the Claude executable
@@ -683,8 +613,8 @@ public final class ClaudeRunner
 	 * @param sessionRequests    how many sessions the session may request; {@code 0} adds no instructions
 	 * @return the complete harness command
 	 * @throws NullPointerException     if any required argument is null
-	 * @throws IllegalArgumentException if {@code executable} is blank, {@code sessionRequests} is negative, or
-	 *   requests are enabled and {@code requestLauncher} is relative
+	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank,
+	 *   {@code sessionRequests} is negative, or requests are enabled and {@code requestLauncher} is relative
 	 */
 	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
 		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, Path requestLauncher,
@@ -692,8 +622,8 @@ public final class ClaudeRunner
 	{
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(executable, "executable").isNotBlank();
-		requireThat(model, "model").isNotNull();
-		requireThat(effort, "effort").isNotNull();
+		requireThat(model, "model").isNotBlank();
+		requireThat(effort, "effort").isNotBlank();
 		requireThat(agent, "agent").isNotNull();
 		requireThat(plugins, "plugins").isNotNull();
 		requireThat(hookResults, "hookResults").isNotNull();
@@ -721,16 +651,10 @@ public final class ClaudeRunner
 			command.add("--add-dir");
 			command.add(evidence.toString());
 		}
-		if (!model.isBlank())
-		{
-			command.add("--model");
-			command.add(model);
-		}
-		if (!effort.isBlank())
-		{
-			command.add("--effort");
-			command.add(effort);
-		}
+		command.add("--model");
+		command.add(model);
+		command.add("--effort");
+		command.add(effort);
 		if (!agent.isBlank())
 		{
 			command.add("--agent");

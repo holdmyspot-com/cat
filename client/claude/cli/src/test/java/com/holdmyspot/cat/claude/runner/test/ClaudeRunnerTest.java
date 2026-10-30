@@ -56,8 +56,8 @@ public final class ClaudeRunnerTest
 	@Test
 	public void disablesSessionPersistence()
 	{
-		List<String> command = ClaudeRunner.command("claude", "sonnet", Path.of("marketplace"), false,
-			Path.of("hook-results"));
+		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", Path.of("marketplace"),
+			false, Path.of("hook-results"), List.of());
 
 		requireThat(command, "command").contains("--no-session-persistence");
 		requireThat(command, "command").doesNotContain("--settings");
@@ -71,11 +71,11 @@ public final class ClaudeRunnerTest
 	public void persistsSessionForTranscripts()
 	{
 		// Requirement: R-I7
-		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"),
+		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
 			List.of(), true);
 
 		requireThat(command, "command").doesNotContain("--no-session-persistence").doesNotContain("--settings");
-		requireThat(ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"), List.of(),
+		requireThat(ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"), List.of(),
 			false), "withoutTranscripts").contains("--no-session-persistence");
 	}
 
@@ -88,9 +88,9 @@ public final class ClaudeRunnerTest
 	{
 		// Requirement: R-I9
 		Path launcher = Path.of("/artifact with spaces/bin/request-session").toAbsolutePath();
-		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"),
+		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
 			List.of(), false, launcher, 2);
-		List<String> without = ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"),
+		List<String> without = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
 			List.of(), false, null, 0);
 
 		int option = command.indexOf("--append-system-prompt");
@@ -106,8 +106,8 @@ public final class ClaudeRunnerTest
 	@Test
 	public void permitsOnlyHookResultsForSpilledContext()
 	{
-		List<String> command = ClaudeRunner.command("claude", "sonnet", Path.of("marketplace"), true,
-			Path.of("hook-results"));
+		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", Path.of("marketplace"),
+			true, Path.of("hook-results"), List.of());
 
 		requireThat(command, "command").contains(Path.of("marketplace/plugins/cat").toString()).contains("hook-results").
 			doesNotContain("home");
@@ -135,7 +135,7 @@ public final class ClaudeRunnerTest
 	@Test
 	public void permitsTrialPluginDirectory()
 	{
-		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "",
+		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "",
 			List.of(Path.of("release-docs-marketplace/plugins/release-docs")), Path.of("hook-results"), List.of(), false);
 
 		requireThat(command, "command").contains(Path.of("release-docs-marketplace/plugins/release-docs").toString()).

@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -56,7 +57,8 @@ public final class CodexRunnerCliTest
 				"CODEX_HOME", project.resolve("codex-home").toString()), Yielding.waiting()))
 			{
 				HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
-					project.resolve("artifact").toAbsolutePath().toString()}, "codex", HarnessTemporaryRoot.from(scope));
+					project.resolve("artifact").toAbsolutePath().toString(), "--model", "gpt-6-luna", "--effort", "low"},
+					"codex", HarnessTemporaryRoot.from(scope));
 
 				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/sessions").resolve(THREAD_ID).
 					resolve("temp");
@@ -79,7 +81,8 @@ public final class CodexRunnerCliTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("codex-runner-cli-"));
 			Files.createDirectories(project.resolve(".cat"));
-			String[] args = {"--artifact", project.resolve("artifact").toAbsolutePath().toString()};
+			String[] args = {"--artifact", project.resolve("artifact").toAbsolutePath().toString(), "--model",
+				"gpt-6-luna", "--effort", "low"};
 			try (ToolScope scope = CodexRunnerCli.toolScope(project, Map.of(), Yielding.waiting()))
 			{
 				HarnessRunnerOptions.parse(args, "codex", HarnessTemporaryRoot.from(scope));
@@ -143,7 +146,8 @@ public final class CodexRunnerCliTest
 		HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
 			Path.of("/artifact").toAbsolutePath().toString(), "--run-root", Path.of("/runs").toAbsolutePath().toString(),
 			"--read-only-evidence", effects.toString(), "--agent", "judge", "--read-only-evidence",
-			artifacts.toString()}, HarnessTemporaryRoot.withoutSession("no session"));
+			artifacts.toString(), "--model", "gpt-6-luna", "--effort", "low"}, HarnessTemporaryRoot.withoutSession(
+			"no session"));
 
 		requireThat(options.readOnlyEvidence(), "readOnlyEvidence").isEqualTo(List.of(effects, artifacts));
 	}
@@ -185,7 +189,8 @@ public final class CodexRunnerCliTest
 	public void refusesRelativeEvidencePath()
 	{
 		CodexRunnerCli.options(new String[]{"serve", "--artifact", Path.of("/artifact").toAbsolutePath().toString(),
-			"--run-root", Path.of("/runs").toAbsolutePath().toString(), "--read-only-evidence", "trial/project"},
+			"--run-root", Path.of("/runs").toAbsolutePath().toString(), "--read-only-evidence", "trial/project",
+			"--model", "gpt-6-luna", "--effort", "low"},
 			HarnessTemporaryRoot.withoutSession("no session"));
 	}
 
@@ -216,7 +221,7 @@ public final class CodexRunnerCliTest
 					root.resolve("locks"), 1, second, clock);
 				String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
 					root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--capacity-wait",
-					"5"};
+					"5", "--model", "gpt-6-luna", "--effort", "low"};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
 					CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity);
@@ -226,6 +231,99 @@ public final class CodexRunnerCliTest
 				{
 					requireThat(pauses.get(), "pauses").isEqualTo(5);
 				}
+			}
+		}
+	}
+
+	/**
+	 * Returns launches that lack a model, an effort or both, each with the start of the refusal.
+	 *
+	 * @return the profile options of each launch and the refusal's expected start
+	 */
+	@DataProvider
+	public Object[][] incompleteProfiles()
+	{
+		return new Object[][]{{List.of("--effort", "low"), "Missing --model."},
+			{List.of("--model", "gpt-6-luna"), "Missing --effort."},
+			{List.of(), "Missing --model and --effort."}};
+	}
+
+	/**
+	 * Verifies that a bridge launch without {@code --model} or {@code --effort} is refused with a message that names
+	 * the missing option and where to list the supported values, before it takes a capacity slot or starts Codex.
+	 *
+	 * @param profile  the launch's profile options
+	 * @param expected the start of the refusal
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "incompleteProfiles")
+	public void refusesLaunchWithoutProfile(List<String> profile, String expected) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-I11
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+				List<String> args = new ArrayList<>(List.of("serve", "--artifact", root.resolve("artifact").toString(),
+					"--project", root.resolve("project").toString(), "--run-root", root.resolve("runs").toString()));
+				args.addAll(profile);
+				try
+				{
+					// Taking capacity comes before starting Codex, so a refusal that takes none starts no session
+					CodexRunnerCli.serve(jvm, root, args.toArray(String[]::new), new StringReader(""), new StringWriter(),
+						Map.of(), _ ->
+						{
+							throw new AssertionError("The launch took a capacity slot");
+						});
+					throw new AssertionError("The launch was not refused");
+				}
+				catch (IllegalArgumentException e)
+				{
+					requireThat(e.getMessage(), "message").startsWith(expected).contains("`codex debug models`");
+				}
+				requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a one-shot {@code run} without {@code --model} or {@code --effort} is refused, naming the missing
+	 * option, before it takes a capacity slot or starts Codex.
+	 *
+	 * @param profile  the run's profile options
+	 * @param expected the start of the refusal
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "incompleteProfiles")
+	public void refusesOneShotRunWithoutProfile(List<String> profile, String expected) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-I11
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+				Path prompt = Files.writeString(root.resolve("prompt.txt"), "task");
+				List<String> args = new ArrayList<>(List.of("run", "--artifact", root.resolve("artifact").toString(),
+					"--project", root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(),
+					"--prompt-file", prompt.toString(), "--output", root.resolve("output").toString()));
+				args.addAll(profile);
+				HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(), root.resolve("locks"), 1, () ->
+				{
+					throw new AssertionError("The run waited for capacity");
+				}, new ManualClock(Instant.parse("2026-10-30T12:00:00Z")));
+				try (HarnessCapacity.Permit _ = capacity.acquire())
+				{
+					// The only slot is taken, so a run that tried to take one would wait and fail the test
+					CodexRunnerCli.run(jvm, root, args.toArray(String[]::new), Map.of(), capacity);
+					throw new AssertionError("The run was not refused");
+				}
+				catch (IllegalArgumentException e)
+				{
+					requireThat(e.getMessage(), "message").startsWith(expected).contains("`codex debug models`");
+				}
+				requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
 			}
 		}
 	}

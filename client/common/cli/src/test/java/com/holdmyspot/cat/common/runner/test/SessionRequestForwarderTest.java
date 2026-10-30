@@ -64,8 +64,8 @@ public final class SessionRequestForwarderTest
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
 			int status = fixture.forward("harness-a", new String[]{"--project", fixture.project.toString(), "--model",
-				"model-a", "--install-cat", "--receipt", receipt.toString()}, new StringReader(RECORDS), output,
-				"completed");
+				"model-a", "--effort", "effort-a", "--install-cat", "--receipt", receipt.toString()}, new StringReader(RECORDS),
+				output, "completed");
 
 			requireThat(status, "status").isEqualTo(0);
 			requireThat(fixture.entries.get("prompts/0"), "first").isEqualTo("first task");
@@ -74,6 +74,7 @@ public final class SessionRequestForwarderTest
 			JsonNode request = JsonMapper.builder().build().readTree(fixture.entries.get("request.json"));
 			requireThat(request.path("harness").asString(), "harness").isEqualTo("harness-a");
 			requireThat(request.path("model").asString(), "model").isEqualTo("model-a");
+			requireThat(request.path("effort").asString(), "effort").isEqualTo("effort-a");
 			requireThat(request.path("install_cat").asBoolean(false), "installCat").isTrue();
 			requireThat(output.toString(StandardCharsets.UTF_8), "transcript").isEqualTo(Fixture.TRANSCRIPT);
 			requireThat(Files.readString(receipt), "receipt").isEqualTo(Fixture.RECEIPT);
@@ -98,8 +99,9 @@ public final class SessionRequestForwarderTest
 			Path transcript = fixture.root.resolve("evidence/transcript.jsonl");
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-			int status = fixture.forward("harness-a", new String[]{"--project", fixture.project.toString(), "--input",
-				input.toString(), "--output", transcript.toString()}, new StringReader(""), output, "completed");
+			int status = fixture.forward("harness-a", new String[]{"--project", fixture.project.toString(), "--model",
+				"model-a", "--effort", "effort-a", "--input", input.toString(), "--output", transcript.toString()},
+				new StringReader(""), output, "completed");
 
 			requireThat(status, "status").isEqualTo(0);
 			requireThat(fixture.entries.get("prompts/1"), "second").isEqualTo("second task");
@@ -136,8 +138,8 @@ public final class SessionRequestForwarderTest
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
 				toRealPath());
 
-			int status = fixture.forward("harness-a", new String[]{"--project", fixture.project.toString()},
-				new StringReader(RECORDS), new ByteArrayOutputStream(), outcome);
+			int status = fixture.forward("harness-a", new String[]{"--project", fixture.project.toString(), "--model",
+				"model-a", "--effort", "effort-a"}, new StringReader(RECORDS), new ByteArrayOutputStream(), outcome);
 
 			requireThat(status, "status").isEqualTo(expected);
 			requireThat(fixture.errors.toString(), "errors").contains("reason for " + outcome);
@@ -190,6 +192,55 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
+	 * Returns launches that lack a model, an effort or both, each with the start of the refusal.
+	 *
+	 * @return the profile options of each launch and the refusal's expected start
+	 */
+	@DataProvider
+	public Object[][] incompleteProfiles()
+	{
+		return new Object[][]{{List.of("--effort", "low"), "Missing --model."},
+			{List.of("--model", "sonnet"), "Missing --effort."},
+			{List.of(), "Missing --model and --effort."}};
+	}
+
+	/**
+	 * Verifies that a runner launch inside a run without {@code --model} or {@code --effort} is refused with a message
+	 * that names the missing option and where to list the supported values, and requests no session.
+	 *
+	 * @param profile  the launch's profile options
+	 * @param expected the start of the refusal
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "incompleteProfiles")
+	public void refusesLaunchWithoutProfile(List<String> profile, String expected) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			// Requirement: R-I9, R-I11
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
+				toRealPath());
+			List<String> arguments = new ArrayList<>(List.of("--project", fixture.project.toString()));
+			arguments.addAll(profile);
+			try
+			{
+				fixture.forward("claude", arguments.toArray(String[]::new), new StringReader(RECORDS),
+					new ByteArrayOutputStream(), "completed");
+				throw new AssertionError("The launch was not refused");
+			}
+			catch (IllegalArgumentException e)
+			{
+				requireThat(e.getMessage(), "message").startsWith(expected).contains("`claude --help`");
+			}
+			try (Stream<Path> files = Files.list(fixture.requests))
+			{
+				requireThat(files.count(), "requests").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that only turns and the final completion can be forwarded, since the parent replays them in order.
 	 *
 	 * @throws IOException if fixture I/O fails
@@ -204,7 +255,8 @@ public final class SessionRequestForwarderTest
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
 				toRealPath());
 
-			fixture.forward("harness-a", new String[]{"--project", fixture.project.toString()}, new StringReader("""
+			fixture.forward("harness-a", new String[]{"--project", fixture.project.toString(), "--model", "model-a",
+				"--effort", "effort-a"}, new StringReader("""
 				{"type":"turn","prompt":"task"}
 				{"type":"steer","prompt":"other"}
 				{"type":"complete"}

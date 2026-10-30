@@ -45,11 +45,13 @@ public final class SessionRequestInstructions
 			"Write each prompt into a file inside your project, then run:\n" +
 			"\n" +
 			command + " --harness <claude|codex> --project <directory> --prompt <file> " +
-			"[--prompt <file>]... [--plugin <directory>]... [--model <name>] [--effort <level>] [--install-cat] " +
+			"[--prompt <file>]... [--plugin <directory>]... --model <name> --effort <level> [--install-cat] " +
 			"[--session-transcripts]\n" +
 			"\n" +
 			"Every input is a file path you can read: the project to copy, one prompt file per turn, and each " +
-			"plugin directory to install. --install-cat also installs CAT in the session. Inputs must contain no " +
+			"plugin directory to install. Every request names the session's model and reasoning effort; use the ones " +
+			"that your task names, and a request without either is refused. --install-cat also installs CAT in the " +
+			"session. Inputs must contain no " +
 			"symbolic links. The command waits up to 300 seconds. " +
 			"When the session ends, it prints the " +
 			"file path of the response, a JSON file whose status is completed, failed, refused, capacity or stopped, " +
@@ -63,8 +65,8 @@ public final class SessionRequestInstructions
 			"{\"type\":\"turn\",\"prompt\":\"<task>\"} line per turn followed by a {\"type\":\"complete\"} line, " +
 			"then run:\n" +
 			"\n" +
-			codexRunner + " --project <directory> --input <file> [--plugin <directory>]... [--model <name>] " +
-			"[--effort <level>] [--install-cat] [--session-transcripts] [--output <file>] [--receipt <file>]\n" +
+			codexRunner + " --project <directory> --input <file> [--plugin <directory>]... --model <name> " +
+			"--effort <level> [--install-cat] [--session-transcripts] [--output <file>] [--receipt <file>]\n" +
 			"\n" +
 			"It writes the session's transcript to --output, or prints it, copies its receipt to --receipt, and exits " +
 			"with 0 when the session completed, 75 when no capacity was free, and 1 otherwise, with the reason.";

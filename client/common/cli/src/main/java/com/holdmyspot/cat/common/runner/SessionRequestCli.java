@@ -39,7 +39,7 @@ public final class SessionRequestCli
 		if (Arrays.equals(args, new String[]{"--help"}))
 		{
 			System.out.println("Usage: request-session --harness <name> --project <dir> --prompt <file> " +
-				"[--prompt <file>]... [--plugin <dir>]... [--model <name>] [--effort <level>] " +
+				"[--prompt <file>]... [--plugin <dir>]... --model <name> --effort <level> " +
 				"[--install-cat] [--session-transcripts] [--wait <seconds>] | --await <id> [--wait <seconds>]");
 			return;
 		}
@@ -142,6 +142,8 @@ public final class SessionRequestCli
 		{
 			if (!request.hasNonNull("project") || !request.hasNonNull("harness") || request.path("prompts").isEmpty())
 				throw new IllegalArgumentException("A request requires --harness, --project and at least one --prompt");
+			HarnessRunnerOptions.requireProfile(request.path("harness").asString(), request.path("model").asString(""),
+				request.path("effort").asString(""));
 			id = UUID.randomUUID().toString();
 			// The broker has the user's permissions while this sandboxed session keeps running. If it walked our
 			// directories, we could swap a link or junction into its path and make it read a file we may not read.

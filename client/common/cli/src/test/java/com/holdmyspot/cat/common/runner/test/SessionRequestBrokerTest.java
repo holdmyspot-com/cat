@@ -126,6 +126,8 @@ public final class SessionRequestBrokerTest
 				JsonNode response = fixture.await("first");
 				requireThat(response.path("status").asString(), "status").isEqualTo(expected);
 				requireThat(option(arguments.get(), "--capacity-wait"), "capacityWait").isEqualTo("600");
+				requireThat(option(arguments.get(), "--model"), "model").isEqualTo("haiku");
+				requireThat(option(arguments.get(), "--effort"), "effort").isEqualTo("low");
 				requireThat(arguments.get(), "arguments").doesNotContain("--session-requests").
 					contains(fixture.options.runRoot().toString());
 				requireThat(option(arguments.get(), "--deny-read"), "deniedRead").isEqualTo(fixture.denied.toString());
@@ -297,6 +299,47 @@ public final class SessionRequestBrokerTest
 				contains(kind))
 				requireThat(response.path("reason").asString(), "sizeRefusal").contains("bounds");
 			requireThat(Files.exists(fixture.responses.resolve(".temporary")), "temporaryResponse").isFalse();
+		}
+	}
+
+	/**
+	 * Returns request manifests that lack a model, an effort or both, each with the start of the refusal.
+	 *
+	 * @return the fields to remove and the refusal's expected start
+	 */
+	@DataProvider
+	public Object[][] incompleteProfiles()
+	{
+		return new Object[][]{{List.of("model"), "Missing --model."}, {List.of("effort"), "Missing --effort."},
+			{List.of("model", "effort"), "Missing --model and --effort."}};
+	}
+
+	/**
+	 * Verifies that the runner refuses a session request without a model or an effort, with a reason that names the
+	 * missing option and where to list the supported values, and starts no session for it.
+	 *
+	 * @param missing  the manifest fields to remove
+	 * @param expected the start of the refusal's reason
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(dataProvider = "incompleteProfiles")
+	public void refusesRequestWithoutProfile(List<String> missing, String expected) throws IOException
+	{
+		// Requirement: R-I9
+		try (Fixture fixture = new Fixture();
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			{
+				throw new AssertionError("A request without a profile cannot start a session");
+			}))
+		{
+			ObjectNode request = fixture.document();
+			request.remove(missing);
+			fixture.writeRequest("unprofiled", request);
+			broker.scan();
+			JsonNode response = fixture.await("unprofiled");
+			requireThat(response.path("status").asString(), "status").isEqualTo("refused");
+			requireThat(response.path("reason").asString(), "reason").startsWith(expected).
+				contains("`claude --help`");
 		}
 	}
 
@@ -575,7 +618,8 @@ public final class SessionRequestBrokerTest
 				requests = Files.createDirectory(SessionRequestAccess.requestsDirectory(run));
 				responses = Files.createDirectory(SessionRequestAccess.responsesDirectory(run));
 				List<String> arguments = new ArrayList<>(List.of("--artifact", root.toString(), "--project",
-					project.toString(), "--keep-run", "--deny-read", denied.toString()));
+					project.toString(), "--model", "model-a", "--effort", "effort-a", "--keep-run", "--deny-read",
+					denied.toString()));
 				arguments.addAll(List.of(requestOptions));
 				options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "harness",
 					HarnessTemporaryRoot.of(root));
@@ -604,7 +648,7 @@ public final class SessionRequestBrokerTest
 		private ObjectNode document()
 		{
 			ObjectNode request = json.createObjectNode().put("format_version", 2).put("harness", "claude").
-				put("project", "project").put("session_transcripts", true);
+				put("project", "project").put("model", "haiku").put("effort", "low").put("session_transcripts", true);
 			request.putArray("prompts").add("prompts/0").add("prompts/1");
 			request.putArray("plugins").add("plugins/0");
 			return request;

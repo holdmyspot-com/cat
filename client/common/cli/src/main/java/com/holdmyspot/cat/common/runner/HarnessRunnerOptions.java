@@ -15,8 +15,8 @@ import java.util.List;
  * @param project the source project
  * @param runRoot the absolute owned-run root
  * @param executable the harness executable
- * @param model the optional selected model
- * @param effort the optional selected reasoning effort
+ * @param model the selected model
+ * @param effort the selected reasoning effort
  * @param output the optional durable bridge-transcript destination
  * @param keepRun indicates whether successful runs are retained
  * @param receipt the optional retained-evidence receipt destination
@@ -72,8 +72,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param defaultExecutable the harness executable name
 	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
 	 * @return parsed runner options
-	 * @throws IllegalArgumentException if arguments are incomplete or invalid, or if they name no {@code --run-root}
-	 *   outside a harness session
+	 * @throws IllegalArgumentException if arguments are incomplete or invalid, if they name no {@code --model} or no
+	 *   {@code --effort}, or if they name no {@code --run-root} outside a harness session
 	 */
 	public static HarnessRunnerOptions parse(String[] args, String defaultExecutable,
 		HarnessTemporaryRoot temporaryRoot)
@@ -86,9 +86,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		String executable = defaultExecutable;
 		String model = "";
 		String effort = "";
-		requireThat(executable, "executable").isNotBlank();
-		requireThat(model, "model").isNotNull();
-		requireThat(effort, "effort").isNotNull();
 		ParsedOptions options = new ParsedOptions();
 		int index = 0;
 		while (index < args.length)
@@ -201,6 +198,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new IllegalArgumentException("--exclude-user-rules requires --install-cat");
 		if (options.requestDepth > 0 && options.sessionRequests == 0)
 			throw new IllegalArgumentException("--request-depth requires --session-requests");
+		requireProfile(defaultExecutable, model, effort);
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
 			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.includeUserRules,
@@ -231,6 +229,41 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	}
 
 	/**
+	 * Refuses a launch that names no model or no reasoning effort, before it takes a capacity slot or starts a harness.
+	 * Neither CAT nor the runner chooses either one for the caller.
+	 *
+	 * @param harness the harness that the launch starts, such as {@code claude} or {@code codex}
+	 * @param model   the model that the launch names, or an empty string if it names none
+	 * @param effort  the reasoning effort that the launch names, or an empty string if it names none
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank. The message names each missing
+	 *                                  option and where to list the values that the harness supports.
+	 */
+	public static void requireProfile(String harness, String model, String effort)
+	{
+		requireThat(harness, "harness").isNotNull();
+		requireThat(model, "model").isNotNull();
+		requireThat(effort, "effort").isNotNull();
+		String missing;
+		if (model.isBlank() && effort.isBlank())
+			missing = "--model and --effort";
+		else if (model.isBlank())
+			missing = "--model";
+		else if (effort.isBlank())
+			missing = "--effort";
+		else
+			return;
+		String values = switch (harness)
+		{
+			case "claude" -> " `claude --help` lists the models under --model and the efforts under --effort.";
+			case "codex" -> " `codex debug models` lists the models and the reasoning efforts that each accepts.";
+			default -> "";
+		};
+		throw new IllegalArgumentException("Missing " + missing + ". A run requires both --model and --effort." +
+			values);
+	}
+
+	/**
 	 * Returns bridge command usage for one concrete launcher.
 	 *
 	 * @param launcherName the executable users invoke
@@ -240,7 +273,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	{
 		requireThat(launcherName, "launcherName").isNotBlank();
 		return "Usage: " + launcherName + " [--artifact <path>] [--project <path>] [--run-root <path>] " +
-			"[--executable <path>] [--model <name>] [--effort <level>] [--output <path>] [--keep-run] [--receipt <path>] " +
+			"[--executable <path>] --model <name> --effort <level> [--output <path>] [--keep-run] [--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
 			"[--session-requests <count>] [--request-depth <levels>] [--input <file>] [--capacity-wait <seconds>]";
@@ -253,8 +286,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param project the source project
 	 * @param runRoot the absolute owned-run root
 	 * @param executable the harness executable
-	 * @param model the optional selected model
-	 * @param effort the optional selected reasoning effort
+	 * @param model the selected model
+	 * @param effort the selected reasoning effort
 	 * @param output the optional durable bridge-transcript destination
 	 * @param keepRun whether successful runs are retained
 	 * @param receipt the optional retained-evidence receipt destination
@@ -273,8 +306,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param input the file that holds the run's JSON Lines records, or {@code null} to read standard input
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait} and {@code input}
-	 * @throws IllegalArgumentException if {@code executable} is blank, {@code runRoot} or an element of
-	 *   {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
+	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank, {@code runRoot}
+	 *   or an element of {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
 	 *   {@code requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or
 	 *   {@code capacityWait} is not positive
 	 */
@@ -284,8 +317,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(project, "project").isNotNull();
 		requireThat(runRoot, "runRoot").isNotNull();
 		requireThat(executable, "executable").isNotBlank();
-		requireThat(model, "model").isNotNull();
-		requireThat(effort, "effort").isNotNull();
+		requireThat(model, "model").isNotBlank();
+		requireThat(effort, "effort").isNotBlank();
 		if (!runRoot.isAbsolute())
 			throw new IllegalArgumentException("runRoot must be absolute");
 		requireThat(deniedReads, "deniedReads").isNotNull();

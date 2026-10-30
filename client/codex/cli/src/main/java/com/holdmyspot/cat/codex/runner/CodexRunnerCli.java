@@ -155,9 +155,8 @@ public final class CodexRunnerCli
 		try (HarnessCapacity.Permit _ = capacity.acquire())
 		{
 			HarnessOneShotRunner.run(() -> new CodexRunner(process.waiting()).start(options.artifact(),
-				options.project(), manager,
-				options.executable(), environment, options.model(), "", options.installCat(), agent), manager, prompt,
-				options.output(), options.keepRun());
+				options.project(), manager, options.executable(), environment, options.model(), options.effort(),
+				options.installCat(), agent), manager, prompt, options.output(), options.keepRun());
 		}
 	}
 

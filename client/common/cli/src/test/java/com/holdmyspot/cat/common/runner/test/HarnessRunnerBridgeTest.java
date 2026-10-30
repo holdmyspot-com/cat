@@ -213,8 +213,9 @@ public final class HarnessRunnerBridgeTest
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
-			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, false, false, true, 1, List.of(), List.of(), null, List.of(), 0, null, 0, null);
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness",
+				"model-a", "effort-a", transcript, true, receipt, false, false, true,
+				1, List.of(), List.of(), null, List.of(), 0, null, 0, null);
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
 
@@ -252,8 +253,9 @@ public final class HarnessRunnerBridgeTest
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			Path input = Files.writeString(evidence.resolve("turns.jsonl"), "{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n");
-			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", null, true, null, false, false, true, 1, List.of(), List.of(), null, List.of(), 0, null, 0, input);
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness",
+				"model-a", "effort-a", null, true, null, false, false, true,
+				1, List.of(), List.of(), null, List.of(), 0, null, 0, input);
 			StringWriter output = new StringWriter();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
@@ -289,8 +291,9 @@ public final class HarnessRunnerBridgeTest
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
-			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, true, false, true, 1, List.of(), List.of(), null, List.of(), 0, null, 0, null);
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness",
+				"model-a", "effort-a", transcript, true, receipt, true, false, true,
+				1, List.of(), List.of(), null, List.of(), 0, null, 0, null);
 			JsonMapper json = JsonMapper.builder().build();
 
 			try (TranscriptProcess process = new TranscriptProcess(nativeFile, run.sessionTranscripts()))
@@ -333,8 +336,9 @@ public final class HarnessRunnerBridgeTest
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			Path transcript = evidence.resolve("transcript.jsonl");
 			Path receipt = evidence.resolve("receipt.json");
-			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness", "",
-				"", transcript, true, receipt, false, false, true, 1, List.of(), List.of(), null, List.of(), 0, null, 0, null);
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "harness",
+				"model-a", "effort-a", transcript, true, receipt, false, false, true,
+				1, List.of(), List.of(), null, List.of(), 0, null, 0, null);
 			JsonMapper json = JsonMapper.builder().build();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,

@@ -57,7 +57,8 @@ public final class SessionRequestForwarder
 	 * @param output   receives the session's transcript when {@code --output} is absent
 	 * @param errors   receives the reason when the session does not complete
 	 * @return {@code 0} if the session completed, {@code 75} if it found no capacity, or {@code 1} otherwise
-	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner
+	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner, or
+	 *                                  if the launch names no {@code --model} or no {@code --effort}
 	 * @throws IOException              if the records are invalid, or the request or response cannot be read or
 	 *                                  written
 	 */
@@ -127,6 +128,8 @@ public final class SessionRequestForwarder
 				default -> throw new IllegalArgumentException("Unsupported option: " + option);
 			}
 		}
+		HarnessRunnerOptions.requireProfile(harness, request.path("model").asString(""),
+			request.path("effort").asString(""));
 		List<String> prompts;
 		if (records == null)
 			prompts = prompts(json, input);

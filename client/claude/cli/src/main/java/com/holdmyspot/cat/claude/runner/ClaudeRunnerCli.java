@@ -257,19 +257,22 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
-	 * Resolves the configured CAT default or a selected CAT agent profile without starting a harness process.
+	 * Resolves a selected CAT agent's profile without starting a harness process. No default profile exists: a run
+	 * requires {@code --model} and {@code --effort}.
 	 *
 	 * @param args the profile-resolution options
 	 * @return a stable scalar profile result
+	 * @throws IllegalArgumentException if the options do not name an artifact and an agent
 	 * @throws IOException if the selected agent cannot be read
 	 */
 	static String resolveProfile(String[] args) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
-		if (args.length == 1)
-			return profile("default", "haiku-4.5", "medium");
 		if (args.length != 5 || !args[1].equals("--artifact") || !args[3].equals("--agent"))
-			throw new IllegalArgumentException("Usage: claude-runner --resolve-profile [--artifact <path> --agent <name>]");
+		{
+			throw new IllegalArgumentException("Usage: claude-runner --resolve-profile --artifact <path> --agent <name>. " +
+				"No default profile exists; a run requires --model and --effort.");
+		}
 		ClaudeAgentDefinition agent = ClaudeAgentDefinition.load(Path.of(args[2]), args[4]);
 		return profile("agent:" + args[4], agent.model(), agent.effort());
 	}

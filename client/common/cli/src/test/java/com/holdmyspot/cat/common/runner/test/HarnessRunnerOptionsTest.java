@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
@@ -34,6 +35,20 @@ public final class HarnessRunnerOptionsTest
 	private static final String SESSION_ID = "6b1f7c1e-5d0a-4c55-9a8e-2f6c0f1d2e3a";
 
 	/**
+	 * Returns a launch that names an artifact, a model and an effort, followed by the given options.
+	 *
+	 * @param options the launch's other options
+	 * @return the launch's arguments
+	 */
+	private static String[] launch(String... options)
+	{
+		List<String> arguments = new ArrayList<>(List.of("--artifact", absolute("artifact"), "--model", "model-a",
+			"--effort", "effort-a"));
+		arguments.addAll(List.of(options));
+		return arguments.toArray(String[]::new);
+	}
+
+	/**
 	 * Creates the test fixture.
 	 */
 	public HarnessRunnerOptionsTest()
@@ -48,6 +63,7 @@ public final class HarnessRunnerOptionsTest
 	{
 		requireThat(HarnessRunnerOptions.usage("harness-runner"), "usage").startsWith("Usage: harness-runner ").
 			contains("--artifact <path>").
+			contains(" --model <name> --effort <level> ").
 			contains("--max-concurrency <1..16>").
 			contains("--deny-read <path>").
 			contains("--workspace <path>").
@@ -90,8 +106,8 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void excludesUserRulesWhenRequested()
 	{
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--install-cat", "--exclude-user-rules"}, "harness", SESSION);
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--install-cat", "--exclude-user-rules"),
+			"harness", SESSION);
 
 		requireThat(result.installCat(), "installCat").isTrue();
 		requireThat(result.includeUserRules(), "includeUserRules").isFalse();
@@ -105,9 +121,9 @@ public final class HarnessRunnerOptionsTest
 	public void parsesFixtures()
 	{
 		// Requirement: R-C21
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--workspace", absolute("runs/workspaces/trial")}, "harness", SESSION);
-		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--workspace",
+			absolute("runs/workspaces/trial")), "harness", SESSION);
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(),
 			"harness", SESSION);
 
 		requireThat(result.workspace(), "workspace").isEqualTo(path("runs/workspaces/trial"));
@@ -122,10 +138,10 @@ public final class HarnessRunnerOptionsTest
 	public void parsesTrialPlugins()
 	{
 		// Requirement: R-W12
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--plugin", absolute("campaign/plugins/cat"), "--plugin", absolute("campaign/plugins/tools")}, "harness",
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--plugin",
+			absolute("campaign/plugins/cat"), "--plugin", absolute("campaign/plugins/tools")), "harness",
 			SESSION);
-		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(),
 			"harness", SESSION);
 
 		requireThat(result.plugins(), "plugins").isEqualTo(List.of(path("campaign/plugins/cat"),
@@ -140,8 +156,8 @@ public final class HarnessRunnerOptionsTest
 	public void parsesDeniedReads()
 	{
 		// Requirement: R-E24
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--deny-read", absolute("campaign/campaign.json"), "--deny-read", absolute("campaign/trials")}, "harness",
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--deny-read",
+			absolute("campaign/campaign.json"), "--deny-read", absolute("campaign/trials")), "harness",
 			SESSION);
 
 		requireThat(result.deniedReads(),
@@ -157,7 +173,7 @@ public final class HarnessRunnerOptionsTest
 	public void rejectsRelativeDeniedRead()
 	{
 		// Requirement: R-E24
-		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--deny-read", "campaign.json"},
+		HarnessRunnerOptions.parse(launch("--deny-read", "campaign.json"),
 			"harness", SESSION);
 	}
 
@@ -168,7 +184,7 @@ public final class HarnessRunnerOptionsTest
 	public void defaultsToNoDeniedReads()
 	{
 		// Requirement: R-E24
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch(),
 			"harness", SESSION);
 
 		requireThat(result.deniedReads(), "deniedReads").isEmpty();
@@ -180,7 +196,7 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void defaultsToNoCatInstallation()
 	{
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch(),
 			"harness", SESSION);
 
 		requireThat(result.installCat(), "installCat").isFalse();
@@ -205,11 +221,13 @@ public final class HarnessRunnerOptionsTest
 		Path own = path("own-artifact");
 
 		HarnessRunnerOptions unnamed = HarnessRunnerOptions.parse(HarnessRunnerOptions.withArtifact(
-			new String[] {"--project", absolute("project")}, own), "harness", SESSION);
+			new String[] {"--project", absolute("project"), "--model", "model-a", "--effort", "effort-a"}, own),
+				"harness", SESSION);
 		HarnessRunnerOptions named = HarnessRunnerOptions.parse(HarnessRunnerOptions.withArtifact(
-			new String[] {"--artifact", absolute("artifact")}, own), "harness", SESSION);
+			launch(), own), "harness", SESSION);
 		HarnessRunnerOptions served = HarnessRunnerOptions.parseServe(HarnessRunnerOptions.withArtifact(
-			new String[] {"serve", "--project", absolute("project")}, own), "harness", SESSION);
+			new String[] {"serve", "--project", absolute("project"), "--model", "model-a", "--effort", "effort-a"},
+			own), "harness", SESSION);
 
 		requireThat(unnamed.artifact(), "unnamed").isEqualTo(own);
 		requireThat(unnamed.project(), "project").isEqualTo(path("project"));
@@ -223,7 +241,7 @@ public final class HarnessRunnerOptionsTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsIncompleteReceiptEvidence()
 	{
-		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--receipt", absolute("receipt")},
+		HarnessRunnerOptions.parse(launch("--receipt", absolute("receipt")),
 			"harness", SESSION);
 	}
 
@@ -235,10 +253,9 @@ public final class HarnessRunnerOptionsTest
 	public void parsesSessionTranscripts()
 	{
 		// Requirement: R-I7
-		HarnessRunnerOptions requested = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--keep-run", "--session-transcripts"}, "harness", SESSION);
-		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--keep-run"}, "harness", SESSION);
+		HarnessRunnerOptions requested = HarnessRunnerOptions.parse(launch("--keep-run", "--session-transcripts"),
+			"harness", SESSION);
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch("--keep-run"), "harness", SESSION);
 
 		requireThat(requested.sessionTranscripts(), "requested").isTrue();
 		requireThat(without.sessionTranscripts(), "without").isFalse();
@@ -254,7 +271,7 @@ public final class HarnessRunnerOptionsTest
 		// Requirement: R-I7
 		try
 		{
-			HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--session-transcripts"},
+			HarnessRunnerOptions.parse(launch("--session-transcripts"),
 				"harness", SESSION);
 			throw new AssertionError("A run that is not kept accepted --session-transcripts");
 		}
@@ -272,9 +289,8 @@ public final class HarnessRunnerOptionsTest
 	public void parsesSessionRequests()
 	{
 		// Requirement: R-I9, R-I11
-		HarnessRunnerOptions requested = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--session-requests", "3"}, "harness", SESSION);
-		HarnessRunnerOptions without = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+		HarnessRunnerOptions requested = HarnessRunnerOptions.parse(launch("--session-requests", "3"), "harness", SESSION);
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(),
 			"harness", SESSION);
 
 		requireThat(requested.sessionRequests(), "requested").isEqualTo(3);
@@ -290,7 +306,7 @@ public final class HarnessRunnerOptionsTest
 		// Requirement: R-I9
 		try
 		{
-			HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--session-requests", "-1"},
+			HarnessRunnerOptions.parse(launch("--session-requests", "-1"),
 				"harness", SESSION);
 			throw new AssertionError("A negative --session-requests was accepted");
 		}
@@ -308,10 +324,9 @@ public final class HarnessRunnerOptionsTest
 	public void parsesRequestDepth()
 	{
 		// Requirement: R-I11
-		HarnessRunnerOptions nested = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--session-requests", "2", "--request-depth", "1"}, "harness", SESSION);
-		HarnessRunnerOptions flat = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--session-requests", "2"}, "harness", SESSION);
+		HarnessRunnerOptions nested = HarnessRunnerOptions.parse(launch("--session-requests", "2",
+			"--request-depth", "1"), "harness", SESSION);
+		HarnessRunnerOptions flat = HarnessRunnerOptions.parse(launch("--session-requests", "2"), "harness", SESSION);
 
 		requireThat(nested.requestDepth(), "nested").isEqualTo(1);
 		requireThat(flat.requestDepth(), "flat").isEqualTo(0);
@@ -327,7 +342,7 @@ public final class HarnessRunnerOptionsTest
 		// Requirement: R-I11
 		try
 		{
-			HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--request-depth", "1"},
+			HarnessRunnerOptions.parse(launch("--request-depth", "1"),
 				"harness", SESSION);
 			throw new AssertionError("A --request-depth without --session-requests was accepted");
 		}
@@ -345,9 +360,9 @@ public final class HarnessRunnerOptionsTest
 	public void parsesInputFile()
 	{
 		// Requirement: R-I11
-		HarnessRunnerOptions file = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--input", absolute("turns.jsonl")}, "harness", SESSION);
-		HarnessRunnerOptions standard = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+		HarnessRunnerOptions file = HarnessRunnerOptions.parse(launch("--input", absolute("turns.jsonl")),
+			"harness", SESSION);
+		HarnessRunnerOptions standard = HarnessRunnerOptions.parse(launch(),
 			"harness", SESSION);
 
 		requireThat(file.input(), "file").isEqualTo(path("turns.jsonl"));
@@ -362,9 +377,8 @@ public final class HarnessRunnerOptionsTest
 	public void parsesCapacityWait()
 	{
 		// Requirement: R-I9
-		HarnessRunnerOptions bounded = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--capacity-wait", "600"}, "harness", SESSION);
-		HarnessRunnerOptions unbounded = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+		HarnessRunnerOptions bounded = HarnessRunnerOptions.parse(launch("--capacity-wait", "600"), "harness", SESSION);
+		HarnessRunnerOptions unbounded = HarnessRunnerOptions.parse(launch(),
 			"harness", SESSION);
 
 		requireThat(bounded.capacityWait(), "bounded").isEqualTo(Duration.ofSeconds(600));
@@ -380,7 +394,7 @@ public final class HarnessRunnerOptionsTest
 		// Requirement: R-I9
 		try
 		{
-			HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--capacity-wait", "0"},
+			HarnessRunnerOptions.parse(launch("--capacity-wait", "0"),
 				"harness", SESSION);
 			throw new AssertionError("A zero --capacity-wait was accepted");
 		}
@@ -396,7 +410,7 @@ public final class HarnessRunnerOptionsTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsUserRuleExclusionWithoutCat()
 	{
-		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--exclude-user-rules"}, "harness",
+		HarnessRunnerOptions.parse(launch("--exclude-user-rules"), "harness",
 			SESSION);
 	}
 
@@ -407,7 +421,7 @@ public final class HarnessRunnerOptionsTest
 	public void defaultsToCapacityCeiling()
 	{
 		// Requirement: R-E8
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")},
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch(),
 			"harness", SESSION);
 
 		requireThat(result.maximumConcurrency(), "maximumConcurrency").isEqualTo(16);
@@ -420,10 +434,8 @@ public final class HarnessRunnerOptionsTest
 	public void acceptsMaximumConcurrencyRange()
 	{
 		// Requirement: R-E8
-		HarnessRunnerOptions lowest = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--max-concurrency", "1"}, "harness", SESSION);
-		HarnessRunnerOptions highest = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--max-concurrency", "16"}, "harness", SESSION);
+		HarnessRunnerOptions lowest = HarnessRunnerOptions.parse(launch("--max-concurrency", "1"), "harness", SESSION);
+		HarnessRunnerOptions highest = HarnessRunnerOptions.parse(launch("--max-concurrency", "16"), "harness", SESSION);
 
 		requireThat(lowest.maximumConcurrency(), "lowest").isEqualTo(1);
 		requireThat(highest.maximumConcurrency(), "highest").isEqualTo(16);
@@ -436,7 +448,7 @@ public final class HarnessRunnerOptionsTest
 	public void rejectsMaximumConcurrencyBelowRange()
 	{
 		// Requirement: R-E8
-		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--max-concurrency", "0"}, "harness",
+		HarnessRunnerOptions.parse(launch("--max-concurrency", "0"), "harness",
 			SESSION);
 	}
 
@@ -447,7 +459,7 @@ public final class HarnessRunnerOptionsTest
 	public void rejectsMaximumConcurrencyAboveRange()
 	{
 		// Requirement: R-E8
-		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--max-concurrency", "17"}, "harness",
+		HarnessRunnerOptions.parse(launch("--max-concurrency", "17"), "harness",
 			SESSION);
 	}
 
@@ -469,8 +481,7 @@ public final class HarnessRunnerOptionsTest
 				"HOME", project.toString(), "USERPROFILE", project.toString()), List.of(HARNESS_A, HARNESS_B),
 					Yielding.waiting()))
 			{
-				HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact",
-					absolute("artifact")}, "harness", HarnessTemporaryRoot.from(scope));
+				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch(), "harness", HarnessTemporaryRoot.from(scope));
 
 				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/sessions").resolve(SESSION_ID).
 					resolve("temp");
@@ -496,8 +507,8 @@ public final class HarnessRunnerOptionsTest
 			try (ToolScope scope = ToolScope.forSession(project, Map.of(HARNESS_B.sessionVariable(), SESSION_ID,
 				"HOME", project.toString()), List.of(HARNESS_A, HARNESS_B), Yielding.waiting()))
 			{
-				HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact",
-					absolute("artifact"), "--run-root", absolute("runs")}, "harness", HarnessTemporaryRoot.from(scope));
+				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--run-root", absolute("runs")),
+					"harness", HarnessTemporaryRoot.from(scope));
 
 				requireThat(result.runRoot(), "runRoot").isEqualTo(path("runs"));
 				requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
@@ -524,7 +535,7 @@ public final class HarnessRunnerOptionsTest
 				HarnessTemporaryRoot temporaryRoot = HarnessTemporaryRoot.from(scope);
 				try
 				{
-					HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact")}, "harness",
+					HarnessRunnerOptions.parse(launch(), "harness",
 						temporaryRoot);
 					throw new AssertionError("A command without a session or --run-root chose a run root");
 				}
@@ -534,8 +545,8 @@ public final class HarnessRunnerOptionsTest
 						contains(HARNESS_B.sessionVariable());
 				}
 
-				HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact",
-					absolute("artifact"), "--run-root", absolute("runs")}, "harness", temporaryRoot);
+				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--run-root", absolute("runs")),
+					"harness", temporaryRoot);
 
 				requireThat(result.runRoot(), "runRoot").isEqualTo(path("runs"));
 				requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();

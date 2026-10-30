@@ -37,7 +37,8 @@ public final class HarnessOneShotOptionsTest
 	public void defaultsToNoCatInstallation()
 	{
 		HarnessOneShotOptions result = HarnessOneShotOptions.parse(new String[] {"run", "--artifact", "/artifact",
-			"--prompt-file", "/prompt", "--output", "/output"}, "harness", SESSION);
+			"--prompt-file", "/prompt", "--output", "/output", "--model", "model-a", "--effort", "effort-a"}, "harness",
+			SESSION);
 
 		requireThat(result.installCat(), "installCat").isFalse();
 	}
@@ -49,8 +50,8 @@ public final class HarnessOneShotOptionsTest
 	public void parsesCatInstallation()
 	{
 		HarnessOneShotOptions result = HarnessOneShotOptions.parse(new String[] {"run", "--artifact", "/artifact",
-			"--prompt-file", "/prompt", "--output", "/output", "--install-cat"}, "harness",
-			SESSION);
+			"--prompt-file", "/prompt", "--output", "/output", "--model", "model-a", "--effort", "effort-a",
+			"--install-cat"}, "harness", SESSION);
 
 		requireThat(result.installCat(), "installCat").isTrue();
 	}
@@ -70,8 +71,8 @@ public final class HarnessOneShotOptionsTest
 			Files.write(prompt, new byte[HarnessOneShotOptionsSecrets.getHarnessOneShotOptionsAccess().
 				maximumPromptBytes() + 1]);
 			HarnessOneShotOptions options = HarnessOneShotOptions.parse(new String[] {"run", "--artifact", "/artifact",
-				"--prompt-file", prompt.toString(), "--output", "/output"}, "harness",
-				SESSION);
+				"--prompt-file", prompt.toString(), "--output", "/output", "--model", "model-a", "--effort",
+				"effort-a"}, "harness", SESSION);
 
 			options.prompt();
 		}

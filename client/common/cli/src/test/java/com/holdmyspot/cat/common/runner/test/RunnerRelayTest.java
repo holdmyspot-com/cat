@@ -108,7 +108,8 @@ public final class RunnerRelayTest
 			Path requests = Files.createDirectories(root.resolve("run/requests"));
 			Path project = Files.createDirectory(root.resolve("project"));
 
-			int status = RunnerRelay.relay("harness-b", new String[]{"--project", project.toString()},
+			int status = RunnerRelay.relay("harness-b", new String[]{"--project", project.toString(), "--model",
+				"model-b", "--effort", "effort-b"},
 				Map.of(RunnerRelay.REQUESTS_VARIABLE, requests.toString()), () ->
 				{
 					throw new AssertionError("No artifact is selected");

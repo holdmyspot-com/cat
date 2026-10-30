@@ -246,7 +246,7 @@ public final class CodexJudgeEvidenceAccessTest
 		});
 
 		SessionResult result = sessions.start(new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, judgeSource,
-			List.of("judge"), List.of(effects, trialArtifacts), LIMIT, TrialProfile.HARNESS_DEFAULT)).
+			List.of("judge"), List.of(effects, trialArtifacts), LIMIT, new TrialProfile("gpt-6-luna", "low"))).
 			completion().toCompletableFuture().get(60, TimeUnit.SECONDS);
 
 		if (sandboxes.isEmpty())

@@ -178,7 +178,8 @@ public final class SessionRequestBroker implements Closeable
 	 * @param file      the request archive
 	 * @param directory the broker-owned response directory
 	 * @return the validated inputs, with prompt bytes already captured
-	 * @throws IOException if the document or any input is invalid
+	 * @throws IOException              if the document or any input is invalid
+	 * @throws IllegalArgumentException if the request names no model or no effort
 	 */
 	private Request read(Path file, Path directory) throws IOException
 	{
@@ -215,8 +216,9 @@ public final class SessionRequestBroker implements Closeable
 		List<String> prompts = new ArrayList<>();
 		for (Path prompt : paths(value, inputs, "prompts", true))
 			prompts.add(Files.readString(prompt, StandardCharsets.UTF_8));
-		String model = optionalText(value, "model");
-		String effort = optionalText(value, "effort");
+		String model = profileText(value, "model");
+		String effort = profileText(value, "effort");
+		HarnessRunnerOptions.requireProfile(harness, model, effort);
 		for (String flag : List.of("session_transcripts", "install_cat"))
 		{
 			if (value.has(flag) && !value.path(flag).isBoolean())
@@ -242,14 +244,14 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Reads an optional runner profile field. Empty values preserve the runner's default profile.
+	 * Reads a runner profile field, which the caller refuses when it is absent or blank.
 	 *
 	 * @param value the document
 	 * @param field the field name
 	 * @return its text, or empty when absent
 	 * @throws IOException if present with the wrong type
 	 */
-	private static String optionalText(JsonNode value, String field) throws IOException
+	private static String profileText(JsonNode value, String field) throws IOException
 	{
 		if (!value.has(field))
 			return "";
@@ -316,10 +318,7 @@ public final class SessionRequestBroker implements Closeable
 		arguments.addAll(List.of("--deny-read", options.runRoot().toString()));
 		for (Path plugin : plugins)
 			arguments.addAll(List.of("--plugin", plugin.toString()));
-		if (!request.model().isBlank())
-			arguments.addAll(List.of("--model", request.model()));
-		if (!request.effort().isBlank())
-			arguments.addAll(List.of("--effort", request.effort()));
+		arguments.addAll(List.of("--model", request.model(), "--effort", request.effort()));
 		if (request.sessionTranscripts())
 			arguments.add("--session-transcripts");
 		if (request.installCat())
@@ -646,8 +645,8 @@ public final class SessionRequestBroker implements Closeable
 	 * @param project the validated source project
 	 * @param plugins the validated source plugins
 	 * @param prompts the captured prompts in turn order
-	 * @param model the selected model, empty for the runner default
-	 * @param effort the selected effort, empty for the runner default
+	 * @param model the selected model
+	 * @param effort the selected effort
 	 * @param sessionTranscripts indicates whether native transcripts are requested
 	 * @param installCat indicates whether CAT is installed in the requested session's home
 	 */

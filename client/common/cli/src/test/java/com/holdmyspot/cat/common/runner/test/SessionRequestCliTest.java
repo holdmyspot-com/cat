@@ -24,7 +24,9 @@ import org.testng.annotations.Test;
 import org.testng.annotations.DataProvider;
 import java.nio.charset.StandardCharsets;
 import java.util.stream.Stream;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -73,7 +75,7 @@ public final class SessionRequestCliTest
 				StringWriter output = new StringWriter();
 				int status = SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
 					"--prompt", prompt.toString(), "--prompt", second.toString(), "--plugin", plugin.toString(),
-					"--install-cat"}, requests, time,
+					"--model", "model-a", "--effort", "effort-a", "--install-cat"}, requests, time,
 					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(output));
 				requireThat(status, "status").isEqualTo(3);
 				requireThat(output.toString(), "output").contains("--await");
@@ -97,6 +99,8 @@ public final class SessionRequestCliTest
 					requireThat(request.path("format_version").intValue(), "version").isEqualTo(2);
 					requireThat(request.path("prompts").get(1).asString(), "promptEntry").isEqualTo("prompts/1");
 					requireThat(request.path("install_cat").asBoolean(false), "installCat").isTrue();
+					requireThat(request.path("model").asString(), "model").isEqualTo("model-a");
+					requireThat(request.path("effort").asString(), "effort").isEqualTo("effort-a");
 					String id = file.getFileName().toString().replace(".tar", "");
 					Path response = Files.createDirectories(root.resolve("responses").resolve(id)).resolve("response.json");
 					Files.writeString(response, "{\"status\":\"completed\"}");
@@ -144,7 +148,8 @@ public final class SessionRequestCliTest
 				Path prompt = Files.writeString(root.resolve("prompt"), "prompt bytes");
 				ManualClock time = new ManualClock(Instant.EPOCH);
 				SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
-					"--prompt", prompt.toString()}, requests, nullDevice, RequestLimits.DEFAULT, time,
+					"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"}, requests, nullDevice,
+					RequestLimits.DEFAULT, time,
 					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
 				Map<String, String> entries = new HashMap<>();
 				try (Stream<Path> files = Files.list(requests);
@@ -256,7 +261,8 @@ public final class SessionRequestCliTest
 				{
 					// The null device is the one a sandbox mounts over each file that the session may not read
 					SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
-						"--prompt", prompt.toString()}, requests, Path.of("/dev/null"), limits,
+						"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"}, requests,
+						Path.of("/dev/null"), limits,
 						new ManualClock(Instant.EPOCH), Thread::yield, new PrintWriter(new StringWriter()));
 				}
 				finally
@@ -269,6 +275,64 @@ public final class SessionRequestCliTest
 			}
 		}
 	}
+
+	/**
+	 * Returns requests that lack a model, an effort or both, each with the start of the refusal.
+	 *
+	 * @return the profile options of each request and the refusal's expected start
+	 */
+	@DataProvider
+	public Object[][] incompleteProfiles()
+	{
+		return new Object[][]{{List.of("--effort", "low"), "Missing --model."},
+			{List.of("--model", "gpt-6-luna"), "Missing --effort."},
+			{List.of(), "Missing --model and --effort."}};
+	}
+
+	/**
+	 * Verifies that a session request without {@code --model} or {@code --effort} is refused with a message that names
+	 * the missing option and where to list the supported values, and publishes no request.
+	 *
+	 * @param profile  the request's profile options
+	 * @param expected the start of the refusal
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "incompleteProfiles")
+	public void refusesRequestWithoutProfile(List<String> profile, String expected) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-I9
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "profile-")).toRealPath();
+				Path requests = Files.createDirectory(root.resolve("requests"));
+				Path project = Files.createDirectory(root.resolve("project"));
+				Path prompt = Files.writeString(root.resolve("prompt"), "prompt bytes");
+				List<String> arguments = new ArrayList<>(List.of("--harness", "codex", "--project", project.toString(),
+					"--prompt", prompt.toString()));
+				arguments.addAll(profile);
+				try
+				{
+					SessionRequestCli.execute(arguments.toArray(String[]::new), requests, new ManualClock(Instant.EPOCH),
+						() ->
+						{
+							throw new AssertionError("The request was published");
+						}, new PrintWriter(new StringWriter()));
+					throw new AssertionError("The request was not refused");
+				}
+				catch (IllegalArgumentException e)
+				{
+					requireThat(e.getMessage(), "message").startsWith(expected).contains("`codex debug models`");
+				}
+				try (Stream<Path> files = Files.list(requests))
+				{
+					requireThat(files.count(), "requests").isEqualTo(0);
+				}
+			}
+		}
+	}
+
 	/**
 	 * Verifies that awaiting an existing request rejects submission options.
 	 *
