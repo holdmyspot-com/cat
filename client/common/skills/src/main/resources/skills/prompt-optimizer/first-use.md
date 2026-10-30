@@ -55,8 +55,12 @@ launcher field.
 		}
 		```
 
-		With no chosen plugin, the list is empty. Show the user the file and tell the user to commit it with the
-		target's prompt tests, then run `start` again with the same arguments.
+		With no chosen plugin, the list is empty. Show the user the file.
+	- Commit that file alone, because `start` refuses a project with uncommitted changes: run `git add -- <file>`,
+		then `git commit -m 'Add the prompt test configuration of <target>' -- <file>`, with the configuration file's
+		path for `<file>`. Naming the file after `--` commits only it, so anything else the user staged stays staged and
+		uncommitted. Tell the user that you committed the file, naming the commit's hash, then run `start` again with
+		the same arguments. If `git` refuses the commit, show its output and stop.
 2. **Confirm the contract.** While the result holds a `proposal`, show the user the `proposal` text in full; it holds
 	the contract, the warnings and each certification scope choice. When the result also holds a `message`, show the
 	`message` after the proposal. If the result holds a `message` but no `proposal`, show the `message`.
