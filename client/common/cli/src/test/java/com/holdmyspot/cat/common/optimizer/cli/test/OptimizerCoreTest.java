@@ -1643,6 +1643,10 @@ public final class OptimizerCoreTest
 	 * Verifies that the loader configuration that a started campaign records includes the user's settings that decide
 	 * which prompt files load: two campaigns whose projects are alike record different loader configurations when only
 	 * one user sets them.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts two complete campaigns, each with
+	 * its guard pilot trials, through the public command; loading and compiling the classes of those commands, which the
+	 * first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void startRecordsUserLoaderSettings() throws IOException, CommandRefusedException, InterruptedException
@@ -2343,6 +2347,10 @@ public final class OptimizerCoreTest
 	 * combines the feedback into a revision, and confirming that revision creates a new lineage. The setup also creates
 	 * the stored proposal and fork that revision and confirmation read; a campaign record alone cannot exercise them.
 	 * Sessions use scripted results and forks hold captured inventories; the store persists each command's state.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms, chooses twice and
+	 * confirms again through the public commands, each of which persists the campaign; loading and compiling the classes
+	 * of those commands, which the first test in a JVM to use them does, takes most of that time.
 	 *
 	 * @throws IOException if the owned repository or store fails
 	 * @throws CommandRefusedException if an authorized command is refused
@@ -2381,6 +2389,10 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that feedback supplied during a conflict pause derives a proposal and clears the pause.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms and revises through the
+	 * public commands, each of which derives or persists a proposal; loading and compiling the classes of those commands,
+	 * which the first test in a JVM to use them does, takes most of that time.
 	 *
 	 * @throws IOException if the owned repository or store fails
 	 * @throws CommandRefusedException if an authorized command is refused
@@ -3312,6 +3324,10 @@ public final class OptimizerCoreTest
 	 * Verifies that the proposal shows a derived source that loads from a trial plugin's base copy by the plugin's
 	 * name and its path inside the plugin, while the stored proposal keeps its absolute path, which a resumed campaign
 	 * reads back and shows the same way.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts a campaign with its guard pilot
+	 * trials through the public command, then starts it again to show the stored proposal; loading and compiling the
+	 * classes of those commands, which the first test in a JVM to use them does, takes most of that time.
 	 *
 	 * @throws CommandRefusedException if a command is refused
 	 * @throws IOException if a file cannot be read or written
@@ -3517,6 +3533,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code revise} reruns the guard pilot of the prompt tests that the revision changed, and only
 	 * those.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts a campaign with its guard pilot
+	 * trials and revises it through the public commands, which reruns the changed prompt test's pilot trials; loading and
+	 * compiling the classes of those commands, which the first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void reviseRerunsChangedTestPilot() throws Exception
@@ -3552,6 +3572,10 @@ public final class OptimizerCoreTest
 	 * confirmation reuses every pilot because the control trials see the same files.
 	 * The proposal, confirmation and unchanged revision are required to observe both the pilot's input files and
 	 * reuse across a revision. Scripted sessions supply the trials without launching a harness.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts a campaign with its guard pilot
+	 * trials, confirms it and revises it through the public commands; loading and compiling the classes of those
+	 * commands, which the first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void pilotLeavesOutIgnoredFiles() throws Exception
@@ -3607,6 +3631,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that a derived source that Git ignores and that a revision before confirmation no longer lists leaves
 	 * the fork, so that the confirmed incumbent does not hold it.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts, revises and confirms through the
+	 * public commands, then opens the fork and reads the incumbent's overlay; loading and compiling the classes of those
+	 * commands, which the first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void revisionLeavesOutDroppedDerivedSource() throws Exception
@@ -3684,6 +3712,11 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Status in a fresh command scope combines reported trial and judge usage across slices.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms and runs two slices of
+	 * trial and judge sessions through the public commands, and reads the status in a fresh command scope after each;
+	 * loading and compiling the classes of those commands, which the first test in a JVM to use them does, takes most of
+	 * that time.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 * @throws CommandRefusedException if a command is refused
@@ -3737,6 +3770,11 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Every derivation contributes reported usage, including invalid proposals and revisions.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it derives proposals in two starts and a
+	 * revision through the public commands, with two invalid proposals, and reads the status in a fresh command scope;
+	 * loading and compiling the classes of those commands, which the first test in a JVM to use them does, takes most of
+	 * that time.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 * @throws CommandRefusedException if a command is refused
@@ -3855,6 +3893,10 @@ public final class OptimizerCoreTest
 	 * Verifies that {@code run} answers a request for a test revision with a contract author session that receives the
 	 * test and the prompt author's fault, and that a revised test starts a new lineage under the revised contract
 	 * without the user's confirmation.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms and runs through the
+	 * public commands, and the run starts a contract author session and a new lineage; loading and compiling the classes
+	 * of those commands, which the first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void runRevisesTestWithDefect() throws Exception
@@ -3905,6 +3947,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that a test revision that finds the test sound records the report under the current lineage and keeps
 	 * the confirmed contract.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms and runs through the
+	 * public commands, and the run starts a contract author session; loading and compiling the classes of those commands,
+	 * which the first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void runRecordsSoundTest() throws Exception
@@ -3942,6 +3988,10 @@ public final class OptimizerCoreTest
 	 * One confirmed proposal, one blocked test revision and the user's choice are needed to check both the persisted
 	 * pause and the derived proposal. Public run and choice handling restore the stored proposal and open its fork;
 	 * the initial creation supplies those artifacts. Sessions return scripted replies.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms, runs and chooses
+	 * through the public commands, two of which derive a proposal; loading and compiling the classes of those commands,
+	 * which the first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void proposedRequirementChangeRevisesContract() throws Exception
@@ -3987,6 +4037,10 @@ public final class OptimizerCoreTest
 	 * One confirmed proposal and one pending test revision are needed to check that public run retains the lineage and
 	 * pending request after invalid scripted replies. Run restores the stored proposal and opens its fork, so the
 	 * initial creation supplies artifacts that a campaign record alone cannot provide.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms and runs through the
+	 * public commands, and the run starts a contract author session that is corrected once; loading and compiling the
+	 * classes of those commands, which the first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void refusesRevisionThatChangesRequirements() throws Exception
@@ -4034,6 +4088,10 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that {@code run} executes one slice with scripted trial and judge sessions and reports the status.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms and runs one slice of
+	 * trial and judge sessions through the public commands; loading and compiling the classes of those commands, which
+	 * the first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void runExecutesOneSlice() throws Exception
@@ -4347,6 +4405,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code status} of a target that has a campaign reports the campaign, even when a certification
 	 * record exists too.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it writes a certification record, starts a
+	 * campaign with its guard pilot trials and reads its status twice through the public commands; loading and compiling
+	 * the classes of those commands, which the first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void statusOfTargetReportsItsCampaign() throws Exception
@@ -4573,6 +4635,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that a command that removes its campaign's files says so in its summary: retaining the incumbent after
 	 * a certified attempt ends the campaign and removes its files.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts a campaign through the public
+	 * command, then retains the incumbent, which delivers its prompt tests and removes the campaign's files; loading and
+	 * compiling the classes of those commands, which the first test in a JVM to use them does, takes most of that time.
 	 */
 	@Test
 	public void removalIsReported() throws Exception
@@ -4655,6 +4721,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code choose use_authorized_source} answers a pending warning about an edit to an external file,
 	 * which is read-only, and records the warning as answered so that a later report of it asks the user nothing.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts and confirms a campaign, then
+	 * answers a warning and a later report of it through the public commands; loading and compiling the classes of those
+	 * commands, which the first test in a JVM to use them does, takes most of that time.
 	 *
 	 * @throws Exception if the owned repository or store fails
 	 */
@@ -4770,6 +4840,11 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that conflicts refuse confirmation without changing the campaign, and feedback can resolve them.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts a campaign, has its confirmation
+	 * refused, revises it and confirms it through the public commands, each of which derives or persists a proposal;
+	 * loading and compiling the classes of those commands, which the first test in a JVM to use them does, takes most of
+	 * that time.
 	 *
 	 * @throws IOException if the owned repository cannot be read or written
 	 * @throws CommandRefusedException if a command other than the expected refusal is refused

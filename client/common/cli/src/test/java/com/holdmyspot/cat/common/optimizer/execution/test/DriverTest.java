@@ -6106,6 +6106,11 @@ public final class DriverTest
 	 * file. The warning offers no choice that edits the file and becomes an {@code awaiting_user} decision that
 	 * survives a restart; the user continues within the confirmed authority; the in-project edit is promoted, certified
 	 * and delivered, the external file stays unchanged, and delivery checks it as a read-only participant.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it runs a campaign through a prompt author
+	 * attempt, a restart, promotion, certification and delivery, persisting and validating the campaign at each step;
+	 * loading and compiling the driver's classes, which the first test in a JVM to use them does, takes most of that
+	 * time.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
