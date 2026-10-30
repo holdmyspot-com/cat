@@ -2462,6 +2462,14 @@ uninstalling CAT for either harness removes the directory (user rulings, 2026-10
 use: each check for a copy deletes the copies, of any version, harness and platform, that no run has used for more than
 three calendar months (user ruling, 2026-10-23).
 
+**Runner profile (user ruling, 2026-10-30):** a run requires `--model` and `--effort`, in both runner launchers, outside
+a run and inside one. A launch that lacks either is refused before it takes a capacity slot or starts a harness, and the
+refusal names each missing option and where to list the supported values: `claude --help` for Claude and
+`codex debug models` for Codex. Neither CAT nor the runner supplies a default, so a run never takes the harness's
+configured model or effort without the caller choosing it. When the user names no model or effort, the runner skills
+have the agent ask the user which to use, naming the supported values when the harness lists them, and never choose
+one itself. The optimizer passes every session's profile (D119).
+
 **Remote-runner testing (user rulings, 2026-10-27):** the plugin's common rules include
 `rules/include/common/remote-runner-testing.md`, which the default rules load lazily, beside the CI-debugging route,
 when an agent runs a CI or hosted workflow on a remote runner to test changed commands that the workflow runs there. It
@@ -2507,8 +2515,9 @@ commands, the runner adds no such grant.
 **Requested sessions (user rulings, 2026-10-23):** a caller that passes `--session-requests <count>` lets the session
 request up to that many sessions over the run; the default, `0`, allows none, and the optimizer allows none in its
 trials. The session requests one by running the `request-session` launcher that the runner names in its environment,
-with the harness, a project directory, one or more prompt files and, optionally, plugins, a model, an effort and
-`--session-transcripts`. Every input and result passes as a file path, never as content: the launcher, which runs as
+with the harness, a project directory, one or more prompt files, a model and an effort and, optionally, plugins and
+`--session-transcripts`; the launcher refuses a request without a model or an effort, and the runner refuses such a
+request before it starts anything (D119). Every input and result passes as a file path, never as content: the launcher, which runs as
 one of the session's own commands and therefore inside its sandbox, packs the request and its inputs into one archive
 file in the run's `requests` directory, the one directory outside its project and home that the session may write. The runner answers in the run's `responses` directory, which the session may read but not write, so a link
 that the session plants cannot redirect the runner's writes: a response file that names copies, beside it, of the
@@ -2538,7 +2547,8 @@ files; it waits for the response, writes the requested session's transcript to `
 receipt to `--receipt`, and exits `0` when the session completed, `75` when no capacity was free, and `1` otherwise. The
 parent runner chooses the run root, artifact, harness executable, denied reads and every limit, so the launcher refuses
 the options that would choose them and accepts only the project, plugins, model, effort, `--install-cat`,
-`--session-transcripts`, input, output and receipt. The session's commands stay sandboxed and hold no login; only the
+`--session-transcripts`, input, output and receipt. It requires the model and the effort, as outside a run, and refuses
+a launch without either before it packs a request (D119). The session's commands stay sandboxed and hold no login; only the
 user's top-level session runs a launcher outside its sandbox, through an exception that the user configures for
 exactly the two installed launchers (D107).
 
@@ -2858,6 +2868,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D116 | A trial session's first command starts as quickly as its later ones: the delay that CAT's session environment adds before a command runs is found and removed, or bounded by preparing that environment before the agent's turn starts (user request, 2026-10-29). | In E5, 222 of 935 first commands of Codex trial sessions took 10 seconds or more (one child's `cat docs/facts.md` took 17.2 seconds; its sibling's took 2.5) against 7 of 664 later commands, under up to 8 concurrent trials. A delay that only first commands meet points at per-session setup, such as the command sandbox or a login shell, rather than at the command. It turned a correct prompt into an 11% failure rate in the cell that uses child agents. | Until the cause is known, the fix may change the session environment, which raises its version, so a campaign resumed on the new build reports a measurement change. |
 | D117 | Have the skill commit the prompt test configuration that it writes, alone and with a short message, tell the user the commit, and run `start` again; CAT still never commits delivered changes (user ruling, 2026-10-30). | The design had the skill write the file and run `start` again while the user committed it. A live Claude run of the skill on 2026-10-30 showed that the second `start` is refused, because the new file is untracked and a new campaign needs a clean base, so the user had to stop and commit by hand. Exempting the file from the clean-base check would let every later campaign read a configuration that no commit holds, which another clone or worktree of the project lacks. Leaving the commit to the user keeps the history in the user's hands but stops every first campaign of a target. | The skill makes a commit on the user's current branch; a user who wants it elsewhere moves or amends it. A pathspec-limited commit leaves whatever else the user staged uncommitted. A commit hook that refuses the commit stops the skill before `start` runs again. |
 | D118 | Treat an untracked or ignored entry that is a character device as absent: the clean-base check does not count it, the fork neither copies nor records it, and no inventory holds it; an empty regular file still counts (user ruling, 2026-10-30). | The same 2026-10-30 run showed that inside a sandboxed Claude Code session, Claude Code lays a `/dev/null` character device over each path it protects (`.bashrc`, `.gitconfig`, `.mcp.json`, `.github`, `.idea`, `.vscode`, `scripts` and more), and Git lists them as untracked, so `start` refused to fork any project there. The session cannot remove them. Ignoring those names would hide a real file the user forgot to commit, and the list changes with Claude Code's versions. Ignoring every special file would also hide a named pipe or socket that the user made. Ignoring empty regular files would hide real ones on the host. | A character device that the user makes in the project is invisible to the clean-base check and to every inventory. Trials never received one, since copying already skipped it. |
+| D119 | A run requires `--model` and `--effort` in both runner launchers, outside a run and in a requested session; a launch without either is refused before any capacity slot or harness, naming the missing option and how to list the supported values, and the runner skills ask the user rather than choose (user ruling, 2026-10-30: "make model and effort mandatory"). | Asked why a Claude run without `--model` ran on the user's Claude Code default (both live runs of 2026-10-30 ran on `claude-opus-5-5`) while the `claude-runner` skill and `claude-runner --resolve-profile` named CAT's initial profile, `haiku` at `medium`, the user chose to make both options mandatory. CAT's default profile: a CAT-chosen model silently decides cost and compliance for the user, and goes stale as the harness's models change; the skill and the runner already disagreed about it. The harness's configured default: the run's profile then depends on the user's harness configuration, which the caller does not see, and the evidence cannot say which profile a run was asked for. | Every caller names both options; a script or habit that omitted them now fails until it names them. The skills ask the user once per run whose profile the user did not name. `claude-runner --resolve-profile` no longer reports a default profile. |
 
 ## 14. Acceptance evidence
 
