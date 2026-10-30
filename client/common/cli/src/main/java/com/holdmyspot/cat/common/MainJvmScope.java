@@ -11,25 +11,28 @@ import java.util.Map;
 public final class MainJvmScope extends AbstractJvmScope
 {
 	/**
-	 * Creates an open process scope. Temporary files use {@code TMPDIR}, then {@code TEMP}, then
-	 * {@code java.io.tmpdir}; empty environment values are skipped.
+	 * Creates an open process scope. Temporary files use the directory that
+	 * {@link #processTemporaryDirectory(Map)} returns.
 	 *
 	 * @param environment the process environment
-	 * @throws NullPointerException if {@code environment} is null
+	 * @param waiting how the process waits between the attempts of a retried operation; an application entry point
+	 *   supplies {@code Pause::sleeping}
+	 * @throws NullPointerException if any argument is null
 	 */
-	public MainJvmScope(Map<String, String> environment)
+	public MainJvmScope(Map<String, String> environment, Waiting waiting)
 	{
-		super(resolveDirectory(environment), ExecutableFiles.sleeping());
+		super(processTemporaryDirectory(environment), waiting);
 	}
 
 	/**
-	 * Resolves the process temporary directory.
+	 * Resolves the process temporary directory: {@code TMPDIR}, then {@code TEMP}, then {@code java.io.tmpdir}; empty
+	 * environment values are skipped.
 	 *
 	 * @param environment the process environment
-	 * @return the configured directory
+	 * @return the configured directory, which need not exist and need not be absolute
 	 * @throws NullPointerException if {@code environment} is null
 	 */
-	private static Path resolveDirectory(Map<String, String> environment)
+	public static Path processTemporaryDirectory(Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
 		for (String name : new String[]{"TMPDIR", "TEMP"})

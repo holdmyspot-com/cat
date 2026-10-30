@@ -22,6 +22,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Verifies that {@code run-part} saves a command's output and exit status, then prints the output's first part the way
@@ -422,7 +423,8 @@ public final class CodexRunPartTest
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		int status = CodexRunPart.run(new String[0], new ByteArrayInputStream(command.getBytes(UTF_8)), terminal,
-			workingDirectory, SHELL, readPart, overrides, environment, output, new PrintStream(error, true, UTF_8));
+			workingDirectory, SHELL, readPart, overrides, environment, output, new PrintStream(error, true, UTF_8),
+				Yielding.waiting());
 		return new Call(output.toString(UTF_8), error.toString(UTF_8), status);
 	}
 

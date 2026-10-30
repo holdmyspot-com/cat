@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.history.SessionHistory;
 import com.holdmyspot.cat.common.secrets.SessionHistorySecrets;
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,7 +31,8 @@ public final class SessionHistoryTest
 	@Test
 	public void searchesJsonlWithContext() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path transcript = cleanup.add(Files.createTempDirectory("cat-session-history-")).resolve("session.jsonl");
 			Files.writeString(transcript, """
@@ -39,7 +41,7 @@ public final class SessionHistoryTest
 				{"type":"message","text":"after"}
 				""");
 
-			String result = SessionHistorySecrets.getSessionHistoryAccess().search(transcript, "needle", 1);
+			String result = SessionHistorySecrets.getSessionHistoryAccess().search(scope, transcript, "needle", 1);
 
 			requireThat(result, "result").contains("before").contains("needle").contains("after");
 		}
@@ -53,7 +55,8 @@ public final class SessionHistoryTest
 	@Test
 	public void summarizesBoundedEventMetadata() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path transcript = cleanup.add(Files.createTempDirectory("cat-session-history-")).resolve("session.jsonl");
 			Files.writeString(transcript, """
@@ -63,7 +66,7 @@ public final class SessionHistoryTest
 				""");
 
 			String result = SessionHistorySecrets.getSessionHistoryAccess().
-				execute(new String[]{"summary", transcript.toString(), "--since",
+				execute(scope, new String[]{"summary", transcript.toString(), "--since",
 				"2026-08-18T10:00:30Z", "--type", "message", "--limit", "1"});
 
 			requireThat(result, "result").contains("records=1").contains("types=message:1").

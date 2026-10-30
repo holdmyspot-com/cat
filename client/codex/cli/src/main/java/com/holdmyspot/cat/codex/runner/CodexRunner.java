@@ -7,6 +7,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
 import com.holdmyspot.cat.common.runner.HarnessCredentials;
@@ -66,11 +67,18 @@ public final class CodexRunner
 	 * The system's shared temporary directory, which the app-server replaces with a private one.
 	 */
 	private static final Path TMP = Path.of("/tmp");
+	private final Waiting waiting;
+
 	/**
 	 * Creates a Codex artifact runner. Each run obtains executable-file services from its owned scope.
+	 *
+	 * @param waiting how each run waits between the attempts of a retried operation
+	 * @throws NullPointerException if {@code waiting} is null
 	 */
-	public CodexRunner()
+	public CodexRunner(Waiting waiting)
 	{
+		requireThat(waiting, "waiting").isNotNull();
+		this.waiting = waiting;
 	}
 
 	/**
@@ -183,7 +191,7 @@ public final class CodexRunner
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
 		HarnessRun run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
-		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment);
+		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting);
 		ExecutableFiles executables = scope.executableFiles();
 		try
 		{

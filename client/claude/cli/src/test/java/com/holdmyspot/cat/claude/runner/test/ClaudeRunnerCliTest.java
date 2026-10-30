@@ -63,9 +63,7 @@ public final class ClaudeRunnerCliTest
 					"5"};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
-					ClaudeRunnerCli.serve(jvm.fileLocks(),
-						args, new StringReader(""), new StringWriter(), Map.of(),
-						_ -> capacity);
+					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity);
 					throw new AssertionError("The bridge did not give up waiting for capacity");
 				}
 				catch (HarnessCapacityWaitExpiredException _)

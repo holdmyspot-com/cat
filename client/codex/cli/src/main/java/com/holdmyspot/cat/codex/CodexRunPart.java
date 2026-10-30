@@ -8,6 +8,8 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.MainJvmScope;
+import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.Waiting;
 import java.io.Console;
 import java.io.File;
 import java.io.IOException;
@@ -82,7 +84,7 @@ public final class CodexRunPart
 		CommandShell shell = CommandShell.current();
 		int status = run(args, System.in, terminal, Path.of("").toAbsolutePath(), shell,
 			CodexReadPart.launcher(shell.launcher("read-part")), Path.of(System.getProperty("java.home"), OVERRIDES),
-			Platform.current().environment(System.getenv()), System.out, System.err);
+			Platform.current().environment(System.getenv()), System.out, System.err, Pause::sleeping);
 		System.out.flush();
 		System.exit(status);
 	}
@@ -109,12 +111,14 @@ public final class CodexRunPart
 	 *   (see {@link RipgrepOutputLimit})
 	 * @param output receives the part
 	 * @param error receives diagnostics
+	 * @param waiting how the command waits between the attempts of a retried operation
 	 * @return the exit status of {@code read-part}, 1 if the command cannot be run, or 2 for a usage error or a
 	 *   {@code CAT_RG_LINE_LIMIT} that is not a whole number
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static int run(String[] args, InputStream input, boolean terminal, Path workingDirectory, CommandShell shell,
-		Path readPart, Path overrides, Map<String, String> environment, OutputStream output, PrintStream error)
+		Path readPart, Path overrides, Map<String, String> environment, OutputStream output, PrintStream error,
+		Waiting waiting)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
@@ -125,6 +129,7 @@ public final class CodexRunPart
 		requireThat(environment, "environment").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(error, "error").isNotNull();
+		requireThat(waiting, "waiting").isNotNull();
 		try
 		{
 			String command = "";
@@ -154,7 +159,7 @@ public final class CodexRunPart
 					command = search.get();
 				}
 			}
-			Path saved = Files.createTempDirectory(outputFolder(workingDirectory, environment), FOLDER_PREFIX).
+			Path saved = Files.createTempDirectory(outputFolder(workingDirectory, environment, waiting), FOLDER_PREFIX).
 				resolve(SAVED_OUTPUT);
 			ProcessBuilder builder = new ProcessBuilder(shell.processArguments(command, environment)).
 				directory(workingDirectory.toFile()).
@@ -197,15 +202,17 @@ public final class CodexRunPart
 	 *
 	 * @param workingDirectory the folder that the command runs in
 	 * @param environment the environment of the JVM
+	 * @param waiting how the command waits between the attempts of a retried operation
 	 * @return the temporary folder of the Codex thread's CAT session directory in the nearest CAT project that
 	 *   contains {@code workingDirectory}; otherwise the folder that {@link #fallbackFolder(Map)} returns
 	 * @throws IOException if {@code CODEX_THREAD_ID} is not a UUID in canonical form, if neither {@code CODEX_HOME} nor
 	 *   the home directory's variable is set, or if the CAT session directory cannot be created
 	 */
-	private static Path outputFolder(Path workingDirectory, Map<String, String> environment) throws IOException
+	private static Path outputFolder(Path workingDirectory, Map<String, String> environment, Waiting waiting)
+		throws IOException
 	{
 		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment,
-			List.of(CodexSessionHarness.HARNESS)))
+			List.of(CodexSessionHarness.HARNESS), waiting))
 		{
 			if (scope.isInProject())
 			{
@@ -229,10 +236,7 @@ public final class CodexRunPart
 	 */
 	public static Path fallbackFolder(Map<String, String> environment) throws IOException
 	{
-		try (MainJvmScope scope = new MainJvmScope(environment))
-		{
-			return scope.temporaryDirectory();
-		}
+		return Files.createDirectories(MainJvmScope.processTemporaryDirectory(environment).toAbsolutePath().normalize());
 	}
 
 	/**

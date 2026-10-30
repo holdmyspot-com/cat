@@ -22,6 +22,7 @@ import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeAccess;
 import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeSecrets;
+import com.holdmyspot.cat.common.Waiting;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -43,9 +44,9 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		{
 			@Override
 			public CodexOptimizerCommandScope newCodexOptimizerCommandScope(Map<String, String> environment, Path home,
-				Path directory, Path artifact)
+				Path directory, Path artifact, Waiting waiting)
 			{
-				return new CodexOptimizerCommandScope(environment, home, directory, artifact);
+				return new CodexOptimizerCommandScope(environment, home, directory, artifact, waiting);
 			}
 
 			@Override
@@ -71,13 +72,15 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * Creates the scope of the running process: its environment, its home directory, its working directory and the
 	 * Codex artifact that holds its runtime.
 	 *
+	 * @param waiting how the process waits between the attempts of a retried operation; the launcher supplies
+	 *   {@code Pause::sleeping}
 	 * @throws IOException if the environment does not set the platform's home variable
 	 */
-	CodexOptimizerCommandScope() throws IOException
+	CodexOptimizerCommandScope(Waiting waiting) throws IOException
 	{
 		this(Platform.current().environment(System.getenv()), home(Platform.current().environment(System.getenv())),
 			Path.of("").toAbsolutePath(),
-			Path.of(System.getProperty("java.home")).toAbsolutePath().getParent());
+			Path.of(System.getProperty("java.home")).toAbsolutePath().getParent(), waiting);
 	}
 
 	/**
@@ -87,9 +90,10 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param home        the user's home directory
 	 * @param directory   the working directory
 	 * @param artifact    the complete Codex artifact that nested sessions install
+	 * @param waiting     how the process waits between the attempts of a retried operation
 	 * @throws NullPointerException if any argument is null
 	 */
-	CodexOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact)
+	CodexOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact, Waiting waiting)
 	{
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
@@ -97,7 +101,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		Path configurationDirectory = RolloutInterruptSignal.codexHome(home,
 			environment.get("CODEX_HOME"));
 		super(Harness.CODEX, CodexSessionHarness.HARNESS, environment, configurationDirectory, directory,
-			LOADER_CONFIGURATION);
+			LOADER_CONFIGURATION, waiting);
 		this.environment = Map.copyOf(environment);
 		this.artifact = artifact;
 		this.configurationDirectory = configurationDirectory;
@@ -180,7 +184,8 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, heldOut, "", true,
 			environment, configurationDirectory, HarnessCapacity.forHome(jvm.fileLocks(), home, HARNESS_ID,
-				HarnessCapacity.MAXIMUM_CONCURRENCY), clock, replacer, Optional.of(ProjectRuleLoader.rulesDirectory(home)),
+				HarnessCapacity.MAXIMUM_CONCURRENCY, jvm.waiting()), clock, replacer,
+			Optional.of(ProjectRuleLoader.rulesDirectory(home)),
 			hostProject);
 		return new CodexSessions(settings);
 	}

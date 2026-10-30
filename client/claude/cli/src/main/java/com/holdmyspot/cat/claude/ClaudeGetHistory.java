@@ -1,5 +1,8 @@
 package com.holdmyspot.cat.claude;
 
+import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.MainJvmScope;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.history.SessionHistory;
@@ -26,9 +29,10 @@ public final class ClaudeGetHistory
 	public static void main(String[] args)
 	{
 		args = CommandLineArguments.recover(args);
-		try
+		Map<String, String> environment = Platform.current().environment(System.getenv());
+		try (JvmScope scope = new MainJvmScope(environment, Pause::sleeping))
 		{
-			System.out.print(execute(Platform.current().environment(System.getenv()), args));
+			System.out.print(execute(scope, environment, args));
 		}
 		catch (IllegalArgumentException | IOException e)
 		{
@@ -40,6 +44,7 @@ public final class ClaudeGetHistory
 	/**
 	 * Runs the requested operation for an explicit Claude Code session or subagent.
 	 *
+	 * @param scope the process scope
 	 * @param environment supplies {@code CLAUDE_CONFIG_DIR}, the directory that contains Claude Code projects, or
 	 *   {@code HOME}, whose {@code .claude} subdirectory is used when {@code CLAUDE_CONFIG_DIR} is unset or blank
 	 * @param args a UUID session identifier, optional agent identifier, and operation arguments
@@ -47,7 +52,7 @@ public final class ClaudeGetHistory
 	 * @throws IllegalArgumentException if {@code args} does not start with a UUID session identifier and an operation
 	 * @throws IOException if the requested transcript cannot be resolved or read
 	 */
-	public static String execute(Map<String, String> environment, String[] args) throws IOException
+	public static String execute(JvmScope scope, Map<String, String> environment, String[] args) throws IOException
 	{
 		if (args.length < 2)
 			throw new IllegalArgumentException(usage());
@@ -67,7 +72,7 @@ public final class ClaudeGetHistory
 			transcript = transcript(environment, sessionId);
 
 		String[] operationArguments = Arrays.copyOfRange(args, operationStart, args.length);
-		return "transcript=" + transcript + "\n" + SessionHistory.execute(transcript, operationArguments);
+		return "transcript=" + transcript + "\n" + SessionHistory.execute(scope, transcript, operationArguments);
 	}
 
 	/**

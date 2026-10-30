@@ -3,6 +3,8 @@ package com.holdmyspot.cat.codex;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.Pause;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -24,7 +26,7 @@ public final class CodexSubagentStartHook
 	{
 		requireThat(args, "args").isNotNull();
 		run(args, System.in, System.out, System.err, Platform.current().environment(System.getenv()),
-			Path.of(System.getProperty("user.dir")));
+			Path.of(System.getProperty("user.dir")), Pause::sleeping);
 	}
 
 	/**
@@ -36,12 +38,13 @@ public final class CodexSubagentStartHook
 	 * @param error non-null diagnostic output
 	 * @param environment a non-null process environment
 	 * @param workingDirectory a non-null process working directory
+	 * @param waiting how the hook waits between the attempts of a retried operation
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static void run(String[] args, InputStream input, OutputStream output, PrintStream error,
-		Map<String, String> environment, Path workingDirectory)
+		Map<String, String> environment, Path workingDirectory, Waiting waiting)
 	{
-		CodexRuleInjectionHook.run("SubagentStart", args, input, output, error, environment, workingDirectory);
+		CodexRuleInjectionHook.run("SubagentStart", args, input, output, error, environment, workingDirectory, waiting);
 	}
 
 	/**

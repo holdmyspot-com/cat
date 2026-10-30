@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
-import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -63,7 +63,7 @@ public final class MaintenanceTest
 			HarnessRun run = manager.create("harnessa");
 			manager.markCompleted(run);
 
-			execute(jvm.fileLocks(), root, "--delete-run", "--run-id", run.id());
+			execute(jvm, root, "--delete-run", "--run-id", run.id());
 
 			requireThat(Files.notExists(run.directory()), "deleted").isTrue();
 		}
@@ -88,8 +88,7 @@ public final class MaintenanceTest
 			Files.writeString(manifest, Files.readString(manifest).replaceFirst(
 				"\\\"owner_started_at\\\": \\\"[^\\\"]+\\\"", "\"owner_started_at\": \"1970-01-01T00:00:00Z\""));
 
-			execute(jvm.fileLocks(),
-				root, "--fail-run", "--run-id", run.id(), "--diagnostic", "supervisor failure",
+			execute(jvm, root, "--fail-run", "--run-id", run.id(), "--diagnostic", "supervisor failure",
 				"--exit-code", "17");
 
 			requireThat(Files.readString(manifest), "manifest").contains("supervisor failure").
@@ -117,7 +116,7 @@ public final class MaintenanceTest
 			HarnessRun current = new HarnessRunManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harnessa");
 
-			execute(jvm.fileLocks(), root, "--delete-stale-runs", "--older-than", "PT1H");
+			execute(jvm, root, "--delete-stale-runs", "--older-than", "PT1H");
 
 			requireThat(Files.notExists(old.directory()), "oldDeleted").isTrue();
 			requireThat(current.directory(), "currentRun").isDirectory();
@@ -145,7 +144,7 @@ public final class MaintenanceTest
 			HarnessRun other = manager.create("harnessb");
 			manager.markCompleted(other);
 
-			execute(jvm.fileLocks(), root, "--prune-terminal-runtimes");
+			execute(jvm, root, "--prune-terminal-runtimes");
 
 			requireThat(Files.notExists(terminal.directory().resolve("home")), "pruned").isTrue();
 			requireThat(running.directory().resolve("home"), "runningRuntime").isDirectory();
@@ -170,8 +169,7 @@ public final class MaintenanceTest
 			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 			{
-				HarnessRunnerMaintenance.execute(jvm.fileLocks(),
-					new String[]{"--verify-dependency-cache"}, "harnessa", NO_SESSION,
+				HarnessRunnerMaintenance.execute(jvm, new String[]{"--verify-dependency-cache"}, "harnessa", NO_SESSION,
 					Map.of(Platform.current().homeVariable(), home.toString()), out);
 			}
 
@@ -195,19 +193,19 @@ public final class MaintenanceTest
 	/**
 	 * Executes maintenance with isolated output and a caller-owned root.
 	 *
-	 * @param fileLocks the process-owned lock coordinator
+	 * @param jvm the process scope
 	 * @param root the test-owned run root
 	 * @param args the operation and its additional options
 	 * @throws IOException if maintenance I/O fails
 	 */
-	private static void execute(FileLocks fileLocks, Path root, String... args) throws IOException
+	private static void execute(JvmScope jvm, Path root, String... args) throws IOException
 	{
 		String[] command = Arrays.copyOf(args, args.length + 2);
 		command[args.length] = "--run-root";
 		command[args.length + 1] = root.toString();
 		try (PrintStream out = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
 		{
-			HarnessRunnerMaintenance.execute(fileLocks, command, "harnessa", NO_SESSION, Map.of(), out);
+			HarnessRunnerMaintenance.execute(jvm, command, "harnessa", NO_SESSION, Map.of(), out);
 		}
 	}
 }

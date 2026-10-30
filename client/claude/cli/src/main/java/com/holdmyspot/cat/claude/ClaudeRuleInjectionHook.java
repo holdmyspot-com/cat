@@ -7,6 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.HookScope;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.Waiting;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -49,11 +50,12 @@ final class ClaudeRuleInjectionHook
 	 * @param error diagnostics for the host
 	 * @param environment the hook environment
 	 * @param workingDirectory the hook process directory
+	 * @param waiting how the hook waits between the attempts of a retried operation
 	 */
 	static void run(String eventName, String[] args, InputStream input, OutputStream output, PrintStream error,
-		Map<String, String> environment, Path workingDirectory)
+		Map<String, String> environment, Path workingDirectory, Waiting waiting)
 	{
-		try (HookScope scope = ClaudeHookScope.open(environment))
+		try (HookScope scope = ClaudeHookScope.open(environment, waiting))
 		{
 			JsonMapper json = scope.json();
 			if (args.length != 0)

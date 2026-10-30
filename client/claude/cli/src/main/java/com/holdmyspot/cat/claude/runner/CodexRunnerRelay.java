@@ -45,7 +45,7 @@ public final class CodexRunnerRelay
 				builder.environment().putAll(runnerEnvironment);
 				try
 				{
-					return ExecutableFiles.sleeping().run(builder).waitFor();
+					return ExecutableFiles.retrying(Pause::sleeping).run(builder).waitFor();
 				}
 				catch (InterruptedException e)
 				{

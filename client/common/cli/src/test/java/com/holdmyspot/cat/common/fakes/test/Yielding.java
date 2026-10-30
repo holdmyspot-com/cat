@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.fakes.test;
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
 
 import java.time.Clock;
 
@@ -23,6 +24,16 @@ public final class Yielding
 	public static FileReplacer fileReplacer()
 	{
 		return new FileReplacer(Platform.current(), Thread::yield, Clock.systemUTC());
+	}
+
+	/**
+	 * Returns waiting whose pauses yield the processor instead of sleeping, whatever their interval.
+	 *
+	 * @return the waiting
+	 */
+	public static Waiting waiting()
+	{
+		return _ -> Thread::yield;
 	}
 
 	/**

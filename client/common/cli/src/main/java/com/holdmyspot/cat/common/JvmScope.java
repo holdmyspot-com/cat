@@ -45,6 +45,15 @@ public interface JvmScope extends AutoCloseable
 	ExecutableFiles executableFiles();
 
 	/**
+	 * Returns how this process waits between the attempts of an operation that it retries. Production scopes block
+	 * the calling thread; test scopes supply waiting that does not sleep.
+	 *
+	 * @return the shared waiting
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	Waiting waiting();
+
+	/**
 	 * Returns the exclusive-file-lock coordinator shared by every lock user in this process.
 	 *
 	 * @return the process lock coordinator

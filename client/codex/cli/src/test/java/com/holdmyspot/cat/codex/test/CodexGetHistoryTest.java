@@ -6,6 +6,7 @@ import com.holdmyspot.cat.codex.CodexGetHistory;
 import com.holdmyspot.cat.codex.secrets.CodexGetHistorySecrets;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +33,8 @@ public final class CodexGetHistoryTest
 	public void resolvesRequestedThreadTranscript() throws IOException
 	{
 		// Requirement: R-I5
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-history-"));
 			String threadId = UUID.randomUUID().toString();
@@ -41,7 +43,7 @@ public final class CodexGetHistoryTest
 			Files.writeString(transcript, "{\"type\":\"session_meta\"}\n");
 
 			String result = CodexGetHistorySecrets.getCodexGetHistoryAccess().
-				execute(Map.of("CODEX_HOME", codexHome.toString()),
+				execute(scope, Map.of("CODEX_HOME", codexHome.toString()),
 				new String[]{threadId, "analyze"});
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
@@ -57,7 +59,8 @@ public final class CodexGetHistoryTest
 	public void readsRolloutBelowHomeWithoutCodexHome() throws IOException
 	{
 		// Requirement: R-I5
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-codex-history-"));
 			String threadId = UUID.randomUUID().toString();
@@ -66,7 +69,7 @@ public final class CodexGetHistoryTest
 			Files.writeString(transcript, "{\"type\":\"session_meta\"}\n");
 
 			String result = CodexGetHistorySecrets.getCodexGetHistoryAccess().
-				execute(Map.of(Platform.current().homeVariable(),
+				execute(scope, Map.of(Platform.current().homeVariable(),
 				home.toString()), new String[]{threadId, "analyze"});
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
@@ -82,8 +85,11 @@ public final class CodexGetHistoryTest
 	public void rejectsMissingCodexHomeAndHome() throws IOException
 	{
 		// Requirement: R-I5
-		CodexGetHistorySecrets.getCodexGetHistoryAccess().
-			execute(Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
+		try (TestJvmScope scope = new TestJvmScope())
+		{
+			CodexGetHistorySecrets.getCodexGetHistoryAccess().
+				execute(scope, Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
+		}
 	}
 
 	/**
@@ -93,7 +99,10 @@ public final class CodexGetHistoryTest
 		expectedExceptionsMessageRegExp = "Thread ID must be a UUID: not-a-uuid")
 	public void rejectsInvalidRequestedThreadId() throws IOException
 	{
-		CodexGetHistorySecrets.getCodexGetHistoryAccess().
-			execute(Map.of("CODEX_HOME", "/unused"), new String[]{"not-a-uuid", "analyze"});
+		try (TestJvmScope scope = new TestJvmScope())
+		{
+			CodexGetHistorySecrets.getCodexGetHistoryAccess().
+				execute(scope, Map.of("CODEX_HOME", "/unused"), new String[]{"not-a-uuid", "analyze"});
+		}
 	}
 }

@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.MainJvmScope;
+import com.holdmyspot.cat.common.Waiting;
 import java.util.Map;
 
 /**
@@ -13,11 +14,12 @@ public final class MainHarnessRunnerScope extends AbstractHarnessRunnerScope
 	 * Creates an open harness-run scope.
 	 *
 	 * @param environment the process environment
-	 * @throws NullPointerException if {@code environment} is null
+	 * @param waiting how the process waits between the attempts of a retried operation
+	 * @throws NullPointerException if any argument is null
 	 */
-	public MainHarnessRunnerScope(Map<String, String> environment)
+	public MainHarnessRunnerScope(Map<String, String> environment, Waiting waiting)
 	{
-		super(new MainJvmScope(environment));
+		super(new MainJvmScope(environment, waiting));
 	}
 
 

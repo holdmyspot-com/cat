@@ -27,7 +27,7 @@ public final class FileReplacer
 	 */
 	private static final Duration RETRY_LIMIT = Duration.ofSeconds(5);
 	/**
-	 * How long {@link #sleeping()}'s replacer waits between attempts.
+	 * How long {@link #retrying(Waiting)}'s replacer waits between attempts.
 	 */
 	private static final Duration RETRY_INTERVAL = Duration.ofMillis(10);
 	private final Platform platform;
@@ -35,16 +35,17 @@ public final class FileReplacer
 	private final Clock clock;
 
 	/**
-	 * Returns a replacer for the current platform that sleeps between attempts and measures its limit with the system
-	 * clock.
-	 * <p>
-	 * Only an application entry point should create this replacer. Unit tests supply their own.
+	 * Returns a replacer for the current platform that waits 10 milliseconds between attempts and measures its limit
+	 * with the system clock.
 	 *
+	 * @param waiting how the replacer waits between attempts
 	 * @return the replacer
+	 * @throws NullPointerException if {@code waiting} is null
 	 */
-	public static FileReplacer sleeping()
+	public static FileReplacer retrying(Waiting waiting)
 	{
-		return new FileReplacer(Platform.current(), Pause.sleeping(RETRY_INTERVAL), Clock.systemUTC());
+		requireThat(waiting, "waiting").isNotNull();
+		return new FileReplacer(Platform.current(), waiting.every(RETRY_INTERVAL), Clock.systemUTC());
 	}
 
 	/**

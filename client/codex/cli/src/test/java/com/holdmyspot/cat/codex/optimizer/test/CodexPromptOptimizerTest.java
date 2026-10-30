@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Tests {@link CodexOptimizerCommandScope}'s resolution of the environment, through the commands that the
@@ -86,7 +87,8 @@ public final class CodexPromptOptimizerTest
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
 			try (CodexOptimizerCommandScope scope = CodexOptimizerCommandScopeSecrets.getCodexOptimizerCommandScopeAccess().
-				newCodexOptimizerCommandScope(environment, setup.home(), setup.root(), setup.home().resolve("artifact")))
+				newCodexOptimizerCommandScope(environment, setup.home(), setup.root(), setup.home().resolve("artifact"),
+					Yielding.waiting()))
 			{
 				exit = PromptOptimizerCli.run(scope, args, ZoneOffset.UTC, out);
 			}

@@ -22,23 +22,40 @@ public abstract class AbstractJvmScope implements JvmScope
 	private final boolean indentJson;
 	private final Reference<Path> temporaryDirectory;
 	private final Reference<ExecutableFiles> executableFiles;
+	private final Reference<Waiting> waiting;
 	private final Reference<JsonMapper> json = LazyReference.create(this::createJsonMapper);
 	private final Reference<YAMLMapper> yaml = LazyReference.create(this::createYamlMapper);
 	private final Reference<Clock> clock = LazyReference.create(this::createClock);
 	private final Reference<FileLocks> fileLocks = LazyReference.create(this::createFileLocks);
 
 	/**
-	 * Creates a process scope with an explicit temporary directory.
+	 * Creates a process scope with an explicit temporary directory, whose executable-file runner waits with the
+	 * process's waiting between attempts.
 	 *
 	 * @param temporaryDirectory the process temporary directory
+	 * @param waiting how the process waits between the attempts of a retried operation
+	 * @throws NullPointerException if any argument is null
+	 */
+	protected AbstractJvmScope(Path temporaryDirectory, Waiting waiting)
+	{
+		this(temporaryDirectory, waiting, ExecutableFiles.retrying(waiting));
+	}
+
+	/**
+	 * Creates a process scope with an explicit temporary directory and executable-file runner.
+	 *
+	 * @param temporaryDirectory the process temporary directory
+	 * @param waiting how the process waits between the attempts of a retried operation
 	 * @param executableFiles the process executable-file runner
 	 * @throws NullPointerException if any argument is null
 	 */
-	protected AbstractJvmScope(Path temporaryDirectory, ExecutableFiles executableFiles)
+	protected AbstractJvmScope(Path temporaryDirectory, Waiting waiting, ExecutableFiles executableFiles)
 	{
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
+		requireThat(waiting, "waiting").isNotNull();
 		requireThat(executableFiles, "executableFiles").isNotNull();
 		this.executableFiles = LazyReference.create(() -> executableFiles);
+		this.waiting = LazyReference.create(() -> waiting);
 		this.parent = null;
 		this.indentJson = false;
 		this.temporaryDirectory = LazyReference.create(() -> temporaryDirectory.toAbsolutePath().normalize());
@@ -67,6 +84,7 @@ public abstract class AbstractJvmScope implements JvmScope
 		requireThat(parent, "parent").isNotNull();
 		this.parent = parent;
 		this.executableFiles = LazyReference.create(parent::executableFiles);
+		this.waiting = LazyReference.create(parent::waiting);
 		this.indentJson = indentJson;
 		this.temporaryDirectory = null;
 	}
@@ -97,6 +115,13 @@ public abstract class AbstractJvmScope implements JvmScope
 	{
 		ensureOpen();
 		return executableFiles.getValue();
+	}
+
+	@Override
+	public Waiting waiting()
+	{
+		ensureOpen();
+		return waiting.getValue();
 	}
 
 	@Override

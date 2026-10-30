@@ -4,6 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.HookScope;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.Pause;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
@@ -28,7 +30,7 @@ public final class ClaudeSessionEndHook
 	{
 		requireThat(args, "args").isNotNull();
 		run(args, System.in, System.err, Platform.current().environment(System.getenv()),
-			Path.of(System.getProperty("user.dir")));
+			Path.of(System.getProperty("user.dir")), Pause::sleeping);
 	}
 
 	/**
@@ -39,17 +41,19 @@ public final class ClaudeSessionEndHook
 	 * @param error non-null diagnostic output
 	 * @param environment a non-null process environment
 	 * @param workingDirectory a non-null process working directory
+	 * @param waiting how the hook waits between the attempts of a retried operation
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static void run(String[] args, InputStream input, PrintStream error, Map<String, String> environment,
-		Path workingDirectory)
+		Path workingDirectory, Waiting waiting)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(error, "error").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
-		try (HookScope scope = ClaudeHookScope.open(environment))
+		requireThat(waiting, "waiting").isNotNull();
+		try (HookScope scope = ClaudeHookScope.open(environment, waiting))
 		{
 			if (args.length != 0)
 				throw new IllegalArgumentException("SessionEnd accepts no arguments");

@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.LockFileOpener;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.secrets.HarnessCapacityAccess;
 import com.holdmyspot.cat.common.secrets.HarnessCapacitySecrets;
 import tools.jackson.core.JacksonException;
@@ -178,25 +179,26 @@ public final class HarnessCapacity
 	 * Creates the capacity pool that every CAT process shares for one harness.
 	 * <p>
 	 * The slot files live in {@code .cat/locks/harness-capacity/<harness>} below {@code home}, so sessions of
-	 * different harnesses do not compete for permits. {@link #acquire()} retries every 100 milliseconds.
-	 * Only an application entry point should call this method, because it is the one place that resolves the user's
-	 * home directory.
+	 * different harnesses do not compete for permits. {@link #acquire()} retries every 100 milliseconds, and the
+	 * system clock decides whether a hold lasts.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
 	 * @param home the user's home directory
 	 * @param harness the harness name, such as {@code claude}
 	 * @param maximum the number of permits that may be held at once, from 1 to {@link #MAXIMUM_CONCURRENCY}
+	 * @param waiting how the pool waits between attempts
 	 * @return the pool
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code harness} is blank or {@code maximum} is out of range
 	 */
-	public static HarnessCapacity forHome(FileLocks fileLocks, Path home, String harness, int maximum)
+	public static HarnessCapacity forHome(FileLocks fileLocks, Path home, String harness, int maximum, Waiting waiting)
 	{
 		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
+		requireThat(waiting, "waiting").isNotNull();
 		Path lockDirectory = home.resolve(".cat").resolve("locks").resolve("harness-capacity").resolve(harness);
-		return of(fileLocks, lockDirectory, maximum, Pause.sleeping(RETRY_INTERVAL), Clock.systemUTC());
+		return of(fileLocks, lockDirectory, maximum, waiting.every(RETRY_INTERVAL), Clock.systemUTC());
 	}
 
 	/**

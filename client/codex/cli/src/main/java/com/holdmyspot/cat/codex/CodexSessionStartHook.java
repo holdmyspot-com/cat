@@ -3,6 +3,8 @@ package com.holdmyspot.cat.codex;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.Pause;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -24,7 +26,7 @@ public final class CodexSessionStartHook
 	{
 		requireThat(args, "args").isNotNull();
 		run(args, System.in, System.out, System.err, Platform.current().environment(System.getenv()),
-			Path.of(System.getProperty("user.dir")));
+			Path.of(System.getProperty("user.dir")), Pause::sleeping);
 	}
 
 	/**
@@ -36,11 +38,12 @@ public final class CodexSessionStartHook
 	 * @param error non-null diagnostic output
 	 * @param environment a non-null process environment
 	 * @param workingDirectory a non-null process working directory
+	 * @param waiting how the hook waits between the attempts of a retried operation
 	 * @throws NullPointerException if {@code args}, {@code input}, {@code output}, {@code error},
-	 *         {@code environment}, or {@code workingDirectory} are null
+	 *         {@code environment}, {@code workingDirectory} or {@code waiting} are null
 	 */
 	public static void run(String[] args, InputStream input, OutputStream output, PrintStream error,
-											 Map<String, String> environment, Path workingDirectory)
+											 Map<String, String> environment, Path workingDirectory, Waiting waiting)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
@@ -48,7 +51,8 @@ public final class CodexSessionStartHook
 		requireThat(error, "error").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
-		CodexRuleInjectionHook.run("SessionStart", args, input, output, error, environment, workingDirectory);
+		requireThat(waiting, "waiting").isNotNull();
+		CodexRuleInjectionHook.run("SessionStart", args, input, output, error, environment, workingDirectory, waiting);
 	}
 
 	/**

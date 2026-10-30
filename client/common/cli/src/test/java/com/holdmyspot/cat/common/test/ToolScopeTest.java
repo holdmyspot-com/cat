@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.Test;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Tests {@link ToolScope}.
@@ -64,7 +65,7 @@ public final class ToolScopeTest
 			Path nestedDirectory = Files.createDirectories(root.resolve("client/common"));
 
 			try (ToolScope scope = ToolScope.forSession(nestedDirectory, environment(HARNESS_A, SESSION_ID, root),
-				List.of(HARNESS_A, HARNESS_B)))
+				List.of(HARNESS_A, HARNESS_B), Yielding.waiting()))
 			{
 				requireThat(scope.isInProject(), "isInProject").isTrue();
 				SessionDirectory session = scope.requireSessionDirectory();
@@ -88,7 +89,7 @@ public final class ToolScopeTest
 		{
 			Path root = isolated.getPath("/");
 			try (ToolScope scope = ToolScope.forSession(root, environment(HARNESS_B, SESSION_ID, root),
-				List.of(HARNESS_A, HARNESS_B)))
+				List.of(HARNESS_A, HARNESS_B), Yielding.waiting()))
 			{
 				requireThat(scope.isInProject(), "isInProject").isFalse();
 				requireThat(scope.requireSessionDirectory().directory(), "directory").
@@ -112,7 +113,7 @@ public final class ToolScopeTest
 			Files.createDirectories(root.resolve(".cat"));
 			Map<String, String> environment = Map.of(HARNESS_A.sessionVariable(), SESSION_ID,
 				HARNESS_B.sessionVariable(), OTHER_SESSION_ID, "HOME", root.toString(), "USERPROFILE", root.toString());
-			try (ToolScope scope = ToolScope.forSession(root, environment, List.of(HARNESS_B, HARNESS_A)))
+			try (ToolScope scope = ToolScope.forSession(root, environment, List.of(HARNESS_B, HARNESS_A), Yielding.waiting()))
 			{
 				SessionDirectory session = scope.requireSessionDirectory();
 				requireThat(session.sessionId(), "sessionId").isEqualTo(OTHER_SESSION_ID);
@@ -133,7 +134,7 @@ public final class ToolScopeTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-project-"));
 			try (ToolScope scope = ToolScope.forSession(root, environment(HARNESS_A, "session", root),
-				List.of(HARNESS_A)))
+				List.of(HARNESS_A), Yielding.waiting()))
 			{
 				scope.sessionDirectory();
 				throw new AssertionError("Accepted an invalid session variable");

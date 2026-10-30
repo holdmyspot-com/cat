@@ -30,16 +30,18 @@ public abstract class AbstractToolScope extends AbstractJvmScope implements Tool
 	 * @param environment the tool's environment
 	 * @param harnesses the harnesses whose session variables may name the session, in the order in which they are
 	 *   consulted
+	 * @param waiting how the tool waits between the attempts of a retried operation
 	 * @return an open tool scope
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static ToolScope forSession(Path workingDirectory, Map<String, String> environment,
-		List<SessionHarness> harnesses)
+		List<SessionHarness> harnesses, Waiting waiting)
 	{
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(harnesses, "harnesses").isNotNull();
-		return new MainToolScope(new MainJvmScope(environment), workingDirectory, environment, harnesses);
+		requireThat(waiting, "waiting").isNotNull();
+		return new MainToolScope(new MainJvmScope(environment, waiting), workingDirectory, environment, harnesses);
 	}
 
 	/**

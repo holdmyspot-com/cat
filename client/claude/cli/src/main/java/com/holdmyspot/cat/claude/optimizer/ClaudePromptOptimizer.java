@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.optimizer;
 
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
 
 /**
@@ -23,6 +24,6 @@ public final class ClaudePromptOptimizer
 	 */
 	public static void main(String[] args)
 	{
-		PromptOptimizerCli.main(args, ClaudeOptimizerCommandScope::new);
+		PromptOptimizerCli.main(args, () -> new ClaudeOptimizerCommandScope(Pause::sleeping));
 	}
 }

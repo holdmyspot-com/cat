@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import org.testng.annotations.Test;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Tests {@link MainJvmScope}'s process temporary directory.
@@ -28,7 +29,7 @@ public final class MainJvmScopeTest
 			Path root = cleanup.add(Files.createTempDirectory(test.temporaryDirectory(), "jvm-"));
 			Path target = root.resolve("created");
 			try (MainJvmScope scope = new MainJvmScope(Map.of("TMPDIR", target.resolve("../created").toString(),
-				"TEMP", root.resolve("other").toString())))
+				"TEMP", root.resolve("other").toString()), Yielding.waiting()))
 			{
 				requireThat(scope.temporaryDirectory(), "temporaryDirectory").isEqualTo(target);
 				requireThat(target, "target").isDirectory();
@@ -47,7 +48,7 @@ public final class MainJvmScopeTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(test.temporaryDirectory(), "jvm-"));
 			Path target = root.resolve("created");
-			try (MainJvmScope scope = new MainJvmScope(Map.of("TMPDIR", "", "TEMP", target.toString())))
+			try (MainJvmScope scope = new MainJvmScope(Map.of("TMPDIR", "", "TEMP", target.toString()), Yielding.waiting()))
 			{
 				requireThat(scope.temporaryDirectory(), "temporaryDirectory").isEqualTo(target);
 				requireThat(target, "target").isDirectory();
@@ -61,7 +62,7 @@ public final class MainJvmScopeTest
 	@Test
 	public void fallsBackToJvmDirectory() throws IOException
 	{
-		try (MainJvmScope scope = new MainJvmScope(Map.of("TMPDIR", "", "TEMP", "")))
+		try (MainJvmScope scope = new MainJvmScope(Map.of("TMPDIR", "", "TEMP", ""), Yielding.waiting()))
 		{
 			requireThat(scope.temporaryDirectory(), "temporaryDirectory").
 				isEqualTo(Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize());

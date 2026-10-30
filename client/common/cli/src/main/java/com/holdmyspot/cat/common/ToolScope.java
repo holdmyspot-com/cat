@@ -17,13 +17,14 @@ public interface ToolScope extends JvmScope
 	 * @param workingDirectory the tool working directory
 	 * @param environment the tool environment
 	 * @param harnesses the supported harnesses in consultation order
+	 * @param waiting how the tool waits between the attempts of a retried operation
 	 * @return the open scope
 	 * @throws NullPointerException if any argument is null
 	 */
 	static ToolScope forSession(Path workingDirectory, Map<String, String> environment,
-		List<SessionHarness> harnesses)
+		List<SessionHarness> harnesses, Waiting waiting)
 	{
-		return AbstractToolScope.forSession(workingDirectory, environment, harnesses);
+		return AbstractToolScope.forSession(workingDirectory, environment, harnesses, waiting);
 	}
 
 	/**

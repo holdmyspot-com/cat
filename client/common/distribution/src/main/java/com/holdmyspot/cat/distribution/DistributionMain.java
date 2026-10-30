@@ -6,8 +6,9 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
-import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.MainToolScope;
+import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.MainJvmScope;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
 import com.holdmyspot.cat.distribution.bundle.ModuleDescriptorPatcher;
@@ -98,24 +99,28 @@ public final class DistributionMain
 			throw new IllegalArgumentException(
 				"Usage: DistributionMain <project-root> <module-directory> <release-directory>");
 		}
-		build(Path.of(args[0]), Path.of(args[1]), Path.of(args[2]), Platform.current());
+		try (JvmScope scope = new MainJvmScope(Platform.current().environment(System.getenv()), Pause::sleeping))
+		{
+			build(scope, Path.of(args[0]), Path.of(args[1]), Path.of(args[2]), Platform.current());
+		}
 	}
 
 	/**
 	 * Builds the harness distributions for a platform.
 	 *
+	 * @param scope the process scope, whose YAML mapper reads the rules
 	 * @param projectRoot the repository root
 	 * @param moduleDirectory the directory containing dependency JARs
 	 * @param releaseDirectory the output directory for release archives
 	 * @param platform the target platform
-	 * @throws NullPointerException if {@code projectRoot}, {@code moduleDirectory}, {@code releaseDirectory},
-	 *         or {@code platform} are null
+	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code releaseDirectory} is the filesystem root
 	 * @throws IOException if distribution assembly fails
 	 */
-	public static void build(Path projectRoot, Path moduleDirectory, Path releaseDirectory, Platform platform)
-		throws IOException
+	public static void build(JvmScope scope, Path projectRoot, Path moduleDirectory, Path releaseDirectory,
+		Platform platform) throws IOException
 	{
+		requireThat(scope, "scope").isNotNull();
 		requireThat(projectRoot, "projectRoot").isNotNull();
 		requireThat(moduleDirectory, "moduleDirectory").isNotNull();
 		requireThat(releaseDirectory, "releaseDirectory").isNotNull();
@@ -265,12 +270,9 @@ public final class DistributionMain
 			codexPluginLayer(codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexImage,
 			codexAgentLaunchers(), legalMaterials, List.of(commonInstallers, codexInstallers),
 			runtimeDirectory.resolve("codex"));
-		try (ToolScope scope = new MainToolScope())
-		{
-			validateRuleDependencies(claudeRoot, codexRoot, projectRoot, scope.yaml());
-			RuleArtifactRouter.route(claudeRoot, scope.yaml());
-			RuleArtifactRouter.route(codexRoot, scope.yaml());
-		}
+		validateRuleDependencies(claudeRoot, codexRoot, projectRoot, scope.yaml());
+		RuleArtifactRouter.route(claudeRoot, scope.yaml());
+		RuleArtifactRouter.route(codexRoot, scope.yaml());
 		RuleReferences.requireResolvable(claudeRoot);
 		RuleReferences.requireResolvable(codexRoot);
 

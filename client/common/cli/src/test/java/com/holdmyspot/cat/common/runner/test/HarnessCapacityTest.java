@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.LockFileOpener;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
@@ -412,8 +413,8 @@ public final class HarnessCapacityTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-capacity-home-"));
-			HarnessCapacity claude = HarnessCapacity.forHome(fileLocks, home, "claude", 1);
-			HarnessCapacity codex = HarnessCapacity.forHome(fileLocks, home, "codex", 1);
+			HarnessCapacity claude = HarnessCapacity.forHome(fileLocks, home, "claude", 1, Yielding.waiting());
+			HarnessCapacity codex = HarnessCapacity.forHome(fileLocks, home, "codex", 1, Yielding.waiting());
 
 			try (HarnessCapacity.Permit permit = claude.acquire())
 			{
@@ -429,15 +430,17 @@ public final class HarnessCapacityTest
 	}
 
 	/**
-	 * Verifies that the sleeping pause stops waiting with an {@code IOException} when its thread is interrupted, and
+	 * Verifies that a blocking pause stops waiting with an {@code IOException} when its thread is interrupted, and
 	 * keeps the interrupt flag set.
 	 */
 	@Test
-	public void sleepingPauseFailsWhenInterrupted()
+	public void blockingPauseFailsWhenInterrupted()
 	{
 		// Requirement: R-E8
-		Pause pause = Pause.sleeping(Duration.ofMinutes(1));
-		Thread.currentThread().interrupt();
+		Pause pause = Pause.interruptible(() ->
+		{
+			throw new InterruptedException("interrupted while waiting");
+		});
 		try
 		{
 			pause.pause();

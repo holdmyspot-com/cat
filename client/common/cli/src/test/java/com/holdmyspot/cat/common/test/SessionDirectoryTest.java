@@ -30,6 +30,7 @@ import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Tests {@link SessionDirectory}.
@@ -107,7 +108,8 @@ public final class SessionDirectoryTest
 			{
 				Map<String, String> environment = Map.of(variable.getKey(), variable.getValue(), "HOME", home.toString(),
 					"USERPROFILE", home.toString());
-				try (ToolScope scope = ToolScope.forSession(nested, environment, List.of(HARNESS_A, HARNESS_B)))
+				try (ToolScope scope = ToolScope.forSession(nested, environment, List.of(HARNESS_A, HARNESS_B),
+					Yielding.waiting()))
 				{
 					SessionDirectory session = scope.sessionDirectory().orElseThrow();
 
@@ -147,7 +149,8 @@ public final class SessionDirectoryTest
 			Path configuration = root.resolve("configured");
 			Map<String, String> environment = Map.of(HARNESS_A.sessionVariable(), SESSION_ID,
 				HARNESS_A.configurationVariable(), configuration.toString());
-			try (ToolScope scope = ToolScope.forSession(project, environment, List.of(HARNESS_A, HARNESS_B)))
+			try (ToolScope scope = ToolScope.forSession(project, environment, List.of(HARNESS_A, HARNESS_B),
+				Yielding.waiting()))
 			{
 				SessionDirectory session = scope.sessionDirectory().orElseThrow();
 				JsonNode marker = JsonMapper.builder().build().readTree(Files.readString(session.marker(), UTF_8));
@@ -270,7 +273,7 @@ public final class SessionDirectoryTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
 			Files.createDirectories(project.resolve(".cat"));
 			try (ToolScope scope = ToolScope.forSession(project, Map.of("HOME", project.toString()),
-				List.of(HARNESS_A, HARNESS_B)))
+				List.of(HARNESS_A, HARNESS_B), Yielding.waiting()))
 			{
 				requireThat(scope.sessionDirectory(), "sessionDirectory").isEqualTo(Optional.empty());
 				try
@@ -305,7 +308,7 @@ public final class SessionDirectoryTest
 			try
 			{
 				GitTopicReplayEditor.temporaryRoot(project, Map.of("HOME", project.toString()),
-					List.of(HARNESS_A, HARNESS_B));
+					List.of(HARNESS_A, HARNESS_B), Yielding.waiting());
 				throw new AssertionError("The editor ran without a session variable");
 			}
 			catch (IOException e)
@@ -333,7 +336,7 @@ public final class SessionDirectoryTest
 			Files.createDirectories(project.resolve(".cat"));
 			Path temporaryRoot = GitTopicReplayEditor.temporaryRoot(project,
 				Map.of(HARNESS_B.sessionVariable(), SESSION_ID, "HOME", project.toString(), "USERPROFILE",
-					project.toString()), List.of(HARNESS_A, HARNESS_B));
+					project.toString()), List.of(HARNESS_A, HARNESS_B), Yielding.waiting());
 			requireThat(temporaryRoot, "temporaryRoot").isEqualTo(project.toAbsolutePath().normalize().
 				resolve(".cat/sessions/" + SESSION_ID + "/temp"));
 		}

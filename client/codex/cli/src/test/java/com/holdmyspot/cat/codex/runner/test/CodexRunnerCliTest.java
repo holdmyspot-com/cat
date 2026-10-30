@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Tests {@link CodexRunnerCli}.
@@ -52,7 +53,7 @@ public final class CodexRunnerCliTest
 			Path folder = Files.createDirectories(project.resolve("src"));
 
 			try (ToolScope scope = CodexRunnerCli.toolScope(folder, Map.of("CODEX_THREAD_ID", THREAD_ID,
-				"CODEX_HOME", project.resolve("codex-home").toString())))
+				"CODEX_HOME", project.resolve("codex-home").toString()), Yielding.waiting()))
 			{
 				HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
 					project.resolve("artifact").toAbsolutePath().toString()}, "codex", HarnessTemporaryRoot.from(scope));
@@ -79,7 +80,7 @@ public final class CodexRunnerCliTest
 			Path project = cleanup.add(Files.createTempDirectory("codex-runner-cli-"));
 			Files.createDirectories(project.resolve(".cat"));
 			String[] args = {"--artifact", project.resolve("artifact").toAbsolutePath().toString()};
-			try (ToolScope scope = CodexRunnerCli.toolScope(project, Map.of()))
+			try (ToolScope scope = CodexRunnerCli.toolScope(project, Map.of(), Yielding.waiting()))
 			{
 				HarnessRunnerOptions.parse(args, "codex", HarnessTemporaryRoot.from(scope));
 				throw new AssertionError("A command without a thread or --run-root chose a run root");
@@ -218,9 +219,7 @@ public final class CodexRunnerCliTest
 					"5"};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
-					CodexRunnerCli.serve(jvm.fileLocks(),
-						args, new StringReader(""), new StringWriter(), Map.of(),
-						_ -> capacity);
+					CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity);
 					throw new AssertionError("The bridge did not give up waiting for capacity");
 				}
 				catch (HarnessCapacityWaitExpiredException _)

@@ -6,8 +6,8 @@ import com.holdmyspot.cat.common.ExecutableFiles;
 import java.nio.file.Path;
 
 /**
- * Supplies {@link JvmScope} values with the build's temporary directory for tests. Executable retries yield instead
- * of sleeping unless a test supplies its own controlled runner.
+ * Supplies {@link JvmScope} values with the build's temporary directory for tests. Retries yield instead of sleeping,
+ * and executable retries use a test's own controlled runner when it supplies one.
  */
 public final class TestJvmScope extends AbstractJvmScope
 {
@@ -27,7 +27,7 @@ public final class TestJvmScope extends AbstractJvmScope
 	 */
 	public TestJvmScope(Path temporaryDirectory)
 	{
-		this(temporaryDirectory, Yielding.executableFiles());
+		super(temporaryDirectory, Yielding.waiting());
 	}
 
 	/**
@@ -39,6 +39,6 @@ public final class TestJvmScope extends AbstractJvmScope
 	 */
 	public TestJvmScope(Path temporaryDirectory, ExecutableFiles executableFiles)
 	{
-		super(temporaryDirectory, executableFiles);
+		super(temporaryDirectory, Yielding.waiting(), executableFiles);
 	}
 }

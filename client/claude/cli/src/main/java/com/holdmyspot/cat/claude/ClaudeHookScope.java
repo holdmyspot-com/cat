@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.HookScope;
+import com.holdmyspot.cat.common.Waiting;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,14 +27,15 @@ final class ClaudeHookScope
 	 * Opens a scope for one Claude hook invocation.
 	 *
 	 * @param environment the non-null harness hook environment
+	 * @param waiting how the hook waits between the attempts of a retried operation
 	 * @return the scope
 	 * @throws IOException if Claude did not supply a usable plugin root or home directory, or if a CAT variable
 	 *   conflicts with the plugin root
 	 */
-	static HookScope open(Map<String, String> environment) throws IOException
+	static HookScope open(Map<String, String> environment, Waiting waiting) throws IOException
 	{
 		return HookScope.fromEnvironment(environment, "Claude", "CLAUDE_PLUGIN_ROOT",
-			Platform.current().homeVariable(), ClaudeSessionHarness.HARNESS);
+			Platform.current().homeVariable(), ClaudeSessionHarness.HARNESS, waiting);
 	}
 
 	/**

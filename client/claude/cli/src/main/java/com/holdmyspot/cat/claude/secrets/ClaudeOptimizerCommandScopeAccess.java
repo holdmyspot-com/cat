@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.claude.secrets;
 
 import com.holdmyspot.cat.claude.optimizer.ClaudeOptimizerCommandScope;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 
 import java.nio.file.Path;
@@ -19,11 +20,12 @@ public interface ClaudeOptimizerCommandScopeAccess
 	 * @param home the user's home directory
 	 * @param directory the working directory
 	 * @param artifact the complete Claude artifact that nested sessions install
+	 * @param waiting how the process waits between the attempts of a retried operation
 	 * @return the scope
 	 * @throws NullPointerException if any argument is null
 	 */
 	ClaudeOptimizerCommandScope newClaudeOptimizerCommandScope(Map<String, String> environment, Path home,
-		Path directory, Path artifact);
+		Path directory, Path artifact, Waiting waiting);
 
 	/**
 	 * Returns the signal that reports the host user's interrupts. The host session's transcript is located when

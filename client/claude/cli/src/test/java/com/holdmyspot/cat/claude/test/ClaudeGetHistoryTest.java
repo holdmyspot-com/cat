@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.claude.ClaudeGetHistory;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,7 +25,8 @@ public final class ClaudeGetHistoryTest
 	public void resolvesRequestedMainTranscript() throws IOException
 	{
 		// Requirement: R-I5
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path configuration = cleanup.add(Files.createTempDirectory("cat-claude-history-"));
 			String sessionId = UUID.randomUUID().toString();
@@ -32,7 +34,7 @@ public final class ClaudeGetHistoryTest
 				".jsonl");
 			Files.writeString(transcript, "{\"type\":\"user\"}\n");
 
-			String result = ClaudeGetHistory.execute(Map.of("CLAUDE_CONFIG_DIR", configuration.toString()),
+			String result = ClaudeGetHistory.execute(scope, Map.of("CLAUDE_CONFIG_DIR", configuration.toString()),
 				new String[]{sessionId, "analyze"});
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
@@ -46,7 +48,8 @@ public final class ClaudeGetHistoryTest
 	@Test
 	public void resolvesRequestedAgentTranscript() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path configuration = cleanup.add(Files.createTempDirectory("cat-claude-history-"));
 			String sessionId = UUID.randomUUID().toString();
@@ -57,7 +60,7 @@ public final class ClaudeGetHistoryTest
 				"agent-" + agentId + ".jsonl");
 			Files.writeString(transcript, "{\"type\":\"assistant\"}\n");
 
-			String result = ClaudeGetHistory.execute(Map.of("CLAUDE_CONFIG_DIR", configuration.toString()),
+			String result = ClaudeGetHistory.execute(scope, Map.of("CLAUDE_CONFIG_DIR", configuration.toString()),
 				new String[]{sessionId, "--agent", agentId, "analyze"});
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
@@ -73,7 +76,8 @@ public final class ClaudeGetHistoryTest
 	public void readsTranscriptBelowHomeByDefault() throws IOException
 	{
 		// Requirement: R-I5
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-claude-history-"));
 			String sessionId = UUID.randomUUID().toString();
@@ -81,7 +85,7 @@ public final class ClaudeGetHistoryTest
 				".jsonl");
 			Files.writeString(transcript, "{\"type\":\"user\"}\n");
 
-			String result = ClaudeGetHistory.execute(Map.of(Platform.current().homeVariable(), home.toString()),
+			String result = ClaudeGetHistory.execute(scope, Map.of(Platform.current().homeVariable(), home.toString()),
 				new String[]{sessionId, "analyze"});
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
@@ -97,9 +101,9 @@ public final class ClaudeGetHistoryTest
 	public void rejectsMissingConfigDirectoryAndHome()
 	{
 		// Requirement: R-I5
-		try
+		try (TestJvmScope scope = new TestJvmScope())
 		{
-			ClaudeGetHistory.execute(Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
+			ClaudeGetHistory.execute(scope, Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
 			throw new AssertionError("The command accepted an environment without a configuration directory");
 		}
 		catch (IOException e)
@@ -116,7 +120,10 @@ public final class ClaudeGetHistoryTest
 		expectedExceptionsMessageRegExp = "Agent ID must contain only letters, digits, and hyphens: invalid/agent")
 	public void rejectsInvalidRequestedAgentId() throws IOException
 	{
-		ClaudeGetHistory.execute(Map.of("CLAUDE_CONFIG_DIR", "/unused"),
-			new String[]{UUID.randomUUID().toString(), "--agent", "invalid/agent", "analyze"});
+		try (TestJvmScope scope = new TestJvmScope())
+		{
+			ClaudeGetHistory.execute(scope, Map.of("CLAUDE_CONFIG_DIR", "/unused"),
+				new String[]{UUID.randomUUID().toString(), "--agent", "invalid/agent", "analyze"});
+		}
 	}
 }

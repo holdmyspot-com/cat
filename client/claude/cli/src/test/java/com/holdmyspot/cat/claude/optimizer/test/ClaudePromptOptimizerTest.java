@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Tests {@link ClaudeOptimizerCommandScope}'s resolution of the environment, through the commands that the
@@ -89,7 +90,7 @@ public final class ClaudePromptOptimizerTest
 			ClaudeOptimizerCommandScopeAccess access =
 				ClaudeOptimizerCommandScopeSecrets.getClaudeOptimizerCommandScopeAccess();
 			try (ClaudeOptimizerCommandScope scope = access.newClaudeOptimizerCommandScope(environment, setup.home(),
-				setup.root(), setup.home().resolve("artifact")))
+				setup.root(), setup.home().resolve("artifact"), Yielding.waiting()))
 			{
 				exit = PromptOptimizerCli.run(scope, args, ZoneOffset.UTC, out);
 			}

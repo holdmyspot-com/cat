@@ -69,6 +69,7 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 	 * @param homeVariable the variable that names the current user's home directory
 	 * @param sessionHarness the harness's session values; its configuration variable, when set, names the harness's
 	 *   configuration directory
+	 * @param waiting how the hook waits between the attempts of a retried operation
 	 * @return the scope
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code harness}, {@code pluginRootVariable} or {@code homeVariable} are
@@ -78,9 +79,10 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 	 *   saved the caller's locale or a variable through which a CAT runner lets the session start sessions
 	 */
 	public static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
-		String homeVariable, SessionHarness sessionHarness) throws IOException
+		String homeVariable, SessionHarness sessionHarness, Waiting waiting) throws IOException
 	{
 		requireThat(sessionHarness, "sessionHarness").isNotNull();
+		requireThat(waiting, "waiting").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(pluginRootVariable, "pluginRootVariable").isNotBlank();
@@ -105,7 +107,7 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 			}
 			throw new IOException(name + " conflicts with " + harness + " " + pluginRootVariable);
 		}
-		return new MainHookScope(new MainJvmScope(environment), resolvedPluginRoot, userHome, sessionHarness,
+		return new MainHookScope(new MainJvmScope(environment, waiting), resolvedPluginRoot, userHome, sessionHarness,
 			sessionHarness.configurationDirectory(environment, homeVariable));
 	}
 

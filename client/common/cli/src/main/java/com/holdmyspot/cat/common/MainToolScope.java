@@ -10,14 +10,6 @@ import java.util.Map;
 public final class MainToolScope extends AbstractToolScope
 {
 	/**
-	 * Creates a tool scope from the current process environment without a session.
-	 */
-	public MainToolScope()
-	{
-		this(new MainJvmScope(System.getenv()), Path.of(""), Map.of(), List.of());
-	}
-
-	/**
 	 * Creates a tool scope with explicit process and session values.
 	 *
 	 * @param parent the owned process scope

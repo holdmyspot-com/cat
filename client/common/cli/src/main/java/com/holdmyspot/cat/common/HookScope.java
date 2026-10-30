@@ -20,15 +20,17 @@ public interface HookScope extends JvmScope
 	 * @param pluginRootVariable the installation variable
 	 * @param homeVariable the user home variable
 	 * @param sessionHarness the harness session contract
+	 * @param waiting how the hook waits between the attempts of a retried operation
 	 * @return the open scope
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if any variable name or harness name is blank
 	 * @throws IOException if a required variable is absent or a CAT variable conflicts
 	 */
 	static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
-		String homeVariable, SessionHarness sessionHarness) throws IOException
+		String homeVariable, SessionHarness sessionHarness, Waiting waiting) throws IOException
 	{
-		return AbstractHookScope.fromEnvironment(environment, harness, pluginRootVariable, homeVariable, sessionHarness);
+		return AbstractHookScope.fromEnvironment(environment, harness, pluginRootVariable, homeVariable, sessionHarness,
+			waiting);
 	}
 
 	/**

@@ -1,8 +1,10 @@
 package com.holdmyspot.cat.common.history;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
-import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.MainToolScope;
+import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.MainJvmScope;
+import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.secrets.SessionHistoryAccess;
 import com.holdmyspot.cat.common.secrets.SessionHistorySecrets;
 import java.io.IOException;
@@ -31,15 +33,15 @@ public final class SessionHistory
 		SessionHistorySecrets.setSessionHistoryAccess(new SessionHistoryAccess()
 		{
 			@Override
-			public String execute(String[] args) throws IOException
+			public String execute(JvmScope scope, String[] args) throws IOException
 			{
-				return SessionHistory.execute(args);
+				return SessionHistory.execute(scope, args);
 			}
 
 			@Override
-			public String search(Path transcript, String phrase, int context) throws IOException
+			public String search(JvmScope scope, Path transcript, String phrase, int context) throws IOException
 			{
-				return SessionHistory.search(transcript, phrase, context);
+				return SessionHistory.search(scope, transcript, phrase, context);
 			}
 		});
 	}
@@ -73,9 +75,9 @@ public final class SessionHistory
 	public static void main(String[] args)
 	{
 		args = CommandLineArguments.recover(args);
-		try
+		try (JvmScope scope = new MainJvmScope(Platform.current().environment(System.getenv()), Pause::sleeping))
 		{
-			System.out.print(execute(args));
+			System.out.print(execute(scope, args));
 		}
 		catch (IllegalArgumentException | IOException e)
 		{
@@ -87,53 +89,57 @@ public final class SessionHistory
 	/**
 	 * Executes one session-history operation.
 	 *
+	 * @param scope the process scope
 	 * @param args the operation, transcript path, and operation-specific arguments
 	 * @return the deterministic text result
 	 * @throws IOException if the transcript cannot be read or contains invalid JSONL
 	 */
-	static String execute(String[] args) throws IOException
+	static String execute(JvmScope scope, String[] args) throws IOException
 	{
 		if (args.length < 2)
 			throw new IllegalArgumentException(usage());
 
 		String operation = args[0];
 		Path transcript = transcript(Path.of(args[1]));
-		return execute(operation, transcript, Arrays.copyOfRange(args, 2, args.length));
+		return execute(scope, operation, transcript, Arrays.copyOfRange(args, 2, args.length));
 	}
 
 	/**
 	 * Executes a session-history operation for a transcript selected by a harness-specific caller.
 	 *
+	 * @param scope the process scope
 	 * @param transcript the selected transcript path
 	 * @param args the operation and its operation-specific arguments
 	 * @return the deterministic text result
 	 * @throws IOException if the transcript cannot be read or contains invalid JSONL
 	 */
-	public static String execute(Path transcript, String[] args) throws IOException
+	public static String execute(JvmScope scope, Path transcript, String[] args) throws IOException
 	{
 		if (args.length < 1)
 			throw new IllegalArgumentException(usage());
-		return execute(args[0], transcript(transcript), Arrays.copyOfRange(args, 1, args.length));
+		return execute(scope, args[0], transcript(transcript), Arrays.copyOfRange(args, 1, args.length));
 	}
 
 	/**
 	 * Executes one parsed session-history operation.
 	 *
 	 * @param operation the requested operation
+	 * @param scope the process scope
 	 * @param transcript the selected transcript
 	 * @param arguments operation-specific arguments
 	 * @return the deterministic text result
 	 * @throws IOException if the transcript cannot be read or contains invalid JSONL
 	 */
-	private static String execute(String operation, Path transcript, String[] arguments) throws IOException
+	private static String execute(JvmScope scope, String operation, Path transcript, String[] arguments)
+		throws IOException
 	{
 		return switch (operation)
 		{
-			case "analyze" -> analyze(transcript);
-			case "summary" -> summary(transcript, summaryFilter(arguments));
-			case "errors" -> matching(transcript, "error", 0);
-			case "file-history" -> requiredMatching(transcript, arguments, 0, 0);
-			case "search" -> searchArguments(transcript, arguments);
+			case "analyze" -> analyze(scope, transcript);
+			case "summary" -> summary(scope, transcript, summaryFilter(arguments));
+			case "errors" -> matching(scope, transcript, "error", 0);
+			case "file-history" -> requiredMatching(scope, transcript, arguments, 0, 0);
+			case "search" -> searchArguments(scope, transcript, arguments);
 			default -> throw new IllegalArgumentException(usage());
 		};
 	}
@@ -141,20 +147,20 @@ public final class SessionHistory
 	/**
 	 * Reports bounded event counts and timestamps without exposing transcript text.
 	 *
+	 * @param scope the process scope
 	 * @param transcript the existing JSONL transcript to summarize
 	 * @param filter the selected event metadata bounds
 	 * @return counts, event types, and the selected timestamp range
 	 * @throws IOException if the transcript cannot be read or contains invalid JSONL
 	 */
-	private static String summary(Path transcript, SummaryFilter filter) throws IOException
+	private static String summary(JvmScope scope, Path transcript, SummaryFilter filter) throws IOException
 	{
 		int selected = 0;
 		Instant firstTimestamp = null;
 		Instant lastTimestamp = null;
 		boolean truncated = false;
 		Map<String, Integer> types = new TreeMap<>();
-		try (ToolScope scope = new MainToolScope();
-			Stream<String> lines = Files.lines(transcript))
+		try (Stream<String> lines = Files.lines(transcript))
 		{
 			Iterator<String> iterator = lines.iterator();
 			while (iterator.hasNext())
@@ -344,23 +350,21 @@ public final class SessionHistory
 	/**
 	 * Summarizes the valid JSON records in a transcript.
 	 *
+	 * @param scope the process scope
 	 * @param transcript the existing JSONL transcript to summarize
 	 * @return the record count and encountered event types
 	 * @throws IOException if the transcript cannot be parsed
 	 */
-	static String analyze(Path transcript) throws IOException
+	static String analyze(JvmScope scope, Path transcript) throws IOException
 	{
-		List<String> records = records(transcript);
+		List<String> records = records(scope, transcript);
 		List<String> types = new ArrayList<>();
-		try (ToolScope scope = new MainToolScope())
+		for (String record : records)
 		{
-			for (String record : records)
-			{
-				JsonNode node = scope.json().readTree(record);
-				String type = node.path("type").asString("");
-				if (!type.isBlank() && !types.contains(type))
-					types.add(type);
-			}
+			JsonNode node = scope.json().readTree(record);
+			String type = node.path("type").asString("");
+			if (!type.isBlank() && !types.contains(type))
+				types.add(type);
 		}
 		return "records=" + records.size() + "\ntypes=" + String.join(",", types) + "\n";
 	}
@@ -368,28 +372,30 @@ public final class SessionHistory
 	/**
 	 * Finds records containing a phrase and adjacent records.
 	 *
+	 * @param scope the process scope
 	 * @param transcript the existing JSONL transcript to search
 	 * @param phrase the case-insensitive phrase to find
 	 * @param context the number of adjacent records retained on each side
 	 * @return the matching JSONL records in source order
 	 * @throws IOException if the transcript cannot be read or parsed
 	 */
-	static String search(Path transcript, String phrase, int context) throws IOException
+	static String search(JvmScope scope, Path transcript, String phrase, int context) throws IOException
 	{
 		if (phrase.isBlank() || context < 0)
 			throw new IllegalArgumentException("Search phrase must be non-blank and context must be non-negative");
-		return matching(transcript, phrase, context);
+		return matching(scope, transcript, phrase, context);
 	}
 
 	/**
 	 * Parses the optional search-context argument and runs the search.
 	 *
+	 * @param scope the process scope
 	 * @param transcript the existing JSONL transcript to search
 	 * @param args the complete command arguments
 	 * @return the matching records in source order
 	 * @throws IOException if the transcript cannot be read or parsed
 	 */
-	private static String searchArguments(Path transcript, String[] args) throws IOException
+	private static String searchArguments(JvmScope scope, Path transcript, String[] args) throws IOException
 	{
 		if (args.length != 1 && args.length != 3)
 			throw new IllegalArgumentException(usage());
@@ -407,12 +413,13 @@ public final class SessionHistory
 				throw new IllegalArgumentException("Context must be a non-negative integer", e);
 			}
 		}
-		return search(transcript, args[0], context);
+		return search(scope, transcript, args[0], context);
 	}
 
 	/**
 	 * Applies an operation whose only argument is a required search phrase.
 	 *
+	 * @param scope the process scope
 	 * @param transcript the existing JSONL transcript to search
 	 * @param args the complete command arguments
 	 * @param valueIndex the position of the required phrase
@@ -420,12 +427,12 @@ public final class SessionHistory
 	 * @return the matching records
 	 * @throws IOException if the transcript cannot be read or parsed
 	 */
-	private static String requiredMatching(Path transcript, String[] args, int valueIndex, int context)
+	private static String requiredMatching(JvmScope scope, Path transcript, String[] args, int valueIndex, int context)
 		throws IOException
 	{
 		if (args.length != valueIndex + 1)
 			throw new IllegalArgumentException(usage());
-		return search(transcript, args[valueIndex], context);
+		return search(scope, transcript, args[valueIndex], context);
 	}
 
 	/**
@@ -445,15 +452,17 @@ public final class SessionHistory
 	/**
 	 * Selects matching records and their requested neighboring records.
 	 *
+	 * @param scope the process scope
 	 * @param transcript the existing JSONL transcript to search
 	 * @param phrase the case-insensitive phrase to find
 	 * @param context the number of adjacent records retained on each side
 	 * @return the matching records in source order
 	 * @throws IOException if the transcript cannot be read or parsed
 	 */
-	private static String matching(Path transcript, String phrase, int context) throws IOException
+	private static String matching(JvmScope scope, Path transcript, String phrase, int context)
+		throws IOException
 	{
-		List<String> records = records(transcript);
+		List<String> records = records(scope, transcript);
 		String needle = phrase.toLowerCase(Locale.ROOT);
 		boolean[] selected = new boolean[records.size()];
 		for (int index = 0; index < records.size(); ++index)
@@ -476,18 +485,16 @@ public final class SessionHistory
 	/**
 	 * Reads and validates every non-blank JSONL record in a transcript.
 	 *
+	 * @param scope the process scope
 	 * @param transcript the existing JSONL transcript to read
 	 * @return the non-blank records in source order
 	 * @throws IOException if the transcript cannot be read or parsed
 	 */
-	private static List<String> records(Path transcript) throws IOException
+	private static List<String> records(JvmScope scope, Path transcript) throws IOException
 	{
 		List<String> result = Files.readAllLines(transcript).stream().filter(line -> !line.isBlank()).toList();
-		try (ToolScope scope = new MainToolScope())
-		{
-			for (String record : result)
-				scope.json().readTree(record);
-		}
+		for (String record : result)
+			scope.json().readTree(record);
 		return result;
 	}
 

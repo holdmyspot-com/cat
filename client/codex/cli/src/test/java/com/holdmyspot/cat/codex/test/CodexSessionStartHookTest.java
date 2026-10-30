@@ -26,6 +26,7 @@ import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Verifies Codex SessionStart rule injection.
@@ -693,7 +694,7 @@ public final class CodexSessionStartHookTest
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
 		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
 		CodexSessionStartHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory);
+			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory, Yielding.waiting());
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

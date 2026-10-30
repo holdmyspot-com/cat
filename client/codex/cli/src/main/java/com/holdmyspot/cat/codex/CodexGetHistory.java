@@ -1,6 +1,9 @@
 package com.holdmyspot.cat.codex;
 
 import com.holdmyspot.cat.codex.optimizer.RolloutInterruptSignal;
+import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.MainJvmScope;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.history.SessionHistory;
@@ -26,9 +29,10 @@ public final class CodexGetHistory
 		CodexGetHistorySecrets.setCodexGetHistoryAccess(new CodexGetHistoryAccess()
 		{
 			@Override
-			public String execute(Map<String, String> environment, String[] args) throws IOException
+			public String execute(JvmScope scope, Map<String, String> environment, String[] args)
+				throws IOException
 			{
-				return CodexGetHistory.execute(environment, args);
+				return CodexGetHistory.execute(scope, environment, args);
 			}
 		});
 	}
@@ -41,9 +45,10 @@ public final class CodexGetHistory
 	public static void main(String[] args)
 	{
 		args = CommandLineArguments.recover(args);
-		try
+		Map<String, String> environment = Platform.current().environment(System.getenv());
+		try (JvmScope scope = new MainJvmScope(environment, Pause::sleeping))
 		{
-			System.out.print(execute(Platform.current().environment(System.getenv()), args));
+			System.out.print(execute(scope, environment, args));
 		}
 		catch (IllegalArgumentException | IOException e)
 		{
@@ -55,6 +60,7 @@ public final class CodexGetHistory
 	/**
 	 * Runs the requested operation for an explicit Codex thread.
 	 *
+	 * @param scope the process scope
 	 * @param environment supplies {@code CODEX_HOME}, the directory that contains Codex rollouts, or {@code HOME},
 	 *   whose {@code .codex} subdirectory is used when {@code CODEX_HOME} is unset or blank
 	 * @param args a UUID thread identifier followed by a session-history operation and its arguments
@@ -62,7 +68,7 @@ public final class CodexGetHistory
 	 * @throws IllegalArgumentException if {@code args} does not start with a UUID thread identifier and an operation
 	 * @throws IOException if the requested transcript cannot be resolved or read
 	 */
-	static String execute(Map<String, String> environment, String[] args) throws IOException
+	static String execute(JvmScope scope, Map<String, String> environment, String[] args) throws IOException
 	{
 		if (args.length < 2)
 			throw new IllegalArgumentException(usage());
@@ -71,7 +77,7 @@ public final class CodexGetHistory
 		Path transcript = transcript(environment, threadId);
 		String[] operationArguments = Arrays.copyOfRange(args, 1, args.length);
 
-		return "transcript=" + transcript + "\n" + SessionHistory.execute(transcript, operationArguments);
+		return "transcript=" + transcript + "\n" + SessionHistory.execute(scope, transcript, operationArguments);
 	}
 
 	/**

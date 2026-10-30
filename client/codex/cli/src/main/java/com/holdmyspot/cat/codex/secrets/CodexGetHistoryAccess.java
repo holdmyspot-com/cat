@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.secrets;
 
+import com.holdmyspot.cat.common.JvmScope;
 import java.io.IOException;
 import java.util.Map;
 
@@ -12,6 +13,7 @@ public interface CodexGetHistoryAccess
 	/**
 	 * Runs the requested operation for an explicit Codex thread.
 	 *
+	 * @param scope the process scope
 	 * @param environment supplies {@code CODEX_HOME}, the directory that contains Codex rollouts, or
 	 *   {@code HOME}, whose {@code .codex} subdirectory is used when {@code CODEX_HOME} is unset or blank
 	 * @param args a UUID thread identifier followed by a session-history operation and its arguments
@@ -20,5 +22,5 @@ public interface CodexGetHistoryAccess
 	 *   operation
 	 * @throws IOException if the requested transcript cannot be resolved or read
 	 */
-	String execute(Map<String, String> environment, String[] args) throws IOException;
+	String execute(JvmScope scope, Map<String, String> environment, String[] args) throws IOException;
 }

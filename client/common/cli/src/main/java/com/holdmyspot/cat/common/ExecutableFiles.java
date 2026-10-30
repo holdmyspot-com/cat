@@ -48,7 +48,7 @@ public final class ExecutableFiles
 	 */
 	private static final Duration RETRY_LIMIT = Duration.ofSeconds(1);
 	/**
-	 * How long {@link #sleeping()}'s instance waits between attempts.
+	 * How long {@link #retrying(Waiting)}'s instance waits between attempts.
 	 */
 	private static final Duration RETRY_INTERVAL = Duration.ofMillis(25);
 	private final Pause pause;
@@ -56,15 +56,16 @@ public final class ExecutableFiles
 	private final ProcessLauncher launcher;
 
 	/**
-	 * Returns an instance that sleeps between attempts and measures its limit with the system clock.
-	 * <p>
-	 * Only an application entry point should create this instance. Unit tests supply their own.
+	 * Returns an instance that waits 25 milliseconds between attempts and measures its limit with the system clock.
 	 *
+	 * @param waiting how the instance waits between attempts
 	 * @return the instance
+	 * @throws NullPointerException if {@code waiting} is null
 	 */
-	public static ExecutableFiles sleeping()
+	public static ExecutableFiles retrying(Waiting waiting)
 	{
-		return new ExecutableFiles(Pause.sleeping(RETRY_INTERVAL), Clock.systemUTC());
+		requireThat(waiting, "waiting").isNotNull();
+		return new ExecutableFiles(waiting.every(RETRY_INTERVAL), Clock.systemUTC());
 	}
 
 	/**

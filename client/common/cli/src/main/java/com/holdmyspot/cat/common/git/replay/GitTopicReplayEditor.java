@@ -6,10 +6,12 @@ import com.holdmyspot.cat.common.git.Git;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.Waiting;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
@@ -96,16 +98,17 @@ public final class GitTopicReplayEditor
 	 * @param repository the repository that owns the workflow state
 	 * @param environment the editor's environment
 	 * @param harnesses the harnesses whose session variables may name the session
+	 * @param waiting how the editor waits between the attempts of a retried operation
 	 * @return the session's temporary directory
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if no session variable is set, with a message that names every session variable, or if the
 	 *   CAT session directory cannot be created
 	 */
-	public static Path temporaryRoot(Path repository, Map<String, String> environment, List<SessionHarness> harnesses)
-		throws IOException
+	public static Path temporaryRoot(Path repository, Map<String, String> environment, List<SessionHarness> harnesses,
+		Waiting waiting) throws IOException
 	{
 		requireThat(repository, "repository").isNotNull();
-		try (ToolScope scope = ToolScope.forSession(repository, environment, harnesses))
+		try (ToolScope scope = ToolScope.forSession(repository, environment, harnesses, waiting))
 		{
 			Optional<SessionDirectory> session = scope.sessionDirectory();
 			if (session.isEmpty())
@@ -220,8 +223,8 @@ public final class GitTopicReplayEditor
 		args = CommandLineArguments.recover(args);
 		Path repository = repositoryRoot(Path.of("."));
 		Path temporaryRoot = temporaryRoot(repository, Platform.current().environment(System.getenv()),
-			SessionHarness.installed());
-		new GitTopicReplayEditor(repository, temporaryRoot, FileReplacer.sleeping()).execute(args);
+			SessionHarness.installed(), Pause::sleeping);
+		new GitTopicReplayEditor(repository, temporaryRoot, FileReplacer.retrying(Pause::sleeping)).execute(args);
 	}
 
 	/**

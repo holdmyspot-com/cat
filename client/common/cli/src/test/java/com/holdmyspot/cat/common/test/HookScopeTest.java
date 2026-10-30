@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import org.testng.annotations.Test;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Tests {@link HookScope}.
@@ -124,7 +125,8 @@ public final class HookScopeTest
 			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
 			Map<String, String> environment = Map.of("ROOT", plugin + " ", "USER_HOME", home.toString(),
 				"CAT_INSTALL_DIR", plugin.toString(), "OTHER", "value");
-			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME", HARNESS_A))
+			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME", HARNESS_A,
+				Yielding.waiting()))
 			{
 				requireThat(scope.pluginRoot(), "pluginRoot").isEqualTo(plugin.toAbsolutePath().normalize());
 				requireThat(scope.userRulesRoot(), "userRulesRoot").
@@ -145,7 +147,8 @@ public final class HookScopeTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
 			Map<String, String> environment = Map.of("ROOT", plugin.toString(), "USER_HOME", plugin.toString(),
 				"CAT_CALLER_LC_ALL", "+C", "CAT_CALLER_LC_CTYPE", "-");
-			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME", HARNESS_A))
+			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME", HARNESS_A,
+				Yielding.waiting()))
 			{
 				requireThat(scope.pluginRoot(), "pluginRoot").isEqualTo(plugin.toAbsolutePath().normalize());
 			}
@@ -159,7 +162,7 @@ public final class HookScopeTest
 	public void rejectsAnEnvironmentWithoutTheRoot() throws IOException
 	{
 		HookScope.fromEnvironment(Map.of("ROOT", " ", "USER_HOME", "home"), "Harness", "ROOT", "USER_HOME",
-			HARNESS_A);
+			HARNESS_A, Yielding.waiting());
 	}
 
 	/**
@@ -168,7 +171,7 @@ public final class HookScopeTest
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "Harness USER_HOME is not set")
 	public void rejectsAnEnvironmentWithoutTheHome() throws IOException
 	{
-		HookScope.fromEnvironment(Map.of("ROOT", "plugin"), "Harness", "ROOT", "USER_HOME", HARNESS_A);
+		HookScope.fromEnvironment(Map.of("ROOT", "plugin"), "Harness", "ROOT", "USER_HOME", HARNESS_A, Yielding.waiting());
 	}
 
 	/**
@@ -179,7 +182,7 @@ public final class HookScopeTest
 	public void rejectsAConflictingCatVariable() throws IOException
 	{
 		HookScope.fromEnvironment(Map.of("ROOT", "plugin", "USER_HOME", "home", "CAT_INSTALL_DIR", "other"), "Harness",
-			"ROOT", "USER_HOME", HARNESS_A);
+			"ROOT", "USER_HOME", HARNESS_A, Yielding.waiting());
 	}
 
 	/**

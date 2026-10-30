@@ -6,12 +6,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
-import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessRunStarter;
@@ -29,6 +31,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
@@ -75,12 +78,12 @@ public final class ClaudeRunnerCli
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".claude-plugin/plugin.json")));
 			return;
 		}
+		Map<String, String> environment = Platform.current().environment(System.getenv());
 		if (HarnessRunnerMaintenance.isMaintenanceCommand(args))
 		{
-			executeMaintenance(args);
+			executeMaintenance(args, Path.of(""), environment, Pause::sleeping, System.out);
 			return;
 		}
-		Map<String, String> environment = Platform.current().environment(System.getenv());
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (requests != null && !requests.isBlank())
 		{
@@ -91,12 +94,11 @@ public final class ClaudeRunnerCli
 		args = HarnessRunnerOptions.withArtifact(args,
 			Path.of(System.getProperty("java.home")).toAbsolutePath().getParent());
 		Path home = Platform.current().homeDirectory(environment);
-		FileLocks fileLocks = new FileLocks();
-		try
+		try (JvmScope process = new MainJvmScope(environment, Pause::sleeping))
 		{
-			serve(fileLocks, args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
-				new OutputStreamWriter(System.out, UTF_8), environment,
-				maximum -> HarnessCapacity.forHome(fileLocks, home, HARNESS_ID, maximum));
+			serve(process, Path.of(""), args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
+				new OutputStreamWriter(System.out, UTF_8), environment, maximum -> HarnessCapacity.forHome(
+					process.fileLocks(), home, HARNESS_ID, maximum, process.waiting()));
 		}
 		catch (HarnessCapacityWaitExpiredException e)
 		{
@@ -109,23 +111,29 @@ public final class ClaudeRunnerCli
 	 * Runs one lifecycle-only command without starting Claude.
 	 *
 	 * @param args lifecycle command arguments
+	 * @param workingDirectory the directory from which the command was invoked
+	 * @param environment the command's environment, whose session variable names the session
+	 * @param waiting how the command waits between the attempts of a retried operation
+	 * @param out receives the command's output
+	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if owned-run cleanup fails
 	 */
-	public static void executeMaintenance(String[] args) throws IOException
+	public static void executeMaintenance(String[] args, Path workingDirectory, Map<String, String> environment,
+		Waiting waiting, PrintStream out) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
-		Map<String, String> environment = Platform.current().environment(System.getenv());
-		try (ToolScope scope = ToolScope.forSession(Path.of(""), environment, SessionHarness.installed()))
+		requireThat(out, "out").isNotNull();
+		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(), waiting))
 		{
-			HarnessRunnerMaintenance.execute(scope.fileLocks(), args, HARNESS_ID, HarnessTemporaryRoot.from(scope),
-				environment, System.out);
+			HarnessRunnerMaintenance.execute(scope, args, HARNESS_ID, HarnessTemporaryRoot.from(scope), environment, out);
 		}
 	}
 
 	/**
 	 * Serves one Claude bridge using caller-provided streams and environment.
 	 *
-	 * @param fileLocks the process-owned lock coordinator
+	 * @param process the process scope, whose lock coordinator and waiting the bridge uses
+	 * @param workingDirectory the directory from which the command was invoked
 	 * @param args bridge options
 	 * @param input the bridge input
 	 * @param output the bridge output
@@ -135,24 +143,25 @@ public final class ClaudeRunnerCli
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
-	public static void serve(FileLocks fileLocks, String[] args, Reader input, Writer output,
+	public static void serve(JvmScope process, Path workingDirectory, String[] args, Reader input, Writer output,
 		Map<String, String> environment, IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		requireThat(fileLocks, "fileLocks").isNotNull();
+		requireThat(process, "process").isNotNull();
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
-		try (ToolScope scope = ToolScope.forSession(Path.of(""), environment, SessionHarness.installed()))
+		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(),
+			process.waiting()))
 		{
 			HarnessRunnerOptions options = HarnessRunnerOptions.parse(withoutClaudeOptions(args), "claude",
 				HarnessTemporaryRoot.from(scope));
 			ClaudeAgentDefinition agent = loadAgent(options.artifact(), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			String instructionFilesMode = instructionFilesMode(args);
-			FileReplacer replacer = FileReplacer.sleeping();
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, options.runRoot(),
+			FileReplacer replacer = FileReplacer.retrying(process.waiting());
+			HarnessRunManager manager = new HarnessRunManager(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
 			manager.deleteStaleRuns(HarnessRunManager.DEFAULT_RETENTION);
 			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, manager, input, output, environment,
@@ -195,7 +204,7 @@ public final class ClaudeRunnerCli
 		assert capacity != null;
 		try (HarnessCapacity.Permit _ = acquire(capacity, options))
 		{
-			HarnessRunStarter starter = () -> new ClaudeRunner().start(
+			HarnessRunStarter starter = () -> new ClaudeRunner(scope.waiting()).start(
 				options.artifact(), options.project(), options.workspace(), options.plugins(), manager, options.executable(),
 				environment,
 				options.model(),

@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.optimizer;
 
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
 
 /**
@@ -22,6 +23,6 @@ public final class CodexPromptOptimizer
 	 */
 	public static void main(String[] args)
 	{
-		PromptOptimizerCli.main(args, CodexOptimizerCommandScope::new);
+		PromptOptimizerCli.main(args, () -> new CodexOptimizerCommandScope(Pause::sleeping));
 	}
 }

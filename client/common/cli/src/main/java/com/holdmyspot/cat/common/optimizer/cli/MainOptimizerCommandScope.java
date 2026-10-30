@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
@@ -40,8 +41,8 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	private final Path directory;
 	private final List<Path> loaderConfiguration;
 	private final Reference<RandomGenerator> random = LazyReference.create(RandomGenerator::getDefault);
-	private final Reference<FileReplacer> fileReplacer = LazyReference.create(FileReplacer::sleeping);
-	private final Reference<Forks> forks = LazyReference.create(() -> new GitForks(fileReplacer.getValue()));
+	private final Reference<FileReplacer> fileReplacer;
+	private final Reference<Forks> forks;
 
 	/**
 	 * Creates an open scope.
@@ -53,12 +54,16 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * @param directory              the launcher's working directory, below the project
 	 * @param loaderConfiguration    the files, relative to the project, that decide which prompt files the harness
 	 *                               loads
+	 * @param waiting                how the process waits between the attempts of a retried operation
 	 * @throws NullPointerException     if any argument is null
 	 */
 	protected MainOptimizerCommandScope(Harness harness, SessionHarness sessionHarness,
-		Map<String, String> environment, Path configurationDirectory, Path directory, List<Path> loaderConfiguration)
+		Map<String, String> environment, Path configurationDirectory, Path directory, List<Path> loaderConfiguration,
+		Waiting waiting)
 	{
-		super(new MainJvmScope(environment));
+		super(new MainJvmScope(environment, waiting));
+		this.fileReplacer = LazyReference.create(() -> FileReplacer.retrying(waiting));
+		this.forks = LazyReference.create(() -> new GitForks(fileReplacer.getValue()));
 		requireThat(harness, "harness").isNotNull();
 		requireThat(sessionHarness, "sessionHarness").isNotNull();
 		requireThat(environment, "environment").isNotNull();

@@ -9,6 +9,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
 import com.holdmyspot.cat.common.runner.HarnessCredentials;
@@ -60,6 +61,7 @@ public final class ClaudeRunner
 	 * The path of a Claude plugin's manifest, relative to the plugin directory.
 	 */
 	private static final Path MANIFEST = Path.of(".claude-plugin/plugin.json");
+	private final Waiting waiting;
 
 	/**
 	 * Resolves the launch configuration Bubblewrap inspects beside one run's Claude temporary directory.
@@ -78,9 +80,14 @@ public final class ClaudeRunner
 
 	/**
 	 * Creates a Claude artifact runner. Each run obtains executable-file services from its owned scope.
+	 *
+	 * @param waiting how each run waits between the attempts of a retried operation
+	 * @throws NullPointerException if {@code waiting} is null
 	 */
-	public ClaudeRunner()
+	public ClaudeRunner(Waiting waiting)
 	{
+		requireThat(waiting, "waiting").isNotNull();
+		this.waiting = waiting;
 	}
 
 	/**
@@ -167,7 +174,7 @@ public final class ClaudeRunner
 		Path artifactRoot = HarnessArtifact.validate(artifact, MANIFEST);
 		HarnessRun run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
-		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment);
+		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting);
 		ExecutableFiles executables = scope.executableFiles();
 		try
 		{

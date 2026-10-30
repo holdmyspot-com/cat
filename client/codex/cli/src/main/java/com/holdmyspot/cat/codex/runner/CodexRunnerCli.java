@@ -6,12 +6,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
-import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
@@ -30,6 +32,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
@@ -78,12 +81,12 @@ public final class CodexRunnerCli
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".codex-plugin/plugin.json")));
 			return;
 		}
+		Map<String, String> environment = Platform.current().environment(System.getenv());
 		if (HarnessRunnerMaintenance.isMaintenanceCommand(args))
 		{
-			executeMaintenance(args);
+			executeMaintenance(args, Path.of(""), environment, Pause::sleeping, System.out);
 			return;
 		}
-		Map<String, String> environment = Platform.current().environment(System.getenv());
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (requests != null && !requests.isBlank() && !isOneShotCommand(args))
 		{
@@ -98,57 +101,60 @@ public final class CodexRunnerCli
 		if (!isOneShotCommand(args))
 			args = HarnessRunnerOptions.withArtifact(args, artifact);
 		Path home = Platform.current().homeDirectory(environment);
-		FileLocks fileLocks = new FileLocks();
-		if (isOneShotCommand(args))
+		try (JvmScope process = new MainJvmScope(environment, Pause::sleeping))
 		{
-			run(fileLocks, args, environment,
-				HarnessCapacity.forHome(fileLocks, home, HARNESS_ID, HarnessCapacity.MAXIMUM_CONCURRENCY));
-			return;
-		}
-		try
-		{
-			serve(fileLocks, args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
-				new OutputStreamWriter(System.out, UTF_8), environment,
-				maximum -> HarnessCapacity.forHome(fileLocks, home, HARNESS_ID, maximum));
-		}
-		catch (HarnessCapacityWaitExpiredException e)
-		{
-			System.err.println(e.getMessage());
-			System.exit(HarnessCapacityWaitExpiredException.EXIT_STATUS);
+			if (isOneShotCommand(args))
+			{
+				run(process, Path.of(""), args, environment, HarnessCapacity.forHome(process.fileLocks(), home,
+					HARNESS_ID, HarnessCapacity.MAXIMUM_CONCURRENCY, process.waiting()));
+				return;
+			}
+			try
+			{
+				serve(process, Path.of(""), args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
+					new OutputStreamWriter(System.out, UTF_8), environment, maximum -> HarnessCapacity.forHome(
+						process.fileLocks(), home, HARNESS_ID, maximum, process.waiting()));
+			}
+			catch (HarnessCapacityWaitExpiredException e)
+			{
+				System.err.println(e.getMessage());
+				System.exit(HarnessCapacityWaitExpiredException.EXIT_STATUS);
+			}
 		}
 	}
 
 	/**
 	 * Executes one prompt through an isolated Codex session.
 	 *
-	 * @param fileLocks the process-owned lock coordinator
+	 * @param process the process scope, whose lock coordinator and waiting the run uses
+	 * @param workingDirectory the directory from which the command was invoked
 	 * @param args the {@code run} command and its options
 	 * @param environment the host environment
 	 * @param capacity the shared harness capacity. The prompt waits for a permit before it starts Codex.
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the prompt, harness, output, or cleanup I/O fails
 	 */
-	public static void run(FileLocks fileLocks, String[] args, Map<String, String> environment, HarnessCapacity capacity)
-		throws IOException
+	public static void run(JvmScope process, Path workingDirectory, String[] args, Map<String, String> environment,
+		HarnessCapacity capacity) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		requireThat(fileLocks, "fileLocks").isNotNull();
+		requireThat(process, "process").isNotNull();
 		requireThat(capacity, "capacity").isNotNull();
 		String agentName = agentName(args);
 		HarnessOneShotOptions options;
-		try (ToolScope scope = toolScope(Path.of(""), environment))
+		try (ToolScope scope = toolScope(workingDirectory, environment, process.waiting()))
 		{
 			options = HarnessOneShotOptions.parse(withoutOptions(args, Set.of("--agent")), "codex",
 				HarnessTemporaryRoot.from(scope));
 		}
 		CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
-		HarnessRunManager manager = new HarnessRunManager(fileLocks, options.runRoot(), Clock.systemUTC(),
-			FileReplacer.sleeping());
+		HarnessRunManager manager = new HarnessRunManager(process.fileLocks(), options.runRoot(), Clock.systemUTC(),
+			FileReplacer.retrying(process.waiting()));
 		String prompt = options.prompt();
 		try (HarnessCapacity.Permit _ = capacity.acquire())
 		{
-			HarnessOneShotRunner.run(() -> new CodexRunner().start(options.artifact(),
+			HarnessOneShotRunner.run(() -> new CodexRunner(process.waiting()).start(options.artifact(),
 				options.project(), manager,
 				options.executable(), environment, options.model(), "", options.installCat(), agent), manager, prompt,
 				options.output(), options.keepRun());
@@ -159,16 +165,21 @@ public final class CodexRunnerCli
 	 * Runs one lifecycle-only command without starting Codex.
 	 *
 	 * @param args lifecycle command arguments
+	 * @param workingDirectory the directory from which the command was invoked
+	 * @param environment the command's environment, whose session variable names the session
+	 * @param waiting how the command waits between the attempts of a retried operation
+	 * @param out receives the command's output
+	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if owned-run cleanup fails
 	 */
-	public static void executeMaintenance(String[] args) throws IOException
+	public static void executeMaintenance(String[] args, Path workingDirectory, Map<String, String> environment,
+		Waiting waiting, PrintStream out) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
-		Map<String, String> environment = Platform.current().environment(System.getenv());
-		try (ToolScope scope = toolScope(Path.of(""), environment))
+		requireThat(out, "out").isNotNull();
+		try (ToolScope scope = toolScope(workingDirectory, environment, waiting))
 		{
-			HarnessRunnerMaintenance.execute(scope.fileLocks(), args, HARNESS_ID, HarnessTemporaryRoot.from(scope),
-				environment, System.out);
+			HarnessRunnerMaintenance.execute(scope, args, HARNESS_ID, HarnessTemporaryRoot.from(scope), environment, out);
 		}
 	}
 
@@ -179,18 +190,20 @@ public final class CodexRunnerCli
 	 *
 	 * @param workingDirectory the directory from which the command was invoked
 	 * @param environment the command's environment, whose session variable names the session
+	 * @param waiting how the command waits between the attempts of a retried operation
 	 * @return an open tool scope
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static ToolScope toolScope(Path workingDirectory, Map<String, String> environment)
+	public static ToolScope toolScope(Path workingDirectory, Map<String, String> environment, Waiting waiting)
 	{
-		return ToolScope.forSession(workingDirectory, environment, SessionHarness.installed());
+		return ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(), waiting);
 	}
 
 	/**
 	 * Serves one Codex bridge using caller-provided streams and environment.
 	 *
-	 * @param fileLocks the process-owned lock coordinator
+	 * @param process the process scope, whose lock coordinator and waiting the bridge uses
+	 * @param workingDirectory the directory from which the command was invoked
 	 * @param args the {@code serve} command and its options
 	 * @param input the bridge input
 	 * @param output the bridge output
@@ -200,23 +213,23 @@ public final class CodexRunnerCli
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
-	public static void serve(FileLocks fileLocks, String[] args, Reader input, Writer output,
+	public static void serve(JvmScope process, Path workingDirectory, String[] args, Reader input, Writer output,
 		Map<String, String> environment, IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		requireThat(fileLocks, "fileLocks").isNotNull();
+		requireThat(process, "process").isNotNull();
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
-		try (ToolScope scope = toolScope(Path.of(""), environment))
+		try (ToolScope scope = toolScope(workingDirectory, environment, process.waiting()))
 		{
 			String agentName = agentName(args);
 			int toolOutputTokenLimit = toolOutputTokenLimit(args);
 			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
-			FileReplacer replacer = FileReplacer.sleeping();
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, options.runRoot(),
+			FileReplacer replacer = FileReplacer.retrying(process.waiting());
+			HarnessRunManager manager = new HarnessRunManager(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
 			HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
 			HarnessCapacity.Permit permit;
@@ -226,8 +239,7 @@ public final class CodexRunnerCli
 				permit = capacity.acquire(options.capacityWait());
 			try (HarnessCapacity.Permit _ = permit)
 			{
-				HarnessRunnerBridge.serve(() -> new CodexRunner().start(options.artifact(),
-					options.project(),
+				HarnessRunnerBridge.serve(() -> new CodexRunner(process.waiting()).start(options.artifact(), options.project(),
 					options.workspace(), options.plugins(), manager, options.executable(), environment, options.model(),
 					options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
 					toolOutputTokenLimit,
