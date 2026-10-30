@@ -4,10 +4,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.secrets.PlatformAccess;
+import com.holdmyspot.cat.common.secrets.PlatformSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
 import org.testng.annotations.Test;
 
 /**
@@ -175,23 +178,22 @@ public final class PlatformTest
 
 	/**
 	 * Verifies that a POSIX program search finds an executable file by the program's name in the folders of the child's
-	 * {@code PATH}, in their order.
-	 *
-	 * @throws IOException if the test's files cannot be written
+	 * {@code PATH}, in their order: it passes over a folder that lacks the program and returns the first later match.
+	 * <p>
+	 * The folders are POSIX paths that the test names, and a set of paths stands in for the executable files of a POSIX
+	 * file system, so the search sees the same {@code PATH} on every host, including a Windows host, whose absolute
+	 * paths begin with a drive letter and a colon.
 	 */
 	@Test
-	public void posixFindsProgramOnPath() throws IOException
+	public void posixFindsProgramOnPath()
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path empty = cleanup.add(Files.createTempDirectory("platform-empty-"));
-			Path programs = cleanup.add(Files.createTempDirectory("platform-programs-"));
-			Path codex = Files.writeString(programs.resolve("codex"), "");
-			requireThat(codex.toFile().setExecutable(true, false), "executable").isTrue();
+		Path first = Path.of("/opt/programs/codex");
+		Set<Path> executableFiles = Set.of(first, Path.of("/opt/later/codex"));
+		PlatformAccess access = PlatformSecrets.getPlatformAccess();
 
-			String program = Platform.LINUX_X64.findProgram("codex", Map.of("PATH", empty + ":" + programs));
-			requireThat(program, "program").isEqualTo(codex.toString());
-		}
+		String program = access.findPosixProgram("codex", Map.of("PATH", "/opt/empty:/opt/programs:/opt/later"),
+			executableFiles::contains);
+		requireThat(program, "program").isEqualTo(first.toString());
 	}
 
 	/**
@@ -210,9 +212,11 @@ public final class PlatformTest
 
 			requireThat(Platform.WINDOWS_X64.findProgram("claude", Map.of("Path", programs.toString())), "windows").
 				isEqualTo("claude");
-			requireThat(Platform.LINUX_X64.findProgram("claude", Map.of("PATH", programs.toString())), "linux").
-				isEqualTo("claude");
 		}
+		// A POSIX PATH names POSIX folders, which a Windows host's absolute paths are not
+		Set<Path> executableFiles = Set.of(Path.of("/opt/programs/codex"));
+		requireThat(PlatformSecrets.getPlatformAccess().findPosixProgram("claude", Map.of("PATH", "/opt/programs"),
+			executableFiles::contains), "posix").isEqualTo("claude");
 	}
 
 	/**

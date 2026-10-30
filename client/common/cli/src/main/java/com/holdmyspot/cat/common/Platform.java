@@ -3,6 +3,8 @@ package com.holdmyspot.cat.common;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.that;
 
+import com.holdmyspot.cat.common.secrets.PlatformSecrets;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -14,6 +16,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 
 /**
  * A supported operating-system and CPU-architecture combination for CAT release archives.
@@ -26,6 +29,11 @@ public enum Platform
 	MACOS_ARM64("macos-arm64"),
 	WINDOWS_X64("windows-x64"),
 	WINDOWS_ARM64("windows-arm64");
+
+	static
+	{
+		PlatformSecrets.setPlatformAccess(Platform::findPosixProgram);
+	}
 
 	/**
 	 * Detects the current platform.
@@ -247,6 +255,25 @@ public enum Platform
 	 */
 	private static String findPosixProgram(String program, Map<String, String> environment)
 	{
+		return findPosixProgram(program, environment, file -> Files.isRegularFile(file) && Files.isExecutable(file));
+	}
+
+	/**
+	 * Finds a program by its name in the folders of a POSIX {@code PATH}, deciding through a supplied check which
+	 * candidate is an executable file.
+	 *
+	 * @param program          a program's name or path
+	 * @param environment      the environment of the process that starts the program
+	 * @param isExecutableFile indicates whether a candidate path is an executable file
+	 * @return the path of the first match, or {@code program} if nothing matches or the program names a path
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	private static String findPosixProgram(String program, Map<String, String> environment,
+		Predicate<Path> isExecutableFile)
+	{
+		requireThat(program, "program").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(isExecutableFile, "isExecutableFile").isNotNull();
 		if (program.contains("/"))
 			return program;
 		List<Path> files = new ArrayList<>();
@@ -257,7 +284,7 @@ public enum Platform
 		}
 		for (Path file : files)
 		{
-			if (Files.isRegularFile(file) && Files.isExecutable(file))
+			if (isExecutableFile.test(file))
 				return file.toString();
 		}
 		return program;
