@@ -54,6 +54,10 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public final class RoleBriefTest
 {
+	/**
+	 * The model and reasoning effort of a session whose profile the test does not examine.
+	 */
+	private static final TrialProfile SESSION_PROFILE = new TrialProfile("model-a", "low");
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
 
@@ -204,7 +208,7 @@ public final class RoleBriefTest
 				for (SessionRole role : List.of(SessionRole.JUDGE, SessionRole.TRIAL))
 				{
 					SessionRequest request = new SessionRequest(role, partOf(role), root, List.of("Frozen brief {{rules}}"),
-						List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+						List.of(), Duration.ofMinutes(1), SESSION_PROFILE);
 					requireThat(deliver(jvm, root, root.resolve("missing-artifact"), request),
 						"briefs").isEqualTo(request.turns());
 				}
@@ -234,7 +238,7 @@ public final class RoleBriefTest
 				for (SessionRole role : List.of(SessionRole.PROMPT_AUTHOR, SessionRole.CONTRACT_AUTHOR))
 				{
 					SessionRequest request = new SessionRequest(role, partOf(role), root, List.of("Saved brief"), List.of(),
-						Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+						Duration.ofMinutes(1), SESSION_PROFILE);
 					requireThat(deliver(jvm, root, artifact, request).getFirst(),
 						"brief").startsWith("Saved brief\n\n## Rules\n\n").
 						contains("Complete guidance for contract-design");
@@ -265,7 +269,7 @@ public final class RoleBriefTest
 				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 				Files.delete(artifact.resolve("rules/include/common/prompt-file-references.md"));
 				SessionRequest request = new SessionRequest(SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT, root,
-					List.of("Brief {{rules}}"), List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+					List.of("Brief {{rules}}"), List.of(), Duration.ofMinutes(1), SESSION_PROFILE);
 
 				deliver(jvm, root, artifact, request);
 			}

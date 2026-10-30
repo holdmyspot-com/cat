@@ -155,29 +155,34 @@ public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking rankin
 		}
 		List<TrialProfile> profiles = new ArrayList<>();
 		for (JsonNode profile : node.get("inventory"))
-			profiles.add(readProfile(profile));
+		{
+			requireProfileFields(profile);
+			profiles.add(TrialProfile.stored(profile.get("model").asString(), profile.get("effort").asString()));
+		}
 		List<String> families = new ArrayList<>();
 		for (JsonNode family : node.get("ranking"))
 			families.add(family.asString());
 		Map<String, TrialProfile> bindings = new LinkedHashMap<>();
 		for (JsonNode binding : node.get("bindings"))
-			bindings.put(binding.path("file").asString(), readProfile(binding));
+		{
+			requireProfileFields(binding);
+			bindings.put(binding.path("file").asString(), new TrialProfile(binding.get("model").asString(),
+				binding.get("effort").asString()));
+		}
 		return new ProfileEvidence(new ProfileCatalog(node.get("inventory_source").asString(), profiles),
 			new CapabilityRanking(families, node.get("ranking_source").asString()), bindings);
 	}
 
 	/**
-	 * Reads a profile's dimensions.
+	 * Refuses a stored profile that lacks a dimension.
 	 *
-	 * @param node an object with string {@code model} and {@code effort} properties
-	 * @return the profile
-	 * @throws IllegalArgumentException if a property is missing or invalid
+	 * @param node an object that must have string {@code model} and {@code effort} properties
+	 * @throws IllegalArgumentException if a property is missing or is not a string
 	 */
-	private static TrialProfile readProfile(JsonNode node)
+	private static void requireProfileFields(JsonNode node)
 	{
 		if (!node.path("model").isString() || !node.path("effort").isString())
 			throw new IllegalArgumentException("A profile needs string \"model\" and \"effort\" properties: " + node);
-		return new TrialProfile(node.get("model").asString(), node.get("effort").asString());
 	}
 
 	/**

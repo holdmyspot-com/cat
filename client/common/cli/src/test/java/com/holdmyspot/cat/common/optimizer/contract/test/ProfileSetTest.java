@@ -26,7 +26,7 @@ public final class ProfileSetTest
 {
 	private static final ProfileCatalog INVENTORY = new ProfileCatalog("codex debug models", List.of(
 		new TrialProfile("big", "low"), new TrialProfile("big", "high"), new TrialProfile("small", "low"),
-		new TrialProfile("small", "high"), new TrialProfile("plain", "")));
+		new TrialProfile("small", "high"), new TrialProfile("plain", "none")));
 
 	/**
 	 * Creates the test fixture.
@@ -111,8 +111,8 @@ public final class ProfileSetTest
 	}
 
 	/**
-	 * Verifies that a test whose files bind nothing has one cell per inventory profile, including a model whose
-	 * effort support is undocumented.
+	 * Verifies that a test whose files bind nothing has one cell per inventory profile, including a model that runs
+	 * without reasoning.
 	 */
 	@Test
 	public void unboundFileGivesInventory()
@@ -122,7 +122,7 @@ public final class ProfileSetTest
 			List.of(), List.of(), requirements(),
 			List.of(test("open", "rule")));
 		requireThat(labels(profiles, "open"), "labels").isEqualTo(List.of("big/low", "big/high", "small/low",
-			"small/high", "plain/default"));
+			"small/high", "plain/none"));
 	}
 
 	/**
@@ -140,7 +140,7 @@ public final class ProfileSetTest
 		requireThat(profiles.cellsOf("bound"), "bound").isEqualTo(List.of(new Cell("bound", "bound",
 			new TrialProfile("small", "high"))));
 		requireThat(profiles.cellsOf("open").stream().map(Cell::id).toList(), "open").isEqualTo(List.of(
-			"open@big/low", "open@big/high", "open@small/low", "open@small/high", "open@plain/default"));
+			"open@big/low", "open@big/high", "open@small/low", "open@small/high", "open@plain/none"));
 	}
 
 	/**
@@ -168,18 +168,25 @@ public final class ProfileSetTest
 	}
 
 	/**
-	 * Verifies that a binding to a value outside the inventory is used as written.
+	 * Verifies that a binding outside the inventory that names a model and an effort is used as written, and that one
+	 * that leaves a dimension open is refused, naming the test and the open dimension, because no trial runs under the
+	 * harness's default.
 	 */
 	@Test
 	public void bindingOutsideInventoryIsUsedAsWritten()
 	{
 		// Requirement: R-C10
-		TrialProfile custom = new TrialProfile("custom", "");
+		TrialProfile custom = new TrialProfile("custom", "low");
 		TrialProfiles profiles = TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY),
 			List.of(new ProfileBinding("agents/b.md", custom)), List.of(), List.of(), requirements(),
 			List.of(test("custom", "agent")));
-		requireThat(labels(profiles, "custom"), "labels").isEqualTo(List.of("custom/default"));
+		requireThat(labels(profiles, "custom"), "labels").isEqualTo(List.of("custom/low"));
 		requireThat(INVENTORY.isOutside(custom), "isOutside").isTrue();
+
+		requireThat(rejection(() -> TrialProfiles.compute(INVENTORY, ContractFixtures.ranking(INVENTORY),
+			List.of(new ProfileBinding("agents/b.md", new TrialProfile("custom", ""))), List.of(), List.of(),
+			requirements(), List.of(test("custom", "agent")))), "openEffort").contains("'custom'").
+			contains("effort open");
 	}
 
 	/**

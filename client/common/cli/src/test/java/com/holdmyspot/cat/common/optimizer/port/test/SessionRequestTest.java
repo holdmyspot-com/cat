@@ -23,6 +23,10 @@ import org.testng.annotations.Test;
 public final class SessionRequestTest
 {
 	/**
+	 * The model and reasoning effort of a session whose profile the test does not examine.
+	 */
+	private static final TrialProfile SESSION_PROFILE = new TrialProfile("model-a", "low");
+	/**
 	 * Creates the test.
 	 */
 	public SessionRequestTest()
@@ -39,7 +43,7 @@ public final class SessionRequestTest
 	private static SessionRequest request(SessionRole role, Part part)
 	{
 		return new SessionRequest(role, part, Path.of("/staged").toAbsolutePath(), List.of("turn"), List.of(),
-			Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+			Duration.ofMinutes(1), SESSION_PROFILE);
 	}
 
 	/**
@@ -116,12 +120,12 @@ public final class SessionRequestTest
 		TestWorkspace files = new TestWorkspace(Map.of("notes.md", new WorkspaceFile("notes.md", "notes")),
 			Map.of(), "outcome");
 		SessionRequest trial = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, Path.of("/staged").toAbsolutePath(),
-			List.of("turn"), List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT, files);
+			List.of("turn"), List.of(), Duration.ofMinutes(1), SESSION_PROFILE, files);
 		requireThat(trial.files(), "files").isEqualTo(files);
 		try
 		{
 			new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, Path.of("/staged").toAbsolutePath(), List.of("turn"),
-				List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT, files);
+				List.of(), Duration.ofMinutes(1), SESSION_PROFILE, files);
 			throw new AssertionError("A judge received fixture files");
 		}
 		catch (IllegalArgumentException e)
@@ -141,7 +145,7 @@ public final class SessionRequestTest
 			Map.of(), "outcome");
 		SessionRequest request = new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT,
 			Path.of("/staged").toAbsolutePath(), List.of("turn"), List.of(), Duration.ofMinutes(1),
-			TrialProfile.HARNESS_DEFAULT, files);
+			SESSION_PROFILE, files);
 		requireThat(request.files(), "files").isEqualTo(files);
 	}
 }

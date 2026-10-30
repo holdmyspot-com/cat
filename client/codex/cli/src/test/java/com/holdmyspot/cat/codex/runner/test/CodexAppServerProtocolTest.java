@@ -25,14 +25,14 @@ public final class CodexAppServerProtocolTest
 	}
 
 	/**
-	 * Verifies a text turn is framed for an existing app-server thread.
+	 * Verifies a text turn is framed for an existing app-server thread with its reasoning effort.
 	 */
 	@Test
 	public void framesTextTurn()
 	{
 		String expected = "{\"id\":2,\"method\":\"turn/start\",\"params\":{\"threadId\":\"thread-1\",\"input\":[" +
-			"{\"type\":\"text\",\"text\":\"hello\"}]}}\n";
-		requireThat(CodexAppServerProtocol.turnStart(2, "thread-1", "hello", ""), "request").isEqualTo(
+			"{\"type\":\"text\",\"text\":\"hello\"}],\"effort\":\"low\"}}\n";
+		requireThat(CodexAppServerProtocol.turnStart(2, "thread-1", "hello", "low"), "request").isEqualTo(
 			expected);
 	}
 

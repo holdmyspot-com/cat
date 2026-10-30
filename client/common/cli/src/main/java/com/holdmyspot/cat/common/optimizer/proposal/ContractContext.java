@@ -253,8 +253,12 @@ public record ContractContext(String proposalFile, String draft, Path target, bo
 			Map<TrialProfile, Long> toolOutputBytes = new HashMap<>();
 			for (JsonNode limit : root.path("tool_output_bytes"))
 			{
-				toolOutputBytes.put(new TrialProfile(limit.path("model").asString(), limit.path("effort").asString(),
-					limit.path("tool_output_token_limit").asInt()), limit.path("bytes").asLong());
+				TrialProfile profile = TrialProfile.stored(limit.path("model").asString(),
+					limit.path("effort").asString());
+				int tokens = limit.path("tool_output_token_limit").asInt();
+				if (tokens != 0)
+					profile = profile.withToolOutputTokenLimit(tokens);
+				toolOutputBytes.put(profile, limit.path("bytes").asLong());
 			}
 			JsonNode role = root.path("role");
 			Optional<Revision> revision = Optional.empty();
@@ -278,7 +282,7 @@ public record ContractContext(String proposalFile, String draft, Path target, bo
 			}
 			return new ContractContext(root.path("proposal_file").asString(), root.path("draft").asString(),
 				Path.of(root.path("target").asString()), root.path("reports_exit_status").asBoolean(),
-				new TrialProfile(role.path("model").asString(), role.path("effort").asString()),
+				TrialProfile.stored(role.path("model").asString(), role.path("effort").asString()),
 				ProfileEvidence.read(root.path("profiles")), toolOutputBytes, recorded, revision);
 		}
 		catch (IllegalArgumentException | NullPointerException e)

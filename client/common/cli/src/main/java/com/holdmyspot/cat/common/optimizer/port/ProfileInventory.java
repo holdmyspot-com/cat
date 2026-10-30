@@ -53,7 +53,7 @@ public interface ProfileInventory
 	 * Reads the profile that a binding file binds.
 	 *
 	 * @param content the content of a file for which {@link #canBind(Path)} returns {@code true}
-	 * @return the bound dimensions; an empty dimension is left open, and {@link TrialProfile#HARNESS_DEFAULT} if the
+	 * @return the bound dimensions; an empty dimension is left open, and {@link TrialProfile#UNBOUND} if the
 	 *   file binds nothing
 	 * @throws NullPointerException if {@code content} is null
 	 */

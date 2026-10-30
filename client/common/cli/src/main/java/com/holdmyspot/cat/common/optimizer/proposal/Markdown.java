@@ -344,7 +344,7 @@ public final class Markdown
 	private void trialProfiles()
 	{
 		heading("Trial profiles");
-		text.append("A trial profile records model and effort choices; an unspecified choice uses the harness default. " +
+		text.append("A trial profile names a model and an effort; the effort `none` runs the model without reasoning. " +
 			"A cell pairs a test with one allowed trial " +
 			"profile. A file's binding selects a model, an effort, or both. CAT computes each test's profiles " +
 			"from the bindings of its requirements' source files. When those " +

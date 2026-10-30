@@ -22,7 +22,7 @@ import org.testng.annotations.Test;
 public final class ProfileTypesTest
 {
 	private static final ProfileCatalog INVENTORY = new ProfileCatalog("codex debug models", List.of(
-		new TrialProfile("big", "low"), new TrialProfile("big", "high"), new TrialProfile("small", "")));
+		new TrialProfile("big", "low"), new TrialProfile("big", "high"), new TrialProfile("small", "none")));
 	private static final TrialProfile BIG_LOW = new TrialProfile("big", "low");
 
 	/**
@@ -84,12 +84,12 @@ public final class ProfileTypesTest
 	public void bindingMustBindADimension()
 	{
 		// Requirement: R-C10
-		requireThat(rejection(() -> new ProfileBinding("skills/a/SKILL.md", TrialProfile.HARNESS_DEFAULT)),
+		requireThat(rejection(() -> new ProfileBinding("skills/a/SKILL.md", TrialProfile.UNBOUND)),
 			"unbound").contains("isBound");
 	}
 
 	/**
-	 * Verifies that an inventory lists each profile once and names a model in each.
+	 * Verifies that an inventory lists each profile once and names a model and an effort in each.
 	 */
 	@Test
 	public void inventoryListsDistinctProfiles()
@@ -98,7 +98,9 @@ public final class ProfileTypesTest
 		requireThat(rejection(() -> new ProfileCatalog("source", List.of(BIG_LOW, BIG_LOW))), "twice").
 			contains("big/low").contains("twice");
 		requireThat(rejection(() -> new ProfileCatalog("source", List.of(new TrialProfile("", "low")))),
-			"noModel").contains("model");
+			"noModel").contains("default/low");
+		requireThat(rejection(() -> new ProfileCatalog("source", List.of(new TrialProfile("big", "")))),
+			"noEffort").contains("big/default");
 	}
 
 	/**
@@ -120,7 +122,7 @@ public final class ProfileTypesTest
 			List.of(new TrialProfile("huge", "")), List.of(), null,
 			List.of(cell("formatting")))), "outside").contains("huge/default");
 		requireThat(rejection(() -> new TrialProfiles(INVENTORY, ContractFixtures.ranking(INVENTORY), List.of(),
-			List.of(TrialProfile.HARNESS_DEFAULT), List.of(), null,
+			List.of(TrialProfile.UNBOUND), List.of(), null,
 			List.of(cell("formatting")))), "unbound").contains("must name a model, an effort or both");
 	}
 

@@ -97,7 +97,7 @@ public final class ClaudeSessionsContractTest
 	private static SessionRequest request(Path root, SessionRole role, String... prompts)
 	{
 		return new SessionRequest(role, partOf(role), root, List.of(prompts), List.of(), LIMIT,
-			new TrialProfile("haiku", ""));
+			new TrialProfile("haiku", "low"));
 	}
 
 	/**

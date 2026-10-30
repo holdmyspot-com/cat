@@ -280,12 +280,7 @@ public final class ContractAuthorProtocol
 		StringJoiner lines = new StringJoiner("\n");
 		lines.add("Source: " + inventory.source());
 		for (TrialProfile profile : inventory.profiles())
-		{
-			if (profile.effort().isEmpty())
-				lines.add("- model `" + profile.model() + "`, no effort dimension");
-			else
-				lines.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
-		}
+			lines.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
 		ContractAuthorFiles files = files(promptSystem, profiles, source, Optional.empty());
 		String turn = prompt.fill(Map.ofEntries(Map.entry("previous_proposal", previous),
 			Map.entry("feedback", feedback), Map.entry("profile_inventory", lines.toString()),

@@ -296,8 +296,8 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	 * @return the trial profiles, without a certification scope
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if a restriction pattern binds nothing or matches no inventory profile, the
-	 *   restriction leaves a test without a profile, or a test names a requirement that {@code requirements} does
-	 *   not list
+	 *   restriction leaves a test without a profile, a test's prompt files bind a profile that no inventory profile
+	 *   matches and leave a dimension open, or a test names a requirement that {@code requirements} does not list
 	 */
 	public static TrialProfiles compute(ProfileCatalog inventory, CapabilityRanking ranking,
 		List<ProfileBinding> bindings, List<TrialProfile> restriction, List<TrialProfile> described,
@@ -333,7 +333,7 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 				}
 				files.add(source);
 			}
-			List<TrialProfile> available = profileSet(inventory, files, bound);
+			List<TrialProfile> available = profileSet(test.id(), inventory, files, bound);
 			List<TrialProfile> set = restrict(available, restriction);
 			if (set.isEmpty())
 			{
@@ -355,13 +355,16 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	/**
 	 * Returns the profile set of the files that supply a test's requirements, before any restriction.
 	 *
+	 * @param testId the test's identifier
 	 * @param inventory the harness's profile inventory
 	 * @param files the files
 	 * @param bound the profile that each binding file binds
 	 * @return the matching profiles in inventory order, or the files' shared selections when no inventory profile
-	 *   matches
+	 *   matches and they name both a model and an effort
+	 * @throws IllegalArgumentException if no inventory profile matches the files' shared selections and they leave a
+	 *   dimension open, so that no profile that names both dimensions can be derived
 	 */
-	private static List<TrialProfile> profileSet(ProfileCatalog inventory, Set<String> files,
+	private static List<TrialProfile> profileSet(String testId, ProfileCatalog inventory, Set<String> files,
 		Map<String, TrialProfile> bound)
 	{
 		TrialProfile fixed = new TrialProfile(common(files, bound, TrialProfile::model),
@@ -372,8 +375,14 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 			toList();
 		if (matching.isEmpty())
 		{
-			// A binding to a value outside the inventory is used as written
-			return List.of(fixed);
+			String open;
+			if (fixed.model().isEmpty())
+				open = "model";
+			else
+				open = "effort";
+			throw new IllegalArgumentException("The prompt files of the test '" + testId + "' bind " + fixed.label() +
+				", which no inventory profile matches, and leave its " + open + " open. A trial profile names both a " +
+				"model and an effort: bind the " + open + " as well.");
 		}
 		return matching;
 	}
@@ -393,7 +402,7 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 		String common = null;
 		for (String file : files)
 		{
-			String value = dimension.apply(bound.getOrDefault(file, TrialProfile.HARNESS_DEFAULT));
+			String value = dimension.apply(bound.getOrDefault(file, TrialProfile.UNBOUND));
 			if (value.isEmpty() || (common != null && !common.equals(value)))
 				return "";
 			common = value;

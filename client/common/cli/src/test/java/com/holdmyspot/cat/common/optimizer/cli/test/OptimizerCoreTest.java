@@ -2265,11 +2265,27 @@ public final class OptimizerCoreTest
 	public void startDerivesWithEffortOnlyBinding() throws Exception
 	{
 		// Requirement: R-D18
-		startWithBoundAgent("gpt-5.6-luna", new TrialProfile("", "low"), (repository, result) ->
+		startWithBoundAgent("gpt-5.6-luna", new TrialProfile("", "high"), (repository, result) ->
 		{
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "contractAuthors").
 				isEqualTo(1);
 			requireThat(result.proposal(), "proposal").isNotNull();
+		});
+	}
+
+	/**
+	 * Verifies that {@code start} offers no proposal when a staged binding file binds only an effort that no inventory
+	 * profile has, and names the test and its open model, because a trial never runs under the harness's default
+	 * model.
+	 */
+	@Test
+	public void startRefusesOpenBindingOutsideInventory() throws Exception
+	{
+		// Requirement: R-C10
+		startWithBoundAgent("gpt-5.6-luna", new TrialProfile("", "low"), (repository, result) ->
+		{
+			requireThat(result.proposal(), "proposal").isNull();
+			requireThat(result.message(), "message").contains("'safety'").contains("model open");
 		});
 	}
 

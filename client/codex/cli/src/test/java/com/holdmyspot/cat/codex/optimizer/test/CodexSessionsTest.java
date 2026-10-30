@@ -72,6 +72,10 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class CodexSessionsTest
 {
+	/**
+	 * The model and reasoning effort of a session whose profile the test does not examine.
+	 */
+	private static final TrialProfile SESSION_PROFILE = new TrialProfile("model-a", "low");
 	private static final Duration LIMIT = Duration.ofMinutes(5);
 
 	/**
@@ -195,7 +199,7 @@ public final class CodexSessionsTest
 					plugins = List.of(tools, cat);
 
 				SessionResult result = await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, plugins)));
+					List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE, plugins)));
 
 				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
@@ -210,7 +214,7 @@ public final class CodexSessionsTest
 					requireThat(options.lastIndexOf("--plugin"), "lastPlugin").isEqualTo(0);
 
 					requireThat(await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),
-						List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(tools)))), "withoutCat").
+						List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE, List.of(tools)))), "withoutCat").
 						isInstanceOf(SessionResult.Completed.class);
 					requireThat(arguments.getLast(), "withoutCatOptions").doesNotContain("--install-cat");
 					requireThat(ScriptedHarness.optionValue(arguments.getLast(), "--artifact"), "withoutCatArtifact").
@@ -295,7 +299,7 @@ public final class CodexSessionsTest
 				});
 
 				SessionResult result = await(sessions.start(new SessionRequest(role, part, source, List.of("brief"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+					List.of(), LIMIT, SESSION_PROFILE)));
 
 				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
@@ -368,7 +372,7 @@ public final class CodexSessionsTest
 			});
 
 			SessionResult result = await(sessions.start(new SessionRequest(SessionRole.CONTRACT_AUTHOR,
-				Part.DEVELOPMENT, source, List.of("brief"), List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT,
+				Part.DEVELOPMENT, source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE,
 				ContractAuthorFixtures.files(JsonMapper.builder().build()), List.of())));
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
@@ -429,7 +433,7 @@ public final class CodexSessionsTest
 			});
 
 			SessionResult result = await(sessions.start(new SessionRequest(SessionRole.PROMPT_AUTHOR,
-				Part.DEVELOPMENT, source, List.of("brief"), List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+				Part.DEVELOPMENT, source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE)));
 
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			List<String> options = arguments.getFirst();
@@ -459,7 +463,7 @@ public final class CodexSessionsTest
 	 */
 	private static SessionRequest request(Path source, List<Path> readOnly, String... turns)
 	{
-		return request(TrialProfile.HARNESS_DEFAULT, source, readOnly, turns);
+		return request(SESSION_PROFILE, source, readOnly, turns);
 	}
 
 	/**
@@ -727,7 +731,7 @@ public final class CodexSessionsTest
 
 				await(sessions.start(request(source, List.of(), "trial")));
 				await(sessions.start(new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, source, List.of("judge"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT)));
+					List.of(), LIMIT, SESSION_PROFILE)));
 
 				requireThat(arguments.size(), "arguments.size()").isEqualTo(2);
 				requireThat(arguments.get(0).contains("--session-transcripts"), "trial").isTrue();

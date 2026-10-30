@@ -390,7 +390,7 @@ final class ReportJson
 	}
 
 	/**
-	 * Adds a profile's model and effort, an empty value meaning the harness's default.
+	 * Adds a profile's model and effort. In a binding or the restriction, an empty value is an open dimension.
 	 *
 	 * @param node the node
 	 * @param profile the profile

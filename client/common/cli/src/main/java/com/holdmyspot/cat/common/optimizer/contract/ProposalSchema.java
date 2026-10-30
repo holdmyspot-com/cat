@@ -682,7 +682,7 @@ public final class ProposalSchema
 					text(node, "source"), optionalText(node, "trigger"), strings(node.get("behaviors")))));
 			List<PromptTest> tests = list(root.get("tests"), "$.tests", this::test);
 			JsonNode judgeNode = root.get("judge");
-			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(profile(judgeNode),
+			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(sessionProfile(judgeNode),
 				text(judgeNode, "prompt"), text(judgeNode, "rubric"), text(judgeNode, "decision_rule"),
 				judgeNode.get("result_schema").toString()));
 			List<Dependent> dependents = List.of();
@@ -789,7 +789,7 @@ public final class ProposalSchema
 		{
 			List<TrialProfile> inventory = new ArrayList<>();
 			for (JsonNode profileNode : node.get("inventory"))
-				inventory.add(profile(profileNode));
+				inventory.add(sessionProfile(profileNode));
 			List<ProfileBinding> bindings = new ArrayList<>();
 			for (JsonNode bindingNode : node.get("bindings"))
 				bindings.add(new ProfileBinding(text(bindingNode, "file"), profile(bindingNode)));
@@ -807,20 +807,32 @@ public final class ProposalSchema
 				scope = EnumNames.parse(node.get("scope").asString(), CertificationScope.class);
 			List<Cell> cells = new ArrayList<>();
 			for (JsonNode cellNode : node.get("cells"))
-				cells.add(new Cell(text(cellNode, "id"), text(cellNode, "test"), profile(cellNode)));
+				cells.add(new Cell(text(cellNode, "id"), text(cellNode, "test"), sessionProfile(cellNode)));
 			return new TrialProfiles(new ProfileCatalog(text(node, "inventory_source"), inventory), ranking,
 				bindings, restriction, described, scope, cells);
 		}
 
 		/**
-		 * Reads a profile's dimensions.
+		 * Reads a pattern's dimensions, either of which may be open.
 		 *
 		 * @param node an object with {@code model} and {@code effort}
-		 * @return the profile
+		 * @return the pattern
 		 */
 		private static TrialProfile profile(JsonNode node)
 		{
 			return new TrialProfile(text(node, "model"), text(node, "effort"));
+		}
+
+		/**
+		 * Reads the profile that a session runs under. A stored empty effort, which stands for a model without
+		 * reasoning efforts, is read as {@value TrialProfile#NO_REASONING}.
+		 *
+		 * @param node an object with {@code model} and {@code effort}
+		 * @return the profile
+		 */
+		private static TrialProfile sessionProfile(JsonNode node)
+		{
+			return TrialProfile.stored(text(node, "model"), text(node, "effort"));
 		}
 
 		/**

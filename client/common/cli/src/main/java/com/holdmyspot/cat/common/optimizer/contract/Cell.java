@@ -23,13 +23,15 @@ public record Cell(String id, String testId, TrialProfile profile)
 	 * @param testId the identifier of the prompt test whose test cases the cell draws
 	 * @param profile the profile that the cell's trial sessions start under
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code id} or {@code testId} are blank
+	 * @throws IllegalArgumentException if {@code id} or {@code testId} are blank, or {@code profile} does not name both
+	 *   a model and an effort
 	 */
 	public Cell
 	{
 		requireThat(id, "id").isNotBlank();
 		requireThat(testId, "testId").isNotBlank();
 		requireThat(profile, "profile").isNotNull();
+		requireThat(profile.isComplete(), "profile.isComplete()").withContext(profile, "profile").isTrue();
 	}
 
 	/**

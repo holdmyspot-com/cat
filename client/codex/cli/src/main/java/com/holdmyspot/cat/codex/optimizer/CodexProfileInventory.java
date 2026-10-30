@@ -30,9 +30,10 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * The inventory is every model that {@code codex debug models} lists with visibility {@code list} and whose slug is
  * {@code gpt-<version>} or {@code gpt-<version>-<rest>} with a major version of 6 or later, each with its supported
- * reasoning levels except {@code ultra}; hidden models, models of an earlier version and models whose slug has another
- * form are not offered. {@code ultra} is {@code max} reasoning plus automatic task delegation, which changes what the
- * agent does rather than how deeply it reasons, so a model's highest effort is the one below it. A binding is the
+ * reasoning levels except {@code ultra}, or with the effort {@code none} if it lists no level; hidden models, models
+ * of an earlier version and models whose slug has another form are not offered. {@code ultra} is {@code max}
+ * reasoning plus automatic task delegation, which changes what the agent does rather than how deeply it reasons, so
+ * a model's highest effort is the one below it. A binding is the
  * top-level {@code model} and {@code model_reasoning_effort} of a custom agent's {@code .toml} file below an
  * {@code agents} directory. The role profile is the binding of the artifact's {@code optimize-xhigh} agent
  * definition, which must name a model of version 6 or later. A trial's {@code config.toml} sets
@@ -130,7 +131,7 @@ public final class CodexProfileInventory implements ProfileInventory
 				continue;
 			JsonNode levels = model.path("supported_reasoning_levels");
 			if (levels.isEmpty())
-				profiles.add(new TrialProfile(slug, ""));
+				profiles.add(new TrialProfile(slug, TrialProfile.NO_REASONING));
 			for (JsonNode level : levels)
 			{
 				String effort = level.path("effort").asString("");

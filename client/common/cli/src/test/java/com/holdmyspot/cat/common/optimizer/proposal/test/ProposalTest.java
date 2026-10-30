@@ -1827,7 +1827,8 @@ public final class ProposalTest
 
 	/**
 	 * Verifies that the contract author's request lists the harness's profile inventory and its source, so that it can
-	 * turn the user's feedback into a restriction, and that it names a model without an effort dimension as such.
+	 * turn the user's feedback into a restriction, and that it names a model without reasoning efforts with the
+	 * effort `none`.
 	 */
 	@Test
 	public void requestListsTheProfileInventory()
@@ -1839,9 +1840,10 @@ public final class ProposalTest
 		requireThat(prompt, "prompt").contains(ContractFixtures.TWO_PROFILES.source()).
 			contains("- model `big`, effort `high`").contains("- model `small`, effort `high`");
 
-		ProfileCatalog plain = new ProfileCatalog("plain models", List.of(new TrialProfile("plain", "")));
+		ProfileCatalog plain = new ProfileCatalog("plain models",
+			List.of(new TrialProfile("plain", TrialProfile.NO_REASONING)));
 		requireThat(contractAuthor.request(PROMPT_SYSTEM, evidence(plain, Map.of()), List.of(), List.of(), SALT).
-			turns().getFirst(), "plainPrompt").contains("- model `plain`, no effort dimension").
+			turns().getFirst(), "plainPrompt").contains("- model `plain`, effort `none`").
 			doesNotContain("effort ``");
 	}
 

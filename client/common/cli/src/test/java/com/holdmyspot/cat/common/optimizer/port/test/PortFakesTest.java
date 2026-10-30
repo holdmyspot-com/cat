@@ -35,6 +35,10 @@ import org.testng.annotations.Test;
 public final class PortFakesTest
 {
 	/**
+	 * The model and reasoning effort of a session whose profile the test does not examine.
+	 */
+	private static final TrialProfile SESSION_PROFILE = new TrialProfile("model-a", "low");
+	/**
 	 * Creates the test.
 	 */
 	public PortFakesTest()
@@ -50,7 +54,7 @@ public final class PortFakesTest
 	private static SessionRequest request(String turn)
 	{
 		return new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, Path.of("/staged").toAbsolutePath(), List.of(turn),
-			List.of(), Duration.ofMinutes(1), TrialProfile.HARNESS_DEFAULT);
+			List.of(), Duration.ofMinutes(1), SESSION_PROFILE);
 	}
 
 	/**

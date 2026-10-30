@@ -35,6 +35,10 @@ import java.util.concurrent.TimeoutException;
  */
 public final class SessionPortContract
 {
+	/**
+	 * The model and reasoning effort of a session whose profile the test does not examine.
+	 */
+	private static final TrialProfile SESSION_PROFILE = new TrialProfile("model-a", "low");
 	private static final Duration LIMIT = Duration.ofMinutes(10);
 	private static final long WAIT_MINUTES = 12;
 
@@ -159,7 +163,7 @@ public final class SessionPortContract
 	private static SessionRequest request(Subject subject, SessionRole role, List<Path> readOnly, List<String> turns)
 	{
 		return new SessionRequest(role, partOf(role), subject.workspace(), turns, readOnly, LIMIT,
-			TrialProfile.HARNESS_DEFAULT);
+			SESSION_PROFILE);
 	}
 
 	/**

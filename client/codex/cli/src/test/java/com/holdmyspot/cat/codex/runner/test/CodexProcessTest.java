@@ -266,6 +266,30 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * Verifies that the effort {@code none} reaches Codex as each {@code turn/start}'s explicit {@code effort}
+	 * {@code none}, which codex-cli reads as no reasoning, rather than as a turn without an effort, which Codex would
+	 * run at its configured default.
+	 *
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void sendsNoneEffortExplicitly() throws IOException
+	{
+		// Requirement: R-I11
+		AppServer server = new AppServer(id -> List.of(turnStarted(id),
+			agentMessage(ROOT_THREAD, "done"),
+			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
+		try (TemporaryDirectories directories = new TemporaryDirectories();
+			CodexProcess process = server.start(directories, "gpt-6-plain", "none"))
+		{
+			process.sendTurn("Run the trial.");
+
+			requireThat(server.requests("turn/start").getFirst().path("effort").asString(""), "effort").
+				isEqualTo("none");
+		}
+	}
+
+	/**
 	 * Verifies that when Codex refuses to start the thread, the failure reports Codex's own error message.
 	 *
 	 * @throws IOException if the app-server's process cannot be closed

@@ -80,7 +80,7 @@ public final class ContractTest
 		// Requirement: R-C5
 		JudgeProfile valid = ContractFixtures.judge();
 		List<Runnable> blanks = List.of(
-			() -> new JudgeProfile(TrialProfile.HARNESS_DEFAULT, valid.prompt(), valid.rubric(), valid.decisionRule(),
+			() -> new JudgeProfile(TrialProfile.UNBOUND, valid.prompt(), valid.rubric(), valid.decisionRule(),
 				valid.resultSchema()),
 			() -> new JudgeProfile(valid.profile(), "", valid.rubric(), valid.decisionRule(), valid.resultSchema()),
 			() -> new JudgeProfile(valid.profile(), valid.prompt(), "", valid.decisionRule(), valid.resultSchema()),

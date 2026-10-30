@@ -27,13 +27,13 @@ public record JudgeProfile(TrialProfile profile, String prompt, String rubric, S
 	 * @param decisionRule how the judge turns its findings into a pass or a failure
 	 * @param resultSchema the JSON schema, as JSON text, that a judge result must satisfy
 	 * @throws NullPointerException if any argument is null
-	 * @throws IllegalArgumentException if {@code profile} selects neither a model nor an effort, or any other
+	 * @throws IllegalArgumentException if {@code profile} does not name both a model and an effort, or any other
 	 *   argument is blank
 	 */
 	public JudgeProfile
 	{
 		requireThat(profile, "profile").isNotNull();
-		requireThat(profile.isBound(), "profile.isBound()").isTrue();
+		requireThat(profile.isComplete(), "profile.isComplete()").withContext(profile, "profile").isTrue();
 		requireThat(prompt, "prompt").isNotBlank();
 		requireThat(rubric, "rubric").isNotBlank();
 		requireThat(decisionRule, "decisionRule").isNotBlank();

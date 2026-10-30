@@ -26,8 +26,8 @@ import java.util.Optional;
  * @param readOnly paths that the session may read but never write, such as a judge's evidence
  * @param timeLimit how long the session may run before its remaining turns are abandoned
  * @param profile the model and reasoning effort that the session starts under: a trial's cell profile, or the role
- *   profile for the contract author, judge and prompt author. An empty dimension starts the session without
- *   selecting it.
+ *   profile for the contract author, judge and prompt author. It names both, so the session never runs under the
+ *   harness's default model or effort.
  * @param files the files that the workspace receives on top of {@code source} before the first turn: a trial's
  *   workspace files, or the contract author's draft directory; {@link TestWorkspace#NONE} for every other session
  * @param plugins the plugin directories that a trial installs, and no other plugin; empty for every other session
@@ -152,8 +152,8 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
 	 *   author is not {@link Part#DEVELOPMENT}, if a session other than a trial or the contract author receives files,
-	 *   if a session other than a trial installs plugins, or if a session other than a trial runs on the control
-	 *   source
+	 *   if a session other than a trial installs plugins, if a session other than a trial runs on the control
+	 *   source, or if {@code profile} does not name both a model and an effort
 	 */
 	public SessionRequest
 	{
@@ -173,6 +173,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		requireThat(timeLimit, "timeLimit").isNotNull();
 		requireThat(timeLimit.isPositive(), "timeLimit.isPositive").isTrue();
 		requireThat(profile, "profile").isNotNull();
+		requireThat(profile.isComplete(), "profile.isComplete()").withContext(profile, "profile").isTrue();
 		requireThat(files, "files").isNotNull();
 		requireThat(plugins, "plugins").isNotNull();
 		requireThat(followUp, "followUp").isNotNull();

@@ -90,7 +90,7 @@ public final class ProfileInventoryContract
 	{
 		ProfileInventory port = subject.port();
 		for (TrialProfile profile : new TrialProfile[]{new TrialProfile("model-a", "high"),
-			new TrialProfile("model-a", ""), new TrialProfile("", "low"), TrialProfile.HARNESS_DEFAULT})
+			new TrialProfile("model-a", ""), new TrialProfile("", "low"), TrialProfile.UNBOUND})
 		{
 			requireThat(port.binding(subject.content(profile)), "binding(" + profile + ")").isEqualTo(profile);
 		}

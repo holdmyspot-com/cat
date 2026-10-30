@@ -251,12 +251,13 @@ public final class CodexProfileInventoryTest
 	}
 
 	/**
-	 * Verifies that a listed model that names no reasoning level is offered without an effort dimension.
+	 * Verifies that a listed model that names no reasoning level is offered once, with the effort {@code none}, so
+	 * that its trials select no reasoning rather than leaving the effort to Codex's configured default.
 	 *
 	 * @throws IOException if the inventory cannot be read
 	 */
 	@Test
-	public void modelWithoutLevelsHasNoEffortDimension() throws IOException
+	public void modelWithoutLevelsRunsWithoutReasoning() throws IOException
 	{
 		// Requirement: R-C10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -266,7 +267,7 @@ public final class CodexProfileInventoryTest
 			ProfileCatalog inventory = new CodexProfileInventory(artifact, "codex",
 				launcher(output, new CopyOnWriteArrayList<>())).inventory();
 
-			requireThat(inventory.profiles(), "profiles").isEqualTo(List.of(new TrialProfile("gpt-6-plain", "")));
+			requireThat(inventory.profiles(), "profiles").isEqualTo(List.of(new TrialProfile("gpt-6-plain", "none")));
 		}
 	}
 

@@ -567,10 +567,7 @@ final class Session implements SessionHandle
 		if (!settings.executable().isBlank())
 			arguments.addAll(List.of("--executable", settings.executable()));
 		TrialProfile profile = request.profile();
-		if (!profile.model().isEmpty())
-			arguments.addAll(List.of("--model", profile.model()));
-		if (!profile.effort().isEmpty())
-			arguments.addAll(List.of("--effort", profile.effort()));
+		arguments.addAll(List.of("--model", profile.model(), "--effort", profile.effort()));
 		if (profile.toolOutputTokenLimit() > 0)
 			arguments.addAll(List.of("--tool-output-token-limit", String.valueOf(profile.toolOutputTokenLimit())));
 		if (installCat)

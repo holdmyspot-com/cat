@@ -67,6 +67,10 @@ import org.testng.annotations.Test;
  */
 public final class RunnerSessionsTest
 {
+	/**
+	 * The model and reasoning effort of a session whose profile the test does not examine.
+	 */
+	private static final TrialProfile SESSION_PROFILE = new TrialProfile("model-a", "low");
 	private static final Duration LIMIT = Duration.ofMinutes(5);
 	private static final Instant START = Instant.parse("2026-10-01T00:00:00Z");
 
@@ -129,7 +133,7 @@ public final class RunnerSessionsTest
 	 */
 	private static SessionRequest request(Path source, List<Path> readOnly, String... turns)
 	{
-		return request(TrialProfile.HARNESS_DEFAULT, source, readOnly, turns);
+		return request(SESSION_PROFILE, source, readOnly, turns);
 	}
 
 	/**
@@ -230,8 +234,8 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that CAT passes bound model and reasoning-effort dimensions to the runner and omits the options for
-	 * unbound dimensions.
+	 * Verifies that CAT passes a session's model and reasoning effort to the runner, including the effort that selects
+	 * no reasoning, so that no session runs under the harness's default.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -253,20 +257,18 @@ public final class RunnerSessionsTest
 				TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
 					arguments, List.of(Turn.replies("ok")));
 
-				await(sessions.start(request(new TrialProfile("model-a", "high"), source, List.of(), "complete")));
-				await(sessions.start(request(new TrialProfile("model-b", ""), source, List.of(), "partial")));
-				await(sessions.start(request(new TrialProfile("", "low"), source, List.of(), "effortOnly")));
+				await(sessions.start(request(new TrialProfile("model-a", "high"), source, List.of(), "reasoning")));
+				await(sessions.start(request(new TrialProfile("model-b", TrialProfile.NO_REASONING), source, List.of(),
+					"noReasoning")));
 
-				requireThat(arguments.size(), "arguments.size()").isEqualTo(3);
-				List<String> complete = arguments.get(0);
-				requireThat(ScriptedHarness.optionValue(complete, "--model"), "completeModel").isEqualTo("model-a");
-				requireThat(ScriptedHarness.optionValue(complete, "--effort"), "completeEffort").isEqualTo("high");
-				List<String> partial = arguments.get(1);
-				requireThat(ScriptedHarness.optionValue(partial, "--model"), "partialModel").isEqualTo("model-b");
-				requireThat(partial.contains("--effort"), "partialEffort").isFalse();
-				List<String> effortOnly = arguments.get(2);
-				requireThat(effortOnly.contains("--model"), "effortOnlyModel").isFalse();
-				requireThat(ScriptedHarness.optionValue(effortOnly, "--effort"), "effortOnlyEffort").isEqualTo("low");
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(2);
+				List<String> reasoning = arguments.get(0);
+				requireThat(ScriptedHarness.optionValue(reasoning, "--model"), "reasoningModel").isEqualTo("model-a");
+				requireThat(ScriptedHarness.optionValue(reasoning, "--effort"), "reasoningEffort").isEqualTo("high");
+				List<String> noReasoning = arguments.get(1);
+				requireThat(ScriptedHarness.optionValue(noReasoning, "--model"), "noReasoningModel").isEqualTo("model-b");
+				requireThat(ScriptedHarness.optionValue(noReasoning, "--effort"), "noReasoningEffort").
+					isEqualTo(TrialProfile.NO_REASONING);
 			}
 		}
 	}
@@ -298,7 +300,7 @@ public final class RunnerSessionsTest
 				for (boolean controlSource : List.of(true, false))
 				{
 					await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
-						List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, List.of(), Optional.empty(),
+						List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE, List.of(), Optional.empty(),
 						controlSource)));
 				}
 
@@ -344,7 +346,7 @@ public final class RunnerSessionsTest
 				});
 
 				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, files, List.of())));
+					List.of(), LIMIT, SESSION_PROFILE, files, List.of())));
 
 				StringWriter generated = new StringWriter();
 				lines.write(generated);
@@ -391,9 +393,9 @@ public final class RunnerSessionsTest
 			for (List<Path> plugins : List.of(List.of(otherCopy, catCopy), List.of(otherCopy), List.<Path>of()))
 			{
 				await(sessions.start(new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, List.of("go"),
-					List.of(), LIMIT, TrialProfile.HARNESS_DEFAULT, TestWorkspace.NONE, plugins)));
+					List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE, plugins)));
 			}
-			await(sessions.start(request(SessionRole.JUDGE, TrialProfile.HARNESS_DEFAULT, source, List.of(), "go")));
+			await(sessions.start(request(SessionRole.JUDGE, SESSION_PROFILE, source, List.of(), "go")));
 
 			List<String> withCat = arguments.get(0);
 			requireThat(ScriptedHarness.optionValue(withCat, "--artifact"), "withCatArtifact").
@@ -997,7 +999,7 @@ public final class RunnerSessionsTest
 				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 				TestSessions sessions = port(jvm, artifact, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
 					new CopyOnWriteArrayList<>(), script);
-				SessionHandle handle = sessions.start(request(role, TrialProfile.HARNESS_DEFAULT, source, List.of(), "one",
+				SessionHandle handle = sessions.start(request(role, SESSION_PROFILE, source, List.of(), "one",
 					"two", "three"));
 				requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
 

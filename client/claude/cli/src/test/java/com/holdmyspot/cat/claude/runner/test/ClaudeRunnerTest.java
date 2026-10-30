@@ -80,6 +80,30 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
+	 * Verifies that the effort {@code none} starts Claude Code with extended thinking turned off and without
+	 * {@code --effort}, which Claude Code would ignore for {@code none} and replace with its default effort, while
+	 * every other effort is passed through as {@code --effort}.
+	 */
+	@Test
+	public void noneEffortTurnsThinkingOff()
+	{
+		// Requirement: R-I11
+		List<String> none = ClaudeRunner.command("claude", "sonnet", "none", "", List.of(), Path.of("hook-results"),
+			List.of(), false);
+		List<String> low = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
+			List.of(), false);
+
+		int thinking = none.indexOf("--thinking");
+		requireThat(thinking, "thinking").isNotNegative();
+		requireThat(none.get(thinking + 1), "thinkingMode").isEqualTo("disabled");
+		requireThat(none, "none").doesNotContain("--effort").doesNotContain("none");
+		int effort = low.indexOf("--effort");
+		requireThat(effort, "effort").isNotNegative();
+		requireThat(low.get(effort + 1), "effortLevel").isEqualTo("low");
+		requireThat(low, "low").doesNotContain("--thinking");
+	}
+
+	/**
 	 * Verifies that a session that may request sessions is told how through its appended system prompt, and that a
 	 * session that may request none is told nothing.
 	 */

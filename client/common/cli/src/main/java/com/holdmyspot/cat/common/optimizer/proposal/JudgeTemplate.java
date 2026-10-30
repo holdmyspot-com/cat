@@ -40,14 +40,14 @@ public final class JudgeTemplate
 	 * @param json the operation-owned JSON mapper
 	 * @param role the harness's role profile, which the contract author, judge and prompt author sessions run under
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code role} binds nothing
+	 * @throws IllegalArgumentException if {@code role} does not name both a model and an effort
 	 * @throws UncheckedIOException if the packaged judge prompt or result schema cannot be read
 	 */
 	public JudgeTemplate(JsonMapper json, TrialProfile role)
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(role, "role").isNotNull();
-		requireThat(role.isBound(), "role.isBound()").isTrue();
+		requireThat(role.isComplete(), "role.isComplete()").withContext(role, "role").isTrue();
 		this.json = json;
 		this.role = role;
 		this.prompt = PromptTemplate.readResource(PROMPT_RESOURCE);

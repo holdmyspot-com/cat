@@ -158,8 +158,8 @@ public final class ClaudeProfileInventoryTest
 
 	/**
 	 * Verifies that the shipped inventory lists each model's efforts from the lowest to the highest, so that a model's
-	 * first listed effort is its lowest, which the weakest cell uses. A model without an
-	 * effort dimension has one profile.
+	 * first listed effort is its lowest, which the weakest cell uses. A model without reasoning efforts has one
+	 * profile, whose effort is {@code none}.
 	 *
 	 * @throws IOException if the inventory cannot be read
 	 */
@@ -171,15 +171,10 @@ public final class ClaudeProfileInventoryTest
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
 			ProfileCatalog inventory = new ClaudeProfileInventory(artifact).inventory();
-			List<String> ladder = List.of("low", "medium", "high", "xhigh", "max", "ultra");
+			List<String> ladder = List.of("none", "low", "medium", "high", "xhigh", "max", "ultra");
 			Map<String, Integer> previous = new HashMap<>();
 			for (TrialProfile profile : inventory.profiles())
 			{
-				if (profile.effort().isEmpty())
-				{
-					requireThat(previous.put(profile.model(), -1), profile.toString()).isNull();
-					continue;
-				}
 				int rank = ladder.indexOf(profile.effort());
 				requireThat(rank, profile.toString()).isNotNegative();
 				Integer lower = previous.put(profile.model(), rank);
@@ -188,6 +183,28 @@ public final class ClaudeProfileInventoryTest
 			}
 			requireThat(previous.size(), "models").isEqualTo(4);
 		}
+	}
+
+	/**
+	 * Verifies that a model that the inventory resource lists without reasoning efforts is offered once, with the
+	 * effort {@code none}, so that its trials select no reasoning rather than leaving the effort to Claude Code's
+	 * default.
+	 *
+	 * @throws IOException if the resource cannot be read
+	 */
+	@Test
+	public void modelWithoutEffortsRunsWithoutReasoning() throws IOException
+	{
+		// Requirement: R-C10
+		String resource = "{\"format_version\": 1, \"source\": \"s\", \"models\": [" +
+			"{\"model\": \"plain\", \"efforts\": [], \"documentation\": \"d\"}, " +
+			"{\"model\": \"opus\", \"efforts\": [\"low\"], \"documentation\": \"d\"}]}";
+
+		ProfileCatalog inventory = ClaudeProfileInventorySecrets.getClaudeProfileInventoryAccess().
+			parse(new ByteArrayInputStream(resource.getBytes(UTF_8)));
+
+		requireThat(inventory.profiles(), "profiles").isEqualTo(List.of(new TrialProfile("plain", "none"),
+			new TrialProfile("opus", "low")));
 	}
 
 	/**
@@ -323,9 +340,9 @@ public final class ClaudeProfileInventoryTest
 			requireThat(port.binding("---\nname: reviewer\nmodel: inherit\neffort: \"low\"\n---\nReview.\n"),
 				"inherit").isEqualTo(new TrialProfile("", "low"));
 			requireThat(port.binding("No frontmatter.\nmodel: opus\n"), "noFrontmatter").
-				isEqualTo(TrialProfile.HARNESS_DEFAULT);
+				isEqualTo(TrialProfile.UNBOUND);
 			requireThat(port.binding("---\nname: reviewer\n---\nmodel: opus\neffort: high\n"), "body").
-				isEqualTo(TrialProfile.HARNESS_DEFAULT);
+				isEqualTo(TrialProfile.UNBOUND);
 		}
 	}
 

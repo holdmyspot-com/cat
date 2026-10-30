@@ -177,7 +177,7 @@
 			}
 		},
 		"trial_profiles": {
-			"description": "The trial profiles that CAT computed: the harness's profile inventory and its source, the capability ranking of its model families, each prompt file that binds a model or effort, the user's restriction, the profiles that the user described as the certification scope, the certification scope and every cell. An empty model or effort is the harness's default.",
+			"description": "The trial profiles that CAT computed: the harness's profile inventory and its source, the capability ranking of its model families, each prompt file that binds a model or effort, the user's restriction, the profiles that the user described as the certification scope, the certification scope and every cell. The inventory, the cells and the certification scope name both a model and an effort, and the effort `none` selects no reasoning; a binding, the restriction or a described profile leaves an open dimension empty. An empty effort in the inventory or a cell loads as `none`.",
 			"type": "object",
 			"additionalProperties": false,
 			"required": ["inventory_source", "inventory", "ranking", "bindings", "restriction", "described", "scope", "cells"],
@@ -235,7 +235,7 @@
 			"required": ["model", "effort", "prompt", "rubric", "decision_rule", "result_schema"],
 			"properties": {
 				"model": {"description": "The role profile's model.", "type": "string", "pattern": "^[^\\s/]*$"},
-				"effort": {"description": "The role profile's reasoning effort. Empty for the harness's default.", "type": "string", "pattern": "^[^\\s/]*$"},
+				"effort": {"description": "The role profile's reasoning effort; `none` selects no reasoning, and an empty effort loads as `none`.", "type": "string", "pattern": "^[^\\s/]*$"},
 				"prompt": {"type": "string", "pattern": "\\S"},
 				"rubric": {"description": "What the judge checks, in a trial's text, file effects and tool effects, for each assertion that no built-in tool decides, including expected_outcome.", "type": "string", "pattern": "\\S"},
 				"decision_rule": {"description": "How the judge turns its findings into a pass or a failure of each assertion that it decides. The judge cannot override a built-in tool that decided its assertion.", "type": "string", "pattern": "\\S"},

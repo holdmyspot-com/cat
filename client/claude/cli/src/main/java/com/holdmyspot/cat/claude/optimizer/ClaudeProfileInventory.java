@@ -33,8 +33,8 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * The Claude CLI offers no command that lists its models, so the inventory is the resource
  * {@code claude-profiles.json} next to this class: the documented model aliases, the efforts each one accepts and the
- * documentation each entry came from. An alias whose effort support is undocumented has no effort
- * dimension.
+ * documentation each entry came from. An alias that the resource lists without efforts has one profile, whose effort
+ * is {@code none}, so that its sessions run without reasoning.
  * <p>
  * A binding is the {@code model} and {@code effort} frontmatter of a skill's {@code SKILL.md} or of a subagent's
  * {@code .md} file below an {@code agents} directory; {@code inherit} binds nothing. The role profile is the binding of
@@ -144,7 +144,7 @@ public final class ClaudeProfileInventory implements ProfileInventory
 			if (!efforts.isArray())
 				throw new IOException("The efforts of " + model + " in " + RESOURCE + " are not an array.");
 			if (efforts.isEmpty())
-				profiles.add(new TrialProfile(model, ""));
+				profiles.add(new TrialProfile(model, TrialProfile.NO_REASONING));
 			for (JsonNode effort : efforts)
 				profiles.add(new TrialProfile(model, effort.asString()));
 		}
@@ -221,7 +221,7 @@ public final class ClaudeProfileInventory implements ProfileInventory
 		requireThat(content, "content").isNotNull();
 		Matcher frontmatter = FRONTMATTER.matcher(content);
 		if (!frontmatter.find())
-			return TrialProfile.HARNESS_DEFAULT;
+			return TrialProfile.UNBOUND;
 		String metadata = frontmatter.group(1);
 		return new TrialProfile(value(MODEL, metadata), value(EFFORT, metadata));
 	}

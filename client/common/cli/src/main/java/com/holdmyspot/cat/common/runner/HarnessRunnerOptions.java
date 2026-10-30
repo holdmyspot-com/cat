@@ -16,7 +16,7 @@ import java.util.List;
  * @param runRoot the absolute owned-run root
  * @param executable the harness executable
  * @param model the selected model
- * @param effort the selected reasoning effort
+ * @param effort the selected reasoning effort, or {@value #NO_REASONING} for none
  * @param output the optional durable bridge-transcript destination
  * @param keepRun indicates whether successful runs are retained
  * @param receipt the optional retained-evidence receipt destination
@@ -44,6 +44,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	boolean includeUserRules, int maximumConcurrency, List<Path> deniedReads, List<Path> readOnlyEvidence,
 	Path workspace, List<Path> plugins, int sessionRequests, Duration capacityWait, int requestDepth, Path input)
 {
+	/**
+	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
+	 * harness's explicit setting for no reasoning, so that the harness never applies its default effort.
+	 */
+	public static final String NO_REASONING = "none";
+
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
 	 *

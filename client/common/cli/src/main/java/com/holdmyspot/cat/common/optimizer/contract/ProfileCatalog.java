@@ -10,8 +10,9 @@ import java.util.Set;
  * Every model and reasoning-effort combination that a harness offers the user, with the source of that list. CAT
  * uses this list, called the profile inventory, to derive trial profiles.
  * <p>
- * A model whose effort support is undocumented is listed once, with an empty effort, so that its sessions run under
- * the harness's default effort.
+ * A model that the harness lists without reasoning efforts is listed once, with the effort
+ * {@value TrialProfile#NO_REASONING}, so that its sessions run without reasoning rather than under the harness's
+ * default effort.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
@@ -26,8 +27,8 @@ public record ProfileCatalog(String source, List<TrialProfile> profiles)
 	 * @param source where the inventory came from
 	 * @param profiles every profile, in the harness's order
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code source} is blank, {@code profiles} is empty, a profile has no model
-	 *   or a profile is listed twice
+	 * @throws IllegalArgumentException if {@code source} is blank, {@code profiles} is empty, a profile does not name
+	 *   both a model and an effort, or a profile is listed twice
 	 */
 	public ProfileCatalog
 	{
@@ -37,7 +38,7 @@ public record ProfileCatalog(String source, List<TrialProfile> profiles)
 		Set<TrialProfile> unique = new HashSet<>();
 		for (TrialProfile profile : profiles)
 		{
-			requireThat(profile.model(), "profile.model()").isNotEmpty();
+			requireThat(profile.isComplete(), "profile.isComplete()").withContext(profile, "profile").isTrue();
 			if (!unique.add(profile))
 				throw new IllegalArgumentException("The profile " + profile + " is listed twice");
 		}

@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunLock;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
@@ -602,7 +603,9 @@ public final class ClaudeRunner
 	 *
 	 * @param executable         the Claude executable
 	 * @param model              the requested model
-	 * @param effort             the requested reasoning effort
+	 * @param effort             the requested reasoning effort; {@code none} starts Claude Code with extended thinking
+	 *   turned off ({@code --thinking disabled}) and no {@code --effort}, because Claude Code ignores an
+	 *   {@code --effort} it does not list and applies its default effort instead
 	 * @param agent              the optional direct CAT agent name
 	 * @param plugins            the directories of the plugins installed in the isolated home
 	 * @param hookResults        the hook context directory
@@ -653,8 +656,16 @@ public final class ClaudeRunner
 		}
 		command.add("--model");
 		command.add(model);
-		command.add("--effort");
-		command.add(effort);
+		if (effort.equals(HarnessRunnerOptions.NO_REASONING))
+		{
+			command.add("--thinking");
+			command.add("disabled");
+		}
+		else
+		{
+			command.add("--effort");
+			command.add(effort);
+		}
 		if (!agent.isBlank())
 		{
 			command.add("--agent");

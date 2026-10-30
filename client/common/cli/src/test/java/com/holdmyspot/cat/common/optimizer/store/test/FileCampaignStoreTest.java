@@ -23,6 +23,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialInputs;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -198,6 +200,45 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				new PendingDecision.MeasurementChanged(observed,
 					List.of(MeasurementCondition.MODEL, MeasurementCondition.PROVIDER)),
 				new PendingDecision.UnownedChange("CLAUDE.md changed outside CAT")));
+		}
+	}
+
+	/**
+	 * Verifies that a campaign stored while the profile inventories listed a model without reasoning efforts with an
+	 * empty effort loads that effort as {@code none}: every inventory profile, cell and judge profile then names an
+	 * effort, so no session of the campaign starts under the harness's default effort.
+	 *
+	 * @throws IOException if the fixture cannot be stored or loaded
+	 */
+	@Test
+	public void loadsEmptyStoredEffortAsNone() throws IOException
+	{
+		// Requirement: R-C10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("empty-effort"));
+			Campaign campaign = new Builder().confirmed().working(1).build();
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			store.replaceSnapshot(campaign);
+			Path file = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(file, UTF_8));
+			JsonNode contract = root.get("lineages").get(0).get("contract");
+			JsonNode profiles = contract.get("trial_profiles");
+			for (JsonNode profile : profiles.get("inventory"))
+				((ObjectNode) profile).put("effort", "");
+			for (JsonNode cell : profiles.get("cells"))
+				((ObjectNode) cell).put("effort", "");
+			((ObjectNode) contract.get("judge")).put("effort", "");
+			Files.writeString(file, JSON.writeValueAsString(root), UTF_8);
+
+			Campaign loaded = store.load(ID).orElseThrow();
+
+			TrialProfiles loadedProfiles = loaded.contract().profiles();
+			requireThat(loadedProfiles.inventory().profiles().stream().map(TrialProfile::effort).toList(),
+				"inventoryEfforts").isNotEmpty().containsAll(List.of("none")).doesNotContain("");
+			requireThat(loadedProfiles.cells().stream().map(cell -> cell.profile().effort()).toList(),
+				"cellEfforts").isNotEmpty().containsAll(List.of("none")).doesNotContain("");
+			requireThat(loaded.contract().judge().profile().effort(), "judgeEffort").isEqualTo("none");
 		}
 	}
 
