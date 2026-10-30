@@ -282,9 +282,8 @@ public final class CodexRunPartTest
 				Path.of("/bin").toAbsolutePath();
 			Map<String, String> environment = new HashMap<>(Map.of("TMPDIR", temporary.toString(), "PATH", path));
 			// PowerShell finds a program by its name without an extension only with an extension that PATHEXT lists
-			String extensions = System.getenv("PATHEXT");
-			if (extensions != null)
-				environment.put("PATHEXT", extensions);
+			if (SHELL == CommandShell.POWERSHELL)
+				environment.put("PATHEXT", ".COM;.EXE;.BAT;.CMD");
 
 			Call call = runPart(script("printf '%s|%s\\n' \"$(command -v rg)\" \"${CAT_RUN_PART_OUTPUT-unset}\"",
 				"Write-Output \"$((Get-Command -Name rg).Source)|$env:CAT_RUN_PART_OUTPUT\""), false, OUTSIDE_PROJECT,

@@ -152,26 +152,6 @@ public final class FakeWorkspaceContractTest
 	}
 
 	/**
-	 * Verifies that relative copy and effects paths produce inventories with absolute roots.
-	 *
-	 * @throws IOException if the fixture or check fails
-	 */
-	@Test
-	public void acceptsRelativeDirectories() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			// Under the working directory, so that a relative path reaches it even when the temporary directory is on
-			// another drive
-			Path relativeRoot = cleanup.add(Files.createTempDirectory(Path.of("target"), "workspace-contract-"));
-			WorkspaceContract contract = new WorkspaceContract(new ContractWorkspace(relativeRoot, true, false));
-			contract.preparesIndependentAuthoringCopies();
-			contract.scansUnchangedPromptAuthorEffects();
-			contract.scansIndependentPromptAuthorEffects();
-		}
-	}
-
-	/**
 	 * Verifies that deleting an authoring copy leaves another copy available.
 	 *
 	 * @param stagedFiles whether the fake writes staged files

@@ -1992,8 +1992,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Files.setPosixFilePermissions(file, Set.of());
 			return;
 		}
-		UserPrincipal user = file.getFileSystem().getUserPrincipalLookupService().
-			lookupPrincipalByName(System.getProperty("user.name"));
+		// The test created the file, so its owner is the user that runs the test
+		UserPrincipal user = Files.getOwner(file);
 		AclFileAttributeView view = Files.getFileAttributeView(file, AclFileAttributeView.class);
 		List<AclEntry> entries = new ArrayList<>(view.getAcl());
 		entries.addFirst(AclEntry.newBuilder().

@@ -49,7 +49,7 @@ public final class CodexSessionStartHookTest
 			Files.writeString(ruleDirectory.resolve("a.md"), "---\npaths: [\"*.java\"]\n---\njava rule");
 			writeReadingGuidance(project);
 			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", project.toString()),
-				Path.of("."));
+				project);
 			String rules = sessionRules(result);
 			requireThat(rules, "rules").contains("z rule").
 				contains("Load `" + ruleDirectory.resolve("a.md") +
@@ -75,11 +75,11 @@ public final class CodexSessionStartHookTest
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule.md"), "rule");
 
 			HookResult matching = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(),
-				"CAT_INSTALL_DIR", plugin.toString()), Path.of("."));
+				"CAT_INSTALL_DIR", plugin.toString()), project);
 			HookResult conflicting = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(),
-				"CAT_INSTALL_DIR", conflictingPlugin.toString()), Path.of("."));
+				"CAT_INSTALL_DIR", conflictingPlugin.toString()), project);
 			HookResult unsupported = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(),
-				"CAT_PROJECT_DIR", project.toString()), Path.of("."));
+				"CAT_PROJECT_DIR", project.toString()), project);
 
 			requireThat(sessionRules(matching), "matchingRules").contains("rule");
 			requireThat(matching.error(), "matchingError").isEmpty();
@@ -107,7 +107,7 @@ public final class CodexSessionStartHookTest
 				"project common");
 			Files.writeString(Files.createDirectories(project.resolve(".cat/rules/codex")).resolve("a.md"), "project codex");
 			String rules = sessionRules(invoke(event(project),
-				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
+				Map.of("PLUGIN_ROOT", plugin.toString()), project));
 			requireThat(rules.indexOf("plugin common"), "pluginCommonIndex").
 				isLessThan(rules.indexOf("plugin codex"));
 			requireThat(rules.indexOf("plugin codex"), "pluginCodexIndex").
@@ -135,7 +135,7 @@ public final class CodexSessionStartHookTest
 				"personal guidance");
 
 			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(),
-				"CODEX_HOME", codexHome.toString(), Platform.current().homeVariable(), userHome.toString()), Path.of("."));
+				"CODEX_HOME", codexHome.toString(), Platform.current().homeVariable(), userHome.toString()), project);
 
 			requireThat(sessionRules(result), "rules").contains("personal guidance");
 			requireThat(result.error(), "error").isEmpty();
@@ -156,7 +156,7 @@ public final class CodexSessionStartHookTest
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("path.md"),
 				"---\npaths: [\"*.java\"]\n---\nbundled java rule");
 			String rules = sessionRules(invoke(event(project),
-				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
+				Map.of("PLUGIN_ROOT", plugin.toString()), project));
 			requireThat(rules, "rules").contains("Load `" + plugin.resolve("rules/common/path.md") +
 				"` only when you read or edit a file inside the project `${CAT_PROJECT_ROOT}" +
 				"` whose path relative to it matches [*.java].").doesNotContain("bundled java rule");
@@ -182,7 +182,7 @@ public final class CodexSessionStartHookTest
 			Files.writeString(lazyRule, "Javadoc guidance\n");
 
 			String rules = sessionRules(invoke(event(project),
-				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
+				Map.of("PLUGIN_ROOT", plugin.toString()), project));
 
 			requireThat(rules, "rules").contains("`${CAT_PLUGIN_ROOT}/rules/include/java/javadoc.md`").
 				doesNotContain(lazyRule.toString()).doesNotContain("`../include/java/javadoc.md`");
@@ -207,7 +207,7 @@ public final class CodexSessionStartHookTest
 				"`${CAT_PLUGIN_ROOT}` with it.\n");
 
 			String rules = sessionRules(invoke(event(project),
-				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of(".")));
+				Map.of("PLUGIN_ROOT", plugin.toString()), project));
 
 			requireThat(rules, "rules").contains("The plugin directory is `" + plugin + "`.").
 				contains("`${CAT_PLUGIN_ROOT}`").doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
@@ -234,7 +234,7 @@ public final class CodexSessionStartHookTest
 			Path directory = project.resolve(".cat/sessions").resolve(sessionId());
 
 			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(), "CODEX_HOME",
-				configuration.toString()), Path.of("."));
+				configuration.toString()), project);
 
 			requireThat(result.error(), "error").isEmpty();
 			requireThat(directory.resolve("temp"), "temp").isDirectory();
@@ -276,7 +276,7 @@ public final class CodexSessionStartHookTest
 			Path archivedDirectory = writeOldMarker(project, archived, configuration);
 
 			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(), "CODEX_HOME",
-				configuration.toString()), Path.of("."));
+				configuration.toString()), project);
 
 			requireThat(result.error(), "error").isEmpty();
 			requireThat(Files.exists(goneDirectory), "goneExists").isFalse();
@@ -321,7 +321,7 @@ public final class CodexSessionStartHookTest
 
 			HookResult result = invoke("{\"session_id\":\"" + sessionId() + "\",\"cwd\":" + jsonString(project) +
 				",\"source\":\"" + source + "\"}", Map.of("PLUGIN_ROOT", plugin.toString(), "CODEX_HOME",
-				configuration.toString()), Path.of("."));
+				configuration.toString()), project);
 
 			requireThat(result.error(), "error").isEmpty();
 			Path sessions = project.resolve(".cat/sessions");
@@ -360,7 +360,7 @@ public final class CodexSessionStartHookTest
 			Files.writeString(current.resolve("rules.md"), "current rules", UTF_8);
 
 			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(), "CODEX_HOME",
-				configuration.toString()), Path.of("."));
+				configuration.toString()), project);
 
 			Path former = project.resolve(".cat/work/" + other);
 			requireThat(former.resolve("optimizer/c1/campaign.json"), "formerCampaign").isRegularFile();
@@ -389,7 +389,7 @@ public final class CodexSessionStartHookTest
 			writeReadingGuidance(plugin);
 
 			HookResult result = invoke("{\"session_id\":\"{" + sessionId() + "}\",\"cwd\":" + jsonString(project) + "}",
-				Map.of("PLUGIN_ROOT", plugin.toString()), Path.of("."));
+				Map.of("PLUGIN_ROOT", plugin.toString()), project);
 
 			assertStopped(result, "nonCanonical");
 			requireThat(result.error(), "error").contains("not a UUID in canonical form");
@@ -415,7 +415,7 @@ public final class CodexSessionStartHookTest
 				"harness project");
 
 			String rules = sessionRules(invoke(event(harnessProject), Map.of("PLUGIN_ROOT",
-				plugin.toString()), Path.of(".")));
+				plugin.toString()), configuredProject));
 
 			requireThat(rules, "rules").contains("harness project").doesNotContain("configured project");
 		}
@@ -529,7 +529,7 @@ public final class CodexSessionStartHookTest
 			Files.writeString(Files.createDirectories(project.resolve(".cat/rules/common")).resolve("rule.md"),
 				"project guidance");
 
-			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), Path.of("."));
+			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), project);
 
 			Path rulesFile = project.resolve(".cat/sessions").resolve(sessionId()).resolve("rules.md");
 			requireThat(context(result), "context").
@@ -561,7 +561,7 @@ public final class CodexSessionStartHookTest
 			Files.writeString(Files.createDirectories(project.resolve(".cat/rules/common")).resolve("rule.md"),
 				"project guidance");
 
-			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), Path.of("."));
+			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), project);
 
 			requireThat(context(result), "context").contains("Environment guidance").contains("project guidance").
 				doesNotContain("CAT's rules for this session are in").
@@ -585,7 +585,7 @@ public final class CodexSessionStartHookTest
 			writeReadingGuidance(plugin);
 
 			HookResult result = invoke("{\"cwd\":" + jsonString(project) + "}", Map.of("PLUGIN_ROOT", plugin.toString()),
-				Path.of("."));
+				project);
 
 			assertStopped(result, "missingSessionId");
 			requireThat(result.error(), "error").contains("session_id");

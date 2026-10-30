@@ -45,9 +45,9 @@ public final class CodexSubagentStartHookTest
 			Files.writeString(rules.resolve("reviewer.md"), "---\nagents: [\"cat:reviewer\"]\n---\nreviewer guidance");
 
 			String reviewer = context(invoke(event(project, "cat:reviewer"), Map.of("PLUGIN_ROOT", plugin.toString()),
-				Path.of(".")));
+				project));
 			String worker = context(invoke(event(project, "cat:worker"), Map.of("PLUGIN_ROOT", plugin.toString()),
-				Path.of(".")));
+				project));
 
 			requireThat(reviewer, "reviewer").contains("subagent guidance").contains("reviewer guidance").
 				doesNotContain("main guidance");
@@ -73,7 +73,7 @@ public final class CodexSubagentStartHookTest
 				"`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/sessions/" + SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n");
 
 			HookResult result = invoke(event(project, "cat:worker"), Map.of("PLUGIN_ROOT", plugin.toString()),
-				Path.of("."));
+				project);
 
 			requireThat(result.error(), "error").isEmpty();
 			requireThat(context(result), "context").contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/sessions/" + AGENT_ID +
@@ -134,7 +134,7 @@ public final class CodexSubagentStartHookTest
 				"---\nagents: [\"subagents\"]\n---\nsubagent guidance");
 
 			HookResult result = invoke(event(project, "cat:worker"), Map.of("PLUGIN_ROOT", plugin.toString()),
-				Path.of("."));
+				project);
 
 			Path rulesFile = project.resolve(".cat/sessions").resolve(AGENT_ID).resolve("rules.md");
 			Path parentRulesFile = project.resolve(".cat/sessions").resolve(PARENT_ID).resolve("rules.md");
@@ -174,7 +174,7 @@ public final class CodexSubagentStartHookTest
 			String input = "{\"session_id\":\"" + PARENT_ID + "\",\"cwd\":" + jsonString(project) +
 				",\"agent_type\":\"cat:worker\"}";
 
-			HookResult result = invoke(input, Map.of("PLUGIN_ROOT", plugin.toString()), Path.of("."));
+			HookResult result = invoke(input, Map.of("PLUGIN_ROOT", plugin.toString()), project);
 
 			requireThat(context(result), "context").contains("# Reading Command Output").contains("subagent guidance");
 			requireThat(Files.readString(parentRulesFile, UTF_8), "parentRules").isEqualTo("main agent rules");

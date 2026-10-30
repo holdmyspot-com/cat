@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -22,10 +23,9 @@ import org.testng.annotations.Test;
 public final class HarnessRunnerOptionsTest
 {
 	/**
-	 * The root of the file system that holds the working directory, so that fixture paths are absolute on every
-	 * platform.
+	 * A root directory of the default file system, so that fixture paths are absolute on every platform.
 	 */
-	private static final Path ROOT = Path.of("").toAbsolutePath().getRoot();
+	private static final Path ROOT = FileSystems.getDefault().getRootDirectories().iterator().next();
 	/**
 	 * The temporary root of a command that runs in a harness session whose temporary directory is {@code caller-temp}.
 	 */

@@ -2,7 +2,7 @@ package com.holdmyspot.cat.common.test;
 
 import com.holdmyspot.cat.common.PortableFiles;
 
-import java.nio.file.Path;
+import java.nio.file.FileSystems;
 
 /**
  * Names and contents of a fixture program in the form that the platform runs. A file system with POSIX modes runs a
@@ -13,7 +13,8 @@ public final class ProgramFixture
 	/**
 	 * Indicates whether the default file system has POSIX modes.
 	 */
-	private static final boolean HAS_MODES = PortableFiles.hasModes(Path.of(""));
+	private static final boolean HAS_MODES = PortableFiles.hasModes(
+		FileSystems.getDefault().getRootDirectories().iterator().next());
 	/**
 	 * The extension of a program: {@code .sh} on a file system with POSIX modes, {@code .cmd} otherwise.
 	 */

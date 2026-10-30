@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
 import org.testng.annotations.Test;
@@ -12,6 +13,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZoneOffset;
 
@@ -31,15 +33,19 @@ public final class PromptOptimizerCliTest
 	 * Verifies a command closes its supplied scope and retains the invalid-input exit code.
 	 */
 	@Test
-	public void closesScopeAfterInvalidCommand()
+	public void closesScopeAfterInvalidCommand() throws IOException
 	{
-		try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, Path.of("."));
-			PrintStream out = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			int exit = PromptOptimizerCli.run(new String[]{"frobnicate"}, () -> scope, ZoneOffset.UTC, out);
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-cli-"));
+			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, project);
+				PrintStream out = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
+			{
+				int exit = PromptOptimizerCli.run(new String[]{"frobnicate"}, () -> scope, ZoneOffset.UTC, out);
 
-			requireThat(exit, "exit").isEqualTo(2);
-			requireThat(scope.isClosed(), "closed").isTrue();
+				requireThat(exit, "exit").isEqualTo(2);
+				requireThat(scope.isClosed(), "closed").isTrue();
+			}
 		}
 	}
 

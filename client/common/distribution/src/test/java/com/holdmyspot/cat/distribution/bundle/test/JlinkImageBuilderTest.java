@@ -85,7 +85,7 @@ public final class JlinkImageBuilderTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			FakeToolProvider tool = new FakeToolProvider(0, "");
-			Path output = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path output = cleanup.add(Files.createTempDirectory("jlink-builder-test"));
 			Files.delete(output);
 			JlinkImageBuilder builder = JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().create(tool);
 			builder.build(List.of(Path.of("app.jar")), Set.of("app"),
@@ -109,7 +109,7 @@ public final class JlinkImageBuilderTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			FakeToolProvider tool = new FakeToolProvider(0, "");
-			Path output = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path output = cleanup.add(Files.createTempDirectory("jlink-builder-test"));
 			Files.delete(output);
 			JlinkImageBuilder builder = JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().create(tool);
 			builder.build(List.of(Path.of("app.jar")), Set.of("app"),
@@ -132,7 +132,7 @@ public final class JlinkImageBuilderTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path output = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path output = cleanup.add(Files.createTempDirectory("jlink-builder-test"));
 			Files.delete(output);
 			JlinkImageBuilder.Launcher launcher = new JlinkImageBuilder.Launcher("read-part", "app", "example.Main");
 			JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().
@@ -160,7 +160,7 @@ public final class JlinkImageBuilderTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path image = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path image = cleanup.add(Files.createTempDirectory("jlink-builder-test"));
 			Path target = image.resolve("legal/java.base/LICENSE");
 			Files.createDirectories(target.getParent());
 			Files.writeString(target, "license text");
@@ -184,7 +184,7 @@ public final class JlinkImageBuilderTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path image = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path image = cleanup.add(Files.createTempDirectory("jlink-builder-test"));
 			Path link = image.resolve("legal/java.xml/LICENSE");
 			Files.createDirectories(link.getParent());
 			Files.createSymbolicLink(link, Path.of("../java.base/LICENSE"));
@@ -209,7 +209,7 @@ public final class JlinkImageBuilderTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path plugin = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path plugin = cleanup.add(Files.createTempDirectory("jlink-builder-test"));
 			Path image = plugin.resolve("client");
 			JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().
 				create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),
@@ -236,7 +236,7 @@ public final class JlinkImageBuilderTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path plugin = cleanup.add(Files.createTempDirectory(Path.of("target"), "jlink-builder-test"));
+			Path plugin = cleanup.add(Files.createTempDirectory("jlink-builder-test"));
 			Path image = plugin.resolve("client");
 			JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().
 				create(new FakeToolProvider(0, "")).build(List.of(Path.of("app.jar")),

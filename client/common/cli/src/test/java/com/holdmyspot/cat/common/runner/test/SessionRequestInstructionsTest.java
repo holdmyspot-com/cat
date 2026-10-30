@@ -27,7 +27,7 @@ public final class SessionRequestInstructionsTest
 	public void explainsRequests()
 	{
 		// Requirement: R-I9
-		Path launcher = Path.of("artifact/bin/request-session").toAbsolutePath();
+		Path launcher = Path.of("/artifact/bin/request-session").toAbsolutePath();
 		String text = SessionRequestInstructions.text(3, launcher, false);
 		String command = ShellQuoting.posix(launcher.toString());
 
@@ -45,7 +45,7 @@ public final class SessionRequestInstructionsTest
 	public void namesRunnerLaunchers()
 	{
 		// Requirement: R-I9
-		Path launcher = Path.of("artifact/bin/request-session").toAbsolutePath();
+		Path launcher = Path.of("/artifact/bin/request-session").toAbsolutePath();
 		String text = SessionRequestInstructions.text(2, launcher, false);
 
 		requireThat(text, "text").contains(ShellQuoting.posix(launcher.resolveSibling("claude-runner").toString())).
@@ -60,7 +60,7 @@ public final class SessionRequestInstructionsTest
 	public void quotesPosixLauncher()
 	{
 		// Requirement: R-I9
-		Path launcher = Path.of("artifact with spaces/bin/request-session").toAbsolutePath();
+		Path launcher = Path.of("/artifact with spaces/bin/request-session").toAbsolutePath();
 		String text = SessionRequestInstructions.text(1, launcher, false);
 
 		requireThat(text, "text").contains("'" + launcher + "' --harness").
@@ -74,7 +74,7 @@ public final class SessionRequestInstructionsTest
 	public void quotesPowerShellLauncher()
 	{
 		// Requirement: R-I9
-		Path launcher = Path.of("artifact with spaces/bin/request-session.cmd").toAbsolutePath();
+		Path launcher = Path.of("/artifact with spaces/bin/request-session.cmd").toAbsolutePath();
 		String text = SessionRequestInstructions.text(1, launcher, true);
 
 		requireThat(text, "text").contains("& '" + launcher + "' --harness").

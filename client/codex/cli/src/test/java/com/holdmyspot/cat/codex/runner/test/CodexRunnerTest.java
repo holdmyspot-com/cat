@@ -660,7 +660,7 @@ public final class CodexRunnerTest
 		Path root = Path.of("/runs");
 		Path project = Path.of("/runs/codex/run-1/project");
 		Path home = Path.of("/runs/codex/run-1/home");
-		Path launcher = Path.of("artifact with spaces/bin/request-session").toAbsolutePath();
+		Path launcher = Path.of("/artifact with spaces/bin/request-session").toAbsolutePath();
 		String note = CodexRunner.developerInstructions(root, project, home, "");
 
 		requireThat(CodexRunner.developerInstructions(root, project, home, "Review the plan.", launcher, 2),

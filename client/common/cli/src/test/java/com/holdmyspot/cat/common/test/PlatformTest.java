@@ -184,8 +184,8 @@ public final class PlatformTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path empty = cleanup.add(Files.createTempDirectory(Path.of("target"), "platform-empty-"));
-			Path programs = cleanup.add(Files.createTempDirectory(Path.of("target"), "platform-programs-"));
+			Path empty = cleanup.add(Files.createTempDirectory("platform-empty-"));
+			Path programs = cleanup.add(Files.createTempDirectory("platform-programs-"));
 			Path codex = Files.writeString(programs.resolve("codex"), "");
 			requireThat(codex.toFile().setExecutable(true, false), "executable").isTrue();
 
@@ -205,7 +205,7 @@ public final class PlatformTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path programs = cleanup.add(Files.createTempDirectory(Path.of("target"), "platform-programs-"));
+			Path programs = cleanup.add(Files.createTempDirectory("platform-programs-"));
 			Files.writeString(programs.resolve("codex.cmd"), "");
 
 			requireThat(Platform.WINDOWS_X64.findProgram("claude", Map.of("Path", programs.toString())), "windows").

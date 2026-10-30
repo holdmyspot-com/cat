@@ -49,9 +49,13 @@ public final class HookScopeTest
 		expectedExceptionsMessageRegExp = "CAT installation directory is not a directory")
 	public void rejectsInvalidPluginRoot() throws IOException
 	{
-		try (HookScope scope = scope(Path.of("missing-plugin-root"), Path.of("home")))
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			scope.pluginRoot();
+			Path directory = cleanup.add(Files.createTempDirectory("cat-plugin-"));
+			try (HookScope scope = scope(directory.resolve("missing-plugin-root"), directory))
+			{
+				scope.pluginRoot();
+			}
 		}
 	}
 
@@ -68,7 +72,7 @@ public final class HookScopeTest
 			try (HookScope scope = scope(plugin, plugin))
 			{
 				Path actual = scope.projectDir(scope.json().createObjectNode().put("cwd", harnessDirectory.toString()),
-					Path.of("."));
+					plugin);
 
 				requireThat(actual, "projectRoot").isEqualTo(harnessDirectory.toAbsolutePath().normalize());
 			}

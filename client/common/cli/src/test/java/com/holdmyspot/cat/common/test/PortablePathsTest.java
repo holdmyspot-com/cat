@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.test;
 
 import com.holdmyspot.cat.common.PortablePaths;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
 
 import org.testng.annotations.Test;
@@ -46,7 +47,7 @@ public final class PortablePathsTest
 	@Test
 	public void keepsAbsolutePath()
 	{
-		Path path = Path.of("").toAbsolutePath().resolve("rules");
+		Path path = FileSystems.getDefault().getRootDirectories().iterator().next().resolve("rules");
 
 		requireThat(PortablePaths.text(path), "text").isEqualTo(path.toString());
 	}

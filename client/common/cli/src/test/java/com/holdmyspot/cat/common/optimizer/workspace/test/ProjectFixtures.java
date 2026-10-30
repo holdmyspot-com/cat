@@ -180,8 +180,8 @@ public final class ProjectFixtures
 	 */
 	private static AclEntry listingDenial(Path directory) throws IOException
 	{
-		UserPrincipal user = directory.getFileSystem().getUserPrincipalLookupService().
-			lookupPrincipalByName(System.getProperty("user.name"));
+		// The test created the directory, so its owner is the user that runs the test
+		UserPrincipal user = Files.getOwner(directory);
 		return AclEntry.newBuilder().
 			setType(AclEntryType.DENY).
 			setPrincipal(user).

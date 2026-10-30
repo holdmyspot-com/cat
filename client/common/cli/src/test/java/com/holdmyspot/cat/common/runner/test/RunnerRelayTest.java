@@ -55,7 +55,7 @@ public final class RunnerRelayTest
 	public void runsSelectedArtifactRunner() throws IOException
 	{
 		// Requirement: R-I9
-		Path artifact = Path.of("other-artifact").toAbsolutePath();
+		Path artifact = Path.of("/other-artifact").toAbsolutePath();
 		Path runner = artifact.resolve("bin/harness-b-runner");
 		List<List<String>> commands = new ArrayList<>();
 

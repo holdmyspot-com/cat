@@ -87,7 +87,7 @@ public final class ClaudeRunnerTest
 	public void explainsSessionRequests()
 	{
 		// Requirement: R-I9
-		Path launcher = Path.of("artifact with spaces/bin/request-session").toAbsolutePath();
+		Path launcher = Path.of("/artifact with spaces/bin/request-session").toAbsolutePath();
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"),
 			List.of(), false, launcher, 2);
 		List<String> without = ClaudeRunner.command("claude", "sonnet", "", "", List.of(), Path.of("hook-results"),

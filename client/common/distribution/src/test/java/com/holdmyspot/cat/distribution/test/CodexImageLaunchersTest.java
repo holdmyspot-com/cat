@@ -46,7 +46,7 @@ public final class CodexImageLaunchersTest
 		Platform platform = Platform.current();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(Path.of("target"), "codex-image-")).toAbsolutePath();
+			Path directory = cleanup.add(Files.createTempDirectory("codex-image-")).toAbsolutePath();
 			JlinkImageBuilder builder = JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().create(new FakeJlink(platform));
 			Path image = DistributionMainSecrets.getDistributionMainAccess().
 				codexImage(builder, List.of(Path.of("codex.jar")),

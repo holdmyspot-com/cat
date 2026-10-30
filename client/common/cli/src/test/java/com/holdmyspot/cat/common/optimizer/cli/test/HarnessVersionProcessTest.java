@@ -33,7 +33,7 @@ public final class HarnessVersionProcessTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path programs = cleanup.add(Files.createTempDirectory(Path.of("target"), "version-programs-")).
+			Path programs = cleanup.add(Files.createTempDirectory("version-programs-")).
 				toAbsolutePath();
 			if (Platform.current().isWindows())
 				Files.writeString(programs.resolve("harness.cmd"), "@echo harness 1.2.3\r\n");

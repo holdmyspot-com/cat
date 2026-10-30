@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.WaitUntil;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -10,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -190,14 +192,17 @@ public final class WaitUntilTest
 	public void shellStarterRunsShellProgram() throws IOException, InterruptedException
 	{
 		String java = ProcessHandle.current().info().command().orElseThrow();
-		WaitUntil.CommandStarter starter = WaitUntil.shellStarter(command -> List.of(java, "-version"),
-			Path.of("").toAbsolutePath());
-		try (Process process = starter.start("ignored"))
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			String output = new String(process.getInputStream().readAllBytes(), UTF_8);
+			Path folder = cleanup.add(Files.createTempDirectory("wait-until-shell-")).toAbsolutePath();
+			WaitUntil.CommandStarter starter = WaitUntil.shellStarter(command -> List.of(java, "-version"), folder);
+			try (Process process = starter.start("ignored"))
+			{
+				String output = new String(process.getInputStream().readAllBytes(), UTF_8);
 
-			requireThat(process.waitFor(), "exitStatus").isEqualTo(0);
-			requireThat(output, "output").contains("version");
+				requireThat(process.waitFor(), "exitStatus").isEqualTo(0);
+				requireThat(output, "output").contains("version");
+			}
 		}
 	}
 
