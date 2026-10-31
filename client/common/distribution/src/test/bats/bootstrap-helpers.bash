@@ -13,11 +13,78 @@ setup()
 	export INSTALL_DIRECTORY="${TEST_ROOT}/install"
 	export GENERATED_RUNTIME_DIRECTORY="${BATS_TEST_DIRNAME}/../../../target/runtime"
 	export FAKE_RELEASE_DIRECTORY="${TEST_ROOT}/release"
+	# The single command as users paste it, which the fake curl serves from FAKE_RELEASE_DIRECTORY
+	export SINGLE_COMMAND_URL="https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/common/lifecycle/src/\
+main/resources/install/cat.sh"
+	# The harness that runs the tests must not decide which harness the single command installs for
+	unset CLAUDECODE CODEX_THREAD_ID
 	mkdir -p "${FAKE_BIN}" "${HOME}" "${INSTALL_DIRECTORY}"
 	cp -R "${COMMON_INSTALL_DIRECTORY}/." "${INSTALL_DIRECTORY}/"
 	cp -R "${CLAUDE_INSTALL_DIRECTORY}/." "${INSTALL_DIRECTORY}/"
 	cp -R "${CODEX_INSTALL_DIRECTORY}/." "${INSTALL_DIRECTORY}/"
 	: > "${COMMAND_LOG}"
+}
+
+# Restores write permission on everything a test made read-only, so that Bats can delete the test's directory.
+teardown()
+{
+	chmod -R u+w "${TEST_ROOT}" 2>/dev/null || true
+}
+
+# Runs the single command as a user pastes it into a shell: curl downloads cat.sh and pipes it to sh.
+#
+# Arguments:
+#   $@ - The arguments that the user passes to cat.sh, such as v1.0 or --uninstall.
+#
+# Environment:
+#   PATH must find the fake curl from create_fake_release first, and publish_install_scripts must have published the
+#   scripts that cat.sh downloads.
+#
+# Exit status:
+#   Returns the exit status of cat.sh.
+single_command()
+{
+	curl -fsSL "${SINGLE_COMMAND_URL}" | sh -s -- "$@"
+}
+
+# Publishes the installer scripts in the fake release, so that the fake curl serves them as GitHub serves them to the
+# single command and to the per-harness bootstrap scripts.
+publish_install_scripts()
+{
+	mkdir -p "${FAKE_RELEASE_DIRECTORY}"
+	cp "${INSTALL_DIRECTORY}/cat.sh" "${INSTALL_DIRECTORY}/bootstrap.sh" "${INSTALL_DIRECTORY}/bootstrap-uninstall.sh" \
+		"${INSTALL_DIRECTORY}/common.sh" "${INSTALL_DIRECTORY}/install-claude.sh" \
+		"${INSTALL_DIRECTORY}/uninstall-claude.sh" "${INSTALL_DIRECTORY}/install-codex.sh" \
+		"${INSTALL_DIRECTORY}/uninstall-codex.sh" "${FAKE_RELEASE_DIRECTORY}/"
+}
+
+# Removes write permission from a file or directory, and skips the test when the file system still lets it be written,
+# as it does for root and on Windows.
+#
+# Arguments:
+#   $1 - The existing file or directory.
+make_read_only()
+{
+	chmod a-w "$1"
+	if [ -d "$1" ]; then
+		if (: > "$1/.write-check") 2>/dev/null; then
+			rm -f "$1/.write-check"
+			chmod u+w "$1"
+			skip "this user can write to a directory without write permission"
+		fi
+	elif (: >> "$1") 2>/dev/null; then
+		chmod u+w "$1"
+		skip "this user can write to a file without write permission"
+	fi
+}
+
+# Writes a digest of a directory's tree: every path below it and the checksum of every file, in a stable order.
+#
+# Arguments:
+#   $1 - The directory.
+tree_digest()
+{
+	(cd "$1" && find . -print | LC_ALL=C sort && find . -type f -exec cksum {} + | LC_ALL=C sort)
 }
 
 # Creates a fake harness command that appends its invocation to the test command log.
@@ -175,4 +242,53 @@ fi
 SCRIPT
 	chmod +x "${FAKE_BIN}/curl"
 	printf '%s\n' "${archive_directory}.tar.gz"
+}
+
+# Runs one operation through the single command and checks that it changed nothing because a path was not writable.
+#
+# Arguments:
+#   $1 - The path that the operation cannot write, which its message must name.
+#   $2 - The command that the message must give for running the operation outside the sandbox.
+#   $3... - The single command's arguments.
+#
+# Environment:
+#   HOME holds every directory that the operation could change; COMMAND_LOG records the harness commands.
+expect_unchanged_by_single_command()
+{
+	expected_path="$1"
+	expected_command="$2"
+	shift 2
+	home_before="$(tree_digest "${HOME}")"
+	: > "${COMMAND_LOG}"
+
+	run single_command "$@"
+
+	[ "${status}" -eq 77 ]
+	[[ "${output}" == *"CAT changed nothing because it cannot write ${expected_path}."* ]]
+	[[ "${output}" == *"sandbox"* ]]
+	[[ "${output}" == *"prefixed with \"! \""* ]]
+	[[ "${output}" == *"
+  ${expected_command}"* ]]
+	[ "$(tree_digest "${HOME}")" = "${home_before}" ]
+	! grep -q '^claude \|^codex ' "${COMMAND_LOG}" || false
+}
+
+# Appends the outcome of an operation to a record: its exit status, the harness commands that it ran and a digest of
+# the user's home afterwards.
+#
+# Arguments:
+#   $1 - The file that receives the record.
+#   $2... - The operation's command and arguments.
+record_operation()
+{
+	record="$1"
+	shift
+	: > "${COMMAND_LOG}"
+	operation_status=0
+	"$@" >/dev/null 2>&1 || operation_status="$?"
+	{
+		printf 'exit status %s\n' "${operation_status}"
+		grep -v '^curl ' "${COMMAND_LOG}" || true
+		tree_digest "${HOME}"
+	} >> "${record}"
 }

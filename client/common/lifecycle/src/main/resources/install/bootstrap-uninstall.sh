@@ -4,6 +4,9 @@ set -eu
 CAT_HARNESS="${1:?Usage: bootstrap-uninstall.sh HARNESS [UNINSTALLER-OPTION]...}"
 shift
 CAT_REPOSITORY="${CAT_BOOTSTRAP_REPOSITORY:-holdmyspot-com/cat}"
+# The uninstaller is a temporary copy, so when it fails it prints the command that downloads cat.sh instead of its path
+CAT_BOOTSTRAPPED=1
+export CAT_BOOTSTRAPPED
 CAT_DOWNLOAD_TEMP_ROOT="${TMPDIR:-/tmp}"
 mkdir -p "${CAT_DOWNLOAD_TEMP_ROOT}"
 CAT_DOWNLOAD_TEMP_DIRECTORY="$(mktemp -d "${CAT_DOWNLOAD_TEMP_ROOT}/cat-${CAT_HARNESS}-uninstall.XXXXXX")"

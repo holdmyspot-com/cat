@@ -116,3 +116,94 @@ load bootstrap-helpers
 		[ "${status}" -eq 22 ]
 	done
 }
+
+@test "single command installs for Claude Code in a Claude Code shell" {
+	create_fake_engine_command claude
+	create_fake_engine_command codex
+	create_fake_release claude > /dev/null
+	publish_install_scripts
+	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
+
+	run single_command v1.0
+
+	[ "${status}" -eq 0 ]
+	[ -f "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace/plugins/cat/.claude-plugin/plugin.json" ]
+	grep -Fx "claude plugin install cat@cat" "${COMMAND_LOG}"
+	! grep -q '^codex ' "${COMMAND_LOG}" || false
+	[ ! -e "${CODEX_HOME}" ]
+}
+
+@test "single command installs for Codex in a Codex shell" {
+	create_fake_engine_command claude
+	create_fake_engine_command codex
+	create_fake_release codex > /dev/null
+	publish_install_scripts
+	export PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
+
+	run single_command v1.0
+
+	case "$(uname -s)" in
+		MINGW*|MSYS*)
+			[ "${status}" -eq 1 ]
+			[[ "${output}" == *"install CAT for Codex from PowerShell with bootstrap-codex.ps1"* ]]
+			;;
+		*)
+			[ "${status}" -eq 0 ]
+			[ -f "${CODEX_HOME}/plugins/cat-marketplace/plugins/cat/.codex-plugin/plugin.json" ]
+			grep -Fx "codex plugin add cat@cat" "${COMMAND_LOG}"
+			;;
+	esac
+	! grep -q '^claude \|install-claude.sh' "${COMMAND_LOG}" || false
+	[ ! -e "${CLAUDE_CONFIG_DIR}" ]
+}
+
+@test "single command installs for the harness that --harness names, whatever the shell" {
+	create_fake_engine_command claude
+	create_fake_engine_command codex
+	create_fake_release claude > /dev/null
+	publish_install_scripts
+	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1 CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
+
+	run single_command --harness claude v1.0
+
+	[ "${status}" -eq 0 ]
+	grep -Fx "claude plugin install cat@cat" "${COMMAND_LOG}"
+	! grep -q '^codex ' "${COMMAND_LOG}" || false
+}
+
+@test "single command refuses before changing anything when it cannot tell the harness" {
+	create_fake_engine_command claude
+	create_fake_engine_command codex
+	create_fake_release claude > /dev/null
+	publish_install_scripts
+	export PATH="${FAKE_BIN}:${PATH}"
+
+	for environment in "" "CLAUDECODE=1 CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000"; do
+		for operation in v1.0 --uninstall; do
+			: > "${COMMAND_LOG}"
+
+			# shellcheck disable=SC2086
+			run env ${environment} sh -c 'curl -fsSL "$1" | sh -s -- "$2"' sh "${SINGLE_COMMAND_URL}" "${operation}"
+
+			[ "${status}" -eq 2 ]
+			[[ "${output}" == *"--harness claude"* ]]
+			[[ "${output}" == *"--harness codex"* ]]
+			[ "$(cat "${COMMAND_LOG}")" = "curl -fsSL ${SINGLE_COMMAND_URL}" ]
+			[ ! -e "${CLAUDE_CONFIG_DIR}" ]
+			[ ! -e "${CODEX_HOME}" ]
+		done
+	done
+}
+
+@test "single command refuses an unknown harness before changing anything" {
+	create_fake_release claude > /dev/null
+	publish_install_scripts
+	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
+
+	run single_command --harness cursor
+
+	[ "${status}" -eq 2 ]
+	[[ "${output}" == *"--harness claude or --harness codex"* ]]
+	[ "$(cat "${COMMAND_LOG}")" = "curl -fsSL ${SINGLE_COMMAND_URL}" ]
+	[ ! -e "${CLAUDE_CONFIG_DIR}" ]
+}

@@ -8,6 +8,9 @@ shift
 	exit 2
 }
 CAT_REPOSITORY="${CAT_BOOTSTRAP_REPOSITORY:-holdmyspot-com/cat}"
+# The installer is a temporary copy, so when it fails it prints the command that downloads cat.sh instead of its path
+CAT_BOOTSTRAPPED=1
+export CAT_BOOTSTRAPPED
 CAT_DOWNLOAD_TEMP_ROOT="${TMPDIR:-/tmp}"
 mkdir -p "${CAT_DOWNLOAD_TEMP_ROOT}"
 CAT_VERSION="${1:-}"

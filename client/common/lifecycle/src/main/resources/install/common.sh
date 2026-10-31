@@ -2,10 +2,17 @@
 
 CAT_VERSION="1.0"
 CAT_RELEASE_TAG="v${CAT_VERSION}"
-CAT_RELEASE_BASE_URL="${CAT_RELEASE_BASE_URL:-https://github.com/holdmyspot-com/cat/releases/download/\
+CAT_RELEASE_DOWNLOAD_URL="${CAT_RELEASE_BASE_URL:-https://github.com/holdmyspot-com/cat/releases/download/\
 ${CAT_RELEASE_TAG}}"
 CAT_DOWNLOAD_TEMP_ROOT="${TMPDIR:-/tmp}"
 CAT_DOWNLOAD_TEMP_DIRECTORY=""
+CAT_REPOSITORY="${CAT_BOOTSTRAP_REPOSITORY:-holdmyspot-com/cat}"
+# The exit status of an installer or uninstaller that stops before any change because it cannot write a path
+CAT_NOT_WRITABLE_STATUS=77
+# The command that repeats the running operation, printed when the operation fails after it began changing the harness
+CAT_RECOVERY_COMMAND=""
+# The operation that CAT_RECOVERY_COMMAND repeats, such as "installation", for the failure message
+CAT_RECOVERY_OPERATION=""
 
 # Returns whether the first dotted numeric version precedes the second.
 #
@@ -221,8 +228,8 @@ cat_resolve_artifact_directory()
 	cat_expected_directory="${cat_archive_name%.tar.gz}"
 	mkdir -p "${CAT_DOWNLOAD_TEMP_ROOT}"
 	CAT_DOWNLOAD_TEMP_DIRECTORY="$(mktemp -d "${CAT_DOWNLOAD_TEMP_ROOT}/cat-${cat_harness}-install.XXXXXX")"
-	curl -fsSL "${CAT_RELEASE_BASE_URL}/${cat_archive_name}" -o "${CAT_DOWNLOAD_TEMP_DIRECTORY}/${cat_archive_name}"
-	curl -fsSL "${CAT_RELEASE_BASE_URL}/SHA256SUMS.txt" -o "${CAT_DOWNLOAD_TEMP_DIRECTORY}/SHA256SUMS.txt"
+	curl -fsSL "${CAT_RELEASE_DOWNLOAD_URL}/${cat_archive_name}" -o "${CAT_DOWNLOAD_TEMP_DIRECTORY}/${cat_archive_name}"
+	curl -fsSL "${CAT_RELEASE_DOWNLOAD_URL}/SHA256SUMS.txt" -o "${CAT_DOWNLOAD_TEMP_DIRECTORY}/SHA256SUMS.txt"
 	cat_checksum_line="$(
 		awk -v archive="${cat_archive_name}" \
 			'$2 == archive || $2 == "*" archive { print; found = 1 } END { if (!found) exit 1 }' \
@@ -402,4 +409,213 @@ cat_validate_codex_data_directory()
 			exit 1
 			;;
 	esac
+}
+
+# Quotes a value for a POSIX shell command line, leaving a value that needs no quotes as it is.
+#
+# Arguments:
+#   $1 - The value to quote.
+#
+# Output:
+#   Writes the quoted value to standard output.
+cat_shell_quote()
+{
+	case "$1" in
+		'') printf "''\n" ;;
+		*[!A-Za-z0-9_./:@%+=,-]*) printf "'%s'\n" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")" ;;
+		*) printf '%s\n' "$1" ;;
+	esac
+}
+
+# Writes the environment assignments that make a repeated command use the same directories as the running one.
+#
+# Arguments:
+#   $1 - Space-separated names of the environment variables that select the harness's and CAT's directories, such as
+#        CODEX_HOME. Call this before the script gives any of them a default value.
+#
+# Output:
+#   Writes one assignment, followed by a space, for each named variable that holds a value and for
+#   CAT_BOOTSTRAP_REPOSITORY and CAT_RELEASE_BASE_URL when they hold one; writes nothing when none does.
+cat_environment_assignments()
+{
+	for cat_variable in $1 CAT_BOOTSTRAP_REPOSITORY CAT_RELEASE_BASE_URL; do
+		eval "cat_value=\${${cat_variable}:-}"
+		[ -z "${cat_value}" ] || printf '%s=%s ' "${cat_variable}" "$(cat_shell_quote "${cat_value}")"
+	done
+}
+
+# Writes the command that repeats the running installer or uninstaller with the same arguments.
+#
+# Arguments:
+#   $1 - Harness identifier, which the single command passes to --harness.
+#   $2 - Environment assignments from cat_environment_assignments.
+#   $3 - Git reference, such as v1.0 or HEAD, from which the single command downloads cat.sh.
+#   $4 - Absolute path of the running script.
+#   $5 - The option that selects the operation in cat.sh: empty to install, or --uninstall.
+#   $6... - The running script's arguments, each a release tag, an absolute directory or an option.
+#
+# Environment:
+#   CAT_BOOTSTRAPPED - Nonempty when cat.sh or a bootstrap script started the running script, which may then be a
+#                      temporary copy.
+#
+# Output:
+#   Writes the command to standard output: when CAT_BOOTSTRAPPED is set, the single command that downloads cat.sh and
+#   pipes it to sh; otherwise the running script with its arguments.
+cat_rerun_command()
+{
+	cat_harness="$1"
+	cat_environment="$2"
+	cat_reference="$3"
+	cat_script="$4"
+	cat_operation="$5"
+	shift 5
+	if [ -n "${CAT_BOOTSTRAPPED:-}" ]; then
+		cat_command="curl -fsSL https://raw.githubusercontent.com/${CAT_REPOSITORY}/${cat_reference}/client/common/\
+lifecycle/src/main/resources/install/cat.sh | ${cat_environment}sh -s -- --harness ${cat_harness}"
+		[ -z "${cat_operation}" ] || cat_command="${cat_command} ${cat_operation}"
+	else
+		cat_command="${cat_environment}sh $(cat_shell_quote "${cat_script}")"
+	fi
+	for cat_argument in "$@"; do
+		cat_command="${cat_command} $(cat_shell_quote "${cat_argument}")"
+	done
+	printf '%s\n' "${cat_command}"
+}
+
+# Writes how to run a command outside the agent's sandbox, followed by the command.
+#
+# Arguments:
+#   $1 - The command.
+#
+# Errors:
+#   Writes the instructions and the command to standard error.
+cat_print_rerun_instructions()
+{
+	echo "An agent's sandbox usually causes this. Run this command outside the sandbox, such as in a terminal; in" \
+		"Claude Code, you can type it at the prompt prefixed with \"! \":" >&2
+	echo >&2
+	echo "  $1" >&2
+}
+
+# Returns whether a file or directory can be written, without changing it.
+#
+# A directory is writable when a probe file can be created and removed in it; an existing file is writable when it can
+# be opened for appending, which writes nothing. Both checks fail on a read-only mount.
+#
+# Arguments:
+#   $1 - The existing file or directory.
+#
+# Exit status:
+#   Returns zero only when the path is writable.
+cat_is_writable()
+{
+	if [ -d "$1" ]; then
+		cat_probe="$(mktemp "$1/.cat-write-check.XXXXXX" 2>/dev/null)" && rm -f "${cat_probe}"
+	else
+		(: >> "$1") 2>/dev/null
+	fi
+}
+
+# Exits before any change when CAT cannot write a path, explaining why and how to run the command outside the sandbox.
+#
+# Arguments:
+#   $1 - The path that cannot be written.
+#   $2 - The command that repeats the operation.
+#
+# Errors:
+#   Names the path, explains that an agent's sandbox usually causes this, and gives the command.
+#
+# Exit status:
+#   Exits with CAT_NOT_WRITABLE_STATUS.
+cat_exit_not_writable()
+{
+	echo "CAT changed nothing because it cannot write $1." >&2
+	cat_print_rerun_instructions "$2"
+	exit "${CAT_NOT_WRITABLE_STATUS}"
+}
+
+# Exits before any change when the operation could not create or change one of the paths.
+#
+# Arguments:
+#   $1 - The command that repeats the operation, which the user can run outside the sandbox.
+#   $2... - Each file or directory that the operation creates or changes. An existing file is checked together with
+#           its directory, because a program can replace a file by renaming a new one over it. For a path that does
+#           not exist, the nearest existing directory above it is checked instead, because the operation creates the
+#           path there.
+#
+# Exit status:
+#   Returns zero when every path is writable; otherwise exits as cat_exit_not_writable does, naming the first path
+#   that is not.
+cat_require_writable()
+{
+	cat_rerun_command="$1"
+	shift
+	for cat_path in "$@"; do
+		while [ ! -e "${cat_path}" ] && [ "$(dirname -- "${cat_path}")" != "${cat_path}" ]; do
+			cat_path="$(dirname -- "${cat_path}")"
+		done
+		cat_is_writable "${cat_path}" || cat_exit_not_writable "${cat_path}" "${cat_rerun_command}"
+		if [ ! -d "${cat_path}" ]; then
+			cat_directory="$(dirname -- "${cat_path}")"
+			cat_is_writable "${cat_directory}" || cat_exit_not_writable "${cat_directory}" "${cat_rerun_command}"
+		fi
+	done
+}
+
+# Exits before any change when the operation could not delete one of the paths that exist.
+#
+# Arguments:
+#   $1 - The command that repeats the operation, which the user can run outside the sandbox.
+#   $2... - Each file or directory that the operation deletes. A path that does not exist is skipped. For one that
+#           exists, both it and the directory that holds it must be writable.
+#
+# Exit status:
+#   Returns zero when every existing path can be deleted; otherwise exits as cat_exit_not_writable does, naming the
+#   first path that is not writable.
+cat_require_removable()
+{
+	cat_rerun_command="$1"
+	shift
+	for cat_path in "$@"; do
+		[ -e "${cat_path}" ] || continue
+		for cat_checked_path in "$(dirname -- "${cat_path}")" "${cat_path}"; do
+			cat_is_writable "${cat_checked_path}" || cat_exit_not_writable "${cat_checked_path}" "${cat_rerun_command}"
+		done
+	done
+}
+
+# Records the command that repeats the running operation, before the operation begins changing the harness, so that a
+# failure from then on tells the user how to finish it.
+#
+# Arguments:
+#   $1 - The operation, such as "installation" or "removal".
+#   $2 - The command that repeats it.
+cat_begin_harness_changes()
+{
+	CAT_RECOVERY_OPERATION="$1"
+	CAT_RECOVERY_COMMAND="$2"
+}
+
+# Deletes the download directory and, when the operation failed after it began changing the harness, tells the user
+# how to finish it.
+#
+# Side effects:
+#   Deletes the directory named by CAT_DOWNLOAD_TEMP_DIRECTORY when it exists.
+#
+# Errors:
+#   After cat_begin_harness_changes and a nonzero exit status, explains that CAT may be incomplete and gives the
+#   command that repeats the operation.
+#
+# Exit status:
+#   Preserves the invoking script's exit status when installed as an exit trap.
+cat_finish()
+{
+	cat_exit_status="$?"
+	cat_delete_download_temp_directory
+	if [ "${cat_exit_status}" -ne 0 ] && [ -n "${CAT_RECOVERY_COMMAND}" ]; then
+		echo "CAT's ${CAT_RECOVERY_OPERATION} stopped partway, so CAT may be missing or incomplete. If an error above" \
+			"says that a file could not be written, such as \"Read-only file system\", run the command again to finish." >&2
+		cat_print_rerun_instructions "${CAT_RECOVERY_COMMAND}"
+	fi
+	return "${cat_exit_status}"
 }
