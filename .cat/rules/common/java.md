@@ -18,8 +18,26 @@ When changing Maven configuration, build scripts, dependencies, or build/lint/te
 
 When changing Maven configuration, dependencies, plugins, or build scripts, lazy load `../include/maven.md`.
 
-When writing or editing Java source code, including its style, imports, naming, formatting, control flow, comments,
-regex, Unicode, or string comparison patterns, lazy load `../include/java-style.md`.
+When writing or editing Java source code, including its formatting, lazy load `../include/java-style.md`.
+
+When declaring or renaming a Java type, field, constant, method, constructor, parameter, record component, local
+variable, catch parameter, or a key or symbolic value that stays inside Java, choosing a declared type, writing a
+non-obvious literal or a timeout, or deciding whether to extract a value into a constant, lazy load
+`../include/java-style/declarations.md`.
+
+When adding a member to a Java type, or moving or reordering Java declarations, lazy load
+`../include/java-style/member-order.md`.
+
+When writing Java code that names a type or static constant not yet imported in its file, or adding, removing, or
+reordering imports, lazy load `../include/java-style/imports.md`.
+
+When writing or changing a Java `if`, `else`, `switch`, loop, `try` statement, guard clause, or condition, lazy load
+`../include/java-style/control-flow.md`.
+
+When writing or changing a Java lambda, method chain, string or text-block literal, regular expression, non-ASCII
+character, string building or comparison, or `Path.of()` call, lazy load `../include/java-style/expressions.md`.
+
+When writing or editing a Java comment, lazy load `../include/java-style/comments.md`.
 
 When writing or editing Javadoc, Javadoc links/imports, or Java API documentation, lazy load
 `../include/java-javadoc.md`.
