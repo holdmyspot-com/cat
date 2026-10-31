@@ -1,0 +1,5 @@
+self-hosted-runner:
+  # GitHub-hosted runner labels that this actionlint version does not know yet
+  labels:
+    - ubuntu-26.04
+    - ubuntu-26.04-arm

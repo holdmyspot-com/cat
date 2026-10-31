@@ -119,7 +119,11 @@ jobs:
       # GitHub generates, which end with the link to the full changelog
       - name: Write release notes
         run: |
+          # The template's placeholder is matched literally, not expanded
+          # shellcheck disable=SC2016
           sed 's/${GITHUB_REF_NAME}/'"${GITHUB_REF_NAME}"'/g' .github/release-notes.md > "${RUNNER_TEMP}/release-notes.md"
+          # A literal ${ left in the notes is a placeholder that was not replaced
+          # shellcheck disable=SC2016
           if grep -F '${' "${RUNNER_TEMP}/release-notes.md"; then
             echo "The release notes template holds a placeholder other than \${GITHUB_REF_NAME}." >&2
             exit 1
