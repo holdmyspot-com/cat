@@ -55,5 +55,8 @@ When changing a plugin installer that migrates persisted plugin data or a runtim
 Before rebuilding, reinstalling, refreshing, or validating a plugin distribution or cache, or when a task needs a CAT
 helper CLI, lazy load `plugin-artifacts.md`.
 
+When writing code, a command, a hook, or a skill or rule instruction that passes an argument to a CAT launcher, lazy
+load `../include/jlink-launchers/launcher-arguments.md`.
+
 When evaluating or adopting a newly available Codex model, or changing CAT's Codex supported-model configuration or
 Codex-facing prompts or rules, lazy load `../codex/model-guidance-review.md`.

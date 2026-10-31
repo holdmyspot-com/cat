@@ -1,6 +1,9 @@
 ---
 paths:
-  - "client/**"
+  - "client/common/distribution/src/main/java/**/JlinkImageBuilder.java"
+  - "client/common/distribution/src/main/java/**/DistributionMain.java"
+  - "client/common/distribution/src/main/java/**/PluginArtifactBuilder.java"
+  - "client/**/*.bats"
 ---
 # Jlink Launchers
 
@@ -18,9 +21,10 @@ Every jlink launcher runs Java in a UTF-8 `LC_CTYPE`, because Java names files a
 character set of `LC_CTYPE`, and the C locale cannot name a file whose name is not ASCII. Generate this in the template
 that `JlinkImageBuilder` writes for every launcher, not in one launcher or program. When the caller's `LC_CTYPE` is
 already UTF-8, the launcher keeps the caller's locale. Otherwise it saves the caller's `LC_ALL` and `LC_CTYPE` in
-`CAT_CALLER_LC_ALL` and `CAT_CALLER_LC_CTYPE`, unsets `LC_ALL` and sets `LC_CTYPE=C.UTF-8`. A program that runs a
-command on the caller's behalf, such as `run-part`, restores the caller's `LC_ALL` and `LC_CTYPE` from those variables
-in the command's environment and removes them.
+`CAT_CALLER_LC_ALL` and `CAT_CALLER_LC_CTYPE`, unsets `LC_ALL` and sets `LC_CTYPE=C.UTF-8`.
+
+When changing how the launcher template saves or sets the caller's locale, or how a program receives its arguments on
+Windows, lazy load `../include/jlink-launchers/programs.md`.
 
 Every jlink launcher runs Java directly, sharing the caller's file system, including `/tmp`. Do not start Java through
 Bubblewrap or another sandbox: inside a sandboxed agent session, such as Claude Code's, Bubblewrap cannot create another
@@ -59,23 +63,4 @@ therefore removes the POSIX launchers, and `CodexImageLaunchersTest` runs each l
 that Codex uses on the platform that runs the test. The Claude image keeps both launchers.
 
 The JVM options include `-Dstdout.encoding=UTF-8` and `-Dstderr.encoding=UTF-8`, so a program writes UTF-8 whatever
-the console's code page, and `--enable-native-access` for the module that holds `CommandLineArguments`. The `java`
-launcher reads its command line in the system's ANSI code page and replaces each character that the code page lacks;
-every `main` that reads file names or text from its arguments passes them through `CommandLineArguments.recover`,
-which reads them again from the process's UTF-16 command line.
-
-A batch file expands `%NAME%` in its own arguments when `NAME` is a defined variable, and an unquoted `&` in an
-argument ends the command, so a caller must not pass untrusted text to a batch launcher as an argument; pass it on
-standard input or in a file instead.
-
-Codex runs a hook's `commandWindows` in PowerShell, not `cmd.exe`, so the command starts a `.cmd` launcher with the
-call operator, `& "$env:PLUGIN_ROOT\hooks\<name>.cmd"`. A quoted path without `&` is only a string, which PowerShell
-prints. Codex also writes the plugin's directory into the command in place of `${PLUGIN_ROOT}`, where a `$` or a quote
-in the directory's name would be read as syntax, so a Codex hook's command names the directory through the environment
-variable `PLUGIN_ROOT` instead, on every platform. `CodexPluginHooksTest` runs each hook's command as Codex does on the
-platform that runs the test.
-
-Claude Code runs a hook's `command` in a POSIX shell, Git Bash on Windows, and the shell expands
-`${CLAUDE_PLUGIN_ROOT}`, so the command double-quotes it, as in `"${CLAUDE_PLUGIN_ROOT}/hooks/<name>.sh"`; a space in
-the plugin's path, such as one in a user's name, otherwise splits the command. `ClaudePluginHooksTest` runs each hook's
-command from a plugin path that holds a space.
+the console's code page, and `--enable-native-access` for the module that holds `CommandLineArguments`.

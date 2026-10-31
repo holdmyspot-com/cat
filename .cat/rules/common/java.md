@@ -79,6 +79,9 @@ When Java code creates temporary directories or files, or a Java test creates or
 When editing `module-info.java`, module exports/opens, module names, module layout, or Java project layout, or when
 creating, moving, or naming a test class, test package, or test module, lazy load `../include/java-modules.md`.
 
+When writing or changing a Java `main` method, or Java code that runs a command on its caller's behalf, lazy load
+`../include/jlink-launchers/programs.md`.
+
 When a project-owned script or launcher starts Java code, invoke its named module through `java --module-path ... --module
 MODULE/MAIN_CLASS`. Do not use the class path (`-cp`, `--class-path`, or Maven `exec.additionalClasspathElements`) to
 launch project code. This does not govern build-tool internals or class-loader resource names.
