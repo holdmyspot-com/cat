@@ -158,37 +158,49 @@ function Stop-CatNotWritable([string] $Path, [string] $Command)
 		"  $Command")
 }
 
-# Throws, before any change, when the operation could not create or change one of the paths. An existing file is
-# checked together with its folder, because a program can replace a file by renaming a new one over it; a missing path
-# is checked at the nearest existing folder above it, where the operation creates the path.
+# Returns the absolute form of a path, resolving a relative one against PowerShell's current location as the cmdlets
+# and programs that the operation runs do. A rooted path is not resolved by PowerShell, which rejects a missing drive.
+function Resolve-CatFullPath([string] $Path)
+{
+	if ([IO.Path]::IsPathRooted($Path)) { return [IO.Path]::GetFullPath($Path) }
+	return [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path))
+}
+
+# Throws, before any change, when the operation could not create or change one of the paths. A relative path is
+# resolved against PowerShell's current location, as the operation resolves it. An existing file is checked together
+# with its folder, because a program can replace a file by renaming a new one over it; a missing path is checked at the
+# nearest existing folder above it, where the operation creates the path, and a path with no existing folder above it,
+# such as one on a missing drive, cannot be written.
 function Assert-CatWritable([string] $Command, [string[]] $Paths)
 {
 	foreach ($path in $Paths)
 	{
-		$existing = $path
+		$existing = Resolve-CatFullPath $path
 		while (-not (Test-Path -LiteralPath $existing))
 		{
-			$parent = Split-Path -Parent $existing
-			if (-not $parent) { break }
+			$parent = [IO.Path]::GetDirectoryName($existing)
+			if (-not $parent) { Stop-CatNotWritable $existing $Command }
 			$existing = $parent
 		}
 		if (-not (Test-CatWritable $existing)) { Stop-CatNotWritable $existing $Command }
 		if (-not (Test-Path -LiteralPath $existing -PathType Container))
 		{
-			$folder = Split-Path -Parent $existing
+			$folder = [IO.Path]::GetDirectoryName($existing)
 			if (-not (Test-CatWritable $folder)) { Stop-CatNotWritable $folder $Command }
 		}
 	}
 }
 
 # Throws, before any change, when the operation could not delete one of the paths that exist: both the path and the
-# folder that holds it must be writable. A missing path is skipped.
+# folder that holds it must be writable. A relative path is resolved against PowerShell's current location, and a
+# missing path is skipped.
 function Assert-CatRemovable([string] $Command, [string[]] $Paths)
 {
 	foreach ($path in $Paths)
 	{
-		if (-not (Test-Path -LiteralPath $path)) { continue }
-		foreach ($checked in @((Split-Path -Parent $path), $path))
+		$fullPath = Resolve-CatFullPath $path
+		if (-not (Test-Path -LiteralPath $fullPath)) { continue }
+		foreach ($checked in @([IO.Path]::GetDirectoryName($fullPath), $fullPath))
 		{
 			if (-not (Test-CatWritable $checked)) { Stop-CatNotWritable $checked $Command }
 		}
@@ -462,7 +474,7 @@ try
 	# plugin into the plugin cache
 	Assert-CatWritable $rerunCommand @($codexHome, (Join-Path $codexHome 'config.toml'), (Join-Path $codexHome '.tmp'),
 		(Join-Path $codexHome 'tmp'), (Join-Path $codexHome 'plugins\cache'), (Join-Path $codexHome 'agents'),
-		$dataDirectory, (Split-Path -Parent $marketplaceRoot))
+		$dataDirectory, (Join-Path $marketplaceRoot '..'))
 	Assert-CatRemovable $rerunCommand @($marketplaceRoot)
 
 	Update-CatData $dataDirectory (Join-Path $artifact 'install\migrations')

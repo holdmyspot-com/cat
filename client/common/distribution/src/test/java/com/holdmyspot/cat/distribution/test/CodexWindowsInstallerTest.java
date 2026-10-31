@@ -279,6 +279,72 @@ public final class CodexWindowsInstallerTest
 	}
 
 	/**
+	 * Verifies that installing with a relative marketplace path whose folders do not exist, when Codex's
+	 * {@code config.toml} cannot be written, creates nothing in the working folder, runs no command, and names the
+	 * file and the command, which repeats the marketplace path.
+	 *
+	 * @throws IOException          if the files cannot be written or the script cannot be run
+	 * @throws InterruptedException if the thread is interrupted while the script runs
+	 */
+	@Test
+	public void relativeMarketplaceRefusalCreatesNothing() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path artifact = fixture.artifact();
+			Path config = Files.createDirectories(fixture.codexHome).resolve("config.toml");
+			Files.writeString(config, "[plugins]\n");
+			Files.setAttribute(config, "dos:readonly", true);
+			try
+			{
+				Map<String, String> before = snapshot(fixture.root);
+
+				Result result = fixture.run("$env:CAT_CODEX_MARKETPLACE_ROOT = 'missing\\cat-marketplace'\n" +
+					install("-Source " + literal(artifact)));
+
+				requireThat(result.status(), "status").withContext(result.output(), "output").isNotEqualTo(0);
+				requireThat(result.output(), "output").
+					contains("CAT changed nothing because it cannot write " + config + ".").
+					contains("$env:CODEX_HOME = " + literal(fixture.codexHome) +
+						"; $env:CAT_CODEX_MARKETPLACE_ROOT = 'missing\\cat-marketplace'; & ([scriptblock]::Create(");
+				requireThat(fixture.commands(), "commands").isEmpty();
+				requireThat(Files.exists(fixture.root.resolve("missing")), "missing").isFalse();
+				requireThat(snapshot(fixture.root), "after").isEqualTo(before, "before");
+			}
+			finally
+			{
+				Files.setAttribute(config, "dos:readonly", false);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that installing with a relative marketplace path whose folders do not exist creates the marketplace
+	 * below the working folder, where Codex resolves the path.
+	 *
+	 * @throws IOException          if the files cannot be written or the script cannot be run
+	 * @throws InterruptedException if the thread is interrupted while the script runs
+	 */
+	@Test
+	public void installsIntoRelativeMarketplace() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path artifact = fixture.artifact();
+
+			Result result = fixture.run("$env:CAT_CODEX_MARKETPLACE_ROOT = 'missing\\cat-marketplace'\n" +
+				install("-Source " + literal(artifact)));
+
+			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(0);
+			Path marketplace = fixture.root.resolve("missing/cat-marketplace");
+			requireThat(marketplace.resolve(".agents/plugins/marketplace.json"), "marketplace").isRegularFile();
+			requireThat(fixture.commands(), "commands").contains("codex plugin add cat@cat");
+		}
+	}
+
+	/**
 	 * Verifies that removing an installed plugin deletes CAT's agents and marketplace, and keeps CAT's data.
 	 *
 	 * @throws IOException          if the files cannot be written or the script cannot be run
@@ -671,7 +737,8 @@ public final class CodexWindowsInstallerTest
 		}
 
 		/**
-		 * Runs PowerShell statements in Windows PowerShell, with {@code codex.cmd} on the {@code PATH}.
+		 * Runs PowerShell statements in Windows PowerShell, in the test's root folder, with {@code codex.cmd} on the
+		 * {@code PATH}.
 		 *
 		 * @param statements the statements
 		 * @return the output and exit status
@@ -689,7 +756,7 @@ public final class CodexWindowsInstallerTest
 				"\t[Console]::Out.WriteLine('error: ' + $_.Exception.Message)\n\texit 1\n}\n";
 			String encoded = Base64.getEncoder().encodeToString(script.getBytes(UTF_16LE));
 			ProcessBuilder builder = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive",
-				"-EncodedCommand", encoded).redirectErrorStream(true);
+				"-EncodedCommand", encoded).directory(root.toFile()).redirectErrorStream(true);
 			try (Process process = builder.start())
 			{
 				process.getOutputStream().close();
