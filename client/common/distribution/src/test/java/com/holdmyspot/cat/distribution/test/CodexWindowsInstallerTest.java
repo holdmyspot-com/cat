@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
@@ -267,7 +268,7 @@ public final class CodexWindowsInstallerTest
 
 				requireThat(result.status(), "status").withContext(result.output(), "output").isNotEqualTo(0);
 				requireThat(result.output(), "output").
-					contains("CAT changed nothing because it cannot write " + config + ".").
+					contains("CAT changed nothing because it cannot write " + fullPath(config) + ".").
 					contains("$env:CODEX_HOME = " + literal(fixture.codexHome) + "; & ([scriptblock]::Create((irm " +
 						"https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/codex/lifecycle/src/main/" +
 						"resources/install/install-codex.ps1))) -Source '").
@@ -309,7 +310,7 @@ public final class CodexWindowsInstallerTest
 
 				requireThat(result.status(), "status").withContext(result.output(), "output").isNotEqualTo(0);
 				requireThat(result.output(), "output").
-					contains("CAT changed nothing because it cannot write " + config + ".").
+					contains("CAT changed nothing because it cannot write " + fullPath(config) + ".").
 					contains("$env:CODEX_HOME = " + literal(fixture.codexHome) +
 						"; $env:CAT_CODEX_MARKETPLACE_ROOT = 'missing\\cat-marketplace'; & ([scriptblock]::Create(");
 				requireThat(fixture.commands(), "commands").isEmpty();
@@ -512,7 +513,7 @@ public final class CodexWindowsInstallerTest
 
 				requireThat(result.status(), "status").withContext(result.output(), "output").isNotEqualTo(0);
 				requireThat(result.output(), "output").
-					contains("CAT changed nothing because it cannot write " + config + ".").
+					contains("CAT changed nothing because it cannot write " + fullPath(config) + ".").
 					contains("  $env:CODEX_HOME = " + literal(fixture.codexHome) + "; & ([scriptblock]::Create((irm " +
 						"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/" +
 						"resources/install/bootstrap-codex.ps1))) -Uninstall" + System.lineSeparator());
@@ -616,6 +617,20 @@ public final class CodexWindowsInstallerTest
 			}
 		}
 		return snapshot;
+	}
+
+	/**
+	 * Returns the form of an existing path that the installer names when it cannot write the path. Windows PowerShell's
+	 * {@code [IO.Path]::GetFullPath} expands a short 8.3 name, such as {@code RUNNER~1}, which the temporary folder
+	 * that holds each test's files can contain, and does not follow links.
+	 *
+	 * @param existing the path of an existing file or folder
+	 * @return the path with each short name replaced by its long name
+	 * @throws IOException if the path does not exist or cannot be read
+	 */
+	private static Path fullPath(Path existing) throws IOException
+	{
+		return existing.toRealPath(LinkOption.NOFOLLOW_LINKS);
 	}
 
 	/**
