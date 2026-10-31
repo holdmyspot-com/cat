@@ -872,6 +872,35 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies that a project rule's reference through the project directory lists the project rule that it names,
+	 * and that such a reference to a project file outside the project's rules is left out.
+	 *
+	 * @throws IOException if the rules cannot be written or read
+	 */
+	@Test
+	public void listsProjectRuleNamedThroughProjectRoot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-")).toAbsolutePath().normalize();
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			write(project, ".cat/rules/common/routing.md", "Before building, load " +
+				"`${CAT_PROJECT_ROOT}/.cat/rules/include/build.md`. See `${CAT_PROJECT_ROOT}/docs/guide.md`.");
+			write(project, ".cat/rules/include/build.md", "Build guidance");
+			write(project, "docs/guide.md", "Guide");
+
+			List<RuleSource> sources = new ProjectRuleLoader(scope.yaml()).sourcesForMainAgent(plugin, null,
+				project, "harnessa");
+
+			Path routing = project.resolve(".cat/rules/common/routing.md");
+			requireThat(sources, "sources").isEqualTo(List.of(
+				new RuleSource(routing, RuleSource.Kind.INJECTED, Optional.empty()),
+				new RuleSource(project.resolve(".cat/rules/include/build.md"), RuleSource.Kind.REFERENCED,
+					Optional.of(routing))));
+		}
+	}
+
+	/**
 	 * Writes a UTF-8 rule below a root directory.
 	 *
 	 * @param root the rule root

@@ -34,9 +34,10 @@ classify each by the convention's context test; do not search only for constants
 Load a focused coverage rule only when its observable task condition applies:
 
 - When deciding whether guidance belongs in a bundled plugin rule or this repository's project rules, lazy load
-	`../common/rule-coverage/plugin-rule-placement.md`.
+	`${CAT_PROJECT_ROOT}/.cat/rules/common/rule-coverage/plugin-rule-placement.md`.
 - When auditing a value or requirement expressed through names, paths, configuration, commands, generated content, or
-	another derived representation, lazy load `../common/rule-coverage/semantic-representations.md`.
+	another derived representation, lazy load
+	`${CAT_PROJECT_ROOT}/.cat/rules/common/rule-coverage/semantic-representations.md`.
 
 For each requirement, define its observable violation, the files and artifact types in scope, an auditable check that
 finds every candidate, and any excluded paths with their reasons. Inspect and classify every candidate; do not infer

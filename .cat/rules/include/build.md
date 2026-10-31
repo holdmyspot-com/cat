@@ -31,7 +31,8 @@ Treat linter errors (Checkstyle, PMD) the same as compiler errors — both must 
 - ❌ `client/mvnw -f client/pom.xml verify -Dpmd.skip=true`
 - ✅ `client/mvnw -q -f client/pom.xml verify`
 
-When deciding whether verification must repeat an operation instead of reusing a cached result, lazy load `./maven.md`.
+When deciding whether verification must repeat an operation instead of reusing a cached result, lazy load
+`${CAT_PROJECT_ROOT}/.cat/rules/include/maven.md`.
 
 **Fix ALL errors before rerunning the build.** If quiet output does not identify the needed next action, rerun the same
 command without `-q` to collect the missing diagnostics. Then apply all fixes across all files without intermediate

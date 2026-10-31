@@ -9,7 +9,8 @@
 
 ## Guidance
 
-Apply the bundled `rules/include/common/backward-design.md` rule for backward design and iterative generalization.
+Apply the bundled `${CAT_PLUGIN_ROOT}/rules/include/common/backward-design.md` rule for backward design and iterative
+generalization.
 
 Use TestNG to discover and run tests. Use Requirements.java `requireThat()` validators for assertions; do not use TestNG
 assertion helpers. Assert observable values and behavior, not merely that a result is non-null.

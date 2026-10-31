@@ -20,9 +20,10 @@ result, but it must not start, configure, or communicate with a model. Only a fo
 native model process, its environment, protocol, output, and external failures. Keep model-specific process mechanics
 out of CLI workflow, policy, persistence, and validation code.
 
-When a prompt, CLI, hook, or launcher depends on environment state, first lazy load `environment.md`. The owning
-harness boundary must determine which native values exist in its process; do not make a prompt or tool reuse a
-hook-only variable in an agent shell or another process context.
+When a prompt, CLI, hook, or launcher depends on environment state, first lazy load
+`${CAT_PROJECT_ROOT}/.cat/rules/include/environment.md`. The owning harness boundary must determine which native values
+exist in its process; do not make a prompt or tool reuse a hook-only variable in an agent shell or another process
+context.
 
 Prefer one CLI command for a complete deterministic workflow. When contextual judgment, user interaction, or novel text
 must occur between deterministic operations, make the instruction call a CLI at each such boundary. Keep only those

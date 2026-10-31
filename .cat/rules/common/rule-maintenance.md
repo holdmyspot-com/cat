@@ -31,7 +31,7 @@ comment therefore documents source maintenance only and must not be the only pla
 decision. Keep lengthy incident history and evolving evidence in source-only tests or records rather than comments.
 
 When deciding whether guidance belongs in a bundled rule or CAT's project rules, lazy load
-`rule-coverage/plugin-rule-placement.md`.
+`${CAT_PROJECT_ROOT}/.cat/rules/common/rule-coverage/plugin-rule-placement.md`.
 
 When a request names a maintained rule, route, or workflow as the thing to simplify, inspect the reader-visible
 guidance that it loads before proposing a change. Map its repeated passages to their triggers, decisions, and evidence;

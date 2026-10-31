@@ -12,4 +12,4 @@ paths:
 ## Guidance
 
 When creating or updating a prompt file or a Java CLI that participates in the prompt's workflow, lazy load
-`../include/prompt-vs-cli.md`.
+`${CAT_PROJECT_ROOT}/.cat/rules/include/prompt-vs-cli.md`.

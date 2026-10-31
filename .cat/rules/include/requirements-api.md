@@ -9,8 +9,8 @@
 ## Guidance
 
 Before deciding whether a parameter requires validation, lazy load the bundled
-`rules/include/common/parameter-validation.md` rule. When deciding whether an explicit Java null check is unnecessary,
-lazy load `rules/include/java/unnecessary-null-checks.md`.
+`${CAT_PLUGIN_ROOT}/rules/include/common/parameter-validation.md` rule. When deciding whether an explicit Java null
+check is unnecessary, lazy load `${CAT_PLUGIN_ROOT}/rules/include/java/unnecessary-null-checks.md`.
 
 Use Requirements.java instead of handwritten validation when its validator expresses the needed constraint, unless the
 validator's message is inadequate for the person who reads the failure (see below).

@@ -69,8 +69,8 @@ public final class ProjectRuleLoader
 	public static final String PROJECT_ROOT_DIRECTIVE = "<!-- cat:project-root -->";
 
 	/**
-	 * The notation that path-routing context writes for the project directory. The injected CAT environment rule
-	 * tells the agent which directory it stands for.
+	 * The notation that path-routing context and project rules write for the project directory. The injected CAT
+	 * environment rule tells the agent which directory it stands for.
 	 */
 	private static final String PROJECT_ROOT_REFERENCE = "${CAT_PROJECT_ROOT}";
 	/**
@@ -378,7 +378,7 @@ public final class ProjectRuleLoader
 				ruleRoot = projectRules;
 				root = RuleRoot.PROJECT;
 			}
-			addReferences(file, ruleRoot, root, audience, sources, unread);
+			addReferences(file, ruleRoot, root, absolute(projectRoot), audience, sources, unread);
 		}
 		return List.copyOf(sources.values());
 	}
@@ -389,12 +389,14 @@ public final class ProjectRuleLoader
 	 * @param file the listed file
 	 * @param ruleRoot the rule root that holds {@code file} and bounds its references
 	 * @param root the source kind of {@code ruleRoot}
+	 * @param project the absolute project directory, which a project rule's reference names as
+	 *   {@code ${CAT_PROJECT_ROOT}}
 	 * @param audience the recipient whose rules are listed
 	 * @param sources the listed files, which this method adds to
 	 * @param unread the listed files whose references are not listed yet, which this method adds to
 	 * @throws IOException if the file cannot be read, an include is unsafe, or the file's metadata is invalid
 	 */
-	private void addReferences(Path file, Path ruleRoot, RuleRoot root, RuleAudience audience,
+	private void addReferences(Path file, Path ruleRoot, RuleRoot root, Path project, RuleAudience audience,
 		Map<Path, RuleSource> sources, Deque<Path> unread) throws IOException
 	{
 		String content = readRule(ruleRoot, file, root);
@@ -418,6 +420,8 @@ public final class ProjectRuleLoader
 			String text = reference.group(1);
 			if (root == RuleRoot.PLUGIN && text.startsWith(PLUGIN_RULES_REFERENCE))
 				text = ruleRoot + text.substring(PLUGIN_RULES_REFERENCE.length() - 1);
+			else if (root == RuleRoot.PROJECT && text.startsWith(PROJECT_ROOT_REFERENCE + "/"))
+				text = project + text.substring(PROJECT_ROOT_REFERENCE.length());
 			Path declared;
 			try
 			{

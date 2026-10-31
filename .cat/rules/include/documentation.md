@@ -7,8 +7,8 @@
 
 When writing or changing Bash source code, including a function, a Bats test, or a Bats file, or documenting Bash
 functions, Bats tests, or Bash source code while maintaining CAT, lazy load
-`../../../client/common/rules/src/main/resources/rules/include/bash/documentation.md`.
+`${CAT_PROJECT_ROOT}/client/common/rules/src/main/resources/rules/include/bash/documentation.md`.
 
 When writing or editing documentation or help for an operation, command, option, or user-facing workflow, or when an
 explanation or instructional workflow must make an operation, relationship, term, option, or audience flow precise,
-lazy load `./documentation/precision.md`.
+lazy load `${CAT_PROJECT_ROOT}/.cat/rules/include/documentation/precision.md`.

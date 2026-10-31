@@ -24,7 +24,7 @@ already UTF-8, the launcher keeps the caller's locale. Otherwise it saves the ca
 `CAT_CALLER_LC_ALL` and `CAT_CALLER_LC_CTYPE`, unsets `LC_ALL` and sets `LC_CTYPE=C.UTF-8`.
 
 When changing how the launcher template saves or sets the caller's locale, or how a program receives its arguments on
-Windows, lazy load `../include/jlink-launchers/programs.md`.
+Windows, lazy load `${CAT_PROJECT_ROOT}/.cat/rules/include/jlink-launchers/programs.md`.
 
 Every jlink launcher runs Java directly, sharing the caller's file system, including `/tmp`. Do not start Java through
 Bubblewrap or another sandbox: inside a sandboxed agent session, such as Claude Code's, Bubblewrap cannot create another

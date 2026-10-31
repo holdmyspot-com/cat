@@ -61,7 +61,7 @@ test-only production APIs merely to test implementation details; a qualified exp
 follows the rules under Tests.
 
 When editing a module's exports or opens, giving a test or another module access to a member that it cannot reach,
-or writing code that uses reflection, lazy load `./java-modules/shared-secrets.md`.
+or writing code that uses reflection, lazy load `${CAT_PROJECT_ROOT}/.cat/rules/include/java-modules/shared-secrets.md`.
 
 ### Tests
 
@@ -70,7 +70,7 @@ its test module cannot reach, decide by what other modules can see:
 
 - A package that the main module exports to no module other than its test module, through a qualified export, may make
 	public the types and members its tests need. Widening them changes no other module's view. When choosing method or
-	type visibility, lazy load `java-class-design.md`.
+	type visibility, lazy load `${CAT_PROJECT_ROOT}/.cat/rules/include/java-class-design.md`.
 - A package that other modules can see keeps its members at their production-required visibility. Expose each member
 	the tests need through a narrow, typed SharedSecrets façade that delegates to it, and export the secrets package only
 	to the test module. A type in such a package that the tests name may become public.

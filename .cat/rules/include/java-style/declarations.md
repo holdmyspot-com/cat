@@ -30,7 +30,8 @@
 	value materially easier to understand. Keep a single-use message or an obvious value inline when a named constant
 	would only move it away from the reader. Before extracting, ask: “Would replacing this name with its value make the
 	surrounding code meaningfully harder to read?” If not, keep the value inline.
-- When choosing type or member visibility or removing unused methods, lazy load `../java-class-design.md`.
+- When choosing type or member visibility or removing unused methods, lazy load
+	`${CAT_PROJECT_ROOT}/.cat/rules/include/java-class-design.md`.
 - Initialize constant or parameter-independent fields inline. Initialize fields in a constructor only when they depend
 	on constructor input or require multi-step setup.
 - Use interface types for declarations unless concrete-only operations are required.
