@@ -18,6 +18,8 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -235,6 +237,48 @@ public final class CodexWindowsInstallerTest
 	}
 
 	/**
+	 * Verifies that installing an extracted artifact when Codex's {@code config.toml} cannot be written, as in an
+	 * agent's sandbox, changes nothing, runs no command, and names the file and the command that repeats the
+	 * installation outside the sandbox.
+	 *
+	 * @throws IOException          if the files cannot be written or the script cannot be run
+	 * @throws InterruptedException if the thread is interrupted while the script runs
+	 */
+	@Test
+	public void installRefusesReadOnlyConfig() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path artifact = fixture.artifact();
+			fixture.installed();
+			Path config = fixture.codexHome.resolve("config.toml");
+			Files.writeString(config, "[plugins]\n");
+			Files.setAttribute(config, "dos:readonly", true);
+			try
+			{
+				Map<String, String> before = snapshot(fixture.codexHome);
+
+				Result result = fixture.run(install("-Source " + literal(artifact)));
+
+				requireThat(result.status(), "status").withContext(result.output(), "output").isNotEqualTo(0);
+				requireThat(result.output(), "output").
+					contains("CAT changed nothing because it cannot write " + config + ".").
+					contains("$env:CODEX_HOME = " + literal(fixture.codexHome) + "; & ([scriptblock]::Create((irm " +
+						"https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/codex/lifecycle/src/main/" +
+						"resources/install/install-codex.ps1))) -Source '").
+					contains(RELEASE_NAME + "'");
+				requireThat(fixture.commands(), "commands").isEmpty();
+				requireThat(snapshot(fixture.codexHome), "after").isEqualTo(before, "before");
+			}
+			finally
+			{
+				Files.setAttribute(config, "dos:readonly", false);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that removing an installed plugin deletes CAT's agents and marketplace, and keeps CAT's data.
 	 *
 	 * @throws IOException          if the files cannot be written or the script cannot be run
@@ -308,6 +352,48 @@ public final class CodexWindowsInstallerTest
 	}
 
 	/**
+	 * Verifies that removing an installed plugin when Codex's {@code config.toml} cannot be written, as in an agent's
+	 * sandbox, changes nothing, runs no command, and names the file and the command that repeats the removal outside
+	 * the sandbox.
+	 *
+	 * @throws IOException          if the files cannot be written or the script cannot be run
+	 * @throws InterruptedException if the thread is interrupted while the script runs
+	 */
+	@Test
+	public void uninstallRefusesReadOnlyConfig() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			fixture.installed();
+			Path profile = Files.createDirectories(fixture.root.resolve("profile"));
+			Files.createDirectories(profile.resolve(".cat/bundles/cat-claude-v1.0-windows-x64/bin"));
+			Path config = fixture.codexHome.resolve("config.toml");
+			Files.writeString(config, "[plugins]\n");
+			Files.setAttribute(config, "dos:readonly", true);
+			try
+			{
+				Map<String, String> before = snapshot(fixture.root);
+
+				Result result = fixture.run("$env:USERPROFILE = " + literal(profile) + "\n" + install("-Uninstall"));
+
+				requireThat(result.status(), "status").withContext(result.output(), "output").isNotEqualTo(0);
+				requireThat(result.output(), "output").
+					contains("CAT changed nothing because it cannot write " + config + ".").
+					contains("  $env:CODEX_HOME = " + literal(fixture.codexHome) + "; & ([scriptblock]::Create((irm " +
+						"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/" +
+						"resources/install/bootstrap-codex.ps1))) -Uninstall" + System.lineSeparator());
+				requireThat(fixture.commands(), "commands").isEmpty();
+				requireThat(snapshot(fixture.root), "after").isEqualTo(before, "before");
+			}
+			finally
+			{
+				Files.setAttribute(config, "dos:readonly", false);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the bootstrap script runs the installer of the latest release, which it fetches from that
 	 * release's tag, and asks it to install that tag. A stand-in installer records the tag that it receives;
 	 * {@link #installsVerifiedRelease()} covers what the real installer does with a tag.
@@ -370,6 +456,33 @@ public final class CodexWindowsInstallerTest
 			StandardOpenOption.APPEND);
 		Files.writeString(migrations.resolve(version + ".sh"), "exit 1\n");
 		Files.writeString(migrations.resolve(version + ".ps1"), script + "\n");
+	}
+
+	/**
+	 * Returns the files and folders below a folder, each with its contents, so that two snapshots are equal only when
+	 * nothing below the folder was created, deleted or changed.
+	 *
+	 * @param folder the folder
+	 * @return the path of each file and folder relative to {@code folder}, mapped to the file's contents encoded in
+	 *   Base64, or to {@code "folder"} for a folder
+	 * @throws IOException if the folder cannot be read
+	 */
+	private static Map<String, String> snapshot(Path folder) throws IOException
+	{
+		Map<String, String> snapshot = new TreeMap<>();
+		try (Stream<Path> paths = Files.walk(folder))
+		{
+			for (Path path : paths.toList())
+			{
+				String contents;
+				if (Files.isDirectory(path))
+					contents = "folder";
+				else
+					contents = Base64.getEncoder().encodeToString(Files.readAllBytes(path));
+				snapshot.put(folder.relativize(path).toString(), contents);
+			}
+		}
+		return snapshot;
 	}
 
 	/**

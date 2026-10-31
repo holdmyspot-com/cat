@@ -10,6 +10,10 @@
 # -Uninstall removes the plugin and the Claude CAT artifacts that a runner skill downloaded into .cat\bundles, and keeps
 # CAT's data, so that a later installation can use it; -DeleteData deletes it too.
 #
+# Before it changes anything, the script checks that it can write every file and folder that the operation changes,
+# including those that Codex changes. If it cannot, as in an agent's sandbox, it changes nothing and fails with the
+# command that repeats the operation in a PowerShell window outside the sandbox.
+#
 # The script reports every failure by throwing, rather than calling exit, which would close the window of a user who
 # runs it interactively. It must stay ASCII so that Windows PowerShell reads it the same way in every code page, and
 # compatible with Windows PowerShell 5.1.
@@ -98,6 +102,96 @@ function Assert-CatDataDirectory([string] $Path)
 	{
 		throw ("CAT data path must end in \plugins\data\cat-cat so CAT only removes its own data: $Path. " +
 			'Set CAT_CODEX_DATA_DIR to a path ending in \plugins\data\cat-cat.')
+	}
+}
+
+# Returns a PowerShell string literal whose value is a text.
+function ConvertTo-CatLiteral([string] $Value)
+{
+	return "'" + $Value.Replace("'", "''") + "'"
+}
+
+# Returns the command that repeats this operation in a PowerShell window: it sets the environment variables that the
+# operation reads, then runs a script of the CAT repository at a Git reference with arguments.
+function Get-CatRerunCommand([string] $Reference, [string] $Script, [string] $Arguments)
+{
+	$command = ''
+	foreach ($name in @('CODEX_HOME', 'CAT_CODEX_DATA_DIR', 'CAT_CODEX_MARKETPLACE_ROOT', 'CAT_RELEASE_BASE_URL'))
+	{
+		$value = [Environment]::GetEnvironmentVariable($name)
+		if ($value) { $command += "`$env:$name = $(ConvertTo-CatLiteral $value); " }
+	}
+	$url = "https://raw.githubusercontent.com/holdmyspot-com/cat/$Reference/client/codex/lifecycle/src/main/" +
+		"resources/install/$Script"
+	return "$command& ([scriptblock]::Create((irm $url))) $Arguments"
+}
+
+# Returns whether an existing file or folder can be written, without changing it. A folder is writable when a probe
+# file can be created and deleted in it; a file is writable when it can be opened for appending, which writes nothing.
+function Test-CatWritable([string] $Path)
+{
+	try
+	{
+		if (Test-Path -LiteralPath $Path -PathType Container)
+		{
+			$probe = Join-Path $Path ('.cat-write-check.' + [Guid]::NewGuid().ToString('N'))
+			[IO.File]::Open($probe, 'CreateNew', 'Write').Close()
+			[IO.File]::Delete($probe)
+		}
+		else
+		{
+			[IO.File]::Open($Path, 'Append', 'Write').Close()
+		}
+		return $true
+	}
+	catch
+	{
+		return $false
+	}
+}
+
+# Throws that CAT changed nothing because it cannot write a path, with the command that repeats the operation.
+function Stop-CatNotWritable([string] $Path, [string] $Command)
+{
+	throw ("CAT changed nothing because it cannot write $Path.`n" +
+		"An agent's sandbox usually causes this. Run this command in a PowerShell window outside the sandbox:`n`n" +
+		"  $Command")
+}
+
+# Throws, before any change, when the operation could not create or change one of the paths. An existing file is
+# checked together with its folder, because a program can replace a file by renaming a new one over it; a missing path
+# is checked at the nearest existing folder above it, where the operation creates the path.
+function Assert-CatWritable([string] $Command, [string[]] $Paths)
+{
+	foreach ($path in $Paths)
+	{
+		$existing = $path
+		while (-not (Test-Path -LiteralPath $existing))
+		{
+			$parent = Split-Path -Parent $existing
+			if (-not $parent) { break }
+			$existing = $parent
+		}
+		if (-not (Test-CatWritable $existing)) { Stop-CatNotWritable $existing $Command }
+		if (-not (Test-Path -LiteralPath $existing -PathType Container))
+		{
+			$folder = Split-Path -Parent $existing
+			if (-not (Test-CatWritable $folder)) { Stop-CatNotWritable $folder $Command }
+		}
+	}
+}
+
+# Throws, before any change, when the operation could not delete one of the paths that exist: both the path and the
+# folder that holds it must be writable. A missing path is skipped.
+function Assert-CatRemovable([string] $Command, [string[]] $Paths)
+{
+	foreach ($path in $Paths)
+	{
+		if (-not (Test-Path -LiteralPath $path)) { continue }
+		foreach ($checked in @((Split-Path -Parent $path), $path))
+		{
+			if (-not (Test-CatWritable $checked)) { Stop-CatNotWritable $checked $Command }
+		}
 	}
 }
 
@@ -305,6 +399,24 @@ if ($Uninstall)
 {
 	if ($Source) { throw '-Source cannot be used with -Uninstall' }
 	if ($DeleteData) { Assert-CatDataDirectory $dataDirectory }
+	$userProfile = $env:USERPROFILE
+	if (-not $userProfile) { $userProfile = [Environment]::GetFolderPath('UserProfile') }
+	$bundles = Join-Path $userProfile '.cat\bundles'
+	$arguments = '-Uninstall'
+	if ($DeleteData) { $arguments += ' -DeleteData' }
+	$rerunCommand = Get-CatRerunCommand 'HEAD' 'bootstrap-codex.ps1' $arguments
+	# "codex plugin remove" records the removal in config.toml and deletes the plugin from the plugin cache
+	$writable = @($codexHome, (Join-Path $codexHome 'config.toml'), (Join-Path $codexHome 'tmp'),
+		(Join-Path $codexHome 'plugins\cache'))
+	if (Test-Path -LiteralPath (Join-Path $dataDirectory 'codex-agent-files'))
+	{
+		$writable += @((Join-Path $codexHome 'agents'), $dataDirectory)
+	}
+	Assert-CatWritable $rerunCommand $writable
+	$removable = @($marketplaceRoot, $bundles)
+	if ($DeleteData) { $removable += $dataDirectory }
+	Assert-CatRemovable $rerunCommand $removable
+
 	Remove-CatAgents $codexHome $dataDirectory
 	Invoke-CatProgram 'codex' @('plugin', 'remove', 'cat@cat')
 	Invoke-CatProgramQuietly 'codex' @('plugin', 'marketplace', 'remove', 'cat')
@@ -312,9 +424,6 @@ if ($Uninstall)
 	{
 		Remove-Item -LiteralPath $marketplaceRoot -Recurse -Force
 	}
-	$userProfile = $env:USERPROFILE
-	if (-not $userProfile) { $userProfile = [Environment]::GetFolderPath('UserProfile') }
-	$bundles = Join-Path $userProfile '.cat\bundles'
 	if (Test-Path -LiteralPath $bundles)
 	{
 		Remove-Item -LiteralPath $bundles -Recurse -Force
@@ -334,18 +443,27 @@ try
 	if (Test-Path -LiteralPath $Source -PathType Container)
 	{
 		$artifact = (Resolve-Path -LiteralPath $Source).ProviderPath
+		$rerunCommand = Get-CatRerunCommand $CatReleaseTag 'install-codex.ps1' "-Source $(ConvertTo-CatLiteral $artifact)"
 	}
 	elseif ($Source -eq $CatReleaseTag)
 	{
 		$downloads = Join-Path ([IO.Path]::GetTempPath()) ('cat-codex-install-' + [Guid]::NewGuid().ToString('N'))
 		New-Item -ItemType Directory -Path $downloads | Out-Null
 		$artifact = Expand-CatRelease $downloads
+		$rerunCommand = Get-CatRerunCommand $CatReleaseTag 'bootstrap-codex.ps1' "-Version $CatReleaseTag"
 	}
 	else
 	{
 		throw "Expected $CatReleaseTag or an extracted artifact directory: $Source"
 	}
 	Assert-CatArtifact $artifact
+	# Codex replaces config.toml by renaming a temporary file from its home folder over it when "codex plugin
+	# marketplace add" and "codex plugin add" record the marketplace and the plugin, and "codex plugin add" copies the
+	# plugin into the plugin cache
+	Assert-CatWritable $rerunCommand @($codexHome, (Join-Path $codexHome 'config.toml'), (Join-Path $codexHome '.tmp'),
+		(Join-Path $codexHome 'tmp'), (Join-Path $codexHome 'plugins\cache'), (Join-Path $codexHome 'agents'),
+		$dataDirectory, (Split-Path -Parent $marketplaceRoot))
+	Assert-CatRemovable $rerunCommand @($marketplaceRoot)
 
 	Update-CatData $dataDirectory (Join-Path $artifact 'install\migrations')
 	Install-CatAgents $artifact $codexHome $dataDirectory
