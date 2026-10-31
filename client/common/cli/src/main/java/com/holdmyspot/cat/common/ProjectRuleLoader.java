@@ -34,8 +34,8 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  * installation directory that the caller supplied, and each {@link #POSIX_PLUGIN_PATH_DIRECTIVE} or
  * {@link #POWERSHELL_PLUGIN_PATH_DIRECTIVE} becomes a path below it, quoted for its shell. In the context of a bundled
  * rule that the loader injects for a project, each {@link #PROJECT_ROOT_DIRECTIVE} becomes the absolute, normalized
- * project directory that the caller supplied. The harness skill environment, which states those directories, precedes
- * every other rule.
+ * project directory that the caller supplied, and each {@link #USER_RULES_DIRECTIVE} becomes the user rule directory
+ * that the loader reads. The harness skill environment, which states those directories, precedes every other rule.
  */
 public final class ProjectRuleLoader
 {
@@ -67,12 +67,26 @@ public final class ProjectRuleLoader
 	 * {@link #loadRule(Path, Path)} renders without a project, receive it unchanged.
 	 */
 	public static final String PROJECT_ROOT_DIRECTIVE = "<!-- cat:project-root -->";
+	/**
+	 * The directive that a bundled rule writes where the injected context must state the user rule directory that the
+	 * loader reads, so that a user rule can name another user rule from that directory.
+	 * <p>
+	 * The loader replaces it in the injected context of the plugin's rules. When the session has no user rule
+	 * directory, the loader removes each paragraph that holds it, so that the context states no directory. Project and
+	 * user rules, and a rule that {@link #loadRule(Path, Path)} renders, receive it unchanged.
+	 */
+	public static final String USER_RULES_DIRECTIVE = "<!-- cat:user-rules -->";
 
 	/**
 	 * The notation that path-routing context and project rules write for the project directory. The injected CAT
 	 * environment rule tells the agent which directory it stands for.
 	 */
 	private static final String PROJECT_ROOT_REFERENCE = "${CAT_PROJECT_ROOT}";
+	/**
+	 * The notation that user rules write for the user rule directory. The injected CAT environment rule tells the agent
+	 * which directory it stands for.
+	 */
+	private static final String USER_RULES_REFERENCE = "${CAT_USER_RULES}";
 	/**
 	 * The filename of the bundled harness rule that defines the {@code CAT_} names, such as CAT's installation
 	 * directory. The loader injects it before every other rule, so each name is defined before a rule refers to it.
@@ -390,7 +404,7 @@ public final class ProjectRuleLoader
 	 * @param ruleRoot the rule root that holds {@code file} and bounds its references
 	 * @param root the source kind of {@code ruleRoot}
 	 * @param project the absolute project directory, which a project rule's reference names as
-	 *   {@code ${CAT_PROJECT_ROOT}}
+	 *   {@code ${CAT_PROJECT_ROOT}}. A user rule's reference names its rule root as {@code ${CAT_USER_RULES}}.
 	 * @param audience the recipient whose rules are listed
 	 * @param sources the listed files, which this method adds to
 	 * @param unread the listed files whose references are not listed yet, which this method adds to
@@ -417,11 +431,7 @@ public final class ProjectRuleLoader
 		Matcher reference = LAZY_RULE_REFERENCE.matcher(body);
 		while (reference.find())
 		{
-			String text = reference.group(1);
-			if (root == RuleRoot.PLUGIN && text.startsWith(PLUGIN_RULES_REFERENCE))
-				text = ruleRoot + text.substring(PLUGIN_RULES_REFERENCE.length() - 1);
-			else if (root == RuleRoot.PROJECT && text.startsWith(PROJECT_ROOT_REFERENCE + "/"))
-				text = project + text.substring(PROJECT_ROOT_REFERENCE.length());
+			String text = expandRootNotation(reference.group(1), ruleRoot, root, project);
 			Path declared;
 			try
 			{
@@ -445,6 +455,28 @@ public final class ProjectRuleLoader
 			if (resolved.startsWith(include) && Files.isRegularFile(resolved, NOFOLLOW_LINKS))
 				addSource(new RuleSource(resolved, RuleSource.Kind.PREREQUISITE, referrer), sources, unread);
 		}
+	}
+
+	/**
+	 * Returns the file that a reference in a rule names through a root notation, in the form that resolves against the
+	 * referring rule's directory.
+	 *
+	 * @param text the reference
+	 * @param ruleRoot the rule root that holds the referring rule
+	 * @param root the source kind of {@code ruleRoot}
+	 * @param project the absolute project directory
+	 * @return the reference with its root notation replaced by the directory it names, or {@code text} unchanged when
+	 *   it starts with no notation that the referring rule's source kind uses
+	 */
+	private static String expandRootNotation(String text, Path ruleRoot, RuleRoot root, Path project)
+	{
+		if (root == RuleRoot.PLUGIN && text.startsWith(PLUGIN_RULES_REFERENCE))
+			return ruleRoot + text.substring(PLUGIN_RULES_REFERENCE.length() - 1);
+		if (root == RuleRoot.PROJECT && text.startsWith(PROJECT_ROOT_REFERENCE + "/"))
+			return project + text.substring(PROJECT_ROOT_REFERENCE.length());
+		if (root == RuleRoot.USER && text.startsWith(USER_RULES_REFERENCE + "/"))
+			return ruleRoot + text.substring(USER_RULES_REFERENCE.length());
+		return text;
 	}
 
 	/**
@@ -552,8 +584,9 @@ public final class ProjectRuleLoader
 			rules);
 		loadDirectory(pluginRoot, pluginRules.resolve(harness), pluginRules, RuleRoot.PLUGIN, audience, rules);
 		String project = projectRoot.toAbsolutePath().normalize().toString();
+		Optional<Path> userRules = existingUserRules(userRulesRoot);
 		rules.replaceAll(rule -> new Rule(rule.path(), rule.displayPath(), rule.file(), rule.root(), rule.direct(),
-			rule.dependencies(), rule.context().replace(PROJECT_ROOT_DIRECTIVE, project)));
+			rule.dependencies(), stateUserRules(rule.context().replace(PROJECT_ROOT_DIRECTIVE, project), userRules)));
 		if (userRulesRoot != null)
 		{
 			loadDirectory(userRulesRoot, userRulesRoot.resolve("common"), userRulesRoot, RuleRoot.USER,
@@ -571,6 +604,52 @@ public final class ProjectRuleLoader
 			"rules/" + harness + "/" + READ_FILE_RULE);
 		ordered.sort(Comparator.comparingInt(rule -> leadingRank(rule, leading)));
 		return ordered;
+	}
+
+	/**
+	 * Returns the user rule directory that a session loads.
+	 *
+	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
+	 * @return the absolute, normalized directory, or empty if {@code userRulesRoot} is null or names no directory
+	 */
+	private static Optional<Path> existingUserRules(Path userRulesRoot)
+	{
+		if (userRulesRoot == null || !Files.isDirectory(userRulesRoot))
+			return Optional.empty();
+		return Optional.of(absolute(userRulesRoot));
+	}
+
+	/**
+	 * Replaces each {@link #USER_RULES_DIRECTIVE} in a bundled rule's context with the user rule directory, or removes
+	 * each paragraph that holds one when the session has no user rule directory.
+	 *
+	 * @param context the rule's rendered context
+	 * @param userRules the user rule directory that the session loads, or empty if it has none
+	 * @return the context that states the directory, or that omits every statement of it
+	 */
+	private static String stateUserRules(String context, Optional<Path> userRules)
+	{
+		if (userRules.isPresent())
+			return context.replace(USER_RULES_DIRECTIVE, userRules.get().toString());
+		String result = context;
+		int directive = result.indexOf(USER_RULES_DIRECTIVE);
+		while (directive != -1)
+		{
+			int start = result.lastIndexOf("\n\n", directive);
+			int end = result.indexOf("\n\n", directive);
+			if (end == -1)
+				end = result.length();
+			// Remove the paragraph with one of the separators around it, which leaves the text on both sides one
+			// paragraph apart
+			if (start == -1)
+			{
+				start = 0;
+				end = Math.min(end + 2, result.length());
+			}
+			result = result.substring(0, start) + result.substring(end);
+			directive = result.indexOf(USER_RULES_DIRECTIVE);
+		}
+		return result;
 	}
 
 	/**

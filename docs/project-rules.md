@@ -83,6 +83,17 @@ project rules remain outside the installed plugin. They are separate filesystem 
 | Project common rule | `<project workspace>/.cat/rules/common/...` |
 | Project harness rule | `<project workspace>/.cat/rules/<harness>/...` |
 
+When a rule names another file, name it from one of these roots instead of the rule's own directory, because an agent
+reads the injected rule without knowing where it came from. The session context states each root's value:
+
+| Write | For a file in |
+| --- | --- |
+| `${CAT_PLUGIN_ROOT}/rules/...` | the installed CAT plugin's rules |
+| `${CAT_USER_RULES}/...` | the user rule directory, for example `${CAT_USER_RULES}/include/terms.md` |
+| `${CAT_PROJECT_ROOT}/...` | the project workspace, for example `${CAT_PROJECT_ROOT}/.cat/rules/include/terms.md` |
+
+CAT states `${CAT_USER_RULES}` only in sessions that have a user rule directory.
+
 ### 5. Order related rules
 
 Use `depends-on` frontmatter when one direct project rule needs guidance defined by another direct project rule. Each

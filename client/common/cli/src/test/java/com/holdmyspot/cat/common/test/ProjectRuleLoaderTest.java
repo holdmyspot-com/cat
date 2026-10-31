@@ -639,6 +639,43 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies that a bundled rule states the user rule directory that the session loads wherever it writes the
+	 * user-rules directive, and that a session without a user rule directory receives no paragraph that names it.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void statesUserRulesInBundledRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-")).toAbsolutePath().normalize();
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/harnessa/cat-env.md", "# Environment\n\nBefore.\n\n`CAT_USER_RULES` is `" +
+				ProjectRuleLoader.USER_RULES_DIRECTIVE + "`, the user rule directory.\nUse it in place of " +
+				"`${CAT_USER_RULES}`.\n\nAfter.\n");
+			Files.createDirectories(userRules.resolve("module"));
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+
+			String withUserRules = loader.loadForMainAgent(plugin, userRules.resolve("module/.."), project,
+				"harnessa");
+			String withoutUserRules = loader.loadForMainAgent(plugin, null, project, "harnessa");
+			String missingUserRules = loader.loadForMainAgent(plugin, userRules.resolve("missing"), project,
+				"harnessa");
+
+			requireThat(withUserRules, "withUserRules").
+				contains("Before.\n\n`CAT_USER_RULES` is `" + userRules + "`, the user rule directory.\n").
+				contains("\n\nAfter.");
+			for (String context : List.of(withoutUserRules, missingUserRules))
+			{
+				requireThat(context, "context").contains("Before.\n\nAfter.").doesNotContain("CAT_USER_RULES").
+					doesNotContain(ProjectRuleLoader.USER_RULES_DIRECTIVE);
+			}
+		}
+	}
+
+	/**
 	 * Verifies project and user rules receive the plugin-root directive unchanged, because the plugin root is not
 	 * theirs to state.
 	 */
@@ -897,6 +934,32 @@ public final class ProjectRuleLoaderTest
 				new RuleSource(routing, RuleSource.Kind.INJECTED, Optional.empty()),
 				new RuleSource(project.resolve(".cat/rules/include/build.md"), RuleSource.Kind.REFERENCED,
 					Optional.of(routing))));
+		}
+	}
+
+	/**
+	 * Verifies that a user rule's reference through the user rule directory lists the user rule that it names.
+	 *
+	 * @throws IOException if the rules cannot be written or read
+	 */
+	@Test
+	public void listsUserRuleNamedThroughUserRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-")).toAbsolutePath().normalize();
+			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-")).toAbsolutePath().normalize();
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			write(userRules, "common/personal.md", "Before reviewing, load `${CAT_USER_RULES}/include/x.md`.");
+			write(userRules, "include/x.md", "Review guidance");
+
+			List<RuleSource> sources = new ProjectRuleLoader(scope.yaml()).sourcesForMainAgent(plugin, userRules,
+				project, "harnessa");
+
+			Path personal = userRules.resolve("common/personal.md");
+			requireThat(sources, "sources").isEqualTo(List.of(
+				new RuleSource(personal, RuleSource.Kind.INJECTED, Optional.empty()),
+				new RuleSource(userRules.resolve("include/x.md"), RuleSource.Kind.REFERENCED, Optional.of(personal))));
 		}
 	}
 

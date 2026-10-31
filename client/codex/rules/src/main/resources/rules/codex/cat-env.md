@@ -9,6 +9,8 @@
 	that its session context states, not from its working directory, which can change during the session, because
 	Codex tool shells define no variable that names them, and create, remove, and move temporary files there with
 	standard commands.
+- Let the agent find a file that a user rule names from the user rule directory that its session context states, which
+	can differ from the directory below the home directory of its tool shells.
 - Let a rule or skill describe a command once for every platform, by stating here how the shell that Codex runs
 	commands in reads environment variables, runs launchers, and passes lines to a command's standard input.
 - Keep every file the agent writes inside the project directory unless the user names another location, so its scratch
@@ -23,6 +25,9 @@ environment.
 
 `CAT_PROJECT_ROOT` is `<!-- cat:project-root -->`, this session's project directory. Wherever a rule or skill writes
 `${CAT_PROJECT_ROOT}`, write that directory in its place; never expand `${CAT_PROJECT_ROOT}` from the environment.
+
+`CAT_USER_RULES` is `<!-- cat:user-rules -->`, this session's user rule directory. Wherever a rule writes
+`${CAT_USER_RULES}`, write that directory in its place; never expand `${CAT_USER_RULES}` from the environment.
 
 <!-- cat:include platform/{platform}/cat-env/shell.md -->
 

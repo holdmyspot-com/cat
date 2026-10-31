@@ -612,6 +612,40 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
+	 * Verifies that the bundled Claude rules that SessionStart writes state the user rule directory as a literal path
+	 * when the user has one, and do not mention it when the user has none.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void statesUserRulesInSessionRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path userHome = cleanup.add(Files.createTempDirectory("cat-user-home-")).toAbsolutePath().normalize();
+			Path emptyHome = cleanup.add(Files.createTempDirectory("cat-empty-home-"));
+			copyBundledRules(plugin);
+			write(userHome, ".cat/rules/common/personal.md", "personal guidance");
+			String homeVariable = Platform.current().homeVariable();
+
+			String withUserRules = completeContext(invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT",
+				plugin.toString(), "CLAUDE_CONFIG_DIR", userHome.resolve(".claude").toString(), homeVariable,
+				userHome.toString()), project));
+			String withoutUserRules = completeContext(invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT",
+				plugin.toString(), "CLAUDE_CONFIG_DIR", emptyHome.resolve(".claude").toString(), homeVariable,
+				emptyHome.toString()), project));
+
+			requireThat(withUserRules, "withUserRules").
+				contains("`CAT_USER_RULES` is `" + userHome.resolve(".cat/rules") + "`").
+				doesNotContain(ProjectRuleLoader.USER_RULES_DIRECTIVE);
+			requireThat(withoutUserRules, "withoutUserRules").doesNotContain("CAT_USER_RULES").
+				doesNotContain(ProjectRuleLoader.USER_RULES_DIRECTIVE).contains("`CAT_PROJECT_ROOT` is `" + project + "`");
+		}
+	}
+
+	/**
 	 * Verifies that the bundled Claude rules that SubagentStart writes state the directory Claude started in, and that
 	 * directory's session temporary directory, as literal paths, even when the hook runs in a subdirectory that the
 	 * agent changed into.
