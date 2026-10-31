@@ -646,6 +646,41 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
+	 * Verifies that SessionStart shows the user, rather than the agent, a warning naming a project rule's reference
+	 * relative to its own directory and its replacement, still delivers the rule, and shows no warning without one.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void warnsUserAboutRelativeRuleReference() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			Path cleanProject = cleanup.add(Files.createTempDirectory("cat-clean-rules-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			write(project, ".cat/rules/common/team.md", "# Team\n\nBefore building, load `../include/build.md`.\n");
+			write(project, ".cat/rules/include/build.md", "Build guidance");
+			write(cleanProject, ".cat/rules/common/team.md", "# Team\n\nFor example, `docs/example.md`.\n");
+
+			HookResult warned = invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+				"CLAUDE_CONFIG_DIR", project.resolve(".claude").toString()), project);
+			HookResult clean = invoke(cwdInput(cleanProject), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+				"CLAUDE_CONFIG_DIR", cleanProject.resolve(".claude").toString()), cleanProject);
+
+			JsonNode warnedEnvelope = scope.json().readTree(warned.output());
+			requireThat(warnedEnvelope.path("systemMessage").asString(), "systemMessage").
+				contains(project.resolve(".cat/rules/common/team.md") + ":3: `../include/build.md`").
+				contains("`${CAT_PROJECT_ROOT}/.cat/rules/include/build.md`");
+			requireThat(completeContext(warned), "rules").contains("Before building, load").
+				doesNotContain("relative to the rule's own directory");
+			requireThat(scope.json().readTree(clean.output()).has("systemMessage"), "clean.hasSystemMessage").
+				isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that the bundled Claude rules that SubagentStart writes state the directory Claude started in, and that
 	 * directory's session temporary directory, as literal paths, even when the hook runs in a subdirectory that the
 	 * agent changed into.

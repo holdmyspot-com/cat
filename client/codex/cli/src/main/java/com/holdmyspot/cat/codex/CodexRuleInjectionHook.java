@@ -4,6 +4,7 @@ import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import com.holdmyspot.cat.common.HookScope;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
+import com.holdmyspot.cat.common.RelativeRuleReference;
 import com.holdmyspot.cat.common.SessionRules;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.Waiting;
@@ -15,6 +16,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import tools.jackson.core.JacksonException;
@@ -58,7 +61,9 @@ final class CodexRuleInjectionHook
 	 * session directory, which holds the agent's other rules; a plugin without that guidance sends every rule in the
 	 * response, because the agent would have no instruction on how to read the file whole. SessionStart first moves the
 	 * CAT session directories that earlier versions of CAT wrote to their current location, and then removes the CAT
-	 * session directories of sessions that their harness no longer keeps.
+	 * session directories of sessions that their harness no longer keeps. Its response's {@code systemMessage}, which
+	 * Codex shows the user as a warning rather than giving it to the agent, warns about each project or user rule
+	 * reference that names a file relative to the rule's own directory.
 	 * <p>
 	 * A Codex subagent is a thread whose shells receive its own thread ID, the input's {@code agent_id}, so its rules
 	 * file lies in the CAT session directory of that ID rather than its parent's, and its pointer tells it not to read
@@ -91,6 +96,7 @@ final class CodexRuleInjectionHook
 				Path userRulesRoot = scope.userRulesRoot();
 				ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 				String context;
+				String warning = "";
 				if (!eventName.equals("SubagentStart"))
 				{
 					// Moving before opening its own directory lets a resumed session keep the directory that it wrote
@@ -100,6 +106,9 @@ final class CodexRuleInjectionHook
 					SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir,
 						HARNESS_ID);
 					context = context(directory, session, RULES_FILE_POINTER::formatted);
+					List<RelativeRuleReference> references = RelativeRuleReference.find(userRulesRoot, projectDir);
+					if (!references.isEmpty())
+						warning = RelativeRuleReference.warning(references);
 				}
 				else if (event.path("agent_id").isString())
 				{
@@ -116,8 +125,11 @@ final class CodexRuleInjectionHook
 					context = directory.insertSessionId(loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir,
 						HARNESS_ID, scope.subagentType(event)));
 				}
-				output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
-					"additionalContext", context))));
+				Map<String, Object> response = new LinkedHashMap<>();
+				response.put("hookSpecificOutput", Map.of("hookEventName", eventName, "additionalContext", context));
+				if (!warning.isEmpty())
+					response.put("systemMessage", warning);
+				output.write(json.writeValueAsBytes(response));
 				output.write('\n');
 			}
 			catch (IOException | IllegalArgumentException | JacksonException e)

@@ -481,6 +481,47 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
+	 * Verifies that SessionStart shows the user, rather than the agent, a warning naming a user rule's bare reference
+	 * relative to its own directory and its replacement, still delivers the rule, and shows no warning without one.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void warnsUserAboutRelativeRuleReference() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path userHome = cleanup.add(Files.createTempDirectory("cat-user-home-")).toAbsolutePath().normalize();
+			Path cleanHome = cleanup.add(Files.createTempDirectory("cat-clean-home-")).toAbsolutePath().normalize();
+			copyBundledRules(plugin);
+			Path personal = userHome.resolve(".cat/rules/common/personal.md");
+			Files.createDirectories(personal.getParent());
+			Files.writeString(personal, "# Personal\n\nBefore reviewing, load `review.md`.\n");
+			Files.writeString(personal.resolveSibling("review.md"), "Review guidance");
+			Path cleanRule = cleanHome.resolve(".cat/rules/common/personal.md");
+			Files.createDirectories(cleanRule.getParent());
+			Files.writeString(cleanRule, "# Personal\n\nFor example, `docs/example.md`.\n");
+			String homeVariable = Platform.current().homeVariable();
+
+			HookResult warned = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(), homeVariable,
+				userHome.toString()), project);
+			// Both sessions share one rules file, so the first session's rules are read before the second starts
+			String warnedRules = sessionRules(warned);
+			HookResult clean = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(), homeVariable,
+				cleanHome.toString()), project);
+
+			requireThat(readResponse(warned).path("systemMessage").asString(), "systemMessage").
+				contains(personal + ":3: `review.md`").
+				contains("`${CAT_USER_RULES}/common/review.md`");
+			requireThat(warnedRules, "rules").contains("Before reviewing, load").
+				doesNotContain("relative to the rule's own directory");
+			requireThat(readResponse(clean).has("systemMessage"), "clean.hasSystemMessage").isFalse();
+		}
+	}
+
+	/**
 	 * Copies the Codex rules that CAT bundles into a plugin directory.
 	 *
 	 * @param plugin the plugin directory

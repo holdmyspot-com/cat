@@ -964,6 +964,42 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies that a project rule's and a user rule's references through the plugin's rule directory list the
+	 * bundled rules that they name.
+	 *
+	 * @throws IOException if the rules cannot be written or read
+	 */
+	@Test
+	public void listsBundledRuleNamedThroughPluginRoot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-")).toAbsolutePath().normalize();
+			Path userRules = cleanup.add(Files.createTempDirectory("cat-user-rules-")).toAbsolutePath().normalize();
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			write(plugin, "rules/include/common/y.md", "Bundled guidance");
+			write(plugin, "rules/include/common/z.md", "More bundled guidance");
+			write(userRules, "common/personal.md", "Load `${CAT_PLUGIN_ROOT}/rules/include/common/z.md`.");
+			write(project, ".cat/rules/common/team.md", "Load `${CAT_PLUGIN_ROOT}/rules/include/common/y.md`. " +
+				"Never `${CAT_PLUGIN_ROOT}/rules/../escape.md`.");
+			write(plugin, "escape.md", "Outside the bundled rules");
+
+			List<RuleSource> sources = new ProjectRuleLoader(scope.yaml()).sourcesForMainAgent(plugin, userRules,
+				project, "harnessa");
+
+			Path personal = userRules.resolve("common/personal.md");
+			Path team = project.resolve(".cat/rules/common/team.md");
+			requireThat(sources, "sources").isEqualTo(List.of(
+				new RuleSource(personal, RuleSource.Kind.INJECTED, Optional.empty()),
+				new RuleSource(team, RuleSource.Kind.INJECTED, Optional.empty()),
+				new RuleSource(plugin.resolve("rules/include/common/z.md"), RuleSource.Kind.REFERENCED,
+					Optional.of(personal)),
+				new RuleSource(plugin.resolve("rules/include/common/y.md"), RuleSource.Kind.REFERENCED,
+					Optional.of(team))));
+		}
+	}
+
+	/**
 	 * Writes a UTF-8 rule below a root directory.
 	 *
 	 * @param root the rule root

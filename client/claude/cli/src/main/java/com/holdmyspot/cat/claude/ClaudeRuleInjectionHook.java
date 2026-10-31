@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.HookScope;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
+import com.holdmyspot.cat.common.RelativeRuleReference;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.Waiting;
 import java.io.IOException;
@@ -15,6 +16,8 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -42,6 +45,9 @@ final class ClaudeRuleInjectionHook
 
 	/**
 	 * Loads rules for one Claude hook event and emits its harness JSON response.
+	 * <p>
+	 * At SessionStart, the response's {@code systemMessage}, which Claude Code shows the user rather than the agent,
+	 * warns about each project or user rule reference that names a file relative to the rule's own directory.
 	 *
 	 * @param eventName the Claude hook event name
 	 * @param args the hook command-line arguments
@@ -88,8 +94,15 @@ final class ClaudeRuleInjectionHook
 			Files.createDirectories(rulesFile.getParent());
 			Files.writeString(rulesFile, session.insertSessionId(rules), UTF_8);
 			String context = CONTEXT_FILE_INSTRUCTION.formatted(eventName, rulesFile);
-			output.write(json.writeValueAsBytes(Map.of("hookSpecificOutput", Map.of("hookEventName", eventName,
-				"additionalContext", context))));
+			Map<String, Object> response = new LinkedHashMap<>();
+			response.put("hookSpecificOutput", Map.of("hookEventName", eventName, "additionalContext", context));
+			if (!eventName.equals("SubagentStart"))
+			{
+				List<RelativeRuleReference> references = RelativeRuleReference.find(userRulesRoot, projectDir);
+				if (!references.isEmpty())
+					response.put("systemMessage", RelativeRuleReference.warning(references));
+			}
+			output.write(json.writeValueAsBytes(response));
 			output.write('\n');
 		}
 		catch (IOException | IllegalArgumentException | JacksonException e)

@@ -92,7 +92,10 @@ reads the injected rule without knowing where it came from. The session context 
 | `${CAT_USER_RULES}/...` | the user rule directory, for example `${CAT_USER_RULES}/include/terms.md` |
 | `${CAT_PROJECT_ROOT}/...` | the project workspace, for example `${CAT_PROJECT_ROOT}/.cat/rules/include/terms.md` |
 
-CAT states `${CAT_USER_RULES}` only in sessions that have a user rule directory.
+CAT states `${CAT_USER_RULES}` only in sessions that have a user rule directory. At session start, CAT warns you about
+each user or project rule that names an existing file relative to its own directory, such as `../include/terms.md` or
+`terms.md`, and shows the rule file, the line and the reference to write instead. The warning goes to you, not to the
+agent, and CAT still loads the rule. `depends-on` entries stay relative and are not checked.
 
 ### 5. Order related rules
 

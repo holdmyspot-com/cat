@@ -341,7 +341,7 @@ public final class ProjectRuleLoader
 	 * Lists every file that the rules for a harness's primary agent give it: each rule that the loader injects or
 	 * routes to, in injection order, followed by each file that a listed file includes or refers to and each
 	 * prerequisite of a listed included rule, in the order found. A reference counts only when it names a file inside
-	 * the referring file's rule root.
+	 * the referring file's rule root, or inside the bundled rule directory through {@code ${CAT_PLUGIN_ROOT}/rules/}.
 	 *
 	 * @param pluginRoot a non-null CAT installation directory
 	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
@@ -392,7 +392,7 @@ public final class ProjectRuleLoader
 				ruleRoot = projectRules;
 				root = RuleRoot.PROJECT;
 			}
-			addReferences(file, ruleRoot, root, absolute(projectRoot), audience, sources, unread);
+			addReferences(file, ruleRoot, root, absolute(projectRoot), pluginRules, audience, sources, unread);
 		}
 		return List.copyOf(sources.values());
 	}
@@ -405,13 +405,15 @@ public final class ProjectRuleLoader
 	 * @param root the source kind of {@code ruleRoot}
 	 * @param project the absolute project directory, which a project rule's reference names as
 	 *   {@code ${CAT_PROJECT_ROOT}}. A user rule's reference names its rule root as {@code ${CAT_USER_RULES}}.
+	 * @param pluginRules the absolute bundled rule directory, which any rule's reference names as
+	 *   {@code ${CAT_PLUGIN_ROOT}/rules}
 	 * @param audience the recipient whose rules are listed
 	 * @param sources the listed files, which this method adds to
 	 * @param unread the listed files whose references are not listed yet, which this method adds to
 	 * @throws IOException if the file cannot be read, an include is unsafe, or the file's metadata is invalid
 	 */
-	private void addReferences(Path file, Path ruleRoot, RuleRoot root, Path project, RuleAudience audience,
-		Map<Path, RuleSource> sources, Deque<Path> unread) throws IOException
+	private void addReferences(Path file, Path ruleRoot, RuleRoot root, Path project, Path pluginRules,
+		RuleAudience audience, Map<Path, RuleSource> sources, Deque<Path> unread) throws IOException
 	{
 		String content = readRule(ruleRoot, file, root);
 		Frontmatter frontmatter = frontmatter(content, file.toString());
@@ -431,7 +433,15 @@ public final class ProjectRuleLoader
 		Matcher reference = LAZY_RULE_REFERENCE.matcher(body);
 		while (reference.find())
 		{
-			String text = expandRootNotation(reference.group(1), ruleRoot, root, project);
+			String text = reference.group(1);
+			Path bound = ruleRoot;
+			if (text.startsWith(PLUGIN_RULES_REFERENCE))
+			{
+				text = pluginRules + text.substring(PLUGIN_RULES_REFERENCE.length() - 1);
+				bound = pluginRules;
+			}
+			else
+				text = expandRootNotation(text, ruleRoot, root, project);
 			Path declared;
 			try
 			{
@@ -442,7 +452,7 @@ public final class ProjectRuleLoader
 				continue;
 			}
 			Path resolved = file.getParent().resolve(declared).normalize();
-			if (resolved.startsWith(ruleRoot) && Files.isRegularFile(resolved, NOFOLLOW_LINKS))
+			if (resolved.startsWith(bound) && Files.isRegularFile(resolved, NOFOLLOW_LINKS))
 				addSource(new RuleSource(resolved, RuleSource.Kind.REFERENCED, referrer), sources, unread);
 		}
 
@@ -458,8 +468,8 @@ public final class ProjectRuleLoader
 	}
 
 	/**
-	 * Returns the file that a reference in a rule names through a root notation, in the form that resolves against the
-	 * referring rule's directory.
+	 * Returns the file that a reference in a rule names through the root notation of the referring rule's own source,
+	 * in the form that resolves against the referring rule's directory.
 	 *
 	 * @param text the reference
 	 * @param ruleRoot the rule root that holds the referring rule
@@ -470,8 +480,6 @@ public final class ProjectRuleLoader
 	 */
 	private static String expandRootNotation(String text, Path ruleRoot, RuleRoot root, Path project)
 	{
-		if (root == RuleRoot.PLUGIN && text.startsWith(PLUGIN_RULES_REFERENCE))
-			return ruleRoot + text.substring(PLUGIN_RULES_REFERENCE.length() - 1);
 		if (root == RuleRoot.PROJECT && text.startsWith(PROJECT_ROOT_REFERENCE + "/"))
 			return project + text.substring(PROJECT_ROOT_REFERENCE.length());
 		if (root == RuleRoot.USER && text.startsWith(USER_RULES_REFERENCE + "/"))
