@@ -415,6 +415,103 @@ public final class Promotion
 	}
 
 	/**
+	 * Returns the failing runs that a prompt author attempt under validation can absorb before the next one rejects
+	 * it, which wastes the runs still in flight.
+	 * <p>
+	 * A failing run of a triggering test case ends that test case's fix, and the attempt is rejected once no
+	 * triggering test case can be fixed, so the triggering runs absorb one failure less than the test cases they can
+	 * still fix. A minimality reduction is rejected by the first failure of a test case that its accepted runs fixed,
+	 * so it absorbs none. A failing regression run rejects the attempt once its prompt test's failures are unlikely for
+	 * the working candidate; the regression runs absorb the failures that keep every prompt test below that bar, with
+	 * every pending run of the working candidate assumed to pass. Failing runs of the working candidate decide nothing
+	 * and consume none.
+	 *
+	 * @param attempt the prompt author attempt
+	 * @param regressionSet the current lineage's regression set
+	 * @param workingOutcomes the working candidate's adopted outcomes grouped by test case
+	 * @return the spare failures, at most {@value Campaign#MAXIMUM_CEILING}
+	 * @throws NullPointerException if any argument is null
+	 */
+	static int spareFailures(PromptAuthorAttempt attempt, List<RegressionTestCase> regressionSet,
+		List<TestCaseOutcomes> workingOutcomes)
+	{
+		requireThat(attempt, "attempt").isNotNull();
+		requireThat(regressionSet, "regressionSet").isNotNull();
+		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
+		if (attempt.minimality().testing() != null)
+			return 0;
+		int fixable = 0;
+		for (DrawnTestCase testCase : triggeringTestCases(attempt.runs()))
+		{
+			if (triggeringVerdict(testCase, attempt.runs(), workingOutcomes) != Verdict.FAIL)
+				++fixable;
+		}
+		int spare = Math.min(Campaign.MAXIMUM_CEILING, Math.max(0, fixable - 1));
+		for (String testId : regressionGroups(attempt.runs()))
+			spare = Math.min(spare, regressionSpareFailures(testId, attempt, regressionSet));
+		return spare;
+	}
+
+	/**
+	 * Returns the further failing runs that one prompt test's regression runs absorb before its failures are unlikely
+	 * for the working candidate.
+	 *
+	 * @param testId the prompt test's identifier
+	 * @param attempt the prompt author attempt
+	 * @param regressionSet the current lineage's regression set
+	 * @return the spare failures, at most {@value Campaign#MAXIMUM_CEILING}
+	 */
+	private static int regressionSpareFailures(String testId, PromptAuthorAttempt attempt,
+		List<RegressionTestCase> regressionSet)
+	{
+		int runs = 0;
+		int failures = 0;
+		int pending = 0;
+		List<DrawnTestCase> testCases = new ArrayList<>();
+		int workingPasses = 0;
+		int workingOutcomes = 0;
+		for (PromotionRun run : attempt.runs())
+		{
+			if (!run.testCase().testId().equals(testId))
+				continue;
+			switch (run.role())
+			{
+				case REGRESSION, REGRESSION_RERUN ->
+				{
+					++runs;
+					if (run.verdict() == null)
+						++pending;
+					else if (run.verdict() == Verdict.FAIL)
+						++failures;
+					if (run.role() == PromotionRun.Role.REGRESSION && !containsTestCase(testCases, run.testCase()))
+						testCases.add(run.testCase());
+				}
+				case WORKING_RERUN ->
+				{
+					++workingOutcomes;
+					if (run.verdict() != Verdict.FAIL)
+						++workingPasses;
+				}
+				case TRIGGERING, WORKING_REFERENCE ->
+				{
+				}
+			}
+		}
+		for (DrawnTestCase testCase : testCases)
+		{
+			++workingOutcomes;
+			if (workingVerdict(testCase, attempt, regressionSet) != Verdict.FAIL)
+				++workingPasses;
+		}
+		for (int further = 1; further <= Math.min(pending, Campaign.MAXIMUM_CEILING); ++further)
+		{
+			if (isRegression(failures + further, runs, workingPasses, workingOutcomes))
+				return further - 1;
+		}
+		return Campaign.MAXIMUM_CEILING;
+	}
+
+	/**
 	 * The state of one prompt test's regression runs.
 	 */
 	private enum GroupCheck

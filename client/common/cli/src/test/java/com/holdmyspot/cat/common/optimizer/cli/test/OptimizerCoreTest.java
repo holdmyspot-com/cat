@@ -18,7 +18,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
-import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import com.holdmyspot.cat.common.optimizer.campaign.DecisionTable;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Development;
@@ -31,12 +30,11 @@ import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
-import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
+import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Boundaries;
 import com.holdmyspot.cat.common.optimizer.cli.CommandRefusedException;
@@ -1534,8 +1532,9 @@ public final class OptimizerCoreTest
 				String id = JSON.readTree(bytes.toString(StandardCharsets.UTF_8)).get("campaign").asString();
 				Campaign campaign = repository.load(id);
 				requireThat(campaign.ceiling(), "ceiling").isEqualTo(ceiling);
-				requireThat(ConcurrencyPolicy.window(100, 0, new SlowStart(16, 0), campaign.ceiling(), Throttle.NONE),
-					"window").isEqualTo(ceiling);
+				// A unit of work that can absorb 15 failures starts at the campaign's ceiling
+				requireThat(campaign.windows().limit(WorkUnit.development(1), 15, campaign.ceiling()), "window").
+					isEqualTo(ceiling);
 				try (TestOptimizerCommandScope<FakeSessionPort> next = TestOptimizerCommandScope.of(Harness.CLAUDE,
 					repository.root()))
 				{
@@ -2350,7 +2349,7 @@ public final class OptimizerCoreTest
 		OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
 			store(repository.scope()).replaceSnapshot(new Campaign(c.header(),
 			c.ceiling(), c.lineages(), c.identity(), c.incumbent(), c.candidates(), c.promptAuthorAttempts(),
-			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(),
+			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.windows(),
 			c.throttle(), List.of(new PendingDecision.ConflictFound(reportedConflicts(), List.of())),
 			c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(), c.answeredWarnings(),
 			c.testRevisions(), c.plugins()));
@@ -3918,7 +3917,7 @@ public final class OptimizerCoreTest
 		OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
 			store(repository.scope()).replaceSnapshot(new Campaign(c.header(),
 			c.ceiling(), c.lineages(), c.identity(), c.incumbent(), c.candidates(), c.promptAuthorAttempts(),
-			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(),
+			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.windows(),
 			c.throttle(), c.pendingDecisions(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(),
 			c.answeredWarnings(), requested, c.plugins()));
 	}
@@ -4691,7 +4690,7 @@ public final class OptimizerCoreTest
 			// The optimization worktree holds the started campaign's working candidate, whose overlay is saved
 			Campaign tradeOff = new Campaign(built.header(), built.ceiling(), built.lineages(), built.identity(),
 				started.incumbent(), built.candidates(), built.promptAuthorAttempts(), started.development(), built.baseline(),
-				built.attempts(), built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(),
+				built.attempts(), built.trials(), built.sequences(), built.evidenceRevision(), built.windows(),
 				built.throttle(), List.of(new PendingDecision.RegressionTradeOff(1)),
 				built.revisionRequested(), built.outcome(), built.delivery(), built.optimization(),
 				built.answeredWarnings(), built.testRevisions(), built.plugins());
@@ -4782,7 +4781,7 @@ public final class OptimizerCoreTest
 			Campaign c = repository.load(id);
 			Campaign confirmed = new Campaign(c.header(), c.ceiling(), c.lineages(), c.identity(), c.incumbent(),
 				c.candidates(), c.promptAuthorAttempts(), c.development(), c.baseline(), c.attempts(),
-				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
+				c.trials(), c.sequences(), c.evidenceRevision(), c.windows(), c.throttle(),
 				List.of(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(),
 				c.answeredWarnings(), c.testRevisions(), c.plugins());
 			Campaign warned = Transitions.apply(confirmed, new CampaignEvent.WarnAuthority(List.of(warning)));
@@ -4843,7 +4842,7 @@ public final class OptimizerCoreTest
 			Campaign waiting = new Campaign(c.header(), c.ceiling(), c.lineages(), observed, c.incumbent(),
 				1, c.promptAuthorAttempts(), Development.start(candidate, c.development().series() + 1),
 				c.baseline(), evidence.attempts(),
-				c.trials(), c.sequences(), c.evidenceRevision(), c.slowStart(), c.throttle(),
+				c.trials(), c.sequences(), c.evidenceRevision(), c.windows(), c.throttle(),
 				List.of(new PendingDecision.RegressionTradeOff(1)), c.revisionRequested(), Outcome.CERTIFIED,
 				c.delivery(), c.optimization(), c.answeredWarnings(), c.testRevisions(), c.plugins());
 			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(waiting);

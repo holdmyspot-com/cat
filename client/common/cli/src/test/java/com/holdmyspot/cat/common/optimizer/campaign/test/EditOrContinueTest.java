@@ -18,7 +18,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
@@ -125,7 +124,7 @@ public final class EditOrContinueTest
 	{
 		// Requirement: R-D2
 		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
-			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
+			development("formatting", 60, 0).window(4).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
 		TrialKey inFlight = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(inFlight));
@@ -143,14 +142,16 @@ public final class EditOrContinueTest
 	}
 
 	/**
-	 * Verifies that 3 passing reruns resume sampling with the window reset to 1, and that reruns never count.
+	 * Verifies that 3 passing reruns resume sampling at the window that the self-recovering failure left unchanged,
+	 * and that reruns never count.
 	 */
 	@Test
-	public void threePassingRerunsContinueAtOne()
+	public void passingRerunsContinueAtCurrentWindow()
 	{
 		// Requirement: R-D2
+		// Requirement: R-E4
 		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
-			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
+			development("formatting", 60, 0).window(4).build();
 		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
 		DrawnTestCase failed = campaign.development().failures().getFirst().testCase();
 		Development development = campaign.development();
@@ -164,8 +165,8 @@ public final class EditOrContinueTest
 		requireThat(testCases(campaign.development()), "failures").containsExactly(List.of(failed));
 		requireThat(campaign.development().count("safety"), "counts").isEqualTo(
 			Builder.counts(60, 0).add(Verdict.FAIL));
-		requireThat(ConcurrencyPolicy.window(campaign), "window").isEqualTo(1);
-		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").size().isEqualTo(1);
+		requireThat(ConcurrencyPolicy.window(campaign), "window").isEqualTo(4);
+		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").size().isEqualTo(4);
 	}
 
 	/**
@@ -248,7 +249,7 @@ public final class EditOrContinueTest
 	{
 		// Requirement: R-D16
 		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
-			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
+			development("formatting", 60, 0).window(4).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
 		TrialKey running = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(running));
@@ -277,7 +278,7 @@ public final class EditOrContinueTest
 	{
 		// Requirement: R-D16
 		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
-			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
+			development("formatting", 60, 0).window(4).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
 		TrialKey running = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(running));
@@ -302,7 +303,7 @@ public final class EditOrContinueTest
 	{
 		// Requirement: R-D2
 		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
-			development("formatting", 60, 0).slowStart(new SlowStart(8, 0)).build();
+			development("formatting", 60, 0).window(8).build();
 		List<TrialKey> keys = new ArrayList<>();
 		List<DrawnTestCase> drawn = new ArrayList<>();
 		TrialKey first = null;
@@ -351,7 +352,7 @@ public final class EditOrContinueTest
 	{
 		// Requirement: R-D16
 		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
-			development("formatting", 60, 0).slowStart(new SlowStart(4, 0)).build();
+			development("formatting", 60, 0).window(4).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
 		TrialKey inFlight = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(inFlight));
@@ -379,7 +380,7 @@ public final class EditOrContinueTest
 		// Requirement: R-D16
 		Round round = new Round(Map.of("formatting", 0));
 		Campaign campaign = new Builder().confirmed().development("safety", 60, 0).
-			development("formatting", 59, 1).round(round).slowStart(new SlowStart(4, 0)).build();
+			development("formatting", 59, 1).round(round).window(4).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey blocked = TransitionSteps.last(campaign);
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");

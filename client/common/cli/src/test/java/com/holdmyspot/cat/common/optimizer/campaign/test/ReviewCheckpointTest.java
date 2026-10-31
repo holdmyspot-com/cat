@@ -11,7 +11,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.ReviewCheckpoint;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -77,7 +76,7 @@ public final class ReviewCheckpointTest
 	private static Campaign beforeCheckpoint()
 	{
 		return new Builder().confirmed().development("formatting", 197, List.of(0, 0, 0, 2)).
-			development("safety", 150, 0).slowStart(new SlowStart(4, 0)).sound("formatting").build();
+			development("safety", 150, 0).window(4).sound("formatting").build();
 	}
 
 	/**
@@ -147,7 +146,7 @@ public final class ReviewCheckpointTest
 	{
 		// Requirement: R-D5
 		Campaign campaign = new Builder().confirmed().development("formatting", 198, List.of(0, 0, 0, 2)).
-			development("plain_list", 100, 0).development("safety", 98, 0).slowStart(new SlowStart(4, 0)).build();
+			development("plain_list", 100, 0).development("safety", 98, 0).window(4).build();
 		List<Admission> plan = Scheduler.plan(campaign, NOW, 8);
 		requireThat(plan.isEmpty(), "plan.isEmpty()").isFalse();
 		for (Admission admission : plan)

@@ -6,16 +6,18 @@ import com.holdmyspot.cat.common.optimizer.campaign.Admission;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
+import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
+import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 
 import java.time.Duration;
@@ -112,7 +114,7 @@ public final class ThrottleTest
 	public void rejectedTrialRerunsAfterWait()
 	{
 		// Requirement: R-E6
-		Campaign campaign = new Builder().confirmed().slowStart(new SlowStart(4, 1)).build();
+		Campaign campaign = new Builder().confirmed().window(4).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
@@ -125,7 +127,7 @@ public final class ThrottleTest
 		requireThat(trial.state(), "state").isEqualTo(TrialState.ASSIGNED);
 		requireThat(trial.infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
 		requireThat(campaign.throttle(), "throttle").isEqualTo(new Throttle(reset, 1, 2, 1));
-		requireThat(campaign.slowStart(), "slowStart").isEqualTo(SlowStart.INITIAL);
+		requireThat(ConcurrencyPolicy.window(campaign), "window").isEqualTo(1);
 		requireThat(Scheduler.plan(campaign, reset.minusMillis(1), 8), "beforeReset").isEmpty();
 		requireThat(Scheduler.plan(campaign, reset, 8), "atReset").
 			containsExactly(List.of(new Admission.Rerun(key)));
@@ -139,7 +141,7 @@ public final class ThrottleTest
 	{
 		// Requirement: R-E6
 		Campaign campaign = new Builder().confirmed().development("formatting", 50, 0).
-			slowStart(new SlowStart(4, 0)).build();
+			window(4).build();
 		campaign = Transitions.apply(campaign, new CampaignEvent.ObserveRateLimit(List.of(window(0.85)),
 			NOW));
 		requireThat(campaign.throttle().windowCap(), "windowCap").isEqualTo(4);
@@ -166,30 +168,42 @@ public final class ThrottleTest
 	}
 
 	/**
-	 * Verifies that utilization reaching 80% right after a failure reset the window does not hold the window at 1: a
-	 * campaign that sustained a window of 8 regrows to 8 through slow start while utilization stays at or above 80%,
-	 * and no further.
+	 * Returns the window of the working candidate's development series, before the campaign's ceiling and throttle.
+	 *
+	 * @param campaign the campaign
+	 * @return the window's size
+	 */
+	private static int developmentWindow(Campaign campaign)
+	{
+		return campaign.windows().window(WorkUnit.development(campaign.development().series()), 0,
+			campaign.ceiling()).size();
+	}
+
+	/**
+	 * Verifies that utilization reaching 80% right after a blocking failure lowered the window does not hold the
+	 * window at 1: a campaign that sustained a window of 8 regrows to 8 while utilization stays at or above 80%, and no
+	 * further.
 	 */
 	@Test
 	public void freezeAfterResetRegrowsToLevelReached()
 	{
 		Campaign campaign = new Builder().confirmed().development("formatting", 100, 0).
-			development("safety", 100, 0).slowStart(new SlowStart(8, 0)).ceiling(16).build();
+			development("safety", 100, 0).window(8).ceiling(16).build();
 		campaign = Transitions.apply(campaign, new CampaignEvent.ObserveRateLimit(List.of(window(0.50)), NOW));
 		requireThat(ConcurrencyPolicy.window(campaign), "sustained").isEqualTo(8);
 
-		campaign = TransitionSteps.adopt(campaign, Purpose.DEVELOPMENT, "safety", Verdict.FAIL);
-		requireThat(ConcurrencyPolicy.window(campaign), "afterReset").isEqualTo(1);
+		campaign = TransitionSteps.fail(campaign, "safety", new Triage(Impact.BLOCKING, "The reply stopped."));
+		requireThat(ConcurrencyPolicy.window(campaign), "afterBlocking").isEqualTo(1);
 		campaign = Transitions.apply(campaign, new CampaignEvent.ObserveRateLimit(List.of(window(0.80)), NOW));
 
 		for (int pass = 0; pass < 7; ++pass)
 			campaign = passAndReport(campaign, 0.85, NOW);
-		requireThat(campaign.slowStart().size(), "slowStart").isEqualTo(8);
+		requireThat(developmentWindow(campaign), "developmentWindow").isEqualTo(8);
 		requireThat(ConcurrencyPolicy.window(campaign), "regrown").isEqualTo(8);
 
 		for (int pass = 0; pass < 8; ++pass)
 			campaign = passAndReport(campaign, 0.90, NOW);
-		requireThat(campaign.slowStart().size(), "grownSlowStart").isEqualTo(16);
+		requireThat(developmentWindow(campaign), "grownDevelopmentWindow").isEqualTo(16);
 		requireThat(ConcurrencyPolicy.window(campaign), "stopped").isEqualTo(8);
 	}
 
@@ -201,11 +215,11 @@ public final class ThrottleTest
 	public void eightyPercentStopsGrowthAtLevelReached()
 	{
 		Campaign campaign = new Builder().confirmed().development("formatting", 100, 0).
-			development("safety", 100, 0).slowStart(new SlowStart(4, 0)).ceiling(16).build();
+			development("safety", 100, 0).window(4).ceiling(16).build();
 		campaign = Transitions.apply(campaign, new CampaignEvent.ObserveRateLimit(List.of(window(0.80)), NOW));
 		for (int pass = 0; pass < 12; ++pass)
 			campaign = passAndReport(campaign, 1.0, NOW);
-		requireThat(campaign.slowStart().size(), "slowStart").isEqualTo(16);
+		requireThat(developmentWindow(campaign), "developmentWindow").isEqualTo(16);
 		requireThat(ConcurrencyPolicy.window(campaign), "stopped").isEqualTo(4);
 
 		campaign = Transitions.apply(campaign, new CampaignEvent.ObserveRateLimit(List.of(window(0.79)), NOW));
@@ -214,19 +228,20 @@ public final class ThrottleTest
 
 	/**
 	 * Verifies that after a rejection's hold ends, the window stays at 1 while utilization stays at or above 80%,
-	 * because the rejection, unlike a slow-start reset, shows that the harness could not start another session.
+	 * because the rejection, unlike a failure that lowers a window, shows that the harness could not start another
+	 * session.
 	 */
 	@Test
 	public void rejectionKeepsWindowAtOneAtHighUse()
 	{
 		Campaign campaign = new Builder().confirmed().development("formatting", 100, 0).
-			development("safety", 100, 0).slowStart(new SlowStart(8, 0)).ceiling(16).build();
+			development("safety", 100, 0).window(8).ceiling(16).build();
 		campaign = Transitions.apply(campaign, new CampaignEvent.ObserveRateLimit(List.of(window(0.50)), NOW));
 		Instant end = NOW.plus(Duration.ofMinutes(2));
 		campaign = Transitions.apply(campaign, new CampaignEvent.HoldAdmissions(end, 1));
 		for (int pass = 0; pass < 7; ++pass)
 			campaign = passAndReport(campaign, 0.95, end);
-		requireThat(campaign.slowStart().size(), "slowStart").isEqualTo(8);
+		requireThat(developmentWindow(campaign), "developmentWindow").isEqualTo(8);
 		requireThat(ConcurrencyPolicy.window(campaign), "held").isEqualTo(1);
 		requireThat(campaign.throttle().allowsAdmission(end), "holdEnded").isTrue();
 	}

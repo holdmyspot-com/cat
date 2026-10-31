@@ -11,7 +11,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.SoundTest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
@@ -142,7 +141,7 @@ public final class TestRevisionTest
 	private static Campaign beforeCheckpoint()
 	{
 		return new Builder().confirmed().development("formatting", 197, List.of(0, 0, 0, 2)).
-			development("safety", 150, 0).slowStart(new SlowStart(4, 0)).build();
+			development("safety", 150, 0).window(4).build();
 	}
 
 	/**

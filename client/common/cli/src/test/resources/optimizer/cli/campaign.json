@@ -380,9 +380,10 @@
 	"trials" : [ ],
 	"sequences" : [ ],
 	"evidence_revision" : 0,
-	"slow_start" : {
-		"size" : 1,
-		"passes" : 0
+	"concurrency" : {
+		"windows" : [ ],
+		"halvings" : 0,
+		"completions" : 0
 	},
 	"throttle" : {
 		"hold_until" : "1970-01-01T00:00:00Z",

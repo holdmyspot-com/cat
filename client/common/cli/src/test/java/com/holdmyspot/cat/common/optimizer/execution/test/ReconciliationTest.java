@@ -11,7 +11,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
@@ -244,7 +243,7 @@ public final class ReconciliationTest
 		// Requirement: R-E5
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Campaign assigned = assign(developing().slowStart(new SlowStart(2, 0)).build(), 2);
+			Campaign assigned = assign(developing().window(2).build(), 2);
 			LogicalTrial first = assigned.trials().getFirst();
 			LogicalTrial second = assigned.trials().getLast();
 			Campaign started = start(assigned);

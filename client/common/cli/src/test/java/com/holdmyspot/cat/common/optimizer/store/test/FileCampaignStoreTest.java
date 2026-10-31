@@ -58,8 +58,8 @@ import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
+import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyWindows;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 
 import java.io.IOException;
@@ -1265,7 +1265,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 
 	/**
 	 * Verifies that a version-45 snapshot whose throttle holds the window cap at 1 without a rejection loads with the
-	 * campaign's ceiling as the level to regrow to, so slow start can raise its window again while utilization stays at
+	 * campaign's ceiling as the level to regrow to, so a window that passes can grow again while utilization stays at
 	 * 80% or more; that one whose throttle counts a rejection's backoffs keeps the window at 1; that a version-45
 	 * trial session's throttle keeps its window cap as its peak window; and that a session recorded before sessions
 	 * recorded how their commands ran, like a snapshot that counted none, loads with them unknown.
@@ -1281,7 +1281,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			Instant expired = Instant.parse("2026-10-28T10:22:05Z");
 			Campaign original = new Builder().header(header(ID)).confirmed().working(1).
-				development("formatting", 200, 0).development("safety", 160, 1).slowStart(new SlowStart(16, 8)).
+				development("formatting", 200, 0).development("safety", 160, 1).window(16).
 				ceiling(8).throttle(new Throttle(expired, 1, 0, 1)).build();
 			LogicalTrial trial = trial(1, TrialState.ASSIGNED);
 			store.writeAssignment(ID, trial);
@@ -1325,6 +1325,34 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 			Campaign rejected = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
 			requireThat(rejected.throttle(), "rejectedThrottle").isEqualTo(new Throttle(expired, 1, 2, 1));
+		}
+	}
+
+	/**
+	 * Verifies that a snapshot written before the store recorded each unit of work's concurrency window, which holds
+	 * the earlier single window instead, loads with every unit at its starting window and no halving.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void snapshotWithoutWindowsStartsEveryUnit() throws IOException
+	{
+		// Requirement: R-E4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-windows-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().working(1).
+				development("formatting", 60, 0).development("safety", 60, 0).window(8).build());
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.remove("concurrency");
+			root.putObject("slow_start").put("size", 8).put("passes", 0);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			Campaign loaded = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
+			requireThat(loaded.windows(), "windows").isEqualTo(ConcurrencyWindows.EMPTY);
+			requireThat(ConcurrencyPolicy.window(loaded), "window").isEqualTo(1);
 		}
 	}
 

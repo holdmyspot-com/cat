@@ -76,7 +76,7 @@ final class ReportJson
 		ObjectNode concurrencyNode = root.putObject("concurrency");
 		concurrencyNode.put("window", concurrency.window());
 		concurrencyNode.put("ceiling", concurrency.ceiling());
-		concurrencyNode.put("slow_start_size", concurrency.slowStartSize());
+		concurrencyNode.put("infrastructure_halvings", concurrency.infrastructureHalvings());
 		if (concurrency.holdUntil() == null)
 			concurrencyNode.putNull("hold_until");
 		else

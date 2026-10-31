@@ -235,7 +235,7 @@ public final class TransitionsTest
 			campaign.baseline().identity(), ready.baseline().counts());
 		return new Campaign(campaign.header(), campaign.ceiling(), campaign.lineages(), campaign.identity(),
 			campaign.incumbent(), campaign.candidates(), campaign.promptAuthorAttempts(), development, baseline,
-			campaign.attempts(), campaign.trials(), campaign.sequences(), campaign.evidenceRevision(), campaign.slowStart(),
+			campaign.attempts(), campaign.trials(), campaign.sequences(), campaign.evidenceRevision(), campaign.windows(),
 			campaign.throttle(), campaign.pendingDecisions(), campaign.revisionRequested(), campaign.outcome(),
 			campaign.delivery(), campaign.optimization(), campaign.answeredWarnings(), campaign.testRevisions(),
 			campaign.plugins());

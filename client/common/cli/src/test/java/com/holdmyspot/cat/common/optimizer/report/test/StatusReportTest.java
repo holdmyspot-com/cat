@@ -1329,7 +1329,7 @@ public final class StatusReportTest
 			new IncumbentBaseline(2, frozen.baseline().identity(), frozen.baseline().counts()),
 			frozen.attempts(),
 			frozen.trials(),
-			frozen.sequences(), frozen.evidenceRevision(), frozen.slowStart(), frozen.throttle(),
+			frozen.sequences(), frozen.evidenceRevision(), frozen.windows(), frozen.throttle(),
 			frozen.pendingDecisions(), frozen.revisionRequested(), frozen.outcome(),
 			frozen.delivery(), frozen.optimization(), frozen.answeredWarnings(), frozen.testRevisions(),
 			frozen.plugins());

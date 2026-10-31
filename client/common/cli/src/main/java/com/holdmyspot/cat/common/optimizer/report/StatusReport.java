@@ -144,9 +144,9 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * <p>
 	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
 	 *
-	 * @param window the active candidate's concurrency window
+	 * @param window the most trials that may run at once for the work that the campaign does now
 	 * @param ceiling the campaign's ceiling
-	 * @param slowStartSize the slow-start limit
+	 * @param infrastructureHalvings the halvings of every concurrency window after runs without an outcome
 	 * @param holdUntil the instant before which no trial is admitted, or {@code null} if none
 	 * @param windowCap the window that the last rate-limit response set, or 0 if none
 	 * @param backoffs the consecutive rate-limit backoffs
@@ -155,29 +155,29 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param commands how the shell commands of the reported phase's completed trial sessions ran, by purpose, in
 	 *   purpose order; empty if none completed
 	 */
-	public record Concurrency(int window, int ceiling, int slowStartSize, Instant holdUntil, int windowCap,
+	public record Concurrency(int window, int ceiling, int infrastructureHalvings, Instant holdUntil, int windowCap,
 		int backoffs, Instant sharedHoldUntil, Map<Purpose, CommandCounts> commands)
 	{
 		/**
 		 * Creates the state.
 		 *
-		 * @param window the active candidate's concurrency window
+		 * @param window the most trials that may run at once for the work that the campaign does now
 		 * @param ceiling the campaign's ceiling
-		 * @param slowStartSize the slow-start limit
+		 * @param infrastructureHalvings the halvings of every concurrency window after runs without an outcome
 		 * @param holdUntil the instant before which no trial is admitted, or {@code null} if none
 		 * @param windowCap the window that the last rate-limit response set, or 0 if none
 		 * @param backoffs the consecutive rate-limit backoffs
 		 * @param sharedHoldUntil the end of the hold on the harness's shared capacity, or {@code null} if none lasts
 		 * @param commands how the shell commands of the reported phase's completed trial sessions ran, by purpose
 		 * @throws NullPointerException if {@code commands} is null
-		 * @throws IllegalArgumentException if {@code window}, {@code ceiling} or {@code slowStartSize} are not
-		 *   positive, or {@code windowCap} or {@code backoffs} are negative
+		 * @throws IllegalArgumentException if {@code window} or {@code ceiling} are not positive, or
+		 *   {@code infrastructureHalvings}, {@code windowCap} or {@code backoffs} are negative
 		 */
 		public Concurrency
 		{
 			requireThat(window, "window").isPositive();
 			requireThat(ceiling, "ceiling").isPositive();
-			requireThat(slowStartSize, "slowStartSize").isPositive();
+			requireThat(infrastructureHalvings, "infrastructureHalvings").isNotNegative();
 			requireThat(windowCap, "windowCap").isNotNegative();
 			requireThat(backoffs, "backoffs").isNotNegative();
 			requireThat(commands, "commands").isNotNull();
@@ -670,7 +670,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		Instant holdUntil = null;
 		if (!throttle.holdUntil().equals(Instant.EPOCH))
 			holdUntil = throttle.holdUntil();
-		return new Concurrency(ConcurrencyPolicy.window(campaign), campaign.ceiling(), campaign.slowStart().size(),
+		return new Concurrency(ConcurrencyPolicy.window(campaign), campaign.ceiling(), campaign.windows().halvings(),
 			holdUntil, throttle.windowCap(), throttle.backoffs(), sharedHoldUntil, commands);
 	}
 

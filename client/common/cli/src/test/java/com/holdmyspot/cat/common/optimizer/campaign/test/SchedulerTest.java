@@ -29,10 +29,10 @@ import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Reference;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
@@ -208,7 +208,7 @@ public final class SchedulerTest
 	private static Builder.AttemptBuilder controlAttempt()
 	{
 		return working().development("formatting", 200, 0).development("plain_list", 200, 0).
-			development("safety", 200, 0).slowStart(new SlowStart(8, 0)).certificationAttempt(1).
+			development("safety", 200, 0).window(8).certificationAttempt(1).
 			boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).cell("formatting", 100, 0).
 			cell("plain_list", 100, 0);
 	}
@@ -237,7 +237,7 @@ public final class SchedulerTest
 	{
 		// Requirement: R-F9, R-E3
 		Campaign campaign = working().development("formatting", 200, 0).development("plain_list", 200, 0).
-			development("safety", 200, 0).slowStart(new SlowStart(8, 0)).certificationAttempt(1).
+			development("safety", 200, 0).window(8).certificationAttempt(1).
 			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 99, 0).campaign().build();
 		campaign = runNext(campaign, Verdict.PASS);
 		for (Admission admission : Scheduler.plan(campaign, NOW, 8))
@@ -359,7 +359,7 @@ public final class SchedulerTest
 		// Requirement: R-F8
 		DrawnTestCase logs = Builder.testCase("safety", "logs");
 		Campaign campaign = new Builder().confirmed().readyBaseline().development("formatting", 200, 0).
-			development("plain_list", 200, 0).development("safety", 200, 0).slowStart(new SlowStart(8, 0)).
+			development("plain_list", 200, 0).development("safety", 200, 0).window(8).
 			certificationAttempt(1).boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).
 			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 100, 0).
 			controlPairing("safety", safetyPairing(new PairCounts(0, 6, 0, 0), List.of(logs))).campaign().build();
@@ -403,7 +403,7 @@ public final class SchedulerTest
 		DrawnTestCase logs = Builder.targeted("safety", "logs");
 		Campaign campaign = working().development("formatting", 60, 0).
 			development("safety", 60, 1).failure(logs).diagnosis(new Diagnosis(List.of(logs), 0, null, false)).
-			slowStart(new SlowStart(4, 0)).build();
+			window(4).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
 		TrialKey assigned = TransitionSteps.last(campaign);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(new Admission.Rerun(assigned),
@@ -414,7 +414,9 @@ public final class SchedulerTest
 
 	/**
 	 * Verifies that the promotion runs of a prompt author attempt are admitted, each with its snapshot, and that its
-	 * regression runs follow once a triggering test case has passed twice.
+	 * regression runs follow once a triggering test case has passed twice. With one triggering test case, its first
+	 * failing run rejects the attempt, so the runs start one at a time, and the window doubles after a full window of
+	 * passes.
 	 */
 	@Test
 	public void promotionRunsAreAdmitted()
@@ -428,21 +430,18 @@ public final class SchedulerTest
 		campaign = TransitionSteps.submit(campaign, "safety", attempt, List.of());
 		Allocation targeted = allocation(AllocationRule.TARGETED);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted),
 			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted)));
 
 		campaign = TransitionSteps.assign(campaign, Purpose.PROMOTION, 1, attempt, logs);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "afterAssign").isEqualTo(List.of(
-			new Admission.Rerun(TransitionSteps.last(campaign)),
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, targeted)));
+			new Admission.Rerun(TransitionSteps.last(campaign))));
 
 		campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.PASS);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, attempt, logs, Verdict.PASS);
 		Allocation adopted = new Allocation(AllocationRule.TARGETED, 2, NOW);
 		requireThat(Scheduler.plan(campaign, NOW, 8), "afterStreak").isEqualTo(List.of(
 			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "safety", logs, adopted),
-			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "formatting", formal, adopted),
-			new Admission.Assign(Purpose.PROMOTION, 1, WORKING, "formatting", formal, adopted)));
+			new Admission.Assign(Purpose.PROMOTION, 1, attempt, "formatting", formal, adopted)));
 	}
 
 	/**
@@ -456,13 +455,13 @@ public final class SchedulerTest
 		// safety has the lower Wilson bound, but is 50 assignments ahead of formatting
 		Campaign ahead = working().development("formatting", 40, 0).development("plain_list", 45, 0).
 			development("safety", 85, 5).
-			slowStart(new SlowStart(1, 0)).build();
+			window(1).build();
 		requireThat(Scheduler.plan(ahead, NOW, 8), "atLead").isEqualTo(List.of(development("formatting",
 			AllocationRule.COVERAGE_FLOOR)));
 
 		Campaign within = working().development("formatting", 41, 0).development("plain_list", 45, 0).
 			development("safety", 85, 5).
-			slowStart(new SlowStart(1, 0)).build();
+			window(1).build();
 		requireThat(Scheduler.plan(within, NOW, 8), "withinLead").isEqualTo(List.of(development("safety")));
 	}
 
@@ -536,7 +535,7 @@ public final class SchedulerTest
 	{
 		// Requirement: R-E3
 		Campaign campaign = working().development("formatting", 60, 0).development("plain_list", 60, 0).
-			development("safety", 60, 1).slowStart(new SlowStart(2, 0)).build();
+			development("safety", 60, 1).window(2).build();
 		requireThat(cellIds(Scheduler.plan(campaign, NOW, 8)), "plan").isEqualTo(List.of("safety", "safety"));
 	}
 
@@ -563,7 +562,7 @@ public final class SchedulerTest
 	{
 		// Requirement: R-E3
 		Campaign campaign = working().development("formatting", 60, 0).development("plain_list", 60, 0).
-			development("safety", 60, 1).slowStart(new SlowStart(2, 0)).build();
+			development("safety", 60, 1).window(2).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(TransitionSteps.last(campaign)));
 		requireThat(cellIds(Scheduler.plan(campaign, NOW, 8)), "plan").isEqualTo(List.of("safety"));
@@ -576,12 +575,12 @@ public final class SchedulerTest
 	public void formalGivesEachCellOneTrial()
 	{
 		// Requirement: R-E3
-		Campaign campaign = working().slowStart(new SlowStart(1, 0)).
+		Campaign campaign = working().ceiling(1).
 			certificationAttempt(1).build();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "first").isEqualTo(List.of(formal("formatting")));
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "formatting");
-		// Development outcomes of the same snapshot raise the risk ceiling to allow a second trial
-		campaign = working().development("formatting", 60, 0).slowStart(new SlowStart(2, 0)).
+		// A ceiling of 2 allows a second trial
+		campaign = working().development("formatting", 60, 0).ceiling(2).
 			trial(campaign.trials().getFirst()).certificationAttempt(1).build();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "second").isEqualTo(List.of(
 			new Admission.Rerun(TransitionSteps.last(campaign)), formal("plain_list")));
@@ -595,15 +594,15 @@ public final class SchedulerTest
 	public void formalFurthestFromCertifyingFirst()
 	{
 		// Requirement: R-E3
-		Campaign lower = working().slowStart(new SlowStart(1, 0)).
+		Campaign lower = working().ceiling(1).
 			certificationAttempt(1).cell("formatting", 50, 0).cell("plain_list", 50, 0).cell("safety", 50, 1).build();
 		requireThat(Scheduler.plan(lower, NOW, 8), "lowerBound").isEqualTo(List.of(formal("safety")));
 
-		Campaign fewer = working().slowStart(new SlowStart(1, 0)).
+		Campaign fewer = working().ceiling(1).
 			certificationAttempt(1).cell("formatting", 0, 2).cell("plain_list", 0, 2).cell("safety", 0, 1).build();
 		requireThat(Scheduler.plan(fewer, NOW, 8), "fewerOutcomes").isEqualTo(List.of(formal("safety")));
 
-		Campaign order = working().slowStart(new SlowStart(1, 0)).
+		Campaign order = working().ceiling(1).
 			certificationAttempt(1).cell("formatting", 50, 0).cell("plain_list", 50, 0).cell("safety", 50, 0).build();
 		requireThat(Scheduler.plan(order, NOW, 8), "testOrder").isEqualTo(List.of(formal("formatting")));
 	}
@@ -617,7 +616,7 @@ public final class SchedulerTest
 	{
 		// Requirement: R-E3
 		Campaign campaign = working().development("formatting", 200, 0).development("plain_list", 200, 0).
-			development("safety", 200, 0).slowStart(new SlowStart(8, 0)).certificationAttempt(1).
+			development("safety", 200, 0).window(8).certificationAttempt(1).
 			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 97, 0).build();
 		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEqualTo(List.of(formal("safety"), formal("safety"),
 			formal("safety")));
@@ -655,12 +654,12 @@ public final class SchedulerTest
 			development(ContractFixtures.BIG_CELL, 60, 0).development(ContractFixtures.SMALL_CELL, 60, 1).
 			development(ContractFixtures.PLAIN_BIG_CELL, 100, 0).
 			development(ContractFixtures.PLAIN_SMALL_CELL, 100, 0).development("safety", 100, 0).
-			slowStart(new SlowStart(2, 0)).build();
+			window(2).build();
 		requireThat(cellIds(Scheduler.plan(development, NOW, 8)), "development").
 			isEqualTo(List.of(ContractFixtures.SMALL_CELL, ContractFixtures.SMALL_CELL));
 
 		Campaign formal = new Builder().confirmed(contract, 1).working(1).readyBaseline().
-			slowStart(new SlowStart(1, 0)).certificationAttempt(1).cell(ContractFixtures.BIG_CELL, 50, 0).
+			ceiling(1).certificationAttempt(1).cell(ContractFixtures.BIG_CELL, 50, 0).
 			cell(ContractFixtures.PLAIN_BIG_CELL, 50, 0).cell(ContractFixtures.PLAIN_SMALL_CELL, 50, 0).
 			cell("safety", 50, 0).build();
 		requireThat(cellIds(Scheduler.plan(formal, NOW, 8)), "formal").
@@ -741,7 +740,7 @@ public final class SchedulerTest
 		DrawnTestCase failure = tieredFailure(BIG_MEDIUM);
 		Failure formal = new Failure(failure, "", List.of(new FailedAssertion("uses_requested_tone", "wrong_tone")),
 			null, List.of(), List.of(), Builder.FILES);
-		Campaign failed = tiered().slowStart(new SlowStart(4, 0)).development(SMALL_HIGH, 60, 0).
+		Campaign failed = tiered().window(WorkUnit.reproduction(1, 1), 4).development(SMALL_HIGH, 60, 0).
 			development(SAFETY, 60, 0).certificationAttempt(1).failure(formal).outcome(Outcome.INCONCLUSIVE).build();
 		requireThat(failed.reproducing().map(CertificationAttempt::index), "reproducing").isEqualTo(Optional.of(1));
 		requireThat(Scheduler.plan(failed, NOW, 8).stream().anyMatch(admission ->
@@ -775,14 +774,14 @@ public final class SchedulerTest
 		List<String> developmentCells = List.of(SMALL_HIGH, SAFETY);
 		for (String cell : developmentCells)
 		{
-			Builder builder = tiered().slowStart(new SlowStart(1, 0));
+			Builder builder = tiered().window(1);
 			for (String other : developmentCells)
 				builder.development(other, 100, 0);
 			Campaign campaign = builder.development(cell, 60, 0).build();
 			requireThat(Scheduler.plan(campaign, NOW, 8), cell).isEqualTo(List.of(development(cell)));
 		}
 
-		Builder certified = tiered().slowStart(new SlowStart(1, 0));
+		Builder certified = tiered().window(1);
 		for (String cell : developmentCells)
 			certified.development(cell, 100, 0);
 		DrawnTestCase failure = tieredFailure(BIG_MEDIUM);
@@ -804,12 +803,12 @@ public final class SchedulerTest
 		// Requirement: R-E3
 		// safety has the lower Wilson bound, but is 50 assignments ahead of the weakest formatting cell
 		Campaign ahead = tiered().development(SMALL_HIGH, 45, 0).development(SAFETY, 90, 5).
-			slowStart(new SlowStart(1, 0)).build();
+			window(1).build();
 		requireThat(Scheduler.plan(ahead, NOW, 8), "atLead").
 			isEqualTo(List.of(development(SMALL_HIGH, AllocationRule.COVERAGE_FLOOR)));
 
 		Campaign within = tiered().development(SMALL_HIGH, 46, 0).development(SAFETY, 90, 5).
-			slowStart(new SlowStart(1, 0)).build();
+			window(1).build();
 		requireThat(Scheduler.plan(within, NOW, 8), "withinLead").isEqualTo(List.of(development(SAFETY)));
 	}
 
@@ -829,7 +828,7 @@ public final class SchedulerTest
 		requireThat(campaign.development().counts().keySet(), "sampled").isEqualTo(Set.of(SMALL_HIGH, SAFETY));
 
 		Campaign ready = tiered().development(SMALL_HIGH, 100, 0).development(SAFETY, 100, 0).
-			slowStart(new SlowStart(1, 0)).build();
+			window(1).build();
 		requireThat(Scheduler.plan(ready, NOW, 8), "ready").isEmpty();
 	}
 
@@ -841,7 +840,7 @@ public final class SchedulerTest
 	public void formalFailureAddsDevelopmentCell()
 	{
 		// Requirement: R-E19
-		Builder.AttemptBuilder attempt = tiered().slowStart(new SlowStart(1, 0)).certificationAttempt(1);
+		Builder.AttemptBuilder attempt = tiered().ceiling(1).certificationAttempt(1);
 		for (String cell : TierFixtures.tieredContract().cellIds())
 			attempt.cell(cell, 50, 0);
 		// The cells below BIG_HIGH and the development cell are certified, so BIG_HIGH is open
@@ -866,7 +865,7 @@ public final class SchedulerTest
 		// Requirement: R-D7
 		// Requirement: R-E3
 		Campaign weakestFormal = tiered(CertificationScope.WEAKEST_CELL).readyBaseline().
-			slowStart(new SlowStart(1, 0)).certificationAttempt(1).cell(SMALL_HIGH, 50, 0).cell(SAFETY, 50, 1).
+			ceiling(1).certificationAttempt(1).cell(SMALL_HIGH, 50, 0).cell(SAFETY, 50, 1).
 			build();
 		requireThat(weakestFormal.runningAttempt().orElseThrow().procedure().cells(), "weakestProcedure").
 			isEqualTo(List.of(SMALL_HIGH, SAFETY));
@@ -967,7 +966,7 @@ public final class SchedulerTest
 	{
 		Builder.AttemptBuilder attempt = new Builder().confirmed(codexContract(), 1).working(1).readyBaseline().
 			development(codexCell("gpt-6-luna", "low"), 200, 0).development(SAFETY, 200, 0).
-			slowStart(new SlowStart(8, 0)).certificationAttempt(1);
+			window(8).certificationAttempt(1);
 		for (String cell : certified)
 			attempt.cell(cell, 100, 0);
 		return attempt;
@@ -1002,7 +1001,7 @@ public final class SchedulerTest
 			isEqualTo(Set.of(codexCell("gpt-6-luna", "low"), SAFETY));
 
 		Campaign weakest = tiered(CertificationScope.WEAKEST_CELL).readyBaseline().development(SMALL_HIGH, 200, 0).
-			development(SAFETY, 200, 0).slowStart(new SlowStart(8, 0)).certificationAttempt(1).build();
+			development(SAFETY, 200, 0).window(8).certificationAttempt(1).build();
 		requireThat(formalCells(weakest), "weakestCell").isEqualTo(Set.of(SMALL_HIGH, SAFETY));
 	}
 
@@ -1050,7 +1049,7 @@ public final class SchedulerTest
 		String fewer = codexCell("gpt-6.1-sol", "low");
 		String lowerBound = codexCell("gpt-6-luna", "medium");
 		Campaign campaign = codexAttempt(codexCell("gpt-6-luna", "low"), SAFETY).cell(lowerBound, 70, 1).
-			cell(fewer, 60, 0).campaign().slowStart(new SlowStart(1, 0)).build();
+			cell(fewer, 60, 0).campaign().ceiling(1).build();
 		SignificanceLevel level = campaign.runningAttempt().orElseThrow().procedure().boundaries().level();
 		requireThat(ConfidenceBounds.lower(70, 1, level).value(), "lowerBound").
 			isLessThan(ConfidenceBounds.lower(60, 0, level).value());

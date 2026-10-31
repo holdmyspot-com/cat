@@ -67,19 +67,16 @@ public final class Transitions
 			case CampaignEvent.Revise _ -> revise(draft);
 			case CampaignEvent.Assign assign -> assign(draft, assign.admission());
 			case CampaignEvent.Start start -> start(draft, start.key());
-			case CampaignEvent.Complete complete -> complete(draft, complete);
+			case CampaignEvent.Complete complete ->
+			{
+				draft.windows = draft.windows.afterCompletion(ConcurrencyPolicy.window(campaign));
+				complete(draft, complete);
+			}
 			case CampaignEvent.Fail fail -> fail(draft, fail);
 			case CampaignEvent.ObserveRateLimit observe ->
-			{
 				draft.throttle = draft.throttle.observe(observe.windows(), ConcurrencyPolicy.window(campaign));
-				if (!draft.throttle.allowsAdmission(observe.at()))
-					draft.slowStart = SlowStart.INITIAL;
-			}
 			case CampaignEvent.HoldAdmissions hold ->
-			{
 				draft.throttle = draft.throttle.hold(hold.until(), hold.backoffs());
-				draft.slowStart = SlowStart.INITIAL;
-			}
 			case CampaignEvent.RankApproaches ranked ->
 				draft.round = draft.round.withApproachOrder(ranked.cell(), ranked.order());
 			case CampaignEvent.StartPromptAuthorAttempt start -> startPromptAuthorAttempt(draft, start.cell());
@@ -154,6 +151,11 @@ public final class Transitions
 		}
 		TrialAdoption.settle(draft);
 		TrialAdoption.checkReviewPoints(draft);
+		Campaign next = draft.build();
+		ConcurrencyWindows current = next.windows().retain(unit -> ConcurrencyPolicy.isCurrent(next, unit));
+		if (current == next.windows())
+			return next;
+		draft.windows = current;
 		return draft.build();
 	}
 
@@ -212,7 +214,6 @@ public final class Transitions
 		draft.identity = draft.identity.replaceWith(new MeasurementIdentity(contractValues));
 		draft.startBaseline();
 		draft.startDevelopment(draft.working);
-		draft.slowStart = SlowStart.INITIAL;
 		draft.pendingDecisions.clear();
 		draft.outcome = null;
 		draft.revisionRequested = false;
@@ -690,6 +691,7 @@ public final class Transitions
 
 	/**
 	 * Records a session that ended without an outcome as an infrastructure attempt. The trial returns to the queue.
+	 * Unless CAT interrupted the session, every concurrency window is halved.
 	 *
 	 * @param draft the state
 	 * @param fail the event
@@ -699,6 +701,10 @@ public final class Transitions
 	{
 		int index = indexOfRunningTrial(draft, fail.key());
 		LogicalTrial trial = draft.trials.get(index);
+		// A provider error, crash, rate-limit rejection or refusal halves every window; a run that CAT interrupted
+		// says nothing about the provider
+		if (fail.failure() != RunFailure.INTERRUPTED)
+			draft.windows = draft.windows.afterInfrastructureAttempt();
 		if (TrialAdoption.isStale(draft, trial))
 		{
 			draft.trials.remove(index);

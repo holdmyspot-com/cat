@@ -97,7 +97,6 @@ final class UserChoices
 		draft.endRunningAttempt(Outcome.TESTING_ENVIRONMENT_CHANGED);
 		draft.startDevelopment(draft.working);
 		draft.startBaseline();
-		draft.slowStart = SlowStart.INITIAL;
 		draft.resolve();
 	}
 

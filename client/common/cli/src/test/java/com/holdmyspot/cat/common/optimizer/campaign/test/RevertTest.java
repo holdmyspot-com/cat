@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.optimizer.campaign.Admission;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.DiagnosticRerun;
 import com.holdmyspot.cat.common.optimizer.campaign.EditOrContinue;
@@ -13,7 +14,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.RegressionTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
@@ -70,7 +70,8 @@ public final class RevertTest
 		requireThat(reverted.outcome(), "outcome").isNull();
 		requireThat(reverted.pending(), "pendingDecision").isNull();
 		requireThat(reverted.development().round(), "round").isNull();
-		requireThat(reverted.slowStart(), "slowStart").isEqualTo(SlowStart.INITIAL);
+		// The restored predecessor starts a new development series, at one trial at a time
+		requireThat(ConcurrencyPolicy.window(reverted), "window").isEqualTo(1);
 		requireThat(Scheduler.plan(reverted, Instant.parse("2026-10-01T12:00:00Z"), 8).stream().
 			filter(admission -> admission instanceof Admission.Assign assign &&
 				assign.purpose() == Purpose.DEVELOPMENT).count(), "developmentAdmissions").isEqualTo(1L);
@@ -92,7 +93,8 @@ public final class RevertTest
 		requireThat(reverted.outcome(), "outcome").isNull();
 		requireThat(reverted.pending(), "pendingDecision").isNull();
 		requireThat(reverted.development().round(), "round").isNull();
-		requireThat(reverted.slowStart(), "slowStart").isEqualTo(SlowStart.INITIAL);
+		// The restored predecessor starts a new development series, at one trial at a time
+		requireThat(ConcurrencyPolicy.window(reverted), "window").isEqualTo(1);
 	}
 
 	/**

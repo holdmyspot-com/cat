@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
+import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyWindows;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
@@ -31,10 +32,11 @@ import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.RegressionTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.SequenceGroup;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.SoundTest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
+import com.holdmyspot.cat.common.optimizer.campaign.Window;
+import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialFiles;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
@@ -124,7 +126,8 @@ public final class Builder
 	private final List<RegressionTestCase> regressionSet = new ArrayList<>();
 	private final Set<Outcome> unavailable = EnumSet.noneOf(Outcome.class);
 	private AddedTestCases added = AddedTestCases.NONE;
-	private SlowStart slowStart = SlowStart.INITIAL;
+	private ConcurrencyWindows windows = ConcurrencyWindows.EMPTY;
+	private int developmentWindow;
 	/**
 	 * The trial plugins that every trial installs.
 	 */
@@ -658,14 +661,39 @@ public final class Builder
 	}
 
 	/**
-	 * Sets the slow-start state.
+	 * Sets the concurrency window of the working candidate's development series.
 	 *
-	 * @param value the state
+	 * @param size the most development trials that may run at once
 	 * @return this builder
 	 */
-	public Builder slowStart(SlowStart value)
+	public Builder window(int size)
 	{
-		this.slowStart = value;
+		this.developmentWindow = size;
+		return this;
+	}
+
+	/**
+	 * Sets the concurrency window of a unit of work.
+	 *
+	 * @param unit the unit of work
+	 * @param size the most trials of the unit that may run at once
+	 * @return this builder
+	 */
+	public Builder window(WorkUnit unit, int size)
+	{
+		this.windows = windows.with(unit, new Window(size, 0));
+		return this;
+	}
+
+	/**
+	 * Sets the concurrency windows.
+	 *
+	 * @param value the windows
+	 * @return this builder
+	 */
+	public Builder windows(ConcurrencyWindows value)
+	{
+		this.windows = value;
 		return this;
 	}
 
@@ -835,8 +863,11 @@ public final class Builder
 		List<CertificationAttempt> built = new ArrayList<>();
 		for (AttemptBuilder attempt : attempts)
 			built.add(attempt.toAttempt());
+		ConcurrencyWindows builtWindows = windows;
+		if (developmentWindow > 0)
+			builtWindows = builtWindows.with(WorkUnit.development(series), new Window(developmentWindow, 0));
 		return new Campaign(header, ceiling, lineages, identity, new Candidate(0, INCUMBENT), candidates,
-			promptAuthorAttempts, state, incumbentBaseline, built, trials, sequences, evidenceRevision, slowStart,
+			promptAuthorAttempts, state, incumbentBaseline, built, trials, sequences, evidenceRevision, builtWindows,
 			throttle, pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings,
 			testRevisions, Optional.of(plugins));
 	}

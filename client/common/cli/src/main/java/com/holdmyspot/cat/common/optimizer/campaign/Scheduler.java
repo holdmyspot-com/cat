@@ -93,7 +93,10 @@ public final class Scheduler
 	}
 
 	/**
-	 * Plans the diagnostic rerun that is due and the unassigned promotion runs.
+	 * Plans the diagnostic rerun that is due and the unassigned promotion runs. A diagnostic rerun runs alone: the next
+	 * one is due only after the last one's outcome. Each prompt author attempt under validation runs at most its
+	 * concurrency window of runs at once; a decided attempt still runs the working candidate's reference runs that an
+	 * undecided contender shares.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
@@ -111,22 +114,23 @@ public final class Scheduler
 				testCase, allocations.of(AllocationRule.TARGETED)));
 		}
 		Round round = development.round();
+		List<PromptAuthorAttempt> pending = ConcurrencyPolicy.pendingPromptAuthors(campaign);
 		if (round != null && round.weak() && development.promptAuthor() == null)
 		{
-			List<PromptAuthorAttempt> pending = round.validationAttempts().stream().filter(attempt ->
-				Promotion.decide(attempt, campaign) == Promotion.Decision.PENDING).toList();
 			for (PromptAuthorAttempt attempt : round.validationAttempts())
 			{
 				if (pending.contains(attempt))
-					planPromotion(attempt, working, plan, allocations, _ -> true);
+					planPromotion(attempt, working, plan, allocations, promotionSlots(campaign, attempt), _ -> true);
 				else
-					planPromotion(attempt, working, plan, allocations, run -> isSharedReference(run, pending));
+				{
+					planPromotion(attempt, working, plan, allocations, Integer.MAX_VALUE,
+						run -> isSharedReference(run, pending));
+				}
 			}
 			return;
 		}
-		PromptAuthorAttempt promptAuthor = development.promptAuthor();
-		if (promptAuthor != null && Promotion.decide(promptAuthor, campaign) == Promotion.Decision.PENDING)
-			planPromotion(promptAuthor, working, plan, allocations, _ -> true);
+		for (PromptAuthorAttempt attempt : pending)
+			planPromotion(attempt, working, plan, allocations, promotionSlots(campaign, attempt), _ -> true);
 	}
 
 	/**
@@ -156,6 +160,25 @@ public final class Scheduler
 	}
 
 	/**
+	 * Returns how many more runs of a prompt author attempt under validation may start: its concurrency window less
+	 * its runs that are assigned and have no outcome.
+	 *
+	 * @param campaign the campaign
+	 * @param attempt the attempt
+	 * @return the number of runs, possibly negative
+	 */
+	private static int promotionSlots(Campaign campaign, PromptAuthorAttempt attempt)
+	{
+		int inFlight = 0;
+		for (PromotionRun run : attempt.runs())
+		{
+			if (run.trial() != null && run.verdict() == null)
+				++inFlight;
+		}
+		return ConcurrencyPolicy.limit(campaign, WorkUnit.promotion(attempt)) - inFlight;
+	}
+
+	/**
 	 * Plans an attempt's unassigned runs that a filter selects. A rejected attempt plans no run of its own, and plans
 	 * only the working candidate's reference runs that an undecided contender shares.
 	 *
@@ -163,15 +186,20 @@ public final class Scheduler
 	 * @param working the working snapshot
 	 * @param plan the planned admissions
 	 * @param allocations the allocation decisions
+	 * @param slots the most runs to plan
 	 * @param due selects the runs to plan
 	 */
 	private static void planPromotion(PromptAuthorAttempt promptAuthor, Sha256 working, List<Admission> plan,
-		Allocations allocations, Predicate<PromotionRun> due)
+		Allocations allocations, int slots, Predicate<PromotionRun> due)
 	{
+		int planned = 0;
 		for (PromotionRun run : promptAuthor.runs())
 		{
+			if (planned >= slots)
+				return;
 			if (run.trial() != null || run.verdict() != null || !due.test(run))
 				continue;
+			++planned;
 			plan.add(new Admission.Assign(Purpose.PROMOTION, promptAuthor.number(), Promotion.snapshot(promptAuthor,
 				run, working), run.testCase().cellId(), run.testCase(), allocations.of(AllocationRule.TARGETED)));
 		}
@@ -216,12 +244,14 @@ public final class Scheduler
 	 * with the fewest adopted outcomes, ties to fewer unadopted trials and then contract order. Among the offered
 	 * cells, an untried cell first, then the cell whose confidence lower bound at the attempt's significance level
 	 * is lowest, ties to fewer adopted outcomes and then contract order. A cell whose minimum-pass-rate part is
-	 * decided, or one whose unadopted trials reach its remaining passes to certification, offers nothing.
+	 * decided, one whose unadopted trials reach its remaining passes to certification, or one whose formal, control and
+	 * incumbent trials in flight fill its own concurrency window, offers nothing.
 	 * <p>
 	 * The formal trials of the minimum-pass-rate part come first. Then each undecided open cell whose paired
 	 * comparisons started receives, in turn and in contract order, the control and incumbent trials of its waiting
-	 * candidate formal trials, and then the further candidate formal trials that its slowest comparison needs. The
-	 * formal, control and incumbent trials in flight share the attempt's window.
+	 * candidate formal trials, and then the further candidate formal trials that its slowest comparison needs. Each
+	 * cell's formal, control and incumbent trials in flight stay within the cell's window, and all of them together
+	 * within the campaign's window.
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the running attempt
@@ -243,6 +273,12 @@ public final class Scheduler
 		}
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
 		List<Cell> openCells = CellTier.openCells(campaign, attempt);
+		Map<String, Integer> unitLimits = new HashMap<>();
+		for (Cell cell : openCells)
+		{
+			unitLimits.put(cell.id(), ConcurrencyPolicy.limit(campaign,
+				ConcurrencyPolicy.formalUnit(attempt, cell.id())));
+		}
 		while (slots > 0 && plan.size() < freeCapacity)
 		{
 			Map<String, String> offered = new LinkedHashMap<>();
@@ -253,7 +289,8 @@ public final class Scheduler
 				int assigned = inFlight.getOrDefault(id, 0);
 				if (attempt.pairing(Reference.CONTROL, id).isComparing() ||
 					DecisionTable.minimumDecision(boundaries, counts) != DecisionTable.CellDecision.UNDECIDED ||
-					ConcurrencyPolicy.cellLimit(boundaries, counts) - assigned <= 0)
+					ConcurrencyPolicy.cellLimit(boundaries, counts) - assigned <= 0 ||
+					unitLimits.get(id) - assigned - referencesInCell(referencesInFlight, id) <= 0)
 				{
 					continue;
 				}
@@ -278,7 +315,22 @@ public final class Scheduler
 			--slots;
 		}
 		planPaired(campaign, attempt, openCells, plan, Math.min(slots, freeCapacity - plan.size()), inFlight,
-			referencesInFlight, allocations);
+			referencesInFlight, unitLimits, allocations);
+	}
+
+	/**
+	 * Returns a cell's control and incumbent trials that have no adopted outcome.
+	 *
+	 * @param referencesInFlight the reference trials without an adopted outcome per kind and cell
+	 * @param cell the cell's identifier
+	 * @return the number of trials
+	 */
+	private static int referencesInCell(Map<Reference, Map<String, Integer>> referencesInFlight, String cell)
+	{
+		int total = 0;
+		for (Map<String, Integer> references : referencesInFlight.values())
+			total += references.getOrDefault(cell, 0);
+		return total;
 	}
 
 	/**
@@ -290,6 +342,7 @@ public final class Scheduler
 	 * comparison with that kind still needs if every pair favours the candidate. When both kinds can run a trial, the
 	 * kind with fewer trials in flight runs first, ties to the control. Further candidate formal trials run only when
 	 * the waiting and in-flight candidate formal trials cannot complete the pairs of some kind, up to the cell's cap.
+	 * A cell whose trials in flight fill its own concurrency window receives nothing.
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the running attempt
@@ -298,11 +351,14 @@ public final class Scheduler
 	 * @param slots the number of trials that may be planned
 	 * @param inFlight the unadopted candidate formal trials per cell, updated with the planned ones
 	 * @param referencesInFlight the unadopted control and incumbent trials per cell, updated with the planned ones
+	 * @param unitLimits the most candidate formal, control and incumbent trials of each open cell that may run at
+	 *   once
 	 * @param allocations the allocation decisions of this plan
 	 */
 	private static void planPaired(Campaign campaign, CertificationAttempt attempt, List<Cell> openCells,
 		List<Admission> plan, int slots, Map<String, Integer> inFlight,
-		Map<Reference, Map<String, Integer>> referencesInFlight, Allocations allocations)
+		Map<Reference, Map<String, Integer>> referencesInFlight, Map<String, Integer> unitLimits,
+		Allocations allocations)
 	{
 		List<String> comparing = new ArrayList<>();
 		for (Cell cell : openCells)
@@ -330,6 +386,8 @@ public final class Scheduler
 			{
 				if (slots <= 0)
 					break;
+				if (unitLimits.get(id) - inFlight.getOrDefault(id, 0) - referencesInCell(referencesInFlight, id) <= 0)
+					continue;
 				Admission admission = nextPairedAdmission(campaign, attempt, inFlight, id, needed.get(id),
 					referencesInFlight, allocations);
 				if (admission == null)
@@ -462,7 +520,7 @@ public final class Scheduler
 	/**
 	 * Plans the reproduction trials of an ended attempt's failure groups, each in its current round's cell, one group
 	 * at a time in turn, until each round's adopted and unadopted trials reach {@value FailureGroup#TRIALS}. A group
-	 * whose round awaits values offers nothing.
+	 * whose round awaits values, or whose trials in flight fill its round's concurrency window, offers nothing.
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the reproducing attempt
@@ -475,12 +533,16 @@ public final class Scheduler
 	{
 		List<FailureGroup> groups = attempt.groups();
 		int[] remaining = new int[groups.size()];
+		int[] window = new int[groups.size()];
 		int inFlight = 0;
 		for (int i = 0; i < groups.size(); ++i)
 		{
 			FailureGroup group = groups.get(i);
 			if (group.status() == FailureGroup.Status.REPRODUCING && !group.round().awaitsValues())
+			{
 				remaining[i] = FailureGroup.TRIALS - group.round().trials();
+				window[i] = ConcurrencyPolicy.limit(campaign, ConcurrencyPolicy.reproductionUnit(i + 1, group));
+			}
 		}
 		for (LogicalTrial trial : campaign.trials())
 		{
@@ -489,8 +551,12 @@ public final class Scheduler
 				continue;
 			++inFlight;
 			int index = key.series() - 1;
-			if (index >= 0 && index < groups.size() && groups.get(index).round().cellId().equals(key.cell()))
-				--remaining[index];
+			if (index >= 0 && index < groups.size())
+			{
+				--window[index];
+				if (groups.get(index).round().cellId().equals(key.cell()))
+					--remaining[index];
+			}
 		}
 		int slots = ConcurrencyPolicy.window(campaign) - inFlight;
 		Sha256 working = campaign.development().working().snapshot();
@@ -500,11 +566,12 @@ public final class Scheduler
 			planned = false;
 			for (int i = 0; i < groups.size() && slots > 0 && plan.size() < freeCapacity; ++i)
 			{
-				if (remaining[i] <= 0)
+				if (remaining[i] <= 0 || window[i] <= 0)
 					continue;
 				plan.add(new Admission.Assign(Purpose.REPRODUCTION, i + 1, working, groups.get(i).round().cellId(),
 					null, allocations.of(AllocationRule.TARGETED)));
 				--remaining[i];
+				--window[i];
 				--slots;
 				planned = true;
 			}
@@ -611,7 +678,9 @@ public final class Scheduler
 
 	/**
 	 * Plans the incumbent's baseline trials in the certification scope's cells on the remaining capacity, one cell at a
-	 * time in turn, until each cell's unadopted and adopted trials reach its target.
+	 * time in turn, until each cell's unadopted and adopted trials reach its target. A baseline trial's failure decides
+	 * nothing that wastes another trial, so baseline trials run up to the campaign's ceiling, halved after runs without
+	 * an outcome.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
@@ -626,6 +695,8 @@ public final class Scheduler
 		IncumbentBaseline baseline = campaign.baseline();
 		List<String> cells = CellTier.scopeCellIds(campaign.contract());
 		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.BASELINE, baseline.index());
+		// Baseline failures end no work, so only the campaign ceiling and the infrastructure halvings bound its trials
+		int capacity = freeCapacity - (campaign.ceiling() - campaign.windows().halve(campaign.ceiling()));
 		Map<String, Integer> needed = new HashMap<>();
 		for (String cell : cells)
 		{
@@ -641,7 +712,7 @@ public final class Scheduler
 			for (String cell : cells)
 			{
 				int need = needed.get(cell);
-				if (need <= 0 || plan.size() >= freeCapacity)
+				if (need <= 0 || plan.size() >= capacity)
 					continue;
 				plan.add(new Admission.Assign(Purpose.BASELINE, baseline.index(), campaign.incumbent().snapshot(),
 					cell, null, allocations.of(AllocationRule.BASELINE)));

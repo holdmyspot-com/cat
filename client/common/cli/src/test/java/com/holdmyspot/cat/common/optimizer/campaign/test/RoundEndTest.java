@@ -19,7 +19,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.RegressionTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
@@ -51,9 +50,9 @@ public final class RoundEndTest
 	private static final Instant NOW = Instant.parse("2026-10-01T12:00:00Z");
 	private static final Sha256 ATTEMPT = Builder.snapshot("attempt");
 	/**
-	 * A concurrency window that a resumed round must not keep.
+	 * The development window that the working candidate reached before the round.
 	 */
-	private static final SlowStart GROWN = new SlowStart(16, 0);
+	private static final int GROWN = 16;
 
 	/**
 	 * Creates the test.
@@ -101,7 +100,7 @@ public final class RoundEndTest
 		DrawnTestCase logs = targeted("safety", "logs");
 		return new Builder().confirmed().working(1).development("safety", 60, failures).
 			development("formatting", 60, 1).failure(logs).regression(logs, Verdict.FAIL).round(round(2, 1)).
-			promptAuthorAttempts(3).slowStart(GROWN).build();
+			promptAuthorAttempts(3).window(GROWN).build();
 	}
 
 	/**
@@ -120,7 +119,7 @@ public final class RoundEndTest
 
 	/**
 	 * Verifies that a complete sequential round without a promotion keeps the working candidate and resumes its
-	 * representative trials one at a time while a cell has more than the failure limit.
+	 * representative trials at the window they reached while a cell has more than the failure limit.
 	 */
 	@Test
 	public void sequentialRoundAboveLimitResumes()
@@ -135,7 +134,7 @@ public final class RoundEndTest
 
 	/**
 	 * Verifies that a complete sequential round without a promotion keeps the working candidate and resumes its
-	 * representative trials one at a time while every cell has at most the failure limit.
+	 * representative trials at the window they reached while every cell has at most the failure limit.
 	 */
 	@Test
 	public void sequentialRoundWithinLimitResumes()
@@ -164,10 +163,10 @@ public final class RoundEndTest
 		requireThat(campaign.development().counts(), "counts").isEqualTo(before.development().counts());
 		requireThat(campaign.development().failures(), "failures").isEqualTo(before.development().failures());
 		requireThat(campaign.optimization().attempts(), "retainedAttempts").isNotEmpty();
-		requireThat(campaign.slowStart(), "slowStart").isEqualTo(SlowStart.INITIAL);
+		// The working candidate is unchanged, so its trials resume at the window that they reached before the round
 		List<Admission> development = Scheduler.plan(campaign, NOW, 8).stream().filter(admission ->
 			admission instanceof Admission.Assign assign && assign.purpose() == Purpose.DEVELOPMENT).toList();
-		requireThat(development.size(), "developmentAdmissions").isEqualTo(1);
+		requireThat(development.size(), "developmentAdmissions").isEqualTo(Math.min(8, campaign.ceiling()));
 	}
 
 	/**
@@ -217,7 +216,7 @@ public final class RoundEndTest
 			failure(new Failure(logs, "The directory was removed", List.of(), null, List.of(reproduced), List.of(),
 				Builder.FILES)).
 			regression(logs, Verdict.FAIL).round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).
-			slowStart(GROWN).build();
+			window(GROWN).build();
 	}
 
 	/**

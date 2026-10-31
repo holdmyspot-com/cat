@@ -157,7 +157,7 @@ final class ReportSummary
 		if (concurrency.sharedHoldUntil() != null)
 			throttle += ", shared harness hold until " + localTime(concurrency.sharedHoldUntil(), zone);
 		lines.add("Concurrency: window " + concurrency.window() + " of ceiling " + concurrency.ceiling() +
-			", slow start " + concurrency.slowStartSize() + ", throttle " + throttle + " (window cap " +
+			", infrastructure halvings " + concurrency.infrastructureHalvings() + ", throttle " + throttle + " (window cap " +
 			concurrency.windowCap() + ", backoffs " + concurrency.backoffs() + ")");
 		if (!concurrency.commands().isEmpty())
 		{

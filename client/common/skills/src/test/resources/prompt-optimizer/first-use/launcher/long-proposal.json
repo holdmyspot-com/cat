@@ -53,7 +53,7 @@
 	"concurrency": {
 		"window": 1,
 		"ceiling": 8,
-		"slow_start_size": 1,
+		"infrastructure_halvings": 1,
 		"hold_until": null,
 		"window_cap": 0,
 		"backoffs": 0

@@ -36,7 +36,7 @@ import java.util.Set;
  * @param sequences the last sequence number assigned in each sequence group
  * @param evidenceRevision the number of outcomes the campaign has adopted, so that each {@link Allocation} identifies
  *   the evidence its decision used
- * @param slowStart the slow-start limit on the active candidate's concurrency
+ * @param windows the concurrency windows of the units of work, and the halvings after runs without an outcome
  * @param throttle the provider's rate-limit waiting and concurrency limits
  * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
  *   asked now
@@ -54,7 +54,7 @@ import java.util.Set;
 public record Campaign(Header header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
 	Candidate incumbent, int candidates, int promptAuthorAttempts, Development development,
 	IncumbentBaseline baseline, List<CertificationAttempt> attempts, List<LogicalTrial> trials,
-	Map<SequenceGroup, Long> sequences, long evidenceRevision, SlowStart slowStart, Throttle throttle,
+	Map<SequenceGroup, Long> sequences, long evidenceRevision, ConcurrencyWindows windows, Throttle throttle,
 	List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
 	DeliveryRequest delivery, OptimizationEvidence optimization, List<AuthorityWarning> answeredWarnings,
 	TestRevisions testRevisions, Optional<List<TrialPlugin>> plugins)
@@ -89,7 +89,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * @param trials the assigned trials whose outcomes have not entered campaign evidence, in assignment order
 	 * @param sequences the last sequence number assigned in each sequence group
 	 * @param evidenceRevision the number of outcomes the campaign has adopted
-	 * @param slowStart the slow-start limit on the active candidate's concurrency
+	 * @param windows the concurrency windows of the units of work, and the halvings after runs without an outcome
 	 * @param throttle the provider's rate-limit waiting and concurrency limits
 	 * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
 	 *   asked now
@@ -147,7 +147,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 				isLessThanOrEqualTo(sequences.getOrDefault(key.sequenceGroup(), 0L), "lastSequence");
 		}
 		requireThat(pendingDecisions, "pendingDecisions").isNotNull();
-		requireThat(slowStart, "slowStart").isNotNull();
+		requireThat(windows, "windows").isNotNull();
 		requireThat(throttle, "throttle").isNotNull();
 		lineages = List.copyOf(lineages);
 		attempts = List.copyOf(attempts);
@@ -178,7 +178,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		requireThat(header.lifecycle(), "header.lifecycle()").isEqualTo(Lifecycle.ACTIVE);
 		Candidate candidate = new Candidate(0, incumbent);
 		return new Campaign(header, ceiling, List.of(), identity, candidate, 0, 0, Development.start(candidate, 0),
-			null, List.of(), List.of(), Map.of(), 0, SlowStart.INITIAL, Throttle.NONE, List.of(), false, null, null,
+			null, List.of(), List.of(), Map.of(), 0, ConcurrencyWindows.EMPTY, Throttle.NONE, List.of(), false, null, null,
 			OptimizationEvidence.EMPTY, List.of(), TestRevisions.NONE, Optional.empty());
 	}
 
@@ -200,7 +200,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 			throw new IllegalStateException("A confirmed campaign keeps its incumbent");
 		Candidate candidate = new Candidate(0, snapshot);
 		return new Campaign(header, ceiling, lineages, identity, candidate, candidates, promptAuthorAttempts,
-			Development.start(candidate, 0), baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
+			Development.start(candidate, 0), baseline, attempts, trials, sequences, evidenceRevision, windows, throttle,
 			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions,
 			plugins);
 	}
@@ -221,7 +221,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		return new Campaign(header, ceiling, lineages, identity.replaceWith(MeasurementIdentity.ofPlugins(value,
 			versions)),
 			incumbent, candidates, promptAuthorAttempts, development, baseline, attempts, trials, sequences,
-			evidenceRevision, slowStart, throttle, pendingDecisions, revisionRequested, outcome, delivery, optimization,
+			evidenceRevision, windows, throttle, pendingDecisions, revisionRequested, outcome, delivery, optimization,
 			answeredWarnings, testRevisions, Optional.of(value));
 	}
 

@@ -22,11 +22,11 @@ import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TriedTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
@@ -47,6 +47,10 @@ import java.util.List;
  */
 public final class ReproductionTest
 {
+	/**
+	 * The first round of the first failure group.
+	 */
+	private static final WorkUnit FIRST_ROUND = WorkUnit.reproduction(1, 1);
 	private static final Instant NOW = Instant.parse("2026-10-01T12:00:00Z");
 	/**
 	 * The assertion and behavior that the formal failures failed.
@@ -288,6 +292,39 @@ public final class ReproductionTest
 	}
 
 	/**
+	 * Verifies that a reproduction round starts at two trials at once, reaches 8 after 6 straight passes, keeps its
+	 * window after a failure through another behavior, and drops to one trial at its first matched failure.
+	 */
+	@Test
+	public void roundWindowFollowsMatchedFailures()
+	{
+		// Requirement: R-E4
+		Campaign campaign = Transitions.apply(failed().build(),
+			new CampaignEvent.ReproductionValues(1, 1, testCases("a")));
+		requireThat(planned(campaign, Purpose.REPRODUCTION).size(), "start").isEqualTo(2);
+		for (int i = 0; i < 6; ++i)
+			campaign = reproduce(campaign, Verdict.PASS);
+		requireThat(planned(campaign, Purpose.REPRODUCTION).size(), "afterSixPasses").isEqualTo(8);
+		campaign = reproduce(campaign, Verdict.FAIL, UNEXPECTED_OUTCOME);
+		requireThat(planned(campaign, Purpose.REPRODUCTION).size(), "afterUnmatched").isEqualTo(8);
+		campaign = reproduce(campaign, Verdict.FAIL, WRONG_TONE);
+		requireThat(planned(campaign, Purpose.REPRODUCTION).size(), "afterMatched").isEqualTo(1);
+	}
+
+	/**
+	 * Verifies that earlier development failures of the working candidate do not hold a reproduction round with no
+	 * matched failure at one trial at a time.
+	 */
+	@Test
+	public void earlierFailuresDoNotHoldRoundAtOne()
+	{
+		// Requirement: R-E4
+		Campaign campaign = Transitions.apply(failed().campaign().development(BIG_MEDIUM, 80, 20).build(),
+			new CampaignEvent.ReproductionValues(1, 1, testCases("a")));
+		requireThat(planned(campaign, Purpose.REPRODUCTION).size(), "start").isEqualTo(2);
+	}
+
+	/**
 	 * Verifies that a round never runs more than {@value FailureGroup#TRIALS} trials.
 	 */
 	@Test
@@ -295,7 +332,7 @@ public final class ReproductionTest
 	{
 		// Requirement: R-C19
 		Campaign campaign = failed().groups(List.of(group(new ReproductionRound(BIG_MEDIUM,
-			tried(testCases("a"), 25, 25, 25, 24))))).campaign().slowStart(new SlowStart(8, 0)).build();
+			tried(testCases("a"), 25, 25, 25, 24))))).campaign().window(FIRST_ROUND, 8).build();
 
 		requireThat(planned(campaign, Purpose.REPRODUCTION).size(), "reproduction").isEqualTo(1);
 	}
@@ -342,7 +379,7 @@ public final class ReproductionTest
 	public void trialAfterTheRoundEndsIsDiscarded()
 	{
 		// Requirement: R-C19
-		Campaign campaign = Transitions.apply(failed().campaign().slowStart(new SlowStart(8, 0)).build(),
+		Campaign campaign = Transitions.apply(failed().campaign().window(FIRST_ROUND, 8).build(),
 			new CampaignEvent.ReproductionValues(1, 1, testCases("a")));
 		List<TrialKey> keys = new ArrayList<>();
 		for (Admission.Assign admission : planned(campaign, Purpose.REPRODUCTION).subList(0, 3))

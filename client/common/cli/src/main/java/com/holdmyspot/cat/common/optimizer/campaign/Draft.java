@@ -149,9 +149,9 @@ final class Draft
 	 */
 	long evidenceRevision;
 	/**
-	 * The slow-start limit.
+	 * The concurrency windows of the units of work, and the halvings after runs without an outcome.
 	 */
-	SlowStart slowStart;
+	ConcurrencyWindows windows;
 	/**
 	 * The rate-limit response.
 	 */
@@ -225,7 +225,7 @@ final class Draft
 		trials = new ArrayList<>(campaign.trials());
 		sequences = new HashMap<>(campaign.sequences());
 		evidenceRevision = campaign.evidenceRevision();
-		slowStart = campaign.slowStart();
+		windows = campaign.windows();
 		throttle = campaign.throttle();
 		pendingDecisions = new ArrayList<>(campaign.pendingDecisions());
 		revisionRequested = campaign.revisionRequested();
@@ -455,6 +455,35 @@ final class Draft
 	}
 
 	/**
+	 * Records an adopted pass in a unit of work's window.
+	 *
+	 * @param unit the unit of work
+	 * @param spare the unit's spare failures before the adoption, which set its window if it has none
+	 */
+	void recordPass(WorkUnit unit, int spare)
+	{
+		windows = windows.with(unit, windows.window(unit, spare, ceiling).afterPass(ceiling));
+	}
+
+	/**
+	 * Records an adopted failure in a unit of work's window.
+	 *
+	 * @param unit the unit of work
+	 * @param spareBefore the unit's spare failures before the adoption, which set its window if it has none
+	 * @param consuming {@code true} if the failure consumed one of the unit's spare failures
+	 * @param spareAfter the unit's spare failures after the adoption
+	 */
+	void recordFailure(WorkUnit unit, int spareBefore, boolean consuming, int spareAfter)
+	{
+		Window window = windows.window(unit, spareBefore, ceiling);
+		if (consuming)
+			window = window.afterConsumingFailure(spareAfter);
+		else
+			window = window.afterOtherFailure();
+		windows = windows.with(unit, window);
+	}
+
+	/**
 	 * Starts an incumbent baseline with no outcomes.
 	 */
 	void startBaseline()
@@ -607,7 +636,7 @@ final class Draft
 		Development development = new Development(working, series, developmentCounts, developmentFailures,
 			diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes, predecessor, reverts);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, promptAuthorAttempts,
-			development, baseline, attempts, trials, sequences, evidenceRevision, slowStart, throttle,
+			development, baseline, attempts, trials, sequences, evidenceRevision, windows, throttle,
 			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions,
 			plugins);
 	}

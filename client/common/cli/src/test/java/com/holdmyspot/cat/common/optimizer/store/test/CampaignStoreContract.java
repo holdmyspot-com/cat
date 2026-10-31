@@ -10,6 +10,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
+import com.holdmyspot.cat.common.optimizer.campaign.Window;
+import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyWindows;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
@@ -43,7 +46,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.SoundTest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
@@ -1212,7 +1214,9 @@ public abstract class CampaignStoreContract
 				allocation(AllocationRule.TARGETED, 41), TrialState.ASSIGNED, null, null, List.of(), null, 0, List.of(), 0,
 				List.of(), null)).
 			evidenceRevision(41).
-			slowStart(new SlowStart(4, 3)).
+			windows(new ConcurrencyWindows(Map.of(WorkUnit.development(4), new Window(4, 1),
+				WorkUnit.formal(2, "safety", true), new Window(2, 0), WorkUnit.reproduction(2, 3), new Window(1, 0)), 2,
+				3)).
 			throttle(new Throttle(Instant.parse("2026-10-01T12:34:56.789Z"), 2, 3, 6)).
 			pending(new PendingDecision.MeasurementChanged(new MeasurementIdentity(otherModel),
 				List.of(MeasurementCondition.MODEL, MeasurementCondition.SESSION_ENVIRONMENT_VERSION))).
@@ -1286,7 +1290,7 @@ public abstract class CampaignStoreContract
 		}
 		return new Campaign(built.header(), built.ceiling(), lineages, built.identity(), built.incumbent(),
 			built.candidates(), built.promptAuthorAttempts(), built.development(), built.baseline(),
-			attempts, built.trials(), built.sequences(), built.evidenceRevision(), built.slowStart(), built.throttle(),
+			attempts, built.trials(), built.sequences(), built.evidenceRevision(), built.windows(), built.throttle(),
 			built.pendingDecisions(), built.revisionRequested(), built.outcome(),
 			built.delivery(), built.optimization(), built.answeredWarnings(), built.testRevisions(), built.plugins());
 	}

@@ -38,6 +38,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
+import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyWindows;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationProcedure;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing;
@@ -74,7 +75,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.ApproachAssignment;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
 import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.SequenceGroup;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialFiles;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
@@ -86,6 +86,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.campaign.Window;
+import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -148,9 +150,13 @@ import tools.jackson.databind.node.ObjectNode;
  * rotation, so existing rounds keep their nine-approach rotation; version 44 lacks the paired-rerun roles of promotion
  * runs, which its runs never use; and versions 43 to 45 lack the throttle's peak window. An upgraded snapshot's peak
  * window is 1 while a rejection's backoffs are counted, and otherwise the campaign's ceiling, because its window cap
- * may hold a window that a slow-start reset had just lowered. An upgraded trial session's peak window is its window
- * cap, the level at which that throttle stopped growth. Other unsupported versions are refused with a message that asks
- * the user to start a new campaign.
+ * may hold a window that had just dropped. An upgraded trial session's peak window is its window cap, the level at
+ * which that throttle stopped growth. Other unsupported versions are refused with a message that asks the user to
+ * start a new campaign.
+ * <p>
+ * A campaign snapshot written before it recorded the concurrency window of each unit of work has no
+ * {@code concurrency} object; every unit then starts at its starting window, and its earlier single window is
+ * ignored.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}. Reading ignores a measurement condition that CAT recorded in the current format but no
@@ -171,6 +177,10 @@ final class CampaignJson
 	private static final Set<String> RETIRED_CONDITIONS = Set.of("model_provider", "host_tools", "external_sources");
 	private static final String TOKEN_USAGE = "token_usage";
 	private static final String COMMANDS = "commands";
+	/**
+	 * The key of a campaign's concurrency windows.
+	 */
+	private static final String CONCURRENCY = "concurrency";
 	private static final String SLOWEST_COMMAND = "slowest_command_ms";
 	private static final String EMPTY_RUNNING_RESULTS = "empty_running_results";
 	private static final String FAILED_ASSERTIONS = "failed_assertions";
@@ -241,9 +251,7 @@ final class CampaignJson
 			node.put("last_sequence", entry.getValue());
 		}
 		root.put("evidence_revision", campaign.evidenceRevision());
-		ObjectNode slowStart = root.putObject("slow_start");
-		slowStart.put("size", campaign.slowStart().size());
-		slowStart.put("passes", campaign.slowStart().passes());
+		root.set(CONCURRENCY, writeWindows(campaign.windows()));
 		root.set("throttle", writeThrottle(campaign.throttle()));
 		ArrayNode pending = root.putArray("pending_decisions");
 		for (PendingDecision decision : campaign.pendingDecisions())
@@ -311,7 +319,9 @@ final class CampaignJson
 			if (sequences.put(group, longInteger(node, "last_sequence")) != null)
 				throw new IllegalArgumentException("sequences: duplicate group " + group);
 		}
-		JsonNode slowStart = field(root, "slow_start");
+		ConcurrencyWindows windows = ConcurrencyWindows.EMPTY;
+		if (root.has(CONCURRENCY))
+			windows = readWindows(field(root, CONCURRENCY));
 		List<PendingDecision> pending = new ArrayList<>();
 		for (JsonNode node : elements(root, "pending_decisions"))
 		{
@@ -343,7 +353,7 @@ final class CampaignJson
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
 			integer(root, "candidates"), integer(root, "prompt_author_attempts"),
 			readDevelopment(field(root, "development")), baseline, attempts, trials, sequences,
-			longInteger(root, "evidence_revision"), new SlowStart(integer(slowStart, "size"), integer(slowStart, "passes")),
+			longInteger(root, "evidence_revision"), windows,
 			readThrottle(field(root, "throttle")), pending, bool(root, "revision_requested"),
 			nullableConstant(root, "outcome", Outcome.class), delivery, readOptimization(field(root, "optimization")),
 			answered, readTestRevisions(field(root, "test_revisions")), plugins);
@@ -983,6 +993,55 @@ final class CampaignJson
 		if (node.has(EMPTY_RUNNING_RESULTS) && !node.get(EMPTY_RUNNING_RESULTS).isNull())
 			emptyRunning = intValue(node.get(EMPTY_RUNNING_RESULTS), EMPTY_RUNNING_RESULTS);
 		return new CommandSummary(slowest, emptyRunning);
+	}
+
+	/**
+	 * Writes concurrency windows, each unit of work's window in unit order.
+	 *
+	 * @param windows the windows
+	 * @return the document
+	 */
+	private ObjectNode writeWindows(ConcurrencyWindows windows)
+	{
+		ObjectNode node = json.createObjectNode();
+		ArrayNode units = node.putArray("windows");
+		List<Entry<WorkUnit, Window>> entries = new ArrayList<>(windows.windows().entrySet());
+		entries.sort(Comparator.comparing((Entry<WorkUnit, Window> entry) -> entry.getKey().purpose()).
+			thenComparingInt(entry -> entry.getKey().series()).
+			thenComparingInt(entry -> entry.getKey().stage()).
+			thenComparing(entry -> entry.getKey().part()));
+		for (Entry<WorkUnit, Window> entry : entries)
+		{
+			ObjectNode unit = units.addObject();
+			unit.put("purpose", EnumNames.lowerCase(entry.getKey().purpose()));
+			unit.put("series", entry.getKey().series());
+			unit.put("stage", entry.getKey().stage());
+			unit.put("part", entry.getKey().part());
+			unit.put("size", entry.getValue().size());
+			unit.put("passes", entry.getValue().passes());
+		}
+		node.put("halvings", windows.halvings());
+		node.put("completions", windows.completions());
+		return node;
+	}
+
+	/**
+	 * Reads concurrency windows.
+	 *
+	 * @param node the document
+	 * @return the windows
+	 */
+	private static ConcurrencyWindows readWindows(JsonNode node)
+	{
+		Map<WorkUnit, Window> windows = new HashMap<>();
+		for (JsonNode unit : elements(node, "windows"))
+		{
+			WorkUnit key = new WorkUnit(constant(unit, "purpose", Purpose.class), integer(unit, "series"),
+				integer(unit, "stage"), text(unit, "part"));
+			if (windows.put(key, new Window(integer(unit, "size"), integer(unit, "passes"))) != null)
+				throw new IllegalArgumentException("concurrency.windows: duplicate unit " + key);
+		}
+		return new ConcurrencyWindows(windows, integer(node, "halvings"), integer(node, "completions"));
 	}
 
 	/**
@@ -2771,10 +2830,10 @@ final class CampaignJson
 	 * Adds the peak window to the throttle states of a saved campaign or trial record. A snapshot whose throttle counts
 	 * backoffs was last changed by a rejection that no completed trial followed, so its peak window becomes 1, as the
 	 * rejection would have set it. Otherwise its peak window becomes the campaign's ceiling: its window cap may hold
-	 * the window that a slow-start reset had just lowered when utilization reached the freeze level, and no saved value
-	 * records the window that the campaign had reached. Slow start, the risk ceiling and the next rejection still limit
-	 * the window, and a hold in progress still holds admissions until it ends. A trial session's peak window becomes
-	 * its window cap, the level at which that historical throttle stopped growth.
+	 * a window that had just dropped when utilization reached the freeze level, and no saved value records the window
+	 * that the campaign had reached. The units' own windows and the next rejection still limit the window, and a hold
+	 * in progress still holds admissions until it ends. A trial session's peak window becomes its window cap, the
+	 * level at which that historical throttle stopped growth.
 	 *
 	 * @param root the version-43 to version-45 document, mutated to the current format
 	 */

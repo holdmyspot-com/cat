@@ -51,7 +51,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
-import com.holdmyspot.cat.common.optimizer.campaign.SlowStart;
 import com.holdmyspot.cat.common.optimizer.campaign.TestCaseOutcomes;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
@@ -59,6 +58,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.TriedTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Boundaries;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
@@ -561,7 +561,7 @@ public final class DriverTest
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("prompt-author-briefs")),
 				new Builder().confirmed().working(1).readyBaseline().ceiling(2).
 					development("safety", 10, 0).development("formatting", 10, 0).
-					slowStart(new SlowStart(2, 0)).build());
+					window(2).build());
 			try (Driver driver = harness.open())
 			{
 				driver.step();
@@ -617,7 +617,7 @@ public final class DriverTest
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("fail-fast")),
 				new Builder().confirmed().working(1).readyBaseline().ceiling(2).
 					development("safety", 10, 0).development("formatting", 10, 0).
-					slowStart(new SlowStart(2, 0)).build());
+					window(2).build());
 			harness.triages(_ -> harness.triaged(Impact.BLOCKING));
 			try (Driver driver = harness.open())
 			{
@@ -659,7 +659,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("passing-copies")),
 				new Builder().confirmed().working(1).readyBaseline().development("safety", 10, 0).
-					slowStart(new SlowStart(1, 0)).build());
+					window(1).build());
 			AtomicReference<SessionResult.Completed> first = new AtomicReference<>();
 			harness.trials(_ ->
 			{
@@ -691,7 +691,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("failed-copies")),
 				new Builder().confirmed().working(1).readyBaseline().development("safety", 10, 0).
-					slowStart(new SlowStart(1, 0)).build());
+					window(1).build());
 			harness.triages(_ -> harness.triaged(Impact.BLOCKING));
 			AtomicReference<SessionResult.Completed> first = new AtomicReference<>();
 			harness.trials(_ ->
@@ -723,7 +723,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("failure-section")),
 				new Builder().confirmed().working(1).readyBaseline().development("safety", 10, 0).
-					slowStart(new SlowStart(1, 0)).build());
+					window(1).build());
 			harness.triages(_ -> harness.triaged(Impact.BLOCKING));
 			SessionEvidence activity = new SessionEvidence(List.of(new SessionEvidence.Tool(1,
 				SessionEvidence.ROOT_AGENT, "shell", "read-file docs/handbok.md", true, 127,
@@ -774,7 +774,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("failure-section")),
 				new Builder().confirmed().working(1).readyBaseline().development("safety", 10, 0).
-					slowStart(new SlowStart(1, 0)).build());
+					window(1).build());
 			// The failed trial's effects stop being retained after its triage
 			List<Path> effects = new ArrayList<>();
 			harness.triages(_ ->
@@ -843,7 +843,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("invalid-triage")),
-				developing().slowStart(new SlowStart(1, 0)).build());
+				developing().window(1).build());
 			AtomicBoolean failedOnce = new AtomicBoolean();
 			harness.trials(request ->
 			{
@@ -884,7 +884,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("triage-limit")),
-				developing().slowStart(new SlowStart(1, 0)).build());
+				developing().window(1).build());
 			harness.trials(_ -> harness.failed());
 			AtomicInteger rejections = new AtomicInteger(Driver.TRIAGE_ATTEMPTS);
 			AtomicReference<Instant> resetsAt = new AtomicReference<>();
@@ -1222,7 +1222,7 @@ public final class DriverTest
 		Failure failure = new Failure(Builder.targeted("safety", "logs"), "representative failure", List.of(), null,
 			List.of(new DiagnosticRerun(Verdict.FAIL, "reproduced failure")), List.of(), Builder.FILES);
 		DriverHarness harness = new DriverHarness(directory,
-			new Builder().confirmed().working(1).readyBaseline().ceiling(16).slowStart(new SlowStart(16, 0)).
+			new Builder().confirmed().working(1).readyBaseline().ceiling(16).window(16).
 				round(new Round(Map.of("safety", 0), true, Map.of(), List.of())).failure(failure).
 				regression(Builder.targeted("formatting", "formal"), null).build());
 		harness.trials(request ->
@@ -2223,7 +2223,7 @@ public final class DriverTest
 	 * Creates a prompt author and trial fixture whose second hunk adds unnecessary guidance.
 	 *
 	 * @param directory the owned fixture directory
-	 * @param references counts runs of the working reference snapshot
+	 * @param references counts the working candidate's reference runs on the regression test case
 	 * @return the fixture
 	 * @throws IOException if it cannot be created
 	 */
@@ -2239,19 +2239,10 @@ public final class DriverTest
 		harness.promptAuthors(request -> harness.edit(request, DriverHarness.PROMPT, "needed\nseparator\nunneeded\n"));
 		harness.trials(request ->
 		{
-			try
-			{
-				if (harness.snapshot(request).equals(working) && harness.campaign().development().
-					promptAuthor() != null && harness.campaign().development().promptAuthor().minimality().
-					testing() == null)
-				{
-					references.incrementAndGet();
-				}
-			}
-			catch (IOException e)
-			{
-				throw new UncheckedIOException(e);
-			}
+			// The working candidate's reference run on the regression test case, whether the attempt or its reduction
+			// runs it
+			if (harness.snapshot(request).equals(working) && DriverHarness.cell(request).equals("formatting"))
+				references.incrementAndGet();
 			if (DriverHarness.cell(request).equals("formatting"))
 				return harness.passed();
 			try
@@ -2858,16 +2849,13 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, state -> state.development().diagnosis() != null);
+				Campaign diagnosing = harness.runUntil(driver, state -> state.development().diagnosis() != null);
 				Campaign campaign = harness.runUntil(driver, state -> state.development().diagnosis() == null);
 				requireThat(campaign.development().count("safety").failures(), "failures").isEqualTo(1);
 				requireThat(campaign.development().working().number(), "working").isEqualTo(1);
-				requireThat(campaign.slowStart(), "slowStart").isEqualTo(SlowStart.INITIAL);
-
-				harness.clearOpenTrials();
-				harness.runUntil(driver, state -> harness.openTrials().stream().filter(count -> count > 0).count() >= 3);
-				List<Integer> windows = harness.openTrials().stream().filter(count -> count > 0).limit(3).toList();
-				requireThat(windows, "windows").isEqualTo(List.of(1, 2, 4));
+				// A failure that does not block keeps the window that development reached
+				requireThat(ConcurrencyPolicy.window(campaign), "window").
+					isGreaterThanOrEqualTo(ConcurrencyPolicy.window(diagnosing));
 			}
 		}
 	}
@@ -2887,7 +2875,7 @@ public final class DriverTest
 			// The safety test has 4 outcomes left before its cap, so exactly 4 trials are admitted
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
-					slowStart(new SlowStart(4, 0)).certificationAttempt(1).
+					window(WorkUnit.formal(1, "safety", false), 4).certificationAttempt(1).
 					boundaries(Boundaries.reachableAtFourFailures(neutralBoundaries(), 5)).cell("formatting", 100, 0).
 					cell("plain_list", 100, 0).cell("safety", 292, 4).build());
 			try (Driver driver = harness.open())
@@ -3066,7 +3054,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing().slowStart(new SlowStart(4, 0)).build());
+				developing().window(4).build());
 			try (Driver driver = harness.open())
 			{
 				driver.step();
@@ -3103,7 +3091,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing().slowStart(new SlowStart(4, 0)).certificationAttempt(1).boundaries(neutralBoundaries()).
+				developing().ceiling(4).certificationAttempt(1).boundaries(neutralBoundaries()).
 					cell("formatting", 10, 0).cell("plain_list", 10, 0).cell("safety", 10, 0).build());
 			int before = attemptOutcomes(harness.campaign());
 			Set<TrialKey> interrupted;
@@ -3263,7 +3251,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing().slowStart(new SlowStart(2, 0)).build());
+				developing().window(2).build());
 			Instant resetsAt = DriverHarness.START.plus(Duration.ofMinutes(2));
 			try (Driver driver = harness.open())
 			{
@@ -3311,7 +3299,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("trial-session")),
-				developing().slowStart(new SlowStart(2, 0)).build(), HostLogin.SUBSCRIPTION);
+				developing().window(2).build(), HostLogin.SUBSCRIPTION);
 			List<RateLimitWindow> windows = List.of(
 				new RateLimitWindow(0.85, DriverHarness.START.plus(Duration.ofHours(5))),
 				new RateLimitWindow(0.10, null));
@@ -3355,7 +3343,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("limited-session")),
-				developing().slowStart(new SlowStart(2, 0)).build(), HostLogin.API_KEY);
+				developing().window(2).build(), HostLogin.API_KEY);
 			Instant resetsAt = DriverHarness.START.plus(Duration.ofMinutes(30));
 			List<RateLimitWindow> windows = List.of(new RateLimitWindow(1.0, resetsAt));
 			try (Driver driver = harness.open())
@@ -3404,7 +3392,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing().slowStart(new SlowStart(1, 0)).build());
+				developing().window(1).build());
 			AtomicInteger rejections = new AtomicInteger(Driver.JUDGE_ATTEMPTS);
 			AtomicReference<Instant> resetsAt = new AtomicReference<>();
 			harness.judges(request ->
@@ -3451,7 +3439,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("refused-trial")),
-				developing().slowStart(new SlowStart(1, 0)).build());
+				developing().window(1).build());
 			// The slice outlasts the holds, so that each rerun fits before its deadline
 			harness.settings(new SliceSettings(Duration.ofHours(1), Duration.ofMinutes(1), Duration.ofSeconds(1)));
 			try (Driver driver = harness.open())
@@ -3495,7 +3483,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("refused-longest")),
-				developing().slowStart(new SlowStart(1, 0)).build());
+				developing().window(1).build());
 			harness.trials(_ -> new SessionResult.Refused(
 				new Hold(harness.clock().instant().plus(Duration.ofMinutes(30)), 6), true, List.of()));
 			try (Driver driver = harness.open())
@@ -3527,7 +3515,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("refused-judge")),
-				developing().slowStart(new SlowStart(1, 0)).build());
+				developing().window(1).build());
 			AtomicInteger refusals = new AtomicInteger(Driver.JUDGE_ATTEMPTS);
 			AtomicReference<Instant> holdEnd = new AtomicReference<>();
 			harness.judges(request ->
@@ -3653,7 +3641,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().ceiling(1).
 					certificationAttempt(1).cell("formatting", 50, 0).cell("safety", 50, 0).build());
 			try (Driver driver = harness.open())
 			{
@@ -3912,7 +3900,7 @@ public final class DriverTest
 		{
 			Candidate first = new Candidate(1, Builder.snapshot("candidate-1"));
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new Builder().confirmed().working(2).readyDevelopment().readyBaseline().
+				new Builder().confirmed().working(2).readyDevelopment().readyBaseline().ceiling(1).
 					certificationAttempt(1).candidate(first).cell("formatting", 296, 4).cell("plain_list", 250, 0).
 					cell("safety", 250, 0).outcome(Outcome.INCONCLUSIVE).campaign().
 					certificationAttempt(2).cell("formatting", 50, 0).cell("plain_list", 50, 0).
@@ -3986,7 +3974,7 @@ public final class DriverTest
 		// Requirement: R-C11
 		// Requirement: R-E17
 		Campaign start = twoProfileStart().development(ContractFixtures.SMALL_CELL,
-			CommitGate.MINIMUM_TRIALS - 1, 0).build();
+			CommitGate.MINIMUM_TRIALS - 1, 0).ceiling(1).build();
 		requireThat(CommitGate.isCommitDue(start), "commitDueBeforeSmallCell").isFalse();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -5474,7 +5462,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing().slowStart(new SlowStart(1, 0)).build());
+				developing().window(1).build());
 			SessionEvidence activity = new SessionEvidence(List.of(new SessionEvidence.Tool(1,
 				SessionEvidence.ROOT_AGENT, "shell", "printf original", true, 0, "complete {{responses}}\n")));
 			AtomicReference<SessionResult.Completed> evidence = new AtomicReference<>();
@@ -5511,7 +5499,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing().slowStart(new SlowStart(1, 0)).build());
+				developing().window(1).build());
 			List<SessionResult.Completed> trials = new ArrayList<>();
 			harness.trials(_ ->
 			{
@@ -6436,7 +6424,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing().slowStart(new SlowStart(1, 0)).build());
+				developing().window(1).build());
 			harness.trials(_ -> harness.completed("An unrelated trial reply.", DriverHarness.MODEL));
 			String rationale = "Evidence: \"quoted reply\".\nKeep this line.";
 			harness.judges(request -> harness.judged(request, verdict, rationale));

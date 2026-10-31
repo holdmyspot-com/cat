@@ -371,10 +371,12 @@ public final class TrialAdoption
 		Contract contract = draft.contract();
 		int index = group.round().indexOf(contract.findTest(group.testId()).orElseThrow(), trial.testCase());
 		boolean matched = trial.verdict() == Verdict.FAIL && trial.failedAssertions().contains(group.failed());
+		WorkUnit unit = ConcurrencyPolicy.reproductionUnit(number, group);
+		int spare = ConcurrencyPolicy.reproductionSpareFailures(group.round());
 		if (trial.verdict() == Verdict.PASS)
-			draft.slowStart = draft.slowStart.afterPass();
+			draft.recordPass(unit, spare);
 		else
-			draft.slowStart = draft.slowStart.afterFailure();
+			draft.recordFailure(unit, spare, matched, Math.max(0, spare - 1));
 		List<String> stressCellIds = CellTier.stressCells(contract, draft.header.harness(), group.cellId()).stream().
 			map(Cell::id).toList();
 		FailureGroup updated = group.adopt(index, matched, stressCellIds);
@@ -407,13 +409,13 @@ public final class TrialAdoption
 		String cell = trial.key().cell();
 		Verdict verdict = trial.verdict();
 		draft.developmentCounts.put(cell, draft.developmentCount(cell).add(verdict));
+		WorkUnit unit = WorkUnit.development(trial.key().series());
 		if (verdict == Verdict.PASS)
-		{
-			draft.slowStart = draft.slowStart.afterPass();
-		}
+			draft.recordPass(unit, 0);
 		else
 		{
-			draft.slowStart = draft.slowStart.afterFailure();
+			// A blocking failure fails fast, so development has no spare failure; any other failure consumes none
+			draft.recordFailure(unit, 0, isBlocking(trial), 0);
 			DrawnTestCase targeted = draft.generator().markTargeted(trial.testCase());
 			draft.developmentFailures.add(new Failure(targeted, trial.rationale(), trial.failedAssertions(),
 				trial.triage(), List.of(), trial.responses(), trial.files()));
@@ -521,7 +523,6 @@ public final class TrialAdoption
 		draft.reviewPoints = new LinkedHashMap<>(restored.reviewPoints());
 		restoreRegressionVerdicts(draft, predecessor.regressionSet());
 		draft.round = predecessor.round();
-		draft.slowStart = SlowStart.INITIAL;
 		if (draft.round.weak())
 		{
 			if (isWeakRoundDecided(draft))
@@ -784,17 +785,31 @@ public final class TrialAdoption
 			return;
 		}
 		List<PromotionRun> runs = new ArrayList<>(promptAuthor.runs());
+		PromotionRun.Role role = null;
 		for (int i = 0; i < runs.size(); ++i)
 		{
 			PromotionRun run = runs.get(i);
 			if (trial.key().equals(run.trial()))
 			{
 				runs.set(i, new PromotionRun(run.role(), run.testCase(), run.trial(), trial.verdict()));
+				role = run.role();
 				break;
 			}
 		}
-		draft.updatePromptAuthor(new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
-			promptAuthor.snapshot(), runs, promptAuthor.minimality()));
+		PromptAuthorAttempt updated = new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
+			promptAuthor.snapshot(), runs, promptAuthor.minimality());
+		WorkUnit unit = WorkUnit.promotion(promptAuthor);
+		int spare = Promotion.spareFailures(promptAuthor, draft.regressionSet, draft.testCaseOutcomes);
+		if (trial.verdict() == Verdict.PASS)
+			draft.recordPass(unit, spare);
+		else
+		{
+			// A failing run of the working candidate decides nothing about the attempt
+			boolean consuming = role != null && !role.measuresWorking();
+			draft.recordFailure(unit, spare, consuming, Promotion.spareFailures(updated, draft.regressionSet,
+				draft.testCaseOutcomes));
+		}
+		draft.updatePromptAuthor(updated);
 		if (draft.round.weak() && draft.promptAuthor == null)
 			decideWeakRound(draft);
 		else
@@ -912,7 +927,8 @@ public final class TrialAdoption
 
 	/**
 	 * Ends a complete round that produced no promotable attempt, however many failures the working candidate has. The
-	 * working candidate stays, and its representative trials resume with a concurrency window of one; the round's
+	 * working candidate stays, and its representative trials resume at the window that its development series reached;
+	 * the round's
 	 * attempts and prompt author diagnoses remain in the optimization evidence. A later failure goes through
 	 * edit-or-continue and can start a new round with new failure evidence. Every regression test case that the working
 	 * candidate failed last becomes settled, so that failure no longer blocks the commit gate until the working
@@ -923,7 +939,6 @@ public final class TrialAdoption
 	private static void endUnproductiveRound(Draft draft)
 	{
 		draft.round = null;
-		draft.slowStart = SlowStart.INITIAL;
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
 		{
 			RegressionTestCase regression = draft.regressionSet.get(i);
@@ -990,7 +1005,6 @@ public final class TrialAdoption
 			if (!run.role().measuresWorking() && run.verdict() != null)
 				draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, run.testCase(), run.verdict());
 		}
-		draft.slowStart = SlowStart.INITIAL;
 	}
 
 	/**
@@ -1074,12 +1088,22 @@ public final class TrialAdoption
 		{
 			failures.add(new Failure(trial.testCase(), trial.rationale(), trial.failedAssertions(), null, List.of(),
 				trial.responses(), trial.files()));
-			draft.slowStart = draft.slowStart.afterFailure();
 		}
-		else
-			draft.slowStart = draft.slowStart.afterPass();
 		CertificationAttempt updated = attempt.withEvidence(attempt.identity(), counts, controlPairings,
 			incumbentPairings, failures, attempt.formalStream());
+		// Before the paired comparisons start, a candidate failure moves the cell toward a clearly-below or
+		// out-of-reach decision. Once they compare, the pairs decide the cell, and an unpaired candidate trial
+		// consumes nothing.
+		boolean comparing = attempt.pairing(Reference.CONTROL, cell).isComparing();
+		WorkUnit unit = ConcurrencyPolicy.formalUnit(attempt, cell);
+		int spare = ConcurrencyPolicy.formalSpareFailures(attempt, cell, comparing);
+		if (trial.verdict() == Verdict.PASS)
+			draft.recordPass(unit, spare);
+		else
+		{
+			draft.recordFailure(unit, spare, !comparing, ConcurrencyPolicy.formalSpareFailures(updated, cell,
+				false));
+		}
 		draft.replaceAttempt(updated);
 		applyDecision(draft, updated);
 	}
@@ -1116,9 +1140,26 @@ public final class TrialAdoption
 	{
 		CertificationAttempt attempt = draft.attempt(trial.key().series());
 		String cell = trial.key().cell();
-		Pairing pairing = attempt.pairing(reference, cell).withReference(trial.testCase(),
-			passedAssertions(testOf(draft, cell), trial, false));
+		Pairing before = attempt.pairing(reference, cell);
+		Pairing pairing = before.withReference(trial.testCase(), passedAssertions(testOf(draft, cell), trial, false));
 		CertificationAttempt updated = attempt.withPairing(reference, cell, pairing);
+		// A pair that only the reference trial passed moves a comparison toward below its reference or out of reach
+		boolean unfavourable = false;
+		for (Map.Entry<String, PairCounts> comparison : pairing.comparisons().entrySet())
+		{
+			PairCounts earlier = before.comparisons().getOrDefault(comparison.getKey(), PairCounts.EMPTY);
+			if (comparison.getValue().referenceOnly() > earlier.referenceOnly())
+				unfavourable = true;
+		}
+		if (attempt.pairing(Reference.CONTROL, cell).isComparing())
+		{
+			WorkUnit unit = ConcurrencyPolicy.formalUnit(attempt, cell);
+			int spare = ConcurrencyPolicy.formalSpareFailures(attempt, cell, true);
+			if (unfavourable)
+				draft.recordFailure(unit, spare, true, ConcurrencyPolicy.formalSpareFailures(updated, cell, true));
+			else
+				draft.recordPass(unit, spare);
+		}
 		draft.replaceAttempt(updated);
 		applyDecision(draft, updated);
 	}

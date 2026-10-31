@@ -13,8 +13,8 @@ import java.util.List;
  * Utilization is the fraction of a reported rate-limit allowance consumed. At {@value #FREEZE_UTILIZATION} or more
  * of any allowance, the limit on simultaneous candidate trials stops growing, even when an allowance is exhausted: the
  * harness may draw on several accounts, so only a rejection shows that it cannot start another session. The limit
- * stops at the largest window that any rate-limit report found permitted since the last rejection, so a slow-start
- * reset just before the report does not lower it: slow start may regrow the window up to that level. A rate-limit
+ * stops at the largest window that any rate-limit report found permitted since the last rejection, so a window that
+ * dropped just before the report does not lower it: the window may regrow up to that level. A rate-limit
  * rejection or a provider refusal drops the limit and that level to 1, and no trials start until the harness's shared
  * hold ends; the shared hold, not this throttle, keeps the sequence of hold lengths. While utilization stays at
  * {@value #FREEZE_UTILIZATION} or more after the hold ends, the limit stays 1; a report below it lifts the limit. The
