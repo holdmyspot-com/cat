@@ -18,9 +18,10 @@
 - Wait for a live delegate by blocking until it returns, rather than observing it at intervals.
 <!-- A parent sent one subagent four topics, two of them independent of the others, with one shared reading list; after
      45 minutes the subagent had read about 15 rule files and changed no file. -->
-- Split delegated work into as many independent subtasks of about five minutes each as its dependencies allow, each
-	run by its own subagent with only the context that subtask needs, so independent work proceeds concurrently and no
-	delegate spends its time on context that belongs to other work.
+- Split delegated work into as many independent subtasks as its dependencies allow, each run by its own subagent with
+	only the context and focused checks it needs and each large enough that its own work outweighs a subagent's fixed
+	cost, so independent work proceeds concurrently, no delegate spends its time on context or checks that belong to
+	other work, and the full build runs once, after integration.
 
 ## Guidance
 
@@ -41,18 +42,23 @@ recipient's injected response contract and required form when one exists; otherw
 component. Do not redefine that contract's statuses, keys, or terminal meanings in the task. Do not rely on a
 parent-only requirement or generic handoff language.
 
-Before delegating, decompose the work into as many independent subtasks as possible, each estimated at about five
-minutes of a subagent's work, and give each subtask its own subagent. Each subtask is one verification-closed behavior
-cluster: one coherent observable outcome whose production changes and focused tests end in its own exact gate. Paths
-that overlap do not make independently testable lifecycle, schema, or quality changes one cluster. A piece that cannot
-be split further without losing its own exact gate stays one subtask, even when it takes longer than five minutes.
-Launch the subtasks that the conflict graph below shows as independent concurrently. A subtask that consumes another
-subtask's output waits for that output, and subtasks whose write sets overlap run in sequence through one exclusive
-writer or stay with the higher authority. Do not delegate work when accepting it would require the parent to rederive
-its decisions or review work as broadly as implementing it directly.
+Before delegating, decompose the work into as many independent subtasks as possible and give each subtask its own
+subagent. Make each subtask the smallest independent piece whose own work clearly outweighs a subagent's fixed cost:
+reading its task contract and required rules, running its gates, and the parent's review and integration of its result.
+Without a measured fixed cost, aim for about five minutes of a subagent's work, and do not split a piece further when
+its subtasks would spend more time on that fixed cost than on their own work. Each subtask is one verification-closed
+behavior cluster: one coherent observable outcome whose production changes and focused tests end in its own exact gate.
+Paths that overlap do not make independently testable lifecycle, schema, or quality changes one cluster. A piece that
+cannot be split further without losing its own exact gate stays one subtask, however long it takes. Launch the subtasks
+that the conflict graph below shows as independent concurrently. A subtask that consumes another subtask's output waits
+for that output, and subtasks whose write sets overlap run in sequence through one exclusive writer or stay with the
+higher authority. Do not delegate work when accepting it would require the parent to rederive its decisions or review
+work as broadly as implementing it directly.
 
 Give each subtask its own task contract that carries only what that subtask needs, including a reading list limited to
-the files its decisions depend on. Do not send several subtasks one shared reading list.
+the files its decisions depend on. Do not send several subtasks one shared reading list. A subtask's gates are its
+focused checks: the compilation, static analysis and tests that its owned paths affect. The parent runs the full build
+once, after integrating the subtasks' results, so that concurrent subtasks neither run it nor wait for one another's.
 
 For every write-capable delegation, supply a task contract with an exact write allowlist, verification commands,
 workspace mode, and acceptance evidence. Treat the write allowlist as authority and the verification commands only as
@@ -148,11 +154,11 @@ quality failures as an environmental baseline and use the exact owned-path gates
 gates only at the plan's declared integration boundaries.
 
 A delegate never integrates its own result. The parent or an authoritative integration operation first rejects changed
-paths outside the allowlist, then integrates accepted results one at a time and runs the combined affected checks. A
-clean integration worktree may use the repository's approved merge operation. A dirty parent worktree must not receive
-a direct merge or cherry-pick; use an authoritative validated patch replay that preserves its existing changes, or keep
-the result isolated until a clean integration boundary exists. Start a dependent delegation only from the resulting
-integrated snapshot.
+paths outside the allowlist, then integrates accepted results one at a time, runs the combined affected checks, and then
+runs the full build once. A clean integration worktree may use the repository's approved merge operation. A dirty
+parent worktree must not receive a direct merge or cherry-pick; use an authoritative validated patch replay that
+preserves its existing changes, or keep the result isolated until a clean integration boundary exists. Start a
+dependent delegation only from the resulting integrated snapshot.
 
 Keep high-judgment work with the higher-level model: semantic design, intent, topic boundaries, earliest complete
 placement, conflict resolution, security-sensitive decisions, and any result whose verification would require redoing
